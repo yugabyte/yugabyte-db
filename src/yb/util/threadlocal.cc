@@ -31,10 +31,6 @@
 //
 #include "yb/util/threadlocal.h"
 
-#include <pthread.h>
-
-#include <glog/logging.h>
-
 #include "yb/gutil/once.h"
 #include "yb/util/errno.h"
 

@@ -63,7 +63,7 @@ The following table lists the primitive and compound data types in YSQL.
 | [`time [ (p) ] [ without time zone ]`](type_datetime) | | Time of day (no time zone) |
 | [`time [ (p) ] with time zone`](type_datetime) | [`timetz`](type_datetime) | Time of day, including time zone |
 | [`timestamp [ (p) ] [ without time zone ]`](type_datetime) | | Date and time (no time zone) |
-| [`timestamp [ (p) ] with time zone`](type_datetime) | [`timestampz`](type_datetime) | Date and time, including time zone |
+| [`timestamp [ (p) ] with time zone`](type_datetime) | [`timestamptz`](type_datetime) | Date and time, including time zone |
 | `tsquery` <sup>1</sup> | | Text search query |
 | `tsvector` <sup>1</sup> | | Text search document |
 | `txid_snapshot` <sup>1</sup> | | Transaction ID snapshot |

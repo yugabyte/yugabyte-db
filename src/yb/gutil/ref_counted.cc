@@ -19,9 +19,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include <regex>
 #include <atomic>
-#include <mutex>
+#include <regex>
 
 #include <glog/logging.h>
 
@@ -72,14 +71,7 @@ bool RefCountedBase::Release() const {
 }
 
 bool RefCountedThreadSafeBase::HasOneRef() const {
-  return base::RefCountIsOne(
-      &const_cast<RefCountedThreadSafeBase*>(this)->ref_count_);
-}
-
-RefCountedThreadSafeBase::RefCountedThreadSafeBase() : ref_count_(0) {
-#ifndef NDEBUG
-  in_dtor_ = false;
-#endif
+  return ref_count_.load(std::memory_order_acquire) == 1;
 }
 
 RefCountedThreadSafeBase::~RefCountedThreadSafeBase() {
@@ -93,15 +85,15 @@ void RefCountedThreadSafeBase::AddRef() const {
 #ifndef NDEBUG
   DCHECK(!in_dtor_);
 #endif
-  base::RefCountInc(&ref_count_);
+  ref_count_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 bool RefCountedThreadSafeBase::Release() const {
 #ifndef NDEBUG
   DCHECK(!in_dtor_);
-  DCHECK(!base::RefCountIsZero(&ref_count_));
+  DCHECK_NE(ref_count_.load(std::memory_order_relaxed), 0);
 #endif
-  if (!base::RefCountDec(&ref_count_)) {
+  if (ref_count_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
 #ifndef NDEBUG
     in_dtor_ = true;
 #endif
@@ -133,8 +125,8 @@ void InitRefCountedDebugging(const std::string& type_name_regex,
 void RefCountedDebugHook(
     const char* type_name,
     const void* this_ptr,
-    int32_t current_ref_count,
-    int32_t ref_delta) {
+    int64_t current_ref_count,
+    int64_t ref_delta) {
   std::match_results<const char*> match;
   if (!std::regex_match(type_name, match, g_ref_counted_debug_type_name_regex)) {
     return;
@@ -153,3 +145,9 @@ void InitRefCountedDebugging(const std::string& type_name_regex) {
 }  // namespace subtle
 
 }  // namespace yb
+
+#ifndef NDEBUG
+void ScopedRefPtrCheck(bool valid) {
+  CHECK(valid) << "scoped_refptr is null";
+}
+#endif

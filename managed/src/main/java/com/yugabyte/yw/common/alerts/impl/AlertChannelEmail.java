@@ -6,10 +6,8 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
-import com.yugabyte.yw.common.alerts.AlertChannelInterface;
-import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
@@ -21,7 +19,7 @@ import org.apache.commons.collections.CollectionUtils;
 
 @Slf4j
 @Singleton
-public class AlertChannelEmail implements AlertChannelInterface {
+public class AlertChannelEmail extends AlertChannelBase {
 
   @Inject private EmailHelper emailHelper;
 
@@ -30,23 +28,30 @@ public class AlertChannelEmail implements AlertChannelInterface {
       throws PlatformNotificationException {
     log.debug("sendNotification {}", alert);
     AlertChannelEmailParams params = (AlertChannelEmailParams) channel.getParams();
-    String title = AlertUtils.getNotificationTitle(alert, channel);
-    String text = AlertUtils.getNotificationText(alert, channel);
+    String title = getNotificationTitle(alert, channel);
+    String text = getNotificationText(alert, channel);
 
     SmtpData smtpData =
-        params.defaultSmtpSettings ? emailHelper.getSmtpData(customer.uuid) : params.smtpData;
+        params.isDefaultSmtpSettings()
+            ? emailHelper.getSmtpData(customer.uuid)
+            : params.getSmtpData();
     List<String> recipients =
-        params.defaultRecipients ? emailHelper.getDestinations(customer.uuid) : params.recipients;
+        params.isDefaultRecipients()
+            ? emailHelper.getDestinations(customer.uuid)
+            : params.getRecipients();
 
     if (CollectionUtils.isEmpty(recipients)) {
       throw new PlatformNotificationException(
-          String.format("Error sending email for alert %s: No recipients found.", alert.getName()));
+          String.format(
+              "Error sending email for alert %s: No recipients found for channel %s",
+              alert.getName(), channel.getName()));
     }
 
     if (smtpData == null) {
       throw new PlatformNotificationException(
           String.format(
-              "Error sending email for alert %s: Invalid SMTP settings found.", alert.getName()));
+              "Error sending email for alert %s: SMTP settings not found for channel %s.",
+              alert.getName(), channel.getName()));
     }
 
     try {

@@ -35,10 +35,11 @@
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/trace.h"
 
@@ -108,13 +109,6 @@ HybridTime Operation::WriteHybridTime() const {
   return hybrid_time();
 }
 
-void Operation::UpdateIfMaxTtl(const MonoDelta& ttl) {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  if (!ttl_.Initialized() || ttl > ttl_) {
-    ttl_ = ttl;
-  }
-}
-
 void Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   HybridTime hybrid_time;
   if (use_mvcc()) {
@@ -172,6 +166,16 @@ void Operation::Release() {
 void ExclusiveSchemaOperationBase::ReleasePermitToken() {
   permit_token_.Reset();
   TRACE("Released permit token");
+}
+
+OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
+    std::weak_ptr<Synchronizer> synchronizer) {
+  return [synchronizer = std::move(synchronizer)](const Status& status) {
+    auto shared_synchronizer = synchronizer.lock();
+    if (shared_synchronizer) {
+      shared_synchronizer->StatusCB(status);
+    }
+  };
 }
 
 }  // namespace tablet

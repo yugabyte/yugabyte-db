@@ -22,7 +22,12 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/util/testharness.h"
+
 #include <string>
+
+#include <gtest/gtest.h>
+
+#include "yb/util/status.h"
 
 namespace rocksdb {
 namespace test {

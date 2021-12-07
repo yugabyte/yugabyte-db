@@ -16,8 +16,8 @@
 #include "yb/rpc/rpc_util.h"
 
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
-#include "yb/util/size_literals.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace rpc {

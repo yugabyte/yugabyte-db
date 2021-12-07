@@ -55,7 +55,7 @@ select
 
 The result for each equality expression is _true_. This is a strange definition of equality because there are _29 days_ in February in a leap year and otherwise _28 days_, there are four _30 day_ months, and there are seven _31 day_ months. Further, _1 day_ is only _usually_ _24 hours_. (The _usually_ caveat acknowledges the consequences of Daylight Savings Time changes.) All this crucially effects the semantics—see [_interval_-moment arithmetic](#moment-interval-arithmetic) below.
 
-The section [Comparing two _interval_ values](./interval-interval-comparison/) explains the model that the _interval_ overload of the `=` operator uses and tests it with a PL/pgSQL implementation. It also shows how to implement a [user-defined _interval-interval_ `==` operator](../interval-utilities#the-user-defined-strict-equals-interval-interval-operator) that implements _strict equality_. The criterion for this is that each field of the LHS and RHS _[&#91;mm, dd, ss&#93;](../interval-representation/)_ internal representations must be pairwise equal.
+The section [Comparing two _interval_ values](./interval-interval-comparison/) explains the model that the _interval_ overload of the `=` operator uses and tests it with a PL/pgSQL implementation. It also shows how to implement a [user-defined _interval-interval_ `==` operator](../interval-utilities#the-user-defined-strict-equals-interval-interval-operator) that implements _strict equality_. The criterion for this is that each field of the LHS and RHS _[\[mm, dd, ss\]](../interval-representation/)_ internal representations must be pairwise equal.
 
 ## Interval-only addition/subtraction and multiplication/division
 
@@ -93,7 +93,7 @@ This is consistent with the assumed model. And it shows that a practice that the
 
 The operation is assumed to be intended to act separately on each of the three individual fields:
 
-- _[mm, dd, ss]&#42;x = [mm&#42;x, dd&#42;x, ss*x]_
+- _[mm, dd, ss]\*x = [mm\*x, dd\*x, ss*x]_
 
 When _x_ is equal to _f_, where _f > 1_, the effect is multiplication by _f_. And when _x_ is equal to _1/f_, where _f > 1_, the effect is division by _f_. Therefore a single mental model explains both operations.
 
@@ -145,7 +145,7 @@ One thing, at least, is clear: a practice that the user might adopt to use only 
 
 ## Recommendation
 
-{{< tip title="Avoid native interval-interval addition/subtraction and interval-number multiplication/division." >}}
+{{< tip title="Avoid native 'interval'-'interval' addition/subtraction and 'interval'-number multiplication/division." >}}
 Yugabyte recommends that you avoid performing operations whose results can easily thwart an adopted principle for good practice and especially that you avoid operations whose outcomes  must be considered to be unpredictable. It recommends that instead you adopt the practice that the section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/) explains. Doing this will let you perform the addition, subtraction, multiplication, and division operations that are unsafe with native _interval_ values in a controlled fashion that brings safety.
 {{< /tip >}}
 
@@ -196,7 +196,7 @@ This is the result:
  timestamptz: interval
 ```
 
-The _interval_ value that results from subtracting one moment from another (for the _timestamptz_, _timestamp_, or _time_ data types) has, in general, a non-zero value for each of the _dd_ and _ss_ fields of the internal _[&#91;mm, dd, ss&#93;](../interval-representation/)_ representation. The value of the _mm_ field is _always_ zero. The section [The moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](./moment-moment-overloads-of-minus/) explains the algorithm that produces the value and shows that, because it has two fields that have different rules for the semantics of the _interval_-moment overloads of the `+` and `-` operators, this approach for producing an _interval_ value should be avoided. See the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) for the recommended alternative approach.
+The _interval_ value that results from subtracting one moment from another (for the _timestamptz_, _timestamp_, or _time_ data types) has, in general, a non-zero value for each of the _dd_ and _ss_ fields of the internal _[\[mm, dd, ss\]](../interval-representation/)_ representation. The value of the _mm_ field is _always_ zero. The section [The moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](./moment-moment-overloads-of-minus/) explains the algorithm that produces the value and shows that, because it has two fields that have different rules for the semantics of the _interval_-moment overloads of the `+` and `-` operators, this approach for producing an _interval_ value should be avoided. See the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) for the recommended alternative approach.
 
 ### The moment-interval overloads of the "+" and "-" operators
 

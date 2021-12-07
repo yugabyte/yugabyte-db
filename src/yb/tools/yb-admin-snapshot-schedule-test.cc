@@ -11,26 +11,33 @@
 // under the License.
 //
 
-#include "yb/tools/admin-test-base.h"
-
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/json_util.h"
 
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/load_balancer_test_util.h"
 
 #include "yb/master/master_backup.pb.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/tools/admin-test-base.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/date_time.h"
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
-
+#include "yb/util/status_format.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_uint64(max_clock_skew_usec);
@@ -81,17 +88,27 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   Result<rapidjson::Document> WaitScheduleSnapshot(
-      MonoDelta duration, const std::string& id = std::string(), int num_snashots = 1) {
+      MonoDelta duration, const std::string& id = std::string(), int num_snapshots = 1) {
     rapidjson::Document result;
-    RETURN_NOT_OK(WaitFor([this, id, num_snashots, &result]() -> Result<bool> {
+    RETURN_NOT_OK(WaitFor([this, id, num_snapshots, &result]() -> Result<bool> {
       auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
       auto snapshots = VERIFY_RESULT(Get(&schedule, "snapshots")).get().GetArray();
-      if (snapshots.Size() < num_snashots) {
+      if (snapshots.Size() < num_snapshots) {
         return false;
       }
       result.CopyFrom(snapshots[snapshots.Size() - 1], result.GetAllocator());
       return true;
     }, duration, "Wait schedule snapshot"));
+
+    // Wait for the present time to become at-least the time chosen by the first snapshot.
+    auto snapshot_time_string = VERIFY_RESULT(Get(&result, "snapshot_time")).get().GetString();
+    HybridTime snapshot_ht = VERIFY_RESULT(HybridTime::ParseHybridTime(snapshot_time_string));
+
+    RETURN_NOT_OK(WaitFor([&snapshot_ht]() -> Result<bool> {
+      Timestamp current_time(VERIFY_RESULT(WallClock()->Now()).time_point);
+      HybridTime current_ht = HybridTime::FromMicros(current_time.ToInt64());
+      return snapshot_ht <= current_ht;
+    }, duration, "Wait Snapshot Time Elapses"));
     return result;
   }
 
@@ -147,6 +164,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   virtual std::vector<std::string> ExtraTSFlags() {
     return { Format("--timestamp_history_retention_interval_sec=$0", kHistoryRetentionIntervalSec),
              "--history_cutoff_propagation_interval_ms=1000",
+             "--enable_automatic_tablet_splitting=true",
              Format("--cleanup_split_tablets_interval_sec=$0",
                       MonoDelta(kCleanupSplitTabletsInterval).ToSeconds()) };
   }
@@ -155,8 +173,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     // To speed up tests.
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
-             "--enable_transactional_ddl_gc=false",
-             "--TEST_select_all_tablets_for_split=true", };
+             "--enable_automatic_tablet_splitting=true",
+             "--enable_transactional_ddl_gc=false", };
   }
 
   Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
@@ -1179,7 +1197,15 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
   }, kInterval * 3, "Wait first snapshot to be deleted"));
 }
 
-TEST_F(YbAdminSnapshotScheduleTest, RestoreAfterSplit) {
+class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
+    flags.push_back("--TEST_select_all_tablets_for_split=true");
+    return flags;
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreAfterSplit, YbAdminRestoreAfterSplitTest) {
   auto schedule_id = ASSERT_RESULT(PrepareCql());
 
   auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
@@ -1259,6 +1285,84 @@ TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
 
   ASSERT_OK(WaitTabletsCleaned(CoarseMonoClock::now() + retention + kInterval));
+}
+
+class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {
+  std::vector<std::string> ExtraMasterFlags() override {
+    std::vector<std::string> flags;
+    flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
+    flags.push_back("--enable_load_balancing=true");
+    flags.push_back("--TEST_load_balancer_skip_inactive_tablets=false");
+
+    return flags;
+  }
+
+ public:
+  void WaitForLoadBalanceCompletion(yb::MonoDelta timeout) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
+      return !is_idle;
+    }, timeout, "IsLoadBalancerActive"));
+
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      return client_->IsLoadBalancerIdle();
+    }, timeout, "IsLoadBalancerIdle"));
+  }
+
+  void WaitForLoadToBeBalanced(yb::MonoDelta timeout) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      std::vector<uint32_t> tserver_loads;
+      for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+        auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
+        tserver::ListTabletsRequestPB req;
+        tserver::ListTabletsResponsePB resp;
+        rpc::RpcController controller;
+        controller.set_timeout(timeout);
+        RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+        int tablet_count = 0;
+        for (const auto& tablet : resp.status_and_schema()) {
+          if (tablet.tablet_status().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+            continue;
+          }
+          if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
+            if (tablet.tablet_status().tablet_data_state() != tablet::TABLET_DATA_TOMBSTONED) {
+              ++tablet_count;
+            }
+          }
+        }
+        LOG(INFO) << "For TS " << cluster_->tablet_server(i)->id() << ", load: " << tablet_count;
+        tserver_loads.push_back(tablet_count);
+      }
+
+      return integration_tests::AreLoadsBalanced(tserver_loads);
+    }, timeout, "Are loads balanced"));
+  }
+};
+
+TEST_F(YbAdminSnapshotScheduleTestWithLB, TestLBHiddenTables) {
+  // Create a schedule.
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  // Create a table with 8 tablets.
+  LOG(INFO) << "Create table " << client::kTableName.table_name() << " with 8 tablets";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 8, client_.get(), &table_));
+
+  // Drop the table so that it becomes Hidden.
+  LOG(INFO) << "Hiding table " << client::kTableName.table_name();
+  ASSERT_OK(client_->DeleteTable(client::kTableName));
+
+  // Add a tserver and wait for LB to balance the load.
+  LOG(INFO) << "Adding a fourth tablet server";
+  std::vector<std::string> ts_flags = ExtraTSFlags();
+  ASSERT_OK(cluster_->AddTabletServer(true, ts_flags));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, 30s));
+
+  // Wait for LB to be idle.
+  WaitForLoadBalanceCompletion(30s * kTimeMultiplier * 10);
+
+  // Validate loads are balanced.
+  WaitForLoadToBeBalanced(30s * kTimeMultiplier * 10);
 }
 
 }  // namespace tools

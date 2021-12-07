@@ -11,12 +11,19 @@
 // under the License.
 //
 
-#include <rapidjson/stringbuffer.h>
+#include <string>
+#include <type_traits>
+
+#include <gtest/gtest.h>
 #include <rapidjson/prettywriter.h>
 
 #include "yb/common/jsonb.h"
+
+#include "yb/gutil/dynamic_annotations.h"
+
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using std::to_string;
 using std::numeric_limits;

@@ -13,17 +13,21 @@
 #include "yb/yql/pggate/ybc_pggate_tool.h"
 
 #include "yb/common/ybc-internal.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/server_base_options.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/util/memory/mc_types.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/shared_mem.h"
+
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {

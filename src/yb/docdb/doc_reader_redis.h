@@ -17,21 +17,17 @@
 #include <string>
 #include <vector>
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/cache.h"
-
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
-#include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/subdocument.h"
 
-#include "yb/util/status.h"
+#include "yb/rocksdb/cache.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -74,13 +70,7 @@ class SliceKeyBound {
     return is_valid();
   }
 
-  std::string ToString() const {
-    if (!is_valid()) {
-      return "{ empty }";
-    }
-    return Format("{ $0$1 $2 }", is_lower() ? ">" : "<", is_exclusive() ? "" : "=",
-                  SubDocKey::DebugSliceToString(key_));
-  }
+  std::string ToString() const;
 
  private:
   Slice key_;
@@ -162,12 +152,7 @@ struct GetRedisSubDocumentData {
     return result;
   }
 
-  std::string ToString() const {
-    return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 return_type_only: $3 "
-                      "low_subkey: $4 high_subkey: $5 }",
-                  SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
-                  exp.write_ht, return_type_only, low_subkey, high_subkey);
-  }
+  std::string ToString() const;
 };
 
 inline std::ostream& operator<<(std::ostream& out, const GetRedisSubDocumentData& data) {
@@ -199,7 +184,7 @@ yb::Status GetRedisSubDocument(
     const DocDB& doc_db,
     const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max());
 

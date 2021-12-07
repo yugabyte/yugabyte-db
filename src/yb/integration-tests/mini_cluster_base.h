@@ -14,11 +14,10 @@
 #ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
 #define YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
 
-#include "yb/client/client.h"
+#include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/status.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 
@@ -41,34 +40,17 @@ class MiniClusterBase {
   // REQUIRES: the cluster must have already been Start()ed.
 
   // Created client won't shutdown messenger.
-  Result<std::unique_ptr<client::YBClient>> CreateClient(rpc::Messenger* messenger) {
-    client::YBClientBuilder builder;
-    ConfigureClientBuilder(&builder);
-    return builder.Build(messenger);
-  }
+  Result<std::unique_ptr<client::YBClient>> CreateClient(rpc::Messenger* messenger);
 
   // Created client will shutdown messenger on client shutdown.
   Result<std::unique_ptr<client::YBClient>> CreateClient(
-      client::YBClientBuilder* builder = nullptr) {
-    if (builder == nullptr) {
-      client::YBClientBuilder default_builder;
-      return CreateClient(&default_builder);
-    }
-    ConfigureClientBuilder(builder);
-    return builder->Build();
-  }
+      client::YBClientBuilder* builder = nullptr);
 
   // Created client gets messenger ownership and will shutdown messenger on client shutdown.
   Result<std::unique_ptr<client::YBClient>> CreateClient(
-      std::unique_ptr<rpc::Messenger>&& messenger) {
-    client::YBClientBuilder builder;
-    ConfigureClientBuilder(&builder);
-    return builder.Build(std::move(messenger));
-  }
+      std::unique_ptr<rpc::Messenger>&& messenger);
 
-  Result<HostPort> GetLeaderMasterBoundRpcAddr() {
-    return DoGetLeaderMasterBoundRpcAddr();
-  }
+  Result<HostPort> GetLeaderMasterBoundRpcAddr();
 
   bool running() const { return running_.load(std::memory_order_acquire); }
 

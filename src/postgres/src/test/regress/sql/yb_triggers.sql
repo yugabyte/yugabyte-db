@@ -269,6 +269,9 @@ SELECT * FROM incremental_key;
 UPDATE incremental_key SET v1 = 10 WHERE h = 1;
 SELECT * FROM incremental_key;
 
+UPDATE incremental_key SET v1 = 10 WHERE yb_hash_code(h) = yb_hash_code(1);
+SELECT * FROM incremental_key;
+
 DROP TABLE incremental_key;
 DROP FUNCTION increment_key;
 

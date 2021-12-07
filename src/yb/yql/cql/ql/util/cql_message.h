@@ -21,20 +21,39 @@
 #define YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
 
 #include <stdint.h>
+
+#include <functional>
 #include <memory>
 #include <set>
+#include <string>
+#include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
+#include <boost/range/iterator_range.hpp>
+#include <boost/version.hpp>
+#include <glog/logging.h>
+#include <rapidjson/document.h>
+
+#include "yb/common/entity_ids.h"
+#include "yb/common/jsonb.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/callback.h"
+#include "yb/gutil/callback_internal.h"
+#include "yb/gutil/template_util.h"
+
 #include "yb/rpc/server_event.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/memory/memory_usage.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/slice.h"
+
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-
-#include "yb/util/memory/memory_usage.h"
-#include "yb/util/result.h"
-#include "yb/util/slice.h"
-#include "yb/util/status.h"
-#include "yb/util/net/sockaddr.h"
 
 namespace yb {
 namespace ql {
@@ -299,38 +318,15 @@ class CQLRequest : public CQLMessage {
     return Status::OK();
   }
 
-  inline CHECKED_STATUS ParseByte(uint8_t* value) {
-    static_assert(sizeof(*value) == kByteSize, "inconsistent byte size");
-    return ParseNum("CQL byte", Load8, value);
-  }
-  inline CHECKED_STATUS ParseShort(uint16_t* value) {
-    static_assert(sizeof(*value) == kShortSize, "inconsistent short size");
-    return ParseNum("CQL byte", NetworkByteOrder::Load16, value);
-  }
-  inline CHECKED_STATUS ParseInt(int32_t* value) {
-    static_assert(sizeof(*value) == kIntSize, "inconsistent int size");
-    return ParseNum("CQL int", NetworkByteOrder::Load32, value);
-  }
-  inline CHECKED_STATUS ParseLong(int64_t* value) {
-    static_assert(sizeof(*value) == kLongSize, "inconsistent long size");
-    return ParseNum("CQL long", NetworkByteOrder::Load64, value);
-  }
-  inline CHECKED_STATUS ParseString(std::string* value)  {
-    return ParseBytes("CQL string", &CQLRequest::ParseShort, value);
-  }
-  inline CHECKED_STATUS ParseLongString(std::string* value)  {
-    return ParseBytes("CQL long string", &CQLRequest::ParseInt, value);
-  }
-  inline CHECKED_STATUS ParseShortBytes(std::string* value) {
-    return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
-  }
-  inline CHECKED_STATUS ParseBytes(std::string* value) {
-    return ParseBytes("CQL bytes", &CQLRequest::ParseInt, value);
-  }
-  inline CHECKED_STATUS ParseConsistency(Consistency* consistency) {
-    static_assert(sizeof(*consistency) == kConsistencySize, "inconsistent consistency size");
-    return ParseNum("CQL consistency", NetworkByteOrder::Load16, consistency);
-  }
+  CHECKED_STATUS ParseByte(uint8_t* value);
+  CHECKED_STATUS ParseShort(uint16_t* value);
+  CHECKED_STATUS ParseInt(int32_t* value);
+  CHECKED_STATUS ParseLong(int64_t* value);
+  CHECKED_STATUS ParseString(std::string* value);
+  CHECKED_STATUS ParseLongString(std::string* value);
+  CHECKED_STATUS ParseShortBytes(std::string* value);
+  CHECKED_STATUS ParseBytes(std::string* value);
+  CHECKED_STATUS ParseConsistency(Consistency* consistency);
   CHECKED_STATUS ParseUUID(std::string* value);
   CHECKED_STATUS ParseTimeUUID(std::string* value);
   CHECKED_STATUS ParseStringList(std::vector<std::string>* list);

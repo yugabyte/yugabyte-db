@@ -11,15 +11,23 @@
 // under the License.
 //
 
+#include "yb/client/callbacks.h"
+#include "yb/client/client.h"
+
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 

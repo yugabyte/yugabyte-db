@@ -14,19 +14,29 @@
 #ifndef YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
 #define YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
 
+#include <dirent.h>
+#include <signal.h>
+#include <spawn.h>
+
 #include <atomic>
 #include <iostream>
+#include <map>
 #include <memory>
-#include <mutex>
 #include <random>
 #include <set>
 #include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/client/client_fwd.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/util/threadpool.h"
+
 #include "yb/util/countdown_latch.h"
-#include "yb/util/test_util.h"
+#include "yb/util/status.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 

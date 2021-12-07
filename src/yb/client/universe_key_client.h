@@ -14,16 +14,16 @@
 #ifndef YB_CLIENT_UNIVERSE_KEY_CLIENT_H
 #define YB_CLIENT_UNIVERSE_KEY_CLIENT_H
 
+#include <condition_variable>
+#include <mutex>
 #include <unordered_set>
-
-#include "yb/util/status.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/locks.h"
 
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/poller.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 

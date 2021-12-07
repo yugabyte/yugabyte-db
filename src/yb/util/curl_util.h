@@ -32,14 +32,14 @@
 #ifndef YB_UTIL_CURL_UTIL_H
 #define YB_UTIL_CURL_UTIL_H
 
-#include <curl/curl.h>
 #include <string>
 #include <vector>
 
 #include <boost/optional.hpp>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
 
 typedef void CURL;
 

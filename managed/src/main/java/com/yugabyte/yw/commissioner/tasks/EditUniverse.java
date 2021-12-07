@@ -72,9 +72,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Run preflight checks on onprem nodes to be added.
       if (performUniversePreflightChecks(taskParams().clusters)) {
-        // Select master nodes, if needed.
+        // Select master nodes, if needed. Changes in masters are not automatically
+        // applied.
         SelectMastersResult selection = selectMasters(universe.getMasterLeaderHostText());
-        verifyMastersSelection();
+        verifyMastersSelection(selection);
+
+        // Applying changes to master flags for added masters only.
+        // We are not clearing this flag according to selection.removedMasters in case
+        // the master leader is to be changed and until the master leader is switched to
+        // the new one.
+        selection.addedMasters.forEach(n -> n.isMaster = true);
 
         // Update the user intent.
         writeUserIntentToUniverse(false);
@@ -108,6 +115,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      errorString = t.getMessage();
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
@@ -218,6 +226,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
 
     Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
+    Set<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
 
     // Ensure all masters are covered in nodes to be removed.
     if (!removeMasters.isEmpty()) {
@@ -270,15 +279,15 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(nodes);
     if (!newTservers.isEmpty()) {
+      // Blacklist all the new tservers before starting so that they do not join
+      createModifyBlackListTask(newTservers, null /* To remove */, false /* isLeaderBlacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       // Start the tservers in the clusters.
       createStartTServersTasks(newTservers).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for all tablet servers to be responsive.
       createWaitForServersTasks(newTservers, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Remove them from blacklist, in case master is still tracking these.
-      createModifyBlackListTask(new ArrayList<>(newTservers), false /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
@@ -288,18 +297,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
-    Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
+    // Swap the blacklisted tservers
+    createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-    // Persist the placement info and blacklisted node info into the YB master.
-    // This is done after master config change jobs, so that the new master leader can perform
-    // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
-    if (!nodesToBeRemoved.isEmpty()) {
-      // Add any nodes to be removed to tserver removal to be considered for blacklisting.
-      tserversToBeRemoved.addAll(nodesToBeRemoved);
-    }
-
-    // Update the blacklist servers on master leader.
-    createPlacementInfoTask(tserversToBeRemoved)
+    // Update placement info on master leader.
+    createPlacementInfoTask(null /* additional blacklist */)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     // Update the swamper target file.
@@ -360,7 +363,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       allMasters.addAll(
           liveNodes
               .stream()
-              .filter(n -> n.isMaster && !takenMasters.contains(n.nodeName))
+              .filter(
+                  n ->
+                      n.isMaster
+                          && !takenMasters.contains(n.nodeName)
+                          && !mastersToStop.contains(n))
               .collect(Collectors.toSet()));
 
       // Change the master addresses in the conf file for the new masters.
@@ -403,7 +410,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
       createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, true);
+      // Do not use useHostPort = true because retry is not done for the option
+      // when the leader itself is being removed. The retryable error code
+      // LEADER_NEEDS_STEP_DOWN is reported only when useHostPort = false.
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, false);
     }
 
     // Perform any additions still left.
@@ -413,7 +423,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Perform any removals still left.
     for (int idx = numIters; idx < removeMasters.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, true);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, false);
     }
   }
 

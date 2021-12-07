@@ -29,12 +29,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/tablet_bootstrap_if.h"
 
-#include "yb/consensus/log_anchor_registry.h"
+#include <atomic>
+#include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log.h"
+
+#include "yb/gutil/callback.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_options.h"
+
 #include "yb/util/debug/trace_event.h"
 
 namespace yb {
@@ -78,7 +95,7 @@ TabletStatusListener::~TabletStatusListener() {
 void TabletStatusListener::StatusMessage(const string& status) {
   LOG(INFO) << "T " << tablet_id() << " P " << meta_->fs_manager()->uuid() << ": "
             << status;
-  std::lock_guard<boost::shared_mutex> l(lock_);
+  std::lock_guard<std::shared_timed_mutex> l(lock_);
   last_status_ = status;
 }
 

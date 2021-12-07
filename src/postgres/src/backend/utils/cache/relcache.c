@@ -1287,83 +1287,41 @@ equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
  *  Note: We assume that any error happening here will fatal so as to not end
  *  up with partial information in the cache.
  */
-void YBPreloadRelCache()
+static void
+YBLoadRelations(bool* sys_relations_update_required)
 {
-	Relation    relation;
-	Oid         relid;
-	SysScanDesc scandesc;
-
-	/*
-	 * Make sure that the connection is still valid.
-	 * - If the name is already dropped from the cache, raise error.
-	 * - If the name is still in the cache, we look for the associated OID in the system.
-	 *   Raise error if that OID is not MyDatabaseId, which must be either invalid or new DB.
-	 */
-	Oid dboid = InvalidOid;
-	const char *dbname = get_database_name(MyDatabaseId);
-	if (dbname != NULL)
-	{
-		dboid = get_database_oid(dbname, true);
-	}
-	if (dboid != MyDatabaseId) {
-		ereport(FATAL,
-						(errcode(ERRCODE_CONNECTION_FAILURE),
-						 errmsg("Could not reconnect to database"),
-						 errhint("Database might have been dropped by another user")));
-	}
-
-	/*
-	 * Loading the relation cache requires per-relation lookups to a number of related system tables
-	 * to assemble the relation data (e.g. columns, indexes, foreign keys, etc).
-	 * This can cause a large number of master queries (since catalog caches are typically not
-	 * loaded when calling this).
-	 * To handle that we preload the catcaches here for the biggest offenders.
-	 *
-	 * Note: For historical reasons pg_attribute is currently handled separately below
-	 * by querying the entire table once and amending the relevant information into each relation.
-	 *
-	 * TODO(mihnea, alex): Consider simplifying pg_attribute handling by simply preloading
-	 *                     the catcache for that too.
-	 */
-
-	YBPreloadCatalogCache(INDEXRELID, -1); // pg_index
-	YBPreloadCatalogCache(RULERELNAME, -1); // pg_rewrite
-
-	/*
-	 * 1. Load up the (partial) relation info from pg_class.
-	 */
+	*sys_relations_update_required = false;
 	Relation pg_class_desc = heap_open(RelationRelationId, AccessShareLock);
+	SysScanDesc scandesc = systable_beginscan(
+	    pg_class_desc, RelationRelationId, false /* indexOk */, NULL, 0, NULL);
 
-	scandesc = systable_beginscan(pg_class_desc,
-	                              RelationRelationId,
-	                              false /* indexOk */,
-	                              NULL,
-	                              0,
-	                              NULL);
-
-	/*
-	 * Must copy tuple before releasing buffer.
-	 */
 	HeapTuple pg_class_tuple;
 	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
 	{
-		pg_class_tuple = heap_copytuple(pg_class_tuple);
+		YBSetSysCacheTuple(pg_class_desc, pg_class_tuple);
+		Oid relid = HeapTupleGetOid(pg_class_tuple);
 
 		/*
-		 * get information from the pg_class_tuple
+		 * Insert newly created relation into relcache hash table if needed:
+		 * a. If it's not already there (e.g. new table or initialization).
+		 * b. If it's a regular (non-system) table it could be changed (e.g. by an 'ALTER').
 		 */
-		relid               = HeapTupleGetOid(pg_class_tuple);
+		Relation tmp_rel;
+		RelationIdCacheLookup(relid, tmp_rel);
+		/* Ignore update of existing sys relation as it can't be changed without DB upgrade. */
+		if (tmp_rel && IsSystemRelation(tmp_rel))
+			continue;
+
+		/* get information from the pg_class_tuple */
 		Form_pg_class relp  = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 
 		/*
 		 * allocate storage for the relation descriptor, and copy pg_class_tuple
 		 * to relation->rd_rel.
 		 */
-		relation = AllocateRelationDesc(relp);
+		Relation relation = AllocateRelationDesc(relp);
 
-		/*
-		 * initialize the relation's relation id (relation->rd_id)
-		 */
+		/* initialize the relation's relation id (relation->rd_id) */
 		RelationGetRelid(relation) = relid;
 
 		/*
@@ -1399,9 +1357,7 @@ void YBPreloadRelCache()
 				}
 				break;
 			default:
-				elog(ERROR,
-				     "invalid relpersistence: %c",
-				     relation->rd_rel->relpersistence);
+				elog(ERROR, "invalid relpersistence: %c", relation->rd_rel->relpersistence);
 				break;
 		}
 
@@ -1409,94 +1365,270 @@ void YBPreloadRelCache()
 		relation->rd_fkeylist  = NIL;
 		relation->rd_fkeyvalid = false;
 
-		/* For now, update all partition information to be null, this will
- 		 * be populated later for partitioned tables
- 		 */
+		/*
+		 * For now, update all partition information to be null, this will
+		 * be populated later for partitioned tables
+		 */
 		relation->rd_partkeycxt = NULL;
 		relation->rd_partkey    = NULL;
 		relation->rd_partdesc   = NULL;
 		relation->rd_pdcxt      = NULL;
 
-		/*
-		 * if it's an index, initialize index-related information
-		 */
+		/* if it's an index, initialize index-related information */
 		if (OidIsValid(relation->rd_rel->relam))
 			RelationInitIndexAccessInfo(relation);
 
 		/* extract reloptions if any */
 		RelationParseRelOptions(relation, pg_class_tuple);
 
-		/*
-		 * initialize the relation lock manager information
-		 */
+		/* initialize the relation lock manager information */
 		RelationInitLockInfo(relation); /* see lmgr.c */
 
-		/*
-		 * initialize physical addressing information for the relation
-		 */
+		/* initialize physical addressing information for the relation */
 		RelationInitPhysicalAddr(relation);
 
 		/* make sure relation is marked as having no open file yet */
 		relation->rd_smgr = NULL;
 
-		/*
-		 * now we can free the memory allocated for pg_class_tuple
-		 */
-		heap_freetuple(pg_class_tuple);
-
-		/*
-		 * Insert newly created relation into relcache hash table if needed:
-		 * a. If it's not already there (e.g. new table or initialization).
-		 * b. If it's a regular (non-system) table it could be changed (e.g. by
-		 * an 'ALTER').
-		 */
-		Relation tmp_rel;
-		RelationIdCacheLookup(relation->rd_id, tmp_rel);
-		if (!tmp_rel || !IsSystemRelation(tmp_rel))
-		{
-			RelationCacheInsert(relation, true);
-		}
+		RelationCacheInsert(relation, true);
 
 		/* It's fully valid */
 		relation->rd_isvalid = true;
+		/* Sys relation update is required in case at least one new sys relation has been loaded. */
+		*sys_relations_update_required =
+		    *sys_relations_update_required || IsSystemRelation(relation);
 	}
 
-	/* all done */
 	systable_endscan(scandesc);
+	heap_close(pg_class_desc, AccessShareLock);
+}
+
+typedef struct YbAttrProcessorState {
+	Oid relid;
+	Relation relation;
+	int need;
+	int ndef;
+	TupleConstr *constr;
+	AttrDefault *attrdef;
+	AttrMissing *attrmiss;
+} YbAttrProcessorState;
+
+static inline bool
+YbProcessingStarted(const YbAttrProcessorState* state)
+{
+  return OidIsValid(state->relid);
+}
+
+static inline bool
+YbProcessingRequired(const YbAttrProcessorState* state)
+{
+  return YbProcessingStarted(state) && state->relation;
+}
+
+static bool
+YbApply(YbAttrProcessorState* state, Relation pg_attribute_desc, HeapTuple pg_attribute_tuple)
+{
+	Form_pg_attribute attp = (Form_pg_attribute) GETSTRUCT(pg_attribute_tuple);
+	if (!YbProcessingStarted(state) || state->relid != attp->attrelid)
+		return false;
+	if (!YbProcessingRequired(state))
+		return true;
+	/* Skip system attributes */
+	if (attp->attnum <= 0)
+		return true;
+
+	Relation relation = state->relation;
+	if (attp->attnum > relation->rd_rel->relnatts)
+		elog(ERROR,
+		     "invalid attribute number %d for %s",
+		     attp->attnum,
+		     RelationGetRelationName(relation));
+
+	memcpy(TupleDescAttr(relation->rd_att, attp->attnum - 1), attp, ATTRIBUTE_FIXED_PART_SIZE);
+
+	/* Update constraint/default info */
+	if (attp->attnotnull)
+		state->constr->has_not_null = true;
+
+	if (attp->atthasdef)
+	{
+		if (state->attrdef == NULL)
+			state->attrdef = (AttrDefault*) MemoryContextAllocZero(
+			    CacheMemoryContext, relation->rd_rel->relnatts * sizeof(AttrDefault));
+
+		AttrDefault *attrdef = state->attrdef;
+		attrdef[state->ndef].adnum = attp->attnum;
+		attrdef[state->ndef].adbin = NULL;
+		++state->ndef;
+	}
+
+	/* Likewise for a missing value */
+	if (attp->atthasmissing)
+	{
+		bool missingNull;
+
+		/* Do we have a missing value? */
+		Datum missingval = heap_getattr(pg_attribute_tuple,
+		                                Anum_pg_attribute_attmissingval,
+		                                pg_attribute_desc->rd_att,
+		                                &missingNull);
+		if (!missingNull)
+		{
+			/* Yes, fetch from the array */
+			if (state->attrmiss == NULL)
+				state->attrmiss = (AttrMissing *)MemoryContextAllocZero(
+				    CacheMemoryContext, relation->rd_rel->relnatts * sizeof(AttrMissing));
+			bool is_null;
+			int one = 1;
+			Datum missval = array_get_element(
+			    missingval, 1, &one, -1, attp->attlen, attp->attbyval, attp->attalign, &is_null);
+			Assert(!is_null);
+
+			AttrMissing *attrmiss = state->attrmiss;
+			if (attp->attbyval)
+			{
+				/* for copy by val just copy the datum direct */
+				attrmiss[attp->attnum - 1].am_value = missval;
+			}
+			else
+			{
+				/* otherwise copy in the correct context */
+				MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+				attrmiss[attp->attnum - 1].am_value = datumCopy(
+				    missval, attp->attbyval, attp->attlen);
+				MemoryContextSwitchTo(oldcxt);
+			}
+			attrmiss[attp->attnum - 1].am_present = true;
+		}
+	}
+	--state->need;
+	return true;
+}
+
+static void
+YbStartNewProcessing(YbAttrProcessorState* state,
+                     bool sys_rel_update_required,
+                     Relation pg_attribute_desc,
+                     HeapTuple pg_attribute_tuple)
+{
+	Assert(!YbProcessingStarted(state));
+	Form_pg_attribute attp = (Form_pg_attribute) GETSTRUCT(pg_attribute_tuple);
+	Assert(OidIsValid(attp->attrelid));
+	state->relid = attp->attrelid;
+	RelationIdCacheLookup(state->relid, state->relation);
+	if (!state->relation || (!sys_rel_update_required && IsSystemRelation(state->relation)))
+	{
+		/*
+		 * Processing of this relation is not required.
+		 * Nullify the relation to force YbProcessingRequired return false.
+		 */
+		state->relation = NULL;
+		return;
+	}
+	state->need = state->relation->rd_rel->relnatts;
+	state->constr = (TupleConstr*) MemoryContextAlloc(CacheMemoryContext, sizeof(TupleConstr));
+	state->constr->has_not_null = false;
+	YbApply(state, pg_attribute_desc, pg_attribute_tuple);
+}
+
+static void
+YbCompleteProcessingImpl(const YbAttrProcessorState* state)
+{
+	if (state->need != 0)
+		elog(ERROR, "catalog is missing %d attribute(s) for relid %u", state->need, state->relid);
+
+	Relation relation = state->relation;
+	TupleConstr *constr = state->constr;
+	AttrDefault *attrdef = state->attrdef;
+	AttrMissing *attrmiss = state->attrmiss;
+	int ndef = state->ndef;
+
+	/* copy some fields from pg_class row to rd_att */
+	relation->rd_att->tdtypeid = relation->rd_rel->reltype;
+	relation->rd_att->tdtypmod = -1; /* unnecessary, but... */
+	relation->rd_att->tdhasoid = relation->rd_rel->relhasoids;
 
 	/*
-	 * 2. Iterate over pg_attribute to update the attribute info and the other
-	 * missing metadata for the relations above.
+	 * However, we can easily set the attcacheoff value for the first
+	 * attribute: it must be zero.  This eliminates the need for special cases
+	 * for attnum=1 that used to exist in fastgetattr() and index_getattr().
 	 */
+	if (RelationGetNumberOfAttributes(relation) > 0)
+		TupleDescAttr(RelationGetDescr(relation), 0)->attcacheoff = 0;
 
-	/* Build table descs */
-	TupleConstr *constr;
-	AttrDefault *attrdef = NULL;
-	AttrMissing *attrmiss = NULL;
-	Relation	pg_attribute_desc;
-	int			need = 0;
-	int			ndef = 0;
-	HeapTuple	pg_attribute_tuple = NULL;
+	/* Set up constraint/default info */
+	if (constr->has_not_null || ndef > 0 || attrmiss || relation->rd_rel->relchecks)
+	{
+		relation->rd_att->constr = constr;
 
-	relation = NULL;
+		if (ndef > 0)            /* DEFAULTs */
+		{
+			if (ndef < RelationGetNumberOfAttributes(relation))
+				constr->defval = (AttrDefault *) repalloc(attrdef, ndef * sizeof(AttrDefault));
+			else
+				constr->defval = attrdef;
+			constr->num_defval = ndef;
+			AttrDefaultFetch(relation);
+		}
+		else
+			constr->num_defval = 0;
 
+		constr->missing = attrmiss;
+
+		if (relation->rd_rel->relchecks > 0)    /* CHECKs */
+		{
+			constr->num_check = relation->rd_rel->relchecks;
+			constr->check = (ConstrCheck *) MemoryContextAllocZero(
+			    CacheMemoryContext, constr->num_check * sizeof(ConstrCheck));
+			CheckConstraintFetch(relation);
+		}
+		else
+			constr->num_check = 0;
+	}
+	else
+	{
+		pfree(constr);
+		relation->rd_att->constr = NULL;
+	}
+
+	/* Fetch rules and triggers that affect this relation */
+	if (relation->rd_rel->relhasrules)
+		YBRelationBuildRuleLock(relation);
+	else
+	{
+		relation->rd_rules    = NULL;
+		relation->rd_rulescxt = NULL;
+	}
+
+	if (relation->rd_rel->relhastriggers)
+		RelationBuildTriggers(relation);
+	else
+		relation->trigdesc = NULL;
+
+	if (relation->rd_rel->relrowsecurity)
+		RelationBuildRowSecurity(relation);
+	else
+		relation->rd_rsdesc = NULL;
+}
+
+static void
+YbCompleteProcessing(YbAttrProcessorState* state)
+{
+	if (YbProcessingStarted(state))
+	{
+		if (YbProcessingRequired(state))
+			YbCompleteProcessingImpl(state);
+		*state = (struct YbAttrProcessorState){0};
+	}
+}
+
+static void
+YBUpdateRelationsAttributes(bool sys_relations_update_required)
+{
 	/*
 	 * Open pg_attribute and begin a scan.  Force heap scan if we haven't yet
 	 * built the critical relcache entries (this includes initdb and startup
 	 * without a pg_internal.init file).
-	 */
-	pg_attribute_desc = heap_open(AttributeRelationId, AccessShareLock);
-
-	scandesc = systable_beginscan(pg_attribute_desc,
-								  AttributeRelationId,
-								  false /* indexOk */,
-								  NULL,
-								  0,
-								  NULL);
-
-	bool finish_processing_relation = false;
-
-	/*
 	 * We are scanning through the entire pg_attribute table to get all the attributes (columns)
 	 * for all the relations. All the attributes for a relation are contiguous, so we maintain the
 	 * current relation and, when we finish processing its attributes (detected when we read a
@@ -1504,290 +1636,94 @@ void YBPreloadRelCache()
 	 * info into the Relation entry, which among other things, sets up then constraint and default
 	 * info.
 	 */
-	while (true)
+	Relation pg_attribute_desc = heap_open(AttributeRelationId, AccessShareLock);
+	SysScanDesc scandesc = systable_beginscan(
+	    pg_attribute_desc, AttributeRelationId, false /* indexOk */, NULL, 0, NULL);
+	YbAttrProcessorState state = {0};
+	HeapTuple pg_attribute_tuple;
+	while (HeapTupleIsValid(pg_attribute_tuple = systable_getnext(scandesc)))
 	{
-		if (!finish_processing_relation)
-			pg_attribute_tuple = systable_getnext(scandesc);
-
-		if (!HeapTupleIsValid(pg_attribute_tuple)) {
-			if (!relation) {
-				break;
-			} else {
-				/* If the tuple is not valid, then we are done processing this relation */
-				finish_processing_relation = true;
-			}
-		}
-		else
+		YBSetSysCacheTuple(pg_attribute_desc, pg_attribute_tuple);
+		if (!YbApply(&state, pg_attribute_desc, pg_attribute_tuple))
 		{
-			Form_pg_attribute attp = (Form_pg_attribute) GETSTRUCT(pg_attribute_tuple);
-
-			if (!relation) {
-				/*
-				 * New (or first) relation, set up the needed variables before reading its
-				 * attributes.
-				 */
-
-				/* This will guarantee that the next tuple is read */
-				finish_processing_relation = false;
-
-				RelationIdCacheLookup(attp->attrelid, relation);
-				if (!relation) {
-					continue;
-				}
-				need = relation->rd_rel->relnatts;
-				ndef = 0;
-				attrdef = NULL;
-				attrmiss = NULL;
-				constr = (TupleConstr*) MemoryContextAlloc(CacheMemoryContext, sizeof(TupleConstr));
-				constr->has_not_null = false;
-			}
-
-			/*
-			 * relation->rd_id == attp->attrelid means that we are still reading attributes for
-			 * the current relation.
-			 */
-			if (relation->rd_id == attp->attrelid)
-			{
-				/* Skip system attributes */
-				if (attp->attnum <= 0)
-					continue;
-
-				if (attp->attnum > relation->rd_rel->relnatts)
-					elog(ERROR,
-						 "invalid attribute number %d for %s",
-						 attp->attnum,
-						 RelationGetRelationName(relation));
-
-				memcpy(TupleDescAttr(relation->rd_att, attp->attnum - 1),
-					   attp,
-					   ATTRIBUTE_FIXED_PART_SIZE);
-
-				/* Update constraint/default info */
-				if (attp->attnotnull)
-					constr->has_not_null = true;
-
-				if (attp->atthasdef)
-				{
-					if (attrdef == NULL)
-						attrdef = (AttrDefault*) MemoryContextAllocZero(
-								CacheMemoryContext,
-								relation->rd_rel->relnatts * sizeof(AttrDefault));
-					attrdef[ndef].adnum = attp->attnum;
-					attrdef[ndef].adbin = NULL;
-					ndef++;
-				}
-
-				/* Likewise for a missing value */
-				if (attp->atthasmissing)
-				{
-					Datum		missingval;
-					bool		missingNull;
-
-					/* Do we have a missing value? */
-					missingval = heap_getattr(pg_attribute_tuple,
-											  Anum_pg_attribute_attmissingval,
-											  pg_attribute_desc->rd_att,
-											  &missingNull);
-					if (!missingNull)
-					{
-						/* Yes, fetch from the array */
-						MemoryContext oldcxt;
-						bool		is_null;
-						int			one = 1;
-						Datum		missval;
-
-						if (attrmiss == NULL)
-							attrmiss = (AttrMissing *)
-								MemoryContextAllocZero(CacheMemoryContext,
-													   relation->rd_rel->relnatts *
-													   sizeof(AttrMissing));
-
-						missval = array_get_element(missingval,
-													1,
-													&one,
-													-1,
-													attp->attlen,
-													attp->attbyval,
-													attp->attalign,
-													&is_null);
-						Assert(!is_null);
-						if (attp->attbyval)
-						{
-							/* for copy by val just copy the datum direct */
-							attrmiss[attp->attnum - 1].am_value = missval;
-						}
-						else
-						{
-							/* otherwise copy in the correct context */
-							oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-							attrmiss[attp->attnum - 1].am_value = datumCopy(missval,
-																			attp->attbyval,
-																			attp->attlen);
-							MemoryContextSwitchTo(oldcxt);
-						}
-						attrmiss[attp->attnum - 1].am_present = true;
-					}
-				}
-				need--;
-			}
-			/*
-			 * When relation->rd_id != attp->attrelid, it means that we have read an attribute
-			 * for a different table.
-			 */
-			else if (relation->rd_id != attp->attrelid)
-			{
-				if (need != 0)
-					elog(ERROR, "catalog is missing %d attribute(s) for relid %u",
-						 need, RelationGetRelid(relation));
-				/*
-				 * By setting finish_processing_relation to true, we will avoid reading the next
-				 * tuple because we were not able to use the tuple since it belongs to a different
-				 * relation.
-				 */
-				finish_processing_relation = true;
-			}
-		}
-
-		/*
-		 * Load up the retrieved info into the Relation entry.
-		 * We only execute this after having processed all the attributes for a relation
-		 */
-		if (relation && finish_processing_relation)
-		{
-			if (need != 0)
-				elog(ERROR, "catalog is missing %d attribute(s) for relid %u",
-					 need, RelationGetRelid(relation));
-			/*
-			 * initialize the tuple descriptor (relation->rd_att).
-			 */
-			/* copy some fields from pg_class row to rd_att */
-			relation->rd_att->tdtypeid = relation->rd_rel->reltype;
-			relation->rd_att->tdtypmod = -1;	/* unnecessary, but... */
-			relation->rd_att->tdhasoid = relation->rd_rel->relhasoids;
-
-			/*
-			 * However, we can easily set the attcacheoff value for the first
-			 * attribute: it must be zero.  This eliminates the need for special cases
-			 * for attnum=1 that used to exist in fastgetattr() and index_getattr().
-			 */
-			if (RelationGetNumberOfAttributes(relation) > 0)
-				TupleDescAttr(RelationGetDescr(relation), 0)->attcacheoff = 0;
-
-			/*
-			 * Set up constraint/default info
-			 */
-			if (constr->has_not_null || ndef > 0 ||
-				attrmiss || relation->rd_rel->relchecks)
-			{
-				relation->rd_att->constr = constr;
-
-				if (ndef > 0)            /* DEFAULTs */
-				{
-					if (ndef < RelationGetNumberOfAttributes(relation))
-						constr->defval = (AttrDefault *) repalloc(attrdef,
-																  ndef *
-																  sizeof(AttrDefault));
-					else
-						constr->defval = attrdef;
-					constr->num_defval = ndef;
-					AttrDefaultFetch(relation);
-				}
-				else
-					constr->num_defval = 0;
-
-				constr->missing = attrmiss;
-
-				if (relation->rd_rel->relchecks > 0)    /* CHECKs */
-				{
-					constr->num_check = relation->rd_rel->relchecks;
-					constr->check     = (ConstrCheck *) MemoryContextAllocZero(
-							CacheMemoryContext,
-							constr->num_check * sizeof(ConstrCheck));
-					CheckConstraintFetch(relation);
-				}
-				else
-					constr->num_check = 0;
-			}
-			else
-			{
-				pfree(constr);
-				relation->rd_att->constr = NULL;
-			}
-
-			/*
-			 * Fetch rules and triggers that affect this relation
-			 */
-			if (relation->rd_rel->relhasrules)
-				YBRelationBuildRuleLock(relation);
-			else
-			{
-				relation->rd_rules    = NULL;
-				relation->rd_rulescxt = NULL;
-			}
-
-			if (relation->rd_rel->relhastriggers)
-				RelationBuildTriggers(relation);
-			else
-				relation->trigdesc = NULL;
-
-			if (relation->rd_rel->relrowsecurity)
-				RelationBuildRowSecurity(relation);
-			else
-				relation->rd_rsdesc = NULL;
-
-			// Reset relation.
-			relation = NULL;
-			need = 0;
+			YbCompleteProcessing(&state);
+			YbStartNewProcessing(
+			    &state, sys_relations_update_required, pg_attribute_desc, pg_attribute_tuple);
 		}
 	}
-
-	/*
-	 * end the scan.
-	 */
+	YbCompleteProcessing(&state);
 	systable_endscan(scandesc);
+	heap_close(pg_attribute_desc, AccessShareLock);
+}
 
-	/* Start scan for pg_partitioned_table */
-	Relation pg_partitioned_table_desc;
-	pg_partitioned_table_desc = heap_open(PartitionedRelationId, AccessShareLock);
-
-	scandesc = systable_beginscan(pg_partitioned_table_desc,
-	                              PartitionedRelationId,
-	                              false /* indexOk */,
-	                              NULL,
-	                              0,
-	                              NULL);
+static void
+YBUpdateRelationsPartitioning(bool sys_relations_update_required)
+{
+	Relation pg_partitioned_table_desc = heap_open(PartitionedRelationId, AccessShareLock);
+	SysScanDesc scandesc = systable_beginscan(
+	    pg_partitioned_table_desc, PartitionedRelationId, false /* indexOk */, NULL, 0, NULL);
 
 	HeapTuple pg_partition_tuple;
 	while (HeapTupleIsValid(pg_partition_tuple = systable_getnext(scandesc)))
 	{
-		pg_partition_tuple = heap_copytuple(pg_partition_tuple);
-		Form_pg_partitioned_table part_table_form;
-
-		part_table_form = (Form_pg_partitioned_table) GETSTRUCT(pg_partition_tuple);
-
+		YBSetSysCacheTuple(pg_partitioned_table_desc, pg_partition_tuple);
+		Form_pg_partitioned_table part_table_form =
+		    (Form_pg_partitioned_table) GETSTRUCT(pg_partition_tuple);
 		Relation relation;
 		RelationIdCacheLookup(part_table_form->partrelid, relation);
 
-		if (!relation) {
-			continue;
-		}
-
-		/* Initialize key and partition descriptor info */
-		if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		if (relation &&
+		    relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
+		    (sys_relations_update_required || !IsSystemRelation(relation)))
 		{
+			/* Initialize key and partition descriptor info */
 			RelationBuildPartitionKey(relation);
 			RelationBuildPartitionDesc(relation);
 		}
 	}
 
 	systable_endscan(scandesc);
-
-	/* Close all the three relations that were opened */
 	heap_close(pg_partitioned_table_desc, AccessShareLock);
+}
 
-	heap_close(pg_attribute_desc, AccessShareLock);
+void
+YBPreloadRelCache()
+{
+	/*
+	 * Make sure that the connection is still valid.
+	 * - If the name is already dropped from the cache, raise error.
+	 * - If the name is still in the cache, we look for the associated OID in the system.
+	 *   Raise error if that OID is not MyDatabaseId, which must be either invalid or new DB.
+	 */
+	const char *dbname = get_database_name(MyDatabaseId);
 
-	heap_close(pg_class_desc, AccessShareLock);
+	if (dbname == NULL || get_database_oid(dbname, true) != MyDatabaseId)
+		ereport(FATAL,
+		        (errcode(ERRCODE_CONNECTION_FAILURE),
+		         errmsg("Could not reconnect to database"),
+		         errhint("Database might have been dropped by another user")));
+
+	/*
+	 * Loading the relation cache requires per-relation lookups to a number of related system tables
+	 * to assemble the relation data (e.g. columns, indexes, foreign keys, etc).
+	 * This can cause a large number of master queries (since catalog caches are typically not
+	 * loaded when calling this).
+	 * To handle that we preload the catcaches here for the biggest offenders.
+	 *
+	 * Note: For historical reasons pg_attribute is currently handled separately below
+	 * by querying the entire table once and amending the relevant information into each relation.
+	 *
+	 * TODO(mihnea, alex): Consider simplifying pg_attribute handling by simply preloading
+	 *                     the catcache for that too.
+	 */
+
+	YBPreloadCatalogCache(INDEXRELID, -1); // pg_index
+	YBPreloadCatalogCache(RULERELNAME, -1); // pg_rewrite
+
+	bool sys_relations_update_required = false;
+	YBLoadRelations(&sys_relations_update_required);
+	YBUpdateRelationsAttributes(sys_relations_update_required);
+	YBUpdateRelationsPartitioning(sys_relations_update_required);
 
 	criticalRelcachesBuilt = true;
 }
@@ -4255,6 +4191,16 @@ RelationCacheInitializePhase2(void)
 		return;
 
 	/*
+	 * In YugaByte mode initialize the catalog cache version to the latest
+	 * version from the master.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCPgResetCatalogReadTime();
+		yb_catalog_cache_version = YbGetMasterCatalogVersion();
+	}
+
+	/*
 	 * switch to cache memory context
 	 */
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
@@ -4345,16 +4291,6 @@ RelationCacheInitializePhase3(void)
 	/* In bootstrap mode, the faked-up formrdesc info is all we'll have */
 	if (IsBootstrapProcessingMode())
 		return;
-
-	/*
-	 * In YugaByte mode initialize the catalog cache version to the latest
-	 * version from the master (except during initdb).
-	 */
-	if (IsYugaByteEnabled())
-	{
-		YBCPgResetCatalogReadTime();
-		YbGetMasterCatalogVersion(&yb_catalog_cache_version, false /* can_use_cache */);
-	}
 
 	/*
 	 * In YB mode initialize the relache at the beginning so that we need
@@ -4611,13 +4547,8 @@ RelationCacheInitializePhase3(void)
 	 * During initdb also preload catalog caches (not just relation cache) as
 	 * they will be used heavily.
 	 */
-	if (IsYugaByteEnabled())
-	{
-		if (YBIsPreparingTemplates())
-			YBPreloadCatalogCaches();
-
-		YBLoadPinnedObjectsCache();
-	}
+	if (IsYugaByteEnabled() && YBIsPreparingTemplates())
+		YBPreloadCatalogCaches();
 }
 
 /*
@@ -6259,21 +6190,9 @@ load_relcache_init_file(bool shared)
 
 		/*
 		 * If we already have a newer cache version (e.g. from reading the
-		 * shared init file) then this file is too old.
+		 * shared init file) or master has newer catalog version then this file is too old.
 		 */
 		if (yb_catalog_cache_version > ybc_stored_cache_version)
-		{
-			unlink_initfile(initfilename, ERROR);
-			goto read_failed;
-		}
-
-		/* Else, still need to check with the master version to be sure. */
-		YBCPgResetCatalogReadTime();
-		uint64_t catalog_master_version = 0;
-		YbGetMasterCatalogVersion(&catalog_master_version, false /* can_use_cache */);
-
-		/* File version does not match actual master version (i.e. too old) */
-		if (ybc_stored_cache_version != catalog_master_version)
 		{
 			unlink_initfile(initfilename, ERROR);
 			goto read_failed;

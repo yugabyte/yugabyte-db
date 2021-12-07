@@ -36,7 +36,6 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/debug-util.h"
 
 namespace yb {
 

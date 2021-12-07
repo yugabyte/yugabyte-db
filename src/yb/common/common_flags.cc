@@ -17,7 +17,6 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -43,7 +42,7 @@ DEFINE_bool(enable_pg_savepoints, true,
             "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
 TAG_FLAG(enable_pg_savepoints, hidden);
 
-DEFINE_bool(enable_automatic_tablet_splitting, false,
+DEFINE_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
 
 namespace yb {

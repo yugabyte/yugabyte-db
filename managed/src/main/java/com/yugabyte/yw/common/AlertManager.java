@@ -63,12 +63,6 @@ public class AlertManager {
   private final AlertService alertService;
   private final MetricService metricService;
 
-  private enum SendNotificationResult {
-    FAILED_TO_RESCHEDULE,
-    SUCCEEDED,
-    FAILED_NO_RESCHEDULE
-  }
-
   @Inject
   public AlertManager(
       EmailHelper emailHelper,
@@ -91,19 +85,19 @@ public class AlertManager {
     String configurationUuid = alert.getLabelValue(KnownAlertLabels.CONFIGURATION_UUID);
     if (configurationUuid == null) {
       log.warn("Missing configuration UUID in alert {}", alert.getUuid());
-      return new NotificationStrategy();
+      return new NotificationStrategy("Alert configuration UUID is missing in Alert");
     }
     AlertConfiguration configuration =
         alertConfigurationService.get(UUID.fromString(configurationUuid));
     if (configuration == null) {
       log.warn("Missing configuration {} for alert {}", configurationUuid, alert.getUuid());
-      return new NotificationStrategy();
+      return new NotificationStrategy("Alert configuration is missing");
     }
     AlertDestination destination;
     boolean defaultDestination = false;
     if (configuration.getDestinationUUID() == null) {
       if (!configuration.isDefaultDestination()) {
-        return new NotificationStrategy();
+        return new NotificationStrategy("No destination defined for alert");
       }
       log.trace("Using default destination {} for alert {}", configurationUuid, alert.getUuid());
       defaultDestination = true;
@@ -125,10 +119,10 @@ public class AlertManager {
 
   @VisibleForTesting
   boolean sendNotificationForState(Alert alert, State state, AlertNotificationReport report) {
-    SendNotificationResult result = SendNotificationResult.FAILED_TO_RESCHEDULE;
+    SendNotificationStatus result = SendNotificationStatus.FAILED_TO_RESCHEDULE;
     try {
-      result = sendNotification(alert, state, report);
-      if (result == SendNotificationResult.FAILED_NO_RESCHEDULE) {
+      result = sendNotification(alert, state, report).getStatus();
+      if (result == SendNotificationStatus.FAILED_NO_RESCHEDULE) {
         // Failed, no reschedule is required.
         alert.setNextNotificationTime(null);
         alert.save();
@@ -137,7 +131,7 @@ public class AlertManager {
       }
 
       alert.setNotificationAttemptTime(new Date());
-      if (result == SendNotificationResult.FAILED_TO_RESCHEDULE) {
+      if (result == SendNotificationStatus.FAILED_TO_RESCHEDULE) {
         alert.setNotificationsFailed(alert.getNotificationsFailed() + 1);
 
         Date switchStateTime = getSwitchStateTime(alert);
@@ -173,7 +167,7 @@ public class AlertManager {
       report.failAttempt();
       log.error("Error while sending notification for alert {}", alert.getUuid(), e);
     }
-    return result == SendNotificationResult.SUCCEEDED;
+    return !result.isFailure();
   }
 
   private Date getSwitchStateTime(Alert alert) {
@@ -226,6 +220,10 @@ public class AlertManager {
     }
   }
 
+  public SendNotificationResult sendNotification(Alert alert) {
+    return sendNotification(alert, null, new AlertNotificationReport());
+  }
+
   private SendNotificationResult sendNotification(
       Alert alert, State stateToNotify, AlertNotificationReport report) {
     Customer customer = Customer.get(alert.getCustomerUUID());
@@ -235,7 +233,7 @@ public class AlertManager {
 
     if (!strategy.isShouldSend()) {
       log.debug("Skipping notification for alert {}", alert.getUuid());
-      return SendNotificationResult.SUCCEEDED;
+      return new SendNotificationResult(SendNotificationStatus.SKIPPED, strategy.getMessage());
     }
 
     if (strategy.getDestination() == null) {
@@ -246,11 +244,13 @@ public class AlertManager {
         metricService.setStatusMetric(
             MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s), there is no default destination specified.");
-        return SendNotificationResult.FAILED_TO_RESCHEDULE;
+        return new SendNotificationResult(
+            SendNotificationStatus.FAILED_TO_RESCHEDULE, "No default destination configured");
       } else {
         log.error(
             "Unable to notify about alert {}, destination is missing from DB.", alert.getUuid());
-        return SendNotificationResult.FAILED_NO_RESCHEDULE;
+        return new SendNotificationResult(
+            SendNotificationStatus.FAILED_NO_RESCHEDULE, "Alert destination is missing");
       }
     }
 
@@ -258,14 +258,16 @@ public class AlertManager {
 
     if ((channels.size() == 1)
         && ("Email".equals(AlertUtils.getJsonTypeName(channels.get(0).getParams())))
-        && ((AlertChannelEmailParams) channels.get(0).getParams()).defaultRecipients
+        && ((AlertChannelEmailParams) channels.get(0).getParams()).isDefaultRecipients()
         && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
 
       metricService.setStatusMetric(
           MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
           "Unable to notify about alert(s) using default destination, "
               + "there are no recipients configured in the customer's profile.");
-      return SendNotificationResult.FAILED_TO_RESCHEDULE;
+      return new SendNotificationResult(
+          SendNotificationStatus.FAILED_TO_RESCHEDULE,
+          "No recipients configured in Health settings");
     }
 
     metricService.setOkStatusMetric(
@@ -273,25 +275,26 @@ public class AlertManager {
 
     // Not going to save the alert, only to use with another state for the
     // notification.
-    Alert tempAlert = alertService.get(alert.getUuid());
-    if (tempAlert == null) {
-      // The alert was not found. Most probably it is removed during the processing.
-      return SendNotificationResult.FAILED_NO_RESCHEDULE;
+    Alert tempAlert = alert;
+    if (stateToNotify != null) {
+      tempAlert = alertService.get(alert.getUuid());
+      if (tempAlert == null) {
+        // The alert was not found. Most probably it is removed during the processing.
+        return new SendNotificationResult(
+            SendNotificationStatus.FAILED_NO_RESCHEDULE, "Alert not found in DB");
+      }
+      tempAlert.setState(stateToNotify);
     }
-    tempAlert.setState(stateToNotify);
 
     for (AlertChannel channel : channels) {
       try {
         alertChannelService.validate(channel);
       } catch (PlatformServiceException e) {
+
         if (report.failuresByChannel(channel.getUuid()) == 0) {
-          log.warn("Channel {} skipped: {}", channel.getUuid(), e.getMessage(), e);
+          log.warn(String.format("Channel %s skipped: %s", channel.getUuid(), e.getMessage()), e);
         }
-        report.failChannel(channel.getUuid());
-        setChannelStatusMetric(
-            PlatformMetrics.ALERT_MANAGER_STATUS,
-            channel,
-            "Misconfigured alert channel: " + e.getMessage());
+        handleChannelSendError(channel, report, "Misconfigured alert channel: " + e.getMessage());
         continue;
       }
 
@@ -301,21 +304,29 @@ public class AlertManager {
         handler.sendNotification(customer, tempAlert, channel);
         atLeastOneSucceeded = true;
         setOkChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel);
+      } catch (PlatformServiceException e) {
+        if (report.failuresByChannel(channel.getUuid()) == 0) {
+          log.error(e.getMessage(), e);
+        }
+        handleChannelSendError(channel, report, e.getMessage());
       } catch (Exception e) {
         if (report.failuresByChannel(channel.getUuid()) == 0) {
-          log.error(e.getMessage());
+          log.error(e.getMessage(), e);
         }
-        report.failChannel(channel.getUuid());
-        setChannelStatusMetric(
-            PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS,
-            channel,
-            "Error sending notification: " + e.getMessage());
+        handleChannelSendError(channel, report, "Error sending notification: " + e.getMessage());
       }
     }
 
     return atLeastOneSucceeded
-        ? SendNotificationResult.SUCCEEDED
-        : SendNotificationResult.FAILED_TO_RESCHEDULE;
+        ? new SendNotificationResult(SendNotificationStatus.SUCCEEDED, "Alert sent successfully")
+        : new SendNotificationResult(
+            SendNotificationStatus.FAILED_TO_RESCHEDULE, "All notification channels failed");
+  }
+
+  private void handleChannelSendError(
+      AlertChannel channel, AlertNotificationReport report, String alertMessage) {
+    report.failChannel(channel.getUuid());
+    setChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel, alertMessage);
   }
 
   @VisibleForTesting
@@ -350,13 +361,38 @@ public class AlertManager {
     boolean shouldSend;
     AlertDestination destination;
     boolean defaultDestinationUsed;
+    String message;
 
-    NotificationStrategy() {
-      this(false, null, false);
+    NotificationStrategy(String message) {
+      this(false, null, false, message);
     }
 
     NotificationStrategy(AlertDestination destination, boolean isDefault) {
-      this(true, destination, isDefault);
+      this(true, destination, isDefault, StringUtils.EMPTY);
+    }
+  }
+
+  @Value
+  @AllArgsConstructor
+  public static class SendNotificationResult {
+    SendNotificationStatus status;
+    String message;
+  }
+
+  public enum SendNotificationStatus {
+    SUCCEEDED(false),
+    SKIPPED(false),
+    FAILED_TO_RESCHEDULE(true),
+    FAILED_NO_RESCHEDULE(true);
+
+    private final boolean isFailure;
+
+    SendNotificationStatus(boolean isFailure) {
+      this.isFailure = isFailure;
+    }
+
+    public boolean isFailure() {
+      return isFailure;
     }
   }
 }

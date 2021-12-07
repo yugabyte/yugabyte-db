@@ -11,36 +11,29 @@
 // under the License.
 //
 
-#include <sys/types.h>
-
-#include <string>
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 
 #include "yb/gutil/stringprintf.h"
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
-#include "yb/util/encrypted_file.h"
-#include "yb/util/encryption_util.h"
-#include "yb/util/header_manager_impl.h"
-#include "yb/util/status.h"
-#include "yb/util/test_util.h"
-#include "yb/util/header_manager.h"
-#include "yb/util/encryption_test_util.h"
-
-#include "yb/util/random_util.h"
-#include "yb/util/path_util.h"
-
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/table/internal_iterator.h"
 
-#include "yb/util/universe_key_manager.h"
-#include "yb/util/scope_exit.h"
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/tserver/universe_key_test_util.h"
 
-#include <glog/logging.h>
-#include <gtest/gtest.h>
+#include "yb/util/encrypted_file.h"
+#include "yb/util/encryption_util.h"
+#include "yb/util/header_manager.h"
+#include "yb/util/header_manager_impl.h"
+#include "yb/util/path_util.h"
+#include "yb/util/status.h"
+#include "yb/util/test_util.h"
+#include "yb/util/universe_key_manager.h"
 
 using namespace std::literals;
 

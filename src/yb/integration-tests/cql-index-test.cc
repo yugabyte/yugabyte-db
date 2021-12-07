@@ -12,13 +12,15 @@
 //
 
 #include "yb/integration-tests/cql_test_base.h"
-
-#include "yb/consensus/raft_consensus.h"
-
 #include "yb/integration-tests/mini_cluster_utils.h"
 
+#include "yb/util/atomic.h"
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

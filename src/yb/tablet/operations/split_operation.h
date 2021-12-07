@@ -16,10 +16,13 @@
 #ifndef YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
 #define YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
 
-#include "yb/tserver/tserver_service.pb.h"
+#include <condition_variable>
+
+#include "yb/common/entity_ids_types.h"
+
+#include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/operation_filter.h"
-
 #include "yb/tablet/operations/operation.h"
 
 namespace yb {

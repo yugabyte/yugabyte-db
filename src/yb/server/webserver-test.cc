@@ -29,20 +29,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/server/webserver.h"
 
 #include <iosfwd>
 #include <string>
 
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/util.h"
+
 #include "yb/server/default-path-handlers.h"
+#include "yb/server/webserver.h"
+
 #include "yb/util/curl_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_util.h"
 #include "yb/util/zlib.h"
 

@@ -21,20 +21,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <atomic>
-
+#include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/db_test_util.h"
+#include "yb/rocksdb/experimental.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/rate_limiter.h"
-#include "yb/rocksdb/experimental.h"
-#include "yb/rocksdb/utilities/convenience.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -133,8 +131,7 @@ void GetOverlappingFileNumbersForLevelCompaction(
   for (int m = min_level; m <= max_level; ++m) {
     for (auto& file : cf_meta.levels[m].files) {
       for (auto* included_file : overlapping_files) {
-        if (HaveOverlappingKeyRanges(
-                comparator, *included_file, file)) {
+        if (HaveOverlappingKeyRanges(comparator, *included_file, file)) {
           overlapping_files.insert(&file);
           overlapping_file_names->insert(file.name);
           break;

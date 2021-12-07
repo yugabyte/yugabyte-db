@@ -6,10 +6,14 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.chec
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodeName;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ApiUtils;
@@ -18,11 +22,15 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.NodeStatus;
+
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -30,6 +38,9 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.HashSet;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseDefinitionTaskBaseTest {
@@ -40,7 +51,7 @@ public class UniverseDefinitionTaskBaseTest {
   private NodeDetails myNode;
   private UserIntent userIntent;
 
-  @Mock BaseTaskDependencies baseTaskDependencies;
+  @Mock private BaseTaskDependencies baseTaskDependencies;
 
   @Before
   public void setUp() {
@@ -236,6 +247,102 @@ public class UniverseDefinitionTaskBaseTest {
     if (!enableYEDIS) {
       assertEquals("false", userIntent.tserverGFlags.get("start_redis_proxy"));
     }
+  }
+
+  @Test
+  public void testFilterNodesByStatusInitialState() {
+    Universe universe = mock(Universe.class);
+    UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+    universeDetails.nodeDetailsSet = new HashSet<>();
+    for (int idx = 0; idx < 5; idx++) {
+      NodeDetails.NodeState state = NodeDetails.NodeState.Adding;
+      if (idx < 3) {
+        state = NodeDetails.NodeState.ToBeAdded;
+      }
+      NodeDetails node = ApiUtils.getDummyNodeDetails(idx, state);
+      universeDetails.nodeDetailsSet.add(node);
+    }
+    Set<NodeDetails> nodesToProvision = new HashSet<>(universeDetails.nodeDetailsSet);
+    when(universe.getUniverseDetails()).thenReturn(universeDetails);
+    UniverseDefinitionTaskBaseFake instance = new UniverseDefinitionTaskBaseFake();
+    // Just to record the count in the lambda.
+    AtomicInteger count = new AtomicInteger(0);
+    boolean skipNodeStatusCheck = false;
+    // This finds the starting node state.
+    skipNodeStatusCheck =
+        instance.applyOnNodesWithStatus(
+            universe,
+            nodesToProvision,
+            skipNodeStatusCheck,
+            NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+            filteredNodes -> {
+              count.addAndGet(filteredNodes.size());
+              boolean allMatch =
+                  filteredNodes.stream().allMatch(node -> node.state == NodeState.ToBeAdded);
+              assertEquals(true, allMatch);
+            });
+    assertTrue(skipNodeStatusCheck);
+    assertEquals(3, count.get());
+    count.set(0);
+    // The starting state is found above, all the subsequent state checking should return true.
+    skipNodeStatusCheck =
+        instance.applyOnNodesWithStatus(
+            universe,
+            nodesToProvision,
+            skipNodeStatusCheck,
+            NodeStatus.builder().nodeState(NodeState.Adding).build(),
+            filteredNodes -> {
+              count.addAndGet(filteredNodes.size());
+            });
+    assertEquals(5, count.get());
+    assertTrue(skipNodeStatusCheck);
+  }
+
+  @Test
+  public void testFilterNodesByStatusIntermediateState() {
+    Universe universe = mock(Universe.class);
+    UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+    universeDetails.nodeDetailsSet = new HashSet<>();
+    for (int idx = 0; idx < 5; idx++) {
+      NodeDetails.NodeState state = NodeDetails.NodeState.Provisioned;
+      if (idx < 3) {
+        state = NodeDetails.NodeState.Adding;
+      }
+      NodeDetails node = ApiUtils.getDummyNodeDetails(idx, state);
+      universeDetails.nodeDetailsSet.add(node);
+    }
+    Set<NodeDetails> nodesToProvision = new HashSet<>(universeDetails.nodeDetailsSet);
+    when(universe.getUniverseDetails()).thenReturn(universeDetails);
+    UniverseDefinitionTaskBaseFake instance = new UniverseDefinitionTaskBaseFake();
+    // Just to record the count in the lambda.
+    AtomicInteger count = new AtomicInteger(0);
+    boolean skipNodeStatusCheck = false;
+    // This finds the starting node state.
+    skipNodeStatusCheck =
+        instance.applyOnNodesWithStatus(
+            universe,
+            nodesToProvision,
+            skipNodeStatusCheck,
+            NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+            filteredNodes -> {
+              count.addAndGet(filteredNodes.size());
+            });
+    assertFalse(skipNodeStatusCheck);
+    assertEquals(0, count.get());
+    skipNodeStatusCheck =
+        instance.applyOnNodesWithStatus(
+            universe,
+            nodesToProvision,
+            skipNodeStatusCheck,
+            NodeStatus.builder().nodeState(NodeState.Adding).build(),
+            filteredNodes -> {
+              count.addAndGet(filteredNodes.size());
+              boolean allMatch =
+                  filteredNodes.stream().allMatch(node -> node.state == NodeState.Adding);
+              assertEquals(true, allMatch);
+            });
+    assertEquals(3, count.get());
+    assertTrue(skipNodeStatusCheck);
   }
 
   private class UniverseDefinitionTaskBaseFake extends UniverseDefinitionTaskBase {

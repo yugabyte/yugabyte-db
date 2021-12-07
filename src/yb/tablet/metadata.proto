@@ -37,7 +37,6 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/util/opid.proto";
-import "yb/fs/fs.proto";
 
 // ============================================================================
 //  Tablet Metadata

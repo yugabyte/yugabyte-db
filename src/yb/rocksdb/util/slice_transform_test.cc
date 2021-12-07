@@ -21,15 +21,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/slice_transform.h"
-
 #include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

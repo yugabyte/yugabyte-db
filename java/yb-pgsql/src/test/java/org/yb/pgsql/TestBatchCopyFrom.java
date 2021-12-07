@@ -27,8 +27,8 @@ import java.sql.Statement;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.postgresql.copy.CopyManager;
-import org.postgresql.core.BaseConnection;
+import com.yugabyte.copy.CopyManager;
+import com.yugabyte.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
@@ -47,6 +47,8 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   private static final String BATCH_TXN_SESSION_VARIABLE_NAME =
       "yb_default_copy_from_rows_per_transaction";
   private static final int BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS = 1000;
+  private static final String NON_TXN_WRITE_SESSION_VARIABLE_NAME =
+      "yb_force_non_transactional_writes";
 
   private String getAbsFilePath(String fileName) {
     return TestUtils.getBaseTmpDir() + "/" + fileName;
@@ -440,7 +442,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   }
 
   @Test
-  public void testSessionVariable() throws Exception {
+  public void testBatchTxnSessionVariable() throws Exception {
     String absFilePath = getAbsFilePath("batch-copyfrom-sessionvar.txt");
     String tableName = "batchSessionTable";
     int totalValidLines = 7;
@@ -483,6 +485,37 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   }
 
   @Test
+  public void testNonTxnWriteSessionVariable() throws Exception {
+    String absFilePath = getAbsFilePath("batch-copyfrom-nontxn-sessionvar.txt");
+    String tableName = "nontxnSessionVarTable";
+    int totalValidLines = 5;
+    int expectedCopiedLines = totalValidLines;
+
+    createFileInTmpDir(absFilePath, totalValidLines);
+
+    try (Statement statement = connection.createStatement()) {
+      // ensure non-txn session variable is off by default
+      assertOneRow(statement, "SHOW " + NON_TXN_WRITE_SESSION_VARIABLE_NAME, "off");
+      // set non-txn session variable
+      statement.execute("SET " + NON_TXN_WRITE_SESSION_VARIABLE_NAME + "=true");
+      statement.execute(String.format(
+          "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
+      statement.execute(String.format(
+          "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", tableName, absFilePath));
+
+      // ensure no discrepency in result
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, expectedCopiedLines);
+      // ensure DDL's, DML's execute without error
+      statement.execute("ALTER TABLE " + tableName + " ADD COLUMN e INT");
+      statement.execute("ALTER TABLE " + tableName + " DROP COLUMN e");
+      statement.execute("INSERT INTO " + tableName + " VALUES (100)");
+      statement.execute("TRUNCATE TABLE " + tableName);
+      statement.execute("DROP TABLE " + tableName);
+      statement.execute("CREATE TABLE " + tableName + " (a int primary key, b text)");
+    }
+  }
+
+  @Test
   public void testSessionVariableWithRowsPerTransactionOption() throws Exception {
     String absFilePath = getAbsFilePath("batch-copyfrom-sessionvar-with-query-option.txt");
     String tableName = "batchSessionAndOptionTable";
@@ -507,6 +540,46 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
               tableName, absFilePath, batchOptionSize),
           INVALID_COPY_INPUT_ERROR_MSG);
       assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, expectedCopiedLines);
+    }
+  }
+
+  @Test
+  public void testBatchedCopyForPartitionedTables() throws Exception {
+    String absFilePath = getAbsFilePath("batch-copyfrom-parts.txt");
+    String tableName = "parts";
+    int totalLines = 100000;
+    int batchSize = 100;
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    final String createStmt = "CREATE TABLE %s (a int, b int, c text, d int) PARTITION BY %s(a)";
+    final String createDefaultStmt = "CREATE TABLE %s PARTITION OF %s DEFAULT";
+    final String copyStmt =
+        "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)";
+
+    try (Statement statement = connection.createStatement()) {
+      String[] partTypes = {"HASH", "RANGE", "LIST"};
+      for (final String partType : partTypes) {
+        final String parentName = tableName + partType;
+        // Create partitioned table.
+        statement.execute(String.format(createStmt, parentName, partType));
+
+        // Create partitions for hash partitioned table, and a default partition for range/list.
+        if (partType.equals("HASH")) {
+          statement.execute(String.format("CREATE TABLE %s PARTITION OF %s FOR VALUES WITH " +
+              "(modulus 2, remainder 0)", parentName + "_part1", parentName));
+          statement.execute(String.format("CREATE TABLE %s PARTITION OF %s FOR VALUES WITH " +
+              "(modulus 2, remainder 1)", parentName + "_part2", parentName));
+        } else {
+          statement.execute(String.format(createDefaultStmt, parentName + "_default", parentName));
+        }
+
+        // Copy rows over to the partitioned table
+        statement.execute(String.format(copyStmt, parentName, absFilePath, batchSize));
+
+        // Verify the copy went through.
+        assertOneRow(statement, "SELECT COUNT(*) FROM " + parentName, totalLines);
+      }
     }
   }
 }

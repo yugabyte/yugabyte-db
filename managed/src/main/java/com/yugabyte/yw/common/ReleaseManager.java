@@ -331,18 +331,25 @@ public class ReleaseManager {
 
   public void removeRelease(String version) {
     Map<String, Object> currentReleases = getReleaseMetadata();
+    boolean isPresentLocally = false;
+    String ybReleasesPath = appConfig.getString("yb.releases.path");
     if (currentReleases.containsKey(version)) {
+      if (getReleaseByVersion(version).filePath.startsWith(ybReleasesPath)) {
+        isPresentLocally = true;
+      }
       LOG.info("Removing release version {}", version);
       currentReleases.remove(version);
       configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
     }
 
-    String ybReleasesPath = appConfig.getString("yb.releases.path");
-    // delete specific release's directory recursively.
-    File releaseDirectory = new File(ybReleasesPath, version);
-    if (!Util.deleteDirectory(releaseDirectory)) {
-      String errorMsg = "Failed to delete release directory: " + releaseDirectory.getAbsolutePath();
-      throw new RuntimeException(errorMsg);
+    if (isPresentLocally) {
+      // delete specific release's directory recursively.
+      File releaseDirectory = new File(ybReleasesPath, version);
+      if (!Util.deleteDirectory(releaseDirectory)) {
+        String errorMsg =
+            "Failed to delete release directory: " + releaseDirectory.getAbsolutePath();
+        throw new RuntimeException(errorMsg);
+      }
     }
   }
 

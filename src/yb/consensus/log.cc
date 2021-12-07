@@ -33,12 +33,18 @@
 #include "yb/consensus/log.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/thread/shared_mutex.hpp>
+#include <gflags/gflags.h>
 
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_util.h"
@@ -46,23 +52,26 @@
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/opid_util.h"
 
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-#include "yb/util/coding.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/path_util.h"
@@ -72,10 +81,11 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/thread.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
@@ -535,7 +545,7 @@ Log::Log(
       wal_dir_(std::move(wal_dir)),
       tablet_id_(std::move(tablet_id)),
       peer_uuid_(std::move(peer_uuid)),
-      schema_(schema),
+      schema_(std::make_unique<Schema>(schema)),
       schema_version_(schema_version),
       active_segment_sequence_number_(options.initial_active_segment_sequence_number),
       log_state_(kLogInitialized),
@@ -1226,7 +1236,7 @@ uint64_t Log::OnDiskSize() {
 void Log::SetSchemaForNextLogSegment(const Schema& schema,
                                      uint32_t version) {
   std::lock_guard<rw_spinlock> l(schema_lock_);
-  schema_ = schema;
+  *schema_ = schema;
   schema_version_ = version;
 }
 
@@ -1263,7 +1273,7 @@ Status Log::Close() {
 }
 
 int Log::num_segments() const {
-  boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  std::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
   return (reader_) ? reader_->num_segments() : 0;
 }
 
@@ -1451,7 +1461,7 @@ Status Log::SwitchToAllocatedSegment() {
   // Set the new segment's schema.
   {
     SharedLock<decltype(schema_lock_)> l(schema_lock_);
-    SchemaToPB(schema_, header.mutable_schema());
+    SchemaToPB(*schema_, header.mutable_schema());
     header.set_schema_version(schema_version_);
   }
 

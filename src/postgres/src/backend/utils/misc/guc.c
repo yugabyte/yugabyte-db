@@ -42,6 +42,7 @@
 #include "commands/vacuum.h"
 #include "commands/variable.h"
 #include "commands/trigger.h"
+#include "executor/ybcModifyTable.h"
 #include "funcapi.h"
 #include "jit/jit.h"
 #include "libpq/auth.h"
@@ -2008,6 +2009,26 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"force_global_transaction", PGC_USERSET, UNGROUPED,
+			gettext_noop("Forces use of global transaction table."),
+			NULL
+		},
+		&yb_force_global_transaction,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_force_non_transactional_writes", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the boolean flag to enable or disable non transaction writes."),
+			NULL
+		},
+		&yb_force_non_transactional_writes,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -3275,6 +3296,17 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_follower_read_staleness_ms", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the staleness (in ms) to be used for performing follower reads."),
+			NULL,
+			0
+		},
+		&yb_follower_read_staleness_ms,
+		30000, 0, INT_MAX,
+		check_follower_read_staleness_ms, NULL, NULL
+	},
+
 	/*
 	 * Default to a 1s delay because commits currently aren't guaranteed to be
 	 * visible across tservers.  Commits cause master to update catalog
@@ -4213,7 +4245,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&DefaultXactIsoLevel,
 		XACT_READ_COMMITTED, isolation_level_options,
-		check_default_XactIsoLevel, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{

@@ -15,20 +15,22 @@
 
 #include "yb/common/ql_value.h"
 
-#include <cfloat>
-
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_type.h"
+
 #include "yb/gutil/strings/escaping.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
-#include "yb/util/varint.h"
 #include "yb/util/enums.h"
-
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/varint.h"
 
 using yb::operator"" _MB;
 
@@ -123,6 +125,10 @@ int QLValue::CompareTo(const QLValue& other) const {
       } else {
         return other.IsMin() ? 0 : -1;
       }
+
+    case InternalType::kGinNullValue: {
+      return GenericCompare(gin_null_value(), other.gin_null_value());
+    }
   }
 
   LOG(FATAL) << "Internal error: unsupported type " << type();
@@ -236,6 +242,11 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
                  << ") is not supported in hash key";
     case InternalType::kVirtualValue:
       LOG(FATAL) << "Runtime error: virtual value should not be used to construct hash key";
+    case InternalType::kGinNullValue: {
+      LOG(ERROR) << "Runtime error: gin null value should not be used to construct hash key";
+      YBPartition::AppendIntToKey<uint8, uint8>(value_pb.gin_null_value(), bytes);
+      break;
+    }
   }
 }
 
@@ -812,6 +823,20 @@ string QLValue::ToValueString(const QuotesType quotes_type) const {
         return "<MAX_LIMIT>";
       }
       return "<MIN_LIMIT>";
+    case InternalType::kGinNullValue: {
+      switch (gin_null_value()) {
+        // case 0, gin:norm-key, should not exist since the actual data would be used instead.
+        case 1:
+          return "gin:null-key";
+        case 2:
+          return "gin:empty-item";
+        case 3:
+          return "gin:null-item";
+        // case -1, gin:empty-query, should not exist since that's internal to postgres.
+        default:
+          LOG(FATAL) << "Unexpected gin null category: " << gin_null_value();
+      }
+    }
 
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
@@ -864,6 +889,62 @@ string QLValue::ToString() const {
       return "unknown";
   }
   return res + ToValueString();
+}
+
+InetAddress QLValue::inetaddress_value(const QLValuePB& pb) {
+  InetAddress addr;
+  CHECK_OK(addr.FromBytes(inetaddress_value_pb(pb)));
+  return addr;
+}
+
+Uuid QLValue::timeuuid_value(const QLValuePB& pb) {
+  Uuid timeuuid;
+  CHECK_OK(timeuuid.FromBytes(timeuuid_value_pb(pb)));
+  CHECK_OK(timeuuid.IsTimeUuid());
+  return timeuuid;
+}
+
+Uuid QLValue::uuid_value(const QLValuePB& pb) {
+  Uuid uuid;
+  CHECK_OK(uuid.FromBytes(uuid_value_pb(pb)));
+  return uuid;
+}
+
+util::VarInt QLValue::varint_value(const QLValuePB& pb) {
+  CHECK(pb.has_varint_value()) << "Value: " << pb.ShortDebugString();
+  util::VarInt varint;
+  size_t num_decoded_bytes;
+  CHECK_OK(varint.DecodeFromComparable(pb.varint_value(), &num_decoded_bytes));
+  return varint;
+}
+
+void QLValue::set_inetaddress_value(const InetAddress& val, QLValuePB* pb) {
+  CHECK_OK(val.ToBytes(pb->mutable_inetaddress_value()));
+}
+
+void QLValue::set_timeuuid_value(const Uuid& val) {
+  CHECK_OK(val.IsTimeUuid());
+  val.ToBytes(pb_.mutable_timeuuid_value());
+}
+
+template<typename num_type, typename data_type>
+CHECKED_STATUS QLValue::CQLDeserializeNum(
+    size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(num_type),
+    Slice* data) {
+  num_type value = 0;
+  RETURN_NOT_OK(CQLDecodeNum(len, converter, data, &value));
+  (this->*setter)(value);
+  return Status::OK();
+}
+
+template<typename float_type, typename data_type>
+CHECKED_STATUS QLValue::CQLDeserializeFloat(
+    size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(float_type),
+    Slice* data) {
+  float_type value = 0.0;
+  RETURN_NOT_OK(CQLDecodeFloat(len, converter, data, &value));
+  (this->*setter)(value);
+  return Status::OK();
 }
 
 //----------------------------------- QLValuePB operators --------------------------------
@@ -978,6 +1059,8 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
                 rhs.virtual_value() == QLVirtualValuePB::LIMIT_MIN) ? 0 : -1;
       }
       break;
+    case QLValuePB::kGinNullValue:
+      return GenericCompare(lhs.gin_null_value(), rhs.gin_null_value());
 
     // default: fall through
   }
@@ -1052,6 +1135,8 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
         return rhs.IsMin() ? 0 : -1;
       }
       break;
+    case QLValuePB::kGinNullValue:
+      return GenericCompare(static_cast<uint8_t>(lhs.gin_null_value()), rhs.gin_null_value());
 
     // default: fall through
   }

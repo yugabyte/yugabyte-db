@@ -24,7 +24,6 @@ import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
 import { Tasks, TasksList, TaskDetail } from './pages/tasks';
 import Alerts from './pages/Alerts';
-import ListUniverse from './pages/ListUniverse';
 import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
 import DataCenterConfiguration from './pages/DataCenterConfiguration';
@@ -39,6 +38,7 @@ import { CreateUniverse } from './redesign/universe/CreateUniverse';
 import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
+import { ReplicationDetails } from './components/xcluster';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -218,7 +218,7 @@ export default (store) => {
       >
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
-          <IndexRoute component={ListUniverse} />
+          <IndexRoute component={UniverseConsole} />
           <Route path="/universes/import" component={Importer} />
           <Route path="/universes/create" component={UniverseDetail} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
@@ -227,8 +227,11 @@ export default (store) => {
           </Route>
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
+          <Route
+            path="/universes/:uuid/replication/:replicationUUID"
+            component={ReplicationDetails}
+          />
         </Route>
-        <Route path="/universes_new" component={UniverseConsole} />
 
         {/* ------------------------------------------------------------------------*/}
         <Route path="/universe/create" component={CreateUniverse} />

@@ -21,13 +21,16 @@
 #define YB_GUTIL_REF_COUNTED_H
 
 #include <atomic>
+#include <ostream>
+#include <utility>
 
 #ifndef NDEBUG
 #include <string>
 #endif
 
+#include <typeinfo>
+
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/atomic_refcount.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
 
@@ -35,7 +38,7 @@ namespace yb {
 namespace subtle {
 
 // TODO: switch to std::atomic<int32_t>
-typedef Atomic32 AtomicRefCount;
+typedef std::atomic<intptr_t> AtomicRefCount;
 
 class RefCountedBase {
  public:
@@ -51,11 +54,11 @@ class RefCountedBase {
   bool Release() const;
 
 #ifndef NDEBUG
-  int32_t GetRefCountForDebugging() const { return ref_count_; }
+  intptr_t GetRefCountForDebugging() const { return ref_count_; }
 #endif
 
  private:
-  mutable int32_t ref_count_;
+  mutable intptr_t ref_count_;
 #ifndef NDEBUG
   mutable bool in_dtor_;
 #endif
@@ -70,7 +73,7 @@ class RefCountedThreadSafeBase {
   bool HasOneRef() const;
 
  protected:
-  RefCountedThreadSafeBase();
+  RefCountedThreadSafeBase() = default;
   ~RefCountedThreadSafeBase();
 
   void AddRef() const;
@@ -79,15 +82,15 @@ class RefCountedThreadSafeBase {
   bool Release() const;
 
 #ifndef NDEBUG
-  int32_t GetRefCountForDebugging() const {
-    return base::subtle::Acquire_Load(&ref_count_);
+  intptr_t GetRefCountForDebugging() const {
+    return ref_count_.load(std::memory_order_relaxed);
   }
 #endif
 
  private:
-  mutable AtomicRefCount ref_count_ = 0;
+  mutable AtomicRefCount ref_count_{0};
 #ifndef NDEBUG
-  mutable bool in_dtor_;
+  mutable bool in_dtor_ = false;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(RefCountedThreadSafeBase);
@@ -117,8 +120,8 @@ void InitRefCountedDebugging(const std::string& type_name_regex, RefCountedDebug
 
 void RefCountedDebugHook(const char* type_name,
                          const void* this_ptr,
-                         int32_t current_refcount,
-                         int32_t ref_delta);
+                         int64_t current_refcount,
+                         int64_t ref_delta);
 
 #define INVOKE_REF_COUNTED_DEBUG_HOOK(ref_delta) \
     do { \
@@ -302,6 +305,14 @@ class RefCountedData
 //     // now, |a| and |b| each own a reference to the same MyFoo object.
 //   }
 //
+
+#ifndef NDEBUG
+void ScopedRefPtrCheck(bool);
+#else
+inline void ScopedRefPtrCheck(bool) {}
+#endif
+
+
 template <class T>
 class scoped_refptr {
  public:
@@ -349,12 +360,12 @@ class scoped_refptr {
   bool operator!() const { return ptr_ == nullptr; }
 
   T* operator->() const {
-    DCHECK(ptr_ != nullptr);
+    ScopedRefPtrCheck(ptr_ != nullptr);
     return ptr_;
   }
 
   T& operator*() const {
-    DCHECK(ptr_ != nullptr);
+    ScopedRefPtrCheck(ptr_ != nullptr);
     return *ptr_;
   }
 

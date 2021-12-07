@@ -32,10 +32,8 @@
 
 #include "yb/rpc/proxy.h"
 
-#include <cinttypes>
 #include <cstdint>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <sstream>
 #include <vector>
@@ -44,18 +42,19 @@
 
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/outbound_call.h"
-#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/remote_method.h"
-#include "yb/rpc/response_callback.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/countdown_latch.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
-#include "yb/util/user.h"
 
 DEFINE_int32(num_connections_to_server, 8,
              "Number of underlying connections to each server");
@@ -193,11 +192,9 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
     // Otherwise, enqueue the call to be handled by the service's handler thread.
     const shared_ptr<LocalYBInboundCall>& local_call =
         static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall();
-    if (controller->allow_local_calls_in_curr_thread() && ThreadPool::IsCurrentThreadRpcWorker()) {
-      context_->Handle(local_call);
-    } else {
-      context_->QueueInboundCall(local_call);
-    }
+    Queue queue(!controller->allow_local_calls_in_curr_thread() ||
+                !ThreadPool::IsCurrentThreadRpcWorker());
+    context_->Handle(local_call, queue);
   } else {
     auto ep = resolved_ep_.Load();
     if (ep.address().is_unspecified()) {
@@ -315,6 +312,10 @@ Status Proxy::SyncRequest(const RemoteMethod* method,
   return controller->status();
 }
 
+scoped_refptr<MetricEntity> Proxy::metric_entity() const {
+  return context_->metric_entity();
+}
+
 ProxyPtr ProxyCache::GetProxy(
     const HostPort& remote, const Protocol* protocol, const MonoDelta& resolve_cache_timeout) {
   ProxyKey key(remote, protocol);
@@ -339,6 +340,14 @@ ProxyMetricsPtr ProxyCache::GetMetrics(
   auto metrics = entity ? factory(entity) : nullptr;
   metrics_.emplace(service_name, metrics);
   return metrics;
+}
+
+ProxyBase::ProxyBase(const std::string& service_name, ProxyMetricsFactory metrics_factory,
+                     ProxyCache* cache, const HostPort& remote,
+                     const Protocol* protocol,
+                     const MonoDelta& resolve_cache_timeout)
+    : proxy_(cache->GetProxy(remote, protocol, resolve_cache_timeout)),
+      metrics_(cache->GetMetrics(service_name, metrics_factory)) {
 }
 
 }  // namespace rpc

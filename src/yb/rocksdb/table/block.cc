@@ -30,13 +30,18 @@
 #include <unordered_map>
 #include <vector>
 
+#include <glog/logging.h>
+
 #include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/block_hash_index.h"
+#include "yb/rocksdb/table/block_internal.h"
 #include "yb/rocksdb/table/block_prefix_index.h"
+#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
+
+#include "yb/util/result.h"
+#include "yb/util/stats/perf_step_timer.h"
 
 namespace rocksdb {
 
@@ -87,12 +92,35 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
 // Returns nullptr in case of decode failure.
 static inline const char* DecodeRestartEntry(
     const KeyValueEncodingFormat key_value_encoding_format, const char* p, const char* limit,
-    uint32_t* key_size, uint32_t* value_size) {
+    const char* read_allowed_from, uint32_t* key_size) {
+  uint32_t value_size;
   switch (key_value_encoding_format) {
-    case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix:
+    case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix: {
       uint32_t shared_prefix_size;
-      auto* result = DecodeEntry(p, limit, &shared_prefix_size, key_size, value_size);
+      auto* result = DecodeEntry(p, limit, &shared_prefix_size, key_size, &value_size);
       return result && (shared_prefix_size == 0) ? result : nullptr;
+    }
+    case KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts: {
+      // We declare output variables for DecodeEntryThreeSharedParts, but since we are
+      // decoding restart key and it is stored fully - we are only interested in non_shared_1_size
+      // argument that stores full key size in this case (see BlockBuilder::Add for more details).
+      // So, we just pass key_size as non_shared_1_size to DecodeEntryThreeSharedParts.
+      uint32_t shared_prefix_size, non_shared_2_size, shared_last_component_size;
+      bool is_something_shared;
+      int64_t non_shared_1_size_delta, non_shared_2_size_delta;
+      uint64_t shared_last_component_increase;
+
+      auto* result = DecodeEntryThreeSharedParts(
+          p, limit, read_allowed_from, &shared_prefix_size, key_size, &non_shared_1_size_delta,
+          &is_something_shared, &non_shared_2_size, &non_shared_2_size_delta,
+          &shared_last_component_size, &shared_last_component_increase, &value_size);
+      if (PREDICT_FALSE(!result || is_something_shared)) {
+        // This means corruption or decode failure, restart key is stored fully without reusing any
+        // data from the previous key.
+        return nullptr;
+      }
+      return result;
+    }
   }
   FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, key_value_encoding_format);
 }
@@ -194,8 +222,8 @@ Status BadBlockContentsError() {
   return STATUS(Corruption, "bad block contents");
 }
 
-Status BadEntryInBlockError() {
-  return STATUS(Corruption, "bad entry in block");
+Status BadEntryInBlockError(const std::string& error_details) {
+  return STATUS(Corruption, yb::Format("bad entry in block: $0", error_details));
 }
 
 } // namespace
@@ -208,8 +236,71 @@ void BlockIter::SetError(const Status& error) {
   value_.clear();
 }
 
-void BlockIter::CorruptionError() {
-  SetError(BadEntryInBlockError());
+void BlockIter::CorruptionError(const std::string& error_details) {
+  SetError(BadEntryInBlockError(error_details));
+}
+
+// This function decodes next key-value pair starting at p and encoded with three_shared_parts
+// delta-encoding algorithm (see ThreeSharedPartsEncoder inside block_builder.cc).
+// limit specifies exclusive upper bound on where we allowed to decode from.
+// read_allowed_from specifies exclusive upper bound on where we allowed to read data from (used
+// for performance optimization in some cases to read by multi-bytes chunks), but still only data
+// before the limit will be used for decoding.
+//
+// The function relies on *key to contain previous decoded key and updates it with a next one.
+// *value is set to Slice pointing to corresponding key's value.
+//
+// Returns whether decoding was successful.
+inline bool ParseNextKeyThreeSharedParts(
+    const char* p, const char* limit, const char* read_allowed_from, IterKey* key, Slice* value) {
+  uint32_t shared_prefix_size, non_shared_1_size, non_shared_2_size, shared_last_component_size,
+      value_size;
+  bool is_something_shared;
+  int64_t non_shared_1_size_delta, non_shared_2_size_delta;
+  uint64_t shared_last_component_increase;
+
+  p = DecodeEntryThreeSharedParts(
+      p, limit, read_allowed_from, &shared_prefix_size, &non_shared_1_size,
+      &non_shared_1_size_delta, &is_something_shared, &non_shared_2_size, &non_shared_2_size_delta,
+      &shared_last_component_size, &shared_last_component_increase, &value_size);
+  if (p == nullptr) {
+    return false;
+  }
+
+  if (PREDICT_FALSE(!is_something_shared)) {
+    // If this key doesn't share any bytes with prev key then we don't need
+    // to decode it and can use its address in the block directly.
+    key->SetKey(Slice(p, non_shared_1_size), false /* copy */);
+    *value = Slice(p + non_shared_1_size, value_size);
+    return true;
+  }
+
+  // The start offset of the shared middle part of the previous key.
+  const auto prev_shared_middle_start =
+      shared_prefix_size + non_shared_1_size - non_shared_1_size_delta;
+  const auto prev_non_shared_2_size = non_shared_2_size - non_shared_2_size_delta;
+  const auto prev_size_except_middle_shared = prev_shared_middle_start + prev_non_shared_2_size +
+      shared_last_component_size;
+
+  const auto key_size = static_cast<uint32_t>(key->Size());
+
+  if (key_size < prev_size_except_middle_shared) {
+    return false;
+  }
+
+  const auto shared_middle_size = key_size - prev_size_except_middle_shared;
+
+  if ((shared_prefix_size + shared_middle_size + shared_last_component_size) == 0) {
+    // This is an error, because is_something_shared is true.x
+    return false;
+  }
+
+  key->Update(
+      p, shared_prefix_size, non_shared_1_size, static_cast<uint32_t>(prev_shared_middle_start),
+      static_cast<uint32_t>(shared_middle_size), non_shared_2_size, shared_last_component_size,
+      shared_last_component_increase);
+  *value = Slice(p + non_shared_1_size + non_shared_2_size, value_size);
+  return true;
 }
 
 bool BlockIter::ParseNextKey() {
@@ -226,37 +317,47 @@ bool BlockIter::ParseNextKey() {
   // Decode next entry
   bool valid_encoding_type = false;
   switch (key_value_encoding_format_) {
-    // TODO(delta_enc): after adding more encoding types, it will be handled here, for now we
-    // just have one and check that key_value_encoding_format_ is valid.
-    case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix:
+    case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix: {
       valid_encoding_type = true;
+      uint32_t shared, non_shared, value_length;
+      p = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
+      if (p == nullptr || key_.Size() < shared) {
+        CorruptionError(yb::Format(
+            "p: $0, key_.Size(): $1, shared: $2", static_cast<const void*>(p), key_.Size(),
+            shared));
+        return false;
+      }
+      if (shared == 0) {
+        // If this key dont share any bytes with prev key then we dont need
+        // to decode it and can use it's address in the block directly.
+        key_.SetKey(Slice(p, non_shared), false /* copy */);
+      } else {
+        // This key share `shared` bytes with prev key, we need to decode it
+        key_.TrimAppend(shared, p, non_shared);
+      }
+      value_ = Slice(p + non_shared, value_length);
       break;
+    }
+    case KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts: {
+      valid_encoding_type = true;
+      if (!ParseNextKeyThreeSharedParts(p, limit, data_, &key_, &value_)) {
+        CorruptionError("ParseNextKeyThreeSharedParts failed");
+        return false;
+      }
+      break;
+    }
   }
+
   if (!valid_encoding_type) {
     FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, key_value_encoding_format_);
   }
 
-  uint32_t shared, non_shared, value_length;
-  p = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
-  if (p == nullptr || key_.Size() < shared) {
-    CorruptionError();
-    return false;
-  } else {
-    if (shared == 0) {
-      // If this key dont share any bytes with prev key then we dont need
-      // to decode it and can use it's address in the block directly.
-      key_.SetKey(Slice(p, non_shared), false /* copy */);
-    } else {
-      // This key share `shared` bytes with prev key, we need to decode it
-      key_.TrimAppend(shared, p, non_shared);
-    }
-    value_ = Slice(p + non_shared, value_length);
-    while (restart_index_ + 1 < num_restarts_ &&
-           GetRestartPoint(restart_index_ + 1) < current_) {
-      ++restart_index_;
-    }
-    return true;
+  // Restore the invariant that restart_index_ is the index of restart block in which current_
+  // falls.
+  while (restart_index_ + 1 < num_restarts_ && GetRestartPoint(restart_index_ + 1) < current_) {
+    ++restart_index_;
   }
+  return true;
 }
 
 // Binary search in restart array to find the first restart point
@@ -268,12 +369,11 @@ bool BlockIter::BinarySeek(const Slice& target, uint32_t left, uint32_t right,
   while (left < right) {
     uint32_t mid = (left + right + 1) / 2;
     uint32_t region_offset = GetRestartPoint(mid);
-    uint32_t key_size, value_length;
+    uint32_t key_size;
     const char* key_ptr = DecodeRestartEntry(
-        key_value_encoding_format_, data_ + region_offset, data_ + restarts_, &key_size,
-        &value_length);
+        key_value_encoding_format_, data_ + region_offset, data_ + restarts_, data_, &key_size);
     if (key_ptr == nullptr) {
-      CorruptionError();
+      CorruptionError("DecodeRestartEntry failed");
       return false;
     }
     Slice mid_key(key_ptr, key_size);
@@ -299,12 +399,11 @@ bool BlockIter::BinarySeek(const Slice& target, uint32_t left, uint32_t right,
 // Return -1 if error.
 int BlockIter::CompareBlockKey(uint32_t block_index, const Slice& target) {
   uint32_t region_offset = GetRestartPoint(block_index);
-  uint32_t key_size, value_length;
+  uint32_t key_size;
   const char* key_ptr = DecodeRestartEntry(
-      key_value_encoding_format_, data_ + region_offset, data_ + restarts_, &key_size,
-      &value_length);
+      key_value_encoding_format_, data_ + region_offset, data_ + restarts_, data_, &key_size);
   if (key_ptr == nullptr) {
-    CorruptionError();
+    CorruptionError("DecodeRestartEntry failed");
     return 1;  // Return target is smaller
   }
   Slice block_key(key_ptr, key_size);
@@ -480,12 +579,11 @@ yb::Result<Slice> Block::GetMiddleKey(
   const auto restart_idx = (NumRestarts() - 1) / 2;
 
   const auto entry_offset = DecodeFixed32(data_ + restart_offset_ + restart_idx * sizeof(uint32_t));
-  uint32_t key_size, value_length;
+  uint32_t key_size;
   const char* key_ptr = DecodeRestartEntry(
-      key_value_encoding_format, data_ + entry_offset, data_ + restart_offset_, &key_size,
-      &value_length);
+      key_value_encoding_format, data_ + entry_offset, data_ + restart_offset_, data_, &key_size);
   if (key_ptr == nullptr) {
-    return BadEntryInBlockError();
+    return BadEntryInBlockError("DecodeRestartEntry failed");
   }
   return Slice(key_ptr, key_size);
 }

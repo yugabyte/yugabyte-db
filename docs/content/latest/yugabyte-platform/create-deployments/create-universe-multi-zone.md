@@ -48,16 +48,16 @@ The **Provider**, **Regions**, and **Instance Type** fields are initialized base
 To create a multi-zone universe using [Google Cloud provider (GCP)](../../configure-yugabyte-platform/set-up-cloud-provider/gcp), perform the following:
 
 - Enter a universe name (**helloworld1**).
+
 - Enter the region (**Oregon**).
+
 - Change the instance type (**n1-standard-8**).
-- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3).
-- Click **Create**, as per the following illustration:
 
-![Create Universe on GCP](/images/ee/create-univ-multi-zone.png)
+- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:<br><br>
 
-The following illustration shows a newly-created universe in Pending state:
+  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)
 
-![Dashboard with Pending Universe](/images/ee/pending-univ-dashboard.png)
+- Click **Create**.
 
 ## Examine the universe
 
@@ -68,41 +68,51 @@ The **Universes** view allows you to examine various aspects of the universe:
 - **Nodes** provide details on nodes included in the universe and allows you to perform actions on a specific node (connect, stop, remove, display live and slow queries, download logs). You can also use **Nodes** to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe in the instances name, you should see a list of instances.
 - **Metrics** displays graphs representing information on operations, latency, and other parameters for each type of node and server.
 - **Queries** displays details about live and slow queries that you can filter by column and text.
-- **Replication** provides information about replication in the universe.
+- **Replication** provides information about any asynchronous replication in the universe.
 - **Tasks** provides details about the state of tasks running on the universe, as well as the tasks that have run in the past against this universe.
 - **Backups** displays information about scheduled backups, if any, and allows you to create, restore, and delete backups.
 - **Health** displays the detailed performance status of the nodes and components involved in their operation. **Health** also allows you to pause health check alerts.
 
 ## Connect to a database node
 
-Once the universe is ready, the **Overview** tab should appear similar to the following illustration:
+Once the universe is ready, its **Overview** tab should appear similar to the following illustration:
 
-![Multi-zone universe ready](/images/ee/multi-zone-universe-ready.png)
+![Multi-zone universe ready](/images/yp/multi-zone-universe-ready-1.png)
 
 You connect to a database node as follows: 
 
-- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured.
+- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:<br>
 
-- Click **Connect**, as shown in the following illustration:
+  ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
 
-  ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes.png)
 
-- Use the **Access Your Cluster** dialog to connect to the nodes, as shown in the following illustration:
 
-  ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes-connect.png)
+- Determine the node to which you wish to connect and click the corresponding **Action > Connect**.
 
-For example, to connect to the first node called **yb-dev-helloworld1-n1**, copy the first command displayed in the **Access Your Cluster** dialog, and then run it from the Yugabyte Platform server, as follows:
+- Copy the SSH command displayed in the **Access your node** dialog shown in the following illustration:
 
-```sh
-centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4
+  ![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-2.png)
 
-Are you sure you want to continue connecting (yes/no)? yes
-[centos@yb-dev-helloworld1-n1 ~]$
-```
+- Run the preceding command from the Yugabyte Platform server, as follows:
+
+  ```sh
+  centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/109e95b5-bf08-4a8f-a7fb-2d2866865e15/yb-gcp-config-key.pem -ostricthostkeychecking=no -p 54422 yugabyte@10.150.1.56
+  
+  Are you sure you want to continue connecting (yes/no)? yes
+  [centos@yb-dev-helloworld1-n1 ~]$
+  ```
 
 ## Run workloads
 
-Yugabyte Platform includes a number of sample applications. You can run one of the key-value workloads against the YCQL API and the YEDIS API as follows:
+Yugabyte Platform includes a number of sample applications enclosed in Docker containers. 
+
+To access instructions on how to run sample applications, select your universe's **Overview** and then click **Actions > Run Sample Apps** to open the **Run Sample Apps** dialog shown in the following illustration:
+
+![Multi-zone universe sample apps](/images/yp/multi-zone-universe-sample-apps-1.png)
+
+<!-- 
+
+You can run one of the key-value workloads against the YCQL API and the YEDIS API as follows:
 
 - Install Java by executing the following command:
 
@@ -161,17 +171,71 @@ Read: 47419.99 ops/sec (0.67 ms/op), 1053156 total ops | Write: 1303.85 ops/sec 
 Read: 47220.98 ops/sec (0.68 ms/op), 1289285 total ops | Write: 1311.67 ops/sec (1.52 ms/op), 35979 total ops
 ```
 
-If you open the **Metrics** tab of the universe, you should see the metrics graphs, as shown in the following illustration:
+-->
+
+The **Metrics** tab of the universe allows you to see the metrics graphs, where server-side metrics tally with the client-side metrics reported by the load tester.
+
+<!--
 
 ![YCQL Load Metrics](/images/ee/multi-zone-universe-ycql-load-metrics.png)
 
-Note that these server-side metrics tally with the client-side metrics reported by the load tester.
+-->
 
-You can also view metrics at a per-node level, as shown in the following illustration:
+You can also view metrics at a per-node level.
+
+<!--
 
 ![YCQL Load Metrics Per Node](/images/ee/multi-zone-universe-ycql-load-metrics-per-node.png)
 
-You should stop the load tester.
+-->
+
+You can stop the load tester as follows:
+
+- Find the container by executing the following command:
+
+  ```shell
+  user@yugaware-1:~$ sudo docker container ls | grep "yugabytedb/yb-sample-apps"
+  ```
+
+  <br>Expect an output similar to the following:
+
+  ```output
+  <container_id> yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
+  ```
+
+  <br>For example, if the container ID is ac144a49d57d, you would see the following output:
+
+  ```output
+  ac144a49d57d yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
+  ```
+
+- Stop the container by executing the following command:
+
+  ```shell
+  user@yugaware-1:~$ sudo docker container stop <container_id>
+  ```
+
+  <br>Expect the following output:
+
+  ```output
+  <container_id>
+  ```
+  
+  <br>For example, for a container with ID ac144a49d57d, you would need to execute the following command:
+  
+  ```shell
+  user@yugaware-1:~$ sudo docker container stop ac144a49d57d
+  ```
+  
+  <br>You would see the following output:
+  
+  ```output
+  ac144a49d57d
+  ```
+
+
+
+<!--
 
 ### RedisKeyValue workload
 
@@ -203,6 +267,8 @@ If you open the **Metrics** tab of the universe, you should see the metrics grap
 Note that these server-side metrics tally with the client-side metrics reported by the load tester.
 
 You should stop the sample application.
+
+-->
 
 ## Examine data
 

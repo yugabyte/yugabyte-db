@@ -17,17 +17,21 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.RegexMatcher;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -37,6 +41,17 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgSelect extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
+  private static int kMaxClockSkewMs = 500;
+
+  /**
+   * @return flags shared between tablet server and initdb
+   */
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
+    return flagMap;
+  }
 
   @Test
   public void testWhereClause() throws Exception {
@@ -337,10 +352,43 @@ public class TestPgSelect extends BasePgSQLTest {
   @Test
   public void testSetIsolationLevelsWithReadFromFollowersSessionVariable() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      final String CANT_CHANGE_TXN_LEVEL =
-          "ERROR: cannot use this transaction isolation level with yb_read_from_followers enabled";
-      final String CANT_CHANGE_YB_READ_FROM_FOLLOWERS =
-          "ERROR: cannot enable yb_read_from_followers with the current transaction isolation mode";
+      // If follower reads are disabled, we should be allowed to set any staleness.
+      // Enabling follower reads should fail if staleness is less than 2 * max_clock_skew.
+      statement.execute("SET yb_read_from_followers = false");
+      statement.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs - 1));
+      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      statement.execute("SET yb_follower_read_staleness_ms = " + kMaxClockSkewMs / 2);
+      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      statement.execute("SET yb_follower_read_staleness_ms = " + 0);
+      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+
+      statement.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs + 1));
+      statement.execute("SET yb_read_from_followers = true");
+
+      // If follower reads are enabled, we should be allowed to set staleness to any value over
+      // 2 * max_clock_skew, which is 500ms. Any value smaller than that should fail.
+      statement.execute("SET yb_read_from_followers = true");
+      statement.execute("SET yb_follower_read_staleness_ms = " + 2 * kMaxClockSkewMs);
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs - 1),
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = " + kMaxClockSkewMs / 2,
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = 0",
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      statement.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs + 1));
+
+      // Test enabling follower reads with various isolation levels.
+      // Reset session variable.
+      statement.execute("SET yb_read_from_followers = false");
 
       // READ UNCOMMITTED with yb_read_from_followers enabled -> ok.
       statement.execute(
@@ -358,23 +406,25 @@ public class TestPgSelect extends BasePgSQLTest {
       // Reset session variable.
       statement.execute("SET yb_read_from_followers = false");
 
-      // REPEATABLE READ with yb_read_from_followers enabled -> error.
+      // REPEATABLE READ with yb_read_from_followers enabled
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      statement.execute("SET yb_read_from_followers = true");
 
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
-          CANT_CHANGE_YB_READ_FROM_FOLLOWERS);
+      // Reset session variable.
+      statement.execute("SET yb_read_from_followers = false");
 
-      // SERIALIZABLE with yb_read_from_followers enabled -> error.
+      // SERIALIZABLE with yb_read_from_followers enabled
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
-          CANT_CHANGE_YB_READ_FROM_FOLLOWERS);
+      statement.execute("SET yb_read_from_followers = true");
+
+      // Reset session variable.
+      statement.execute("SET yb_read_from_followers = false");
 
       // Reset the isolation level to the lowest possible.
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ UNCOMMITTED");
-
       statement.execute("SET yb_read_from_followers = true");
 
       // yb_read_from_followers enabled with READ UNCOMMITTED -> ok.
@@ -385,15 +435,13 @@ public class TestPgSelect extends BasePgSQLTest {
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
 
-      // yb_read_from_followers enabled with REPEATABLE READ -> error.
-      runInvalidQuery(statement,
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ",
-          CANT_CHANGE_TXN_LEVEL);
+      // yb_read_from_followers enabled with REPEATABLE READ
+      statement.execute(
+          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ");
 
-      // yb_read_from_followers enabled with SERIALIZABLE -> error.
-      runInvalidQuery(statement,
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-          CANT_CHANGE_TXN_LEVEL);
+      // yb_read_from_followers enabled with SERIALIZABL
+      statement.execute(
+          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE");
 
       // Reset the isolation level to the lowest possible.
       statement.execute(
@@ -412,14 +460,12 @@ public class TestPgSelect extends BasePgSQLTest {
 
 
       // yb_read_from_followers enabled with START TRANSACTION ISOLATION LEVEL REPEATABLE READ
-      // -> error.
-      runInvalidQuery(statement, "START TRANSACTION ISOLATION LEVEL REPEATABLE READ",
-          CANT_CHANGE_TXN_LEVEL);
+      statement.execute("START TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      statement.execute("ABORT");
 
       // yb_read_from_followers enabled with START TRANSACTION ISOLATION LEVEL SERIALIZABLE
-      // -> error.
-      runInvalidQuery(statement, "START TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-          CANT_CHANGE_TXN_LEVEL);
+      statement.execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+      statement.execute("ABORT");
 
       // Reset session variable.
       statement.execute("SET yb_read_from_followers = false");
@@ -442,93 +488,224 @@ public class TestPgSelect extends BasePgSQLTest {
       // Reset session variable.
       statement.execute("SET yb_read_from_followers = false");
       // START TRANSACTION ISOLATION LEVEL REPEATABLE READ with yb_read_from_followers enabled
-      // -> error.
       statement.execute("START TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
-          CANT_CHANGE_YB_READ_FROM_FOLLOWERS);
+      statement.execute("SET yb_read_from_followers = true");
       statement.execute("ABORT");
 
       // Reset session variable.
       statement.execute("SET yb_read_from_followers = false");
       // START TRANSACTION ISOLATION LEVEL SERIALIZABLE with yb_read_from_followers enabled
-      // -> error.
       statement.execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
-          CANT_CHANGE_YB_READ_FROM_FOLLOWERS);
+      statement.execute("SET yb_read_from_followers = true");
       statement.execute("ABORT");
     }
   }
 
   @Test
-  public void testCountConsistentPrefix() throws Exception {
+  public void testConsistentPrefixForIndexes() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixcount(k int primary key)");
-      for (int i = 0; i < 100; i++) {
-        statement.execute(String.format("INSERT INTO consistentprefixcount(k) VALUES(%d)", i));
-      }
+      statement.execute("CREATE TABLE consistentprefix(k int primary key, v int)");
+      statement.execute("CREATE INDEX idx on consistentprefix(v)");
+      LOG.info("Start writing");
+      statement.execute(String.format("INSERT INTO consistentprefix(k, v) VALUES(%d, %d)", 1, 1));
+      LOG.info("Done writing");
 
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      final long kFollowerReadStalenessMs = BuildTypeUtil.adjustTimeout(1200);
       statement.execute("SET yb_read_from_followers = true;");
-      assertOneRow(statement, "SELECT count(*) FROM consistentprefixcount", 100L);
+      statement.execute("SET yb_follower_read_staleness_ms = " + kFollowerReadStalenessMs);
+      LOG.info("Using staleness of " + kFollowerReadStalenessMs + " ms.");
+      // Sleep for the updates to be visible during follower reads.
+      Thread.sleep(kFollowerReadStalenessMs);
 
-      long count = getCountForTable("consistent_prefix_read_requests", "consistentprefixcount");
-      assertEquals(count, 3); // 3 tablets, 3 consistent prefix requests.
+      assertOneRow(statement,
+                   "/*+ Set(transaction_read_only on) */ "
+                       + "SELECT * FROM consistentprefix where v = 1",
+                   1, 1);
+      // The read will first read the ybctid from the index table, then use it to do a lookup
+      // on the indexed table.
+      long count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
+      assertEquals(count_reqs, 1);
+      count_reqs = getCountForTable("consistent_prefix_read_requests", "idx");
+      assertEquals(count_reqs, 1);
+
+      long count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+      assertEquals(count_rows, 1);
+      count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "idx");
+      assertEquals(count_rows, 1);
     }
+  }
+
+  public void doSelect(boolean use_ordered_by, boolean get_count, Statement statement,
+                       boolean enable_follower_read, List<Row> rows_list,
+                       long expected_num_tablet_requests, long max_status_calls) throws Exception {
+    String follower_read_setting = (enable_follower_read ? "on" : "off");
+    int row_count = rows_list.size();
+    LOG.info("Sleeping to stabilize GetTransactionstatus metrics");
+    final int kSleepToStabilizeInProcessCallsMs = 500;
+    Thread.sleep(kSleepToStabilizeInProcessCallsMs);
+    LOG.info("Reading rows with follower reads " + follower_read_setting);
+    final String kGetStatusKey =
+        "handler_latency_yb_tserver_TabletServerService_GetTransactionStatus";
+    long old_num_status_calls = getTServerMetric(kGetStatusKey).count;
+    LOG.info("Number of total Status calls before : " + old_num_status_calls);
+    long old_count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
+    long old_count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+    if (get_count) {
+      assertOneRow(statement,
+                   "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                       + "SELECT count(*) FROM consistentprefix",
+                   row_count);
+    } else if (use_ordered_by) {
+      assertRowList(statement,
+                    "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                        + "SELECT * FROM consistentprefix ORDER BY k",
+                    rows_list);
+    } else {
+      assertRowSet(statement,
+                   "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                       + "SELECT * FROM consistentprefix k",
+                   new HashSet(rows_list));
+    }
+    long count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
+    assertEquals(count_reqs - old_count_reqs,
+                 !enable_follower_read ? 0 : expected_num_tablet_requests);
+    long count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+    assertEquals(count_rows - old_count_rows,
+                 !enable_follower_read || row_count == 0
+                     ? 0
+                     : (get_count ? expected_num_tablet_requests : row_count));
+    LOG.info("Sleeping to stabilize GetTransactionstatus metrics");
+    Thread.sleep(kSleepToStabilizeInProcessCallsMs);
+    long num_status_calls = getTServerMetric(kGetStatusKey).count;
+    LOG.info("Number of total Status calls : " + num_status_calls
+                + " . new calls are " + (num_status_calls - old_num_status_calls)
+                + " Expected to be less than " + max_status_calls);
+    assertTrue(num_status_calls - old_num_status_calls <= max_status_calls);
+  }
+
+  public void testConsistentPrefix(int kNumRows, boolean use_ordered_by, boolean get_count)
+      throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE consistentprefix(k int primary key)");
+
+      final int kNumRowsDeleted = 10;
+      final int kNumRowsUnchanged = kNumRows - kNumRowsDeleted;
+      ArrayList<Row> all_rows = new ArrayList<Row>();
+      ArrayList<Row> unchanged_rows = new ArrayList<Row>();
+      LOG.info("Start writing");
+      long startWriteMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRows; i++) {
+        statement.execute(String.format("INSERT INTO consistentprefix(k) VALUES(%d)", i));
+        all_rows.add(new Row(i));
+        if (i >= kNumRowsDeleted) {
+          unchanged_rows.add(new Row(i));
+        }
+      }
+      LOG.info("Done writing");
+      long doneWriteMs = System.currentTimeMillis();
+
+      Set<Row> expected_rows_set = new HashSet<Row>(all_rows);
+      Set<Row> expected_rows_unchanged_set = new HashSet<Row>(unchanged_rows);
+      final int kNumTablets = 3;
+      final int kNumRowsPerTablet = (int)Math.ceil(kNumRows / (1.0 * kNumTablets));
+      final int kNumTabletRequests = kNumTablets * (int)Math.ceil(kNumRowsPerTablet / 1024.0);
+      final int kOpDurationMs = 2500;
+
+      Thread.sleep(kOpDurationMs);
+
+      statement.execute("SET yb_read_from_followers = true;");
+
+      // Set staleness so that the read happens before the initial writes have started.
+      long staleness_ms = System.currentTimeMillis() + kOpDurationMs - startWriteMs;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      long max_status_calls = 0;  // No txns in progress.
+      doSelect(use_ordered_by, get_count, statement, true, Collections.emptyList(),
+               kNumTablets, max_status_calls);
+
+
+      // Set staleness so that the read happens after the initial writes are done.
+      staleness_ms = System.currentTimeMillis() - doneWriteMs;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      max_status_calls = 0;  // No txns in progress.
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests, 0);
+
+      Connection write_connection = getConnectionBuilder().connect();
+      ArrayList<Statement> write_txns = new ArrayList<Statement>();
+      LOG.info("Start delete");
+      long startDeleteMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRowsDeleted; i++) {
+        write_txns.add(write_connection.createStatement());
+        Statement write_txn = write_txns.get(i);
+        write_txn.execute("START TRANSACTION");
+        write_txn.execute("DELETE FROM consistentprefix where k = " + i);
+      }
+      long writtenDeleteMs = System.currentTimeMillis();
+      Thread.sleep(kOpDurationMs);
+
+      max_status_calls = kNumTabletRequests * kNumRowsDeleted;
+      doSelect(use_ordered_by, get_count, statement, false, all_rows, 0, max_status_calls);
+
+      // Set staleness so the read happens after the initial writes are done. Before deletes start.
+      staleness_ms = System.currentTimeMillis() - (doneWriteMs + startDeleteMs) / 2;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      // Shouldn't call GetTransactionStatus for each pending Transaction(s) during follower reads.
+      // But we may do up to 1 call per tablet to calculate MinRunningHybridTime.
+      max_status_calls = kNumTabletRequests;
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests,
+               max_status_calls);
+
+      long startCommitMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRowsDeleted; i++) {
+        Statement write_txn = write_txns.get(i);
+        write_txn.execute("COMMIT");
+      }
+      long committedDeleteMs = System.currentTimeMillis();
+      LOG.info("Done delete");
+      Thread.sleep(kOpDurationMs);
+
+      // If UpdateTransaction has been processed, then it will be marked committed and there wil be
+      // no GetTransactionStatus calls. If not, there may be a call made for each row. +1 for
+      // computing MinHybridTime.
+      max_status_calls = kNumTabletRequests + kNumRowsDeleted;
+      doSelect(use_ordered_by, get_count, statement, false, unchanged_rows, 0, max_status_calls);
+
+      // Set staleness so that the read happens before deletes are committed.
+      staleness_ms = System.currentTimeMillis() - (writtenDeleteMs + startCommitMs) / 2;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      // Transactions should have already been known to have committed.
+      // Max 1 call allowed per tablet for computing MinRunningHybridTime
+      max_status_calls = kNumTabletRequests;
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests,
+               max_status_calls);
+
+      // Set staleness so that the read happens after deletes are committed.
+      staleness_ms = System.currentTimeMillis() - (committedDeleteMs + kOpDurationMs / 2);
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      // Max 1 call allowed per tablet for computing MinRunningHybridTime
+      max_status_calls = kNumTabletRequests;
+      doSelect(use_ordered_by, get_count, statement, true, unchanged_rows, kNumTabletRequests,
+               max_status_calls);
+    }
+  }
+
+  @Test
+  public void testCountConsistentPrefix() throws Exception {
+    testConsistentPrefix(100, /* use_ordered_by */ false, /* get_count */ true);
   }
 
   @Test
   public void testOrderedSelectConsistentPrefix() throws Exception {
-    List<Row> expected_rows = new ArrayList<>();
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixorderedselect(k int primary key)");
-      for (int i = 0; i < 5000; i++) {
-        statement.execute(String.format(
-            "INSERT INTO consistentprefixorderedselect(k) VALUES(%d)", i));
-        expected_rows.add(new Row(i));
-      }
-
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      statement.execute("SET yb_read_from_followers = true;");
-      assertRowList(statement,
-          "SELECT * FROM consistentprefixorderedselect ORDER BY k", expected_rows);
-
-      long count = getCountForTable("consistent_prefix_read_requests",
-          "consistentprefixorderedselect");
-      // Max number of records per request is 1024, so we will need to issue two requests per
-      // tablet.
-      assertEquals(6, count);
-
-      count = getCountForTable("pgsql_consistent_prefix_read_rows",
-          "consistentprefixorderedselect");
-      assertEquals(5000, count);
-    }
+    testConsistentPrefix(5000, /* use_ordered_by */ true, /* get_count */ false);
   }
 
   @Test
   public void testSelectConsistentPrefix() throws Exception {
-    List<Row> expected_rows = new ArrayList<>();
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixselect(k int primary key)");
-      for (int i = 0; i < 7000; i++) {
-        statement.execute(String.format("INSERT INTO consistentprefixselect(k) VALUES(%d)", i));
-        expected_rows.add(new Row(i));
-      }
-
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      statement.execute("SET yb_read_from_followers = true;");
-      statement.executeQuery("SELECT * from consistentprefixselect");
-
-      long count = getCountForTable("consistent_prefix_read_requests", "consistentprefixselect");
-      // Max number of records per request is 1024, so we will need to issue three requests per
-      // tablet.
-      assertEquals(9, count);
-
-      count = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefixselect");
-      assertEquals(7000, count);
-    }
+    testConsistentPrefix(7000, /* use_ordered_by */ false, /* get_count */ false);
   }
 
   @Test

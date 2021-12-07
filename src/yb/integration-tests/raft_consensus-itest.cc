@@ -35,26 +35,30 @@
 #include <unordered_set>
 
 #include <boost/optional.hpp>
-
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/value_type.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
@@ -66,16 +70,21 @@
 #include "yb/integration-tests/ts_itest-base.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 
-#include "yb/server/server_base.pb.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/server_base.pb.h"
 
 #include "yb/util/oid_generator.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -119,7 +128,6 @@ using docdb::KeyValuePairPB;
 using docdb::SubDocKey;
 using docdb::DocKey;
 using docdb::PrimitiveValue;
-using docdb::ValueType;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;
@@ -1734,7 +1742,7 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
     resp.Clear();
     rpc.Reset();
     rpc.set_timeout(MonoDelta::FromSeconds(10));
-    ignore_result(ts->tserver_proxy->Write(req, &resp, &rpc));
+    WARN_NOT_OK(ts->tserver_proxy->Write(req, &resp, &rpc), "Write failed");
     VLOG(1) << "Response from server " << replica_idx << ": "
             << resp.ShortDebugString();
   }
@@ -3350,7 +3358,6 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
 // Checking that not yet committed split operation is correctly aborted after leader change and
 // then new split op id is successfully set on all replicas after retry.
 TEST_F(RaftConsensusITest, SplitOpId) {
-  ObjectIdGenerator oid_generator;
   RpcController rpc;
   const auto kTimeout = 60s * kTimeMultiplier;
 
@@ -3390,8 +3397,8 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   // Add SPLIT_OP to the leader.
   tserver::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id_);
-  req.set_new_tablet1_id(oid_generator.Next());
-  req.set_new_tablet2_id(oid_generator.Next());
+  req.set_new_tablet1_id(GenerateObjectId());
+  req.set_new_tablet2_id(GenerateObjectId());
   {
     const auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
     const auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();

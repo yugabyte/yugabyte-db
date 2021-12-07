@@ -11,11 +11,15 @@
 // under the License.
 
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/test_macros.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using std::vector;

@@ -12,9 +12,9 @@
 // under the License.
 //
 //
-
 #include "yb/common/transaction.h"
 
+#include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -24,8 +24,11 @@ DEFINE_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
 
 namespace yb {
 
-const std::string kTransactionsTableName = "transactions";
+YB_STRONGLY_TYPED_UUID_IMPL(TransactionId);
+
+const std::string kGlobalTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
+const std::string kTransactionTablePrefix = "transactions_";
 
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
     : TransactionStatusResult(status_, status_time_, AbortedSubTransactionSet()) {}
@@ -49,6 +52,13 @@ Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadat
     result.priority = source.priority();
     result.start_time = HybridTime(source.start_hybrid_time());
   }
+
+  if (source.has_locality()) {
+    result.locality = source.locality();
+  } else {
+    result.locality = TransactionLocality::GLOBAL;
+  }
+
   return result;
 }
 
@@ -70,6 +80,7 @@ void TransactionMetadata::ForceToPB(TransactionMetadataPB* dest) const {
   dest->set_status_tablet(status_tablet);
   dest->set_priority(priority);
   dest->set_start_hybrid_time(start_time.ToUint64());
+  dest->set_locality(locality);
 }
 
 bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
@@ -77,7 +88,8 @@ bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) 
          lhs.isolation == rhs.isolation &&
          lhs.status_tablet == rhs.status_tablet &&
          lhs.priority == rhs.priority &&
-         lhs.start_time == rhs.start_time;
+         lhs.start_time == rhs.start_time &&
+         lhs.locality == rhs.locality;
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
@@ -116,6 +128,22 @@ MonoDelta TransactionRpcTimeout() {
 CoarseTimePoint TransactionRpcDeadline() {
   return CoarseMonoClock::Now() + TransactionRpcTimeout();
 }
+
+TransactionOperationContext::TransactionOperationContext()
+    : transaction_id(TransactionId::Nil()), txn_status_manager(nullptr) {}
+
+TransactionOperationContext::TransactionOperationContext(
+    const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_)
+    : transaction_id(transaction_id_),
+      txn_status_manager(DCHECK_NOTNULL(txn_status_manager_)) {}
+
+TransactionOperationContext::TransactionOperationContext(
+    const TransactionId& transaction_id_,
+    SubTransactionMetadata&& subtransaction_,
+    TransactionStatusManager* txn_status_manager_)
+    : transaction_id(transaction_id_),
+      subtransaction(std::move(subtransaction_)),
+      txn_status_manager(DCHECK_NOTNULL(txn_status_manager_)) {}
 
 bool TransactionOperationContext::transactional() const {
   return !transaction_id.IsNil();

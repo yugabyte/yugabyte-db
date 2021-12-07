@@ -50,7 +50,6 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
-#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_trigger.h"
@@ -60,6 +59,7 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -163,7 +163,7 @@ static const Oid object_classes[] = {
 	TSConfigRelationId,			/* OCLASS_TSCONFIG */
 	AuthIdRelationId,			/* OCLASS_ROLE */
 	DatabaseRelationId,			/* OCLASS_DATABASE */
-	TableGroupRelationId,		/* OCLASS_TBLGROUP */
+	YbTablegroupRelationId,		/* OCLASS_TBLGROUP */
 	TableSpaceRelationId,		/* OCLASS_TBLSPACE */
 	ForeignDataWrapperRelationId,	/* OCLASS_FDW */
 	ForeignServerRelationId,	/* OCLASS_FOREIGN_SERVER */
@@ -2530,7 +2530,7 @@ getObjectClass(const ObjectAddress *object)
 		case DatabaseRelationId:
 			return OCLASS_DATABASE;
 
-		case TableGroupRelationId:
+		case YbTablegroupRelationId:
 			return OCLASS_TBLGROUP;
 
 		case TableSpaceRelationId:

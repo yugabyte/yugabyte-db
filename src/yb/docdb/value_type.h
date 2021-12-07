@@ -19,8 +19,6 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
-#include <glog/logging.h>
-
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/slice.h"
@@ -136,6 +134,7 @@ namespace docdb {
     /* TTL value in milliseconds, optionally present at the start of a value. */ \
     ((kTtl, 't'))  /* ASCII code 116 */ \
     ((kUserTimestamp, 'u'))  /* ASCII code 117 */ \
+    ((kGinNull, 'v')) /* ASCII code 118 */ \
     ((kWriteId, 'w')) /* ASCII code 119 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
     ((kTableId, 'y')) /* ASCII code 121 */ \

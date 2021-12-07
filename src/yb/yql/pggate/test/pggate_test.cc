@@ -15,12 +15,31 @@
 
 #include "yb/yql/pggate/test/pggate_test.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+
+#include <boost/optional.hpp>
 #include <gflags/gflags.h>
 
-#include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pg_memctx.h"
-#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
 

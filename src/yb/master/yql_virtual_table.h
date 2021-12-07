@@ -14,27 +14,26 @@
 #ifndef YB_MASTER_YQL_VIRTUAL_TABLE_H
 #define YB_MASTER_YQL_VIRTUAL_TABLE_H
 
-#include "yb/common/entity_ids.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_storage_interface.h"
-#include "yb/master/master.h"
+
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
-#include "yb/util/metrics.h"
 
 namespace yb {
 namespace master {
 
 // A YQL virtual table which is based on in memory data.
-class YQLVirtualTable : public common::YQLStorageIf {
+class YQLVirtualTable : public YQLStorageIf {
  public:
   explicit YQLVirtualTable(const TableName& table_name,
                            const NamespaceName &namespace_name,
                            const Master* const master,
                            const Schema& schema);
+  ~YQLVirtualTable();
 
   // Access methods.
-  const Schema& schema() const { return schema_; }
+  const Schema& schema() const { return *schema_; }
 
   const TableName& table_name() const { return table_name_; }
 
@@ -50,11 +49,11 @@ class YQLVirtualTable : public common::YQLStorageIf {
   CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
+                             const TransactionOperationContext& txn_op_context,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
-                             const common::QLScanSpec& spec,
-                             std::unique_ptr<common::YQLRowwiseIteratorIf>* iter) const override;
+                             const QLScanSpec& spec,
+                             std::unique_ptr<YQLRowwiseIteratorIf>* iter) const override;
 
   CHECKED_STATUS BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -62,8 +61,8 @@ class YQLVirtualTable : public common::YQLStorageIf {
       const Schema& schema,
       bool include_static_columns,
       const Schema& static_projection,
-      std::unique_ptr<common::QLScanSpec>* spec,
-      std::unique_ptr<common::QLScanSpec>* static_row_spec) const override;
+      std::unique_ptr<QLScanSpec>* spec,
+      std::unique_ptr<QLScanSpec>* static_row_spec) const override;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
@@ -71,15 +70,15 @@ class YQLVirtualTable : public common::YQLStorageIf {
 
   CHECKED_STATUS CreateIterator(const Schema& projection,
                                 const Schema& schema,
-                                const TransactionOperationContextOpt& txn_op_context,
+                                const TransactionOperationContext& txn_op_context,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
-                                common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                                YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  CHECKED_STATUS InitIterator(common::YQLRowwiseIteratorIf* iter,
+  CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* iter,
                               const PgsqlReadRequestPB& request,
                               const Schema& schema,
                               const QLValuePB& ybctid) const override {
@@ -90,11 +89,11 @@ class YQLVirtualTable : public common::YQLStorageIf {
   CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
+                             const TransactionOperationContext& txn_op_context,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const docdb::DocKey& start_doc_key,
-                             common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                             YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -102,11 +101,11 @@ class YQLVirtualTable : public common::YQLStorageIf {
   CHECKED_STATUS GetIterator(uint64 stmt_id,
                              const Schema& projection,
                              const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
+                             const TransactionOperationContext& txn_op_context,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const QLValuePB& ybctid,
-                             common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                             YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -116,23 +115,23 @@ class YQLVirtualTable : public common::YQLStorageIf {
   // with the provided value.
   template<class T>
   CHECKED_STATUS SetColumnValue(const std::string& col_name, const T& value, QLRow* row) const {
-    int column_index = schema_.find_column(col_name);
-    if (column_index == Schema::kColumnNotFound) {
-      return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
-    }
-    const DataType data_type = schema_.column(column_index).type_info()->type();
-    row->SetColumn(column_index, util::GetValue(value, data_type));
+    auto p = VERIFY_RESULT(ColumnIndexAndType(col_name));
+    row->SetColumn(p.first, util::GetValue(value, p.second));
     return Status::OK();
   }
+
+  Result<std::pair<int, DataType>> ColumnIndexAndType(const std::string& col_name) const;
 
   // Get all live tserver descriptors sorted by their UUIDs. For cases like system.local and
   // system.peers tables to return the token map of each tserver node so that each maps to a
   // consistent token.
   void GetSortedLiveDescriptors(std::vector<std::shared_ptr<TSDescriptor>>* descs) const;
 
+  CatalogManagerIf& catalog_manager() const;
+
   const Master* const master_;
   TableName table_name_;
-  Schema schema_;
+  std::unique_ptr<Schema> schema_;
   scoped_refptr<Histogram> histogram_;
 };
 

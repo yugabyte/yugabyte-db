@@ -40,12 +40,11 @@ import org.yb.client.YBClient;
 
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
-  Universe defaultUniverse;
-  YBClient mockClient;
-  String nodePrefix = "demo-universe";
-  String ybSoftwareVersionOld = "old-version";
-  String ybSoftwareVersionNew = "new-version";
-  Map<String, String> config = new HashMap<>();
+  protected Universe defaultUniverse;
+  protected static final String NODE_PREFIX = "demo-universe";
+  protected static final String YB_SOFTWARE_VERSION_OLD = "old-version";
+  protected static final String YB_SOFTWARE_VERSION_NEW = "new-version";
+  protected Map<String, String> config = new HashMap<>();
 
   protected void setupUniverse(
       boolean setMasters, UserIntent userIntent, PlacementInfo placementInfo) {
@@ -53,14 +52,14 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-    userIntent.ybSoftwareVersion = ybSoftwareVersionOld;
+    userIntent.ybSoftwareVersion = YB_SOFTWARE_VERSION_OLD;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     config.put("KUBECONFIG", "test");
     defaultProvider.setConfig(config);
     defaultProvider.save();
     Universe.saveDetails(
         defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters, false, placementInfo));
+        ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters, false, placementInfo));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
@@ -74,7 +73,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       responsePod.message =
           "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
       when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
-      mockClient = mock(YBClient.class);
+      YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
@@ -98,32 +97,32 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
-            + nodePrefix
+            + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
             + " \"metadata\": {\"namespace\": \""
-            + nodePrefix
+            + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-master-1\"},"
             + " \"metadata\": {\"namespace\": \""
-            + nodePrefix
+            + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
             + " \"metadata\": {\"namespace\": \""
-            + nodePrefix
+            + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.5\"}, \"spec\": {\"hostname\": \"yb-master-2\"},"
             + " \"metadata\": {\"namespace\": \""
-            + nodePrefix
+            + NODE_PREFIX
             + "\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
             + " \"metadata\": {\"namespace\": \""
-            + nodePrefix
+            + NODE_PREFIX
             + "\"}}]}";
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
   }
@@ -143,9 +142,9 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     PlacementInfoUtil.addPlacementZone(az3.uuid, placementInfo, 1, 1, false);
     setupUniverse(setMasters, userIntent, placementInfo);
 
-    String nodePrefix1 = String.format("%s-%s", nodePrefix, az1.code);
-    String nodePrefix2 = String.format("%s-%s", nodePrefix, az2.code);
-    String nodePrefix3 = String.format("%s-%s", nodePrefix, az3.code);
+    String nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
+    String nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);
+    String nodePrefix3 = String.format("%s-%s", NODE_PREFIX, az3.code);
 
     String podInfosMessage =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
@@ -189,9 +188,9 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       UpgradeTaskParams taskParams, TaskType taskType, Commissioner commissioner) {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    taskParams.nodePrefix = nodePrefix;
+    taskParams.nodePrefix = NODE_PREFIX;
     taskParams.expectedUniverseVersion = 2;
-    // Need not sleep for default 4min in tests.
+    // Need not sleep for default 3min in tests.
     taskParams.sleepAfterMasterRestartMillis = 5;
     taskParams.sleepAfterTServerRestartMillis = 5;
 

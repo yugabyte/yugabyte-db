@@ -19,11 +19,10 @@
 #include "yb/gutil/macros.h"
 #include "yb/yql/redis/redisserver/redis_server_options.h"
 #include "yb/server/server_base.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/util/status.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
-
 namespace redisserver {
 
 class RedisServer : public server::RpcAndWebServerBase {
@@ -31,21 +30,21 @@ class RedisServer : public server::RpcAndWebServerBase {
   static const uint16_t kDefaultPort = 6379;
   static const uint16_t kDefaultWebPort = 11000;
 
-  explicit RedisServer(const RedisServerOptions& opts, tserver::TabletServer* tserver);
+  explicit RedisServer(const RedisServerOptions& opts, tserver::TabletServerIf* tserver);
 
   CHECKED_STATUS Start();
 
   using server::RpcAndWebServerBase::Shutdown;
 
-  tserver::TabletServer* tserver() const { return tserver_; }
+  tserver::TabletServerIf* tserver() const { return tserver_; }
 
-  const MemTrackerPtr& mem_tracker() const { return mem_tracker_; }
+  const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
 
   const RedisServerOptions& opts() const { return opts_; }
 
  private:
   RedisServerOptions opts_;
-  tserver::TabletServer* const tserver_;
+  tserver::TabletServerIf* const tserver_;
 
   DISALLOW_COPY_AND_ASSIGN(RedisServer);
 };

@@ -2645,7 +2645,7 @@ CopyFrom(CopyState cstate)
 		 */
 		int batch_size = 0;
 
-		if (!IsYBRelation(cstate->rel))
+		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 			 	 errmsg("Batched COPY is not supported on temporary tables. "
@@ -2754,7 +2754,7 @@ CopyFrom(CopyState cstate)
 		 */
 		for (int i = 0; cstate->batch_size == 0 || i < cstate->batch_size; i++)
 		{
-			if (IsYBRelation(cstate->rel))
+			if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 			TupleTableSlot *slot;
@@ -2763,7 +2763,7 @@ CopyFrom(CopyState cstate)
 
 			CHECK_FOR_INTERRUPTS();
 
-			if (!IsYBRelation(cstate->rel) && nBufferedTuples == 0)
+			if (!IsYBRelation(resultRelInfo->ri_RelationDesc) && nBufferedTuples == 0)
 			{
 				/*
 				 * Reset the per-tuple exprcontext. We can only do this if the
@@ -2774,7 +2774,7 @@ CopyFrom(CopyState cstate)
 			}
 
 			/* Switch into its memory context */
-			if (!IsYBRelation(cstate->rel))
+			if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 			has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls, &loaded_oid);
@@ -2794,7 +2794,7 @@ CopyFrom(CopyState cstate)
 			tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
 			/* Triggers and stuff need to be invoked in query context. */
-			if (!IsYBRelation(cstate->rel))
+			if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
 				MemoryContextSwitchTo(oldcontext);
 
 			/* Place tuple in tuple slot --- but slot shouldn't free it */
@@ -2888,31 +2888,31 @@ CopyFrom(CopyState cstate)
 				 * We might need to convert from the parent rowtype to the
 				 * partition rowtype.
 				 */
-           map = proute->parent_child_tupconv_maps[leaf_part_index];
-           if (map != NULL)
-           {
-               TupleTableSlot *new_slot;
-               MemoryContext oldcontext;
+				map = proute->parent_child_tupconv_maps[leaf_part_index];
+				if (map != NULL)
+				{
+					TupleTableSlot *new_slot;
+					MemoryContext oldcontext;
 
-               Assert(proute->partition_tuple_slots != NULL &&
-                      proute->partition_tuple_slots[leaf_part_index] != NULL);
-               new_slot = proute->partition_tuple_slots[leaf_part_index];
-               slot = execute_attr_map_slot(map->attrMap, slot, new_slot);
+					Assert(proute->partition_tuple_slots != NULL &&
+					proute->partition_tuple_slots[leaf_part_index] != NULL);
+					new_slot = proute->partition_tuple_slots[leaf_part_index];
+					slot = execute_attr_map_slot(map->attrMap, slot, new_slot);
 
-               /*
-                * Get the tuple in the per-tuple context, so that it will be
-                * freed after each batch insert.
-                */
-               oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-               tuple = ExecCopySlotTuple(slot);
-               MemoryContextSwitchTo(oldcontext);
-           }
+					/*
+					 * Get the tuple in the per-tuple context, so that it will be
+					 * freed after each batch insert.
+					*/
+					oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+					tuple = ExecCopySlotTuple(slot);
+					MemoryContextSwitchTo(oldcontext);
+				}
 				/*
 				 * Tuple memory will be allocated to per row memory context
 				 * which will be cleaned up after every row gets processed.
 				 * Thus there is no need to clean the tuple memory.
 				 */
-				if (IsYBRelation(cstate->rel))
+				if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 					slot->tts_shouldFree = false;
 
 				tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
@@ -2996,11 +2996,11 @@ CopyFrom(CopyState cstate)
 						{
 							if (useNonTxnInsert)
 							{
-								YBCExecuteNonTxnInsert(cstate->rel, tupDesc, tuple);
+								YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc, tupDesc, tuple);
 							}
 							else
 							{
-								YBCExecuteInsert(cstate->rel, tupDesc, tuple);
+								YBCExecuteInsert(resultRelInfo->ri_RelationDesc, tupDesc, tuple);
 							}
 						}
 						else if (resultRelInfo->ri_FdwRoutine != NULL)

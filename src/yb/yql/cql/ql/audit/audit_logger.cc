@@ -16,16 +16,20 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional_io.hpp>
-#include <boost/uuid/uuid.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/uuid/random_generator.hpp>
 
 #include "yb/rpc/connection.h"
+
 #include "yb/util/date_time.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/string_util.h"
+
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
@@ -35,11 +39,8 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/string_util.h"
-#include "yb/util/type_traits.h"
 
 DEFINE_bool(ycql_enable_audit_log,
             false,
@@ -156,10 +157,12 @@ YB_DEFINE_ENUM(Category, (QUERY)(DML)(DDL)(DCL)(AUTH)(PREPARE)(ERROR)(OTHER))
     static const Type type_name; \
     /**/
 
+#define YCQL_FORWARD_MACRO(r, data, tuple) data tuple
+
 // Audit type with category, an enum-like class.
 class Type {
  public:
-  BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, DECLARE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
+  BOOST_PP_SEQ_FOR_EACH(YCQL_FORWARD_MACRO, DECLARE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
 
   const std::string name_;
   const Category    category_;
@@ -174,7 +177,7 @@ class Type {
     const Type Type::type_name = Type(BOOST_PP_STRINGIZE(type_name), Category::category_name); \
     /**/
 
-BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, DEFINE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
+BOOST_PP_SEQ_FOR_EACH(YCQL_FORWARD_MACRO, DEFINE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
 
 struct LogEntry {
   // Username of the currently active user, special case is "anonymous" user. None if not logged in.
@@ -296,20 +299,20 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
       const auto& cast_node = static_cast<const PTDropStmt&>(tnode);
       // We only expect a handful of types here, same as Executor::ExecPTNode(const PTDropStmt*)
       switch (cast_node.drop_type()) {
-        case OBJECT_SCHEMA:
+        case ObjectType::SCHEMA:
           *keyspace = cast_node.name()->last_name().data();
           return &Type::DROP_KEYSPACE;
-        case OBJECT_INDEX:
+        case ObjectType::INDEX:
           *keyspace = cast_node.yb_table_name().namespace_name();
           *scope    = cast_node.yb_table_name().table_name();
           return &Type::DROP_INDEX;
-        case OBJECT_ROLE:
+        case ObjectType::ROLE:
           return &Type::DROP_ROLE;
-        case OBJECT_TABLE:
+        case ObjectType::TABLE:
           *keyspace = cast_node.yb_table_name().namespace_name();
           *scope    = cast_node.yb_table_name().table_name();
           return &Type::DROP_TABLE;
-        case OBJECT_TYPE:
+        case ObjectType::TYPE:
           *keyspace = cast_node.name()->first_name().data();
           *scope    = cast_node.name()->last_name().data();
           return &Type::DROP_TYPE;
@@ -376,23 +379,23 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
           break;
       }
       switch (cast_node.statement_type()) {
-        case GrantRevokeStatementType::GRANT:
+        case client::GrantRevokeStatementType::GRANT:
           return &Type::GRANT;
-        case GrantRevokeStatementType::REVOKE:
+        case client::GrantRevokeStatementType::REVOKE:
           return &Type::REVOKE;
       }
-      FATAL_INVALID_ENUM_VALUE(GrantRevokeStatementType, cast_node.statement_type());
+      FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
     }
     case TreeNodeOpcode::kPTGrantRevokeRole: {
       const auto& cast_node = static_cast<const PTGrantRevokeRole&>(tnode);
       // Scope is not used.
       switch (cast_node.statement_type()) {
-        case GrantRevokeStatementType::GRANT:
+        case client::GrantRevokeStatementType::GRANT:
           return &Type::GRANT;
-        case GrantRevokeStatementType::REVOKE:
+        case client::GrantRevokeStatementType::REVOKE:
           return &Type::REVOKE;
       }
-      FATAL_INVALID_ENUM_VALUE(GrantRevokeStatementType, cast_node.statement_type());
+      FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
     }
 
     case TreeNodeOpcode::kPTListNode: {

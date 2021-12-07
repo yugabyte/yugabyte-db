@@ -66,7 +66,9 @@
     package:
       name: ntp
       state: absent
+  when: should_setup_chrony and not air_gap
 
+- block:
   - name: Install and Configure chrony
     include_role:
       name: ansible-chrony
@@ -82,7 +84,7 @@
     become: yes
     become_method: sudo
     shell: chronyc makestep
-  when: should_setup_chrony and not air_gap
+  when: should_setup_chrony
 
 - name: Provision | Set swappiness off
   sysctl:
@@ -132,6 +134,8 @@
       - cron_result is failed
       - cloud_type != "onprem"
   when: not systemd_option
+
+- include_tasks: "setup-cgroup.yml"
 
 - block:
   # Give yugabyte user sudo access to start/stop/restart master and tserver

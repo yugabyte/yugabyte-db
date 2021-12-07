@@ -82,11 +82,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
+
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -96,6 +100,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.libs.Json;
@@ -240,17 +245,19 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private List<String> getCertificatePaths(
-      AnsibleConfigureServers.Params configureParams, String yb_home_dir) {
+      UserIntent userIntent, AnsibleConfigureServers.Params configureParams, String ybHomeDir) {
     return getCertificatePaths(
+        userIntent,
         configureParams,
         configureParams.enableNodeToNodeEncrypt
             || (configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt),
         !configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt,
-        yb_home_dir);
+        ybHomeDir);
   }
 
   private List<String> getCertificatePaths(
+      UserIntent userIntent,
       AnsibleConfigureServers.Params configureParams,
       boolean isRootCARequired,
       boolean isClientRootCARequired,
@@ -380,6 +387,17 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add(certsLocation);
       }
     }
+    NodeManager.SkipCertValidationType skipType =
+        NodeManager.getSkipCertValidationType(
+            runtimeConfigFactory.forUniverse(
+                Universe.getOrBadRequest(configureParams.universeUUID)),
+            userIntent,
+            configureParams);
+
+    if (skipType != NodeManager.SkipCertValidationType.NONE) {
+      expectedCommand.add("--skip_cert_validation");
+      expectedCommand.add(skipType.name());
+    }
 
     return expectedCommand;
   }
@@ -440,9 +458,112 @@ public class NodeManagerTest extends FakeDBApplication {
     createTempFile("ca.crt", "test-cert");
   }
 
+  private Map<String, String> getExtraGflags(
+      AnsibleConfigureServers.Params configureParams,
+      NodeTaskParams params,
+      UserIntent userIntent,
+      boolean useHostname) {
+    Map<String, String> gflags = new HashMap<>();
+    gflags.put("undefok", "enable_ysql");
+    if (configureParams.isMaster) {
+      gflags.put("cluster_uuid", String.valueOf(configureParams.universeUUID));
+      gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
+    }
+    gflags.put("placement_uuid", String.valueOf(params.placementUuid));
+    gflags.put("metric_node_name", params.nodeName);
+
+    String pgsqlProxyBindAddress = configureParams.nodeName;
+    String cqlProxyBindAddress = configureParams.nodeName;
+    if (useHostname) {
+      pgsqlProxyBindAddress = "0.0.0.0";
+      cqlProxyBindAddress = "0.0.0.0";
+    }
+
+    if (configureParams.enableYSQL) {
+      gflags.put("enable_ysql", "true");
+      gflags.put(
+          "pgsql_proxy_bind_address",
+          String.format(
+              "%s:%s",
+              pgsqlProxyBindAddress,
+              Universe.getOrBadRequest(configureParams.universeUUID)
+                  .getNode(configureParams.nodeName)
+                  .ysqlServerRpcPort));
+      if (configureParams.enableYSQLAuth) {
+        gflags.put("ysql_enable_auth", "true");
+        gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
+      } else {
+        gflags.put("ysql_enable_auth", "false");
+      }
+    } else {
+      gflags.put("enable_ysql", "false");
+    }
+    if (configureParams.enableYCQL) {
+      gflags.put("start_cql_proxy", "true");
+      gflags.put(
+          "cql_proxy_bind_address",
+          String.format(
+              "%s:%s",
+              cqlProxyBindAddress,
+              Universe.getOrBadRequest(configureParams.universeUUID)
+                  .getNode(configureParams.nodeName)
+                  .yqlServerRpcPort));
+      if (configureParams.enableYCQLAuth) {
+        gflags.put("use_cassandra_authentication", "true");
+      } else {
+        gflags.put("use_cassandra_authentication", "false");
+      }
+    } else {
+      gflags.put("start_cql_proxy", "false");
+    }
+    if (configureParams.callhomeLevel != null) {
+      gflags.put(
+          "callhome_collection_level", configureParams.callhomeLevel.toString().toLowerCase());
+      if (configureParams.callhomeLevel.toString() == "NONE") {
+        gflags.put("callhome_enabled", "false");
+      }
+    }
+    if (configureParams.currentClusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+        && configureParams.setTxnTableWaitCountFlag) {
+      gflags.put("txn_table_wait_min_ts_count", Integer.toString(userIntent.numNodes));
+    }
+
+    if ((configureParams.enableNodeToNodeEncrypt || configureParams.enableClientToNodeEncrypt)) {
+      if (configureParams.enableNodeToNodeEncrypt) {
+        gflags.put("use_node_to_node_encryption", "true");
+      }
+      if (configureParams.enableClientToNodeEncrypt) {
+        gflags.put("use_client_to_server_encryption", "true");
+      }
+      gflags.put("allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
+      String yb_home_dir = configureParams.getProvider().getYbHome();
+
+      gflags.put("cert_node_filename", params.nodeName);
+
+      if (configureParams.enableNodeToNodeEncrypt
+          || (configureParams.rootAndClientRootCASame
+              && configureParams.enableClientToNodeEncrypt)) {
+        gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+      }
+      if (!configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt) {
+        gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+      }
+    }
+    return gflags;
+  }
+
   private List<String> nodeCommand(
       NodeManager.NodeCommandType type, NodeTaskParams params, TestData testData) {
     return nodeCommand(type, params, testData, new UserIntent());
+  }
+
+  void addAdditionalInstanceTags(NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    if (nodeTaskParam.nodeUuid != null) {
+      tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+    }
+    if (nodeTaskParam.universeUUID != null) {
+      tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
+    }
   }
 
   private List<String> nodeCommand(
@@ -492,6 +613,13 @@ public class NodeManagerTest extends FakeDBApplication {
           if (createParams.assignPublicIP) {
             expectedCommand.add("--assign_public_ip");
           }
+          Map<String, String> instanceTags =
+              (createParams.clusters.isEmpty() || createParams.clusters.get(0) == null)
+                  ? new TreeMap<>()
+                  : new TreeMap<>(createParams.clusters.get(0).userIntent.instanceTags);
+          addAdditionalInstanceTags(createParams, instanceTags);
+          expectedCommand.add("--instance_tags");
+          expectedCommand.add(Json.stringify(Json.toJson(instanceTags)));
         }
 
         if (cloud.equals(Common.CloudType.aws)) {
@@ -502,13 +630,6 @@ public class NodeManagerTest extends FakeDBApplication {
           if (createParams.ipArnString != null) {
             expectedCommand.add("--iam_profile_arn");
             expectedCommand.add(createParams.ipArnString);
-          }
-          if (!createParams.clusters.isEmpty()
-              && createParams.clusters.get(0) != null
-              && !createParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
-            expectedCommand.add("--instance_tags");
-            expectedCommand.add(
-                Json.stringify(Json.toJson(createParams.clusters.get(0).userIntent.instanceTags)));
           }
         }
         break;
@@ -560,6 +681,8 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("/yb/release.tar.gz");
         }
 
+        boolean useHostname = !NodeManager.isIpAddress(configureParams.nodeName);
+
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeTaskSubType taskSubType =
               UpgradeTaskParams.UpgradeTaskSubType.valueOf(
@@ -588,91 +711,17 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (configureParams.type == Everything) {
-          gflags.put("metric_node_name", params.nodeName);
-          if (configureParams.isMaster) {
-            gflags.put("enable_ysql", Boolean.valueOf(configureParams.enableYSQL).toString());
+          gflags.putAll(getExtraGflags(configureParams, params, userIntent, useHostname));
+          if (useHostname) {
+            expectedCommand.add("--server_broadcast_addresses");
+            // NodeName and privateIp are now the same, see ApiUtils.getDummyNodeDetails()
+            expectedCommand.add(configureParams.nodeName);
           }
-        }
-
-        if (configureParams.type == Everything) {
-          if (configureParams.isMaster) {
-            gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
-          }
-          gflags.put("undefok", "enable_ysql");
-          if (configureParams.enableYSQL) {
-            gflags.put("enable_ysql", "true");
-            gflags.put(
-                "pgsql_proxy_bind_address",
-                String.format(
-                    "%s:%s",
-                    configureParams.nodeName,
-                    Universe.getOrBadRequest(configureParams.universeUUID)
-                        .getNode(configureParams.nodeName)
-                        .ysqlServerRpcPort));
-            if (configureParams.enableYSQLAuth) {
-              gflags.put("ysql_enable_auth", "true");
-              gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
-            } else {
-              gflags.put("ysql_enable_auth", "false");
-            }
-          } else {
-            gflags.put("enable_ysql", "false");
-          }
-          if (configureParams.enableYCQL) {
-            gflags.put("start_cql_proxy", "true");
-            gflags.put(
-                "cql_proxy_bind_address",
-                String.format(
-                    "%s:%s",
-                    configureParams.nodeName,
-                    Universe.getOrBadRequest(configureParams.universeUUID)
-                        .getNode(configureParams.nodeName)
-                        .yqlServerRpcPort));
-            if (configureParams.enableYCQLAuth) {
-              gflags.put("use_cassandra_authentication", "true");
-            } else {
-              gflags.put("use_cassandra_authentication", "false");
-            }
-          } else {
-            gflags.put("start_cql_proxy", "false");
-          }
-          if (configureParams.callhomeLevel != null) {
-            gflags.put(
-                "callhome_collection_level",
-                configureParams.callhomeLevel.toString().toLowerCase());
-            if (configureParams.callhomeLevel.toString() == "NONE") {
-              gflags.put("callhome_enabled", "false");
-            }
-          }
-          if (configureParams.currentClusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
-              && configureParams.setTxnTableWaitCountFlag) {
-            gflags.put("txn_table_wait_min_ts_count", Integer.toString(userIntent.numNodes));
-          }
-
           if ((configureParams.enableNodeToNodeEncrypt
               || configureParams.enableClientToNodeEncrypt)) {
-            if (configureParams.enableNodeToNodeEncrypt) {
-              gflags.put("use_node_to_node_encryption", "true");
-            }
-            if (configureParams.enableClientToNodeEncrypt) {
-              gflags.put("use_client_to_server_encryption", "true");
-            }
-            gflags.put(
-                "allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
-            String yb_home_dir = configureParams.getProvider().getYbHome();
-
-            gflags.put("cert_node_filename", params.nodeName);
-
-            if (configureParams.enableNodeToNodeEncrypt
-                || (configureParams.rootAndClientRootCASame
-                    && configureParams.enableClientToNodeEncrypt)) {
-              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-            }
-            if (!configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt) {
-              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
-            }
-            expectedCommand.addAll(getCertificatePaths(configureParams, yb_home_dir));
+            expectedCommand.addAll(
+                getCertificatePaths(
+                    userIntent, configureParams, configureParams.getProvider().getYbHome()));
           }
           expectedCommand.add("--extra_gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
@@ -697,14 +746,49 @@ public class NodeManagerTest extends FakeDBApplication {
             gflags.put("metric_node_name", configureParams.nodeName);
           }
 
-          String gflagsJson = Json.stringify(Json.toJson(gflags));
           expectedCommand.add("--replace_gflags");
+          if (configureParams.addDefaultGFlags) {
+            expectedCommand.add("--add_default_gflags");
+            expectedCommand.add("true");
+
+            if (useHostname) {
+              expectedCommand.add("--server_broadcast_addresses");
+              // NodeName and privateIp are now the same, see ApiUtils.getDummyNodeDetails()
+              expectedCommand.add(configureParams.nodeName);
+            }
+
+            Map<String, String> default_gflags =
+                getExtraGflags(configureParams, params, userIntent, useHostname);
+            if (processType == ServerType.TSERVER.name()) {
+              if (userIntent.enableYEDIS) {
+                default_gflags.put(
+                    "redis_proxy_webserver_port",
+                    Integer.toString(configureParams.communicationPorts.redisServerHttpPort));
+              } else {
+                default_gflags.put("start_redis_proxy", "false");
+              }
+              if (userIntent.enableYCQL) {
+                default_gflags.put(
+                    "cql_proxy_webserver_port",
+                    Integer.toString(configureParams.communicationPorts.yqlServerHttpPort));
+              }
+              if (userIntent.enableYSQL) {
+                default_gflags.put(
+                    "pgsql_proxy_webserver_port",
+                    Integer.toString(configureParams.communicationPorts.ysqlServerHttpPort));
+              }
+            }
+            expectedCommand.add("--extra_gflags");
+            expectedCommand.add(Json.stringify(Json.toJson(default_gflags)));
+          }
+          String gflagsJson = Json.stringify(Json.toJson(gflags));
           expectedCommand.add("--gflags");
           expectedCommand.add(gflagsJson);
           if (configureParams.gflagsToRemove != null && !configureParams.gflagsToRemove.isEmpty()) {
             expectedCommand.add("--gflags_to_remove");
             expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
           }
+
           expectedCommand.add("--tags");
           expectedCommand.add("override_gflags");
         } else if (configureParams.type == ToggleTls) {
@@ -712,10 +796,10 @@ public class NodeManagerTest extends FakeDBApplication {
           String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
           String allowInsecureString = String.valueOf(configureParams.allowInsecure);
 
-          String yb_home_dir =
+          String ybHomeDir =
               Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
-          String certsDir = yb_home_dir + "/yugabyte-tls-config";
-          String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
+          String certsDir = ybHomeDir + "/yugabyte-tls-config";
+          String certsForClientDir = ybHomeDir + "/yugabyte-client-tls-config";
 
           String subType = configureParams.getProperty("taskSubType");
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
@@ -733,7 +817,7 @@ public class NodeManagerTest extends FakeDBApplication {
                 && configureParams.enableClientToNodeEncrypt) {
               gflags.put("certs_for_client_dir", certsForClientDir);
             }
-            expectedCommand.addAll(getCertificatePaths(configureParams, yb_home_dir));
+            expectedCommand.addAll(getCertificatePaths(userIntent, configureParams, ybHomeDir));
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
             gflags = new HashMap<>();
@@ -826,6 +910,7 @@ public class NodeManagerTest extends FakeDBApplication {
             case ROTATE_CERTS:
               expectedCommand.addAll(
                   getCertificatePaths(
+                      userIntent,
                       configureParams,
                       configureParams.rootCARotationType != CertRotationType.None,
                       configureParams.clientRootCARotationType != CertRotationType.None,
@@ -862,9 +947,17 @@ public class NodeManagerTest extends FakeDBApplication {
       case Tags:
         InstanceActions.Params tagsParams = (InstanceActions.Params) params;
         if (Provider.InstanceTagsEnabledProviders.contains(cloud)) {
+          Map<String, String> instanceTags =
+              (tagsParams.clusters.isEmpty() || tagsParams.clusters.get(0) == null)
+                  ? new TreeMap<>()
+                  : new TreeMap<>(tagsParams.clusters.get(0).userIntent.instanceTags);
+
+          instanceTags.put("Cust", "Test");
+          addAdditionalInstanceTags(tagsParams, instanceTags);
+
           expectedCommand.add("--instance_tags");
-          // The quotes in format is needed here, so cannot use instanceTags.toString().
-          expectedCommand.add("{\"Cust\":\"Test\"}");
+          expectedCommand.add(Json.stringify(Json.toJson(instanceTags)));
+
           if (!tagsParams.deleteTags.isEmpty()) {
             expectedCommand.add("--remove_tags");
             expectedCommand.add(tagsParams.deleteTags);
@@ -1168,7 +1261,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
       List<String> accessKeyCommands =
-          new ArrayList<String>(
+          new ArrayList<>(
               ImmutableList.of(
                   "--vars_file",
                   "/path/to/vault_file",
@@ -1345,7 +1438,7 @@ public class NodeManagerTest extends FakeDBApplication {
           new UniverseDefinitionTaskParams.UserIntent();
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
-      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList = new ArrayList<>();
       userIntent.regionList.add(t.region.uuid);
       userIntent.providerType = t.cloudType;
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
@@ -1368,7 +1461,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
       List<String> accessKeyCommands =
-          new ArrayList<String>(
+          new ArrayList<>(
               ImmutableList.of(
                   "--vars_file",
                   "/path/to/vault_file",
@@ -1568,7 +1661,7 @@ public class NodeManagerTest extends FakeDBApplication {
           new UniverseDefinitionTaskParams.UserIntent();
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
-      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList = new ArrayList<>();
       userIntent.regionList.add(t.region.uuid);
       userIntent.providerType = t.cloudType;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -1787,6 +1880,7 @@ public class NodeManagerTest extends FakeDBApplication {
         params.type = GFlags;
         params.isMasterInShellMode = true;
         params.gflagsToRemove = gflagsToRemove;
+        params.addDefaultGFlags = true;
         params.setProperty("processType", serverType);
 
         List<String> expectedCommand = new ArrayList<>(t.baseCommand);
@@ -1888,6 +1982,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.gflags = gflags;
       params.type = GFlags;
       params.isMasterInShellMode = true;
+      params.addDefaultGFlags = true;
       params.setProperty("processType", MASTER.toString());
 
       List<String> expectedCommand = t.baseCommand;
@@ -2345,6 +2440,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.isMasterInShellMode = isMasterInShellMode;
       params.updateMasterAddrsOnly = true;
       params.isMaster = serverType.equals(MASTER.toString());
+      params.addDefaultGFlags = true;
       params.setProperty("processType", serverType);
 
       List<String> expectedCommand = t.baseCommand;
@@ -2828,5 +2924,46 @@ public class NodeManagerTest extends FakeDBApplication {
             re.getMessage(), containsString("No cert rotation can be done with the given params"));
       }
     }
+  }
+
+  @Test
+  @Parameters({
+    ", false, null, null, NONE",
+    ", false, null, true, NONE",
+    ", false, null, false, HOSTNAME",
+    ", false, false, null, HOSTNAME",
+    ", false, false, true, HOSTNAME",
+    ", true, false, null, NONE",
+    ", false, null, false, HOSTNAME",
+    ", true, false, null, NONE",
+    "ALL, true, false, null, ALL",
+    "ALL, false, null, null, ALL",
+    "HOSTNAME, true, false, null, HOSTNAME",
+    "HOSTNAME, false, null, null, HOSTNAME"
+  })
+  public void testGetSkipCertValidation(
+      String configValue,
+      boolean inRemove,
+      @Nullable Boolean inAddition,
+      @Nullable Boolean inGflags,
+      String expected) {
+    Config config = Mockito.mock(Config.class);
+    Mockito.when(config.getString(any())).thenReturn(configValue);
+    final String flagName = NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG;
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    if (inRemove) {
+      params.gflagsToRemove.add(flagName);
+    }
+    if (inAddition != null) {
+      params.gflags.put(flagName, String.valueOf(inAddition));
+    }
+    UserIntent userIntent = new UserIntent();
+    if (inGflags != null) {
+      userIntent.tserverGFlags.put(flagName, String.valueOf(inGflags));
+    }
+
+    assertEquals(
+        NodeManager.SkipCertValidationType.valueOf(expected),
+        NodeManager.getSkipCertValidationType(config, userIntent, params));
   }
 }

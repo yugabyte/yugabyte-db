@@ -14,13 +14,24 @@
 #ifndef YB_DOCDB_SUBDOCUMENT_H_
 #define YB_DOCDB_SUBDOCUMENT_H_
 
+#include <assert.h>
+#include <inttypes.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <limits>
 #include <map>
-#include <vector>
 #include <ostream>
-#include <initializer_list>
+#include <string>
+#include <vector>
+
+#include "yb/bfql/tserver_opcodes.h"
 
 #include "yb/docdb/primitive_value.h"
-#include "yb/util/bfql/tserver_opcodes.h"
+
+#include "yb/gutil/int128.h"
+#include "yb/gutil/integral_types.h"
 
 namespace yb {
 namespace docdb {
@@ -173,7 +184,7 @@ class SubDocument : public PrimitiveValue {
 
   // Construct a SubDocument from a QLValuePB.
   static SubDocument FromQLValuePB(const QLValuePB& value,
-                                   ColumnSchema::SortingType sorting_type,
+                                   SortingType sorting_type,
                                    yb::bfql::TSOpcode write_instr = bfql::TSOpcode::kScalarInsert);
 
   // Construct a QLValuePB from a SubDocument.

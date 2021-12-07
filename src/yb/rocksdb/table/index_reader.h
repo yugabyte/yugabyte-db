@@ -17,10 +17,10 @@
 #include <stddef.h>
 
 #include "yb/rocksdb/status.h"
-#include "yb/rocksdb/table/block_based_table_internal.h"
+#include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/two_level_iterator.h"
+
 #include "yb/util/logging.h"
-#include "yb/util/result.h"
 
 namespace rocksdb {
 

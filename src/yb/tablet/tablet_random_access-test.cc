@@ -30,23 +30,36 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <limits>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <glog/logging.h>
-#include <glog/stl_logging.h>
 #include <gtest/gtest.h>
-#include <gflags/gflags.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/common/partial_row.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/walltime.h"
 
+#include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet-test-base.h"
+
+#include "yb/util/env.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 DEFINE_int32(keyspace_size, 300, "number of unique row keys to insert/mutate");
 DEFINE_int32(runtime_seconds, 1, "number of seconds to run the test");
@@ -252,8 +265,7 @@ void GenerateTestCase(vector<TestOp>* ops, int len) {
   ops->clear();
   unsigned int random_seed = SeedRandom();
   while (ops->size() < len) {
-    TestOp r = tight_enum_cast<TestOp>(
-        rand_r(&random_seed) % enum_limits<TestOp>::max_enumerator);
+    TestOp r = static_cast<TestOp>(rand_r(&random_seed) % enum_limits<TestOp>::max_enumerator);
     switch (r) {
       case TEST_INSERT:
         if (exists) continue;

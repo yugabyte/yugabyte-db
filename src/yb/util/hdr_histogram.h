@@ -56,11 +56,13 @@
 // tracked value (1 hour), it would still maintain a resolution of 3.6 seconds
 // (or better).
 
-#include <cstdint>
 #include <iosfwd>
+#include <memory>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/util/status.h"
+#include "yb/gutil/macros.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

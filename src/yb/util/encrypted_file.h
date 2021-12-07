@@ -14,11 +14,15 @@
 #ifndef YB_UTIL_ENCRYPTED_FILE_H
 #define YB_UTIL_ENCRYPTED_FILE_H
 
+#include <string.h>
+
 #include <atomic>
+#include <cstdarg>
 #include <memory>
 
-#include "yb/util/env.h"
 #include "yb/util/cipher_stream_fwd.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 
 namespace yb {
 
@@ -45,9 +49,7 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
     return header_size_;
   }
 
-  Result<uint64_t> Size() const override {
-    return VERIFY_RESULT(RandomAccessFileWrapper::Size()) - header_size_;
-  }
+  Result<uint64_t> Size() const override;
 
   virtual bool IsEncrypted() const override {
     return true;

@@ -14,12 +14,19 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pggate_flags.h"
 
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_op.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+
+#include "yb/docdb/doc_key.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace pggate {

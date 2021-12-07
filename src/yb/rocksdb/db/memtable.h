@@ -33,17 +33,16 @@
 #include <string>
 #include <vector>
 
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/file_numbers.h"
-#include "yb/rocksdb/db/version_edit.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/memtablerep.h"
-#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/db/memtable_allocator.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/util/concurrent_arena.h"
 #include "yb/rocksdb/util/dynamic_bloom.h"
-#include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 
 namespace yb {

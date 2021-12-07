@@ -29,15 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/consensus/consensus.h"
 
 #include <set>
 
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace consensus {
@@ -101,6 +100,56 @@ Result<OpId> Consensus::GetLastOpId(OpIdType type) {
   return STATUS(InvalidArgument, "Unsupported OpIdType", OpIdType_Name(type));
 }
 
+Status Consensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
+  return STATUS(NotSupported, "Not implemented.");
+}
+
+Status Consensus::ChangeConfig(const ChangeConfigRequestPB& req,
+                               const StdStatusCallback& client_cb,
+                               boost::optional<tserver::TabletServerErrorPB::Code>* error) {
+  return STATUS(NotSupported, "Not implemented.");
+}
+
+Status Consensus::ConsensusFaultHooks::PreStart() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostStart() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PreConfigChange() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostConfigChange() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PreReplicate() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostReplicate() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PreUpdate() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostUpdate() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PreShutdown() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostShutdown() {
+  return Status::OK();
+}
+
 LeaderState& LeaderState::MakeNotReadyLeader(LeaderStatus status_) {
   status = status_;
   term = yb::OpId::kUnknownTerm;
@@ -129,6 +178,10 @@ Status LeaderState::CreateStatus() const {
   }
 
   FATAL_INVALID_ENUM_VALUE(consensus::LeaderStatus, status);
+}
+
+Status MoveStatus(LeaderState&& state) {
+  return state.CreateStatus();
 }
 
 } // namespace consensus

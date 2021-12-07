@@ -45,7 +45,7 @@ NUM_TOP_COMMITS = 10
 
 DOWNLOAD_URL_PREFIX = 'https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/'
 
-ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64'])
+ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64', 'arm64'])
 
 
 def get_arch_regex(index: int) -> str:
@@ -165,22 +165,24 @@ class YBDependenciesRelease:
             branch_name = branch_name.rstrip('-')
         self.branch_name = branch_name
 
-    def validate_url(self) -> None:
+    def validate_url(self) -> bool:
         asset_urls = [asset.browser_download_url for asset in self.github_release.get_assets()]
 
         if len(asset_urls) != 2:
-            raise ValueError(
+            logging.warning(
                 "Expected to find exactly two asset URLs for a release "
                 "(one for the .tar.gz, the other for the checksum), "
                 f"but found {len(asset_urls)}: {asset_urls}")
+            return False
 
         non_checksum_urls = [url for url in asset_urls if not url.endswith('.sha256')]
         assert(len(non_checksum_urls) == 1)
         self.url = non_checksum_urls[0]
         if not self.url.startswith(DOWNLOAD_URL_PREFIX):
-            raise ValueError(
+            logging.warning(
                 f"Expected archive download URL to start with {DOWNLOAD_URL_PREFIX}, found "
                 f"{self.url}")
+            return False
 
         url_suffix = self.url[len(DOWNLOAD_URL_PREFIX):]
         url_suffix_components = url_suffix.split('/')
@@ -189,9 +191,12 @@ class YBDependenciesRelease:
         archive_basename = url_suffix_components[1]
         expected_basename = get_archive_name_from_tag(self.tag)
         if archive_basename != expected_basename:
-            raise ValueError(
+            logging.warning(
                 f"Expected archive name based on tag: {expected_basename}, "
                 f"actual name: {archive_basename}, url: {self.url}")
+            return False
+
+        return True
 
     def as_dict(self) -> Dict[str, str]:
         return {k: getattr(self, k) for k in self.KEY_FIELDS_WITH_TAG}
@@ -389,33 +394,42 @@ class MetadataUpdater:
         releases_by_key_without_tag: DefaultDict[Tuple[str, ...], List[YBDependenciesRelease]] = \
             defaultdict(list)
 
+        num_valid_releases = 0
+        num_invalid_releases = 0
         for yb_thirdparty_release in releases_for_one_commit:
-            yb_thirdparty_release.validate_url()
-            releases_by_key_without_tag[
-                yb_thirdparty_release.get_sort_key(include_tag=False)
-            ].append(yb_thirdparty_release)
+            if yb_thirdparty_release.validate_url():
+                num_valid_releases += 1
+                releases_by_key_without_tag[
+                    yb_thirdparty_release.get_sort_key(include_tag=False)
+                ].append(yb_thirdparty_release)
+            else:
+                num_invalid_releases += 1
+        logging.info(
+            f"Valid releases found: {num_valid_releases}, invalid releases: {num_invalid_releases}")
 
-        keys_with_duplicate_releases: List[Tuple[str, ...]] = []
+        filtered_releases_for_one_commit = []
         for key_without_tag, releases_for_key in releases_by_key_without_tag.items():
             if len(releases_for_key) > 1:
+                picked_release = max(releases_for_key, key=lambda r: r.tag)
                 logging.info(
                     "Multiple releases found for the same key (excluding the tag). "
-                    "Key: %s, releases: %s" % (
+                    "Using the latest one: %s\n"
+                    "Key: %s.\nReleases:\n  %s" % (
+                        picked_release,
                         key_without_tag,
-                        releases_for_key))
-                keys_with_duplicate_releases.append(key_without_tag)
-        if keys_with_duplicate_releases:
-            raise ValueError(
-                "Multiple releases found for these keys: %s" % keys_with_duplicate_releases)
+                        '\n  '.join([str(r) for r in releases_for_key])))
+                filtered_releases_for_one_commit.append(picked_release)
+            else:
+                filtered_releases_for_one_commit.append(releases_for_key[0])
 
-        releases_for_one_commit.sort(key=YBDependenciesRelease.get_sort_key)
+        filtered_releases_for_one_commit.sort(key=YBDependenciesRelease.get_sort_key)
 
-        for yb_thirdparty_release in releases_for_one_commit:
+        for yb_thirdparty_release in filtered_releases_for_one_commit:
             new_metadata['archives'].append(yb_thirdparty_release.as_dict())
 
         write_yaml_file(new_metadata, archive_metadata_path)
         logging.info(
-            f"Wrote information for {len(releases_for_one_commit)} pre-built "
+            f"Wrote information for {len(filtered_releases_for_one_commit)} pre-built "
             f"yugabyte-db-thirdparty archives to {archive_metadata_path}.")
 
 

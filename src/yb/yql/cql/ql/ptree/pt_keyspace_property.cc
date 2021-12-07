@@ -15,6 +15,9 @@
 #include "yb/client/schema.h"
 #include "yb/yql/cql/ql/ptree/pt_keyspace_property.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+
+#include "yb/util/logging.h"
 #include "yb/util/string_case.h"
 
 namespace yb {
@@ -26,7 +29,7 @@ using client::YBColumnSchema;
 PTKeyspaceProperty::PTKeyspaceProperty(MemoryContext *memctx,
                                        YBLocation::SharedPtr loc,
                                        const MCSharedPtr<MCString>& lhs,
-                                       const PTExpr::SharedPtr& rhs)
+                                       const PTExprPtr& rhs)
     : PTProperty(memctx, loc, lhs, rhs),
       property_type_(KeyspacePropertyType::kKVProperty) {
 }

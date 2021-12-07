@@ -40,6 +40,7 @@ public class AlertFilter {
   Boolean notificationPending;
   String sourceName;
   Date resolvedDateBefore;
+  Set<UUID> sourceUUIDs;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -81,6 +82,9 @@ public class AlertFilter {
     if (resolvedDateBefore != null) {
       result.resolvedDateBefore(resolvedDateBefore);
     }
+    if (sourceUUIDs != null) {
+      result.sourceUUIDs(sourceUUIDs);
+    }
     return result;
   }
 
@@ -91,6 +95,7 @@ public class AlertFilter {
     Set<UUID> definitionUuids = new HashSet<>();
     Set<AlertConfiguration.Severity> severities = new HashSet<>();
     Set<AlertConfiguration.TargetType> configurationTypes = new HashSet<>();
+    Set<UUID> sourceUUIDs = new HashSet<>();
 
     public AlertFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
@@ -186,6 +191,11 @@ public class AlertFilter {
 
     public AlertFilterBuilder resolvedDateBefore(@NonNull Date resolvedDateBefore) {
       this.resolvedDateBefore = resolvedDateBefore;
+      return this;
+    }
+
+    public AlertFilterBuilder sourceUUIDs(@NonNull Set<UUID> sourceUUIDs) {
+      this.sourceUUIDs.addAll(sourceUUIDs);
       return this;
     }
   }

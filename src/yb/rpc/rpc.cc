@@ -36,14 +36,17 @@
 #include <string>
 #include <thread>
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/source_location.h"
+#include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -77,6 +80,14 @@ using strings::SubstituteAndAppend;
 
 namespace rpc {
 
+RpcCommand::RpcCommand() : trace_(new Trace) {
+  if (Trace::CurrentTrace()) {
+    Trace::CurrentTrace()->AddChildTrace(trace_.get());
+  }
+}
+
+RpcCommand::~RpcCommand() {}
+
 RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCache *proxy_cache)
     : start_(CoarseMonoClock::now()),
       deadline_(deadline),
@@ -87,8 +98,8 @@ RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCach
 
 bool RpcRetrier::HandleResponse(
     RpcCommand* rpc, Status* out_status, RetryWhenBusy retry_when_busy) {
-  ignore_result(DCHECK_NOTNULL(rpc));
-  ignore_result(DCHECK_NOTNULL(out_status));
+  DCHECK_ONLY_NOTNULL(rpc);
+  DCHECK_ONLY_NOTNULL(out_status);
 
   // Always retry a TOO_BUSY error.
   Status controller_status = controller_.status();
@@ -193,8 +204,10 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   }
   task_id_ = kInvalidTaskId;
   if (!run) {
-    rpc->Finished(STATUS_FORMAT(
-        Aborted, "$0 aborted: $1", rpc->ToString(), yb::rpc::ToString(expected_state)));
+    auto status = STATUS_FORMAT(
+        Aborted, "$0 aborted: $1", rpc->ToString(), yb::rpc::ToString(expected_state));
+    VTRACE_TO(1, rpc->trace(), "Rpc Finished with status $0", status.ToString());
+    rpc->Finished(status);
     return;
   }
   Status new_status = status;
@@ -214,6 +227,7 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   }
   if (new_status.ok()) {
     controller_.Reset();
+    VTRACE_TO(1, rpc->trace(), "Sending Rpc");
     rpc->SendRpc();
   } else {
     // Service unavailable here means that we failed to to schedule delayed task, i.e. reactor
@@ -221,6 +235,7 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
     if (new_status.IsServiceUnavailable()) {
       new_status = STATUS_FORMAT(Aborted, "Aborted because of $0", new_status);
     }
+    VTRACE_TO(1, rpc->trace(), "Rpc Finished with status $0", new_status.ToString());
     rpc->Finished(new_status);
   }
   expected_state = RpcRetrierState::kRunning;
@@ -275,6 +290,7 @@ void Rpc::ScheduleRetry(const Status& status) {
   auto retry_status = mutable_retrier()->DelayedRetry(this, status);
   if (!retry_status.ok()) {
     LOG(WARNING) << "Failed to schedule retry: " << retry_status;
+    VTRACE_TO(1, trace(), "Rpc Finished with status $0", retry_status.ToString());
     Finished(retry_status);
   }
 }
@@ -321,7 +337,7 @@ void Rpcs::Shutdown() {
         break;
       }
     }
-    CHECK(calls_.empty()) << "Calls: " << yb::ToString(calls_);
+    CHECK(calls_.empty()) << "Calls: " << AsString(calls_);
   }
 }
 
@@ -348,6 +364,7 @@ bool Rpcs::RegisterAndStart(RpcCommandPtr call, Handle* handle) {
     return false;
   }
 
+  VTRACE_TO(1, (***handle).trace(), "Sending Rpc");
   (***handle).SendRpc();
   return true;
 }

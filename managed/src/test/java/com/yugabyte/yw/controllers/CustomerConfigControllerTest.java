@@ -16,6 +16,9 @@ import static org.junit.Assert.assertNotNull;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -27,6 +30,7 @@ import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -133,7 +137,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
-    assertErrorNodeValue(node, "configName", "size must be between 1 and 50");
+    assertErrorNodeValue(node, "configName", "size must be between 1 and 100");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
@@ -201,10 +205,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST9").configUUID;
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    UUID fakeTaskUUID = UUID.randomUUID();
     Result result =
         FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);
-    assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -223,31 +227,67 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteInUseStorageConfig() {
+  public void testDeleteInUseStorageConfigWithDeleteBackups() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST11").configUUID;
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+    String url =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/configs/"
+            + configUUID
+            + "?isDeleteBackups=true";
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    assertOk(result);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), configUUID);
+    fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    assertOk(result);
+    customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), configUUID);
+    assertAuditEntry(2, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteInUseStorageConfigWithoutDeleteBackups() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST11").configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+    CustomerConfig config = CustomerConfig.get(configUUID);
+    assertBadRequest(
+        result,
+        "Configuration " + config.getConfigName() + " is used in backup and can't be deleted");
+    assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteInUsStorageConfigWithInProgressBackup() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12").configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    UUID fakeTaskUUID = UUID.randomUUID();
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertBadRequest(
-        result, "{\"\":[\"Configuration TEST11 is used in backup and can't be deleted\"]}");
-    backup.delete();
-    Schedule schedule =
-        ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
-    result =
-        assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
-    assertBadRequest(
         result,
-        "{\"\":[\"Configuration TEST11 is used in scheduled backup and can't be deleted\"]}");
-    schedule.delete();
-    result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
-    assertOk(result);
-    assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
-    assertAuditEntry(1, defaultCustomer.uuid);
+        "Backup task associated with Configuration " + configUUID.toString() + " is in progress.");
+    assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test

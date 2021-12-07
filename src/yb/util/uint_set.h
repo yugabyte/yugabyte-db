@@ -13,14 +13,14 @@
 #ifndef YB_UTIL_UINT_SET_H
 #define YB_UTIL_UINT_SET_H
 
-#include <unordered_set>
-
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/gutil/strings/join.h"
-#include "yb/util/result.h"
+
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 
@@ -56,7 +56,9 @@ class UnsignedIntSet {
     return interval_set_.empty();
   }
 
-  static Result<UnsignedIntSet<T>> FromPB(const google::protobuf::RepeatedField<T>& container) {
+  template <class PB>
+  static Result<UnsignedIntSet<T>> FromPB(const PB& container) {
+    static_assert(std::is_same<typename PB::value_type, T>::value, "Wrong container value_type");
     UnsignedIntSet set;
 
     auto run_length_size = container.size();

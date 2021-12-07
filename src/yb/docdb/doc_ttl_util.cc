@@ -10,12 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/doc_ttl_util.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/common/schema.h"
 #include "yb/docdb/value.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/monotime.h"
 

@@ -17,15 +17,18 @@
 
 #include <glog/logging.h>
 
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/util/string_util.h"
-
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/consensus_frontier.h"
-#include "yb/rocksutil/yb_rocksdb.h"
+
+#include "yb/rocksdb/compaction_filter.h"
+
+#include "yb/util/fast_varint.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -114,7 +117,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
 
   // Remove overwrite hybrid_times for components that are no longer relevant for the current
   // SubDocKey.
-  overwrite_.resize(min(overwrite_.size(), num_shared_components));
+  overwrite_.resize(std::min(overwrite_.size(), num_shared_components));
   DocHybridTime ht;
   RETURN_NOT_OK(ht.DecodeFromEnd(key));
   // We're comparing the hybrid time in this key with the stack top of overwrite_ht_ after
@@ -211,7 +214,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     }
   }
 
-  auto overwrite_ht = isTtlRow ? prev_overwrite_ht : max(prev_overwrite_ht, ht);
+  auto overwrite_ht = isTtlRow ? prev_overwrite_ht : std::max(prev_overwrite_ht, ht);
 
   Value value;
   Slice value_slice = existing_value;

@@ -31,34 +31,42 @@
 //
 
 #include <memory>
-#include <vector>
 #include <regex>
+#include <vector>
 
 #include "yb/client/client.h"
-#include "yb/client/client-test-util.h"
+#include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/schema.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/master.pb.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/rpc/rpc.h"
 
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pstack_watcher.h"
-#include "yb/util/random.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/stol_utils.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(memory_limit_soft_percentage);
 
@@ -202,13 +210,14 @@ void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
         rpc::Rpcs rpcs;
         Synchronizer sync;
         auto deadline = CoarseMonoClock::Now() + 20s;
-        auto rpc = rpc::StartRpc<master::GetLeaderMasterRpc>(
+        auto rpc = std::make_shared<master::GetLeaderMasterRpc>(
             Bind(&LeaderMasterCallback, &sync),
             master_addrs,
             deadline,
             cluster->messenger(),
             &cluster->proxy_cache(),
             &rpcs);
+        rpc->SendRpc();
         auto status = sync.Wait();
         LOG_IF(INFO, !status.ok()) << "Get leader master failed: " << status;
       }
@@ -494,6 +503,7 @@ TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
   ts->mutable_flags()->push_back("--TEST_yb_inbound_big_calls_parse_delay_ms=30000");
   ts->mutable_flags()->push_back("--binary_call_parser_reject_on_mem_tracker_hard_limit=true");
   ts->mutable_flags()->push_back(Format("--rpc_throttle_threshold_bytes=$0", 1_MB));
+  ts->mutable_flags()->push_back("--read_buffer_memory_limit=-10");
   ASSERT_OK(ts->Restart());
 
   ThrottleLogCounter log_counter(ts);

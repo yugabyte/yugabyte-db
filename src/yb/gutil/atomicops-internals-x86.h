@@ -38,12 +38,10 @@
 // be included directly.  Clients should instead include
 // "base/atomicops.h".
 
-#ifndef GUTIL_ATOMICOPS_INTERNALS_X86_H_
-#define GUTIL_ATOMICOPS_INTERNALS_X86_H_
+#ifndef YB_GUTIL_ATOMICOPS_INTERNALS_X86_H
+#define YB_GUTIL_ATOMICOPS_INTERNALS_X86_H
 
 #include <stdint.h>
-
-#include <glog/logging.h>
 
 #define BASE_HAS_ATOMIC64 1  // Use only in tests and base/atomic*
 
@@ -79,13 +77,18 @@ namespace subtle {
 typedef int32_t Atomic32;
 typedef int64_t Atomic64;
 
+#ifndef NDEBUG
+void CheckNaturalAlignmentHelper(uintptr_t);
+#else
+inline void CheckNaturalAlignmentHelper(uintptr_t) {}
+#endif
+
 // These atomic primitives don't work atomically, and can cause really nasty
 // hard-to-track-down bugs, if the pointer isn't naturally aligned. Check alignment
 // in debug mode.
 template<class T>
 inline void CheckNaturalAlignment(const T *ptr) {
-  DCHECK_EQ(0, reinterpret_cast<const uintptr_t>(ptr) & (sizeof(T) - 1))
-    << "unaligned pointer not allowed for atomics";
+  CheckNaturalAlignmentHelper(reinterpret_cast<const uintptr_t>(ptr) & (sizeof(T) - 1));
 }
 
 // 32-bit low-level operations on any platform.
@@ -524,4 +527,4 @@ inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
 
 #undef ATOMICOPS_COMPILER_BARRIER
 
-#endif  // GUTIL_ATOMICOPS_INTERNALS_X86_H_
+#endif  // YB_GUTIL_ATOMICOPS_INTERNALS_X86_H

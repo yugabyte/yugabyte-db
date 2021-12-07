@@ -14,8 +14,10 @@
 #define YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
 
 #include <memory>
+#include <string>
 
 #include "yb/util/header_manager.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

@@ -323,7 +323,14 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 				{
 					/* Given value is not null. Convert it to YugaByte format. */
 					Const *value = castNode(Const, datums[idx]->value);
-					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, value->constcollid,
+					/*
+					 * Use attr->attcollation because the split value will be compared against
+					 * collation-encoded strings that are encoded using the column collation.
+					 * We assume collation-encoding will likely to retain the similar key
+					 * distribution as the original text values.
+					 */
+					Form_pg_attribute attr = attrs[idx];
+					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, attr->attcollation,
 												value->constvalue, false /* is_null */);
 					break;
 				}
@@ -495,7 +502,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 		if (strcmp(def->defname, "colocated") == 0)
 		{
-			if (stmt->tablegroup)
+			if (tablegroupId != InvalidOid)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
@@ -564,7 +571,7 @@ YBCDropTable(Oid relationId)
 
 	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
 	if (colocated || tablegroupId != InvalidOid)
 	{
@@ -620,7 +627,7 @@ YBCTruncateTable(Relation rel) {
 											 relationId,
 											 &colocated));
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
 	if (colocated || tablegroupId != InvalidOid)
 	{
@@ -663,7 +670,7 @@ YBCTruncateTable(Relation rel) {
 												 &colocated));
 
 		tablegroupId = InvalidOid;
-		if (TablegroupCatalogExists)
+		if (YbTablegroupCatalogExists)
 			tablegroupId = get_tablegroup_oid_by_table_oid(indexId);
 		if (colocated || tablegroupId != InvalidOid)
 		{
@@ -967,6 +974,15 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 							errmsg("This ALTER TABLE command is not yet supported.")));
 				}
 			}
+			/*
+			 * Do not allow collation update because that requires different collation
+			 * encoding and therefore can cause on-disk changes.
+			 */
+			Oid cur_collation_id = attTup->attcollation;
+			Oid new_collation_id = GetColumnDefCollation(NULL, colDef, newTypId);
+			if (cur_collation_id != new_collation_id)
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("This ALTER TABLE command is not yet supported.")));
 			break;
 		}
 
@@ -996,6 +1012,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 		case AT_NoForceRowSecurity:
 		case AT_AttachPartition:
 		case AT_DetachPartition:
+		case AT_SetTableSpace:
 			/* For these cases a YugaByte alter isn't required, so we do nothing. */
 			break;
 
@@ -1113,7 +1130,7 @@ YBCDropIndex(Oid relationId)
 
 	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
 	if (colocated || tablegroupId != InvalidOid)
 	{

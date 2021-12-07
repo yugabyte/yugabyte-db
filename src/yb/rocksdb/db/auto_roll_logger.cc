@@ -17,14 +17,39 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rocksdb/db/auto_roll_logger.h"
+
 #include "yb/rocksdb/util/mutexlock.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 
 namespace rocksdb {
+
+AutoRollLogger::AutoRollLogger(Env* env, const std::string& dbname,
+               const std::string& db_log_dir, size_t log_max_size,
+               size_t log_file_time_to_roll,
+               const InfoLogLevel log_level)
+    : Logger(log_level),
+      dbname_(dbname),
+      db_log_dir_(db_log_dir),
+      env_(env),
+      status_(Status::OK()),
+      kMaxLogFileSize(log_max_size),
+      kLogFileTimeToRoll(log_file_time_to_roll),
+      cached_now(static_cast<uint64_t>(env_->NowMicros() * 1e-6)),
+      ctime_(cached_now),
+      cached_now_access_count(0),
+      call_NowMicros_every_N_records_(100),
+      mutex_() {
+  CHECK_OK(env->GetAbsolutePath(dbname, &db_absolute_path_));
+  log_fname_ = InfoLogFileName(dbname_, db_absolute_path_, db_log_dir_);
+  RollLogFile();
+  CHECK_OK(ResetLogger());
+}
 
 // -- AutoRollLogger
 Status AutoRollLogger::ResetLogger() {

@@ -42,19 +42,18 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 
 #include <gtest/gtest.h>
-#include <gtest/gtest-param-test.h>
 
 #if defined(TCMALLOC_ENABLED)
 #include <gperftools/heap-profiler.h>
 #endif
 
-#include <lz4.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/join.h"
 
 #include "yb/rpc/compressed_stream.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/tcp_stream.h"
@@ -62,8 +61,16 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/thread.h"
 
 #include "yb/util/memory/memory_usage_test_util.h"
 
@@ -281,7 +288,7 @@ TEST_F(TestRpc, TestInvalidMethodCall) {
       rpc_test::CalculatorServiceIf::static_service_name(), "ThisMethodDoesNotExist");
   Status s = DoTestSyncCall(&p, &method);
   ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
-  ASSERT_STR_CONTAINS(s.ToString(), "bad method");
+  ASSERT_STR_CONTAINS(s.ToString(), "invalid method name");
 }
 
 // Test that the error message returned when connecting to the wrong service

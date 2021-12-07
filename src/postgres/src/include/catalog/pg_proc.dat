@@ -10283,7 +10283,7 @@
   proisstrict => 'f', prorettype => 'bool', proargtypes => 'oid int4 int4 any',
   proargmodes => '{i,i,i,v}', prosrc => 'satisfies_hash_partition' },
 
-{ oid => '8020', descr => 'function to compute internal hash code of given values',
+{ oid => '8020', descr => 'function to compute internal hash code of given values', oid_symbol => 'YB_HASH_CODE_OID',
   proname => 'yb_hash_code', provariadic => 'any', proisstrict => 'f',
   prorettype => 'int4', proargtypes => 'any', proallargtypes => '{any}',
   proargmodes => '{v}', prosrc => 'yb_hash_code' },
@@ -10332,4 +10332,18 @@
 { oid => '8031', descr => 'is the given table stored in the local region',
   proname => 'yb_is_local_table', prorettype => 'bool', proargtypes => 'oid',
   prosrc => 'yb_is_local_table', provolatile => 's' },
+
+# getting YB specific objects properties functions
+{ oid => '8033', descr => 'get the YB table properties',
+  proname => 'yb_table_properties', provolatile => 's',
+  prorettype => 'record', proargtypes => 'oid',
+  proallargtypes => '{oid,int8,int8,bool}',
+  proargmodes => '{i,o,o,o}',
+  proargnames => '{table_oid,num_tablets,num_hash_key_columns,is_colocated}',
+  prosrc => 'yb_table_properties' },
+
+{ oid => '8034', descr => 'is the database colocated in the YB server?',
+  proname => 'yb_is_database_colocated', provolatile => 's',
+  prorettype => 'bool', proargtypes => '',
+  prosrc => 'yb_is_database_colocated' },
 ]

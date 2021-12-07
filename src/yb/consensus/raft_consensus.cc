@@ -33,7 +33,6 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include <algorithm>
-#include <iostream>
 #include <memory>
 #include <mutex>
 
@@ -41,6 +40,7 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
@@ -50,34 +50,38 @@
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
-#include "yb/consensus/replicate_msgs_holder.h"
+
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/human_readable.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/server/clock.h"
-#include "yb/server/metadata.h"
+
 #include "yb/tserver/tserver.pb.h"
 
-#include "yb/util/debug/trace_event.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
-#include "yb/util/url-coding.h"
-#include "yb/util/format.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/url-coding.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

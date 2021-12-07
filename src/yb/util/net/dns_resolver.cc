@@ -37,16 +37,15 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/optional.hpp>
-
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/util/concurrent_value.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

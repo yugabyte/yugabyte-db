@@ -13,6 +13,13 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_value.h"
+
+#include "yb/common/ql_value.h"
+
+#include "yb/util/decimal.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
@@ -136,6 +143,13 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
       break;
     }
 
+    case YB_YQL_DATA_TYPE_GIN_NULL: {
+      SCHECK(ql_value.has_gin_null_value(), InternalError, "Unexpected type in the QL value");
+      uint8_t val = ql_value.gin_null_value();
+      *datum = type_entity->yb_to_datum(&val, 0, &type_attrs);
+      break;
+    }
+
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
     YB_PG_INVALID_TYPES_IN_SWITCH:
       return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
@@ -234,6 +248,12 @@ Status PgValueToPB(const YBCPgTypeEntity *type_entity,
       type_entity->datum_to_yb(datum, &plaintext, nullptr);
       util::Decimal yb_decimal(plaintext);
       ql_value->set_decimal_value(yb_decimal.EncodeToComparable());
+      break;
+    }
+    case YB_YQL_DATA_TYPE_GIN_NULL: {
+      uint8_t value;
+      type_entity->datum_to_yb(datum, &value, nullptr);
+      ql_value->set_gin_null_value(value);
       break;
     }
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:

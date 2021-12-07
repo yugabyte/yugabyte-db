@@ -32,17 +32,14 @@
 #define YB_ROCKSDB_ENV_H
 
 #include <stdint.h>
-#include <cstdarg>
+
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/file.h"
-#include "yb/rocksdb/status.h"
-
+#include "yb/util/status_fwd.h"
 #include "yb/util/file_system.h"
-#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 #ifdef _WIN32
@@ -86,6 +83,7 @@ typedef yb::RandomAccessFile RandomAccessFile;
 using std::unique_ptr;
 using std::shared_ptr;
 
+using Status = yb::Status;
 
 // Options while opening a file to read/write
 struct EnvOptions : public yb::FileSystemOptions {
@@ -163,29 +161,19 @@ class RocksDBFileFactoryWrapper : public rocksdb::RocksDBFileFactory {
 
   // The following text is boilerplate that forwards all methods to target()
   Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
-                           const rocksdb::EnvOptions& options) override {
-    return target_->NewSequentialFile(f, r, options);
-  }
+                           const rocksdb::EnvOptions& options) override;
   Status NewRandomAccessFile(const std::string& f,
                              unique_ptr <rocksdb::RandomAccessFile>* r,
-                             const EnvOptions& options) override {
-    return target_->NewRandomAccessFile(f, r, options);
-  }
+                             const EnvOptions& options) override;
   Status NewWritableFile(const std::string& f, unique_ptr <rocksdb::WritableFile>* r,
-                         const EnvOptions& options) override {
-    return target_->NewWritableFile(f, r, options);
-  }
+                         const EnvOptions& options) override;
 
   Status ReuseWritableFile(const std::string& fname,
                            const std::string& old_fname,
                            unique_ptr<WritableFile>* result,
-                           const EnvOptions& options) override {
-    return target_->ReuseWritableFile(fname, old_fname, result, options);
-  }
+                           const EnvOptions& options) override;
 
-  Status GetFileSize(const std::string& fname, uint64_t* size) override {
-    return target_->GetFileSize(fname, size);
-  }
+  Status GetFileSize(const std::string& fname, uint64_t* size) override;
 
   bool IsPlainText() const override {
     return target_->IsPlainText();
@@ -327,9 +315,7 @@ class Env {
                             const std::string& target) = 0;
 
   // Hard Link file src to target.
-  virtual Status LinkFile(const std::string& src, const std::string& target) {
-    return STATUS(NotSupported, "LinkFile is not supported for this Env");
-  }
+  virtual Status LinkFile(const std::string& src, const std::string& target);
 
   // Lock the specified file.  Used to prevent concurrent access to
   // the same db by multiple processes.  On failure, stores nullptr in
@@ -501,17 +487,13 @@ class WritableFile : public yb::FileWithUniqueId {
 
   // Positioned write for unbuffered access default forward
   // to simple append as most of the tests are buffered by default
-  virtual Status PositionedAppend(const Slice& /* data */, uint64_t /* offset */) {
-    return STATUS(NotSupported, "PositionedAppend not supported");
-  }
+  virtual Status PositionedAppend(const Slice& /* data */, uint64_t /* offset */);
 
   // Truncate is necessary to trim the file to the correct size
   // before closing. It is not always possible to keep track of the file
   // size due to whole pages writes. The behavior is undefined if called
   // with other writes to follow.
-  virtual Status Truncate(uint64_t size) {
-    return Status::OK();
-  }
+  virtual Status Truncate(uint64_t size);
   virtual Status Close() = 0;
   virtual Status Flush() = 0;
   virtual Status Sync() = 0; // sync data
@@ -522,9 +504,7 @@ class WritableFile : public yb::FileWithUniqueId {
    * Override this method for environments where we need to sync
    * metadata as well.
    */
-  virtual Status Fsync() {
-    return Sync();
-  }
+  virtual Status Fsync();
 
   // true if Sync() and Fsync() are safe to call concurrently with Append()
   // and Flush().
@@ -578,9 +558,7 @@ class WritableFile : public yb::FileWithUniqueId {
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
   // This call has no effect on dirty pages in the cache.
-  virtual Status InvalidateCache(size_t offset, size_t length) {
-    return STATUS(NotSupported, "InvalidateCache not supported.");
-  }
+  virtual Status InvalidateCache(size_t offset, size_t length);
 
   // Sync a file range with disk.
   // offset is the starting byte of the file range to be synchronized.
@@ -588,40 +566,20 @@ class WritableFile : public yb::FileWithUniqueId {
   // This asks the OS to initiate flushing the cached data to disk,
   // without waiting for completion.
   // Default implementation does nothing.
-  virtual Status RangeSync(uint64_t offset, uint64_t nbytes) { return Status::OK(); }
+  virtual Status RangeSync(uint64_t offset, uint64_t nbytes);
 
   // PrepareWrite performs any necessary preparation for a write
   // before the write actually occurs.  This allows for pre-allocation
   // of space on devices where it can result in less file
   // fragmentation and/or less waste from over-zealous filesystem
   // pre-allocation.
-  void PrepareWrite(size_t offset, size_t len) {
-    if (preallocation_block_size_ == 0) {
-      return;
-    }
-    // If this write would cross one or more preallocation blocks,
-    // determine what the last preallocation block necesessary to
-    // cover this write would be and Allocate to that point.
-    const auto block_size = preallocation_block_size_;
-    size_t new_last_preallocated_block =
-      (offset + len + block_size - 1) / block_size;
-    if (new_last_preallocated_block > last_preallocated_block_) {
-      size_t num_spanned_blocks =
-        new_last_preallocated_block - last_preallocated_block_;
-      WARN_NOT_OK(
-          Allocate(block_size * last_preallocated_block_, block_size * num_spanned_blocks),
-          "Failed to pre-allocate space for a file");
-      last_preallocated_block_ = new_last_preallocated_block;
-    }
-  }
+  void PrepareWrite(size_t offset, size_t len);
 
  protected:
   /*
    * Pre-allocate space for a file.
    */
-  virtual Status Allocate(uint64_t offset, uint64_t len) {
-    return Status::OK();
-  }
+  virtual Status Allocate(uint64_t offset, uint64_t len);
 
   size_t preallocation_block_size() { return preallocation_block_size_; }
 
@@ -838,76 +796,44 @@ class EnvWrapper : public Env {
 
   // The following text is boilerplate that forwards all methods to target()
   Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
-                           const EnvOptions& options) override {
-    return target_->NewSequentialFile(f, r, options);
-  }
+                           const EnvOptions& options) override;
   Status NewRandomAccessFile(const std::string& f,
                              unique_ptr<RandomAccessFile>* r,
-                             const EnvOptions& options) override {
-    return target_->NewRandomAccessFile(f, r, options);
-  }
+                             const EnvOptions& options) override;
   Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
-                         const EnvOptions& options) override {
-    return target_->NewWritableFile(f, r, options);
-  }
+                         const EnvOptions& options) override;
   Status ReuseWritableFile(const std::string& fname,
                            const std::string& old_fname,
                            unique_ptr<WritableFile>* r,
-                           const EnvOptions& options) override {
-    return target_->ReuseWritableFile(fname, old_fname, r, options);
-  }
+                           const EnvOptions& options) override;
   virtual Status NewDirectory(const std::string& name,
-                              unique_ptr<Directory>* result) override {
-    return target_->NewDirectory(name, result);
-  }
-  Status FileExists(const std::string& f) override {
-    return target_->FileExists(f);
-  }
+                              unique_ptr<Directory>* result) override;
+  Status FileExists(const std::string& f) override;
+
   bool DirExists(const std::string& f) override {
     return target_->DirExists(f);
   }
+
   Status GetChildren(const std::string& dir,
-                     std::vector<std::string>* r) override {
-    return target_->GetChildren(dir, r);
-  }
+                     std::vector<std::string>* r) override;
   Status GetChildrenFileAttributes(
-      const std::string& dir, std::vector<FileAttributes>* result) override {
-    return target_->GetChildrenFileAttributes(dir, result);
-  }
-  Status DeleteFile(const std::string& f) override {
-    return target_->DeleteFile(f);
-  }
-  Status CreateDir(const std::string& d) override {
-    return target_->CreateDir(d);
-  }
-  Status CreateDirIfMissing(const std::string& d) override {
-    return target_->CreateDirIfMissing(d);
-  }
-  Status DeleteDir(const std::string& d) override {
-    return target_->DeleteDir(d);
-  }
-  Status GetFileSize(const std::string& f, uint64_t* s) override {
-    return target_->GetFileSize(f, s);
-  }
+      const std::string& dir, std::vector<FileAttributes>* result) override;
+  Status DeleteFile(const std::string& f) override;
+  Status CreateDir(const std::string& d) override;
+  Status CreateDirIfMissing(const std::string& d) override;
+  Status DeleteDir(const std::string& d) override;
+  Status GetFileSize(const std::string& f, uint64_t* s) override;
 
   Status GetFileModificationTime(const std::string& fname,
-                                 uint64_t* file_mtime) override {
-    return target_->GetFileModificationTime(fname, file_mtime);
-  }
+                                 uint64_t* file_mtime) override;
 
-  Status RenameFile(const std::string& s, const std::string& t) override {
-    return target_->RenameFile(s, t);
-  }
+  Status RenameFile(const std::string& s, const std::string& t) override;
 
-  Status LinkFile(const std::string& s, const std::string& t) override {
-    return target_->LinkFile(s, t);
-  }
+  Status LinkFile(const std::string& s, const std::string& t) override;
 
-  Status LockFile(const std::string& f, FileLock** l) override {
-    return target_->LockFile(f, l);
-  }
+  Status LockFile(const std::string& f, FileLock** l) override;
 
-  Status UnlockFile(FileLock* l) override { return target_->UnlockFile(l); }
+  Status UnlockFile(FileLock* l) override;
 
   void Schedule(void (*f)(void* arg), void* a, Priority pri,
                 void* tag = nullptr, void (*u)(void* arg) = 0) override {
@@ -926,27 +852,17 @@ class EnvWrapper : public Env {
       Priority pri = LOW) const override {
     return target_->GetThreadPoolQueueLen(pri);
   }
-  virtual Status GetTestDirectory(std::string* path) override {
-    return target_->GetTestDirectory(path);
-  }
+  virtual Status GetTestDirectory(std::string* path) override;
   virtual Status NewLogger(const std::string& fname,
-                           shared_ptr<Logger>* result) override {
-    return target_->NewLogger(fname, result);
-  }
+                           shared_ptr<Logger>* result) override;
   uint64_t NowMicros() override { return target_->NowMicros(); }
   void SleepForMicroseconds(int micros) override {
     target_->SleepForMicroseconds(micros);
   }
-  Status GetHostName(char* name, uint64_t len) override {
-    return target_->GetHostName(name, len);
-  }
-  Status GetCurrentTime(int64_t* unix_time) override {
-    return target_->GetCurrentTime(unix_time);
-  }
+  Status GetHostName(char* name, uint64_t len) override;
+  Status GetCurrentTime(int64_t* unix_time) override;
   Status GetAbsolutePath(const std::string& db_path,
-                         std::string* output_path) override {
-    return target_->GetAbsolutePath(db_path, output_path);
-  }
+                         std::string* output_path) override;
   void SetBackgroundThreads(int num, Priority pri) override {
     return target_->SetBackgroundThreads(num, pri);
   }
@@ -984,15 +900,13 @@ class WritableFileWrapper : public WritableFile {
  public:
   explicit WritableFileWrapper(std::unique_ptr<WritableFile> t) : target_(std::move(t)) { }
 
-  Status Append(const Slice& data) override { return target_->Append(data); }
-  Status PositionedAppend(const Slice& data, uint64_t offset) override {
-    return target_->PositionedAppend(data, offset);
-  }
-  Status Truncate(uint64_t size) override { return target_->Truncate(size); }
-  Status Close() override { return target_->Close(); }
-  Status Flush() override { return target_->Flush(); }
-  Status Sync() override { return target_->Sync(); }
-  Status Fsync() override { return target_->Fsync(); }
+  Status Append(const Slice& data) override;
+  Status PositionedAppend(const Slice& data, uint64_t offset) override;
+  Status Truncate(uint64_t size) override;
+  Status Close() override;
+  Status Flush() override;
+  Status Sync() override;
+  Status Fsync() override;
   bool IsSyncThreadSafe() const override { return target_->IsSyncThreadSafe(); }
   void SetIOPriority(Env::IOPriority pri) override {
     target_->SetIOPriority(pri);
@@ -1006,17 +920,11 @@ class WritableFileWrapper : public WritableFile {
   size_t GetUniqueId(char* id) const override {
     return target_->GetUniqueId(id);
   }
-  Status InvalidateCache(size_t offset, size_t length) override {
-    return target_->InvalidateCache(offset, length);
-  }
+  Status InvalidateCache(size_t offset, size_t length) override;
 
  protected:
-  Status Allocate(uint64_t offset, uint64_t len) override {
-    return target_->Allocate(offset, len);
-  }
-  Status RangeSync(uint64_t offset, uint64_t nbytes) override {
-    return target_->RangeSync(offset, nbytes);
-  }
+  Status Allocate(uint64_t offset, uint64_t len) override;
+  Status RangeSync(uint64_t offset, uint64_t nbytes) override;
 
  private:
   std::unique_ptr<WritableFile> target_;

@@ -233,7 +233,7 @@ class LittleEndian {
     if (sizeof(v) == 8)
       Store64(p, v);
     else
-      Store32(p, v);
+      Store32(p, static_cast<uint32_t>(v));
   }
 };
 
@@ -362,7 +362,7 @@ class BigEndian {
     if (sizeof(uword_t) == 8)
       Store64(p, v);
     else
-      Store32(p, v);
+      Store32(p, static_cast<uint32_t>(v));
   }
 };  // BigEndian
 

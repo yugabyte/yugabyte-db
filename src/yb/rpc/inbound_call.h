@@ -43,7 +43,6 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -55,9 +54,10 @@
 #include "yb/util/lockfree.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace google {
 namespace protobuf {
@@ -108,6 +108,14 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     return serialized_request_;
   }
 
+  void set_method_index(size_t value) {
+    method_index_ = value;
+  }
+
+  size_t method_index() const {
+    return method_index_;
+  }
+
   virtual const Endpoint& remote_address() const;
   virtual const Endpoint& local_address() const;
 
@@ -149,22 +157,16 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // it gets handled.
   MonoDelta GetTimeInQueue() const;
 
-  ThreadPoolTask* BindTask(InboundCallHandler* handler) {
-    auto shared_this = shared_from(this);
-    if (!handler->CallQueued()) {
-      return nullptr;
-    }
-    tracker_ = handler;
-    task_.Bind(handler, shared_this);
-    return &task_;
-  }
+  ThreadPoolTask* BindTask(InboundCallHandler* handler);
 
   void ResetCallProcessedListener() {
     call_processed_listener_ = decltype(call_processed_listener_)();
   }
 
-  virtual const std::string& method_name() const = 0;
-  virtual const std::string& service_name() const = 0;
+  virtual Slice serialized_remote_method() const = 0;
+  virtual Slice method_name() const = 0;
+
+//  virtual const std::string& service_name() const = 0;
   virtual void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) = 0;
 
   // Do appropriate actions when call is timed out.
@@ -219,6 +221,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   // Data source of this call.
   CallData request_data_;
+  std::atomic<size_t> request_data_memory_usage_{0};
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;
@@ -258,6 +261,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   InboundCallTask task_;
   InboundCallHandler* tracker_ = nullptr;
+
+  size_t method_index_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };

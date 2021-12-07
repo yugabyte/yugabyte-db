@@ -29,46 +29,53 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/yb-admin_client.h"
 
-#include <array>
-#include <iomanip>
 #include <sstream>
 #include <type_traits>
 
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
-#include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
 #include <boost/tti/has_member_function.hpp>
-
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
+
 #include "yb/common/json_util.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/client/client.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master_error.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/rpc/messenger.h"
-
-#include "yb/util/string_case.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/string_util.h"
-#include "yb/util/protobuf_util.h"
-#include "yb/util/random_util.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/numbers.h"
 
 #include "yb/consensus/consensus.proxy.h"
+
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/split.h"
+
+#include "yb/master/master.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/sys_catalog.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/protobuf_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
+#include "yb/util/string_case.h"
+#include "yb/util/string_util.h"
 
 DEFINE_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
@@ -787,7 +794,7 @@ Status ClusterAdminClient::GetIsLoadBalancerIdle() {
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
-  unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
+  std::unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
   int total_leader_count = 0;
   for (const auto& lc : leader_counts) { total_leader_count += lc.second; }
 
@@ -828,7 +835,7 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   return Status::OK();
 }
 
-Result<unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
+Result<std::unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
     const client::YBTableName& table_name) {
   vector<string> tablet_ids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
@@ -839,7 +846,7 @@ Result<unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
   const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
       master_proxy_.get(), req));
 
-  unordered_map<string, int> leader_counts;
+  std::unordered_map<string, int> leader_counts;
   for (const auto& locs : resp.tablet_locations()) {
     for (const auto& replica : locs.replicas()) {
       const auto uuid = replica.ts_info().permanent_uuid();
@@ -1625,7 +1632,7 @@ Status ClusterAdminClient::FillPlacementInfo(
       return STATUS(InvalidCommand, "Each placement info must be in format placement:rf");
     }
 
-    int min_num_replicas = boost::lexical_cast<int>(placement_block[1]);
+    int min_num_replicas = VERIFY_RESULT(CheckedStoInt<int>(placement_block[1]));
 
     std::vector<std::string> block = strings::Split(placement_block[0], ".",
                                                     strings::SkipEmpty());
@@ -1649,6 +1656,12 @@ Status ClusterAdminClient::FillPlacementInfo(
 Status ClusterAdminClient::ModifyTablePlacementInfo(
   const YBTableName& table_name, const std::string& placement_info, int replication_factor,
   const std::string& optional_uuid) {
+
+  YBTableName global_transactions(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  if (table_name == global_transactions) {
+    return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
+  }
 
   std::vector<std::string> placement_info_split = strings::Split(
       placement_info, ",", strings::SkipEmpty());
@@ -1683,32 +1696,7 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     live_replicas->set_placement_uuid(optional_uuid);
   }
 
-  master::ReplicationInfoPB replication_info;
-  // Merge the obtained info with the existing table replication info.
-  std::shared_ptr<client::YBTable> table;
-  RETURN_NOT_OK_PREPEND(yb_client_->OpenTable(table_name, &table),
-                        "Fetching table schema failed!");
-
-  // If it does not exist, fetch the cluster replication info.
-  if (!table->replication_info()) {
-    auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
-    master::SysClusterConfigEntryPB* sys_cluster_config_entry =
-      resp_cluster_config.mutable_cluster_config();
-    replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
-    // TODO(bogdan): Figure out how to handle read replias and leader affinity.
-    replication_info.clear_read_replicas();
-    replication_info.clear_affinitized_leaders();
-  } else {
-    // Table replication info exists, copy it over.
-    replication_info.CopyFrom(table->replication_info().get());
-  }
-
-  // Put in the new live placement info.
-  replication_info.set_allocated_live_replicas(live_replicas);
-
-  std::unique_ptr<yb::client::YBTableAlterer> table_alterer(
-    yb_client_->NewTableAlterer(table_name));
-  return table_alterer->replication_info(replication_info)->Alter();
+  return yb_client_->ModifyTablePlacementInfo(table_name, live_replicas);
 }
 
 Status ClusterAdminClient::ModifyPlacementInfo(
@@ -1942,6 +1930,10 @@ CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
       InvokeRpc(&MasterServiceProxy::SplitTablet, master_proxy_.get(), req));
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& table_name) {
+  return yb_client_->CreateTransactionsStatusTable(table_name);
 }
 
 template<class Response, class Request, class Object>

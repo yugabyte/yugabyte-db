@@ -14,10 +14,22 @@
 #ifndef YB_TSERVER_PG_CLIENT_SESSION_H
 #define YB_TSERVER_PG_CLIENT_SESSION_H
 
+#include <stdint.h>
+
+#include <functional>
+#include <mutex>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/range/iterator_range.hpp>
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
 
 #include "yb/rpc/rpc_fwd.h"

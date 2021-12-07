@@ -14,9 +14,10 @@
 #ifndef YB_UTIL_UNIVERSE_KEY_MANAGER_H
 #define YB_UTIL_UNIVERSE_KEY_MANAGER_H
 
+#include <shared_mutex>
+
 #include "yb/util/encryption.pb.h"
 #include "yb/util/encryption_util.h"
-#include "yb/util/result.h"
 
 namespace yb {
 

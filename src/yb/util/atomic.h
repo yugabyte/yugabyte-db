@@ -37,14 +37,15 @@
 #include <atomic>
 #include <thread>
 
-#include <boost/type_traits/make_signed.hpp>
 #include <boost/atomic.hpp>
+#include <boost/type_traits/make_signed.hpp>
+#include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
+#include "yb/util/cast.h"
 #include "yb/util/random_util.h"
 
 namespace yb {

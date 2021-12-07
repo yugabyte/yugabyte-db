@@ -299,9 +299,7 @@ CREATE INDEX on tbl USING spgist(c3) INCLUDE (c4);
 ERROR:  index method "spgist" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX on tbl USING gin(c1, c2) INCLUDE (c3, c4);
-NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  index method "ybgin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+ERROR:  access method "ybgin" does not support included columns
 CREATE INDEX on tbl USING hash(c1, c2) INCLUDE (c3, c4);
 NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
 CREATE INDEX on tbl USING rtree(c1, c2) INCLUDE (c3, c4);

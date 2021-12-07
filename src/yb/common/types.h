@@ -34,17 +34,17 @@
 #define YB_COMMON_TYPES_H
 
 #include <stdint.h>
+
 #include <string>
 
 #include <glog/logging.h>
 
 #include "yb/common/common.pb.h"
+
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/util/net/inetaddress.h"
-#include "yb/util/uuid.h"
-#include "yb/util/debug-util.h"
+
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -363,16 +363,12 @@ struct DataTypeTraits<STRING> : public DerivedTypeTraits<BINARY>{
 };
 
 template<>
-struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY>{
+struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY> {
   static const char* name() {
     return "inet";
   }
-  static void AppendDebugStringForValue(const void *val, std::string *str) {
-    const Slice *s = reinterpret_cast<const Slice *>(val);
-    InetAddress addr;
-    DCHECK(addr.FromSlice(*s).ok());
-    str->append(addr.ToString());
-  }
+
+  static void AppendDebugStringForValue(const void *val, std::string *str);
 };
 
 template<>
@@ -391,12 +387,7 @@ struct DataTypeTraits<UUID> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "uuid";
   }
-  static void AppendDebugStringForValue(const void *val, std::string *str) {
-    const Slice *s = reinterpret_cast<const Slice *>(val);
-    Uuid uuid;
-    DCHECK(uuid.FromSlice(*s).ok());
-    str->append(uuid.ToString());
-  }
+  static void AppendDebugStringForValue(const void *val, std::string *str);
 };
 
 template<>
@@ -404,12 +395,8 @@ struct DataTypeTraits<TIMEUUID> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "timeuuid";
   }
-  static void AppendDebugStringForValue(const void *val, std::string *str) {
-    const Slice *s = reinterpret_cast<const Slice *>(val);
-    Uuid uuid;
-    DCHECK(uuid.FromSlice(*s).ok());
-    str->append(uuid.ToString());
-  }
+
+  static void AppendDebugStringForValue(const void *val, std::string *str);
 };
 
 template<>

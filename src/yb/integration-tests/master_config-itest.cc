@@ -11,20 +11,35 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <glog/logging.h>
 #include <gtest/gtest.h>
+
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/gutil/algorithm.h"
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/cluster_verifier.h"
-#include "yb/master/master.h"
-#include "yb/master/master-test-util.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/master.proxy.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_controller.h"
+
+#include "yb/master/master.pb.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using std::shared_ptr;
 using std::string;

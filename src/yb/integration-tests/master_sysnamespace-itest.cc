@@ -12,11 +12,17 @@
 //
 
 #include <yb/master/master_defaults.h>
+
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/master.h"
+
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

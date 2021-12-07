@@ -15,16 +15,23 @@
 
 #include "yb/util/memory/memory_usage_test_util.h"
 
-#include "yb/util/format.h"
+#include <map>
+
 #include "yb/util/memory/arena.h"
+#include "yb/util/size_literals.h"
 
 #if defined(TCMALLOC_ENABLED)
 #include <gperftools/malloc_hook.h>
+#define MEMORY_USAGE_SUPPORTED
 #endif // defined(TCMALLOC_ENABLED)
+
+#if !defined(MEMORY_USAGE_SUPPORTED)
+#include "yb/util/format.h"
+#endif
 
 namespace yb {
 
-#if defined(TCMALLOC_ENABLED) && !defined(ADDRESS_SANITIZER) && !defined(THREAD_SANITIZER)
+#if defined(MEMORY_USAGE_SUPPORTED)
 
 size_t heap_requested_bytes = 0;
 bool heap_allocation_tracking_enabled = false;

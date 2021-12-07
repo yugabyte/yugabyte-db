@@ -15,23 +15,29 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/common/index.h"
+#include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
-
 #include "yb/rocksdb/utilities/checkpoint.h"
 
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/operations/snapshot_operation.h"
 
+#include "yb/util/file_util.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/trace.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 

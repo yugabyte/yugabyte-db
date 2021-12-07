@@ -3689,9 +3689,15 @@ static void YBRefreshCache()
 	}
 
 	YBCPgResetCatalogReadTime();
-	/* Get the latest syscatalog version from the master */
-	uint64_t catalog_master_version = 0;
-	YbGetMasterCatalogVersion(&catalog_master_version, false /* can_use_cache */);
+
+	/*
+	 * Get the latest syscatalog version from the master.
+	 * Reset the cached version type if needed to force reading catalog version
+	 * from the catalog table first.
+	 */
+	if (yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
+		yb_catalog_version_type = CATALOG_VERSION_UNSET;
+	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3752,8 +3758,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 * to refresh the cache.
 	 */
 	YBCPgResetCatalogReadTime();
-	uint64_t catalog_master_version = 0;
-	YbGetMasterCatalogVersion(&catalog_master_version, true /* can_use_cache */);
+	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
 	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;
@@ -3826,11 +3831,56 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 		else
 		{
 			if (need_global_cache_refresh)
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("%s", edata->message),
-						 errdetail("Internal error: %s", "Catalog Version Mismatch: A DDL occurred "
-								   "while processing this query. Try again.")));
+			{
+				int error_code = edata->sqlerrcode;
+
+				/*
+				 * TODO: This error occurs in tablet service when snapshot is outdated.
+				 * We should eventually translate this type of error as a retryable error
+				 * in the upper layer such as in YBCStatusPgsqlError().
+				 */
+				bool isInvalidCatalogSnapshotError = strstr(edata->message,
+						"catalog snapshot used for this transaction has been invalidated") != NULL;
+
+				/*
+				 * If we got a schema-version-mismatch error while a DDL happened,
+				 * this is likely caused by a conflict between the current
+				 * transaction and the DDL transaction.
+				 * So we map it to the retryable serialization failure error code.
+				 * TODO: consider if we should
+				 * 1. map this case to a different (retryable) error code
+				 * 2. always map schema-version-mismatch to a retryable error.
+				 */
+				if (need_table_cache_refresh || isInvalidCatalogSnapshotError)
+				{
+					error_code = ERRCODE_T_R_SERIALIZATION_FAILURE;
+				}
+
+				/*
+				 * Report the original error, but add a context mentioning that a
+				 * possibly-conflicting, concurrent DDL transaction happened.
+				 */
+				if (edata->detail == NULL && edata->hint == NULL)
+				{
+					ereport(edata->elevel,
+							(yb_txn_errcode(edata->yb_txn_errcode),
+							 errcode(error_code),
+							 errmsg("%s", edata->message),
+							 errcontext("Catalog Version Mismatch: A DDL occurred "
+										"while processing this query. Try again.")));
+				}
+				else
+				{
+					ereport(edata->elevel,
+							(yb_txn_errcode(edata->yb_txn_errcode),
+							 errcode(error_code),
+							 errmsg("%s", edata->message),
+							 errdetail("%s", edata->detail),
+							 errhint("%s", edata->hint),
+							 errcontext("Catalog Version Mismatch: A DDL occurred "
+										"while processing this query. Try again.")));
+				}
+			}
 			else
 			{
 				Assert(need_table_cache_refresh);
@@ -3993,7 +4043,12 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	if (is_read_restart_error && attempt >= YBCGetMaxReadRestartAttempts())
+	/*
+	 * Retries for kReadRestart are performed indefinitely in case the true READ COMMITTED isolation
+	 * level implementation is used.
+	 */
+	if (!IsYBReadCommitted() &&
+			(is_read_restart_error && attempt >= YBCGetMaxReadRestartAttempts()))
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of read restart attempts (%d)",

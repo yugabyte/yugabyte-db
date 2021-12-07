@@ -32,23 +32,16 @@
 
 #include "yb/util/net/socket.h"
 
-#include <errno.h>
-#include <fcntl.h>
 #include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <limits>
-#include <numeric>
 #include <string>
 
 #include <glog/logging.h>
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
@@ -57,7 +50,8 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
-#include "yb/util/subprocess.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_string(local_ip_for_outbound_sockets, "",
               "IP to bind to when making outgoing socket connections. "
@@ -123,7 +117,7 @@ Socket::Socket(int fd)
 }
 
 void Socket::Reset(int fd) {
-  ignore_result(Close());
+  WARN_NOT_OK(Close(), "Close failed");
   fd_ = fd;
 }
 

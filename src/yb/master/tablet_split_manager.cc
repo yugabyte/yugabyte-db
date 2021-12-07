@@ -15,12 +15,13 @@
 
 #include <chrono>
 
-#include <gflags/gflags.h>
-
 #include "yb/gutil/port.h"
-#include "yb/util/atomic.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/cdc_consumer_split_driver.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 
 DEFINE_int32(process_split_tablet_candidates_interval_msec, 1000,
@@ -56,9 +57,12 @@ int32 GetCandidateQueueLimit() {
 } // namespace
 
 TabletSplitManager::TabletSplitManager(
-    TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver):
+    TabletSplitCandidateFilterIf* filter,
+    TabletSplitDriverIf* driver,
+    CDCConsumerSplitDriverIf* cdc_consumer_split_driver):
     filter_(filter),
-    driver_(driver) {}
+    driver_(driver),
+    cdc_consumer_split_driver_(cdc_consumer_split_driver) {}
 
 Status TabletSplitManager::Init() {
   process_tablet_candidates_task_.reset(new BackgroundTask(
@@ -78,6 +82,24 @@ void TabletSplitManager::Shutdown() {
 void TabletSplitManager::RemoveFailedProcessingTabletSplit(const TabletId& tablet_id) {
   UniqueLock<decltype(mutex_)> lock(mutex_);
   processing_tablets_to_split_children_.erase(tablet_id);
+}
+
+void TabletSplitManager::ProcessSplitTabletResult(
+    const Status& status,
+    const TableId& consumer_table_id,
+    const SplitTabletIds& split_tablet_ids) {
+  if (!status.ok()) {
+    LOG(WARNING) << "AsyncSplitTablet task failed with status: " << status;
+    RemoveFailedProcessingTabletSplit(split_tablet_ids.source);
+  } else {
+    // Update the xCluster tablet mapping.
+    Status s = cdc_consumer_split_driver_->UpdateCDCConsumerOnTabletSplit(
+        consumer_table_id, split_tablet_ids);
+    WARN_NOT_OK(s, Format(
+        "Encountered an error while updating the xCluster consumer tablet mapping. "
+        "Table id: $0, Split Tablets: $1",
+        consumer_table_id, split_tablet_ids.ToString()));
+  }
 }
 
 bool AllReplicasHaveFinshedCompaction(const TabletInfo& tablet_info) {

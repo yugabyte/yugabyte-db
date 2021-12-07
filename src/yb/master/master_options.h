@@ -36,7 +36,6 @@
 
 #include "yb/server/server_base_options.h"
 #include "yb/util/atomic.h"
-#include "yb/util/result.h"
 
 namespace yb {
 namespace master {

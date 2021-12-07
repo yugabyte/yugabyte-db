@@ -13,15 +13,16 @@
 
 #include "yb/util/header_manager_impl.h"
 
-#include "yb/util/env.h"
-#include "yb/util/encryption_util.h"
-#include "yb/util/memory/memory.h"
+#include <string>
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/cipher_stream_fwd.h"
 #include "yb/util/encryption.pb.h"
+#include "yb/util/errno.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/universe_key_manager.h"
-
-#include "yb/gutil/endian.h"
 
 static const string kEncryptionMagic = "encrypt!";
 

@@ -30,17 +30,26 @@
 // under the License.
 //
 
-#include "yb/util/slice.h"
-
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/random_util.h"
+#include "yb/util/slice.h"
 #include "yb/util/tostring.h"
 
 using std::string;
 
 namespace yb {
+
+// STL map whose keys are Slices.
+//
+// See sample usage in slice-test.cc.
+template <typename T>
+struct SliceMap {
+  typedef std::map<Slice, T, Slice::Comparator> type;
+};
 
 typedef SliceMap<int>::type MySliceMap;
 

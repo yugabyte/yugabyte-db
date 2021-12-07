@@ -33,7 +33,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/once.h"
 #include "yb/util/metrics.h"
 
 METRIC_DEFINE_counter(server, glog_info_messages,

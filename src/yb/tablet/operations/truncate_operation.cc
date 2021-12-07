@@ -15,13 +15,12 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/rpc/rpc_context.h"
-#include "yb/server/hybrid_clock.h"
+
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/trace.h"
 
 namespace yb {

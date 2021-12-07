@@ -12,26 +12,33 @@
 //
 
 #include "yb/client/async_rpc.h"
+
 #include "yb/client/batcher.h"
-#include "yb/client/client.h"
 #include "yb/client/client_error.h"
-#include "yb/client/client-internal.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/cast.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
@@ -63,8 +70,6 @@ METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix reads that failed to be served by the closest replica.");
 
-DECLARE_bool(collect_end_to_end_traces);
-
 DEFINE_int32(ybclient_print_trace_every_n, 0,
              "Controls the rate at which traces from ybclient are printed. Setting this to 0 "
              "disables printing the collected traces.");
@@ -84,8 +89,9 @@ DEFINE_bool(detect_duplicates_for_retryable_requests, true,
 DEFINE_bool(ysql_forward_rpcs_to_local_tserver, false,
             "When true, forward the PGSQL rpcs to the local tServer.");
 
-
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
+
+DECLARE_bool(collect_end_to_end_traces);
 
 using namespace std::placeholders;
 
@@ -134,7 +140,6 @@ AsyncRpc::AsyncRpc(
     const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level)
     : Rpc(data.batcher->deadline(), data.batcher->messenger(), &data.batcher->proxy_cache()),
       batcher_(data.batcher),
-      trace_(new Trace),
       ops_(data.ops),
       tablet_invoker_(LocalTabletServerOnly(ops_),
                       yb_consistency_level == YBConsistencyLevel::CONSISTENT_PREFIX,
@@ -149,9 +154,6 @@ AsyncRpc::AsyncRpc(
       async_rpc_metrics_(data.batcher->async_rpc_metrics()) {
   mutable_retrier()->mutable_controller()->set_allow_local_calls_in_curr_thread(
       data.allow_local_calls_in_curr_thread);
-  if (Trace::CurrentTrace()) {
-    Trace::CurrentTrace()->AddChildTrace(trace_.get());
-  }
 }
 
 AsyncRpc::~AsyncRpc() {
@@ -416,7 +418,7 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
-    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
+    TRACE_TO(trace_, "Received from server: \n BEGIN\n$0 END.", resp_.trace_buffer());
   }
   NotifyBatcher(status);
   if (!CommonResponseCheck(status)) {
@@ -604,7 +606,7 @@ void WriteRpc::SwapResponses() {
           Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
               pgsql_response.rows_data_sidecar()));
           down_cast<YBPgsqlWriteOp*>(yb_op)->mutable_rows_data()->assign(
-              util::to_char_ptr(rows_data.data()), rows_data.size());
+              to_char_ptr(rows_data.data()), rows_data.size());
         }
         pgsql_idx++;
         break;
@@ -734,7 +736,7 @@ void ReadRpc::SwapResponses() {
         if (ql_response.has_rows_data_sidecar()) {
           Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
               ql_response.rows_data_sidecar()));
-          ql_op->mutable_rows_data()->assign(util::to_char_ptr(rows_data.data()), rows_data.size());
+          ql_op->mutable_rows_data()->assign(rows_data.cdata(), rows_data.size());
         }
         ql_idx++;
         break;
@@ -755,7 +757,7 @@ void ReadRpc::SwapResponses() {
           Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
               pgsql_response.rows_data_sidecar()));
           down_cast<YBPgsqlReadOp*>(yb_op)->mutable_rows_data()->assign(
-              util::to_char_ptr(rows_data.data()), rows_data.size());
+              rows_data.cdata(), rows_data.size());
         }
         pgsql_idx++;
         break;

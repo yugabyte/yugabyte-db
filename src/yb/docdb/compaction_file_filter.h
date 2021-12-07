@@ -15,8 +15,7 @@
 #define YB_DOCDB_COMPACTION_FILE_FILTER_H_
 
 #include <memory>
-#include "yb/common/schema.h"
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/server/hybrid_clock.h"
@@ -25,24 +24,30 @@
 namespace yb {
 namespace docdb {
 
+typedef enum {
+  EXP_NORMAL,
+  EXP_TABLE_ONLY,
+  EXP_TRUST_VALUE
+} ExpiryMode;
+
 struct ExpirationTime {
   // Indicates value-level TTL expiration.
   HybridTime ttl_expiration_ht = kNoExpiration;
   // Indicates creation hybrid time, used to calculate table-level TTL expiration.
   HybridTime created_ht = HybridTime::kMax;
 
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(ttl_expiration_ht, created_ht);
-  }
+  std::string ToString() const;
 };
 
-inline bool operator==(const ExpirationTime& lhs, const ExpirationTime& rhs) {
-  return YB_STRUCT_EQUALS(ttl_expiration_ht, created_ht);
-}
+bool operator==(const ExpirationTime& lhs, const ExpirationTime& rhs);
 
 ExpirationTime ExtractExpirationTime(const rocksdb::FileMetaData* file);
 
-bool TtlIsExpired(ExpirationTime expiry, MonoDelta table_ttl, HybridTime now);
+bool TtlIsExpired(
+    const ExpirationTime expiry,
+    const MonoDelta table_ttl,
+    const HybridTime now,
+    const ExpiryMode mode = EXP_NORMAL);
 
 bool IsLastKeyCreatedBeforeHistoryCutoff(ExpirationTime expiry, HybridTime history_cutoff);
 
@@ -58,25 +63,26 @@ class DocDBCompactionFileFilter : public rocksdb::CompactionFileFilter {
       const MonoDelta table_ttl,
       const HybridTime history_cutoff,
       const HybridTime max_ht_to_expire,
-      const HybridTime filter_ht)
+      const HybridTime filter_ht,
+      const ExpiryMode mode)
       : table_ttl_(table_ttl),
         history_cutoff_(history_cutoff),
         max_ht_to_expire_(max_ht_to_expire),
-        filter_ht_(filter_ht) {}
+        filter_ht_(filter_ht),
+        mode_(mode) {}
 
   rocksdb::FilterDecision Filter(const rocksdb::FileMetaData* file) override;
 
   const char* Name() const override;
 
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(table_ttl_, history_cutoff_, max_ht_to_expire_, filter_ht_);
-  }
+  std::string ToString() const;
 
  private:
   const MonoDelta table_ttl_;
   const HybridTime history_cutoff_;
   const HybridTime max_ht_to_expire_;
   const HybridTime filter_ht_;
+  const ExpiryMode mode_;
 };
 
 // DocDBCompactionFileFilterFactory will create new DocDBCompactionFileFilters, using its

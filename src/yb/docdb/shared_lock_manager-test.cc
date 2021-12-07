@@ -12,17 +12,17 @@
 //
 
 #include <atomic>
-#include <future>
 #include <mutex>
-#include <random>
 #include <stack>
 #include <thread>
 
+#include "yb/docdb/lock_batch.h"
 #include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/rpc/thread_pool.h"
 
-#include "yb/util/random_util.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

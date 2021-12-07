@@ -33,14 +33,21 @@
 #ifndef YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_TEST_H_
 #define YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_TEST_H_
 
-#include "yb/tserver/remote_bootstrap-test-base.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/gutil/strings/fastmem.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/tablet/tablet_bootstrap_if.h"
+
 #include "yb/tserver/remote_bootstrap_client.h"
+#include "yb/tserver/remote_bootstrap-test-base.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/net/net_util.h"
 

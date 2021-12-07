@@ -33,16 +33,21 @@
 #define YB_CONSENSUS_LOG_ANCHOR_REGISTRY_H
 
 #include <map>
+#include <shared_mutex>
 #include <string>
+
+#include <gflags/gflags_declare.h>
 #include <gtest/gtest_prod.h>
 
 #include "yb/consensus/log_fwd.h"
 
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
 
 namespace yb {
 namespace log {

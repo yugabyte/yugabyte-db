@@ -15,7 +15,12 @@
 
 #include "yb/yql/pggate/pg_column.h"
 
+#include "yb/client/schema.h"
+
+#include "yb/common/ql_type.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/schema.h"
 
 namespace yb {
 namespace pggate {
@@ -126,6 +131,18 @@ void PgColumn::ResetBindPB() {
 int PgColumn::id() const {
   return is_virtual_column() ? to_underlying(PgSystemAttrNum::kYBTupleId)
                              : schema_.column_id(index_);
+}
+
+InternalType PgColumn::internal_type() const {
+  return client::YBColumnSchema::ToInternalDataType(desc().type());
+}
+
+const std::string& PgColumn::attr_name() const {
+  return desc().name();
+}
+
+int PgColumn::attr_num() const {
+  return desc().order();
 }
 
 }  // namespace pggate

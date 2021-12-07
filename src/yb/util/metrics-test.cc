@@ -30,21 +30,24 @@
 // under the License.
 //
 
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
-#include <boost/assign/list_of.hpp>
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 using std::string;
@@ -186,7 +189,7 @@ TEST_F(MetricsTest, AutoDetachToLastValue) {
   ASSERT_EQ(1000, gauge->value());
   ASSERT_EQ(1001, gauge->value());
   {
-    FunctionGaugeDetacher detacher;
+    std::shared_ptr<void> detacher;
     gauge->AutoDetachToLastValue(&detacher);
     ASSERT_EQ(1002, gauge->value());
     ASSERT_EQ(1003, gauge->value());
@@ -205,7 +208,7 @@ TEST_F(MetricsTest, AutoDetachToConstant) {
   ASSERT_EQ(1000, gauge->value());
   ASSERT_EQ(1001, gauge->value());
   {
-    FunctionGaugeDetacher detacher;
+    std::shared_ptr<void> detacher;
     gauge->AutoDetach(&detacher, 12345);
     ASSERT_EQ(1002, gauge->value());
     ASSERT_EQ(1003, gauge->value());
@@ -404,7 +407,7 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
   // Dump the prototype info.
   std::stringstream out;
   JsonWriter w(&out, JsonWriter::PRETTY);
-  MetricPrototypeRegistry::get()->WriteAsJson(&w);
+  WriteRegistryAsJson(&w);
   string json = out.str();
 
   // Quick sanity check for one of our metrics defined in this file.

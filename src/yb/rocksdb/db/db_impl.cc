@@ -35,7 +35,6 @@
 
 #include <algorithm>
 #include <climits>
-#include <cstdio>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -47,7 +46,6 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include <gflags/gflags.h>
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/string_util.h"
@@ -62,6 +60,7 @@
 #include "yb/rocksdb/db/auto_roll_logger.h"
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_job.h"
+#include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/db_info_dumper.h"
 #include "yb/rocksdb/db/db_iter.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -80,31 +79,25 @@
 #include "yb/rocksdb/db/merge_helper.h"
 #include "yb/rocksdb/db/table_cache.h"
 #include "yb/rocksdb/db/table_properties_collector.h"
-#include "yb/rocksdb/db/transaction_log_impl.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db/write_callback.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/db/xfunc_test_points.h"
-#include "yb/rocksdb/memtable/hash_linklist_rep.h"
-#include "yb/rocksdb/memtable/hash_skiplist_rep.h"
 #include "yb/rocksdb/port/likely.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/sst_file_writer.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/wal_filter.h"
-#include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/merger.h"
+#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
-#include "yb/rocksdb/table/two_level_iterator.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
@@ -123,6 +116,7 @@
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/stats/iostats_context_imp.h"
 
 using namespace std::literals;

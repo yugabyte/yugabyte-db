@@ -10,15 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <map>
-#include "yb/server/webserver.h"
-#include "yb/util/web_callback_registry.h"
 #include "yb/server/pgsql_webserver_wrapper.h"
-#include "yb/util/jsonwriter.h"
-#include "yb/gutil/map-util.h"
+
+#include <math.h>
+
+#include <map>
+
 #include "yb/common/ybc-internal.h"
-#include "yb/util/metrics.h"
+
+#include "yb/gutil/map-util.h"
+
+#include "yb/server/webserver.h"
+
+#include "yb/util/jsonwriter.h"
+#include "yb/util/metrics_writer.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/status_log.h"
 
 DECLARE_string(metric_node_name);
 
@@ -92,7 +99,7 @@ static void DoWriteStatArrayElemToJson(JsonWriter* writer, YsqlStatementStat* st
   writer->Double(stat->mean_time);
 
   writer->String("stddev_time");
-  // Based on logic in pg_stat_statements_internal().
+  // Based on logic in pg_stat_monitor_internal().
   double stddev = (stat->calls > 1) ?
     (sqrt(stat->sum_var_time / stat->calls)) : 0.0;
   writer->Double(stddev);

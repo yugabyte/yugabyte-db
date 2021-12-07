@@ -18,40 +18,34 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/macos" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/linux" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/docker" class="nav-link active">
+    <a href="../docker/" class="nav-link active">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 </ul>
-
-{{< note title="Note" >}}
-
-This Docker Quick Start uses the [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
-
-{{< /note >}}
 
 ## 1. Create a local cluster
 
@@ -63,13 +57,21 @@ $ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042
  --daemon=false
 ```
 
-As per the above docker run command, the data stored in YugabyteDB is not persistent across container restarts. If you want to make YugabyteDB persist data across restarts then you have to add the volume mount option to the docker run command as shown below.
+In the preceding `docker run` command, the data stored in YugabyteDB doesn't persist across container restarts. To make YugabyteDB persist data across restarts, add a volume mount option to the docker run command.
+First, create a `~/yb_data` directory:
 
 ```sh
-docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
- -v ~/yb_data:/home/yugabyte/var\
- yugabytedb/yugabyte:latest bin/yugabyted start\
- --daemon=false 
+$ mkdir ~/yb_data
+```
+
+Next, run docker with the volume mount option:
+
+```sh
+$ docker run -d --name yugabyte \
+         -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042 \
+         -v ~/yb_data:/home/yugabyte/yb_data \
+         yugabytedb/yugabyte:latest bin/yugabyted start \
+         --base_dir=/home/yugabyte/yb_data --daemon=false
 ```
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
@@ -87,7 +89,7 @@ CONTAINER ID        IMAGE                 COMMAND                  CREATED      
 
 ## 3. Check cluster status with Admin UI
 
-The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at http://localhost:9000. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
+The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 ### Overview and YB-Master status
 
@@ -105,6 +107,6 @@ Clicking on the `See all nodes` takes us to the Tablet Servers page where you ca
 
 {{<tip title="Next step" >}}
 
-[Explore YSQL](../../explore-ysql/)
+[Explore YSQL](../../explore/ysql/)
 
 {{< /tip >}}

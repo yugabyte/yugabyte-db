@@ -18,7 +18,7 @@ To understand the _timestamptz_ data type, and converting its values to/from pla
 
 The plain _timestamp_ data type and the _timestamptz_ data type are cousins. But there are critical differences:
 
-- Both a plain _timestamp_ datum and a _timestamptz_ datum have the identical internal representation. You can picture it as the real number of seconds (with microsecond precision) from a reference moment (_12:00_ on _1-Jan-1970_). The _extract(epoch from t)_ function, where _t_ is either a plain _timestamp_ value or a _timestamptz_ value, returns this number. Moreover, the result is independent of the session's current _TimeZone_ setting for both of these data types. (See the [demonstration](#interpretation-and-statement-of-the-rules) below.)
+- Both a plain _timestamp_ datum and a _timestamptz_ datum have the identical internal representation. You can picture it as the real number of seconds (with microsecond precision) from a reference moment (_12:00_ on _1-Jan-1970_, _UTC_). The _extract(epoch from t)_ function, where _t_ is either a plain _timestamp_ value or a _timestamptz_ value, returns this number. Moreover, the result is independent of the session's current _TimeZone_ setting for both of these data types. (See the subsection [Interpretation and statement of the rules](#interpretation-and-statement-of-the-rules) below.)
 - The difference is in the _metadata_ that describes the datum: each knows which kind it is. And the difference is significant when a datum is recorded or read back.
 
 You need a clear understanding of the differences so that you can make the appropriate choice between these two data types according to the use case.
@@ -78,7 +78,9 @@ The _UTC offset_ may be specified implicitly (using the session's current _TimeZ
 
 The rules for this, and examples that show all of the possible ways to assign a _timestamptz_ value, are given in the section [Timezones and _UTC offsets_](../../timezones/) and its subsections.
 
-Here is a small illustration:
+### A small illustration
+
+Create a test table with a *timestamptz* column, insert one row, and view the result using, successively, two different values for the session's current timezone setting.
 
 
 ```plpgsql
@@ -111,7 +113,7 @@ And this is the result of the second query:
 This outcome needs careful interpretation. It turns out that, using ordinary SQL, there is no _direct_ way to inspect what is actually held by the internal representation as an easily-readable _date-time_ value.
 
 - You can of course, apply the _at time zone 'UTC'_ operator to the value of interest. But this implies understanding what you see in the light of a rule that you must accept. And this section aims to demonstrate that the rule in question is correct, given that you know already what value is internally represented—in other words, you'd be "proving" that you understand correctly by assuming that you have!
-- The better way is to use the _extract(epoch from timestamptz_value)_ function. But even this requires an act of faith (or lots of empirical testing): you must be convinced that the result of _extract()_ here is not sensitive to the current _TimeZone_ setting. The [demonstration](#interpretation-and-statement-of-the-rules) shows that you can indeed rely on this.
+- The better way is to use the _extract(epoch from timestamptz_value)_ function. But even this requires an act of faith (or lots of empirical testing): you must be convinced that the result of _extract()_ here is not sensitive to the current _TimeZone_ setting. The [demonstration](#the-demonstration) shows that you can indeed rely on this.
 
 Usually, you "see" the value represented only indirectly. In the present case—for example as the _::text_ typecast of the value. And the evaluation of this typecast _is_ sensitive to the current _TimeZone_ setting.
 
@@ -121,7 +123,11 @@ You can readily understand that the three values _'2021-02-14 13:30:35+03:00'_, 
 
 The meeting partners both have a background knowledge of their timezone. But the important fact for each, for the day of the meeting, is what time to set the reminder on their clock (which setting is done only in terms of the local time of day): respectively _08:00_ and _17:00_.
 
-Notice that when a timezone respects Daylight Savings Time, this is taken account of just like it is in the example above. Consider this extension of the meeting scenario:
+Notice that when a timezone respects Daylight Savings Time, this is taken account of just like it is in the example above.
+
+### A minimal simulation of a calendar application
+
+Consider this scenario:
 
 - Rickie, who lives in Los Angeles, has constraints set by her family—and she controls the meeting. She can manage only eight o'clock in the morning. It's unimportant to her whether Daylight Savings Time is in force or not because her local constraining events (like when school starts) are all fixed in local time—and only eight in the morning local time works for her. She needs to fix two Tuesday meetings that happen to straddle the "spring forward" moment in Los Angeles—and then to see each listed as at eight o'clock in _her_ online calendar.
 - Vincent, who lives in Amsterdam, needs to see when these meetings will take place in _his_ online calendar.
@@ -140,10 +146,12 @@ insert into meetings (k, t) values
   ($1, $2::timestamptz),
   ($3, $4::timestamptz);
 
-prepare qry_mtg(int, int) as
-  select
-    (select to_char(t, 'Dy hh24-mi on dd-Mon-yyyy TZ ["with offset" TZH:TZM]') from meetings where k = $1) as "Meeting 1",
-    (select to_char(t, 'Dy hh24-mi on dd-Mon-yyyy TZ ["with offset" TZH:TZM]') from meetings where k = $2) as "Meeting 2";
+prepare qry_mtg as
+select
+  k                                                                  as "Mtg",
+  to_char(t, 'Dy hh24-mi on dd-Mon-yyyy TZ ["with offset" TZH:TZM]') as "When"
+from meetings
+order by k;
 ```
 
 Now simulate Rickie creating the meetings. She has the timezone _America/Los_Angeles_ set in her calendar preferences:
@@ -151,17 +159,18 @@ Now simulate Rickie creating the meetings. She has the timezone _America/Los_Ang
 ```plpgsql
 set timezone = 'America/Los_Angeles';
 execute cr_mtg(
-  17, '2021-03-09 08:00:00',
-  42, '2021-03-16 08:00:00');
-execute qry_mtg(17, 42);
+  1, '2021-03-09 08:00:00',
+  2, '2021-03-16 08:00:00');
+execute qry_mtg;
 ```
 
 This is Rickie's result:
 
 ```output
-                     Meeting 1                     |                     Meeting 2                     
----------------------------------------------------+---------------------------------------------------
- Tue 08-00 on 09-Mar-2021 PST [with offset -08:00] | Tue 08-00 on 16-Mar-2021 PDT [with offset -07:00]
+ Mtg |                       When                        
+-----+---------------------------------------------------
+   1 | Tue 08-00 on 09-Mar-2021 PST [with offset -08:00]
+   2 | Tue 08-00 on 16-Mar-2021 PDT [with offset -07:00]
 ```
 
 Rickie gets a gentle reminder that the meetings do happen to straddle her "spring forward" moment. But she doesn't really care. She confirms that each meeting will happen at eight.
@@ -170,15 +179,16 @@ Now simulate Vincent attending the meetings. He has the timezone _Europe/Amsterd
 
 ```plpgsql
 set timezone = 'Europe/Amsterdam';
-execute qry_mtg(17, 42);
+execute qry_mtg;
 ```
 
 This is Vincent's result:
 
 ```output
-                     Meeting 1                     |                     Meeting 2                     
----------------------------------------------------+---------------------------------------------------
- Tue 17-00 on 09-Mar-2021 CET [with offset +01:00] | Tue 16-00 on 16-Mar-2021 CET [with offset +01:00]
+ Mtg |                       When                        
+-----+---------------------------------------------------
+   1 | Tue 17-00 on 09-Mar-2021 CET [with offset +01:00]
+   2 | Tue 16-00 on 16-Mar-2021 CET [with offset +01:00]
 ```
 
 Because Europe's "spring forward" moment is two weeks after it is in the US, Vincent sees that the second meeting is one hour earlier than the first while the timezone specification is unchanged. If he doesn't know that the US is out of step on Daylight Savings Time, he might think that Rickie has simply done this on a whim. But this hardly matters: he knows when he has to attend each meeting.
@@ -221,7 +231,7 @@ This is the result:
  2021-03-14 01:30:00-08 | 2021-03-14 03:30:00-07 | 2021-03-14 03:30:00-07
 ```
 
-<p id="just-after-fall-back">The value in the column with the alias <i>"weird"</i> is weird because <i>'2021-03-14 02:30:00'</i> doesn't exist. The design could have made the attempt to set this cause an error. But it decided to be forgiving.</p>
+<a name="just-after-fall-back"></a>The value in the column with the alias _"weird"_ is weird because _'2021-03-14 02:30:00'_ doesn't exist. The design could have made the attempt to set this cause an error. But it was decided that it be forgiving.
 
 Daylight Savings Time in the America/Los_Angeles timezone ends, in 2021, on 7-Nov at 02:00:00. Watch what a clock that automatically adjusts according to Daylight Savings Time start/end does now. It falls back from _'01:59:59'_ to _'01:00:00'_. This means that, for example, _'01:30:00'_ on 7-Nov is ambiguous. If you ring your room-mate latish on Saturday evening 6-Nov to say that you'll won't be back home until the small hours, probably about one-thirty, they won't know what you mean because the clock will read this time _twice_. It's easiest to see this in reverse. Try this:
 
@@ -332,7 +342,7 @@ You might be tempted to write _PDT_ and _PST_ in the example above in place of _
 Yugabyte recommends that you program defensively to avoid these pitfalls and follow the approach described in the section [Recommended practice for specifying the _UTC offset_](../../timezones/recommendation/).
 {{< /tip >}}
 
-## Demonstrating the rule for displaying a timestamptz value in a timezone-sensitive way
+## Demonstrating the rule for displaying a timestamptz value in a timezone-insensitive way
 
 The code blocks above, and especially those in the section [More Daylight Savings Time examples](#more-daylight-savings-time-examples), are just that: _examples_ that show the functional benefit that the _timestamptz_ data type brings. The outcomes that are shown accord with intuition. But, so that you can write reliable application code, you must also understand the _rules_ that explain, and let you reliably predict, these beneficial outcomes.
 
@@ -353,10 +363,10 @@ The demonstration that follows is designed like this:
 
 - Two _constant_ values, one with data type plain _timestamp_ and one with data type _timestamptz_ are initialized so that the internal representations (as opposed to the metadata) are identical. Look:
 
-    ```output
-    ts_plain    constant timestamp   not null := make_timestamp  (yyyy, mm, dd, hh, mi, ss);
-    ts_with_tz  constant timestamptz not null := make_timestamptz(yyyy, mm, dd, hh, mi, ss, 'UTC');
-    ```
+  ```output
+  ts_plain    constant timestamp   not null := make_timestamp  (yyyy, mm, dd, hh, mi, ss);
+  ts_with_tz  constant timestamptz not null := make_timestamptz(yyyy, mm, dd, hh, mi, ss, 'UTC');
+  ```
 
 - Each uses the same _constant int_ values, _yyyy_, _mm_, _dd_, _hh_, _mi_, and _ss_, to define the identical _date-and-time_ part for each of the two moments. The fact that _UTC_ is used for the _timezone_ argument of the _make_timestamptz()_ invocation ensures the required identity of the internal representations of the two moments—actually, both as plain _timestamp_ values.
 
@@ -364,21 +374,21 @@ The demonstration that follows is designed like this:
 
 - A _constant_ array,  _timezones_, is populated by this query:
 
-    ```plpgsql
-    select name
-    from pg_timezone_names
-    where name like 'Etc/GMT%'
-    and utc_offset <> make_interval()
-    order by utc_offset;
-    ```
+  ```plpgsql
+  select name
+  from pg_timezone_names
+  where name like 'Etc/GMT%'
+  and utc_offset <> make_interval()
+  order by utc_offset;
+  ```
 
 - The query produces timezones that are listed on the _[synthetic timezones](../../timezones/extended-timezone-names/canonical-no-country-no-dst/)_ page. This is a convenient way to define a set of _UTC offset_ values, independently of when during the winter or summer you execute the query, that span the range from _-12:00_ to _+14:00_ in steps of _one hour_.
 
 - A _foreach_ loop is run thus:
 
-    ```output
-    foreach z in array timezones loop
-    ```
+  ```output
+  foreach z in array timezones loop
+  ```
 
 - At each loop iteration:
   - The session's _TimeZone_ setting is set to the value that the iterand, _z_, specifies.
@@ -386,29 +396,29 @@ The demonstration that follows is designed like this:
 
   - Using the _utc_offset()_ user-defined function (it looks up the _UTC offset_ for the timezone _z_ in the _pg_timezone_names_ catalog view) these values are obtained:
 
-      ```output
-      t1             double precision := extract(epoch from ts_plain);
-      t2             double precision := extract(epoch from ts_with_tz);
-      tz_of_timezone interval         := utc_offset(z);
-      tz_display     interval         := to_char(ts_with_tz, 'TZH:TZM');
-      ts_display     timestamp        := to_char(ts_with_tz, 'yyyy-mm-dd hh24:mi:ss');
-      delta          interval         := ts_display - ts_plain;
-      ```
+    ```output
+    t1             double precision := extract(epoch from ts_plain);
+    t2             double precision := extract(epoch from ts_with_tz);
+    tz_of_timezone interval         := utc_offset(z);
+    tz_display     interval         := to_char(ts_with_tz, 'TZH:TZM');
+    ts_display     timestamp        := to_char(ts_with_tz, 'yyyy-mm-dd hh24:mi:ss');
+    delta          interval         := ts_display - ts_plain;
+    ```
 
   - These _assert_ statements are executed:
 
-      ```output
-      assert (t1 = ts_plain_epoch),         'Assert #1 failed';
-      assert (t2 = ts_with_tz_epoch),       'Assert #2 failed';
-      assert (tz_display = tz_of_timezone), 'Assert #3 failed';
-      assert (tz_display = delta),          'Assert #4 failed';
-      ```
+    ```output
+    assert (t1 = ts_plain_epoch),         'Assert #1 failed';
+    assert (t2 = ts_with_tz_epoch),       'Assert #2 failed';
+    assert (tz_display = tz_of_timezone), 'Assert #3 failed';
+    assert (tz_display = delta),          'Assert #4 failed';
+    ```
 
   - Running commentary output is generated thus:
 
-      ```output
-      report_line(z, ts_plain, ts_with_tz);
-      ```
+    ```output
+    report_line(z, ts_plain, ts_with_tz);
+    ```
 
 - Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practice to do this for any settings that your programs need, temporarily, to change.)
 
@@ -434,6 +444,7 @@ begin
 end;
 $body$;
 ```
+
 The function _report_line()_ formats the name of the session's current _TimeZone_ setting and the reference _constant timestamp_ and _constant timestamptz_ values (_ts_plain_ and _ts_with_tz_) for maximally easily readable output.
 
 **Critical comment:** It's this formatting action that demonstrates the sensitivity of the display of a _timestamptz_ value to the value of the reigning _UTC offset_.
@@ -455,9 +466,7 @@ end;
 $body$;
 ```
 
-<p id="timestamptz-vs-plain-timestamp">&nbsp;</p>
-
-Create and execute the _timestamptz_vs_plain_timestamp()_ table function thus:
+<a name="timestamptz-vs-plain-timestamp"></a>Create and execute the _timestamptz_vs_plain_timestamp()_ table function thus:
 
 ```plpgsql
 drop function if exists timestamptz_vs_plain_timestamp() cascade;
@@ -524,39 +533,40 @@ $body$;
 
 select t from timestamptz_vs_plain_timestamp();
 ```
+
 This is the result:
 
 ```output
- Timezone          ts_plain    ts_with_tz      
- ---------------   ---------   ----------------
- UTC               Sat 11:00   Sat 11:00 +00:00
+Timezone          ts_plain    ts_with_tz      
+---------------   ---------   ----------------
+UTC               Sat 11:00   Sat 11:00 +00:00
  
- Etc/GMT+12        Sat 11:00   Fri 23:00 -12:00
- Etc/GMT+11        Sat 11:00   Sat 00:00 -11:00
- Etc/GMT+10        Sat 11:00   Sat 01:00 -10:00
- Etc/GMT+9         Sat 11:00   Sat 02:00 -09:00
- Etc/GMT+8         Sat 11:00   Sat 03:00 -08:00
- Etc/GMT+7         Sat 11:00   Sat 04:00 -07:00
- Etc/GMT+6         Sat 11:00   Sat 05:00 -06:00
- Etc/GMT+5         Sat 11:00   Sat 06:00 -05:00
- Etc/GMT+4         Sat 11:00   Sat 07:00 -04:00
- Etc/GMT+3         Sat 11:00   Sat 08:00 -03:00
- Etc/GMT+2         Sat 11:00   Sat 09:00 -02:00
- Etc/GMT+1         Sat 11:00   Sat 10:00 -01:00
- Etc/GMT-1         Sat 11:00   Sat 12:00 +01:00
- Etc/GMT-2         Sat 11:00   Sat 13:00 +02:00
- Etc/GMT-3         Sat 11:00   Sat 14:00 +03:00
- Etc/GMT-4         Sat 11:00   Sat 15:00 +04:00
- Etc/GMT-5         Sat 11:00   Sat 16:00 +05:00
- Etc/GMT-6         Sat 11:00   Sat 17:00 +06:00
- Etc/GMT-7         Sat 11:00   Sat 18:00 +07:00
- Etc/GMT-8         Sat 11:00   Sat 19:00 +08:00
- Etc/GMT-9         Sat 11:00   Sat 20:00 +09:00
- Etc/GMT-10        Sat 11:00   Sat 21:00 +10:00
- Etc/GMT-11        Sat 11:00   Sat 22:00 +11:00
- Etc/GMT-12        Sat 11:00   Sat 23:00 +12:00
- Etc/GMT-13        Sat 11:00   Sun 00:00 +13:00
- Etc/GMT-14        Sat 11:00   Sun 01:00 +14:00
+Etc/GMT+12        Sat 11:00   Fri 23:00 -12:00
+Etc/GMT+11        Sat 11:00   Sat 00:00 -11:00
+Etc/GMT+10        Sat 11:00   Sat 01:00 -10:00
+Etc/GMT+9         Sat 11:00   Sat 02:00 -09:00
+Etc/GMT+8         Sat 11:00   Sat 03:00 -08:00
+Etc/GMT+7         Sat 11:00   Sat 04:00 -07:00
+Etc/GMT+6         Sat 11:00   Sat 05:00 -06:00
+Etc/GMT+5         Sat 11:00   Sat 06:00 -05:00
+Etc/GMT+4         Sat 11:00   Sat 07:00 -04:00
+Etc/GMT+3         Sat 11:00   Sat 08:00 -03:00
+Etc/GMT+2         Sat 11:00   Sat 09:00 -02:00
+Etc/GMT+1         Sat 11:00   Sat 10:00 -01:00
+Etc/GMT-1         Sat 11:00   Sat 12:00 +01:00
+Etc/GMT-2         Sat 11:00   Sat 13:00 +02:00
+Etc/GMT-3         Sat 11:00   Sat 14:00 +03:00
+Etc/GMT-4         Sat 11:00   Sat 15:00 +04:00
+Etc/GMT-5         Sat 11:00   Sat 16:00 +05:00
+Etc/GMT-6         Sat 11:00   Sat 17:00 +06:00
+Etc/GMT-7         Sat 11:00   Sat 18:00 +07:00
+Etc/GMT-8         Sat 11:00   Sat 19:00 +08:00
+Etc/GMT-9         Sat 11:00   Sat 20:00 +09:00
+Etc/GMT-10        Sat 11:00   Sat 21:00 +10:00
+Etc/GMT-11        Sat 11:00   Sat 22:00 +11:00
+Etc/GMT-12        Sat 11:00   Sat 23:00 +12:00
+Etc/GMT-13        Sat 11:00   Sun 00:00 +13:00
+Etc/GMT-14        Sat 11:00   Sun 01:00 +14:00
 ```
 
 The execution finishes without error, confirming that the four tested assertions hold.
@@ -568,12 +578,12 @@ The execution finishes without error, confirming that the four tested assertions
 - The timezone-sensitive formatting of the displayed _timestamptz_ values lines up consistently with what the examples in the previous sections on this page (and on other pages in this overall _date-time_ section) show: informally (as was stated above) that _(10 + 1)_ and _(14 - 3)_ both represent the same value.
 - This is the careful statement of the rule, supported by the fact that all the _assert_ statements succeeded: 
 
-    ```output
-    [timestamptz-value] display ◄—
-      [internal-timestamp-value + UTC-offset-value-from-session-timezone] display
-      annotated with
-      [UTC-offset-value-from-session-timezone] display
-    ```
+  ```output
+  [timestamptz-value] display ◄—
+    [internal-timestamp-value + UTC-offset-value-from-session-timezone] display
+    annotated with
+    [UTC-offset-value-from-session-timezone] display
+  ```
 
 - This rule statement lines up with what meeting partners living in the US Pacific coastal region and London, in the winter, understand:
 

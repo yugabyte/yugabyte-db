@@ -16,7 +16,8 @@
 
 #include "yb/master/master.pb.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/status_ec.h"
 
 namespace yb {
 namespace master {

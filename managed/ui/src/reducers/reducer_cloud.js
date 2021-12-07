@@ -57,7 +57,9 @@ import {
   DELETE_KMS_CONFIGURATION,
   DELETE_KMS_CONFIGURATION_RESPONSE,
   GET_AZU_TYPE_LIST,
-  GET_AZU_TYPE_LIST_RESPONSE
+  GET_AZU_TYPE_LIST_RESPONSE,
+  DELETE_REGION,
+  DELETE_REGION_RESPONSE
 } from '../actions/cloud';
 
 import {
@@ -106,7 +108,12 @@ export default function (state = INITIAL_STATE, action) {
   let error;
   switch (action.type) {
     case GET_PROVIDER_LIST:
-      return { ...setLoadingState(state, 'providers', []), fetchMetadata: false };
+      // AC: Keep provider data while loading to prevent
+      // dependent components from blanking out when fetching
+      return {
+        ...setLoadingState(state, 'providers', state.providers.data),
+        fetchMetadata: false
+      };
     case GET_PROVIDER_LIST_RESPONSE:
       if (action.payload.status !== 200) {
         if (isDefinedNotNull(action.payload.data)) {
@@ -205,6 +212,20 @@ export default function (state = INITIAL_STATE, action) {
       return setFailureState(state, 'bootstrap', action.payload.response.data.error, {
         type: 'region'
       });
+
+    case DELETE_REGION:
+      return setLoadingState(state, 'bootstrap', { type: 'cleanup', response: null });
+    case DELETE_REGION_RESPONSE:
+      if (action.payload.status === 200) {
+        return setSuccessState(state, 'bootstrap', {
+          type: 'cleanup',
+          response: action.payload.data
+        });
+      } else {
+        return setFailureState(state, 'bootstrap', action.payload.response.data.error, {
+          type: 'cleanup'
+        });
+      }
 
     case CREATE_ZONES:
       return setLoadingState(state, 'bootstrap', { type: 'zones', response: null });

@@ -35,23 +35,28 @@
 #include <set>
 #include <string>
 
-#include <gflags/gflags.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client-test-util.h"
 #include "yb/client/client_fwd.h"
+#include "yb/client/client-test-util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
+
 #include "yb/common/common.pb.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/catalog_manager.h"
+
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog_initialization.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/tsan_util.h"
 
 using std::multimap;
 using std::set;
@@ -80,7 +85,7 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
       const master::ReplicationInfoPB& replication_info, const string& table_suffix,
       const YBTableType table_type = YBTableType::YQL_TABLE_TYPE) {
     auto db_type = master::GetDatabaseTypeForTable(
-        client::YBTable::ClientToPBTableType(table_type));
+        client::ClientToPBTableType(table_type));
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(), db_type));
     std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
@@ -547,7 +552,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TestTransactionStatusTableCreat
   // Check that the transaction table hasn't been created yet.
   YQLDatabase db = YQL_DATABASE_CQL;
   YBTableName transaction_status_table(db, master::kSystemNamespaceId,
-                                  master::kSystemNamespaceName, kTransactionsTableName);
+                                  master::kSystemNamespaceName, kGlobalTransactionsTableName);
   bool exists = ASSERT_RESULT(client_->TableExists(transaction_status_table));
   ASSERT_FALSE(exists) << "Transaction table exists even though the "
                           "requirement for the minimum number of TS not met";

@@ -29,16 +29,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/rpc/service_if.h"
 
 #include <string>
 
-#include "yb/gutil/strings/substitute.h"
-
-#include "yb/rpc/connection.h"
-#include "yb/rpc/inbound_call.h"
-#include "yb/rpc/rpc_header.pb.h"
+#include "yb/util/metrics.h"
 
 using std::string;
 using strings::Substitute;
@@ -51,6 +46,19 @@ ServiceIf::~ServiceIf() {
 
 void ServiceIf::Shutdown() {
 }
+
+RpcMethodMetrics::RpcMethodMetrics() = default;
+
+RpcMethodMetrics::RpcMethodMetrics(const scoped_refptr<Counter>& request_bytes_,
+                                   const scoped_refptr<Counter>& response_bytes_,
+                                   const scoped_refptr<Histogram>& handler_latency_)
+    : request_bytes(request_bytes_), response_bytes(response_bytes_),
+      handler_latency(handler_latency_) {
+}
+
+RpcMethodMetrics::~RpcMethodMetrics() = default;
+
+RpcMethodMetrics::RpcMethodMetrics(const RpcMethodMetrics&) = default;
 
 } // namespace rpc
 } // namespace yb

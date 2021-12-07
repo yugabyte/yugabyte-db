@@ -41,12 +41,9 @@
 // YugaByte-specific extensions stored out-of-band:
 //   user_sequence_numbers_
 
-#include "yb/rocksdb/write_batch.h"
-
 #include <stack>
 #include <stdexcept>
 #include <vector>
-#include <iostream>
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/db_impl.h"
@@ -60,7 +57,7 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
 
-#include "yb/gutil/macros.h"
+#include "yb/util/stats/perf_step_timer.h"
 
 namespace rocksdb {
 

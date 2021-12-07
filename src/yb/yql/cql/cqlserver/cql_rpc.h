@@ -15,12 +15,24 @@
 #ifndef YB_YQL_CQL_CQLSERVER_CQL_RPC_H
 #define YB_YQL_CQL_CQLSERVER_CQL_RPC_H
 
+#include <stdint.h>
+
 #include <atomic>
+#include <mutex>
+#include <set>
+#include <type_traits>
+#include <utility>
+
+#include <boost/version.hpp>
+
+#include "yb/master/master_defaults.h"
 
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/server_event.h"
+
+#include "yb/util/net/net_fwd.h"
 
 #include "yb/yql/cql/ql/ql_session.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
@@ -124,8 +136,11 @@ class CQLInboundCall : public rpc::InboundCall {
 
   uint16_t stream_id() const { return stream_id_; }
 
-  const std::string& service_name() const override;
-  const std::string& method_name() const override;
+  Slice serialized_remote_method() const override;
+  Slice method_name() const override;
+
+  static Slice static_serialized_remote_method();
+
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
   void RespondSuccess(const RefCntBuffer& buffer);
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;

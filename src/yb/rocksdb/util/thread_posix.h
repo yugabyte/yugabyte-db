@@ -25,11 +25,24 @@
 
 #pragma once
 
+#include <pthread.h>
+#include <string.h>
+
+#include <cstdarg>
 #include <deque>
 
-#include "yb/rocksdb/env.h"
+#include "yb/gutil/ref_counted.h"
 
-#include "yb/util/thread.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/file.h"
+
+#include "yb/util/faststring.h"
+
+namespace yb {
+
+class Thread;
+
+}
 
 namespace rocksdb {
 
@@ -95,7 +108,7 @@ class ThreadPool {
   pthread_mutex_t mu_;
   pthread_cond_t bgsignal_;
   int total_threads_limit_ = 1;
-  std::vector<yb::ThreadPtr> bgthreads_;
+  std::vector<scoped_refptr<yb::Thread>> bgthreads_;
   BGQueue queue_;
   std::atomic_uint queue_len_{0};  // Queue length. Used for stats reporting
   bool exit_all_threads_ = false;

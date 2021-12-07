@@ -19,12 +19,12 @@
 #define YB_YQL_PGGATE_PG_TABLEDESC_H_
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/client/client.h"
 #include "yb/client/yb_op.h"
-#include "yb/yql/pggate/pg_column.h"
-#include "yb/docdb/doc_key.h"
 
 #include "yb/tserver/pg_client.pb.h"
+
+#include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {

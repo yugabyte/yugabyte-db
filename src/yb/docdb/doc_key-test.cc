@@ -16,13 +16,13 @@
 #include <memory>
 
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/full_filter_block.h"
 
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/decimal.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -64,8 +64,8 @@ class DocKeyTest : public YBTest {
 
     std::vector<std::pair<Uuid, PgTableOid>> table_id_pairs;
     table_id_pairs.emplace_back(cotable_id, 0);
-    table_id_pairs.emplace_back(Uuid(boost::uuids::nil_uuid()), 9911);
-    table_id_pairs.emplace_back(Uuid(boost::uuids::nil_uuid()), 0);
+    table_id_pairs.emplace_back(Uuid::Nil(), 9911);
+    table_id_pairs.emplace_back(Uuid::Nil(), 0);
 
     for (const auto& table_id_pair : table_id_pairs) {
       for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {

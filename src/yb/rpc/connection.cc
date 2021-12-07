@@ -32,23 +32,25 @@
 
 #include "yb/rpc/connection.h"
 
-#include <iostream>
 #include <thread>
 #include <utility>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/util/enums.h"
-
-#include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"

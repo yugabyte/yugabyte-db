@@ -40,13 +40,14 @@
 #include <thread>
 #include <vector>
 
+#include <boost/container/static_vector.hpp>
 #include <boost/optional/optional.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
@@ -54,61 +55,54 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/raft_consensus.h"
-
-#include "yb/docdb/consensus_frontier.h"
+#include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
+
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/human_readable.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog.h"
 
-#include "yb/rocksdb/memory_monitor.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_options.h"
-#include "yb/tablet/operations/split_operation.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/heartbeater.h"
-#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
-#include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
-#include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
-#include "yb/util/tsan_util.h"
-#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

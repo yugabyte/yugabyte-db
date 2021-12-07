@@ -14,6 +14,9 @@
 #ifndef YB_CLIENT_ASYNC_RPC_H_
 #define YB_CLIENT_ASYNC_RPC_H_
 
+#include <boost/range/iterator_range_core.hpp>
+#include <boost/version.hpp>
+
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
@@ -21,7 +24,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/util/metrics_fwd.h"
 
 namespace yb {
 namespace client {
@@ -48,6 +51,8 @@ struct AsyncRpcMetrics {
   scoped_refptr<Counter> consistent_prefix_successful_reads;
   scoped_refptr<Counter> consistent_prefix_failed_reads;
 };
+
+using InFlightOps = boost::iterator_range<std::vector<InFlightOp>::iterator>;
 
 struct AsyncRpcData {
   BatcherPtr batcher;
@@ -86,7 +91,6 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   std::shared_ptr<const YBTable> table() const;
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
   const InFlightOps& ops() const { return ops_; }
-  Trace *trace() { return trace_.get(); }
 
  protected:
   void Finished(const Status& status) override;
@@ -116,9 +120,6 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
   BatcherPtr batcher_;
-
-  // The trace buffer.
-  scoped_refptr<Trace> trace_;
 
   // Operations which were batched into this RPC.
   // These operations are in kRequestSent state.

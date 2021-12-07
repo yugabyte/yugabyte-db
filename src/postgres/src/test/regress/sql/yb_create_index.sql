@@ -86,11 +86,17 @@ SELECT * FROM t1 ORDER BY h, r;
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 ORDER BY r;
 SELECT * FROM t1 WHERE h = 1 ORDER BY r;
 
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
+
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
 SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 AND r = 1;
 SELECT * FROM t1 WHERE h = 1 AND r = 1;
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
 SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;

@@ -32,17 +32,17 @@ The values _i2_ and _i4_ are noteworthy:
 - because _25 hours_ is more than the number of hours in at least a typical _1 day_ period (but notice that _1 day_ will be _23 hours_ or _25 hours_ at the Daylight Savings Time "spring forward" and "fall back" transitions);
 - and because _31 days_ is more than the number of days in at least some _1 month_ durations.
 
-The _justify_ built-in functions have a single _interval_ formal _in_ parameter and return an _interval_ value. They normalize the fields of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ internal representation of the input by decreasing the value of a finer-granularity time unit field and correspondingly increasing the value of its greater granularity neighbor.
+The _justify_ built-in functions have a single _interval_ formal _in_ parameter and return an _interval_ value. They normalize the fields of the _[\[mm, dd, ss\]](../interval-representation/)_ internal representation of the input by decreasing the value of a finer-granularity time unit field and correspondingly increasing the value of its greater granularity neighbor.
 
-- _justify_hours()_ returns an _interval_ whose _ss_ value doesn't exceed the number of seconds in one day _(24&#42;60&#42;60)_.
+- _justify_hours()_ returns an _interval_ whose _ss_ value doesn't exceed the number of seconds in one day _(24\*60\*60)_.
 - _justify_days()_ returns an _interval_ whose _dd_ value doesn't exceed the nominal number of days in one month _(30)_.
 - _justify_interval()_ returns an _interval_ _both_ whose _ss_ value doesn't exceed the number of seconds in one day _and_ whose _dd_ value doesn't exceed the nominal number of days in one month.
 
-In general, justifying an _interval_ value changes the semantics of adding or subtracting the result to a plain _timestamp_ value or a _timestamptz_ value with respect to using the input, unjustified, value. In general, too, justifying a _pure interval_ value will produce a _hybrid interval_ value. (A _pure_ value is one where only one of the three fields of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ internal representation is non-zero; And a _hybrid_ value has two or more of these fields non-zero.)
+In general, justifying an _interval_ value changes the semantics of adding or subtracting the result to a plain _timestamp_ value or a _timestamptz_ value with respect to using the input, unjustified, value. In general, too, justifying a _pure interval_ value will produce a _hybrid interval_ value. (A _pure_ value is one where only one of the three fields of the _[\[mm, dd, ss\]](../interval-representation/)_ internal representation is non-zero; And a _hybrid_ value has two or more of these fields non-zero.)
 
 ### justify_hours()
 
-The _justify_hours()_ built-in function "normalizes" the value of the _ss_ field of the internal _[[mm, dd, ss]](../interval-representation/)_ representation by subtracting an appropriate integral number of _24 hour_ periods so that the resulting _ss_ value is less than _24 hours_ (but not less than zero). The subtracted _24 hour_ periods are converted to _days_, using the rule that one _24 hour_ period is always the same as _1 day_, and added to the value of the _dd_ field. (Daylight Savings Time regimes are ignored by the implementation of this rule of thumb.) Try this:
+The _justify_hours()_ built-in function "normalizes" the value of the _ss_ field of the internal _[\[mm, dd, ss\]](../interval-representation/)_ representation by subtracting an appropriate integral number of _24 hour_ periods so that the resulting _ss_ value is less than _24 hours_ (but not less than zero). The subtracted _24 hour_ periods are converted to _days_, using the rule that one _24 hour_ period is always the same as _1 day_, and added to the value of the _dd_ field. (Daylight Savings Time regimes are ignored by the implementation of this rule of thumb.) Try this:
 
 ```plpgsql
 select justify_hours('4 days 25 hours'::interval);
@@ -53,6 +53,7 @@ This is the result:
 ```output
  5 days 01:00:00
 ```
+
 In general, _justify_hours()_ changes the semantics of the _interval-timestamptz_ overloads of the `+` and `-` operators. Try this:
 
 ```plpgsql
@@ -82,7 +83,7 @@ See the section [Sensitivity of timestamptz-interval arithmetic to the current t
 
 ### justify_days()
 
-In a corresponding way, the _justify_days()_ built-in function "normalizes" the value of the _dd_ field of the internal _[[mm, dd, ss]](../interval-representation/)_ representation by subtracting an appropriate integral number of _30 day_ periods so that the resulting _dd_ value is less than _30 days_ (but not less than zero). The subtracted _30 day_ periods are converted to _months_, using the rule that one _30 day_ period is the same as _1 month_, and added to the value of the _mm_ field. Try this:
+In a corresponding way, the _justify_days()_ built-in function "normalizes" the value of the _dd_ field of the internal _[\[mm, dd, ss\]](../interval-representation/)_ representation by subtracting an appropriate integral number of _30 day_ periods so that the resulting _dd_ value is less than _30 days_ (but not less than zero). The subtracted _30 day_ periods are converted to _months_, using the rule that one _30 day_ period is the same as _1 month_, and added to the value of the _mm_ field. Try this:
 
 ```plpgsql
 select justify_days('4 months 31 days'::interval);
@@ -139,7 +140,7 @@ Of course, _justify_interval()_ affects the semantics of moment-_interval_ arith
 
 ### Modeling the implementations of justify_hours(), justify_days(), and justify_interval()
 
-First, _[function justify_outcomes()](#function-justify-outcomes))_ tests these properties of the _justify_ functions:
+First, _[function justify_outcomes()](#function-justify-outcomes)_ tests these properties of the _justify_ functions:
 
 ```output
 justify_days(justify_hours(i)) == justify_interval(i) # user-defined "strict" equals operator
@@ -152,10 +153,10 @@ and:
 
 not (justify_hours(justify_days (i)) == justify_interval(i)) # "strict" equals operator
 ```
+
 Then _[procedure test_justify_model()](#procedure-test-justify-model)_ implements the algorithms that the three _justify_ functions use (as described in prose above) and tests that each produces the same result as the native implementation that it models.
 
-The helper _[function i()](#helper-function-i)_ defines an _interval_ value so that this can be used in both the implementation of _[function justify_outcomes()](#function-justify-outcomes))_ and to invoke _[procedure test_justify_model()](#procedure-test-justify-model)_ without cluttering the interesting code.
-
+The helper _[function i()](#helper-function-i)_ defines an _interval_ value so that this can be used in both the implementation of _[function justify_outcomes()](#function-justify-outcomes)_ and to invoke _[procedure test_justify_model()](#procedure-test-justify-model)_ without cluttering the interesting code.
 
 #### Helper function i()
 
@@ -384,11 +385,11 @@ This is the result:
 
 Notice that each reported number of seconds differs from the others.
 
-- It's unremarkable that the duration from Midsummer 1999 to Midsummer 2001 is longer than that from Midsummer 2001 to Midsummer 2003 because the former includes a leap year and the latter does not. The difference _(63158400 - 63072000)_ is exactly equal to the number of seconds in one day _(24&#42;60&#42;60)_.
-- It's easy to see why _justified_seconds('2 years'::interval)_ is less than both _63158400_ and _63072000_: it's because it simply uses the rule that twelve months is _(12&#42;30)_ days—five days less than a non-leap year. So _(63072000 - 62208000)_ is equal to _(2&#42;5&#42;24&#42;60&#42;60)_.
+- It's unremarkable that the duration from Midsummer 1999 to Midsummer 2001 is longer than that from Midsummer 2001 to Midsummer 2003 because the former includes a leap year and the latter does not. The difference _(63158400 - 63072000)_ is exactly equal to the number of seconds in one day _(24\*60\*60)_.
+- It's easy to see why _justified_seconds('2 years'::interval)_ is less than both _63158400_ and _63072000_: it's because it simply uses the rule that twelve months is _(12\*30)_ days—five days less than a non-leap year. So _(63072000 - 62208000)_ is equal to _(2\*5\*24\*60\*60)_.
 - But why is the fourth result, from _extract(epoch from interval_value)_ different from the third result?
 
-It turns out that the result from _extract(epoch from interval_value)_ aims to give a sensible number of seconds for durations of many years. So it uses the (semantics of the) _trunc()_ and _mod()_ built-in functions to transform the value of the _mm_ field of the _interval_ representation to years, _yy_, and a months remainder, _mm_. Then the _yy_ value is multiplied by the number of days in a _Julian year_. This is greater than _12&#42;30_.
+It turns out that the result from _extract(epoch from interval_value)_ aims to give a sensible number of seconds for durations of many years. So it uses the (semantics of the) _trunc()_ and _mod()_ built-in functions to transform the value of the _mm_ field of the _interval_ representation to years, _yy_, and a months remainder, _mm_. Then the _yy_ value is multiplied by the number of days in a _Julian year_. This is greater than _12\*30_.
 
 {{< note title="How many days are there in a year?" >}}
 Internet search quickly finds lots of articles on this topic—for example, <a href="https://en.wikipedia.org/wiki/Gregorian_calendar" target="_blank">Gregorian year <i class="fas fa-external-link-alt"></i></a> in Wikipedia. Two subtly different answers are in common use.
@@ -404,7 +405,7 @@ This function models the rule described in prose above. And it uses an _assert_s
 
 - _secs_pr_day_
 - _secs_pr_month_
-- _secs_pr_year_ (calculated as _secs_pr_day&#42;avg_days_pr_year_ where _avg_days_pr_year_ is the length of the Julian year)
+- _secs_pr_year_ (calculated as _secs_pr_day\*avg_days_pr_year_ where _avg_days_pr_year_ is the length of the Julian year)
 
 Create it thus.
 
@@ -509,7 +510,7 @@ This is the result:
 
 Now the results from  _justified_seconds()_ and _extract(epoch ...)_ are different. This is the rule for the behavior difference:
 
-- The results from _justified_seconds()_ and _extract(epoch ...)_ are the same for a _pure interval_ value—i.e. one where only one of the three fields of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ internal representation is non-zero. (The section [Custom domain types for specializing the native interval functionality](../custom-interval-domains/) shows how to ensure declaratively that an _interval_ value is _pure_ in this way.)
+- The results from _justified_seconds()_ and _extract(epoch ...)_ are the same for a _pure interval_ value—i.e. one where only one of the three fields of the _[\[mm, dd, ss\]](../interval-representation/)_ internal representation is non-zero. (The section [Custom domain types for specializing the native interval functionality](../custom-interval-domains/) shows how to ensure declaratively that an _interval_ value is _pure_ in this way.)
 - The results from the two approaches will differ for a _hybrid interval_  value when the value's duration is long enough that the scaling of years to seconds, in _extract(epoch ...)_, uses the Julian year definition.
 
 As a consequence, the total number of seconds in two _interval_ values _i1_ and _i2_,  (using the PostgreSQL documentation's wording) will differ when:

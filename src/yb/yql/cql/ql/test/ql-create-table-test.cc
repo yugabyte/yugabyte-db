@@ -15,12 +15,15 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
-#include "yb/master/master_defaults.h"
-#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/common/transaction.h"
 
-#include "yb/common/ql_value.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master_defaults.h"
+
+#include "yb/util/status_log.h"
+
+#include "yb/yql/cql/ql/test/ql-test-base.h"
 
 DECLARE_int32(TEST_simulate_slow_table_create_secs);
 DECLARE_bool(master_enable_metrics_snapshotter);
@@ -245,8 +248,7 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithTTL) {
                       "default_time_to_live = 1;");
 
   // Query the table schema.
-  master::Master *master = cluster_->mini_master()->master();
-  master::CatalogManager *catalog_manager = master->catalog_manager();
+  auto *catalog_manager = &cluster_->mini_master()->catalog_manager();
   master::GetTableSchemaRequestPB request_pb;
   master::GetTableSchemaResponsePB response_pb;
   request_pb.mutable_table()->mutable_namespace_()->set_name(kDefaultKeyspaceName);

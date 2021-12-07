@@ -30,11 +30,9 @@
 // under the License.
 //
 
-#include <mutex>
+#include <functional>
 #include <thread>
-#include <vector>
 
-#include <boost/thread/shared_mutex.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/util/monotime.h"

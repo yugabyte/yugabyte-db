@@ -30,11 +30,13 @@
 // under the License.
 //
 
-#include <boost/bind.hpp>
+#include <atomic>
+#include <string>
+
 #include <gtest/gtest.h>
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/test_util.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 

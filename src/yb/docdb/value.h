@@ -77,21 +77,13 @@ class Value {
   static CHECKED_STATUS DecodeMergeFlags(rocksdb::Slice* slice, uint64_t* merge_flags);
 
   // A version that doesn't mutate the slice.
-  static CHECKED_STATUS DecodeMergeFlags(const rocksdb::Slice& slice, uint64_t* merge_flags) {
-    rocksdb::Slice value_copy = slice;
-    return DecodeMergeFlags(&value_copy, merge_flags);
-  }
+  static CHECKED_STATUS DecodeMergeFlags(const rocksdb::Slice& slice, uint64_t* merge_flags);
 
   // Consume the Ttl portion of the slice if it exists and return it.
   static CHECKED_STATUS DecodeTTL(rocksdb::Slice* rocksdb_value, MonoDelta* ttl);
 
   // A version that doesn't mutate the slice.
-  static CHECKED_STATUS DecodeTTL(const rocksdb::Slice& rocksdb_value, MonoDelta* ttl) {
-    rocksdb::Slice value_copy = rocksdb_value;
-    uint64_t merge_flags;
-    RETURN_NOT_OK(DecodeMergeFlags(&value_copy, &merge_flags));
-    return DecodeTTL(&value_copy, ttl);
-  }
+  static CHECKED_STATUS DecodeTTL(const rocksdb::Slice& rocksdb_value, MonoDelta* ttl);
 
   // Decode the entire value
   CHECKED_STATUS Decode(const Slice& rocksdb_value);
@@ -128,6 +120,8 @@ class Value {
   static const std::string& EncodedTombstone();
 
   static std::string DebugSliceToString(const Slice& encoded_value);
+
+  static Result<bool> IsTombstoned(const Slice& slice);
 
  private:
   // Consume the timestamp portion of the slice assuming the beginning of the slice points to

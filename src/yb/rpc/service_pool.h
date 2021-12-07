@@ -33,17 +33,22 @@
 #ifndef YB_RPC_SERVICE_POOL_H
 #define YB_RPC_SERVICE_POOL_H
 
+#include <stdint.h>
+
 #include <string>
+#include <type_traits>
 #include <vector>
 
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_service.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/mutex.h"
-#include "yb/util/thread.h"
-#include "yb/util/status.h"
 
 namespace yb {
 
@@ -71,6 +76,7 @@ class ServicePool : public RpcService {
   void StartShutdown() override;
   void CompleteShutdown() override;
 
+  void FillEndpoints(RpcEndpointMap* map) override;
   void QueueInboundCall(InboundCallPtr call) override;
   void Handle(InboundCallPtr call) override;
   const Counter* RpcsTimedOutInQueueMetricForTests() const;

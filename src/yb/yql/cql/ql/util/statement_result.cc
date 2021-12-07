@@ -14,18 +14,19 @@
 //
 // Different results of processing a statement.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/util/statement_result.h"
 
-#include "yb/client/client.h"
-#include "yb/client/schema-internal.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowblock.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/util/pb_util.h"
-#include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/util/debug-util.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
 namespace ql {
@@ -184,6 +185,10 @@ RowsResult::RowsResult(const YBTableName& table_name,
 }
 
 RowsResult::~RowsResult() {
+}
+
+void RowsResult::set_column_schema(int col_index, const std::shared_ptr<QLType>& type) {
+  (*column_schemas_)[col_index].set_type(type);
 }
 
 Status RowsResult::Append(RowsResult&& other) {

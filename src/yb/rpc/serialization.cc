@@ -32,18 +32,20 @@
 
 #include "yb/rpc/serialization.h"
 
-#include <google/protobuf/message.h>
-#include <google/protobuf/message_lite.h>
 #include <google/protobuf/io/coded_stream.h>
-#include <glog/logging.h>
+#include <google/protobuf/message.h>
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/stringprintf.h"
+
 #include "yb/rpc/constants.h"
+#include "yb/rpc/rpc_header.pb.h"
+
 #include "yb/util/faststring.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 DECLARE_int32(rpc_max_message_size);
 
@@ -137,9 +139,82 @@ Status SerializeHeader(const MessageLite& header,
   return Status::OK();
 }
 
-Status ParseYBMessage(const Slice& buf,
-                      MessageLite* parsed_header,
-                      Slice* parsed_main_message) {
+namespace {
+
+bool SkipField(uint8_t type, CodedInputStream* in) {
+  switch (type) {
+    case 0: {
+      uint64_t temp;
+      return in->ReadVarint64(&temp);
+    }
+    case 1:
+      return in->Skip(8);
+    case 2: {
+      uint32_t temp;
+      return in->ReadVarint32(&temp) && in->Skip(temp);
+    }
+    case 5:
+      return in->Skip(4);
+    default:
+      return false;
+  }
+}
+
+Result<Slice> ParseString(const Slice& buf, const char* name, CodedInputStream* in) {
+  uint32_t len;
+  if (!in->ReadVarint32(&len) || in->BytesUntilLimit() < len) {
+    return STATUS(Corruption, "Unable to decode field", Slice(name));
+  }
+  Slice result(buf.data() + in->CurrentPosition(), len);
+  in->Skip(len);
+  return result;
+}
+
+CHECKED_STATUS ParseHeader(
+    const Slice& buf, CodedInputStream* in, ParsedRequestHeader* parsed_header) {
+  while (in->BytesUntilLimit() > 0) {
+    auto tag = in->ReadTag();
+    auto field = tag >> 3;
+    switch (field) {
+      case RequestHeader::kCallIdFieldNumber: {
+        uint32_t temp;
+        if (!in->ReadVarint32(&temp)) {
+          return STATUS(Corruption, "Unable to decode call_id field");
+        }
+        parsed_header->call_id = static_cast<int32_t>(temp);
+        } break;
+      case RequestHeader::kRemoteMethodFieldNumber:
+        parsed_header->remote_method = VERIFY_RESULT(ParseString(buf, "remote_method", in));
+        break;
+      case RequestHeader::kTimeoutMillisFieldNumber:
+        if (!in->ReadVarint32(&parsed_header->timeout_ms)) {
+          return STATUS(Corruption, "Unable to decode timeout_ms field");
+        }
+        break;
+      default: {
+        if (!SkipField(tag & 7, in)) {
+          return STATUS_FORMAT(Corruption, "Unable to skip: $0", tag);
+        }
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseHeader(const Slice& buf, CodedInputStream* in, MessageLite* parsed_header) {
+  if (PREDICT_FALSE(!parsed_header->ParseFromCodedStream(in))) {
+    return STATUS(Corruption, "Invalid packet: header too short",
+                              buf.ToDebugString());
+  }
+
+  return Status::OK();
+}
+
+template <class Header>
+CHECKED_STATUS DoParseYBMessage(const Slice& buf,
+                                Header* parsed_header,
+                                Slice* parsed_main_message) {
   CodedInputStream in(buf.data(), buf.size());
   in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size*3/4);
 
@@ -149,12 +224,8 @@ Status ParseYBMessage(const Slice& buf,
                               buf.ToDebugString());
   }
 
-  CodedInputStream::Limit l;
-  l = in.PushLimit(header_len);
-  if (PREDICT_FALSE(!parsed_header->ParseFromCodedStream(&in))) {
-    return STATUS(Corruption, "Invalid packet: header too short",
-                              buf.ToDebugString());
-  }
+  auto l = in.PushLimit(header_len);
+  RETURN_NOT_OK(ParseHeader(buf, &in, parsed_header));
   in.PopLimit(l);
 
   uint32_t main_msg_len;
@@ -178,6 +249,66 @@ Status ParseYBMessage(const Slice& buf,
   *parsed_main_message = Slice(buf.data() + buf.size() - main_msg_len,
                               main_msg_len);
   return Status::OK();
+}
+
+} // namespace
+
+Status ParseYBMessage(const Slice& buf,
+                      ParsedRequestHeader* parsed_header,
+                      Slice* parsed_main_message) {
+  return DoParseYBMessage(buf, parsed_header, parsed_main_message);
+}
+
+Status ParseYBMessage(const Slice& buf,
+                      MessageLite* parsed_header,
+                      Slice* parsed_main_message) {
+  return DoParseYBMessage(buf, parsed_header, parsed_main_message);
+}
+
+Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf) {
+  CodedInputStream in(buf.data(), buf.size());
+  in.PushLimit(buf.size());
+  ParsedRemoteMethod result;
+  while (in.BytesUntilLimit() > 0) {
+    auto tag = in.ReadTag();
+    auto field = tag >> 3;
+    switch (field) {
+      case RemoteMethodPB::kServiceNameFieldNumber:
+        result.service = VERIFY_RESULT(ParseString(buf, "service_name", &in));
+        break;
+      case RemoteMethodPB::kMethodNameFieldNumber:
+        result.method = VERIFY_RESULT(ParseString(buf, "method_name", &in));
+        break;
+      default: {
+        if (!SkipField(tag & 7, &in)) {
+          return STATUS_FORMAT(Corruption, "Unable to skip: $0", tag);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+std::string ParsedRequestHeader::RemoteMethodAsString() const {
+  auto parsed_remote_method = ParseRemoteMethod(remote_method);
+  if (parsed_remote_method.ok()) {
+    return parsed_remote_method->service.ToBuffer() + "." +
+           parsed_remote_method->method.ToBuffer();
+  } else {
+    return parsed_remote_method.status().ToString();
+  }
+}
+
+void ParsedRequestHeader::ToPB(RequestHeader* out) const {
+  out->set_call_id(call_id);
+  if (timeout_ms) {
+    out->set_timeout_millis(timeout_ms);
+  }
+  auto parsed_remote_method = ParseRemoteMethod(remote_method);
+  if (parsed_remote_method.ok()) {
+    out->mutable_remote_method()->set_service_name(parsed_remote_method->service.ToBuffer());
+    out->mutable_remote_method()->set_method_name(parsed_remote_method->method.ToBuffer());
+  }
 }
 
 }  // namespace serialization

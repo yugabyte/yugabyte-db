@@ -14,26 +14,28 @@
 #include "yb/docdb/intent_aware_iterator.h"
 
 #include <future>
-#include <thread>
-#include <boost/optional/optional_io.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
-#include "yb/docdb/kv_debug.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
 
-#include "yb/server/hybrid_clock.h"
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/tsan_util.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 
@@ -144,7 +146,9 @@ std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult&
 // For current transaction returns intent record hybrid time as value_time.
 // Consumes intent from value_slice leaving only value itself.
 Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
-    const TransactionOperationContext& txn_op_context, rocksdb::Iterator* intent_iter,
+    HybridTime global_limit,
+    const TransactionOperationContext& txn_op_context,
+    rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache) {
   DecodeStrongWriteIntentResult result;
   auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(intent_iter->key()));
@@ -175,6 +179,9 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
       } else {
         result.value_time = decoded_intent_key.doc_ht;
       }
+    } else if (result.intent_time.hybrid_time() > global_limit) {
+      VTRACE(1, "Ignoring intent from a different txn written after read.global_limit");
+      result.value_time = DocHybridTime::kMin;
     } else {
       auto commit_data = VERIFY_RESULT(transaction_status_cache->GetCommitData(decoded_txn_id));
       auto commit_ht = commit_data.commit_ht;
@@ -228,7 +235,7 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const TransactionOperationContextOpt& txn_op_context)
+    const TransactionOperationContext& txn_op_context)
     : read_time_(read_time),
       encoded_read_time_read_(EncodeHybridTime(read_time_.read)),
       encoded_read_time_local_limit_(EncodeHybridTime(read_time_.local_limit)),
@@ -238,11 +245,14 @@ IntentAwareIterator::IntentAwareIterator(
                                                    : Slice(encoded_read_time_read_)),
       txn_op_context_(txn_op_context),
       transaction_status_cache_(txn_op_context_, read_time, deadline) {
+  VTRACE(1, __func__);
   VLOG(4) << "IntentAwareIterator, read_time: " << read_time
           << ", txn_op_context: " << txn_op_context_;
 
   if (txn_op_context) {
-    if (txn_op_context->txn_status_manager.MinRunningHybridTime() != HybridTime::kMax) {
+    VTRACE(1, "Checking MinRunningTime");
+    const auto min_running_ht = txn_op_context.txn_status_manager->MinRunningHybridTime();
+    if (min_running_ht != HybridTime::kMax && min_running_ht < read_time.global_limit) {
       intent_iter_ = docdb::CreateRocksDBIterator(doc_db.intents,
                                                   doc_db.key_bounds,
                                                   docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -251,9 +261,10 @@ IntentAwareIterator::IntentAwareIterator(
                                                   nullptr /* file_filter */,
                                                   &intent_upperbound_);
     } else {
-      VLOG(4) << "No transactions running";
+      VLOG(4) << "No releavant transactions running";
     }
   }
+  VTRACE(2, "Done Checking MinRunningTime");
   // WARNING: Is is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:
   // 1) Transaction is T1 committed with value v1 for k1, but not yet applied to regular DB.
@@ -263,6 +274,7 @@ IntentAwareIterator::IntentAwareIterator(
   // 5) Intents DB iterator is created on an intents DB snapshot containing no intents for k1.
   // 6) Client reads no values for k1.
   iter_ = BoundedRocksDbIterator(doc_db.regular, read_opts, doc_db.key_bounds);
+  VTRACE(2, "Created iterator");
 }
 
 void IntentAwareIterator::Seek(const DocKey &doc_key) {
@@ -607,8 +619,8 @@ Result<FetchKeyResult> IntentAwareIterator::FetchKey() {
           << ", while read bounds are: " << read_time_;
 
   YB_TRANSACTION_DUMP(
-      Read, txn_op_context_ ? txn_op_context_->txn_status_manager.tablet_id() : TabletId(),
-      txn_op_context_ ? txn_op_context_->transaction_id : TransactionId::Nil(),
+      Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
+      txn_op_context_ ? txn_op_context_.transaction_id : TransactionId::Nil(),
       read_time_, result.write_time, result.same_transaction,
       result.key.size(), result.key, value().size(), value());
 
@@ -640,7 +652,7 @@ bool IntentAwareIterator::SatisfyBounds(const Slice& slice) {
 
 void IntentAwareIterator::ProcessIntent() {
   auto decode_result = DecodeStrongWriteIntent(
-      txn_op_context_.get(), &intent_iter_, &transaction_status_cache_);
+      read_time_.global_limit, txn_op_context_, &intent_iter_, &transaction_status_cache_);
   if (!decode_result.ok()) {
     status_ = decode_result.status();
     return;
@@ -928,7 +940,7 @@ Status IntentAwareIterator::FindLatestRecord(
       SubDocKey::DebugSliceToString(key_without_ht) + ", " + yb::ToString(latest_record_ht) + ", "
       + yb::ToString(result_value),
       std::bind(&IntentAwareIterator::DebugDump, this));
-  DCHECK(!DebugHasHybridTime(key_without_ht));
+  DCHECK(!DebugHasHybridTime(key_without_ht)) << SubDocKey::DebugSliceToString(key_without_ht);
 
   RETURN_NOT_OK(status_);
   if (!valid()) {

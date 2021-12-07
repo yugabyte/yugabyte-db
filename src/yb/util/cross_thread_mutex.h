@@ -14,7 +14,6 @@
 #ifndef YB_UTIL_CROSS_THREAD_MUTEX_H_
 #define YB_UTIL_CROSS_THREAD_MUTEX_H_
 
-#include <mutex>
 #include <condition_variable>
 
 namespace yb {

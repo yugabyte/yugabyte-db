@@ -42,14 +42,13 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc.h"
+#include "yb/server/server_base_options.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
@@ -63,6 +62,11 @@ class MasterServiceProxy;
 } // namespace master
 
 namespace client {
+
+YB_STRONGLY_TYPED_BOOL(Retry);
+
+using SyncLeaderMasterFunc = std::function<void(
+    master::MasterServiceProxy*, rpc::RpcController*, const rpc::ResponseCallback& callback)>;
 
 class YBClient::Data {
  public:
@@ -328,7 +332,7 @@ class YBClient::Data {
   void SetMasterServerProxyAsync(CoarseTimePoint deadline,
                                  bool skip_resolution,
                                  bool wait_for_leader_election,
-                                 const StatusCallback& cb);
+                                 const StdStatusCallback& cb);
 
   // Synchronous version of SetMasterServerProxyAsync method above.
   //
@@ -364,6 +368,11 @@ class YBClient::Data {
       YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
       bool* retry = nullptr);
 
+  template <class ReqClass, class RespClass>
+  using SyncLeaderMasterFunc = void (master::MasterServiceProxy::*)(
+      const ReqClass &req, RespClass *response, rpc::RpcController *controller,
+      rpc::ResponseCallback callback);
+
   // Retry 'func' until either:
   //
   // 1) Methods succeeds on a leader master.
@@ -380,16 +389,21 @@ class YBClient::Data {
   // the resulting Status.
   template <class ReqClass, class RespClass>
   CHECKED_STATUS SyncLeaderMasterRpc(
-      CoarseTimePoint deadline, const ReqClass& req, RespClass* resp,
-      int* num_attempts, const char* func_name,
-      const std::function<Status(
-          master::MasterServiceProxy*, const ReqClass&, RespClass*, rpc::RpcController*)>& func);
+      CoarseTimePoint deadline, const ReqClass& req, RespClass* resp, const char* func_name,
+      const SyncLeaderMasterFunc<ReqClass, RespClass>& func, int* attempts = nullptr);
+
+  template <class T, class... Args>
+  rpc::RpcCommandPtr StartRpc(Args&&... args);
 
   bool IsMultiMaster();
 
   void StartShutdown();
 
   void CompleteShutdown();
+
+  void DoSetMasterServerProxy(
+      CoarseTimePoint deadline, bool skip_resolution, bool wait_for_leader_election);
+  Result<server::MasterAddresses> ParseMasterAddresses(const Status& reinit_status);
 
   rpc::Messenger* messenger_ = nullptr;
   std::unique_ptr<rpc::Messenger> messenger_holder_;
@@ -435,7 +449,7 @@ class YBClient::Data {
   // itself, as to avoid a "use-after-free" scenario.
   rpc::Rpcs rpcs_;
   rpc::Rpcs::Handle leader_master_rpc_;
-  std::vector<StatusCallback> leader_master_callbacks_;
+  std::vector<StdStatusCallback> leader_master_callbacks_;
 
   // Protects 'leader_master_rpc_', 'leader_master_hostport_',
   // and master_proxy_
@@ -457,7 +471,8 @@ class YBClient::Data {
   // aid in detecting local tservers.
   TabletServerId uuid_;
 
-  std::unique_ptr<ThreadPool> cb_threadpool_;
+  bool use_threadpool_for_callbacks_;
+  std::unique_ptr<ThreadPool> threadpool_;
 
   const ClientId id_;
 

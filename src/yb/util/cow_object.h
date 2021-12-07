@@ -32,13 +32,17 @@
 #ifndef YB_UTIL_COW_OBJECT_H
 #define YB_UTIL_COW_OBJECT_H
 
+#include <fcntl.h>
+
 #include <algorithm>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/rwc_lock.h"
+
+#include "yb/util/fault_injection.h"
 #include "yb/util/logging.h"
+#include "yb/util/rwc_lock.h"
 
 namespace yb {
 
@@ -241,6 +245,14 @@ class CowWriteLock {
   void Commit() {
     cow_->CommitMutation();
     cow_ = nullptr;
+  }
+
+  void CommitOrWarn(const Status& status, const char* action) {
+    if (!status.ok()) {
+      LOG(WARNING) << "An error occurred while " << action << ": " << status;
+      return;
+    }
+    Commit();
   }
 
   void Unlock() {

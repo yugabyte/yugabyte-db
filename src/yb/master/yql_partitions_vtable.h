@@ -14,9 +14,7 @@
 #ifndef YB_MASTER_YQL_PARTITIONS_VTABLE_H
 #define YB_MASTER_YQL_PARTITIONS_VTABLE_H
 
-#include "yb/master/master.h"
 #include "yb/master/yql_virtual_table.h"
-#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 namespace master {
@@ -32,7 +30,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
  protected:
   Schema CreateSchema() const;
 
-  mutable boost::shared_mutex mutex_;
+  mutable std::shared_timed_mutex mutex_;
   mutable std::shared_ptr<QLRowBlock> cache_ GUARDED_BY(mutex_);
   mutable int cached_tablets_version_ GUARDED_BY(mutex_) = -1;
   mutable int cached_tablet_locations_version_ GUARDED_BY(mutex_) = -1;

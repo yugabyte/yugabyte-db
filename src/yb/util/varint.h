@@ -16,9 +16,6 @@
 
 #include <openssl/ossl_typ.h>
 
-#include <vector>
-
-#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -66,23 +63,12 @@ class VarInt {
 
   // The input is expected to be of the form (-)?[0-9]+, whitespace is not allowed. Use this
   // after removing whitespace.
-  CHECKED_STATUS FromString(const std::string& input) {
-    return FromString(input.c_str());
-  }
-
+  CHECKED_STATUS FromString(const std::string& input);
   CHECKED_STATUS FromString(const char* cstr);
 
-  static Result<VarInt> CreateFromString(const std::string& input) {
-    VarInt result;
-    RETURN_NOT_OK(result.FromString(input));
-    return result;
-  }
+  static Result<VarInt> CreateFromString(const std::string& input);
 
-  static Result<VarInt> CreateFromString(const char* input) {
-    VarInt result;
-    RETURN_NOT_OK(result.FromString(input));
-    return result;
-  }
+  static Result<VarInt> CreateFromString(const char* input);
 
   // <0, =0, >0 if this <,=,> other numerically.
   int CompareTo(const VarInt& other) const;
@@ -181,13 +167,7 @@ class VarInt {
   CHECKED_STATUS DecodeFromComparable(
       const Slice& slice, size_t *num_decoded_bytes, size_t num_reserved_bits = 0);
 
-  CHECKED_STATUS DecodeFromComparable(
-      const std::string &string, size_t *num_decoded_bytes, size_t num_reserved_bits = 0) {
-    return DecodeFromComparable(Slice(string), num_decoded_bytes, num_reserved_bits);
-  }
-
   CHECKED_STATUS DecodeFromComparable(const Slice& string);
-  CHECKED_STATUS DecodeFromComparable(const std::string& string);
 
   // Each byte in the encoding encodes two digits, and a continuation bit in the beginning.
   // The continuation bit is zero if and only if this is the last byte of the encoding.
@@ -208,7 +188,7 @@ class VarInt {
   friend VarInt operator-(const VarInt& lhs, const VarInt& rhs);
 };
 
-std::ostream& operator<<(ostream& os, const VarInt& v);
+std::ostream& operator<<(std::ostream& os, const VarInt& v);
 
 
 } // namespace util

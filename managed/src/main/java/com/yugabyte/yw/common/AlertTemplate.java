@@ -13,12 +13,16 @@ import static com.yugabyte.yw.models.common.Unit.STATUS;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
+import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.Builder;
 import lombok.Getter;
@@ -95,35 +99,44 @@ public enum AlertTemplate {
       "Health Check Error",
       "Failed to perform health check",
       "ybp_health_check_status{universe_uuid = \"__universeUuid__\"} {{ query_condition }} 1",
-      "Failed to perform health check for universe '{{ $labels.source_name }}': "
+      "Failed to perform health check for universe '{{ $labels.source_name }}':"
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
+      TestAlertSettings.builder()
+          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
+          .build()),
 
   HEALTH_CHECK_NOTIFICATION_ERROR(
       "Health Check Notification Error",
       "Failed to perform health check notification",
       "ybp_health_check_notification_status{universe_uuid = \"__universeUuid__\"}"
           + " {{ query_condition }} 1",
-      "Failed to perform health check notification for universe '{{ $labels.source_name }}': "
+      "Failed to perform health check notification for universe '{{ $labels.source_name }}':"
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
+      TestAlertSettings.builder()
+          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
+          .build()),
 
   BACKUP_FAILURE(
       "Backup Failure",
       "Last universe backup creation task failed",
       "ybp_create_backup_status{universe_uuid = \"__universeUuid__\"}" + " {{ query_condition }} 1",
-      "Last backup task for universe '{{ $labels.source_name }}' failed: "
+      "Last backup task for universe '{{ $labels.source_name }}' failed:"
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
+      TestAlertSettings.builder()
+          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
+          .build()),
 
   BACKUP_SCHEDULE_FAILURE(
       "Backup Schedule Failure",
@@ -159,23 +172,29 @@ public enum AlertTemplate {
       "Alert Query Failed",
       "Failed to query alerts from Prometheus",
       "ybp_alert_query_status {{ query_condition }} 1",
-      "Last alert query for customer '{{ $labels.source_name }}' failed: "
+      "Last alert query for customer '{{ $labels.source_name }}' failed:"
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
+      TestAlertSettings.builder()
+          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
+          .build()),
 
   ALERT_CONFIG_WRITING_FAILED(
       "Alert Rules Sync Failed",
       "Failed to sync alerting rules to Prometheus",
       "ybp_alert_config_writer_status {{ query_condition }} 1",
-      "Last alert rules sync for customer '{{ $labels.source_name }}' failed: "
+      "Last alert rules sync for customer '{{ $labels.source_name }}' failed:"
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
+      TestAlertSettings.builder()
+          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
+          .build()),
 
   ALERT_NOTIFICATION_ERROR(
       "Alert Notification Failed",
@@ -186,7 +205,10 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.PLATFORM,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
+      TestAlertSettings.builder()
+          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
+          .build()),
 
   ALERT_NOTIFICATION_CHANNEL_ERROR(
       "Alert Channel Failed",
@@ -198,7 +220,11 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER, DefinitionSettings.SKIP_TARGET_LABELS),
       TargetType.PLATFORM,
-      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build(),
+      TestAlertSettings.builder()
+          .label(KnownAlertLabels.ERROR_MESSAGE, "Some error occurred")
+          .label(KnownAlertLabels.SOURCE_NAME, "Some Channel")
+          .build()),
 
   NODE_DOWN(
       "DB node down",
@@ -226,7 +252,7 @@ public enum AlertTemplate {
           + "(changes(node_boot_time{node_prefix=\"__nodePrefix__\"}[30m])) "
           + "{{ query_condition }} {{ query_threshold }}",
       "Universe '{{ $labels.source_name }}'"
-          + " DB node is restarted  {{ $value | printf \\\"%.0f\\\" }} times"
+          + " DB node is restarted {{ $value | printf \\\"%.0f\\\" }} times"
           + " during last 30 minutes",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
@@ -256,7 +282,8 @@ public enum AlertTemplate {
           .defaultThreshold(WARNING, "yb.alert.max_cpu_usage_pct_warn")
           .defaultThreshold(SEVERE, "yb.alert.max_cpu_usage_pct_severe")
           .defaultThresholdUnit(PERCENT)
-          .build()),
+          .build(),
+      TestAlertSettings.builder().generateValueFromThreshold(false).build()),
 
   NODE_DISK_USAGE(
       "DB node disk usage",
@@ -274,7 +301,8 @@ public enum AlertTemplate {
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, "yb.alert.max_node_disk_usage_pct_severe")
           .defaultThresholdUnit(PERCENT)
-          .build()),
+          .build(),
+      TestAlertSettings.builder().generateValueFromThreshold(false).build()),
 
   NODE_FILE_DESCRIPTORS_USAGE(
       "DB node file descriptors usage",
@@ -290,7 +318,8 @@ public enum AlertTemplate {
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, "yb.alert.max_node_fd_usage_pct_severe")
           .defaultThresholdUnit(PERCENT)
-          .build()),
+          .build(),
+      TestAlertSettings.builder().generateValueFromThreshold(false).build()),
 
   NODE_OOM_KILLS(
       "DB node OOM",
@@ -300,7 +329,7 @@ public enum AlertTemplate {
           + "{{ query_condition }} {{ query_threshold }}) > 0",
       "More than {{ $labels.threshold }} OOM kills detected"
           + " for universe '{{ $labels.source_name }}'"
-          + " on {{ $value | printf \\\"%.0f\\\" }} nodes.",
+          + " on {{ $value | printf \\\"%.0f\\\" }} node(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
@@ -310,7 +339,8 @@ public enum AlertTemplate {
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("OOM kill(s)")
           .thresholdConditionReadOnly(true)
-          .build()),
+          .build(),
+      TestAlertSettings.builder().generateValueFromThreshold(false).build()),
 
   DB_VERSION_MISMATCH(
       "DB version mismatch",
@@ -354,16 +384,10 @@ public enum AlertTemplate {
   DB_INSTANCE_RESTART(
       "DB Instance restart",
       "Unexpected Master or TServer process restart(s) occurred during last 30 minutes",
-      "max by (universe_uuid) (label_replace(changes("
-          + "ybp_health_check_master_boot_time_sec{universe_uuid=\"__universeUuid__\"}[30m]) "
-          + "and on (universe_uuid) (max_over_time("
-          + "ybp_universe_update_in_progress{universe_uuid=\"__universeUuid__\"}[30m]) == 0), "
-          + "\"export_type\", \"master_export\", \"universe_uuid\",\".*\") or "
-          + "(label_replace(changes("
-          + "ybp_health_check_tserver_boot_time_sec{universe_uuid=\"__universeUuid__\"}[30m]) "
-          + "and on (universe_uuid) (max_over_time("
-          + "ybp_universe_update_in_progress{universe_uuid=\"__universeUuid__\"}[30m]) == 0), "
-          + "\"export_type\", \"tserver_export\", \"universe_uuid\",\".*\"))) "
+      "max by (node_prefix) (changes("
+          + "yb_node_boot_time{node_prefix=\"__nodePrefix__\"}[30m]) and on (node_prefix) "
+          + "(max_over_time("
+          + "ybp_universe_update_in_progress{node_prefix=\"__nodePrefix__\"}[31m]) == 0)) "
           + "{{ query_condition }} {{ query_threshold }}",
       "Universe '{{ $labels.source_name }}'"
           + " Master or TServer is restarted {{ $value | printf \\\"%.0f\\\" }} times"
@@ -491,6 +515,63 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("instance(s)")
+          .build()),
+
+  DB_MEMORY_OVERLOAD(
+      "DB memory overload",
+      "DB memory rejections detected during last 10 minutes",
+      "sum by (node_prefix) (sum_over_time("
+          + "leader_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) + "
+          + "sum by (node_prefix) (sum_over_time("
+          + "follower_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) + "
+          + "sum by (node_prefix) (sum_over_time("
+          + "operation_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB memory rejections detected for universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("rejection(s)")
+          .thresholdConditionReadOnly(true)
+          .build()),
+
+  DB_COMPACTION_OVERLOAD(
+      "DB compaction overload",
+      "DB compaction rejections detected during last 10 minutes",
+      "sum by (node_prefix) (sum_over_time("
+          + "majority_sst_files_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB compaction rejections detected for universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("rejection(s)")
+          .thresholdConditionReadOnly(true)
+          .build()),
+
+  DB_QUEUES_OVERFLOW(
+      "DB queues overflow",
+      "DB queues overflow detected during last 10 minutes",
+      "sum by (node_prefix) (sum_over_time("
+          + "rpcs_queue_overflow{node_prefix=\"__nodePrefix__\"}[10m])) + "
+          + "sum by (node_prefix) (sum_over_time("
+          + "rpcs_timed_out_in_queue{node_prefix=\"__nodePrefix__\"}[10m])) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB queues overflow detected for universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("occurrence(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   NODE_TO_NODE_CA_CERT_EXPIRY(
@@ -641,6 +722,22 @@ public enum AlertTemplate {
           .defaultThresholdUnit(MILLISECOND)
           .build()),
 
+  HIGH_NUM_YSQL_CONNECTIONS(
+      "Number of YSQL connections is high",
+      "Number of YSQL connections is above threshold",
+      "max by (node_name) (max_over_time(yb_node_ysql_connections_count"
+          + "{node_prefix=\"__nodePrefix__\"}[5m])) {{ query_condition }} {{ query_threshold }}",
+      "Number of YSQL connections for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }}."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ysql_connections")
+          .defaultThresholdUnit(COUNT)
+          .build()),
+
   HIGH_NUM_YCQL_CONNECTIONS(
       "Number of YCQL connections is high",
       "Number of YCQL connections is above threshold",
@@ -707,6 +804,51 @@ public enum AlertTemplate {
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, "yb.alert.max_ycql_throughput")
           .defaultThresholdUnit(COUNT)
+          .build()),
+
+  MASTER_LEADER_MISSING(
+      "Master Leader missing",
+      "Master Leader is missing for configured duration",
+      "max by (node_prefix) (yb_node_is_master_leader{node_prefix=\"__nodePrefix__\"})"
+          + " {{ query_condition }} {{ query_threshold }}",
+      "Master Leader is missing for universe '{{ $labels.source_name }}'.",
+      300,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
+  LEADERLESS_TABLETS(
+      "Leaderless tablets",
+      "Leader is missing for some tablet(s) for more than 5 minutes",
+      "count by (node_prefix) "
+          + "(max_over_time(yb_node_leaderless_tablet{node_prefix=\"__nodePrefix__\"}[5m])"
+          + " {{ query_condition }} {{ query_threshold }})",
+      "Tablet leader is missing for more than 5 minutes for "
+          + "{{ $value | printf \\\"%.0f\\\" }} tablet(s) in universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0)
+          .defaultThresholdCondition(Condition.GREATER_THAN)
+          .defaultThresholdUnit(STATUS)
+          .build()),
+
+  UNDER_REPLICATED_TABLETS(
+      "Under-replicated tablets",
+      "Some tablet(s) remain under-replicated for more than 5 minutes",
+      "count by (node_prefix) "
+          + "(max_over_time(yb_node_underreplicated_tablet{node_prefix=\"__nodePrefix__\"}[5m])"
+          + " {{ query_condition }} {{ query_threshold }})",
+      "{{ $value | printf \\\"%.0f\\\" }} tablet(s) remain under-replicated "
+          + "for more than 5 minutes in universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0)
+          .defaultThresholdCondition(Condition.GREATER_THAN)
+          .defaultThresholdUnit(STATUS)
           .build());
   // @formatter:on
 
@@ -745,6 +887,8 @@ public enum AlertTemplate {
 
   private final String thresholdUnitName;
 
+  private final TestAlertSettings testAlertSettings;
+
   public String buildTemplate(Customer customer) {
     return buildTemplate(customer, null);
   }
@@ -769,6 +913,28 @@ public enum AlertTemplate {
       EnumSet<DefinitionSettings> settings,
       TargetType targetType,
       ThresholdSettings thresholdSettings) {
+    this(
+        name,
+        description,
+        queryTemplate,
+        summaryTemplate,
+        defaultDurationSec,
+        settings,
+        targetType,
+        thresholdSettings,
+        TestAlertSettings.builder().build());
+  }
+
+  AlertTemplate(
+      String name,
+      String description,
+      String queryTemplate,
+      String summaryTemplate,
+      int defaultDurationSec,
+      EnumSet<DefinitionSettings> settings,
+      TargetType targetType,
+      ThresholdSettings thresholdSettings,
+      TestAlertSettings testAlertSettings) {
     this.name = name;
     this.description = description;
     this.queryTemplate = queryTemplate;
@@ -784,6 +950,7 @@ public enum AlertTemplate {
     this.thresholdReadOnly = thresholdSettings.getThresholdReadOnly();
     this.thresholdConditionReadOnly = thresholdSettings.getThresholdConditionReadOnly();
     this.thresholdUnitName = thresholdSettings.getThresholdUnitName();
+    this.testAlertSettings = testAlertSettings;
   }
 
   public boolean isCreateForNewCustomer() {
@@ -867,6 +1034,26 @@ public enum AlertTemplate {
                 ? thresholdConditionReadOnly
                 : defaultThresholdUnit.isThresholdConditionOnly(),
             thresholdUnitName != null ? thresholdUnitName : defaultThresholdUnit.getDisplayName());
+      }
+    }
+  }
+
+  @Value
+  @Builder
+  public static class TestAlertSettings {
+    List<AlertLabel> additionalLabels;
+    String customMessage;
+    boolean generateValueFromThreshold;
+    double customValue;
+
+    public static class TestAlertSettingsBuilder {
+      List<AlertLabel> additionalLabels = new ArrayList<>();
+      boolean generateValueFromThreshold = true;
+      double customValue = 1D;
+
+      public TestAlertSettingsBuilder label(KnownAlertLabels label, String value) {
+        additionalLabels.add(new AlertLabel(label.labelName(), value));
+        return this;
       }
     }
   }

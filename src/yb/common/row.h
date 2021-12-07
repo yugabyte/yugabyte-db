@@ -36,14 +36,15 @@
 #include <utility>
 #include <vector>
 
-#include <glog/logging.h>
-
-#include "yb/common/types.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
+#include "yb/common/types.h"
+
 #include "yb/gutil/macros.h"
-#include "yb/gutil/map-util.h"
-#include "yb/util/memory/arena.h"
+
 #include "yb/util/bitmap.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -58,9 +59,9 @@ struct SimpleConstCell {
       value_(value) {
   }
 
-  const TypeInfo* typeinfo() const { return col_schema_->type_info(); }
-  size_t size() const { return col_schema_->type_info()->size(); }
-  bool is_nullable() const { return col_schema_->is_nullable(); }
+  const TypeInfo* typeinfo() const;
+  size_t size() const;
+  bool is_nullable() const;
   const void* ptr() const { return value_; }
   bool is_null() const { return value_ == NULL; }
 
@@ -154,24 +155,12 @@ class RowProjector {
 
   // Construct a projector.
   // The two Schema pointers must remain valid for the lifetime of this object.
-  RowProjector(const Schema* base_schema, const Schema* projection)
-    : base_schema_(base_schema), projection_(projection),
-      is_identity_(base_schema->Equals(*projection)) {
-  }
+  RowProjector(const Schema* base_schema, const Schema* projection);
 
   // Initialize the projection mapping with the specified base_schema and projection
-  CHECKED_STATUS Init() {
-    return projection_->GetProjectionMapping(*base_schema_, this);
-  }
+  CHECKED_STATUS Init();
 
-  CHECKED_STATUS Reset(const Schema* base_schema, const Schema* projection) {
-    base_schema_ = base_schema;
-    projection_ = projection;
-    base_cols_mapping_.clear();
-    adapter_cols_mapping_.clear();
-    is_identity_ = base_schema->Equals(*projection);
-    return Init();
-  }
+  CHECKED_STATUS Reset(const Schema* base_schema, const Schema* projection);
 
   // Project a row from one schema into another, using the projection mapping.
   // Indirected data is copied into the provided dst arena.
@@ -219,11 +208,7 @@ class RowProjector {
     return Status::OK();
   }
 
-  CHECKED_STATUS ProjectExtraColumn(size_t proj_col_idx) {
-    return STATUS(InvalidArgument,
-      "The column '" + projection_->column(proj_col_idx).name() +
-      "' does not exist in the projection, and it does not have a nullable type");
-  }
+  CHECKED_STATUS ProjectExtraColumn(size_t proj_col_idx);
 
  private:
   // Project a row from one schema into another, using the projection mapping.

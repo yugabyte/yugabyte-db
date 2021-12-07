@@ -6,9 +6,9 @@
   {{ if eq $index $title }}
     {{ $context.Scratch.Set "currentVersionMenu" $value }}
     {{ if eq $index "latest" }}
-      {{ $context.Scratch.Set "currentVersionTitle" "v2.9 (latest)" }}
+      {{ $context.Scratch.Set "currentVersionTitle" "v2.11 (latest)" }}
     {{ else if eq $index "stable" }}
-      {{ $context.Scratch.Set "currentVersionTitle" "v2.6 (stable)" }}
+      {{ $context.Scratch.Set "currentVersionTitle" "v2.8 (stable)" }}
     {{ else }}
       {{ $context.Scratch.Set "currentVersionTitle" $index }}
     {{ end }}

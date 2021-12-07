@@ -13,28 +13,27 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/integration-tests/yb_table_test_base.h"
-
+#include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/integration-tests/cluster_verifier.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_balancer_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
-#include "yb/master/master-test-util.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_controller.h"
+#include "yb/integration-tests/yb_table_test_base.h"
+
 #include "yb/tools/yb-admin_client.h"
+
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

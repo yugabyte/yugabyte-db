@@ -999,6 +999,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         return SubTaskGroupType.SystemdUpgrade;
       case ToggleTls:
         return SubTaskGroupType.ToggleTls;
+      case Certs:
+        return SubTaskGroupType.RotatingCert;
       default:
         return SubTaskGroupType.Invalid;
     }

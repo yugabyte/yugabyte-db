@@ -33,13 +33,16 @@
 #ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
 #define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
 
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/metadata.pb.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
 
 namespace yb {
 class Env;
@@ -74,6 +77,9 @@ class ExternalMiniClusterFsInspector {
   // List all of the tablets with tablet metadata on the given tablet server index.
   // This may include tablets that are tombstoned and not running.
   std::vector<std::string> ListTabletsOnTS(int index);
+
+  // List all fs_data_roots with running tablets conut on the given tablet server index.
+  std::unordered_map<std::string, std::vector<std::string>> DrivesOnTS(int index);
 
   // List the tablet IDs on the given tablet which actually have data (as
   // evidenced by their having a WAL). This excludes those that are tombstoned.
@@ -132,6 +138,9 @@ class ExternalMiniClusterFsInspector {
       const MonoDelta& timeout = MonoDelta::FromSeconds(30));
 
  private:
+  void TabletsWithDataOnTS(int index,
+                           std::function<void (const std::string&, const std::string&)> handler);
+
   Env* const env_;
   ExternalMiniCluster* const cluster_;
 

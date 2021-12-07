@@ -14,8 +14,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/ql_value.h"
-#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/common/table_properties_constants.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
 using strings::Substitute;

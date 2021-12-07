@@ -14,18 +14,38 @@
 #ifndef YB_MASTER_BACKFILL_INDEX_H
 #define YB_MASTER_BACKFILL_INDEX_H
 
+#include <float.h>
+
+#include <chrono>
+#include <set>
+#include <sstream>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
+#include <boost/mpl/and.hpp>
+#include <gflags/gflags_declare.h>
+
+#include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
+
 #include "yb/server/monitored_task.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/tostring.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 namespace master {
@@ -188,7 +208,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const scoped_refptr<NamespaceInfo> ns_info_;
 };
 
-class BackfillTableJob : public MonitoredTask {
+class BackfillTableJob : public server::MonitoredTask {
  public:
   explicit BackfillTableJob(std::shared_ptr<BackfillTable> backfill_table)
       : start_timestamp_(MonoTime::Now()),
@@ -207,13 +227,13 @@ class BackfillTableJob : public MonitoredTask {
 
   std::string description() const override;
 
-  MonitoredTaskState state() const override {
+  server::MonitoredTaskState state() const override {
     return state_.load(std::memory_order_acquire);
   }
 
-  void SetState(MonitoredTaskState new_state);
+  void SetState(server::MonitoredTaskState new_state);
 
-  MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
+  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
 
   void MarkDone() {
     completion_timestamp_ = MonoTime::Now();
@@ -222,7 +242,7 @@ class BackfillTableJob : public MonitoredTask {
 
  private:
   MonoTime start_timestamp_, completion_timestamp_;
-  std::atomic<MonitoredTaskState> state_{MonitoredTaskState::kWaiting};
+  std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
   std::shared_ptr<BackfillTable> backfill_table_;
   const std::string requested_index_names_;
 };
@@ -345,11 +365,7 @@ class BackfillChunk : public RetryingTSRpcTask {
 
   std::string type_name() const override { return "Backfill Index Table"; }
 
-  std::string description() const override {
-    return yb::Format("Backfilling indexes $0 for tablet $1 from key '$2'",
-                      requested_index_names_, tablet_id(),
-                      b2a_hex(start_key_));
-  }
+  std::string description() const override;
 
   MonoTime ComputeDeadline() override;
 

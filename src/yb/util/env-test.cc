@@ -47,7 +47,6 @@
 #include "yb/util/crc.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
-#include "yb/util/malloc.h"
 #include "yb/util/memenv/memenv.h"
 #include "yb/util/os-util.h"
 #include "yb/util/random.h"
@@ -55,6 +54,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int32(o_direct_block_size_bytes);

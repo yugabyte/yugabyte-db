@@ -35,24 +35,22 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 
+#include <boost/asio/ip/tcp.hpp>
 #include <boost/lockfree/queue.hpp>
-#include <boost/optional.hpp>
 
-#include "yb/gutil/atomicops.h"
-#include "yb/rpc/growable_buffer.h"
-#include "yb/rpc/outbound_call.h"
-#include "yb/rpc/response_callback.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/rpc_header.pb.h"
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/proxy_base.h"
 
 #include "yb/util/concurrent_pod.h"
-#include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
 
 namespace google {
 namespace protobuf {
@@ -61,41 +59,12 @@ class Message;
 }  // namespace google
 
 namespace yb {
+
+class MemTracker;
+
 namespace rpc {
 
 YB_DEFINE_ENUM(ResolveState, (kIdle)(kResolving)(kNotifying)(kFinished));
-
-class ProxyContext {
- public:
-  virtual scoped_refptr<MetricEntity> metric_entity() const = 0;
-
-  // Queue a call for transmission. This will pick the appropriate reactor, and enqueue a task on
-  // that reactor to assign and send the call.
-  virtual void QueueOutboundCall(OutboundCallPtr call) = 0;
-
-  // Enqueue a call for processing on the server.
-  virtual void QueueInboundCall(InboundCallPtr call) = 0;
-
-  // Invoke the RpcService to handle a call directly.
-  virtual void Handle(InboundCallPtr call) = 0;
-
-  virtual const Protocol* DefaultProtocol() = 0;
-
-  virtual ThreadPool& CallbackThreadPool(ServicePriority priority = ServicePriority::kNormal) = 0;
-
-  virtual IoService& io_service() = 0;
-
-  virtual DnsResolver& resolver() = 0;
-
-  virtual RpcMetrics& rpc_metrics() = 0;
-
-  virtual const std::shared_ptr<MemTracker>& parent_mem_tracker() = 0;
-
-  // Number of connections to create per destination address.
-  virtual int num_connections_to_server() const = 0;
-
-  virtual ~ProxyContext() {}
-};
 
 // Interface to send calls to a remote or local service.
 //
@@ -167,9 +136,7 @@ class Proxy {
   // Is the service local?
   bool IsServiceLocal() const { return call_local_service_; }
 
-  scoped_refptr<MetricEntity> metric_entity() const {
-    return context_->metric_entity();
-  }
+  scoped_refptr<MetricEntity> metric_entity() const;
 
  private:
   void Resolve();
@@ -208,21 +175,8 @@ class Proxy {
   // Number of outbound connections to create per each destination server address.
   int num_connections_to_server_;
 
-  MemTrackerPtr mem_tracker_;
+  std::shared_ptr<MemTracker> mem_tracker_;
 };
-
-using ProxyPtr = std::shared_ptr<Proxy>;
-
-struct ProxyMetrics {};
-
-template <size_t size>
-struct ProxyMetricsImpl : public ProxyMetrics {
-  std::array<OutboundMethodMetrics, size> value;
-};
-
-using ProxyMetricsPtr = std::shared_ptr<ProxyMetrics>;
-
-using ProxyMetricsFactory = ProxyMetricsPtr(*)(const scoped_refptr<MetricEntity>& entity);
 
 class ProxyCache {
  public:
@@ -253,32 +207,6 @@ class ProxyCache {
 
   std::mutex metrics_mutex_;
   std::unordered_map<std::string , ProxyMetricsPtr> metrics_ GUARDED_BY(metrics_mutex_);
-};
-
-class ProxyBase {
- public:
-  ProxyBase(const std::string& service_name, ProxyMetricsFactory metrics_factory,
-            ProxyCache* cache, const HostPort& remote,
-            const Protocol* protocol = nullptr,
-            const MonoDelta& resolve_cache_timeout = MonoDelta())
-      : proxy_(cache->GetProxy(remote, protocol, resolve_cache_timeout)),
-        metrics_(cache->GetMetrics(service_name, metrics_factory)) {
-  }
-
-  template <size_t size>
-  std::shared_ptr<const OutboundMethodMetrics> metrics(size_t index) const {
-    if (!metrics_) {
-      return nullptr;
-    }
-    auto* metrics_impl = static_cast<ProxyMetricsImpl<size>*>(metrics_.get());
-    return std::shared_ptr<const OutboundMethodMetrics>(metrics_, &metrics_impl->value[index]);
-  }
-
-  Proxy& proxy() { return *proxy_; }
-
- private:
-  const ProxyPtr proxy_;
-  const ProxyMetricsPtr metrics_;
 };
 
 }  // namespace rpc

@@ -30,7 +30,9 @@ public enum KnownAlertLabels {
   INSTANCE,
   EXPORT_TYPE,
   TASK_TYPE,
-  RESULT;
+  RESULT,
+  ALERTNAME,
+  MESSAGE;
 
   public String labelName() {
     return name().toLowerCase();

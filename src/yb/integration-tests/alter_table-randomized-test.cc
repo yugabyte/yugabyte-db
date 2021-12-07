@@ -30,14 +30,14 @@
 // under the License.
 //
 
-
 #include <algorithm>
 #include <map>
 #include <vector>
 
-#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
@@ -48,10 +48,13 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/util/random.h"
-#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -61,7 +64,6 @@ namespace yb {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBTableType;
-using client::YBColumnSchema;
 using client::YBError;
 using client::YBqlWriteOp;
 using client::YBSchema;

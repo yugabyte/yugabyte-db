@@ -17,18 +17,27 @@
 
 #include "yb/common/ql_value.h"
 
+#include "yb/consensus/consensus.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/rpc/messenger.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
 
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tools/yb-admin_util.h"
@@ -40,6 +49,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -64,6 +74,7 @@ using client::YBTableName;
 using master::MasterBackupServiceProxy;
 using master::MasterServiceProxy;
 using master::SysRowEntry;
+using master::SysRowEntryType;
 using master::BackupRowEntryPB;
 using master::TableInfo;
 using master::TabletInfo;
@@ -73,7 +84,6 @@ using rpc::RpcController;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
-using util::to_uchar_ptr;
 
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
@@ -547,7 +557,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   for (const BackupRowEntryPB& backup_entry : snapshot.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
-      case SysRowEntry::NAMESPACE: { // Get NAMESPACE name.
+      case SysRowEntryType::NAMESPACE: { // Get NAMESPACE name.
         SysNamespaceEntryPB meta;
         const string& data = entry.data();
         ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
@@ -555,7 +565,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_namespace_name = meta.name();
         break;
       }
-      case SysRowEntry::TABLE: { // Recreate TABLE.
+      case SysRowEntryType::TABLE: { // Recreate TABLE.
         SysTablesEntryPB meta;
         const string& data = entry.data();
         ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
@@ -563,7 +573,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_table_name = meta.name();
         break;
       }
-      case SysRowEntry::TABLET: // No need to get tablet info. Ignore.
+      case SysRowEntryType::TABLET: // No need to get tablet info. Ignore.
         break;
       default:
         ASSERT_OK(STATUS_SUBSTITUTE(
@@ -607,14 +617,14 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       LOG(INFO) << "Keyspace: " << ns_pair.old_id() << " -> " << ns_pair.new_id();
       ASSERT_NE(ns_pair.old_id(), ns_pair.new_id());
 
-      const string new_namespace_name = cluster_->mini_master()->master()->catalog_manager()->
+      const string new_namespace_name = cluster_->mini_master()->catalog_manager().
           GetNamespaceName(ns_pair.new_id());
       ASSERT_EQ(old_namespace_name, new_namespace_name);
 
       const IdPairPB& table_pair = table_meta.table_ids();
       LOG(INFO) << "Table: " << table_pair.old_id() << " -> " << table_pair.new_id();
       ASSERT_NE(table_pair.old_id(), table_pair.new_id());
-      scoped_refptr<TableInfo> info = cluster_->mini_master()->master()->catalog_manager()->
+      scoped_refptr<TableInfo> info = cluster_->mini_master()->catalog_manager().
           GetTableInfo(table_pair.new_id());
       ASSERT_EQ(old_table_name, info->name());
       auto tablets = info->GetTablets();

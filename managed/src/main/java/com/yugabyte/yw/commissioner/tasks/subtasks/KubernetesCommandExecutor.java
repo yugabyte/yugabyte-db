@@ -661,6 +661,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     // Go over tserver flags.
     Map<String, Object> tserverOverrides = new HashMap<String, Object>(userIntent.tserverGFlags);
+    if (!userIntent.enableYSQL) {
+      tserverOverrides.put("enable_ysql", "false");
+    }
+    if (!userIntent.enableYCQL) {
+      tserverOverrides.put("start_cql_proxy", "false");
+    }
+    if (userIntent.enableYSQL && userIntent.enableYSQLAuth) {
+      tserverOverrides.put("ysql_enable_auth", "true");
+      tserverOverrides.put("ysql_hba_conf_csv", "local all yugabyte trust");
+    }
+    if (userIntent.enableYCQL && userIntent.enableYCQLAuth) {
+      tserverOverrides.put("use_cassandra_authentication", "true");
+    }
     if (placementCloud != null && tserverOverrides.get("placement_cloud") == null) {
       tserverOverrides.put("placement_cloud", placementCloud);
     }

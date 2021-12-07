@@ -31,6 +31,7 @@
 #include "access/htup_details.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_foreign_table.h"
 #include "commands/copy.h"
@@ -125,23 +126,24 @@ ybcGetForeignPaths(PlannerInfo *root,
 	/* Estimate costs */
 	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
 					false /* is_backwards scan */,
+					true /* is_seq_scan */,
 					false /* is_uncovered_idx_scan */,
 					&startup_cost,
 					&total_cost,
-					baserel->reltablespace /* tablespace of current path */);
+					baserel->reltablespace /* index_tablespace_oid */);
 
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,
-	         (Path *) create_foreignscan_path(root,
-	                                          baserel,
-	                                          NULL, /* default pathtarget */
-	                                          baserel->rows,
-	                                          startup_cost,
-	                                          total_cost,
-	                                          NIL,  /* no pathkeys */
-	                                          NULL, /* no outer rel either */
-	                                          NULL, /* no extra plan */
-	                                          NULL  /* no options yet */ ));
+			 (Path *) create_foreignscan_path(root,
+											  baserel,
+											  NULL, /* default pathtarget */
+											  baserel->rows,
+											  startup_cost,
+											  total_cost,
+											  NIL,  /* no pathkeys */
+											  NULL, /* no outer rel either */
+											  NULL, /* no extra plan */
+											  NULL  /* no options yet */ ));
 
 	/* Add primary key and secondary index paths also */
 	create_index_paths(root, baserel);
@@ -279,18 +281,30 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->exec_params = &estate->yb_exec_params;
 
 	ybc_state->exec_params->rowmark = -1;
-	ybc_state->exec_params->read_from_followers = YBReadFromFollowersEnabled();
 	if (YBReadFromFollowersEnabled()) {
 		ereport(DEBUG2, (errmsg("Doing read from followers")));
 	}
-	ListCell   *l;
-	foreach(l, estate->es_rowMarks) {
-		ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-		// Do not propagate non-row-locking row marks.
-		if (erm->markType != ROW_MARK_REFERENCE &&
-			erm->markType != ROW_MARK_COPY)
-			ybc_state->exec_params->rowmark = erm->markType;
-		break;
+	if (XactIsoLevel == XACT_SERIALIZABLE)
+	{
+		/*
+		 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
+		 * INSERTion of new rows that satisfy the query predicate. So, we set the rowmark on all
+		 * read requests sent to tserver instead of locking each tuple one by one in LockRows node.
+		 */
+		ListCell   *l;
+		foreach(l, estate->es_rowMarks) {
+			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+			// Do not propagate non-row-locking row marks.
+			if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
+			{
+				ybc_state->exec_params->rowmark = erm->markType;
+				/*
+				 * TODO(Piyush): We don't honour SKIP LOCKED yet in serializable isolation level.
+				 */
+				ybc_state->exec_params->wait_policy = LockWaitError;
+			}
+			break;
+		}
 	}
 
 	ybc_state->is_exec_done = false;

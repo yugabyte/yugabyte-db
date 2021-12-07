@@ -14,12 +14,10 @@
 //
 // Treenode implementation for INSERT statements.
 //--------------------------------------------------------------------------------------------------
-
-#include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/pt_explain.h"
 
-#include "yb/client/client.h"
-#include "yb/client/schema-internal.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {

@@ -30,42 +30,54 @@
 // under the License.
 //
 
-#include <fstream>
 #include <memory>
 #include <thread>
-#include <boost/bind.hpp>
-#include <boost/thread/thread.hpp>
-#include <gflags/gflags.h>
+
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-#include "yb/common/schema.h"
+
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master-test-util.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/spinlock_profiling.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
-using yb::client::YBColumnSchema;
 using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
 using yb::client::YBTableCreator;
@@ -315,7 +327,7 @@ TEST_P(CreateMultiHBTableStressTest, CreateAndDeleteBigTable) {
   // messages have a max size.
   std::cout << "Response:\n" << resp.DebugString();
   std::cout << "CatalogManager state:\n";
-  cluster_->mini_master()->master()->catalog_manager()->DumpState(&std::cerr);
+  cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
 
   // Store all relevant tablets for this big table we've created.
   std::vector<string> big_table_tablets;
@@ -371,7 +383,7 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
   Status s = WaitForRunningTabletCount(cluster_->mini_master(), table_name,
                                        FLAGS_num_test_tablets, &resp);
   if (!s.ok()) {
-    cluster_->mini_master()->master()->catalog_manager()->DumpState(&std::cerr);
+    cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
     CHECK_OK(s);
   }
 }
@@ -423,7 +435,7 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
   Status s = WaitForRunningTabletCount(cluster_->mini_master(), table_name,
                                        FLAGS_num_test_tablets, &resp);
   if (!s.ok()) {
-    cluster_->mini_master()->master()->catalog_manager()->DumpState(&std::cerr);
+    cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
     CHECK_OK(s);
   }
 }
@@ -507,7 +519,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(0);
-    Status s = cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp);
+    Status s = cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp);
     ASSERT_STR_CONTAINS(s.ToString(), "must be greater than 0");
   }
 
@@ -518,7 +530,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(1);
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     ASSERT_EQ(resp.tablet_locations_size(), 1);
     // empty since it's the first
     ASSERT_EQ(resp.tablet_locations(0).partition().partition_key_start(), "");
@@ -533,7 +545,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(half_tablets);
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     ASSERT_EQ(half_tablets, resp.tablet_locations_size());
   }
 
@@ -544,14 +556,14 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(FLAGS_num_test_tablets);
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     ASSERT_EQ(FLAGS_num_test_tablets, resp.tablet_locations_size());
   }
 
   LOG(INFO) << "========================================================";
   LOG(INFO) << "Tables and tablets:";
   LOG(INFO) << "========================================================";
-  auto tables = cluster_->mini_master()->master()->catalog_manager()->GetTables(
+  auto tables = cluster_->mini_master()->catalog_manager().GetTables(
       master::GetTablesMode::kAll);
   for (const scoped_refptr<master::TableInfo>& table_info : tables) {
     LOG(INFO) << "Table: " << table_info->ToString();
@@ -587,7 +599,7 @@ DontVerifyClusterBeforeNextTearDown();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(1);
     req.set_partition_key_start(start_key_middle);
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     ASSERT_EQ(1, resp.tablet_locations_size()) << "Response: [" << resp.DebugString() << "]";
     ASSERT_EQ(start_key_middle, resp.tablet_locations(0).partition().partition_key_start());
   }
@@ -608,10 +620,15 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {
-      CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->VisitSysCatalog(0));
+      CHECK_OK(cluster_->mini_master()->catalog_manager().VisitSysCatalog(0));
       // Give table creation a chance to run.
-      SleepFor(MonoDelta::FromMilliseconds(yb::NonTsanVsTsan(1, 5)));
+      SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
     }
+  });
+
+  auto se = ScopeExit([&stop, &reload_metadata_thread] {
+    stop.Store(true);
+    reload_metadata_thread.join();
   });
 
   for (int num_tables_created = 0; num_tables_created < 20;) {
@@ -644,8 +661,6 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
     num_tables_created++;
     LOG(INFO) << "Total created: " << num_tables_created;
   }
-  stop.Store(true);
-  reload_metadata_thread.join();
 }
 
 }  // namespace yb

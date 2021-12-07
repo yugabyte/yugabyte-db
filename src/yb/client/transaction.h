@@ -29,8 +29,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/in_flight_op.h"
 
-#include "yb/util/async_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -40,32 +39,8 @@ class Trace;
 
 namespace client {
 
-struct InFlightOpsGroup {
-  using Iterator = internal::InFlightOps::const_iterator;
-
-  bool need_metadata = false;
-  const Iterator begin;
-  const Iterator end;
-
-  InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end);
-  std::string ToString() const;
-};
-
-struct InFlightOpsTransactionMetadata {
-  TransactionMetadata transaction;
-  boost::optional<SubTransactionMetadata> subtransaction;
-};
-
-struct InFlightOpsGroupsWithMetadata {
-  static const size_t kPreallocatedCapacity = 40;
-
-  boost::container::small_vector<InFlightOpsGroup, kPreallocatedCapacity> groups;
-  InFlightOpsTransactionMetadata metadata;
-};
-
-typedef StatusFunctor Waiter;
-typedef StatusFunctor CommitCallback;
-typedef std::function<void(const Result<ChildTransactionDataPB>&)> PrepareChildCallback;
+using Waiter = boost::function<void(const Status&)>;
+using PrepareChildCallback = std::function<void(const Result<ChildTransactionDataPB>&)>;
 
 struct ChildTransactionData {
   TransactionMetadata metadata;
@@ -87,7 +62,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   class PrivateOnlyTag {};
 
  public:
-  explicit YBTransaction(TransactionManager* manager);
+  explicit YBTransaction(TransactionManager* manager,
+                         TransactionLocality locality = TransactionLocality::GLOBAL);
 
   // Trick to allow std::make_shared with this ctor only from methods of this class.
   YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);
@@ -115,33 +91,14 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Allows starting a transaction that reuses an existing read point.
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point);
 
-  // This function is used to init metadata of Write/Read request.
-  // If we don't have enough information, then the function returns false and stores
-  // the waiter, which will be invoked when we obtain such information.
-  bool Prepare(InFlightOpsGroupsWithMetadata* ops_info,
-               ForceConsistentRead force_consistent_read,
-               CoarseTimePoint deadline,
-               Initial initial,
-               Waiter waiter);
-
-  // Ask transaction to expect `count` operations in future. I.e. Prepare will be called with such
-  // number of ops.
-  void ExpectOperations(size_t count);
-
-  // Notifies transaction that specified ops were flushed with some status.
-  void Flushed(
-      const internal::InFlightOps& ops, const ReadHybridTime& used_read_time, const Status& status);
+  internal::TxnBatcherIf& batcher_if();
 
   // Commits this transaction.
   void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback);
 
-  void Commit(CoarseTimePoint deadline, CommitCallback callback) {
-    Commit(deadline, SealOnly::kFalse, callback);
-  }
+  void Commit(CoarseTimePoint deadline, CommitCallback callback);
 
-  void Commit(CommitCallback callback) {
-    Commit(CoarseTimePoint(), SealOnly::kFalse, std::move(callback));
-  }
+  void Commit(CommitCallback callback);
 
   // Utility function for Commit.
   std::future<Status> CommitFuture(

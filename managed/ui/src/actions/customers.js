@@ -39,6 +39,16 @@ export const UPDATE_PROFILE = 'UPDATE_PROFILE';
 export const UPDATE_PROFILE_SUCCESS = 'UPDATE_PROFILE_SUCCESS';
 export const UPDATE_PROFILE_FAILURE = 'UPDATE_PROFILE_FAILURE';
 
+// Update User Profile
+export const UPDATE_USER_PROFILE = 'UPDATE_USER_PROFILE';
+export const UPDATE_USER_PROFILE_SUCCESS = 'UPDATE_USER_PROFILE_SUCCESS';
+export const UPDATE_USER_PROFILE_FAILURE = 'UPDATE_USER_PROFILE_FAILURE';
+
+// Fetch User
+export const FETCH_USER = 'FETCH_USER';
+export const FETCH_USER_SUCCESS = 'FETCH_USER_SUCCESS';
+export const FETCH_USER_FAILURE = 'FETCH_USER_FAILURE';
+
 // Fetch Software Versions for Customer
 export const FETCH_SOFTWARE_VERSIONS = 'FETCH_SOFTWARE_VERSIONS';
 export const FETCH_SOFTWARE_VERSIONS_SUCCESS = 'FETCH_SOFTWARE_VERSIONS_SUCCESS';
@@ -105,6 +115,7 @@ export const RESET_TOKEN_ERROR = 'RESET_TOKEN_ERROR';
 export const GET_LOGS = 'GET_LOGS';
 export const GET_LOGS_SUCCESS = 'GET_LOGS_SUCCESS';
 export const GET_LOGS_FAILURE = 'GET_LOGS_FAILURE';
+export const LOGS_FETCHING = 'LOGS_FETCHING';
 
 export const GET_RELEASES = 'GET_RELEASES';
 export const GET_RELEASES_RESPONSE = 'GET_RELEASES_RESPONSE';
@@ -137,7 +148,8 @@ export const DELETE_SCHEDULE = 'DELETE_SCHEDULE';
 export const DELETE_SCHEDULE_RESPONSE = 'DELETE_SCHEDULE_RESPONSE';
 
 export const CREATE_USER = 'CREATE_USER';
-export const CREATE_USER_RESPONSE = 'CREATE_USER_RESPONSE';
+export const CREATE_USER_SUCCESS = 'CREATE_USER_SUCCESS';
+export const CREATE_USER_FAILURE = 'CREATE_USER_FAILURE';
 
 export const DELETE_USER = 'DELETE_USER';
 export const DELETE_USER_RESPONSE = 'DELETE_USER_RESPONSE';
@@ -363,6 +375,37 @@ export function updatePasswordFailure(error) {
   };
 }
 
+export function updateUserProfile(user, values) {
+  const cUUID = localStorage.getItem('customerId');
+  const userUUID = user.uuid;
+  const data = {
+    ...values,
+    role: user.role
+  };
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/users/${userUUID}/update_profile`,
+    data
+  );
+  return {
+    type: UPDATE_USER_PROFILE,
+    payload: request
+  };
+}
+
+export function updateUserProfileSuccess(response) {
+  return {
+    type: UPDATE_USER_PROFILE_SUCCESS,
+    payload: response
+  };
+}
+
+export function updateUserProfileFailure(error) {
+  return {
+    type: UPDATE_USER_PROFILE_FAILURE,
+    payload: error
+  };
+}
+
 export function fetchSoftwareVersions() {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`);
@@ -481,6 +524,7 @@ export function getAlerts() {
     payload: request
   };
 }
+
 export function createAlertChannel(payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_channels`, payload);
@@ -497,16 +541,19 @@ export function createAlertChannelResponse(response) {
   };
 }
 
-export function updateAlertChannel(channelUUID, payload){
+export function updateAlertChannel(channelUUID, payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`, payload);
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`,
+    payload
+  );
   return {
     type: UPDATE_ALERT_CHANNEL,
     payload: request
   };
 }
 
-export function deleteAlertChannel(channelUUID){
+export function deleteAlertChannel(channelUUID) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`);
   return {
@@ -542,10 +589,7 @@ export function createAlertConfig(payload) {
 
 export function updateAlertConfig(payload, uuid) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.put(
-    `${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`,
-    payload
-  );
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`, payload);
   return {
     type: UPDATE_ALERT_CONFIG,
     payload: request
@@ -564,6 +608,11 @@ export function createAlertConfigResponse(response) {
     type: CREATE_ALERT_CONFIG_RESPONSE,
     payload: response
   };
+}
+
+export function sendTestAlert(uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}/test_alert`);
 }
 
 export function updateAlertDestination(payload, uuid) {
@@ -602,7 +651,7 @@ export function deleteAlertConfig(uuid) {
 
 export function getAlertConfigByName(name) {
   const cUUID = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, {name});
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, { name });
 }
 
 export function getAlertChannels() {
@@ -650,10 +699,7 @@ export function getTargetMetrics(payload) {
 
 export function alertConfigs(payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.post(
-    `${ROOT_URL}/customers/${cUUID}/alert_configurations/list`,
-    payload
-  );
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, payload);
   return {
     type: GET_ALERT_CONFIGS,
     payload: request
@@ -816,11 +862,22 @@ export function deleteScheduleResponse(response) {
   };
 }
 
-export function getLogs() {
-  // TODO(bogdan): Maybe make this a URL param somehow?
-  const request = axios.get(`${ROOT_URL}/logs/1000`);
+export function setLogsLoading() {
   return {
-    type: FETCH_HOST_INFO,
+    type: LOGS_FETCHING
+  };
+}
+
+export function getLogs(maxLines, regex, universe) {
+  const request = axios.get(`${ROOT_URL}/logs`, {
+    params: {
+      maxLines,
+      queryRegex: regex,
+      universeName: universe
+    }
+  });
+  return {
+    type: GET_LOGS,
     payload: request
   };
 }
@@ -887,6 +944,15 @@ export function importYugaByteReleaseResponse(response) {
   };
 }
 
+export function deleteYugaByteRelease(version) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/releases/${version}`);
+  return {
+    type: UPDATE_RELEASE,
+    payload: request
+  };
+}
+
 export function updateYugaByteRelease(version, payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases/${version}`, payload);
@@ -912,10 +978,17 @@ export function createUser(formValues) {
   };
 }
 
-export function createUserResponse(response) {
+export function createUserSuccess(response) {
   return {
-    type: CREATE_USER_RESPONSE,
+    type: CREATE_USER_SUCCESS,
     payload: response
+  };
+}
+
+export function createUserFailure(error) {
+  return {
+    type: CREATE_USER_FAILURE,
+    payload: error
   };
 }
 
@@ -925,6 +998,29 @@ export function changeUserRole(userUUID, newRole) {
   return {
     type: CHANGE_USER_ROLE,
     payload: request
+  };
+}
+
+export function fetchUser(userUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}`);
+  return {
+    type: FETCH_USER,
+    payload: request
+  };
+}
+
+export function fetchUserSuccess(response) {
+  return {
+    type: FETCH_USER_SUCCESS,
+    payload: response
+  };
+}
+
+export function fetchUserFailure(error) {
+  return {
+    type: FETCH_USER_FAILURE,
+    payload: error
   };
 }
 
@@ -947,17 +1043,17 @@ export function deleteUserResponse(response) {
 export function updateTLS(universeUuid, formValues) {
   const cUUID = localStorage.getItem('customerId');
   const values = {
-    "enableNodeToNodeEncrypt": formValues.enableNodeToNodeEncrypt,
-    "enableClientToNodeEncrypt": formValues.enableClientToNodeEncrypt,
-    "rootCA": formValues.rootCA,
-    "createNewRootCA": formValues.createNewRootCA,
-    "clientRootCA": formValues.clientRootCA,
-    "createNewClientRootCA": formValues.createNewClientRootCA,
-    "rootAndClientRootCASame": formValues.rootAndClientRootCASame,
-    "upgradeOption": formValues.rollingUpgrade ? "Rolling" : "Non-Rolling",
-    "sleepAfterMasterRestartMillis": formValues.timeDelay * 1000,
-    "sleepAfterTServerRestartMillis": formValues.timeDelay * 1000
-  }
+    enableNodeToNodeEncrypt: formValues.enableNodeToNodeEncrypt,
+    enableClientToNodeEncrypt: formValues.enableClientToNodeEncrypt,
+    rootCA: formValues.rootCA,
+    createNewRootCA: formValues.createNewRootCA,
+    clientRootCA: formValues.clientRootCA,
+    createNewClientRootCA: formValues.createNewClientRootCA,
+    rootAndClientRootCASame: formValues.rootAndClientRootCASame,
+    upgradeOption: formValues.rollingUpgrade ? 'Rolling' : 'Non-Rolling',
+    sleepAfterMasterRestartMillis: formValues.timeDelay * 1000,
+    sleepAfterTServerRestartMillis: formValues.timeDelay * 1000
+  };
   const request = axios.post(
     `${ROOT_URL}/customers/${cUUID}/universes/${universeUuid}/update_tls`,
     values

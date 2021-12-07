@@ -16,15 +16,17 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace master {

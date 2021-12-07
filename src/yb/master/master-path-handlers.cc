@@ -33,34 +33,40 @@
 #include "yb/master/master-path-handlers.h"
 
 #include <algorithm>
-#include <array>
 #include <functional>
-#include <map>
 #include <iomanip>
+#include <map>
 #include <sstream>
 #include <unordered_set>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/common/transaction.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/cluster_balance.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
+
 #include "yb/util/curl_util.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
@@ -118,6 +124,7 @@ using std::string;
 using std::stringstream;
 using std::unique_ptr;
 using strings::Substitute;
+using server::MonitoredTask;
 
 using namespace std::placeholders;
 
@@ -204,7 +211,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
   string redirect;
   // Lock the CatalogManager in a self-contained block, to prevent double-locking on callbacks.
   {
-    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
     // If we are not the master leader, redirect the URL.
     if (!l.first_failed_status().ok()) {
@@ -552,7 +559,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   TabletCountMap tablet_map;
   CalculateTabletMap(&tablet_map);
 
-  unordered_set<string> read_replica_uuids;
+  std::unordered_set<string> read_replica_uuids;
   for (auto desc : descs) {
     if (!read_replica_uuids.count(desc->placement_uuid()) && desc->placement_uuid() != live_id) {
       read_replica_uuids.insert(desc->placement_uuid());
@@ -607,7 +614,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   TabletCountMap tablet_map;
   CalculateTabletMap(&tablet_map);
 
-  unordered_set<string> cluster_uuids;
+  std::unordered_set<string> cluster_uuids;
   auto primary_uuid = config.replication_info().live_replicas().placement_uuid();
   cluster_uuids.insert(primary_uuid);
   for (auto desc : descs) {
@@ -1101,7 +1108,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     auto l = table->LockForRead();
     keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     table_name = l->name();
-    *output << "<h1>Table: " << EscapeForHtmlToString(TableLongName(keyspace_name, table_name))
+    *output << "<h1>Table: "
+            << EscapeForHtmlToString(server::TableLongName(keyspace_name, table_name))
             << " ("<< table->id() <<") </h1>\n";
 
     *output << "<table class='table table-striped'>\n";
@@ -1155,13 +1163,13 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       *output << "Unable to decode partition schema: " << s.ToString();
       return;
     }
-    tablets = table->GetTablets();
+    tablets = table->GetTablets(IncludeInactive::kTrue);
   }
 
-  HtmlOutputSchemaTable(schema, output);
+  server::HtmlOutputSchemaTable(schema, output);
 
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>State</th>"
+  *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
       "<th>Message</th><th>RaftConfig</th></tr>\n";
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto locations = tablet->GetReplicaLocations();
@@ -1177,9 +1185,10 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     string state = SysTabletsEntryPB_State_Name(l->pb.state());
     Capitalize(&state);
     *output << Substitute(
-        "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
+        "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td></tr>\n",
         tablet->tablet_id(),
         EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
+        l->pb.split_depth(),
         state,
         EscapeForHtmlToString(l->pb.state_msg()),
         RaftConfigToHtml(sorted_locations, tablet->tablet_id()));
@@ -1254,7 +1263,7 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
     if (master_->catalog_manager()->IsSystemTable(*table.get())) {
       continue;
     }
-    TabletInfos ts = table->GetTablets();
+    TabletInfos ts = table->GetTablets(IncludeInactive::kTrue);
 
     for (TabletInfoPtr t : ts) {
       nonsystem_tablets.push_back(t);
@@ -1415,7 +1424,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
   if (!l.first_failed_status().ok()) {
     // We are not the leader master, retrieve the response from the leader master.
     RedirectToLeader(req, resp);
@@ -1797,7 +1806,7 @@ void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
   JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
   {
-    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
     // If we are not the master leader.
     if (!l.first_failed_status().ok()) {
@@ -1898,11 +1907,11 @@ void MasterPathHandlers::HandlePrettyLB(
   }
 
   // Don't render if there is a lot of placement nesting.
-  unordered_set<std::string> clouds;
-  unordered_set<std::string> regions;
+  std::unordered_set<std::string> clouds;
+  std::unordered_set<std::string> regions;
   // Map of zone -> {tserver UUIDs}
   // e.g. zone1 -> {ts1uuid, ts2uuid, ts3uuid}.
-  unordered_map<std::string, vector<std::string>> zones;
+  std::unordered_map<std::string, vector<std::string>> zones;
   for (const auto& desc : descs) {
     std::string uuid = desc->permanent_uuid();
     std::string cloud = desc->GetCloudInfo().placement_cloud();
@@ -1940,7 +1949,7 @@ void MasterPathHandlers::HandlePrettyLB(
 
   // A single zone.
   int color_index = 0;
-  unordered_map<std::string, std::string> tablet_colors;
+  std::unordered_map<std::string, std::string> tablet_colors;
 
   *output << "<div class='row'>\n";
   for (const auto& zone : zones) {
@@ -2197,7 +2206,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       continue;
     }
 
-    TabletInfos tablets = table->GetTablets();
+    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
 
     for (const auto& tablet : tablets) {
@@ -2246,7 +2255,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
       continue;
     }
 
-    TabletInfos tablets = table->GetTablets();
+    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
 
     for (const auto& tablet : tablets) {
       auto replica_locations = tablet->GetReplicaLocations();

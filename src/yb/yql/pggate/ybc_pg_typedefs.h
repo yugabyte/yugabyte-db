@@ -17,7 +17,7 @@
 #define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
 #include <stddef.h>
-#include "yb/common/ybc_util.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 
@@ -93,7 +93,8 @@ typedef enum PgDataType {
   YB_YQL_DATA_TYPE_UINT8 = 100,
   YB_YQL_DATA_TYPE_UINT16 = 101,
   YB_YQL_DATA_TYPE_UINT32 = 102,
-  YB_YQL_DATA_TYPE_UINT64 = 103
+  YB_YQL_DATA_TYPE_UINT64 = 103,
+  YB_YQL_DATA_TYPE_GIN_NULL = 104,
 } YBCPgDataType;
 
 // Datatypes that are internally designated to be unsupported.
@@ -286,10 +287,10 @@ typedef struct PgExecParameters {
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
   int rowmark = -1;
+  int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   char *bfinstr = NULL;
   uint64_t* statement_read_time = NULL;
   char *partition_key = NULL;
-  bool read_from_followers = false;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
 #else
@@ -297,10 +298,10 @@ typedef struct PgExecParameters {
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
+  int wait_policy; // Cast to LockWaitPolicy for C use
   char *bfinstr;
   uint64_t* statement_read_time;
   char *partition_key;
-  bool read_from_followers;
   PgExecOutParam *out_param;
   bool is_index_backfill;
 #endif

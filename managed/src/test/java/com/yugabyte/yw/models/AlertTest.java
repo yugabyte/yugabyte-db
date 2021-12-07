@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createAlertConfiguration;
+import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -338,6 +339,7 @@ public class AlertTest extends FakeDBApplication {
         .setSeverity(AlertConfiguration.Severity.SEVERE)
         .setName("Alert 1")
         .setSourceName("Source 1")
+        .setSourceUUID(UUID.fromString("3ea389e6-07e7-487e-8592-c1b2a7339590"))
         .setMessage("Universe on fire!")
         .setDefinitionUuid(definition.getUuid())
         .setConfigurationUuid(configuration.getUuid())
@@ -402,6 +404,7 @@ public class AlertTest extends FakeDBApplication {
     assertThat(alert.getSeverity(), is(AlertConfiguration.Severity.SEVERE));
     assertThat(alert.getName(), is("Alert 1"));
     assertThat(alert.getSourceName(), is("Source 1"));
+    assertThat(alert.getSourceUUID(), is(UUID.fromString("3ea389e6-07e7-487e-8592-c1b2a7339590")));
     assertThat(alert.getMessage(), is("Universe on fire!"));
     assertThat(alert.getDefinitionUuid(), equalTo(definition.getUuid()));
     assertThat(alert.getConfigurationUuid(), equalTo(configuration.getUuid()));
@@ -449,11 +452,5 @@ public class AlertTest extends FakeDBApplication {
             .build();
     list = alertService.list(filter);
     assertThat(list, containsInAnyOrder(alert1, alert3));
-  }
-
-  private UUID replaceFirstChar(UUID uuid, char firstChar) {
-    char[] chars = uuid.toString().toCharArray();
-    chars[0] = firstChar;
-    return UUID.fromString(new String(chars));
   }
 }

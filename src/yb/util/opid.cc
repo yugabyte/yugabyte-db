@@ -15,11 +15,9 @@
 
 #include "yb/util/opid.h"
 
-#include <iostream>
+#include <algorithm>
 
 #include <boost/functional/hash.hpp>
-
-#include <glog/logging.h>
 
 #include "yb/util/stol_utils.h"
 

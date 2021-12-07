@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -18,6 +19,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -239,8 +241,15 @@ public class UpgradeUniverseHandler {
       }
     }
 
+    String typeName = generateTypeName(userIntent, requestParams);
+
     return submitUpgradeTask(
-        TaskType.TlsToggle, CustomerTask.TaskType.TlsToggle, requestParams, customer, universe);
+        TaskType.TlsToggle,
+        CustomerTask.TaskType.TlsToggle,
+        requestParams,
+        customer,
+        universe,
+        typeName);
   }
 
   public UUID upgradeVMImage(
@@ -281,6 +290,17 @@ public class UpgradeUniverseHandler {
       UpgradeTaskParams upgradeTaskParams,
       Customer customer,
       Universe universe) {
+    return submitUpgradeTask(
+        taskType, customerTaskType, upgradeTaskParams, customer, universe, null);
+  }
+
+  private UUID submitUpgradeTask(
+      TaskType taskType,
+      CustomerTask.TaskType customerTaskType,
+      UpgradeTaskParams upgradeTaskParams,
+      Customer customer,
+      Universe universe,
+      String customTaskName) {
     UUID taskUUID = commissioner.submit(taskType, upgradeTaskParams);
     log.info(
         "Submitted {} for {} : {}, task uuid = {}.",
@@ -295,7 +315,8 @@ public class UpgradeUniverseHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         customerTaskType,
-        universe.name);
+        universe.name,
+        customTaskName);
     log.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",
         taskUUID,
@@ -320,5 +341,29 @@ public class UpgradeUniverseHandler {
     } catch (RuntimeException e) {
       throw new PlatformServiceException(Status.BAD_REQUEST, e.getMessage());
     }
+  }
+
+  @VisibleForTesting
+  static String generateTypeName(UserIntent userIntent, TlsToggleParams requestParams) {
+    String baseTaskName = "TLS Toggle ";
+    Boolean clientToNode =
+        (userIntent.enableClientToNodeEncrypt == requestParams.enableClientToNodeEncrypt)
+            ? null
+            : requestParams.enableClientToNodeEncrypt;
+    Boolean nodeToNode =
+        (userIntent.enableNodeToNodeEncrypt == requestParams.enableNodeToNodeEncrypt)
+            ? null
+            : requestParams.enableNodeToNodeEncrypt;
+    if (clientToNode != null && nodeToNode != null && !clientToNode.equals(nodeToNode)) {
+      // one is off, other is on
+      baseTaskName += "Client " + booleanToStr(clientToNode) + " Node " + booleanToStr(nodeToNode);
+    } else {
+      baseTaskName += booleanToStr(clientToNode == null ? nodeToNode : clientToNode);
+    }
+    return baseTaskName;
+  }
+
+  private static String booleanToStr(boolean toggle) {
+    return toggle ? "ON" : "OFF";
   }
 }

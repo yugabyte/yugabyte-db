@@ -35,13 +35,18 @@
 #include <string>
 #include <unordered_map>
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_util.h"
 
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 

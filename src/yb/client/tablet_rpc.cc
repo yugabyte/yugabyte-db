@@ -15,17 +15,24 @@
 
 #include "yb/client/tablet_rpc.h"
 
-#include "yb/common/wire_protocol.h"
-
+#include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
 
-#include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/tserver_forward_service.proxy.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_header.pb.h"
+
 #include "yb/tserver/tserver_error.h"
+#include "yb/tserver/tserver_forward_service.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/scope_exit.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/trace.h"
 
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally.");
@@ -58,7 +65,8 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
                              RemoteTablet* tablet,
                              const std::shared_ptr<const YBTable>& table,
                              rpc::RpcRetrier* retrier,
-                             Trace* trace)
+                             Trace* trace,
+                             master::IncludeInactive include_inactive)
       : client_(client),
         command_(command),
         rpc_(rpc),
@@ -67,6 +75,7 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
         table_(table),
         retrier_(retrier),
         trace_(trace),
+        include_inactive_(include_inactive),
         local_tserver_only_(local_tserver_only),
         consistent_prefix_(consistent_prefix) {}
 
@@ -115,7 +124,7 @@ void TabletInvoker::SelectTabletServer()  {
   // 6. Repeat steps 1-5 until the write succeeds, fails for other reasons,
   //    or the write's deadline expires.
   current_ts_ = tablet_->LeaderTServer();
-  if (current_ts_ && ContainsKey(followers_, current_ts_)) {
+  if (current_ts_ && followers_.count(current_ts_)) {
     VLOG(2) << "Tablet " << tablet_id_ << ": We have a follower for a leader: "
             << current_ts_->ToString();
 
@@ -132,7 +141,7 @@ void TabletInvoker::SelectTabletServer()  {
     vector<RemoteTabletServer*> replicas;
     tablet_->GetRemoteTabletServers(&replicas);
     for (RemoteTabletServer* ts : replicas) {
-      if (!ContainsKey(followers_, ts)) {
+      if (!followers_.count(ts)) {
         current_ts_ = ts;
         break;
       }
@@ -160,7 +169,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   }
 
   if (!tablet_) {
-    client_->LookupTabletById(tablet_id_, table_, retrier_->deadline(),
+    client_->LookupTabletById(tablet_id_, table_, include_inactive_, retrier_->deadline(),
                               std::bind(&TabletInvoker::InitialLookupTabletDone, this, _1),
                               UseCache::kTrue);
     return;
@@ -195,6 +204,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
     if (refresh_cache) {
       client_->LookupTabletById(tablet_id_,
                                 table_,
+                                include_inactive_,
                                 retrier_->deadline(),
                                 std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                                 UseCache::kFalse);
@@ -223,6 +233,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   if (!current_ts_) {
     client_->LookupTabletById(tablet_id_,
                               table_,
+                              include_inactive_,
                               retrier_->deadline(),
                               std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                               UseCache::kTrue);
@@ -538,6 +549,10 @@ void TabletInvoker::ReadAsync(const tserver::ReadRequestPB& req,
   } else {
     current_ts_->proxy()->ReadAsync(req, resp, controller, move(cb));
   }
+}
+
+std::string TabletInvoker::FollowerData::ToString() const {
+  return Format("{ status: $0 time: $1 }", status, CoarseMonoClock::now() - time);
 }
 
 Status ErrorStatus(const tserver::TabletServerErrorPB* error) {

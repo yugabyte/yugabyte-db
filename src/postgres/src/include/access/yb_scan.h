@@ -173,7 +173,7 @@ Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 #define YBC_UNCOVERED_INDEX_COST_FACTOR 1.1
 
 extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
-                            bool is_backwards_scan, bool is_uncovered_idx_scan,
+							bool is_backwards_scan, bool is_seq_scan, bool is_uncovered_idx_scan,
 							Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid);
 extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 								 Cost *startup_cost, Cost *total_cost);
@@ -182,6 +182,8 @@ extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
  * Fetch a single tuple by the ybctid.
  */
 extern HeapTuple YBCFetchTuple(Relation relation, Datum ybctid);
+extern HTSU_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
+												 LockWaitPolicy wait_policy, EState* estate);
 
 /*
  * ANALYZE support: sampling of table data

@@ -32,11 +32,11 @@
 
 #include "yb/util/fault_injection.h"
 
-#include <fcntl.h>
 #include <sys/resource.h>
 #include <sys/time.h>
 
 #include "yb/gutil/once.h"
+
 #include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"

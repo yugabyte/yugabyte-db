@@ -16,14 +16,23 @@
 #ifndef YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
 #define YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
 
-#include <boost/container/small_vector.hpp>
+#include <stdint.h>
 
-#include "yb/yql/redis/redisserver/redis_fwd.h"
+#include <type_traits>
+
+#include <boost/container/small_vector.hpp>
+#include <boost/version.hpp>
+
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_with_queue.h"
+
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/size_literals.h"
+
+#include "yb/yql/redis/redisserver/redis_fwd.h"
 
 namespace yb {
 
@@ -126,8 +135,10 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   RedisClientBatch& client_batch() { return client_batch_; }
   RedisConnectionContext& connection_context() const;
 
-  const std::string& service_name() const override;
-  const std::string& method_name() const override;
+  Slice serialized_remote_method() const override;
+  Slice method_name() const override;
+
+  static Slice static_serialized_remote_method();
 
   void Respond(size_t idx, bool is_success, RedisResponsePB* resp);
 

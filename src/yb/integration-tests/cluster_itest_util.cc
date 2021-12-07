@@ -29,43 +29,60 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/integration-tests/cluster_itest_util.h"
+
+#include <stdint.h>
 
 #include <algorithm>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <boost/optional.hpp>
-
 #include <glog/stl_logging.h>
-
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
 
+#include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
-#include "yb/common/wire_protocol-test-util.h"
 
-#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 
-#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -1193,6 +1210,14 @@ Status GetLastOpIdForMasterReplica(const shared_ptr<ConsensusServiceProxy>& cons
   *opid = opid_resp.opid();
 
   return Status::OK();
+}
+
+Result<OpId> GetLastOpIdForReplica(
+    const TabletId& tablet_id,
+    TServerDetails* replica,
+    consensus::OpIdType opid_type,
+    const MonoDelta& timeout) {
+  return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
 }
 
 } // namespace itest

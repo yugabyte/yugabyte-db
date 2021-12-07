@@ -55,6 +55,8 @@
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
 
+bool yb_force_non_transactional_writes = false;
+
 /*
  * Hack to ensure that the next CommandCounterIncrement() will call
  * CommandEndInvalidationMessages(). The result of this call is not
@@ -72,36 +74,6 @@ bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo)
 	bool has_triggers = resultRelInfo->ri_TrigDesc && resultRelInfo->ri_TrigDesc->numtriggers > 0;
 	bool has_indices = YBCRelInfoHasSecondaryIndices(resultRelInfo);
 	return !has_indices && !has_triggers;
-}
-
-/*
- * Get the type ID of a real or virtual attribute (column).
- * Returns InvalidOid if the attribute number is invalid.
- */
-static Oid GetTypeId(int attrNum, TupleDesc tupleDesc)
-{
-	switch (attrNum)
-	{
-		case SelfItemPointerAttributeNumber:
-			return TIDOID;
-		case ObjectIdAttributeNumber:
-			return OIDOID;
-		case MinTransactionIdAttributeNumber:
-			return XIDOID;
-		case MinCommandIdAttributeNumber:
-			return CIDOID;
-		case MaxTransactionIdAttributeNumber:
-			return XIDOID;
-		case MaxCommandIdAttributeNumber:
-			return CIDOID;
-		case TableOidAttributeNumber:
-			return OIDOID;
-		default:
-			if (attrNum > 0 && attrNum <= tupleDesc->natts)
-				return TupleDescAttr(tupleDesc, attrNum - 1)->atttypid;
-			else
-				return InvalidOid;
-	}
 }
 
 /*
@@ -255,9 +227,6 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 			HeapTupleSetOid(tuple, GetNewOid(rel));
 	}
 
-	if (IsYsqlUpgrade && HeapTupleGetOid(tuple) >= FirstNormalObjectId)
-		elog(ERROR, "rows inserted during YSQL upgrade must have OIDs below user range");
-
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(dboid,
 	                              relid,
@@ -331,77 +300,6 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	return HeapTupleGetOid(tuple);
 }
 
-/*
- * Utility method to bind const to column
- */
-static void BindColumn(YBCPgStatement stmt, int attr_num, Oid type_id,
-					   Oid collation_id, Datum datum, bool is_null)
-{
-  YBCPgExpr expr = YBCNewConstant(stmt, type_id, collation_id, datum, is_null);
-  HandleYBStatus(YBCPgDmlBindColumn(stmt, attr_num, expr));
-}
-
-/*
- * Utility method to set keys and value to index write statement
- */
-static void PrepareIndexWriteStmt(YBCPgStatement stmt,
-                                  Relation index,
-                                  Datum *values,
-                                  bool *isnull,
-                                  int natts,
-                                  Datum ybbasectid,
-                                  bool ybctid_as_value)
-{
-	TupleDesc tupdesc = RelationGetDescr(index);
-
-	if (ybbasectid == 0)
-	{
-		ereport(ERROR,
-		(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-			"Missing base table ybctid in index write request")));
-	}
-
-	bool has_null_attr = false;
-	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
-	{
-		Oid   type_id = GetTypeId(attnum, tupdesc);
-		Oid   collation_id = YBEncodingCollation(stmt, attnum,
-												 ybc_get_attcollation(tupdesc, attnum));
-		Datum value   = values[attnum - 1];
-		bool  is_null = isnull[attnum - 1];
-		has_null_attr = has_null_attr || is_null;
-		BindColumn(stmt, attnum, type_id, collation_id, value, is_null);
-	}
-
-	const bool unique_index = index->rd_index->indisunique;
-
-	/*
-	 * For unique indexes we need to set the key suffix system column:
-	 * - to ybbasectid if at least one index key column is null.
-	 * - to NULL otherwise (setting is_null to true is enough).
-	 */
-	if (unique_index)
-		BindColumn(stmt,
-		           YBUniqueIdxKeySuffixAttributeNumber,
-		           BYTEAOID,
-		           InvalidOid,
-		           ybbasectid,
-		           !has_null_attr /* is_null */);
-
-	/*
-	 * We may need to set the base ctid column:
-	 * - for unique indexes only if we need it as a value (i.e. for inserts)
-	 * - for non-unique indexes always (it is a key column).
-	 */
-	if (ybctid_as_value || !unique_index)
-		BindColumn(stmt,
-		           YBIdxBaseTupleIdAttributeNumber,
-		           BYTEAOID,
-		           InvalidOid,
-		           ybbasectid,
-		           false /* is_null */);
-}
-
 Oid YBCExecuteInsert(Relation rel,
                      TupleDesc tupleDesc,
                      HeapTuple tuple)
@@ -417,11 +315,12 @@ Oid YBCExecuteInsertForDb(Oid dboid,
                           TupleDesc tupleDesc,
                           HeapTuple tuple)
 {
+	bool non_transactional = !IsSystemRelation(rel) && yb_force_non_transactional_writes;
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                false /* is_single_row_txn */);
+	                                non_transactional);
 }
 
 Oid YBCExecuteNonTxnInsert(Relation rel,
@@ -544,14 +443,18 @@ void YBCExecuteInsertIndex(Relation index,
 						   Datum *values,
 						   bool *isnull,
 						   Datum ybctid,
-						   const uint64_t *backfill_write_time)
+						   const uint64_t *backfill_write_time,
+						   yb_bind_for_write_function callback,
+						   void *indexstate)
 {
 	YBCExecuteInsertIndexForDb(YBCGetDatabaseOid(index),
 							   index,
 							   values,
 							   isnull,
 							   ybctid,
-							   backfill_write_time);
+							   backfill_write_time,
+							   callback,
+							   indexstate);
 }
 
 void YBCExecuteInsertIndexForDb(Oid dboid,
@@ -559,7 +462,9 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 								Datum* values,
 								bool* isnull,
 								Datum ybctid,
-								const uint64_t* backfill_write_time)
+								const uint64_t* backfill_write_time,
+								yb_bind_for_write_function callback,
+								void *indexstate)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
@@ -578,9 +483,9 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 								  is_backfill /* is_single_row_txn */,
 								  &insert_stmt));
 
-	PrepareIndexWriteStmt(insert_stmt, index, values, isnull,
-						  RelationGetNumberOfAttributes(index),
-						  ybctid, true /* ybctid_as_value */);
+	callback(insert_stmt, indexstate, index, values, isnull,
+			 RelationGetNumberOfAttributes(index),
+			 ybctid, true /* ybctid_as_value */);
 
 	/*
 	 * For non-unique indexes the primary-key component (base tuple id) already
@@ -749,7 +654,12 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 	return !isSingleRow || rows_affected_count > 0;
 }
 
-void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
+void YBCExecuteDeleteIndex(Relation index,
+						   Datum *values,
+						   bool *isnull,
+						   Datum ybctid,
+						   yb_bind_for_write_function callback,
+						   void *indexstate)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 
@@ -763,9 +673,9 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 								  false /* is_single_row_txn */,
 								  &delete_stmt));
 
-	PrepareIndexWriteStmt(delete_stmt, index, values, isnull,
-	                      IndexRelationGetNumberOfKeyAttributes(index),
-	                      ybctid, false /* ybctid_as_value */);
+	callback(delete_stmt, indexstate, index, values, isnull,
+			 IndexRelationGetNumberOfKeyAttributes(index),
+			 ybctid, false /* ybctid_as_value */);
 
 	YBCForeignKeyReferenceCacheDeleteIndex(index, values, isnull);
 

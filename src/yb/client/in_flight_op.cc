@@ -11,11 +11,12 @@
 // under the License.
 //
 
-#include <string>
 #include "yb/client/in_flight_op.h"
+
+#include <string>
+
 #include "yb/client/meta_cache.h"
 #include "yb/client/yb_op.h"
-#include "yb/gutil/strings/substitute.h"
 
 namespace yb {
 namespace client {

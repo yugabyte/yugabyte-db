@@ -15,14 +15,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <algorithm>
-
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
+
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/util/perf_context_imp.h"
 
 namespace rocksdb {
 

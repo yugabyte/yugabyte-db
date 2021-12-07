@@ -33,34 +33,32 @@
 #define YB_TABLET_TABLET_BOOTSTRAP_IF_H
 
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
-#include <boost/thread/shared_mutex.hpp>
 #include <boost/optional.hpp>
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/memory_monitor.h"
 #include "yb/client/client_fwd.h"
-#include "yb/common/schema.h"
 
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/log.pb.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/server/clock.h"
-#include "yb/util/status.h"
-#include "yb/tablet/tablet_options.h"
+
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/util/threadpool.h"
+#include "yb/tablet/tablet_options.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/opid.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 
 class MetricRegistry;
 class Partition;
 class PartitionSchema;
+class ThreadPool;
 
 namespace consensus {
 struct ConsensusBootstrapInfo;
@@ -100,12 +98,12 @@ class TabletStatusListener {
   SchemaPtr schema() const;
 
   std::string last_status() const {
-    SharedLock<boost::shared_mutex> l(lock_);
+    SharedLock<std::shared_timed_mutex> l(lock_);
     return last_status_;
   }
 
  private:
-  mutable boost::shared_mutex lock_;
+  mutable std::shared_timed_mutex lock_;
 
   RaftGroupMetadataPtr meta_;
   std::string last_status_;

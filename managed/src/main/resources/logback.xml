@@ -9,10 +9,10 @@
     <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
         <!-- Daily rollover with compression -->
         <fileNamePattern>
-          ${log.override.path:-${application.home:-.}/logs}/application-log-%d{yyyy-MM-dd}.gz
+          ${log.override.path:-${application.home:-.}/logs}/application-log-%d{${logRolloverPattern:-yyyy-MM-dd}}.gz
         </fileNamePattern>
         <!-- keep 30 days worth of history -->
-        <maxHistory>30</maxHistory>
+        <maxHistory>${logMaxHistory:-30}</maxHistory>
     </rollingPolicy>
     <encoder>
       <pattern>%date [%level] from %logger{0} in %thread - %message%n%xException</pattern>
@@ -35,7 +35,7 @@
     </if>
 
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>${APPLICATION_LOG_LEVEL:-DEBUG}</level>
+      <level>${applicationLogLevel:-DEBUG}</level>
     </filter>
   </appender>
 
@@ -80,7 +80,7 @@
     </if>
 
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>${APPLICATION_CONSOLE_LOG_LEVEL:-${APPLICATION_LOG_LEVEL:-DEBUG}}</level>
+      <level>${APPLICATION_CONSOLE_LOG_LEVEL:-${applicationLogLevel:-DEBUG}}</level>
     </filter>
   </appender>
 
@@ -98,6 +98,7 @@
   <logger name="org.yb" level="INFO" />
   <logger name="application" level="TRACE" />
   <logger name="com.yugabyte.yw" level="TRACE" />
+  <logger name="org.flywaydb.core" level="TRACE" />
 
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
   <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />

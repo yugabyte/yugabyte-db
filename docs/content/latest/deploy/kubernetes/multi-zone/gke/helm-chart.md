@@ -50,7 +50,7 @@ $ gcloud config set project yugabyte
 
 - Install `kubectl`
 
-After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command. 
+After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command.
 
 ```sh
 $ gcloud components install kubectl
@@ -162,8 +162,8 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.9.0           2.9.0.0-b4      YugabyteDB is the high-performance distributed ...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+yugabytedb/yugabyte     2.11.0           2.11.0.1-b1    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -339,7 +339,7 @@ yb-demo-us-central1-c   yb-tservers            ClusterIP      None            <n
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
 
-![mz-ybmaster](/images/deploy/kubernetes/gke-multizone-ybmaster.png)  
+![mz-ybmaster](/images/deploy/kubernetes/gke-multizone-ybmaster.png)
 
 ## 4. Configure zone-aware replica placement
 

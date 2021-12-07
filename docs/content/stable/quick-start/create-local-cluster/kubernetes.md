@@ -18,35 +18,34 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/macos" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/linux" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/docker" class="nav-link">
+    <a href="../docker/" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/kubernetes" class="nav-link active">
+    <a href="../kubernetes/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 </ul>
-
 
 ## 1. Create a local cluster
 
@@ -77,7 +76,7 @@ Run the following command to see that you now have two services with one pod eac
 $ kubectl --namespace yb-demo get pods
 ```
 
-```
+```output
 NAME           READY     STATUS              RESTARTS   AGE
 yb-master-0    0/2       ContainerCreating   0          5s
 yb-tserver-0   0/2       ContainerCreating   0          4s
@@ -85,7 +84,7 @@ yb-tserver-0   0/2       ContainerCreating   0          4s
 
 Eventually, all the pods will have the `Running` state.
 
-```
+```output
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    2/2       Running   0          13s
 yb-tserver-0   2/2       Running   0          12s
@@ -97,7 +96,7 @@ To see the status of the three services, run the following command.
 $ kubectl --namespace yb-demo get services
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)                                        AGE
 yb-master-ui         LoadBalancer   10.98.66.255   <pending>     7000:31825/TCP                                 119s
 yb-masters           ClusterIP      None           <none>        7100/TCP,7000/TCP                              119s
@@ -113,7 +112,7 @@ To check the cluster status, you need to access the Admin UI on port `7000` expo
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at the http://localhost:7000.
+Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
 ### Overview and YB-Master status
 
@@ -131,6 +130,6 @@ Click **See all nodes** to go to the **Tablet Servers** page where you can obser
 
 {{<tip title="Next step" >}}
 
-[Explore YSQL](../../explore-ysql/)
+[Explore YSQL](../../explore/ysql/)
 
 {{< /tip >}}

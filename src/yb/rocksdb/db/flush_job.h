@@ -30,33 +30,28 @@
 #include <deque>
 #include <limits>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
 
-#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/db/log_writer.h"
 #include "yb/rocksdb/db/memtable_list.h"
-#include "yb/rocksdb/db/snapshot_impl.h"
 #include "yb/rocksdb/db/version_edit.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/write_controller.h"
+#include "yb/rocksdb/db/write_thread.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/transaction_log.h"
-#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/event_logger.h"
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/thread_local.h"
-#include "yb/rocksdb/db/internal_stats.h"
-#include "yb/rocksdb/db/write_controller.h"
-#include "yb/rocksdb/db/flush_scheduler.h"
-#include "yb/rocksdb/db/write_thread.h"
-#include "yb/rocksdb/db/job_context.h"
-#include "yb/util/result.h"
 
 namespace rocksdb {
 

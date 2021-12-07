@@ -32,24 +32,32 @@
 #ifndef YB_CONSENSUS_LOG_CACHE_H
 #define YB_CONSENSUS_LOG_CACHE_H
 
+#include <pthread.h>
+#include <sys/types.h>
+
+#include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/macros.h"
 
-#include "yb/util/async_util.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
-#include "yb/util/result.h"
+#include "yb/util/status_callback.h"
 
 namespace yb {
 
@@ -138,9 +146,7 @@ class LogCache {
   // Return the number of bytes of memory currently in use by the cache.
   int64_t BytesUsed() const;
 
-  int64_t num_cached_ops() const {
-    return metrics_.num_ops->value();
-  }
+  int64_t num_cached_ops() const;
 
   int64_t earliest_op_index() const;
 
@@ -173,7 +179,8 @@ class LogCache {
 
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
-  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimit);
+  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimitMB);
+  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimitPercentage);
   FRIEND_TEST(LogCacheTest, TestReplaceMessages);
   friend class LogCacheTest;
 

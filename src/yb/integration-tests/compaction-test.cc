@@ -11,29 +11,55 @@
 // under the License.
 //
 
-#include <sys/types.h>
+#include <boost/function.hpp>
+
+#include "yb/client/client.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/common/table_properties_constants.h"
-#include "yb/docdb/compaction_file_filter.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
+
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+
+#include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_ttl_util.h"
+
 #include "yb/gutil/integral_types.h"
-#include "yb/integration-tests/test_workload.h"
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/test_workload.h"
 
-#include "yb/master/mini_master.h"
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_info.h"
 
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/server/hybrid_clock.h"
+
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/compare_util.h"
+#include "yb/util/enums.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
+#include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals; // NOLINT
@@ -45,6 +71,8 @@ DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+DECLARE_bool(file_expiration_ignore_value_ttl);
+DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 
@@ -130,14 +158,16 @@ class CompactionTest : public YBTest {
 
     // Start cluster.
     MiniClusterOptions opts;
-    opts.num_tablet_servers = 1;
+    opts.num_tablet_servers = NumTabletServers();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     // These flags should be set after minicluster start, so it wouldn't override them.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = kMemStoreSize;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 3;
     // Patch tablet options inside tablet manager, will be applied to newly created tablets.
-    cluster_->GetTabletManager(0)->TEST_tablet_options()->listeners.push_back(rocksdb_listener_);
+    for (int i = 0 ; i < NumTabletServers(); i++) {
+      cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(rocksdb_listener_);
+    }
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     transaction_manager_ = std::make_unique<client::TransactionManager>(
@@ -178,6 +208,10 @@ class CompactionTest : public YBTest {
   // -1 implies no table ttl.
   virtual int table_ttl_to_use() {
     return -1;
+  }
+
+  virtual int NumTabletServers() {
+    return 1;
   }
 
   size_t BytesWritten() {
@@ -520,6 +554,8 @@ class CompactionTestWithFileExpiration : public CompactionTest {
     CompactionTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_ignore_value_ttl) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_value_ttl_overrides_table_ttl) = false;
     // Disable automatic compactions, but continue to allow manual compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
@@ -531,6 +567,8 @@ class CompactionTestWithFileExpiration : public CompactionTest {
   uint64_t CountUnfilteredSSTFiles();
   void LogSizeAndFilesInDbs(bool after_compaction);
   void WriteRecordsAllExpire();
+  void AssertNoFilesExpired();
+  void AssertAllFilesExpired();
   int table_ttl_to_use() override {
     return kTableTTLSec;
   }
@@ -587,6 +625,26 @@ void CompactionTestWithFileExpiration::LogSizeAndFilesInDbs(bool after_compactio
       ", num files: " << files_before_compaction;
 }
 
+void CompactionTestWithFileExpiration::AssertAllFilesExpired() {
+  auto size_after_manual_compaction = GetTotalSizeOfDbs();
+  auto files_after_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
+      ", num files: " << files_after_compaction;
+  EXPECT_EQ(size_after_manual_compaction, 0);
+  EXPECT_EQ(files_after_compaction, 0);
+  ASSERT_GT(CountFilteredSSTFiles(), 0);
+}
+
+void CompactionTestWithFileExpiration::AssertNoFilesExpired() {
+  auto size_after_manual_compaction = GetTotalSizeOfDbs();
+  auto files_after_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
+      ", num files: " << files_after_compaction;
+  EXPECT_GT(size_after_manual_compaction, 0);
+  EXPECT_GT(files_after_compaction, 0);
+  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+}
+
 void CompactionTestWithFileExpiration::WriteRecordsAllExpire() {
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
@@ -601,12 +659,8 @@ void CompactionTestWithFileExpiration::WriteRecordsAllExpire() {
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert that the data size is all wiped up now.
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_EQ(size_after_manual_compaction, 0);
-  EXPECT_EQ(files_after_compaction, 0);
+  EXPECT_EQ(GetTotalSizeOfDbs(), 0);
+  EXPECT_EQ(GetNumFilesInDbs(), 0);
 }
 
 TEST_F(CompactionTestWithFileExpiration, CompactionNoFileExpiration) {
@@ -618,8 +672,7 @@ TEST_F(CompactionTestWithFileExpiration, CompactionNoFileExpiration) {
 
 TEST_F(CompactionTestWithFileExpiration, FileExpirationAfterExpiry) {
   WriteRecordsAllExpire();
-  auto num_sst_files = CountFilteredSSTFiles();
-  ASSERT_GT(num_sst_files, 0);
+  ASSERT_GT(CountFilteredSSTFiles(), 0);
 }
 
 TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
@@ -635,13 +688,58 @@ TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert that the data is not completely removed
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_GT(size_after_manual_compaction, 0);
-  EXPECT_GT(files_after_compaction, 0);
+  AssertNoFilesExpired();
+}
+
+TEST_F(CompactionTestWithFileExpiration, ValueTTLWillNotOverrideTableTTLWhenTableOnlyFlagSet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_ignore_value_ttl) = true;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Set the value-level TTL to too high to expire.
+  workload_->set_ttl(10000000);
+
+  ASSERT_OK(WriteAtLeastFilesPerDb(10));
+  LogSizeAndFilesInDbs();
+
+  LOG(INFO) << "Sleeping long enough to expire all data (based on table-level TTL)";
+  SleepFor(MonoDelta::FromSeconds(2 * kTableTTLSec));
+
+  ASSERT_OK(ExecuteManualCompaction());
+  // Assert that the data is completely removed (i.e. value-level TTL was ignored)
+  AssertAllFilesExpired();
+}
+
+TEST_F(CompactionTestWithFileExpiration, ValueTTLWillOverrideTableTTLWhenFlagSet) {
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Change the table TTL to a large value that won't expire.
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000000));
+  // Set the value-level TTL that will expire.
+  const auto kValueExpiryTimeSec = 1;
+  workload_->set_ttl(kValueExpiryTimeSec);
+
+  ASSERT_OK(WriteAtLeastFilesPerDb(10));
+
+  LOG(INFO) << "Sleeping long enough to expire all data (based on value-level TTL)";
+  SleepFor(2s * kValueExpiryTimeSec);
+
+  ASSERT_OK(ExecuteManualCompaction());
+  // Add data will be deleted by compaction, but no files should expire after the
+  // first compaction (protected by table TTL).
+  EXPECT_EQ(GetTotalSizeOfDbs(), 0);
+  EXPECT_EQ(GetNumFilesInDbs(), 0);
   ASSERT_EQ(CountFilteredSSTFiles(), 0);
+
+  // Change the file_expiration_value_ttl_overrides_table_ttl flag and create more files.
+  // Then, run another compaction and assert that all files have expired.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_value_ttl_overrides_table_ttl) = true;
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(10));
+  LogSizeAndFilesInDbs();
+  LOG(INFO) << "Sleeping long enough to expire all data (based on value-level TTL)";
+  SleepFor(MonoDelta::FromSeconds(2 * kValueExpiryTimeSec));
+
+  ASSERT_OK(ExecuteManualCompaction());
+  // Assert that the data is completely removed (i.e. table-level TTL was ignored)
+  AssertAllFilesExpired();
 }
 
 TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
@@ -723,13 +821,7 @@ TEST_F(CompactionTestWithFileExpiration, ShouldNotExpireDueToHistoryRetention) {
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert that there is still data after compaction, and no SST files have been filtered.
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_GT(size_after_manual_compaction, 0);
-  EXPECT_GT(files_after_compaction, 0);
-  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+  AssertNoFilesExpired();
 }
 
 TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesExpire) {
@@ -748,13 +840,7 @@ TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesEx
   ASSERT_OK(ExecuteManualCompaction());
 
   // Assert the data hasn't changed, as we don't expect any expirations.
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after first compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_GT(size_after_manual_compaction, 0);
-  EXPECT_GT(files_after_compaction, 0);
-  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+  AssertNoFilesExpired();
 
   // Change the table TTL back to a small value and execute a manual compaction.
   ASSERT_OK(ChangeTableTTL(workload_->table_name(), kTableTTLSec));
@@ -767,13 +853,90 @@ TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesEx
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert data has expired.
-  size_after_manual_compaction = GetTotalSizeOfDbs();
-  files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after second compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_EQ(size_after_manual_compaction, 0);
-  EXPECT_EQ(files_after_compaction, 0);
-  ASSERT_GT(CountFilteredSSTFiles(), 0);
+  AssertAllFilesExpired();
+}
+
+class FileExpirationWithRF3 : public CompactionTestWithFileExpiration {
+ public:
+  void SetUp() override {
+    CompactionTestWithFileExpiration::SetUp();
+  }
+ protected:
+  bool AllFilesHaveTTLMetadata();
+  void WaitUntilAllCommittedOpsApplied(const MonoDelta timeout);
+  void ExpirationWhenReplicated(bool withValueTTL);
+  int NumTabletServers() override {
+    return 3;
+  }
+  int ttl_to_use() override {
+    return kTTLSec;
+  }
+  const int kTTLSec = 1;
+};
+
+bool FileExpirationWithRF3::AllFilesHaveTTLMetadata() {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    auto metas = db->GetLiveFilesMetaData();
+    for (auto file : metas) {
+      const docdb::ConsensusFrontier largest =
+          down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
+      auto max_ttl_expiry = largest.max_value_level_ttl_expiration_time();
+      // If value is not valid, then it wasn't initialized.
+      // If value is kInitial, then the table-level TTL will be used (no value metadata).
+      if (!max_ttl_expiry.is_valid() || max_ttl_expiry == HybridTime::kInitial) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+void FileExpirationWithRF3::WaitUntilAllCommittedOpsApplied(const MonoDelta timeout) {
+  const auto completion_deadline = MonoTime::Now() + timeout;
+  for (auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto consensus = peer->shared_consensus();
+    if (consensus) {
+      ASSERT_OK(Wait([consensus]() -> Result<bool> {
+        return consensus->GetLastAppliedOpId() >= consensus->GetLastCommittedOpId();
+      }, completion_deadline, "Waiting for all committed ops to be applied"));
+    }
+  }
+}
+
+void FileExpirationWithRF3::ExpirationWhenReplicated(bool withValueTTL) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  if (withValueTTL) {
+    // Change the table TTL to a large value that won't expire.
+    ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000000));
+  } else {
+    // Set workload to not have value TTL.
+    workload_->set_ttl(-1);
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_value_ttl_overrides_table_ttl) = withValueTTL;
+
+  ASSERT_OK(WriteAtLeastFilesPerDb(5));
+  WaitUntilAllCommittedOpsApplied(15s);
+  ASSERT_EQ(AllFilesHaveTTLMetadata(), withValueTTL);
+
+  LOG(INFO) << "Sleeping to expire files according to value TTL";
+  auto timeToSleep = 2 * (withValueTTL ? kTTLSec : kTableTTLSec);
+  SleepFor(MonoDelta::FromSeconds(timeToSleep));
+
+  ASSERT_OK(ExecuteManualCompaction());
+  // Assert that all data has been deleted, and that we're filtering SST files.
+  AssertAllFilesExpired();
+}
+
+TEST_F_EX(
+    CompactionTestWithFileExpiration, ReplicatedMetadataCanExpireFile, FileExpirationWithRF3) {
+  ExpirationWhenReplicated(true);
+}
+
+TEST_F_EX(
+    CompactionTestWithFileExpiration, ReplicatedNoMetadataUsesTableTTL, FileExpirationWithRF3) {
+  ExpirationWhenReplicated(false);
 }
 
 } // namespace tserver

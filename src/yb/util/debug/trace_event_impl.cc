@@ -24,24 +24,23 @@
 #include <list>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/bind.h"
-#include "yb/util/atomic.h"
-#include "yb/util/debug/trace_event.h"
-#include "yb/gutil/mathlimits.h"
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/util.h"
+#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/dynamic_annotations.h"
-
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/util.h"
+#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/thread.h"
@@ -2433,6 +2432,10 @@ ScopedTraceBinaryEfficient::~ScopedTraceBinaryEfficient() {
     TRACE_EVENT_API_UPDATE_TRACE_EVENT_DURATION(category_group_enabled_,
                                                 name_, event_handle_);
   }
+}
+
+int TraceEventThreadId() {
+  return static_cast<int>(yb::Thread::UniqueThreadId());
 }
 
 }  // namespace trace_event_internal

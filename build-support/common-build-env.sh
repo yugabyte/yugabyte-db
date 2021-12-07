@@ -183,6 +183,8 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc8
   gcc9
   gcc10
+  gcc11
+  gcc12
   clang
   clang7
   clang8
@@ -200,10 +202,19 @@ readonly -a VALID_LINKING_TYPES=(
 )
 make_regex_from_list VALID_LINKING_TYPES "${VALID_LINKING_TYPES[@]}"
 
+readonly -a VALID_ARCHITECTURES=(
+  x86_64
+  aarch64
+  arm64
+  graviton2
+)
+make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
+
 readonly BUILD_ROOT_BASENAME_RE=\
 "^($VALID_BUILD_TYPES_RAW_RE)-\
 ($VALID_COMPILER_TYPES_RAW_RE)-\
 ($VALID_LINKING_TYPES_RAW_RE)\
+(-($VALID_ARCHITECTURES_RAW_RE))?\
 (-ninja)?\
 (-clion)?$"
 
@@ -292,6 +303,8 @@ fi
 # To deduplicate Maven arguments
 yb_mvn_parameters_already_set=false
 
+is_apple_silicon=""  # Will be set to true or false when necessary.
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -321,6 +334,8 @@ normalize_build_type() {
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
+  detect_architecture
+
   if [[ ${1:-} == "--no-readonly" ]]; then
     local -r make_build_root_readonly=false
     shift
@@ -337,10 +352,11 @@ set_build_root() {
   fi
   validate_compiler_type "$YB_COMPILER_TYPE"
 
-  # TODO: remove the "-dynamic" suffix. We only use dynamic linking and it would be very hard to
-  # produce any kind of a build that does not involve creation of shared libraries, although we
-  # might at some point want to produce a static build of yb-tserver with LTO enabled.
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE-dynamic
+  if is_apple_silicon; then
+    # Append the target architecture (x86_64 or arm64).
+    BUILD_ROOT+=-${YB_TARGET_ARCH}
+  fi
 
   if using_ninja; then
     BUILD_ROOT+="-ninja"
@@ -1480,7 +1496,7 @@ decide_whether_to_use_ninja() {
       if [[ $BUILD_ROOT == *-ninja ]]; then
         export YB_USE_NINJA=1
       fi
-    elif command -v ninja || [[ -x /usr/local/bin/ninja ]]; then
+    elif command -v ninja >/dev/null || [[ -x /usr/local/bin/ninja ]]; then
       export YB_USE_NINJA=1
     elif using_linuxbrew; then
       local yb_ninja_path_candidate=$YB_LINUXBREW_DIR/bin/ninja
@@ -1549,6 +1565,18 @@ add_brew_bin_to_path() {
     # We need to add Linuxbrew's bin directory to PATH so that we can find the right compiler and
     # linker.
     put_path_entry_first "$YB_LINUXBREW_DIR/bin"
+  fi
+  # When building for arm64 on macOS, we need to make sure we find arm64 versions of various tools
+  # such as automake. This is especially relevant for Postgres build.
+  if is_mac; then
+    local homebrew_path=""
+    case "${YB_TARGET_ARCH:-}" in
+      x86_64) homebrew_path="/usr/local" ;;
+      arm64) homebrew_path="/opt/homebrew" ;;
+    esac
+    if [[ -n ${homebrew_path} ]]; then
+      put_path_entry_first "$homebrew_path/bin"
+    fi
   fi
 }
 
@@ -1930,11 +1958,13 @@ find_or_download_ysql_snapshots() {
   # (disabling a code checker error about a singular loop iteration)
   # shellcheck disable=SC2043
   for ver in "2.0.9.0"; do
-    local name="${prefix}_${ver}"
-    if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
-      local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"
-      download_and_extract_archive "$url" "$YSQL_SNAPSHOTS_DIR_PARENT"
-    fi
+    for bt in "release" "debug"; do
+      local name="${prefix}_${ver}_${bt}"
+      if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
+        local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"
+        download_and_extract_archive "$url" "$YSQL_SNAPSHOTS_DIR_PARENT"
+      fi
+    done
   done
 }
 
@@ -1991,10 +2021,16 @@ handle_predefined_build_root() {
   if [[ $basename =~ $BUILD_ROOT_BASENAME_RE ]]; then
     local _build_type=${BASH_REMATCH[1]}
     local _compiler_type=${BASH_REMATCH[2]}
-    # _linking_type is unused. We always use dynamic linking. TODO: get rid of this parameter.
+
+    # _linking_type is unused. We always use dynamic linking, but we plan to support static linking.
     # shellcheck disable=SC2034
     local _linking_type=${BASH_REMATCH[3]}
-    local _dash_ninja=${BASH_REMATCH[4]}
+
+    # The architecture field is of the form (-(...))?, so it utilizes two capture groups (4 and 5).
+    # Group 4 has a leading dash and group 5 does not have it.
+    local _architecture=${BASH_REMATCH[5]}
+
+    local _dash_ninja=${BASH_REMATCH[6]}
   else
     fatal "Could not parse build root directory name '$basename'" \
           "(full path: '$predefined_build_root'). Expected to match '$BUILD_ROOT_BASENAME_RE'."
@@ -2020,6 +2056,19 @@ handle_predefined_build_root() {
   elif [[ $YB_COMPILER_TYPE != "$_compiler_type" ]]; then
     fatal "Compiler type from the build root ('$_compiler_type' from '$predefined_build_root') " \
           "does not match YB_COMPILER_TYPE ('$YB_COMPILER_TYPE')."
+  fi
+
+  if [[ -n $_architecture ]]; then
+    if [[ -z ${YB_TARGET_ARCH:-} ]]; then
+      export YB_TARGET_ARCH=$_architecture
+      if [[ ! $YB_TARGET_ARCH =~ $VALID_ARCHITECTURES_RE ]]; then
+        fatal "Invalid architecture '$YB_TARGET_ARCH' based on predefined build root " \
+              "('$basename')"
+      fi
+    elif [[ $YB_TARGET_ARCH != "$_architecture" ]]; then
+      fatal "YB_TARGET_ARCH is already set to $YB_TARGET_ARCH but the predefined build root " \
+            "('$basename') has '$_architecture'."
+    fi
   fi
 
   local should_use_ninja
@@ -2156,6 +2205,11 @@ activate_virtualenv() {
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
 
+  # On Apple Silicon, use separate virtualenv directories per architecture.
+  if is_apple_silicon && [[ -n ${YB_TARGET_ARCH:-} ]]; then
+    virtualenv_dir+="-${YB_TARGET_ARCH}"
+  fi
+
   if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]] && \
      ! "$yb_readonly_virtualenv"; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
@@ -2182,10 +2236,14 @@ activate_virtualenv() {
     fi
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     (
-      set -x
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
-      python3 -m venv "$YB_VIRTUALENV_BASENAME"
+      local python3_interpreter=python3
+      if is_mac && [[ ${YB_TARGET_ARCH:-} == "arm64" ]]; then
+        python3_interpreter=/opt/homebrew/bin/python3
+      fi
+      set -x
+      "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
     )
   fi
 
@@ -2396,17 +2454,6 @@ set_java_home() {
   put_path_entry_first "$JAVA_HOME/bin"
 }
 
-update_submodules() {
-  if [[ -d $YB_SRC_ROOT/.git ]]; then
-    # This does NOT create any new commits in the top-level repository (the "superproject").
-    #
-    # From documentation on "update" from https://git-scm.com/docs/git-submodule:
-    # Update the registered submodules to match what the superproject expects by cloning missing
-    # submodules and updating the working tree of the submodules
-    ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
-  fi
-}
-
 set_prebuilt_thirdparty_url() {
   expect_vars_to_be_set YB_COMPILER_TYPE build_type
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
@@ -2432,6 +2479,113 @@ set_prebuilt_thirdparty_url() {
           "automatically."
     fi
   fi
+}
+
+check_arc_wrapper() {
+  if is_jenkins || [[ ${YB_SKIP_ARC_WRAPPER_CHECK:-0} == "1" ]]; then
+    return
+  fi
+  if [[ -f $HOME/.yb_build_env_bashrc ]]; then
+    # This is a Yugabyte workstation or dev server.
+    local arc_path
+    set +e
+    arc_path=$( which arc )
+    set -e
+    if [[ ! -f $arc_path ]]; then
+      # OK if arc is not found. Then people cannot "arc land" changes that do not pass tests.
+      return
+    fi
+    local expected_arc_path=$HOME/tools/bin/arc
+    if [[ $arc_path == "$expected_arc_path" ]]; then
+      # OK, this is where we install the arc wrapper.
+      return
+    fi
+
+    if grep -Eq "Wrapper for arcanist arc" "$arc_path"; then
+      # This seems to be a valid arc wrapper installed elsewhere.
+      return
+    fi
+
+    fatal "Not a valid arc wrapper: $arc_path (required for internal Yugabyte hosts)"
+  fi
+}
+
+# Re-executes the current script with the correct macOS architecture. The parameters are the
+# TODO: this currently partially duplicates a function from
+# https://github.com/yugabyte/yugabyte-db-thirdparty/blob/master/yb-thirdparty-common.sh
+# called ensure_correct_mac_architecture. We need to move both to
+# https://github.com/yugabyte/yugabyte-bash-common.
+rerun_script_with_arch_if_necessary() {
+  # The caller might be using "set +u", so turn undefined variable checking back on.
+  set -u
+
+  if [[ $OSTYPE != darwin* ]]; then
+    return
+  fi
+  local uname_m_output
+  uname_m_output=$( uname -m )
+  if [[ -z "${uname_m_output}" ]]; then
+    fatal "Empty output from 'uname -m'."
+  fi
+  if [[ -z ${YB_TARGET_ARCH:-} ]]; then
+    YB_TARGET_ARCH=${uname_m_output}
+  fi
+  if [[ $YB_TARGET_ARCH != "x86_64" && $YB_TARGET_ARCH != "arm64" ]]; then
+    fatal "Invalid value of YB_TARGET_ARCH on macOS (expected x86_64 or arm64): $YB_TARGET_ARCH." \
+          "Output of 'uname -m': ${uname_m_output}."
+  fi
+  if [[ "${uname_m_output}" != "$YB_TARGET_ARCH" ]]; then
+    if [[ -n ${YB_SWITCHED_ARCHITECTURE_FROM:-} &&
+          $YB_SWITCHED_ARCHITECTURE_FROM == "${uname_m_output}" ]]; then
+      fatal "Infinite architecture-switching loop detected: already switched from" \
+            "'${uname_m_output}' but could not switch to '${YB_TARGET_ARCH}'."
+    fi
+
+    echo "Switching architecture from '${uname_m_output}' to '$YB_TARGET_ARCH'"
+    local cmd_line
+    if [[ ${YB_TARGET_ARCH} == "arm64" ]]; then
+      # Use the arm64 specific version of Bash for added reliability.
+      cmd_line=( arch -arm64 /opt/homebrew/bin/bash "$@" )
+    else
+      cmd_line=( arch "-$YB_TARGET_ARCH" "$@" )
+    fi
+    export YB_SWITCHED_ARCHITECTURE_FROM=$uname_m_output
+    set -x
+    exec "${cmd_line[@]}"
+  fi
+}
+
+# Sets YB_TARGET_ARCH if they are not set.
+detect_architecture() {
+  if [[ -z ${YB_TARGET_ARCH:-} ]]; then
+    if is_apple_silicon; then
+      YB_TARGET_ARCH=arm64
+    else
+      YB_TARGET_ARCH=$( uname -m )
+    fi
+  fi
+  export YB_TARGET_ARCH
+}
+
+is_apple_silicon() {
+  if [[ -n "$is_apple_silicon" ]]; then
+    if [[ "$is_apple_silicon" == "true" ]]; then
+      return 0
+    fi
+    return 1
+  fi
+
+  is_apple_silicon=false
+  if ! is_mac; then
+    return 1
+  fi
+
+  if [[ $( uname -v ) == *ARM64* ]]; then
+    is_apple_silicon=true
+    return 0
+  fi
+
+  return 1
 }
 
 # -------------------------------------------------------------------------------------------------

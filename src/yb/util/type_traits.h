@@ -16,6 +16,8 @@
 #ifndef YB_UTIL_TYPE_TRAITS_H
 #define YB_UTIL_TYPE_TRAITS_H
 
+#include <type_traits>
+
 #include <boost/preprocessor/cat.hpp>
 #include <boost/tti/has_type.hpp>
 

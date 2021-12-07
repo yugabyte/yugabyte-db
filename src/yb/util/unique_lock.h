@@ -13,6 +13,7 @@
 #ifndef YB_UTIL_UNIQUE_LOCK_H
 #define YB_UTIL_UNIQUE_LOCK_H
 
+#include <condition_variable>
 #include <mutex>
 
 #include "yb/gutil/thread_annotations.h"

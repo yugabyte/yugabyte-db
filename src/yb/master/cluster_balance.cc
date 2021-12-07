@@ -18,22 +18,22 @@
 #include <utility>
 
 #include <boost/algorithm/string/join.hpp>
-#include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
-#include <boost/thread/locks.hpp>
 
 #include "yb/common/common.pb.h"
+
 #include "yb/consensus/quorum_util.h"
-#include "yb/master/catalog_manager.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master_fwd.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/random_util.h"
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/util/shared_lock.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_bool(enable_load_balancing,
             true,

@@ -16,9 +16,12 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
+
 namespace tablet {
 
 // Interface for snapshot coordinator.

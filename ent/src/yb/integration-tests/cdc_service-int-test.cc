@@ -1,23 +1,29 @@
 // Copyright (c) YugaByte, Inc.
 
 #include <gflags/gflags_declare.h>
-#include <boost/lexical_cast.hpp>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/session.h"
-#include "yb/client/yb_table_name.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+
+#include "yb/gutil/casts.h"
+#include "yb/gutil/walltime.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -28,14 +34,19 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/format.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -87,6 +98,11 @@ const std::string kCDCTestTableName = "cdc_test_table";
 const client::YBTableName kTableName(YQL_DATABASE_CQL, kCDCTestKeyspace, kCDCTestTableName);
 const client::YBTableName kCdcStateTableName(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+}
 
 class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
                        public testing::WithParamInterface<bool> {
@@ -234,7 +250,7 @@ void VerifyCdcStateMatches(client::YBClient* client,
 void VerifyStreamDeletedFromCdcState(client::YBClient* client,
                                      const CDCStreamId& stream_id,
                                      const TabletId& tablet_id,
-                                     int timeout_secs) {
+                                     int timeout_secs = 10) {
   client::TableHandle table;
   const client::YBTableName cdc_state_table(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
@@ -268,7 +284,9 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
 void CDCServiceTest::GetTablets(std::vector<TabletId>* tablet_ids,
                                 const client::YBTableName& table_name) {
   std::vector<std::string> ranges;
-  ASSERT_OK(client_->GetTablets(table_name, 0 /* max_tablets */, tablet_ids, &ranges));
+  ASSERT_OK(client_->GetTablets(
+      table_name, 0 /* max_tablets */, tablet_ids, &ranges, nullptr /* locations */,
+      RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue));
   ASSERT_EQ(tablet_ids->size(), tablet_count());
 }
 
@@ -361,7 +379,7 @@ Status CDCServiceTest::GetChangesWithRetries(
 
       // Exit if we exhausted the number of attempts.
       if (num_attempts >= max_attempts) {
-        return s.ok() ? s : STATUS_FORMAT(
+        return s.ok() ? Status::OK() : STATUS_FORMAT(
           TimedOut, "Tried calling GetChanges $0 times with no success.", num_attempts);
       }
 
@@ -511,7 +529,7 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   ASSERT_TRUE(s.IsNotFound());
 
   for (const auto& tablet_id : tablet_ids) {
-    VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id, 20);
+    VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
   }
 }
 
@@ -553,8 +571,7 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     ASSERT_FALSE(write_resp.has_error());
   }
 
-  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-      tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(tserver);
   // Assert that leader lag > 0.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
@@ -630,8 +647,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
     }
 
     // Verify the CDC Service-level metrics match what we just did.
-    auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-        tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+    auto cdc_service = CDCService(tserver);
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     ASSERT_EQ(metrics->last_read_opid_index->value(), metrics->last_readable_opid_index->value());
     ASSERT_EQ(metrics->last_read_opid_index->value(), change_resp.records_size() + 1 /* checkpt */);
@@ -700,6 +716,10 @@ TEST_P(CDCServiceTest, TestGetChanges) {
     // Check the key deleted.
     ASSERT_NO_FATALS(AssertIntKey(change_resp.records(0).key(), 1));
   }
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
@@ -758,6 +778,10 @@ TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
 
   // This time, we expect all records to be read.
   ASSERT_EQ(change_resp.records_size(), num_records);
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestGetChangesInvalidStream) {
@@ -839,8 +863,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
   auto leader_proxy = std::make_unique<CDCServiceProxy>(
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
-  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-    leader_tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(leader_tserver);
   cdc_service->UpdateLagMetrics();
   auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
   auto timestamp_after_write = GetCurrentTimeMicros();
@@ -858,10 +881,12 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   GetTablet(&tablet_id);
 
   // Get the leader and a follower for the tablet.
-  tserver::MiniTabletServer* leader_mini_tserver;
-  tserver::MiniTabletServer* follower_mini_tserver;
+  tserver::MiniTabletServer* leader_mini_tserver = nullptr;
+  tserver::MiniTabletServer* follower_mini_tserver = nullptr;
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    leader_mini_tserver = nullptr;
+    follower_mini_tserver = nullptr;
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
       std::shared_ptr<tablet::TabletPeer> tablet_peer;
       Status s = cluster_->mini_tablet_server(i)->server()->tablet_manager()->
@@ -891,10 +916,8 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   // Use proxy for to most accurately simulate normal requests.
   const auto& proxy = leader_tserver->proxy();
 
-  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-      leader_tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-  auto cdc_service_follower = dynamic_cast<CDCServiceImpl*>(
-      follower_tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(leader_tserver);
+  auto cdc_service_follower = CDCService(follower_tserver);
 
   // At the start of time, assert both leader and follower at 0 lag.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -1153,8 +1176,7 @@ TEST_P(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
 
   // Verify the CDC metrics match what we just did.
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
-  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-      tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(tserver);
   auto server_metrics = cdc_service->GetCDCServerMetrics();
   ASSERT_EQ(server_metrics->cdc_rpc_proxy_count->value(), remote_tablets.size());
 }
@@ -1265,6 +1287,9 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
 
   ASSERT_NO_FATALS(CheckChangesAndTable());
 
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
@@ -1317,6 +1342,10 @@ TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
   };
 
   ASSERT_NO_FATALS(CheckChanges());
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 // Test to ensure that cdc_state table's checkpoint is updated as expected.
@@ -1400,6 +1429,10 @@ TEST_P(CDCServiceTest, TestCheckpointUpdate) {
 
   // Verify that cdc_state table's checkpoint is unaffected.
   ASSERT_NO_FATALS(VerifyCdcStateNotEmpty(client_.get()));
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 namespace {

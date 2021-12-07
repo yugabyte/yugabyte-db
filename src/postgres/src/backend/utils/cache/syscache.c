@@ -29,6 +29,7 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
+#include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
@@ -67,7 +68,6 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_subscription_rel.h"
-#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_ts_config.h"
@@ -77,13 +77,13 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
 
-#include "catalog/pg_attrdef.h"
 #include "pg_yb_utils.h"
 
 /*---------------------------------------------------------------------------
@@ -812,17 +812,6 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		64
 	},
-	{TableGroupRelationId,		/* TABLEGROUPOID */
-		TablegroupOidIndexId,
-		1,
-		{
-			ObjectIdAttributeNumber,
-			0,
-			0,
-			0,
-		},
-		4
-	},
 	{TableSpaceRelationId,		/* TABLESPACEOID */
 		TablespaceOidIndexId,
 		1,
@@ -998,7 +987,18 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		2
-	}
+	},
+	{YbTablegroupRelationId,	/* YBTABLEGROUPOID */
+		YbTablegroupOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0,
+		},
+		4
+	},
 };
 
 typedef struct YBPinnedObjectKey
@@ -1016,7 +1016,7 @@ typedef struct YBPinnedObjectsCacheData
 } YBPinnedObjectsCacheData;
 
 /* Stores all pinned objects */
-static YBPinnedObjectsCacheData YBPinnedObjectsCache = {.regular = NULL, .shared = NULL};
+static YBPinnedObjectsCacheData YBPinnedObjectsCache = {0};
 
 static CatCache *SysCache[SysCacheSize];
 
@@ -1075,11 +1075,11 @@ YBSysTablePrimaryKey(Oid relid)
 		case TSDictionaryRelationId:
 		case TSParserRelationId:
 		case TSTemplateRelationId:
-		case TableGroupRelationId:
 		case TableSpaceRelationId:
 		case TransformRelationId:
 		case TypeRelationId:
 		case UserMappingRelationId:
+		case YbTablegroupRelationId:
 			YBPkAddAttribute(ObjectIdAttributeNumber);
 			break;
 		case AttributeRelationId:
@@ -1149,6 +1149,9 @@ void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
 		case AttributeRelationId:
 			SetCatCacheTuple(SysCache[ATTNUM], tup, tupdesc);
 			SetCatCacheTuple(SysCache[ATTNAME], tup, tupdesc);
+			break;
+		case PartitionedRelationId:
+			SetCatCacheTuple(SysCache[PARTRELID], tup, tupdesc);
 			break;
 
 		default:
@@ -1428,11 +1431,9 @@ YBBuildPinnedObjectCache(const char *name,
 	return cache;
 }
 
-void
-YBLoadPinnedObjectsCache() {
-	/* Avoid cache building in case of `initdb`. Also avoid cache rebuilding. */
-	if (YBHasPinnedObjectsCache() || YBCIsInitDbModeEnvVarSet())
-		return;
+static void
+YBLoadPinnedObjectsCache()
+{
 	YBPinnedObjectsCacheData cache = {
 		.shared = YBBuildPinnedObjectCache("Shared pinned objects cache",
 		                                   20, /* Number of pinned objects in pg_shdepend is 9 */
@@ -1450,26 +1451,35 @@ YBLoadPinnedObjectsCache() {
 }
 
 bool
-YBHasPinnedObjectsCache() {
-	/* Both 'regular' and 'shared' fields are set at same time. Checking any of them is enough. */
+YBIsPinnedObjectsCacheAvailable()
+{
+	/*
+	 * Build the cache in case it is not yet ready.
+	 * Both 'regular' and 'shared' fields are set at same time. Checking any of them is enough.
+	 * Avoid cache building in case of `initdb`.
+	 */
+	if (!(YBPinnedObjectsCache.regular || YBCIsInitDbModeEnvVarSet()))
+		YBLoadPinnedObjectsCache();
 	return YBPinnedObjectsCache.regular;
 }
 
 static bool
-YBIsPinned(HTAB *pinned_cache, Oid classId, Oid objectId) {
+YBIsPinned(HTAB *pinned_cache, Oid classId, Oid objectId)
+{
+	Assert(pinned_cache);
 	YBPinnedObjectKey key = {.classid = classId, .objid = objectId};
 	return hash_search(pinned_cache, &key, HASH_FIND, NULL);
 }
 
 bool
-YBIsObjectPinned(Oid classId, Oid objectId) {
-	Assert(YBHasPinnedObjectsCache());
+YBIsObjectPinned(Oid classId, Oid objectId)
+{
 	return YBIsPinned(YBPinnedObjectsCache.regular, classId, objectId);
 }
 
 bool
-YBIsSharedObjectPinned(Oid classId, Oid objectId) {
-	Assert(YBHasPinnedObjectsCache());
+YBIsSharedObjectPinned(Oid classId, Oid objectId)
+{
 	return YBIsPinned(YBPinnedObjectsCache.shared, classId, objectId);
 }
 

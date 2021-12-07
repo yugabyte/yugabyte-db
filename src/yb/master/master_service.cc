@@ -38,25 +38,16 @@
 
 #include <boost/preprocessor/cat.hpp>
 
-#include <gflags/gflags.h>
-
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/permissions_manager.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-
-#include "yb/server/webserver.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/random_util.h"
 #include "yb/util/shared_lock.h"
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
@@ -75,6 +66,9 @@ DEFINE_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
+
+DEFINE_test_flag(bool, timeout_non_leader_master_rpcs, false,
+                 "Timeout all master requests to non leader.");
 
 DECLARE_CAPABILITY(TabletReportLimit);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
@@ -112,10 +106,10 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   // If CatalogManager is not initialized don't even know whether or not we will
   // be a leader (so we can't tell whether or not we can accept tablet reports).
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
 
   consensus::ConsensusStatePB cpb;
-  Status s = server_->catalog_manager()->GetCurrentConfig(&cpb);
+  Status s = server_->catalog_manager_impl()->GetCurrentConfig(&cpb);
   if (!s.ok()) {
     // For now, we skip setting the config on errors (hopefully next heartbeat will work).
     // We could enhance to fail rpc, if there are too many error, on a case by case error basis.
@@ -150,7 +144,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
       return;
     }
     SysClusterConfigEntryPB cluster_config;
-    s = server_->catalog_manager()->GetClusterConfig(&cluster_config);
+    s = server_->catalog_manager_impl()->GetClusterConfig(&cluster_config);
     if (!s.ok()) {
       LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
       rpc.RespondFailure(s);
@@ -158,7 +152,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     resp->set_cluster_uuid(cluster_config.cluster_uuid());
   }
 
-  s = server_->catalog_manager()->FillHeartbeatResponse(req, resp);
+  s = server_->catalog_manager_impl()->FillHeartbeatResponse(req, resp);
   if (!s.ok()) {
     LOG(WARNING) << "Unable to fill heartbeat response: " << s.ToString();
     rpc.RespondFailure(s);
@@ -198,7 +192,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   }
 
   if (req->has_tablet_report()) {
-    s = server_->catalog_manager()->ProcessTabletReport(
+    s = server_->catalog_manager_impl()->ProcessTabletReport(
       ts_desc.get(), req->tablet_report(), resp->mutable_tablet_report(), &rpc);
     if (!s.ok()) {
       rpc.RespondFailure(s.CloneAndPrepend("Failed to process tablet report"));
@@ -213,7 +207,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
     if (rpc.GetClientDeadline() > safe_time_left) {
       for (const auto& storage_metadata : req->storage_metadata()) {
-        server_->catalog_manager()->ProcessTabletStorageMetadata(
+        server_->catalog_manager_impl()->ProcessTabletStorageMetadata(
               ts_desc.get()->permanent_uuid(), storage_metadata);
       }
     }
@@ -234,8 +228,8 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   // Retrieve the ysql catalog schema version.
   uint64_t last_breaking_version = 0;
   uint64_t catalog_version = 0;
-  s = server_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
-                                                        &last_breaking_version);
+  s = server_->catalog_manager_impl()->GetYsqlCatalogVersion(
+      &catalog_version, &last_breaking_version);
   if (s.ok()) {
     resp->set_ysql_catalog_version(catalog_version);
     resp->set_ysql_last_breaking_catalog_version(last_breaking_version);
@@ -244,13 +238,16 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                  << s.ToUserMessage();
   }
 
+  uint64_t txn_table_versions_hash = server_->catalog_manager()->GetTxnTableVersionsHash();
+  resp->set_txn_table_versions_hash(txn_table_versions_hash);
+
   rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* req,
                                            GetTabletLocationsResponsePB* resp,
                                            RpcContext rpc) {
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
@@ -259,7 +256,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
   if (PREDICT_FALSE(FLAGS_TEST_master_fail_transactional_tablet_lookups)) {
-    auto tables = server_->catalog_manager()->GetTables(GetTablesMode::kAll);
+    auto tables = server_->catalog_manager_impl()->GetTables(GetTablesMode::kAll);
     const auto& tablet_id = req->tablet_ids(0);
     for (const auto& table : tables) {
       TabletInfos tablets = table->GetTablets();
@@ -283,23 +280,26 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
   // For now all the tables in the cluster share the same replication information.
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
-  server_->catalog_manager()->GetExpectedNumberOfReplicas(
+  server_->catalog_manager_impl()->GetExpectedNumberOfReplicas(
       &expected_live_replicas, &expected_read_replicas);
 
   if (req->has_table_id()) {
-    const auto table_info = server_->catalog_manager()->GetTableInfo(req->table_id());
+    const auto table_info = server_->catalog_manager_impl()->GetTableInfo(req->table_id());
     if (table_info) {
       const auto table_lock = table_info->LockForRead();
       resp->set_partition_list_version(table_lock->pb.partition_list_version());
     }
   }
 
+  IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
+
   for (const TabletId& tablet_id : req->tablet_ids()) {
     // TODO: once we have catalog data. ACL checks would also go here, probably.
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    Status s = server_->catalog_manager()->GetTabletLocations(tablet_id, locs_pb);
+    Status s = server_->catalog_manager_impl()->GetTabletLocations(
+        tablet_id, locs_pb, include_inactive);
     if (!s.ok()) {
       resp->mutable_tablet_locations()->RemoveLast();
 
@@ -382,6 +382,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (IsLoadBalancerIdle)
     (AreLeadersOnPreferredOnly)
     (SplitTablet)
+    (CreateTransactionStatusTable)
     (DeleteNotServingTablet)
     (DdlLog)
 )
@@ -396,7 +397,7 @@ void MasterServiceImpl::GetTableLocations(const GetTableLocationsRequestPB* req,
     if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
       SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
     }
-    return server_->catalog_manager()->GetTableLocations(req, resp);
+    return server_->catalog_manager_impl()->GetTableLocations(req, resp);
   }, __FILE__, __LINE__, __func__, HoldCatalogLock::kTrue);
 }
 
@@ -434,7 +435,7 @@ BOOST_PP_SEQ_FOR_EACH(
 void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
                                           ListTabletServersResponsePB* resp,
                                           RpcContext rpc) {
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
@@ -445,7 +446,7 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
   } else {
     server_->ts_manager()->GetAllLiveDescriptorsInCluster(
         &descs,
-        server_->catalog_manager()->placement_uuid());
+        server_->catalog_manager_impl()->placement_uuid());
   }
 
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
@@ -463,11 +464,11 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
 void MasterServiceImpl::ListLiveTabletServers(const ListLiveTabletServersRequestPB* req,
                                               ListLiveTabletServersResponsePB* resp,
                                               RpcContext rpc) {
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
-  string placement_uuid = server_->catalog_manager()->placement_uuid();
+  string placement_uuid = server_->catalog_manager_impl()->placement_uuid();
 
   vector<std::shared_ptr<TSDescriptor> > descs;
   server_->ts_manager()->GetAllLiveDescriptors(&descs);
@@ -523,13 +524,13 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
     std::this_thread::sleep_for(20s);
   }
   resp->mutable_instance_id()->CopyFrom(server_->instance_pb());
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
   if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
   Status s = server_->GetMasterRegistration(resp->mutable_registration());
   CheckRespErrorOrSetUnknown(s, resp);
-  auto role = server_->catalog_manager()->Role();
+  auto role = server_->catalog_manager_impl()->Role();
   if (role == RaftPeerPB::LEADER) {
     if (!l.leader_status().ok()) {
       YB_LOG_EVERY_N_SECS(INFO, 1)
@@ -546,7 +547,7 @@ void MasterServiceImpl::DumpState(
     const DumpMasterStateRequestPB* req,
     DumpMasterStateResponsePB* resp,
     RpcContext rpc) {
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
   if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
@@ -556,11 +557,11 @@ void MasterServiceImpl::DumpState(
 
   if (req->return_dump_as_string()) {
     ostringstream ss;
-    server_->catalog_manager()->DumpState(&ss, req->on_disk());
+    server_->catalog_manager_impl()->DumpState(&ss, req->on_disk());
     resp->set_dump(title + ":\n" + ss.str());
   } else {
     LOG(INFO) << title;
-    server_->catalog_manager()->DumpState(&LOG(INFO), req->on_disk());
+    server_->catalog_manager_impl()->DumpState(&LOG(INFO), req->on_disk());
   }
 
   if (req->has_peers_also() && req->peers_also()) {
@@ -590,7 +591,7 @@ void MasterServiceImpl::DumpState(
 
     masters_raft.erase(it);
 
-    s = server_->catalog_manager()->PeerStateDump(masters_raft, req, resp);
+    s = server_->catalog_manager_impl()->PeerStateDump(masters_raft, req, resp);
     CheckRespErrorOrSetUnknown(s, resp);
   }
 
@@ -600,7 +601,7 @@ void MasterServiceImpl::DumpState(
 void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
                                             RemovedMasterUpdateResponsePB* resp,
                                             RpcContext rpc) {
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
   if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
@@ -616,7 +617,7 @@ void MasterServiceImpl::ChangeLoadBalancerState(
   // This should work on both followers and leaders, in order to cover leader failover!
   if (req->has_is_enabled()) {
     LOG(INFO) << "Changing balancer state to " << req->is_enabled();
-    server_->catalog_manager()->SetLoadBalancerEnabled(req->is_enabled());
+    server_->catalog_manager_impl()->SetLoadBalancerEnabled(req->is_enabled());
   }
 
   rpc.RespondSuccess();
@@ -625,7 +626,7 @@ void MasterServiceImpl::ChangeLoadBalancerState(
 void MasterServiceImpl::GetLoadBalancerState(
     const GetLoadBalancerStateRequestPB* req, GetLoadBalancerStateResponsePB* resp,
     RpcContext rpc) {
-  resp->set_is_enabled(server_->catalog_manager()->IsLoadBalancerEnabled());
+  resp->set_is_enabled(server_->catalog_manager_impl()->IsLoadBalancerEnabled());
   rpc.RespondSuccess();
 }
 
@@ -656,7 +657,7 @@ void MasterServiceImpl::GetLeaderBlacklistCompletion(
 void MasterServiceImpl::IsMasterLeaderServiceReady(
     const IsMasterLeaderReadyRequestPB* req, IsMasterLeaderReadyResponsePB* resp,
     RpcContext rpc) {
-  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }

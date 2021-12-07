@@ -49,11 +49,12 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 
+#include "yb/gutil/callback.h"
+
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/opid.h"
 #include "yb/util/random.h"
-#include "yb/util/result.h"
 
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(ht_lease_duration_ms);

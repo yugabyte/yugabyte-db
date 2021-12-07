@@ -10,17 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/yql/cql/ql/ptree/pt_dml_write_property.h"
 
 #include <set>
 
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
-
-#include "yb/yql/cql/ql/ptree/pt_dml_write_property.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
-#include "yb/util/string_util.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -38,7 +36,7 @@ const std::map<std::string, PTDmlWriteProperty::KVProperty> PTDmlWriteProperty::
 PTDmlWriteProperty::PTDmlWriteProperty(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
                                  const MCSharedPtr<MCString>& lhs,
-                                 const PTExpr::SharedPtr& rhs)
+                                 const PTExprPtr& rhs)
     : PTProperty(memctx, loc, lhs, rhs),
       property_type_(DmlWritePropertyType::kDmlWriteProperty) {}
 
@@ -89,7 +87,7 @@ void PTDmlWriteProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
 CHECKED_STATUS PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate update properties.
   std::set<string> update_properties;
-  unordered_map<string, PTDmlWriteProperty::SharedPtr> order_tnodes;
+  std::unordered_map<string, PTDmlWriteProperty::SharedPtr> order_tnodes;
   vector<string> order_columns;
   for (PTDmlWriteProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {

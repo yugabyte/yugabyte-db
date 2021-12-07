@@ -15,8 +15,14 @@
 #ifndef YB_TABLET_TABLET_SPLITTER_H
 #define YB_TABLET_TABLET_SPLITTER_H
 
+#include <type_traits>
+
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/util/status.h"
+#include "yb/consensus/log_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tablet {

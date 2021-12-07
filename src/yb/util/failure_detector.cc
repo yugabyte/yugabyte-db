@@ -39,10 +39,10 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/locks.h"
-#include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 namespace yb {
@@ -72,7 +72,7 @@ Status TimedFailureDetector::Track(const string& name,
     return STATUS(AlreadyPresent,
         Substitute("Node with name '$0' is already being monitored", name));
   }
-  ignore_result(node.release());
+  node.release();
   return Status::OK();
 }
 

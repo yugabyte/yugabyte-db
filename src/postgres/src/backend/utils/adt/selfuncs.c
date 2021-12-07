@@ -110,6 +110,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type.h"
@@ -6582,6 +6583,7 @@ deconstruct_indexquals(IndexPath *path)
 		qinfo = (IndexQualInfo *) palloc(sizeof(IndexQualInfo));
 		qinfo->rinfo = rinfo;
 		qinfo->indexcol = indexcol;
+		qinfo->is_hashed = false;
 
 		if (IsA(clause, OpExpr))
 		{
@@ -6592,12 +6594,57 @@ deconstruct_indexquals(IndexPath *path)
 			{
 				qinfo->varonleft = true;
 				qinfo->other_operand = rightop;
+
+				if (IsA(leftop, FuncExpr))
+				{
+					qinfo->is_hashed =
+						(((FuncExpr*) leftop)->funcid == YB_HASH_CODE_OID);
+					ListCell   *ls;
+					if (qinfo->is_hashed)
+					{
+						/*
+						 * YB: We aren't going to push down a yb_hash_code call
+						 * if we matched the call against an expression
+						 */
+						foreach(ls, index->indexprs)
+						{
+							Node *indexpr = (Node*) lfirst(ls);
+							if (indexpr && IsA(indexpr, RelabelType))
+								indexpr = (Node *) ((RelabelType *) indexpr)->arg;
+							if (equal(indexpr, leftop)) {
+								qinfo->is_hashed = false;
+								break;
+							}
+						}
+					}
+				}
 			}
 			else
 			{
 				Assert(match_index_to_operand(rightop, indexcol, index));
 				qinfo->varonleft = false;
 				qinfo->other_operand = leftop;
+				if (IsA(rightop, FuncExpr))
+				{
+					qinfo->is_hashed =
+						(((FuncExpr*) rightop)->funcid == YB_HASH_CODE_OID);
+					ListCell   *ls;
+					if (qinfo->is_hashed)
+					{
+						/* YB: We aren't going to push down a yb_hash_code call
+						 * if we matched the call against an expression */
+						foreach(ls, index->indexprs)
+						{
+							Node *indexpr = (Node*) lfirst(ls);
+							if (indexpr && IsA(indexpr, RelabelType))
+								indexpr = (Node *) ((RelabelType *) indexpr)->arg;
+							if (equal(indexpr, rightop)) {
+								qinfo->is_hashed = false;
+								break;
+							}
+						}
+					}
+				}
 			}
 		}
 		else if (IsA(clause, RowCompareExpr))
@@ -7745,7 +7792,7 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	 * Obtain statistical information from the meta page, if possible.  Else
 	 * set ginStats to zeroes, and we'll cope below.
 	 */
-	if (!index->hypothetical)
+	if (!index->hypothetical && !IsYBRelationById(index->indexoid))
 	{
 		indexRel = index_open(index->indexoid, AccessShareLock);
 		ginGetStats(indexRel, &ginStats);

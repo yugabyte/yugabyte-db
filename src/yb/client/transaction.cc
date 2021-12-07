@@ -17,11 +17,10 @@
 
 #include <unordered_set>
 
-#include "yb/client/async_rpc.h"
+#include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/tablet_rpc.h"
 #include "yb/client/transaction_cleanup.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_rpc.h"
@@ -29,16 +28,22 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -70,6 +75,9 @@ DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
 DEFINE_test_flag(bool, disable_proactive_txn_cleanup_on_abort, false,
                 "Disable cleanup of intents in abort path.");
 
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+
 namespace yb {
 namespace client {
 
@@ -79,16 +87,6 @@ YB_STRONGLY_TYPED_BOOL(Child);
 YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSealed));
 
 } // namespace
-
-InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)
-    : begin(group_begin), end(group_end) {
-}
-
-std::string InFlightOpsGroup::ToString() const {
-  return Format("{items: $0 need_metadata: $1}",
-                AsString(boost::make_iterator_range(begin, end)),
-                need_metadata);
-}
 
 Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
   ChildTransactionData result;
@@ -125,9 +123,9 @@ CHECKED_STATUS YBSubTransaction::RollbackSubTransaction(SubTransactionId id) {
 
 const SubTransactionMetadata& YBSubTransaction::get() { return sub_txn_; }
 
-class YBTransaction::Impl final {
+class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
-  Impl(TransactionManager* manager, YBTransaction* transaction)
+  Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
       : trace_(new Trace),
         start_(CoarseMonoClock::Now()),
         manager_(manager),
@@ -135,6 +133,7 @@ class YBTransaction::Impl final {
         read_point_(manager->clock()),
         child_(Child::kFalse) {
     metadata_.priority = RandomUniformInt<uint64_t>();
+    metadata_.locality = locality;
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
   }
@@ -265,24 +264,69 @@ class YBTransaction::Impl final {
     return trace_.get();
   }
 
-  bool Prepare(InFlightOpsGroupsWithMetadata* ops_info,
+  CHECKED_STATUS CheckTransactionLocality(internal::InFlightOpsGroupsWithMetadata* ops_info)
+      REQUIRES(mutex_) {
+    if (metadata_.locality != TransactionLocality::LOCAL) {
+      return Status::OK();
+    }
+    for (auto& group : ops_info->groups) {
+      auto& first_op = *group.begin;
+      const auto& tablet = first_op.tablet;
+      const auto& tablet_id = tablet->tablet_id();
+
+      auto tservers = tablet->GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
+      for (const auto &tserver : tservers) {
+        auto pb = tserver->cloud_info();
+        if (pb.placement_cloud() != FLAGS_placement_cloud ||
+            pb.placement_region() != FLAGS_placement_region) {
+          VLOG_WITH_PREFIX(4) << "Aborting (accessing nonlocal tablet in local transaction)";
+          return STATUS_FORMAT(
+              IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  bool Prepare(internal::InFlightOpsGroupsWithMetadata* ops_info,
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
                Initial initial,
-               Waiter waiter) {
+               Waiter waiter) override EXCLUDES(mutex_) {
     VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops_info->groups) << ", "
                         << force_consistent_read << ", " << initial << ")";
     TRACE_TO(trace_, "Perparing $0 ops", AsString(ops_info->groups.size()));
     VTRACE_TO(2, trace_, "Perparing $0 ops", AsString(ops_info->groups));
+
     {
       UNIQUE_LOCK(lock, mutex_);
       const bool defer = !ready_;
 
       if (!defer || initial) {
+        Status status = CheckTransactionLocality(ops_info);
+        if (!status.ok()) {
+          bool abort = false;
+          auto state = state_.load(std::memory_order_acquire);
+          if (state == TransactionState::kRunning) {
+            // State will be changed to aborted in SetErrorUnlocked
+            abort = true;
+          }
+          SetErrorUnlocked(status);
+          lock.unlock();
+          if (waiter) {
+            waiter(status);
+          }
+          if (abort) {
+            DoAbort(TransactionRpcDeadline(), transaction_->shared_from_this());
+          }
+          return false;
+        }
         for (auto& group : ops_info->groups) {
           auto& first_op = *group.begin;
           const auto should_add_intents = first_op.yb_op->should_add_intents(metadata_.isolation);
-          const auto& tablet_id = first_op.tablet->tablet_id();
+          const auto& tablet = first_op.tablet;
+          const auto& tablet_id = tablet->tablet_id();
+
           bool has_metadata;
           if (initial && should_add_intents) {
             auto& tablet_state = tablets_[tablet_id];
@@ -325,14 +369,14 @@ class YBTransaction::Impl final {
     return true;
   }
 
-  void ExpectOperations(size_t count) EXCLUDES(mutex_) {
+  void ExpectOperations(size_t count) EXCLUDES(mutex_) override {
     std::lock_guard<std::mutex> lock(mutex_);
     running_requests_ += count;
   }
 
   void Flushed(
       const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
-            const Status& status) EXCLUDES(mutex_) {
+      const Status& status) EXCLUDES(mutex_) override {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
     VLOG_WITH_PREFIX(5)
         << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
@@ -386,7 +430,10 @@ class YBTransaction::Impl final {
             // State will be changed to aborted in SetError
           }
         }
-        SetErrorUnlocked(status);
+        const TransactionError txn_err(status);
+        if (txn_err.value() != TransactionErrorCode::kSkipLocking) {
+          SetErrorUnlocked(status);
+        }
       }
 
       if (running_requests_ == 0 && commit_replicated_) {
@@ -675,6 +722,9 @@ class YBTransaction::Impl final {
 
   void CompleteInit(IsolationLevel isolation) {
     metadata_.isolation = isolation;
+    // TODO(Piyush): read_point_ might not represent the correct start time for
+    // a READ COMMITTED txn since it might have been updated several times
+    // before a YBTransaction is created. Fix this.
     if (read_point_.GetReadTime()) {
       metadata_.start_time = read_point_.GetReadTime().read;
     } else {
@@ -874,7 +924,8 @@ class YBTransaction::Impl final {
     auto transaction = transaction_->shared_from_this();
     if (metadata_.status_tablet.empty()) {
       manager_->PickStatusTablet(
-          std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction));
+          std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction),
+          metadata_.locality);
     } else {
       LookupStatusTablet(metadata_.status_tablet, deadline, transaction);
     }
@@ -901,6 +952,7 @@ class YBTransaction::Impl final {
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
+        master::IncludeInactive::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);
@@ -1215,8 +1267,8 @@ CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
   return deadline;
 }
 
-YBTransaction::YBTransaction(TransactionManager* manager)
-    : impl_(new Impl(manager, this)) {
+YBTransaction::YBTransaction(TransactionManager* manager, TransactionLocality locality)
+    : impl_(new Impl(manager, this, locality)) {
 }
 
 YBTransaction::YBTransaction(
@@ -1249,26 +1301,21 @@ void YBTransaction::InitWithReadPoint(
   return impl_->InitWithReadPoint(isolation, std::move(read_point));
 }
 
-bool YBTransaction::Prepare(InFlightOpsGroupsWithMetadata* ops_info,
-                            ForceConsistentRead force_consistent_read,
-                            CoarseTimePoint deadline,
-                            Initial initial,
-                            Waiter waiter) {
-  return impl_->Prepare(ops_info, force_consistent_read, deadline, initial, std::move(waiter));
-}
-
-void YBTransaction::ExpectOperations(size_t count) {
-  impl_->ExpectOperations(count);
-}
-
-void YBTransaction::Flushed(
-    const internal::InFlightOps& ops, const ReadHybridTime& used_read_time, const Status& status) {
-  impl_->Flushed(ops, used_read_time, status);
+internal::TxnBatcherIf& YBTransaction::batcher_if() {
+  return *impl_;
 }
 
 void YBTransaction::Commit(
     CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback) {
   impl_->Commit(AdjustDeadline(deadline), seal_only, std::move(callback));
+}
+
+void YBTransaction::Commit(CoarseTimePoint deadline, CommitCallback callback) {
+  Commit(deadline, SealOnly::kFalse, callback);
+}
+
+void YBTransaction::Commit(CommitCallback callback) {
+  Commit(CoarseTimePoint(), SealOnly::kFalse, std::move(callback));
 }
 
 const TransactionId& YBTransaction::id() const {

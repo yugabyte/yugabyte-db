@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You sometimes want to time a sequence of several SQL statements, issued from _ysqlsh_, and to record the time in the spool file. The _\timing on_ metacommand doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The _\o_ metacommand doesn't redirect _stderr_ to the spool file. This case study shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results.
+You sometimes want to time a sequence of several SQL statements, issued from _ysqlsh_, and to record the time in the spool file. The \\_timing on_ metacommand doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The \\_o_ metacommand doesn't redirect _stderr_ to the spool file. This case study shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results.
 
 ## How to read the wall-clock time and calculate the duration of interest
 
-There are various built-in SQL functions for reading the wall-clock time because there are different notions of currency— "as of the start the current transaction" or "as of the start of the current individual SQL statement". A generic elapsed time stopwatch is best served by reading the wall-clock as it stands at the instant of reading, even as time flows on while a SQL statement executes. The _clock_timestamp()_ function does just this. Try this:
+There are various built-in SQL functions for reading the wall-clock time because there are different notions of currency: "right now at the instant of reading , independently of statements and transactions", "as of the start of the current individual SQL statement", or "as of the start of the current transaction". A generic elapsed time stopwatch is best served by reading the wall-clock as it stands at the instant of reading, even as time flows on while a SQL statement executes. The _clock_timestamp()_ function does just this. Try this:
 
 ```plpgsql
 set timezone = 'UTC';
@@ -36,7 +36,7 @@ Here's a typical result:
 
 (The _pg_sleep()_ built-in function returns _void_, and the _::text_ typecast of _void_ is the empty string.) You can see that _t1_ is five seconds later than _t0_, just as the invocation of _pg_sleep()_ requests.
 
-The return data type of _clock_timestamp()_ is _timestamptz_. (You can confirm this with the _\df_ metacommand.) Try this. 
+The return data type of _clock_timestamp()_ is _timestamptz_. (You can confirm this with the \\_df_ metacommand.) Try this. 
 
 ```plpgsql
 select
@@ -51,11 +51,12 @@ Notice the use of the _[at time zone](../timezones/syntax-contexts-to-spec-offse
 ---------------------+---------------------
  2021-07-30 10:26:39 | 2021-07-30 20:26:39
 ```
+
 The reported local time in Helsinki is ten hours later than the reported local time in Los Angeles, as is expected around the middle of the summer.
 
 You might be worried by the fact that the _text_ rendition of the _clock_timestamp()_ return value depends on the session's _TimeZone_ setting. And you might think that this could confound the attempt to measure elapsed time by subtracting the reading at the start from the reading at the finish of the to-be-timed statements unless care is taken to ensure that the _TimeZone_ setting is identical at the start and the end of the timed duration. The simplest way to side-step this concern is to record the value of this expression at the start and at the finish:
 
-```
+```output
 extract(epoch from clock_timestamp())
 ```
 
@@ -454,7 +455,7 @@ Sometimes you want to time operations that are done in two or several successive
 
 ### Using the \gset and \set ysqlsh metacommands
 
-You can assign the result column(s) of a _select_ statement to such variables with the _\gset_ metacommand. The _select_ statement isn't terminated by the usual semicolon. Rather, the _\gset_ metacommand acts: _both_ as the directive to assign the value of the select list item _s0_ to the variable _stopwatch_s0_; _and_ as the terminator for the _select_ statement.
+You can assign the result column(s) of a _select_ statement to such variables with the \\_gset_ metacommand. The _select_ statement isn't terminated by the usual semicolon. Rather, the \\_gset_ metacommand acts: _both_ as the directive to assign the value of the select list item _s0_ to the variable _stopwatch_s0_; _and_ as the terminator for the _select_ statement.
 
 ```plpgsql
 select extract(epoch from clock_timestamp())::text as s0
@@ -505,12 +506,12 @@ and:
 
 You can define these shortcuts in the _psqlrc_ file (on the _postgres/etc_ directory under the directory where you've installed the YugabyteDB client code).
 
-{{< tip title="ysqlsh metacommand syntax" >}}
-The section [ysqlsh](../../../../../admin/ysqlsh/) describes the _\gset_ and the _\set_ metacommands.
+{{< tip title="'ysqlsh' metacommand syntax" >}}
+The section [ysqlsh](../../../../../admin/ysqlsh/) describes the \\_gset_ and the \\_set_ metacommands.
 
-(_\gset_ is allowed on the same line as the SQL statement that it terminates, just as a new SQL statement is allowed on the same line as a previous SQL statement that's terminated with a semicolon.)
+(\\_gset_ is allowed on the same line as the SQL statement that it terminates, just as a new SQL statement is allowed on the same line as a previous SQL statement that's terminated with a semicolon.)
 
-Such a client-side variable acts like a macro: the text that it stands for is eagerly substituted and only then is the command, as it now stands, processed in the normal way. The argument of the _\set_ metacommand that follows the variable name needs to be surrounded with single quotes when it contains spaces that you intend to be respected. If you want to include a single quote within the argument, then you escape it with a backslash. And if you want to include a backslash within the argument, then you escape that with a backslash too. Try this:
+Such a client-side variable acts like a macro: the text that it stands for is eagerly substituted and only then is the command, as it now stands, processed in the normal way. The argument of the \\_set_ metacommand that follows the variable name needs to be surrounded with single quotes when it contains spaces that you intend to be respected. If you want to include a single quote within the argument, then you escape it with a backslash. And if you want to include a backslash within the argument, then you escape that with a backslash too. Try this:
 
 ```plpgsql
 \set x 'select \'Hello \\world\' as v;'

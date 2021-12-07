@@ -17,10 +17,12 @@
 #define YB_DOCDB_DOCDB_UTIL_H
 
 #include "yb/common/schema.h"
-#include "yb/docdb/docdb.h"
+
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/doc_path.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/primitive_value.h"
 #include "yb/rocksdb/compaction_filter.h"
 
 namespace yb {

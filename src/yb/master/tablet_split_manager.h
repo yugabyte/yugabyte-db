@@ -14,25 +14,43 @@
 #ifndef YB_MASTER_TABLET_SPLIT_MANAGER_H
 #define YB_MASTER_TABLET_SPLIT_MANAGER_H
 
+#include <stdint.h>
+
+#include <chrono>
 #include <deque>
+#include <functional>
 #include <mutex>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <utility>
+
+#include <boost/version.hpp>
+#include <gflags/gflags_declare.h>
 
 #include "yb/common/entity_ids.h"
+
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/master/catalog_entity_info.h"
+
 #include "yb/master/tablet_split_candidate_filter.h"
+#include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/tablet_split_driver.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/util/background_task.h"
+#include "yb/util/capabilities.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
 namespace master {
 
-
-class TabletSplitManager {
+class TabletSplitManager : public TabletSplitCompleteHandlerIf {
  public:
-  TabletSplitManager(TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver);
+  TabletSplitManager(TabletSplitCandidateFilterIf* filter,
+                     TabletSplitDriverIf* driver,
+                     CDCConsumerSplitDriverIf* cdc_consumer_split_driver);
 
   CHECKED_STATUS ProcessLiveTablet(
       const TabletInfo& tablet_info, const TabletServerId& drive_info_ts_uuid,
@@ -44,11 +62,16 @@ class TabletSplitManager {
 
   void RemoveFailedProcessingTabletSplit(const TabletId& tablet_id);
 
+  void ProcessSplitTabletResult(const Status& status,
+                                const TableId& consumer_table_id,
+                                const SplitTabletIds& split_tablet_ids);
+
  private:
   void ProcessQueuedSplitItems();
 
   TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;
+  CDCConsumerSplitDriverIf* cdc_consumer_split_driver_;
 
   std::mutex mutex_;
   // Use a map to keep track of parent tablets we are currently splitting. We remove a parent

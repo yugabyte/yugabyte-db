@@ -36,11 +36,19 @@
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc-test-base.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 METRIC_DECLARE_counter(rpc_connections_accepted);
 METRIC_DECLARE_counter(rpcs_queue_overflow);
@@ -95,7 +103,8 @@ static void AssertShutdown(yb::Thread* thread, const Status* status) {
   ASSERT_OK(ThreadJoiner(thread).warn_every(500ms).Join());
   string msg = status->ToString();
   ASSERT_TRUE(msg.find("Service unavailable") != string::npos ||
-              msg.find("Network error") != string::npos)
+              msg.find("Network error") != string::npos ||
+              msg.find("Resource unavailable") != string::npos)
               << "Status is actually: " << msg;
 }
 
@@ -211,7 +220,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   latch.Wait();
 
   // The rest would time out after 10 sec, but we help them along.
-  ASSERT_OK(server_messenger->UnregisterService(service_name));
+  server_messenger->UnregisterAllServices();
   service_pool->Shutdown();
   thread_pool.Shutdown();
   server_messenger->Shutdown();

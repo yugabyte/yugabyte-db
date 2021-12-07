@@ -43,6 +43,8 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
@@ -74,6 +76,8 @@
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/test_util.h" // For ASSERT_OK
 
 namespace yb {
 
@@ -601,6 +605,7 @@ class DBTestBase : public testing::Test {
     kLevelSubcompactions = 30,
     kUniversalSubcompactions = 31,
     kBlockBasedTableWithIndexRestartInterval = 32,
+    kBlockBasedTableWithThreeSharedPartsKeyDeltaEncoding = 33,
   };
   int option_config_;
 

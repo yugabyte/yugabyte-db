@@ -11,14 +11,16 @@
 // under the License.
 //
 
-#include "yb/common/doc_hybrid_time.h"
-
 #include <string>
 
+#include "yb/common/doc_hybrid_time.h"
+
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

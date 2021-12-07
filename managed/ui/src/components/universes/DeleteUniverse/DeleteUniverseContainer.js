@@ -1,6 +1,8 @@
 // Copyright YugaByte Inc.
 
 import { connect } from 'react-redux';
+import { withRouter } from 'react-router';
+
 import { DeleteUniverse } from '../';
 import {
   deleteUniverse,
@@ -40,4 +42,4 @@ function mapStateToProps(state) {
   };
 }
 
-export default connect(mapStateToProps, mapDispatchToProps)(DeleteUniverse);
+export default withRouter(connect(mapStateToProps, mapDispatchToProps)(DeleteUniverse));

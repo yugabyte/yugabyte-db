@@ -30,12 +30,20 @@
 // under the License.
 
 #include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/catalog_manager.h"
+
 #include "yb/consensus/consensus.h"
-#include "yb/util/tsan_util.h"
 #include "yb/consensus/metadata.pb.h"
+
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/sys_catalog.h"
+
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/util/debug-util.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -127,6 +135,19 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
         catalog_leader_ready_term, cstate.current_term());
     return;
   }
+}
+
+ScopedLeaderSharedLock::ScopedLeaderSharedLock(
+    enterprise::CatalogManager* catalog,
+    const char* file_name,
+    int line_number,
+    const char* function_name)
+    : ScopedLeaderSharedLock(
+          static_cast<CatalogManager*>(catalog), file_name, line_number, function_name) {
+}
+
+ScopedLeaderSharedLock::~ScopedLeaderSharedLock() {
+  Unlock();
 }
 
 void ScopedLeaderSharedLock::Unlock() {

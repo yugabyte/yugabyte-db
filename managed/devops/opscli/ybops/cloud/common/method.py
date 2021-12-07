@@ -21,8 +21,9 @@ import time
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-    YB_HOME_DIR, YB_SUDO_PASS
+  generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
+  YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
+  DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, scp_to_tmp
 
@@ -236,6 +237,17 @@ class AbstractInstancesMethod(AbstractMethod):
         raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
             args.search_pattern))
 
+    # Find the open ssh port and update the dictionary.
+    def update_open_ssh_port(self, args):
+        ssh_port_updated = False
+        ssh_ports = [self.extra_vars["ssh_port"], args.custom_ssh_port]
+        ssh_port = self.cloud.wait_for_ssh_ports(
+            self.extra_vars["ssh_host"], args.search_pattern, ssh_ports)
+        if self.extra_vars["ssh_port"] != ssh_port:
+            self.extra_vars["ssh_port"] = ssh_port
+            ssh_port_updated = True
+        return ssh_port_updated
+
 
 class ReplaceRootVolumeMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
@@ -447,15 +459,15 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
     def preprovision(self, args):
         self.update_ansible_vars(args)
-        self.cloud.wait_for_ssh_port(
-            self.extra_vars["ssh_host"], args.search_pattern, self.extra_vars["ssh_port"])
-        host_info = self.wait_for_host(args)
+        ssh_port_updated = self.update_open_ssh_port(args,)
+        use_default_port = not ssh_port_updated
+        host_info = self.wait_for_host(args, default_port=use_default_port)
         ansible = self.cloud.setup_ansible(args)
         if (args.install_python):
             self.extra_vars["install_python"] = True
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
-        if not args.disable_custom_ssh:
+        if not args.disable_custom_ssh and use_default_port:
             ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
 
@@ -535,9 +547,10 @@ class UpdateDiskMethod(AbstractInstancesMethod):
     def callback(self, args):
         self.cloud.update_disk(args)
         host_info = self.cloud.get_host_info(args)
+        self.update_ansible_vars_with_args(args)
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
-            "ssh_user": self.SSH_USER,
+            "ssh_user": self.extra_vars["ssh_user"],
             "private_key_file": args.private_key_file
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
@@ -615,6 +628,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     VALID_PROCESS_TYPES = ['master', 'tserver']
     CERT_ROTATE_ACTIONS = ['APPEND_NEW_ROOT_CERT', 'ROTATE_CERTS',
                            'REMOVE_OLD_ROOT_CERT', 'UPDATE_CERT_DIRS']
+    SKIP_CERT_VALIDATION_OPTIONS = ['ALL', 'HOSTNAME']
 
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
@@ -629,6 +643,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--extra_gflags', default=None)
         self.parser.add_argument('--gflags', default=None)
         self.parser.add_argument('--replace_gflags', action="store_true")
+        self.parser.add_argument('--add_default_gflags', default=None)
         self.parser.add_argument('--gflags_to_remove', default=None)
         self.parser.add_argument('--master_addresses_for_tserver')
         self.parser.add_argument('--master_addresses_for_master')
@@ -647,18 +662,20 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_rotate_action', default=None,
                                  choices=self.CERT_ROTATE_ACTIONS)
+        self.parser.add_argument('--skip_cert_validation',
+                                 default=None, choices=self.SKIP_CERT_VALIDATION_OPTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--encryption_key_source_file')
         self.parser.add_argument('--encryption_key_target_dir',
                                  default="yugabyte-encryption-files")
 
-        self.parser.add_argument('--master_http_port', default=7000)
-        self.parser.add_argument('--master_rpc_port', default=7100)
-        self.parser.add_argument('--tserver_http_port', default=9000)
-        self.parser.add_argument('--tserver_rpc_port', default=9100)
-        self.parser.add_argument('--cql_proxy_rpc_port', default=9042)
-        self.parser.add_argument('--redis_proxy_rpc_port', default=6379)
+        self.parser.add_argument('--master_http_port', default=DEFAULT_MASTER_HTTP_PORT)
+        self.parser.add_argument('--master_rpc_port', default=DEFAULT_MASTER_RPC_PORT)
+        self.parser.add_argument('--tserver_http_port', default=DEFAULT_TSERVER_HTTP_PORT)
+        self.parser.add_argument('--tserver_rpc_port', default=DEFAULT_TSERVER_RPC_PORT)
+        self.parser.add_argument('--cql_proxy_rpc_port', default=DEFAULT_CQL_PROXY_RPC_PORT)
+        self.parser.add_argument('--redis_proxy_rpc_port', default=DEFAULT_REDIS_PROXY_RPC_PORT)
 
         # Parameters for downloading YB package directly on DB nodes.
         self.parser.add_argument('--s3_remote_download', action="store_true")
@@ -724,6 +741,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.package is not None:
             self.extra_vars["package"] = args.package
+
+        if args.add_default_gflags is not None:
+            self.extra_vars["add_default_gflags"] = args.add_default_gflags.strip()
 
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)
@@ -879,7 +899,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.server_key_path,
                 args.certs_location,
                 args.certs_node_dir,
-                rotate_certs)
+                rotate_certs,
+                args.skip_cert_validation)
 
         if args.root_cert_path_client_to_server is not None:
             logging.info("Server clientRootCA Certificate Exists: {}.".format(
@@ -891,7 +912,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.server_key_path_client_to_server,
                 args.certs_location_client_to_server,
                 args.certs_client_dir,
-                rotate_certs)
+                rotate_certs,
+                args.skip_cert_validation)
 
         # Copying client certs
         if args.client_cert_path is not None:

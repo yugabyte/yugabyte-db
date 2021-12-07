@@ -14,7 +14,12 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/process_context.h"
+
 #include "yb/util/logging.h"
+
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
@@ -28,7 +33,7 @@ using std::string;
 // ProcessContextBase
 //--------------------------------------------------------------------------------------------------
 
-ProcessContextBase::ProcessContextBase() {
+ProcessContextBase::ProcessContextBase() : error_code_(ErrorCode::SUCCESS) {
 }
 
 ProcessContextBase::~ProcessContextBase() {
@@ -266,6 +271,19 @@ ProcessContext::~ProcessContext() {
 void ProcessContext::SaveGeneratedParseTree(TreeNode::SharedPtr generated_parse_tree) {
   CHECK(parse_tree_.get() != nullptr) << "Context is not associated with a parse tree";
   parse_tree_->set_root(generated_parse_tree);
+}
+
+const std::string& ProcessContext::stmt() const {
+  return parse_tree_->stmt();
+}
+
+// Memory pool for constructing the parse tree of a statement.
+MemoryContext *ProcessContext::PTreeMem() const {
+  return parse_tree_->PTreeMem();
+}
+
+ParseTreePtr ProcessContext::AcquireParseTree() {
+  return std::move(parse_tree_);
 }
 
 }  // namespace ql

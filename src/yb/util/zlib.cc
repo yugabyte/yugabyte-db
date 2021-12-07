@@ -14,21 +14,16 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-
 #include "yb/util/zlib.h"
-
-#include <zconf.h>
 #include <zlib.h>
 
-#include <cstdint>
-#include <cstring>
 #include <memory>
 #include <string>
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using std::ostream;
 using std::string;

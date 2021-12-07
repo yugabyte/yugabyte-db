@@ -17,6 +17,7 @@
 
 #include <list>
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/yql/pggate/pg_dml.h"
@@ -66,6 +67,10 @@ class PgDmlRead : public PgDml {
 
   // Bind a column with an IN condition.
   CHECKED_STATUS BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
+
+  CHECKED_STATUS BindHashCode(bool start_valid, bool start_inclusive,
+                                uint64_t start_hash_val, bool end_valid,
+                                bool end_inclusive, uint64_t end_hash_val);
 
   // Execute.
   virtual CHECKED_STATUS Exec(const PgExecParameters *exec_params);

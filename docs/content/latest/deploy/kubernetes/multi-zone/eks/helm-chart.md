@@ -128,7 +128,6 @@ provisioner: kubernetes.io/aws-ebs
 parameters:
   type: gp2
   zone: us-east-1c
-
 ```
 
 Apply the above configuration to your cluster.
@@ -160,8 +159,8 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.9.0           2.9.0.0-b4      YugabyteDB is the high-performance distributed ...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+yugabytedb/yugabyte     2.11.0           2.11.0.1-b1    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -261,7 +260,7 @@ gflags:
 
 ### Install YugabyteDB
 
-Install YugabyteDB in the Kubernetes cluster using the commands below. 
+Install YugabyteDB in the Kubernetes cluster using the commands below.
 
 For Helm, you have to first create the 3 namespaces.
 
@@ -327,11 +326,11 @@ yb-demo-us-east-1c   yb-tservers          ClusterIP      None             <none>
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
 
-![mz-ybmaster](/images/deploy/kubernetes/aws-multizone-ybmaster.png) 
+![mz-ybmaster](/images/deploy/kubernetes/aws-multizone-ybmaster.png)
 
 ## 4. Configure zone-aware replica placement
 
-Default replica placement policy treats every yb-tserver as equal irrespective of its `placement_*` setting. Go to `http://<external-ip>:7000/cluster-config` to confirm that the default configuration is still in effect. 
+Default replica placement policy treats every yb-tserver as equal irrespective of its `placement_*` setting. Go to `http://<external-ip>:7000/cluster-config` to confirm that the default configuration is still in effect.
 
 ![before-zoneaware](/images/deploy/kubernetes/gke-aws-multizone-before-zoneaware.png)
 
@@ -366,7 +365,7 @@ yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 
 You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
-![mz-ybtserver](/images/deploy/kubernetes/aws-multizone-ybtserver.png) 
+![mz-ybtserver](/images/deploy/kubernetes/aws-multizone-ybtserver.png)
 
 ## 6. Connect using external clients
 

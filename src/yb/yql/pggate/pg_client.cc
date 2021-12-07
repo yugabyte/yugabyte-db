@@ -15,16 +15,23 @@
 
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/rpc/poller.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/result.h"
+#include "yb/util/shared_mem.h"
+
 #include "yb/yql/pggate/pg_tabledesc.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
+DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 DEFINE_uint64(pg_client_heartbeat_interval_ms, 10000, "Pg client heartbeat interval in ms.");
@@ -184,6 +191,20 @@ class PgClient::Impl {
     return result;
   }
 
+  CHECKED_STATUS BackfillIndex(
+      tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgBackfillIndexResponsePB resp;
+    req->set_session_id(session_id_);
+
+    // Use backfill_index_client_rpc_timeout_ms rather than yb_client_admin_operation_timeout_sec.
+    controller_.Reset();
+    DCHECK(deadline == CoarseTimePoint());
+    controller_.set_timeout(FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
+
+    RETURN_NOT_OK(proxy_->BackfillIndex(*req, &resp, &controller_));
+    return ResponseStatus(resp);
+  }
+
   Result<int32> TabletServerCount(bool primary_only) {
     if (tablet_server_count_cache_[primary_only] > 0) {
       return tablet_server_count_cache_[primary_only];
@@ -305,6 +326,11 @@ Status PgClient::CreateSequencesDataTable() {
 Result<client::YBTableName> PgClient::DropTable(
     tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline) {
   return impl_->DropTable(req, deadline);
+}
+
+Status PgClient::BackfillIndex(
+    tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->BackfillIndex(req, deadline);
 }
 
 Result<int32> PgClient::TabletServerCount(bool primary_only) {

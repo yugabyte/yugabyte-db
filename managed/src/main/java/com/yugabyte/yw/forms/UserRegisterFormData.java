@@ -32,6 +32,9 @@ public class UserRegisterFormData {
   @ApiModelProperty(value = "User role", example = "Admin", required = true)
   private Role role;
 
+  @ApiModelProperty(value = "User timezone", example = "America/Toronto")
+  private String timezone;
+
   public String getEmail() {
     return email;
   }
@@ -70,5 +73,13 @@ public class UserRegisterFormData {
 
   public void setRole(Role role) {
     this.role = role;
+  }
+
+  public String getTimezone() {
+    return timezone;
+  }
+
+  public void setTimezone(String timezone) {
+    this.timezone = timezone;
   }
 }

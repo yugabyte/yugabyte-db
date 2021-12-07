@@ -40,21 +40,19 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
-#include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master_error.h"
 #include "yb/master/tasks_tracker.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {
 
-YB_STRONGLY_TYPED_BOOL(IncludeInactive);
-YB_STRONGLY_TYPED_BOOL(InactiveOnly);
+YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
 // Drive usage information on a current replica of a tablet.
 // This allows us to look at individual resource usage per replica of a tablet.
@@ -100,7 +98,7 @@ struct TabletReplica {
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
 // modifications.
-template <class DataEntryPB, SysRowEntry::Type entry_type>
+template <class DataEntryPB, SysRowEntryType entry_type>
 struct Persistent {
   // Type declaration to be used in templated read/write methods. We are using typename
   // Class::data_type in templated methods for figuring out the type we need.
@@ -108,7 +106,7 @@ struct Persistent {
 
   // Subclasses of this need to provide a valid value of the entry type through
   // the template class argument.
-  static SysRowEntry::Type type() { return entry_type; }
+  static SysRowEntryType type() { return entry_type; }
 
   // The proto that is persisted in the sys_catalog.
   DataEntryPB pb;
@@ -129,7 +127,7 @@ class MetadataCowWrapper {
 
   // Pretty printing.
   virtual std::string ToString() const {
-    return strings::Substitute(
+    return Format(
         "Object type = $0 (id = $1)", PersistentDataEntryPB::type(), id());
   }
 
@@ -166,7 +164,7 @@ class MetadataCowWrapper {
 // The data related to a tablet which is persisted on disk.
 // This portion of TabletInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::TABLET> {
+struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntryType::TABLET> {
   bool is_running() const {
     return pb.state() == SysTabletsEntryPB::RUNNING;
   }
@@ -195,8 +193,6 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
   void set_state(SysTabletsEntryPB::State state, const std::string& msg);
 };
 
-typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
-
 // The information about a single tablet which exists in the cluster,
 // including its state and locations.
 //
@@ -217,8 +213,6 @@ typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
                    public MetadataCowWrapper<PersistentTabletInfo> {
  public:
-  typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
-
   TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id);
   virtual const TabletId& id() const override { return tablet_id_; }
 
@@ -229,8 +223,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
   // configuration whose tablet servers have ever heartbeated to this Master.
-  void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
-  std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
+  void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
 
@@ -296,7 +290,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
-  std::shared_ptr<ReplicaMap> replica_locations_ GUARDED_BY(lock_);
+  std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_);
 
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
@@ -311,7 +305,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TABLE> {
+struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType::TABLE> {
   bool started_deleting() const {
     return pb.state() == SysTablesEntryPB::DELETING ||
            pb.state() == SysTablesEntryPB::DELETED;
@@ -438,26 +432,38 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Add multiple tablets to this table.
   void AddTablets(const TabletInfos& tablets);
 
-  // Return true if tablet has been removed from 'partitions_' below.
-  bool RemoveTablet(const TabletId& tablet_id, InactiveOnly inactive_only = InactiveOnly::kFalse);
+  // Removes the tablet from 'partitions_' and 'tablets_' structures.
+  // Return true if the tablet was removed from 'partitions_'.
+  // If deactivate_only is set to true then it only
+  // deactivates the tablet (i.e. removes it only from partitions_ and not from tablets_).
+  // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
+  bool RemoveTablet(const TabletId& tablet_id,
+                    DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
-  // Remove multiple tablets from this table. Return true if all given tablets were removed.
-  bool RemoveTablets(const TabletInfos& tablets, InactiveOnly inactive_only = InactiveOnly::kFalse);
+  // Remove multiple tablets from this table.
+  // Return true if all given tablets were removed from 'partitions_'.
+  bool RemoveTablets(const TabletInfos& tablets,
+                     DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
   void GetTabletsInRange(
       const std::string& partition_key_start, const std::string& partition_key_end,
       TabletInfos* ret,
-      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
+      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
+  // Iterates through tablets_ and not partitions_, so there may be duplicates of key ranges.
+  void GetInactiveTabletsInRange(
+      const std::string& partition_key_start, const std::string& partition_key_end,
+      TabletInfos* ret,
+      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
 
   std::size_t NumPartitions() const;
   // Return whether given partition start keys match partitions_.
   bool HasPartitions(const std::vector<PartitionKey> other) const;
 
   // Get all tablets of the table.
-  // If include_split_tablets is true, also returns not yet deleted split parent tablets for
-  // which we've already registered child split tablets.
+  // If include_inactive is true then it also returns inactive tablets along with the active ones.
+  // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
   TabletInfos GetTablets(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get the tablet of the table.  The table must be colocated.
@@ -471,6 +477,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if all tablets of the table are deleted or hidden.
   bool AreAllTabletsHidden() const;
+
+  // Clears partitons_ and tablets_.
+  // If deactivate_only is set to true then clear only the partitions_.
+  void ClearTabletMaps(DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
@@ -500,18 +510,18 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
   bool HasTasks() const;
-  bool HasTasks(MonitoredTask::Type type) const;
-  void AddTask(std::shared_ptr<MonitoredTask> task);
+  bool HasTasks(server::MonitoredTask::Type type) const;
+  void AddTask(std::shared_ptr<server::MonitoredTask> task);
 
   // Returns true if no running tasks left.
-  bool RemoveTask(const std::shared_ptr<MonitoredTask>& task);
+  bool RemoveTask(const std::shared_ptr<server::MonitoredTask>& task);
 
   void AbortTasks();
   void AbortTasksAndClose();
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
-  std::unordered_set<std::shared_ptr<MonitoredTask>> GetTasks();
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks();
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
@@ -531,9 +541,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   ~TableInfo();
 
   void AddTabletUnlocked(const TabletInfoPtr& tablet) REQUIRES(lock_);
-  bool RemoveTabletUnlocked(const TableId& tablet_id,
-                            InactiveOnly inactive_only = InactiveOnly::kFalse)
-      REQUIRES(lock_);
+  bool RemoveTabletUnlocked(
+      const TableId& tablet_id,
+      DeactivateOnly deactivate_only = DeactivateOnly::kFalse) REQUIRES(lock_);
 
   void AbortTasksAndCloseIfRequested(bool close);
 
@@ -547,10 +557,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
+  // At any point in time it contains only the active tablets.
   std::map<PartitionKey, TabletInfo*> partitions_ GUARDED_BY(lock_);
+  // At any point in time it contains both active and inactive tablets.
+  // Currently there are two cases for a tablet to be categorized as inactive:
+  // 1) Not yet deleted split parent tablets for which we've already
+  //    registered child split tablets.
+  // 2) Tablets that are marked as HIDDEN for PITR.
   std::unordered_map<TabletId, TabletInfo*> tablets_ GUARDED_BY(lock_);
 
-  // Protects tablet_map_ and pending_tasks_.
+  // Protects partitions_, tablets_ and pending_tasks_.
   mutable rw_spinlock lock_;
 
   // If closing, requests to AddTask will be promptly aborted.
@@ -562,7 +578,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::atomic<bool> is_system_{false};
 
   // List of pending tasks (e.g. create/alter tablet requests).
-  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
@@ -609,7 +625,8 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
 // The data related to a namespace which is persisted on disk.
 // This portion of NamespaceInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEntry::NAMESPACE> {
+struct PersistentNamespaceInfo : public Persistent<
+    SysNamespaceEntryPB, SysRowEntryType::NAMESPACE> {
   // Get the namespace name.
   const NamespaceName& name() const {
     return pb.name();
@@ -689,7 +706,7 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
 // The data related to a User-Defined Type which is persisted on disk.
 // This portion of UDTypeInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntry::UDTYPE> {
+struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntryType::UDTYPE> {
   // Return the type's name.
   const UDTypeName& name() const {
     return pb.name();
@@ -752,7 +769,7 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
 struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
-                                                       SysRowEntry::CLUSTER_CONFIG> {
+                                                       SysRowEntryType::CLUSTER_CONFIG> {
 };
 
 // This is the in memory representation of the cluster config information serialized proto data,
@@ -775,7 +792,7 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
 };
 
 struct PersistentRedisConfigInfo
-    : public Persistent<SysRedisConfigEntryPB, SysRowEntry::REDIS_CONFIG> {};
+    : public Persistent<SysRedisConfigEntryPB, SysRowEntryType::REDIS_CONFIG> {};
 
 class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
                         public MetadataCowWrapper<PersistentRedisConfigInfo> {
@@ -793,7 +810,7 @@ class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(RedisConfigInfo);
 };
 
-struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntry::ROLE> {};
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntryType::ROLE> {};
 
 class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
                  public MetadataCowWrapper<PersistentRoleInfo> {
@@ -811,7 +828,7 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
 };
 
 struct PersistentSysConfigInfo
-    : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
+    : public Persistent<SysConfigEntryPB, SysRowEntryType::SYS_CONFIG> {};
 
 class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
                       public MetadataCowWrapper<PersistentSysConfigInfo> {
@@ -838,8 +855,8 @@ class DdlLogEntry {
       HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
       const std::string& action);
 
-  static SysRowEntry::Type type() {
-    return SysRowEntry::DDL_LOG_ENTRY;
+  static SysRowEntryType type() {
+    return SysRowEntryType::DDL_LOG_ENTRY;
   }
 
   std::string id() const;
@@ -889,7 +906,6 @@ class ScopedInfoCommitter {
 
 // Convenience typedefs.
 // Table(t)InfoMap ordered for deterministic locking.
-typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
@@ -912,6 +928,15 @@ auto AddInfoEntry(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* o
   FillInfoEntry(*info, out->Add());
   return lock;
 }
+
+struct SplitTabletIds {
+  const TabletId& source;
+  const std::pair<const TabletId&, const TabletId&> children;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(source, children);
+  }
+};
 
 }  // namespace master
 }  // namespace yb

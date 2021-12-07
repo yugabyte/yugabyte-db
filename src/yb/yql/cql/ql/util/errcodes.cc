@@ -15,15 +15,10 @@
 // Convert internal error code into readable texts. This text doesn't have to be English, and this
 // file can be translated into any languages that YugaByte supports.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/util/errcodes.h"
 
-#include <unordered_map>
-
 #include "yb/common/ql_protocol.pb.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace ql {

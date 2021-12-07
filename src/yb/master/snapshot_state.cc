@@ -16,16 +16,19 @@
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 
@@ -37,7 +40,7 @@ namespace master {
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context) {
-  return EncodedKey(SysRowEntry::SNAPSHOT, id.AsSlice(), context);
+  return EncodedKey(SysRowEntryType::SNAPSHOT, id.AsSlice(), context);
 }
 
 namespace {

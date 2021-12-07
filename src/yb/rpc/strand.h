@@ -17,7 +17,6 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/lockfree.h"
-#include "yb/util/status.h"
 
 namespace yb {
 namespace rpc {

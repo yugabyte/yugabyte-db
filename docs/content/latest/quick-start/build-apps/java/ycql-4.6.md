@@ -15,32 +15,38 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+ <li >
+    <a href="../ysql-yb-jdbc/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - YB - JDBC
+    </a>
+  </li>
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
+    <a href="../ysql-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link">
+    <a href="../ysql-jdbc-ssl/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC SSL/TLS
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
+    <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/java/ycql" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/java/ycql-4.6" class="nav-link active">
+    <a href="../ycql-4.6/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL (4.6)
     </a>
@@ -65,7 +71,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
 - installed JDK version 1.8 or later.
 - installed Maven 3.3 or later.
 

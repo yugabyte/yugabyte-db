@@ -15,6 +15,10 @@
 
 #include <openssl/bn.h>
 
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+
 namespace yb {
 namespace util {
 
@@ -59,6 +63,10 @@ Result<int64_t> VarInt::ToInt64() const {
         InvalidArgument, "VarInt $0 cannot be converted to int64 due to overflow", *this);
   }
   return negative ? -value : value;
+}
+
+Status VarInt::FromString(const std::string& str) {
+  return FromString(str.c_str());
 }
 
 Status VarInt::FromString(const char* cstr) {
@@ -198,10 +206,6 @@ Status VarInt::DecodeFromComparable(const Slice& slice) {
   return DecodeFromComparable(slice, &num_decoded_bytes);
 }
 
-Status VarInt::DecodeFromComparable(const string& str) {
-  return DecodeFromComparable(Slice(str));
-}
-
 std::string VarInt::EncodeToTwosComplement() const {
   if (BN_is_zero(impl_.get())) {
     return std::string(1, 0);
@@ -265,6 +269,18 @@ int VarInt::Sign() const {
     return 0;
   }
   return BN_is_negative(impl_.get()) ? -1 : 1;
+}
+
+Result<VarInt> VarInt::CreateFromString(const std::string& input) {
+  VarInt result;
+  RETURN_NOT_OK(result.FromString(input));
+  return result;
+}
+
+Result<VarInt> VarInt::CreateFromString(const char* input) {
+  VarInt result;
+  RETURN_NOT_OK(result.FromString(input));
+  return result;
 }
 
 std::ostream& operator<<(ostream& os, const VarInt& v) {

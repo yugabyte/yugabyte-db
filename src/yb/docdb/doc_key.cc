@@ -16,18 +16,22 @@
 #include <memory>
 #include <sstream>
 
-#include <boost/algorithm/string.hpp>
+#include "yb/common/schema.h"
 
-#include "yb/util/string_util.h"
-
-#include "yb/common/partition.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
-#include "yb/util/enums.h"
+
 #include "yb/util/compare_util.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 using std::ostringstream;
 
@@ -126,14 +130,14 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, std::vector<PrimitiveValue>* 
 // ------------------------------------------------------------------------------------------------
 
 DocKey::DocKey()
-    : cotable_id_(boost::uuids::nil_uuid()),
+    : cotable_id_(Uuid::Nil()),
       pgtable_id_(0),
       hash_present_(false),
       hash_(0) {
 }
 
 DocKey::DocKey(std::vector<PrimitiveValue> range_components)
-    : cotable_id_(boost::uuids::nil_uuid()),
+    : cotable_id_(Uuid::Nil()),
       pgtable_id_(0),
       hash_present_(false),
       hash_(0),
@@ -143,7 +147,7 @@ DocKey::DocKey(std::vector<PrimitiveValue> range_components)
 DocKey::DocKey(DocKeyHash hash,
                std::vector<PrimitiveValue> hashed_components,
                std::vector<PrimitiveValue> range_components)
-    : cotable_id_(boost::uuids::nil_uuid()),
+    : cotable_id_(Uuid::Nil()),
       pgtable_id_(0),
       hash_present_(true),
       hash_(hash),
@@ -167,7 +171,7 @@ DocKey::DocKey(const PgTableOid pgtable_id,
                DocKeyHash hash,
                std::vector<PrimitiveValue> hashed_components,
                std::vector<PrimitiveValue> range_components)
-    : cotable_id_(boost::uuids::nil_uuid()),
+    : cotable_id_(Uuid::Nil()),
       pgtable_id_(pgtable_id),
       hash_present_(true),
       hash_(hash),
@@ -183,7 +187,7 @@ DocKey::DocKey(const Uuid& cotable_id)
 }
 
 DocKey::DocKey(const PgTableOid pgtable_id)
-    : cotable_id_(boost::uuids::nil_uuid()),
+    : cotable_id_(Uuid::Nil()),
       pgtable_id_(pgtable_id),
       hash_present_(false),
       hash_(0) {
@@ -670,6 +674,15 @@ std::string DocKey::DebugSliceToString(Slice slice) {
   return result;
 }
 
+bool DocKey::BelongsTo(const Schema& schema) const {
+  if (!cotable_id_.IsNil()) {
+    return cotable_id_ == schema.cotable_id();
+  } else if (pgtable_id_ > 0) {
+    return pgtable_id_ == schema.pgtable_id();
+  }
+  return schema.cotable_id().IsNil() && schema.pgtable_id() == 0;
+}
+
 // ------------------------------------------------------------------------------------------------
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
@@ -747,6 +760,10 @@ Status SubDocKey::DecodeFrom(
     Slice* slice, HybridTimeRequired require_hybrid_time, AllowSpecial allow_special) {
   Clear();
   return DoDecode(slice, require_hybrid_time, allow_special, DecodeCallback(this));
+}
+
+Status SubDocKey::FullyDecodeFromKeyWithOptionalHybridTime(const rocksdb::Slice& slice) {
+  return FullyDecodeFrom(slice, HybridTimeRequired::kFalse);
 }
 
 Result<bool> SubDocKey::DecodeSubkey(Slice* slice) {
@@ -1063,6 +1080,21 @@ KeyBytes SubDocKey::AdvanceOutOfDocKeyPrefix() const {
   return doc_key_encoded;
 }
 
+void SubDocKey::AppendSubKey(PrimitiveValue subkey) {
+  subkeys_.emplace_back(std::move(subkey));
+}
+
+void SubDocKey::RemoveLastSubKey() {
+  DCHECK(!subkeys_.empty());
+  subkeys_.pop_back();
+}
+
+void SubDocKey::KeepPrefix(int num_sub_keys_to_keep) {
+  if (subkeys_.size() > num_sub_keys_to_keep) {
+    subkeys_.resize(num_sub_keys_to_keep);
+  }
+}
+
 // ------------------------------------------------------------------------------------------------
 // DocDbAwareFilterPolicy
 // ------------------------------------------------------------------------------------------------
@@ -1268,6 +1300,10 @@ Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_spe
   return true;
 }
 
+Status DocKeyDecoder::DecodePrimitiveValue(AllowSpecial allow_special) {
+  return DecodePrimitiveValue(nullptr /* out */, allow_special);
+}
+
 Status DocKeyDecoder::DecodePrimitiveValue(PrimitiveValue* out, AllowSpecial allow_special) {
   if (allow_special &&
       !input_.empty() &&
@@ -1304,6 +1340,10 @@ Status DocKeyDecoder::DecodeToRangeGroup() {
   }
 
   return Status::OK();
+}
+
+Result<bool> DocKeyDecoder::DecodeHashCode(AllowSpecial allow_special) {
+  return DecodeHashCode(nullptr /* out */, allow_special);
 }
 
 Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special) {
@@ -1405,8 +1445,6 @@ Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {
   RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::kUpToHashCode));
   return key.has_hash() ? key.hash() : boost::optional<DocKeyHash>();
 }
-
-const KeyBounds KeyBounds::kNoBounds;
 
 }  // namespace docdb
 }  // namespace yb

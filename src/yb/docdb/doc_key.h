@@ -18,23 +18,22 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/optional/optional.hpp>
+
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/primitive_value.h"
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 
-#include "yb/common/schema.h"
-
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/primitive_value.h"
-
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace docdb {
-
-using DocKeyHash = uint16_t;
 
 // ------------------------------------------------------------------------------------------------
 // DocKey
@@ -249,14 +248,7 @@ class DocKey {
     return CompareTo(other) >= 0;
   }
 
-  bool BelongsTo(const Schema& schema) const {
-    if (!cotable_id_.IsNil()) {
-      return cotable_id_ == schema.cotable_id();
-    } else if (pgtable_id_ > 0) {
-      return pgtable_id_ == schema.pgtable_id();
-    }
-    return schema.cotable_id().IsNil() && schema.pgtable_id() == 0;
-  }
+  bool BelongsTo(const Schema& schema) const;
 
   void set_cotable_id(const Uuid& cotable_id) {
     if (!cotable_id.IsNil()) {
@@ -282,7 +274,7 @@ class DocKey {
   }
 
   // Converts a redis string key to a doc key
-  static DocKey FromRedisKey(uint16_t hash, const string& key);
+  static DocKey FromRedisKey(uint16_t hash, const std::string& key);
   static KeyBytes EncodedFromRedisKey(uint16_t hash, const std::string &key);
 
  private:
@@ -399,16 +391,12 @@ class DocKeyDecoder {
   Result<bool> DecodeHashCode(
       uint16_t* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
 
-  Result<bool> DecodeHashCode(AllowSpecial allow_special) {
-    return DecodeHashCode(nullptr /* out */, allow_special);
-  }
+  Result<bool> DecodeHashCode(AllowSpecial allow_special);
 
   CHECKED_STATUS DecodePrimitiveValue(
       PrimitiveValue* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
 
-  CHECKED_STATUS DecodePrimitiveValue(AllowSpecial allow_special) {
-    return DecodePrimitiveValue(nullptr /* out */, allow_special);
-  }
+  CHECKED_STATUS DecodePrimitiveValue(AllowSpecial allow_special);
 
   CHECKED_STATUS ConsumeGroupEnd();
 
@@ -541,10 +529,6 @@ class SubDocKey {
     AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
   }
 
-  void AppendSubKey(PrimitiveValue subkey) {
-    subkeys_.emplace_back(std::move(subkey));
-  }
-
   template<class ...T>
   void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key) {
     subkeys_.emplace_back(std::move(subdoc_key));
@@ -558,16 +542,11 @@ class SubDocKey {
     doc_ht_ = DocHybridTime(hybrid_time);
   }
 
-  void RemoveLastSubKey() {
-    DCHECK(!subkeys_.empty());
-    subkeys_.pop_back();
-  }
+  void AppendSubKey(PrimitiveValue subkey);
 
-  void KeepPrefix(int num_sub_keys_to_keep) {
-    if (subkeys_.size() > num_sub_keys_to_keep) {
-      subkeys_.resize(num_sub_keys_to_keep);
-    }
-  }
+  void RemoveLastSubKey();
+
+  void KeepPrefix(int num_sub_keys_to_keep);
 
   void remove_hybrid_time() {
     doc_ht_ = DocHybridTime::kInvalid;
@@ -668,9 +647,7 @@ class SubDocKey {
   // empty or encountering an encoded hybrid time.
   static Result<bool> DecodeSubkey(Slice* slice);
 
-  CHECKED_STATUS FullyDecodeFromKeyWithOptionalHybridTime(const rocksdb::Slice& slice) {
-    return FullyDecodeFrom(slice, HybridTimeRequired::kFalse);
-  }
+  CHECKED_STATUS FullyDecodeFromKeyWithOptionalHybridTime(const rocksdb::Slice& slice);
 
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
   static std::string DebugSliceToString(Slice slice);
@@ -891,50 +868,6 @@ class DocDbAwareV3FilterPolicy : public DocDbAwareFilterPolicyBase {
   const char* Name() const override { return "DocKeyV3Filter"; }
 
   const KeyTransformer* GetKeyTransformer() const override;
-};
-
-// Optional inclusive lower bound and exclusive upper bound for keys served by DocDB.
-// Could be used to split tablet without doing actual splitting of RocksDB files.
-// DocDBCompactionFilter also respects these bounds, so it will filter out non-relevant keys
-// during compaction.
-// Both bounds should be encoded DocKey or its part to avoid splitting DocDB row.
-struct KeyBounds {
-  KeyBytes lower;
-  KeyBytes upper;
-
-  static const KeyBounds kNoBounds;
-
-  KeyBounds() = default;
-  KeyBounds(const Slice& _lower, const Slice& _upper) : lower(_lower), upper(_upper) {}
-
-  bool IsWithinBounds(const Slice& key) const {
-    return (lower.empty() || key.compare(lower) >= 0) &&
-           (upper.empty() || key.compare(upper) < 0);
-  }
-
-  bool IsInitialized() const {
-    return !lower.empty() || !upper.empty();
-  }
-
-  std::string ToString() const {
-    return Format("{ lower: $0 upper: $1 }", lower, upper);
-  }
-};
-
-// Combined DB to store regular records and intents.
-// TODO: move this to a more appropriate header file.
-struct DocDB {
-  rocksdb::DB* regular = nullptr;
-  rocksdb::DB* intents = nullptr;
-  const KeyBounds* key_bounds = nullptr;
-
-  static DocDB FromRegularUnbounded(rocksdb::DB* regular) {
-    return {regular, nullptr /* intents */, &KeyBounds::kNoBounds};
-  }
-
-  DocDB WithoutIntents() {
-    return {regular, nullptr /* intents */, key_bounds};
-  }
 };
 
 }  // namespace docdb

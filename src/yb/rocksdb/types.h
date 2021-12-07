@@ -25,9 +25,9 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/util/opid.h"
-
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/opid.h"
 
 namespace rocksdb {
 
@@ -48,7 +48,20 @@ YB_DEFINE_ENUM(FrontierModificationMode, (kForce)(kUpdate));
 YB_DEFINE_ENUM(
     KeyValueEncodingFormat,
     // <key_shared_prefix_size<key_non_shared_size><value_size><key_non_shared_bytes><value_bytes>
-    ((kKeyDeltaEncodingSharedPrefix, 1)));
+    ((kKeyDeltaEncodingSharedPrefix, 1))
+    // Advanced key delta encoding optimized for docdb-specific encoded key structure.
+    ((kKeyDeltaEncodingThreeSharedParts, 2))
+);
+
+inline std::string KeyValueEncodingFormatToString(KeyValueEncodingFormat encoding_format) {
+  switch (encoding_format) {
+    case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix:
+      return "shared_prefix";
+    case KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts:
+      return "three_shared_parts";
+  }
+  FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, encoding_format);
+}
 
 }  //  namespace rocksdb
 

@@ -19,6 +19,8 @@
 
 #include "yb/gutil/callback_internal.h"
 
+#include <glog/logging.h>
+
 namespace yb {
 namespace internal {
 

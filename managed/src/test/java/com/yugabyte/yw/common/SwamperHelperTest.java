@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.ModelFactory.createAlertDefinition;
 import static com.yugabyte.yw.common.ModelFactory.createAlertConfiguration;
+import static com.yugabyte.yw.common.ModelFactory.createAlertDefinition;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -16,8 +16,8 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -25,7 +25,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -158,10 +157,7 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     String fileContent = IOUtils.toString(br);
 
-    String expectedContent =
-        IOUtils.toString(
-            getClass().getClassLoader().getResourceAsStream("alert/test_alert_definition.yml"),
-            StandardCharsets.UTF_8);
+    String expectedContent = TestUtils.readResource("alert/test_alert_definition.yml");
     expectedContent =
         expectedContent.replace("<configuration_uuid>", configuration.getUuid().toString());
     expectedContent = expectedContent.replace("<definition_uuid>", definition.getUuid().toString());

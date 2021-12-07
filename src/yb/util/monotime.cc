@@ -32,14 +32,15 @@
 
 #include "yb/util/monotime.h"
 
-#include <limits>
 #include <glog/logging.h>
 
-#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/sysinfo.h"
-#include "yb/gutil/walltime.h"
 #include "yb/util/thread_restrictions.h"
+
+#if defined(__APPLE__)
+#include "yb/gutil/walltime.h"
+#endif
 
 using namespace std::literals;
 
@@ -348,7 +349,8 @@ void SleepFor(const MonoDelta& delta) {
 
 CoarseMonoClock::time_point CoarseMonoClock::now() {
 #if defined(__APPLE__)
-  int64_t nanos = walltime_internal::GetMonoTimeNanos();
+  int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
 # else
   struct timespec ts;
   PCHECK(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0);

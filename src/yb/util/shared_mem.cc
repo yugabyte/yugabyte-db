@@ -19,14 +19,14 @@
 #include <sys/syscall.h>
 #endif
 #include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <string>
 #include <glog/logging.h>
 
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

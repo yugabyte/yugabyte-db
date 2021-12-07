@@ -27,7 +27,6 @@
 
 #include <inttypes.h>
 #include <algorithm>
-#include <iostream>
 #include <mutex>
 #include <queue>
 #include <set>
@@ -41,40 +40,31 @@
 #include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/memtable/hash_linklist_rep.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/experimental.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/perf_context.h"
 #include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/utilities/checkpoint.h"
-#include "yb/rocksdb/utilities/write_batch_with_index.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
-#include "yb/rocksdb/table/mock_table.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/util/xfunc.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 #if !defined(IOS_CROSS_COMPILE)
 #ifndef ROCKSDB_LITE

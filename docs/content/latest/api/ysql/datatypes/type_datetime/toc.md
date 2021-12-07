@@ -12,6 +12,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
+## [The "Date and time data types and functionality" parent page](../../type_datetime/)
+
+This section is the top of the entire _date-time_ documentation subtree. Its siblings are the top-of-subtree pages for other data types like [JSON data types and functionality](../../type_json/) and [Array data types and functionality](../../type_array/).
+
+It presents a table that summarizes the properties of the _date-time_ data types, and that links to the dedicated sections for each of these. It recommends avoiding the _timetz_ datatype and states that it will not, therefore, be treated in the _data-time_ major section.
+
+For completeness, it presents a table of the special _date-time_ manifest constants and recommends that you avoid using all of these except for _'infinity'_ and _'-infinity'_.
+
+Finally, it lists the _date-time_ subsections that cover just those topics that you will need to understand if your purpose is only to write brand-new application code.
+
 ## [Conceptual background](../conceptual-background/)
 
 This section explains the background for the accounts of the _date-time_ data types. In particular, it explains the notions that underly the sensitivity to the reigning timezone of these operations:
@@ -73,9 +83,38 @@ This section defines the semantics of the _date_ data type, the _time_ data type
 
 This section presents the five-by-five matrix of all possible conversions between values of the _date-time_ datatypes. Many of the cells are empty because they correspond to operations that aren't supported (or, because the cell is on the diagonal representing the conversion between values of the same data type, it's tautologically uninteresting). This still leaves *twenty* typecasts whose semantics you need to understand. However, many can be understood as combinations of others, and this leaves only a few that demand careful study. The critical conversions are between plain _timestamp_ and _timestamptz_ values in each direction.
 
+## [Date and time operators](../operators/)
+
+This section describes the _date-time_ operators and presents tests for them grouped as follows:
+
+- **[Test the date-time comparison overloads](../operators/test-date-time-comparison-overloads/)**
+- **[Test the date-time addition overloads](../operators/test-date-time-addition-overloads/)**
+- **[Test the date-time subtraction overloads](../operators/test-date-time-subtraction-overloads/)**
+- **[Test the date-time multiplication overloads](../operators/test-date-time-multiplication-overloads/)**
+- **[Test the date-time division overloads](../operators/test-date-time-division-overloads/)**
+
+## [General-purpose date and time functions](../functions/)
+
+This section describes the general-purpose _date-time_ functions in the following groups:
+
+- **[Functions for creating date-time values](../functions/creating-date-time-values/)**
+- **[Functions for manipulating date-time values](../functions/manipulating-date-time-values/)**
+- **[Functions that return the current date-time moment](../functions/current-date-time-moment/)**
+- **[Functions for delaying execution](../functions/delaying-execution/)**
+- **[Miscellaneous date-time functions](../functions/miscellaneous/)**
+
+## [Date and time formatting functions](../formatting-functions/)
+
+This section describes:
+
+- The use of the _to_char()_ built-in function for converting a _date-time_ value to a _text_ value.
+- The use of the _to_date()_ and _to_timestamp()_ built-in functions for converting a _text_ value to a _date-time_ value.
+
+The conversions, in each direction, are controlled by a so-called _template_. A template, in turn, is made up of a mixture of pre-defined so-called _template patterns_ and free text in a user-defined order. See the section [Date-time template patterns](../formatting-functions/#date-time-template-patterns). These template patterns, again in turn, can be _modified_. See the section [Date-time template pattern modifiers](../formatting-functions/#date-time-template-pattern-modifiers).
+
 ## [Case study—implementing a stopwatch with SQL](../stopwatch/)
 
-This shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results. Using a SQL stopwatch brings many advantages over using _\timing on_.
+This shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results. Using a SQL stopwatch brings many advantages over using \\_timing on_.
 
 ## [Download and install the date-time utilities code](../download-date-time-utilities/)
 

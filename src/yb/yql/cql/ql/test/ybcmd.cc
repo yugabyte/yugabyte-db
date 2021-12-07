@@ -32,11 +32,13 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <wchar.h>
-#include <iostream>
 #include <cstddef>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 

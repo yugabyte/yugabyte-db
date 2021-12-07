@@ -13,14 +13,34 @@
 
 #include "yb/tablet/tablet_retention_policy.h"
 
+#include <iosfwd>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
+#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/docdb_compaction_filter.h"
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/types.h"
 
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_metadata.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using namespace std::literals;
 
@@ -73,7 +93,7 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  std::shared_ptr<ColumnIds> deleted_before_history_cutoff = std::make_shared<ColumnIds>();
+  auto deleted_before_history_cutoff = std::make_shared<docdb::ColumnIds>();
   for (const auto& deleted_col : *metadata_.deleted_cols()) {
     if (deleted_col.ht < history_cutoff) {
       deleted_before_history_cutoff->insert(deleted_col.id);

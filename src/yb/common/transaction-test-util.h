@@ -16,11 +16,20 @@
 #ifndef YB_COMMON_TRANSACTION_TEST_UTIL_H
 #define YB_COMMON_TRANSACTION_TEST_UTIL_H
 
+#include <functional>
+#include <type_traits>
+
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/result.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 

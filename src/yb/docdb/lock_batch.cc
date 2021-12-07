@@ -12,11 +12,10 @@
 //
 
 #include "yb/docdb/lock_batch.h"
+
 #include "yb/docdb/shared_lock_manager.h"
-#include "yb/util/trace.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/tostring.h"
-#include "yb/util/shared_lock.h"
+
+#include "yb/util/status_format.h"
 
 DEFINE_bool(dump_lock_keys, true,
             "Whether to add keys to error message when lock batch timed out");
@@ -59,6 +58,9 @@ void LockBatch::MoveFrom(LockBatch* other) {
   other->data_.key_to_type.clear();
 }
 
+std::string LockBatchEntry::ToString() const {
+  return Format("{ key: $0 intent_types: $1 }", key.as_slice().ToDebugHexString(), intent_types);
+}
 
 }  // namespace docdb
 }  // namespace yb

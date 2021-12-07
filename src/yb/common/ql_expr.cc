@@ -4,9 +4,13 @@
 
 #include "yb/common/ql_expr.h"
 
+#include "yb/common/jsonb.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_bfunc.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/jsonb.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -92,6 +96,13 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(QLExpressionPB* ql_expr,
     temp.MoveTo(ql_expr->mutable_value());
   }
   return Status::OK();
+}
+
+CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
+                                        const QLTableRow& table_row,
+                                        QLExprResultWriter result_writer,
+                                        const Schema *schema) {
+  return EvalExpr(ql_expr, &table_row, result_writer, schema);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -711,6 +722,10 @@ CHECKED_STATUS QLTableRow::GetValue(ColumnIdRep col_id, QLValue *column) const {
   return Status::OK();
 }
 
+CHECKED_STATUS QLTableRow::GetValue(const ColumnId& col, QLValue *column) const {
+  return GetValue(col.rep(), column);
+}
+
 boost::optional<const QLValuePB&> QLTableRow::GetValue(ColumnIdRep col_id) const {
   const auto* column = FindColumn(col_id);
   if (column) {
@@ -916,6 +931,12 @@ void QLExprResultWriter::SetExisting(const QLValuePB* existing_value) {
 
 QLValue& QLExprResultWriter::NewValue() {
   return result_->value_;
+}
+
+std::string QLTableColumn::ToString() const {
+  return Format("{ value: $0 ttl_seconds: $1 write_time: $2 }", value, ttl_seconds,
+                write_time == kUninitializedWriteTime ? "kUninitializedWriteTime":
+                                                        std::to_string(write_time));
 }
 
 } // namespace yb

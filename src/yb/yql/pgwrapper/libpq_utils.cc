@@ -11,21 +11,24 @@
 // under the License.
 //
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 #include <string>
 #include <utility>
 
 #include <boost/preprocessor/seq/for_each.hpp>
-
-#include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/common/pgsql_error.h"
 
 #include "yb/gutil/endian.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-
+#include "yb/util/net/net_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 
@@ -208,6 +211,7 @@ void PGResultClear::operator()(PGresult* result) const {
 }
 
 Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
+  VLOG(1) << __func__ << " " << command;
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_COMMAND_OK != status) {
@@ -240,6 +244,7 @@ Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) 
 }
 
 Result<PGResultPtr> PGConn::Fetch(const std::string& command) {
+  VLOG(1) << __func__ << " " << command;
   return CheckResult(
       PGResultPtr(simple_query_protocol_
           ? PQexec(impl_.get(), command.c_str())

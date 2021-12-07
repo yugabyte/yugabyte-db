@@ -25,9 +25,7 @@ Yugabyte recommends that you create two user-defined function overload sets, thu
 - When a timezone is specified using an _interval_ value, this is checked to ensure that it lies in the range defined by the overall maximum and minimum values of _utc_offset_ columns in the _pg_timezone_names_ and _pg_timezone_abbrevs_ catalog views. It's also checked to ensure that it's an integral multiple of fifteen minutes, respecting the convention followed by every timezone shown by _pg_timezone_names_.
 
 Following these recommendations protects you from the many opportunities to go wrong brought by using the native functionality with no constraints; and yet doing so still allows you all the functionality that you could need.
-{{< /tip >}}
-
-&nbsp;
+{{< /tip >}}</br>
 
 {{< tip title="Download and install the date-time utilities code." >}}
 The code on this page depends on the [_extended_timezone_names_ view](../extended-timezone-names/). It also depends on the [custom _interval_ domains](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) code. And this, in turn, depends on the [user-defined _interval_ utilities](../../date-time-data-types-semantics/type-interval/interval-utilities/).
@@ -36,7 +34,6 @@ These components are all included in the larger [code kit](../../download-date-t
 
 The code on that this page defines is intended for reuse. It, too, is therefore included in the _date-time utilities_ downloadable code kit.
 {{< /tip >}}
-
 
 ## The approved_timezone_names view
 

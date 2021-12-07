@@ -5,7 +5,6 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
-import com.yugabyte.yw.models.AsyncReplicationRelationship;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -17,7 +16,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import play.data.validation.Constraints;
 
 public class UniverseTaskParams extends AbstractTaskParams {
 
@@ -159,73 +157,6 @@ public class UniverseTaskParams extends AbstractTaskParams {
     public boolean installNodeExporter = true;
   }
 
-  public static class AsyncReplicationConfig {
-    @Constraints.Required() public String sourceTableID;
-
-    @Constraints.Required() public UUID sourceUniverseUUID;
-
-    @Constraints.Required() public String targetTableID;
-
-    @Constraints.Required() public UUID targetUniverseUUID;
-
-    @Constraints.Required() public boolean active;
-
-    public static AsyncReplicationConfig convert(AsyncReplicationRelationship relationship) {
-      AsyncReplicationConfig config = new AsyncReplicationConfig();
-      config.targetUniverseUUID = relationship.targetUniverse.universeUUID;
-      config.targetTableID = relationship.targetTableID;
-      config.sourceUniverseUUID = relationship.sourceUniverse.universeUUID;
-      config.sourceTableID = relationship.sourceTableID;
-      config.active = relationship.active;
-      return config;
-    }
-
-    @Override
-    public String toString() {
-      return "AsyncReplicationConfig "
-          + "sourceTableID='"
-          + sourceTableID
-          + "', sourceUniverseUUID="
-          + sourceUniverseUUID
-          + ", targetTableID='"
-          + targetTableID
-          + "', targetUniverseUUID="
-          + targetUniverseUUID
-          + "', active="
-          + active;
-    }
-  }
-
-  @JsonProperty(
-      value = "targetAsyncReplicationRelationships",
-      access = JsonProperty.Access.READ_ONLY)
-  @ApiModelProperty(value = "The target universe's async replication relationships")
-  public List<AsyncReplicationConfig> getTargetAsyncReplicationRelationships() {
-    if (universeUUID == null) {
-      return new ArrayList<>();
-    }
-
-    return AsyncReplicationRelationship.getByTargetUniverseUUID(universeUUID)
-        .stream()
-        .map(AsyncReplicationConfig::convert)
-        .collect(Collectors.toList());
-  }
-
-  @JsonProperty(
-      value = "sourceAsyncReplicationRelationships",
-      access = JsonProperty.Access.READ_ONLY)
-  @ApiModelProperty(value = "The source universe's sync replication relationships")
-  public List<AsyncReplicationConfig> getSourceAsyncReplicationRelationships() {
-    if (universeUUID == null) {
-      return new ArrayList<>();
-    }
-
-    return AsyncReplicationRelationship.getBySourceUniverseUUID(universeUUID)
-        .stream()
-        .map(AsyncReplicationConfig::convert)
-        .collect(Collectors.toList());
-  }
-
   @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   @ApiModelProperty(value = "The target universe's xcluster replication relationships")
   public List<UUID> getTargetXClusterConfigs() {
@@ -301,4 +232,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // `isRetry` due to play reading the "is" prefix differently.
   @ApiModelProperty(value = "Whether this task has been tried before")
   public boolean firstTry = true;
+
+  // Previous task UUID for a retry.
+  @ApiModelProperty(value = "Previous task UUID only if this task is a retry")
+  public UUID previousTaskUUID;
 }

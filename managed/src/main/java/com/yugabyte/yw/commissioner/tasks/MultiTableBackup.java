@@ -51,7 +51,7 @@ import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
-import org.yb.master.Master.RelationType;
+import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 
 @Slf4j
@@ -221,6 +221,10 @@ public class MultiTableBackup extends UniverseTaskBase {
           ybService.closeClient(client, masterAddresses);
         }
 
+        if (tablesToBackup.isEmpty()) {
+          throw new RuntimeException("Invalid Keyspace or no tables to backup");
+        }
+
         subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
         log.info("Successfully started scheduled backup of tables.");
@@ -266,7 +270,8 @@ public class MultiTableBackup extends UniverseTaskBase {
           for (BackupTableParams tableParams : backupParamsList) {
             Backup backup = Backup.create(params().customerUUID, tableParams);
             backup.setTaskUUID(userTaskUUID);
-            tableBackupParams.backupUuid = backup.backupUUID;
+            tableParams.backupUuid = backup.backupUUID;
+            tableParams.customerUuid = backup.customerUUID;
             log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
             createEncryptedUniverseKeyBackupTask(tableParams)

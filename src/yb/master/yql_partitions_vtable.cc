@@ -13,12 +13,19 @@
 
 #include "yb/master/yql_partitions_vtable.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/net/dns_resolver.h"
-#include "yb/util/shared_lock.h"
+#include "yb/util/status_log.h"
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 
@@ -48,7 +55,7 @@ YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
 Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   {
-    SharedLock<boost::shared_mutex> read_lock(mutex_);
+    SharedLock<std::shared_timed_mutex> read_lock(mutex_);
     // The cached versions are initialized to -1, so if there is a race, we may still generate the
     // cache on the calling thread.
     if (FLAGS_partitions_vtable_cache_refresh_secs > 0 &&
@@ -63,9 +70,9 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
 }
 
 Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() const {
-  CatalogManager* catalog_manager = master_->catalog_manager();
+  auto* catalog_manager = &this->catalog_manager();
   {
-    SharedLock<boost::shared_mutex> read_lock(mutex_);
+    SharedLock<std::shared_timed_mutex> read_lock(mutex_);
     if (FLAGS_use_cache_for_partitions_vtable &&
         catalog_manager->tablets_version() == cached_tablets_version_ &&
         catalog_manager->tablet_locations_version() == cached_tablet_locations_version_) {
@@ -74,7 +81,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() 
     }
   }
 
-  std::lock_guard<boost::shared_mutex> lock(mutex_);
+  std::lock_guard<std::shared_timed_mutex> lock(mutex_);
   auto new_tablets_version = catalog_manager->tablets_version();
   auto new_tablet_locations_version = catalog_manager->tablet_locations_version();
   if (FLAGS_use_cache_for_partitions_vtable &&
@@ -84,7 +91,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() 
     return cache_;
   }
 
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(*schema_);
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
   auto& resolver = master_->messenger()->resolver();
 
@@ -100,7 +107,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() 
 
   for (const scoped_refptr<TableInfo>& table : tables) {
     // Skip non-YQL tables.
-    if (!CatalogManager::IsYcqlTable(*table)) {
+    if (!IsYcqlTable(*table)) {
       continue;
     }
 

@@ -16,6 +16,8 @@
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
 namespace yb {

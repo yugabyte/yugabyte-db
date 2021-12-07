@@ -18,10 +18,11 @@
 // under the License.
 //
 #pragma once
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/util/slice.h"
-#include <string>
+
 #include <deque>
+#include <string>
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
@@ -32,7 +33,7 @@ const std::deque<std::string> empty_operand_list;
 // issuing Get() operation to memtables and version_set. The operands
 // will be fetched from the context when issuing partial of full merge.
 class MergeContext {
-public:
+ public:
   // Clear all the operands
   void Clear() {
     if (operand_list) {
@@ -41,7 +42,7 @@ public:
   }
   // Replace all operands with merge_result, which are expected to be the
   // merge result of them.
-  void PushPartialMergeResult(std::string& merge_result) {
+  void PushPartialMergeResult(std::string&& merge_result) {
     assert (operand_list);
     operand_list->clear();
     operand_list->push_front(std::move(merge_result));
@@ -70,12 +71,13 @@ public:
     }
     return *operand_list;
   }
-private:
+ private:
   void Initialize() {
     if (!operand_list) {
       operand_list.reset(new std::deque<std::string>());
     }
   }
+
   std::unique_ptr<std::deque<std::string>> operand_list;
 };
 

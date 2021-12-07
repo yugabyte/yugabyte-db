@@ -385,6 +385,10 @@ public class ModelFactory {
             .setCustomerUUID(customer.getUuid())
             .setName("Alert 1")
             .setSourceName("Source 1")
+            .setSourceUUID(
+                universe == null
+                    ? UUID.fromString("3ea389e6-07e7-487e-8592-c1b2a7339590")
+                    : universe.getUniverseUUID())
             .setSeverity(AlertConfiguration.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .generateUUID();
@@ -433,15 +437,15 @@ public class ModelFactory {
 
   public static AlertChannelEmailParams createEmailChannelParams() {
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
+    params.setRecipients(Collections.singletonList("test@test.com"));
+    params.setSmtpData(EmailFixtures.createSmtpData());
     return params;
   }
 
   public static AlertChannelSlackParams createSlackChannelParams() {
     AlertChannelSlackParams params = new AlertChannelSlackParams();
-    params.username = "channel";
-    params.webhookUrl = "http://www.google.com";
+    params.setUsername("channel");
+    params.setWebhookUrl("http://www.google.com");
     return params;
   }
 
@@ -462,9 +466,14 @@ public class ModelFactory {
    */
   public static KmsConfig createKMSConfig(
       UUID customerUUID, String keyProvider, ObjectNode authConfig) {
+    return createKMSConfig(customerUUID, keyProvider, authConfig, "Test KMS Configuration");
+  }
+
+  public static KmsConfig createKMSConfig(
+      UUID customerUUID, String keyProvider, ObjectNode authConfig, String configName) {
     EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
     EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
-    return keyService.createAuthConfig(customerUUID, "Test KMS Configuration", authConfig);
+    return keyService.createAuthConfig(customerUUID, configName, authConfig);
   }
 
   /*

@@ -69,6 +69,10 @@ public class CustomerConfigValidator {
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
 
+  public static final Integer MIN_PORT_VALUE = 0;
+
+  public static final Integer MAX_PORT_VALUE = 65535;
+
   private final BeanValidator beanValidator;
 
   public abstract static class ConfigValidator {
@@ -253,9 +257,25 @@ public class CustomerConfigValidator {
       boolean valid = false;
       try {
         URI uri = new URI(value);
-        valid =
-            urlValidator.isValid(
-                StringUtils.isEmpty(uri.getScheme()) ? DEFAULT_SCHEME + value : value);
+        if (fieldName.equals(AWS_HOST_BASE_FIELDNAME)) {
+          if (StringUtils.isEmpty(uri.getHost())) {
+            uri = new URI(DEFAULT_SCHEME + value);
+          }
+          String host = uri.getHost();
+          String scheme = uri.getScheme() + "://";
+          String uriToValidate = scheme + host;
+          Integer port = new Integer(uri.getPort());
+          boolean validPort = true;
+          if (!uri.toString().equals(uriToValidate)
+              && (port < MIN_PORT_VALUE || port > MAX_PORT_VALUE)) {
+            validPort = false;
+          }
+          valid = validPort && urlValidator.isValid(uriToValidate);
+        } else {
+          valid =
+              urlValidator.isValid(
+                  StringUtils.isEmpty(uri.getScheme()) ? DEFAULT_SCHEME + value : value);
+        }
       } catch (URISyntaxException e) {
       }
 

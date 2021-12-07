@@ -16,9 +16,16 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+
+#include "yb/util/async_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/cql/ql/statement.h"
 
 DECLARE_bool(use_cassandra_authentication);
 
@@ -32,6 +39,10 @@ using client::YBClient;
 using client::YBSession;
 using client::YBClientBuilder;
 
+ClockHolder::ClockHolder() : clock_(new server::HybridClock()) {
+  CHECK_OK(clock_->Init());
+}
+
 //--------------------------------------------------------------------------------------------------
 const string QLTestBase::kDefaultKeyspaceName("my_keyspace");
 
@@ -39,6 +50,14 @@ QLTestBase::QLTestBase() {
 }
 
 QLTestBase::~QLTestBase() {
+}
+
+void QLTestBase::TearDown() {
+  client_.reset();
+  if (cluster_ != nullptr) {
+    cluster_->Shutdown();
+  }
+  YBTest::TearDown();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -55,8 +74,8 @@ void QLTestBase::CreateSimulatedCluster(int num_tablet_servers) {
   builder.default_admin_operation_timeout(MonoDelta::FromSeconds(60));
   builder.set_tserver_uuid(cluster_->mini_tablet_server(0)->server()->permanent_uuid());
   client_ = ASSERT_RESULT(builder.Build());
-  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_.get(),
-      false /* Update roles' permissions cache */);
+  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(
+      client_.get(), false /* Update roles' permissions cache */);
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kDefaultKeyspaceName));
 }
 
@@ -78,6 +97,82 @@ TestQLProcessor* QLTestBase::GetQLProcessor(const RoleName& role_name) {
   ql_processors_.emplace_back(new TestQLProcessor(client_.get(), metadata_cache_, role_name));
   CallUseKeyspace(ql_processors_.back(), kDefaultKeyspaceName);
   return ql_processors_.back().get();
+}
+
+TestQLProcessor::TestQLProcessor(client::YBClient* client,
+                                 std::shared_ptr<client::YBMetaDataCache> cache,
+                                 const RoleName& role_name)
+    : QLProcessor(client, cache, nullptr /* ql_metrics */, nullptr /* parser_pool */, clock_,
+                  TransactionPoolProvider()) {
+  if (!role_name.empty()) {
+    ql_env_.ql_session()->set_current_role_name(role_name);
+  }
+}
+
+TestQLProcessor::~TestQLProcessor() = default;
+
+void TestQLProcessor::RunAsync(
+    const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
+  result_ = nullptr;
+  parse_tree.reset(); // Delete previous parse tree.
+  // RunAsyncInternal() works through Reschedule() loop via RunAsyncTask in QLProcessor class.
+  // It calls Prepare(string& stmt) on every loop iteration.
+  RunAsyncInternal(stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
+}
+
+Status TestQLProcessor::Run(const std::string& stmt, const StatementParameters& params) {
+  Synchronizer s;
+  RunAsync(stmt, params, s.AsStatusCallback());
+  return s.Wait();
+}
+
+Status TestQLProcessor::Run(const Statement& stmt, const StatementParameters& params) {
+  result_ = nullptr;
+  parse_tree.reset(); // Delete previous parse tree.
+
+  Synchronizer s;
+  // Reschedule() loop in QLProcessor class is not used here.
+  RETURN_NOT_OK(stmt.ExecuteAsync(this, params,
+      Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), s.AsStatusCallback())));
+  return s.Wait();
+}
+
+void QLTestBase::VerifyPaginationSelect(TestQLProcessor* processor,
+                                        const string &select_query,
+                                        int page_size,
+                                        const string expected_rows) {
+  StatementParameters params;
+  params.set_page_size(page_size);
+  string rows;
+  do {
+    CHECK_OK(processor->Run(select_query, params));
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    if (row_block->row_count() > 0) {
+      rows.append(row_block->ToString());
+    } else {
+      // Skip appending empty rowblock but verify it happens only at the last fetch.
+      EXPECT_TRUE(processor->rows_result()->paging_state().empty());
+    }
+    if (processor->rows_result()->paging_state().empty()) {
+      break;
+    }
+    CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
+  } while (true);
+  EXPECT_EQ(expected_rows, rows);
+}
+
+CHECKED_STATUS QLTestBase::TestParser(const std::string& stmt) {
+  QLProcessor* processor = GetQLProcessor();
+  ParseTree::UniPtr parse_tree;
+  return processor->Parse(stmt, &parse_tree);
+}
+
+// Tests parser and analyzer
+CHECKED_STATUS QLTestBase::TestAnalyzer(const string& stmt, ParseTree::UniPtr* parse_tree) {
+  QLProcessor* processor = GetQLProcessor();
+  RETURN_NOT_OK(processor->Parse(stmt, parse_tree));
+  RETURN_NOT_OK(processor->Analyze(parse_tree));
+  return Status::OK();
 }
 
 }  // namespace ql

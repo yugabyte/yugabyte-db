@@ -33,18 +33,22 @@
 #define YB_UTIL_SUBPROCESS_H
 
 #include <signal.h>
+#include <spawn.h>
 
-#include <string>
-#include <vector>
-#include <mutex>
 #include <map>
+#include <mutex>
+#include <string>
 #include <unordered_set>
+#include <vector>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/util/enums.h"
-#include "yb/util/result.h"
+#include "yb/util/math_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -54,6 +58,9 @@ YB_DEFINE_ENUM(StdFdType,
                ((kErr, STDERR_FILENO)));
 
 using StdFdTypes = EnumBitSet<StdFdType>;
+
+YB_DEFINE_ENUM(SubprocessState, (kNotStarted)(kRunning)(kExited));
+YB_DEFINE_ENUM(SubprocessStreamMode, (kDisabled)(kShared)(kPiped));
 
 // Wrapper around a spawned subprocess.
 //
@@ -82,10 +89,14 @@ class Subprocess {
   void DisableStdout();
 
   // Share a stream with parent. Must be called before subprocess starts.
-  // Cannot set sharing at all if stream is disabled
-  void ShareParentStdin(bool  share = true) { SetFdShared(STDIN_FILENO,  share); }
-  void ShareParentStdout(bool share = true) { SetFdShared(STDOUT_FILENO, share); }
-  void ShareParentStderr(bool share = true) { SetFdShared(STDERR_FILENO, share); }
+  // Cannot set sharing at all if stream is disabled.
+  void ShareParentStdin() { SetFdShared(STDIN_FILENO, SubprocessStreamMode::kShared); }
+  void ShareParentStdout() { SetFdShared(STDOUT_FILENO, SubprocessStreamMode::kShared); }
+  void ShareParentStderr() { SetFdShared(STDERR_FILENO, SubprocessStreamMode::kShared); }
+
+  void PipeParentStdin() { SetFdShared(STDIN_FILENO, SubprocessStreamMode::kPiped); }
+  void PipeParentStdout() { SetFdShared(STDOUT_FILENO, SubprocessStreamMode::kPiped); }
+  void PipeParentStderr() { SetFdShared(STDERR_FILENO, SubprocessStreamMode::kPiped); }
 
   // Marks a non-standard file descriptor which should not be closed after
   // forking the child process.
@@ -125,7 +136,7 @@ class Subprocess {
   // NOTE: unlike the standard wait(2) call, this may be called multiple
   // times. If the process has exited, it will repeatedly return the same
   // exit code.
-  CHECKED_STATUS WaitNoBlock(int* ret) { return DoWait(ret, WNOHANG); }
+  CHECKED_STATUS WaitNoBlock(int* ret);
 
   // Send a signal to the subprocess.
   // Note that this does not reap the process -- you must still Wait()
@@ -173,35 +184,69 @@ class Subprocess {
   pid_t pid() const;
 
   void SetEnv(const std::string& key, const std::string& value);
-  void SetParentDeathSignal(int signal);
 
   // Issues Start() then Wait() and collects the output from the child process
   // (stdout or stderr) into the output parameter.
   CHECKED_STATUS Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
 
+  // Writes pid to cgroup specified by path
+  void AddPIDToCGroup(const string& path, pid_t pid);
+
  private:
-  enum State {
-    kNotStarted,
-    kRunning,
-    kExited
+
+  struct ChildPipes {
+    int child_stdin[2] = {-1, -1};
+    int child_stdout[2] = {-1, -1};
+    int child_stderr[2] = {-1, -1};
   };
 
-  void SetFdShared(int stdfd, bool share);
+  CHECKED_STATUS StartWithForkExec() REQUIRES(state_lock_);
+  CHECKED_STATUS StartWithPosixSpawn() REQUIRES(state_lock_);
+
+  void SetFdShared(int stdfd, SubprocessStreamMode mode);
   int CheckAndOffer(int stdfd) const;
   int ReleaseChildFd(int stdfd);
   CHECKED_STATUS DoWait(int* ret, int options);
-  State state() const;
+  SubprocessState state() const;
   CHECKED_STATUS KillInternal(int signal, bool must_be_running);
 
-  enum StreamMode {SHARED, DISABLED, PIPED};
+  // Combine the existing environment with the overrides from env_, and return it as a vector
+  // of name=value strings and a pointer array terminated with a null, referring to the vector,
+  // suitable for use with standard C library functions.
+  std::pair<std::vector<std::string>, std::vector<char*>> GetCombinedEnv();
+
+  Result<std::vector<char*>> GetArgvPtrs() REQUIRES(state_lock_);
+  Result<ChildPipes> CreateChildPipes() REQUIRES(state_lock_);
+
+  Status ConfigureFileActionsForPosixSpawn(
+      posix_spawn_file_actions_t* file_actions, const ChildPipes& child_pipes)
+      REQUIRES(state_lock_);
+
+  Status ConfigureOutputStreamActionForPosixSpawn(
+      posix_spawn_file_actions_t* file_actions, int out_stream_fd, int child_write_fd)
+      REQUIRES(state_lock_);
+
+  // Finds all open file descriptors other than stdin/stdout/stderr and not included in
+  // ns_fds_inherited_, and registers them in file_actions to be closed during posix_spawn.
+  // Returns the list of file descriptors to be closed.
+  Result<std::vector<int>> CloseFileDescriptorsForPosixSpawn(
+      posix_spawn_file_actions_t* file_actions) REQUIRES(state_lock_);
+
+  void FinalizeParentSideOfPipes(const ChildPipes& child_pipes) REQUIRES(state_lock_);
+
+  void ConfigureOutputStreamAfterFork(int out_stream_fd, int child_write_fd);
+
+  // ----------------------------------------------------------------------------------------------
+  // Fields
+  // ----------------------------------------------------------------------------------------------
 
   std::string program_;
   std::vector<std::string> argv_;
 
   mutable std::mutex state_lock_;
-  State state_;
+  SubprocessState state_;
   pid_t child_pid_;
-  enum StreamMode fd_state_[3];
+  SubprocessStreamMode fd_state_[3];
   int child_fds_[3];
 
   // The cached exit result code if Wait() has been called.
@@ -210,11 +255,9 @@ class Subprocess {
 
   std::map<std::string, std::string> env_;
 
-  // Signal to send child process in case parent dies
-  int pdeath_signal_ = SIGTERM;
-
   // List of non-standard file descriptors which should be inherited by the
   // child process.
+
   std::unordered_set<int> ns_fds_inherited_;
 
   DISALLOW_COPY_AND_ASSIGN(Subprocess);

@@ -17,7 +17,7 @@ import org.hamcrest.CoreMatchers;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
@@ -503,6 +503,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Mixing in some "concurrent" DDLs to invalidate cache.
       stmt2.executeUpdate("CREATE TABLE t()");
       stmt2.executeUpdate("DROP TABLE t");
+      // Make sure other connections will detect catalog version change.
+      waitForTServerHeartbeat();
 
       stmt1.executeUpdate("GRANT SELECT, INSERT, UPDATE, DELETE ON with_default TO application");
 
@@ -531,8 +533,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Mixing in some "concurrent" DDLs to invalidate cache.
       stmt2.executeUpdate("CREATE TABLE t()");
       stmt2.executeUpdate("DROP TABLE t");
+      // Make sure other connections will detect catalog version change.
+      waitForTServerHeartbeat();
 
       stmt1.executeUpdate("DROP TABLE with_default");
+      waitForTServerHeartbeat();
 
       for (Statement stmt : Arrays.asList(stmt1, stmt2)) {
         runInvalidQuery(stmt, "SELECT * FROM with_default",

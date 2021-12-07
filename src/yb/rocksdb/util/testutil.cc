@@ -23,9 +23,6 @@
 
 #include "yb/rocksdb/util/testutil.h"
 
-#include <cctype>
-#include <sstream>
-
 #include <boost/functional/hash.hpp>
 
 #include <gtest/gtest.h>
@@ -402,6 +399,10 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
 };
 
 } // namespace
+
+std::string TestUserFrontier::ToString() const {
+  return YB_CLASS_TO_STRING(value);
+}
 
 int64_t GetBoundaryInt(const UserBoundaryValues& values) {
   auto value = UserValueWithTag(values, TAG_INT_VALUE);

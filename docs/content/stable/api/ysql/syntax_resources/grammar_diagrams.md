@@ -382,6 +382,18 @@ alter_user_config ::= ALTER USER { role_specification | ALL }
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="740" height="65" viewbox="0 0 740 65"><path class="connector" d="M0 22h15m58 0h10m53 0h30m122 0h20m-157 0q5 0 5 5v20q0 5 5 5h5m42 0h85q5 0 5-5v-20q0-5 5-5m5 0h30m34 0h10m84 0h10m115 0h20m-288 0q5 0 5 5v8q0 5 5 5h263q5 0 5-5v-8q0-5 5-5m5 0h10m104 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="58" height="25" rx="7"/><text class="text" x="25" y="22">ALTER</text><rect class="literal" x="83" y="5" width="53" height="25" rx="7"/><text class="text" x="93" y="22">USER</text><a xlink:href="../grammar_diagrams#role-specification"><rect class="rule" x="166" y="5" width="122" height="25"/><text class="text" x="176" y="22">role_specification</text></a><rect class="literal" x="166" y="35" width="42" height="25" rx="7"/><text class="text" x="176" y="52">ALL</text><rect class="literal" x="338" y="5" width="34" height="25" rx="7"/><text class="text" x="348" y="22">IN</text><rect class="literal" x="382" y="5" width="84" height="25" rx="7"/><text class="text" x="392" y="22">DATABASE</text><a xlink:href="../grammar_diagrams#database-name"><rect class="rule" x="476" y="5" width="115" height="25"/><text class="text" x="486" y="22">database_name</text></a><a xlink:href="../grammar_diagrams#config-setting"><rect class="rule" x="621" y="5" width="104" height="25"/><text class="text" x="631" y="22">config_setting</text></a><polygon points="736,29 740,29 740,15 736,15" style="fill:black;stroke-width:0"/></svg>
 
+### analyze
+```
+analyze ::= ANALYZE [ VERBOSE ] [ table_and_columns [ , ... ] ]
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="459" height="80" viewbox="0 0 459 80"><path class="connector" d="M0 52h15m75 0h30m77 0h20m-112 0q5 0 5 5v8q0 5 5 5h87q5 0 5-5v-8q0-5 5-5m5 0h50m-5 0q-5 0-5-5v-20q0-5 5-5h61m24 0h62q5 0 5 5v20q0 5-5 5m-5 0h40m-212 0q5 0 5 5v8q0 5 5 5h187q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="75" height="25" rx="7"/><text class="text" x="25" y="52">ANALYZE</text><rect class="literal" x="120" y="35" width="77" height="25" rx="7"/><text class="text" x="130" y="52">VERBOSE</text><rect class="literal" x="323" y="5" width="24" height="25" rx="7"/><text class="text" x="333" y="22">,</text><a xlink:href="../grammar_diagrams#table-and-columns"><rect class="rule" x="267" y="35" width="137" height="25"/><text class="text" x="277" y="52">table_and_columns</text></a><polygon points="455,59 459,59 459,45 455,45" style="fill:black;stroke-width:0"/></svg>
+
+### table_and_columns
+```
+table_and_columns ::= table_name [ ( column_name [ , ... ] ) ]
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="387" height="80" viewbox="0 0 387 80"><path class="connector" d="M0 52h15m91 0h30m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h30m25 0h20m-251 0q5 0 5 5v8q0 5 5 5h226q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="15" y="35" width="91" height="25"/><text class="text" x="25" y="52">table_name</text></a><rect class="literal" x="136" y="35" width="25" height="25" rx="7"/><text class="text" x="146" y="52">(</text><rect class="literal" x="232" y="5" width="24" height="25" rx="7"/><text class="text" x="242" y="22">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="191" y="35" width="106" height="25"/><text class="text" x="201" y="52">column_name</text></a><rect class="literal" x="327" y="35" width="25" height="25" rx="7"/><text class="text" x="337" y="52">)</text><polygon points="383,59 387,59 387,45 383,45" style="fill:black;stroke-width:0"/></svg>
+
 ### begin
 ```
 begin ::= BEGIN [ TRANSACTION | WORK ] [ transaction_mode [ ... ] ]
@@ -2582,4 +2594,23 @@ version ::= '<text literal>'
 extension_name ::= name
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="84" height="35" viewbox="0 0 84 35"><path class="connector" d="M0 22h15m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="15" y="5" width="54" height="25"/><text class="text" x="25" y="22">name</text></a><polygon points="80,29 84,29 84,15 80,15" style="fill:black;stroke-width:0"/></svg>
+
+### savepoint_create
+```
+savepoint_create ::= SAVEPOINT name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="183" height="35" viewbox="0 0 183 35"><path class="connector" d="M0 22h15m89 0h10m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="89" height="25" rx="7"/><text class="text" x="25" y="22">SAVEPOINT</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="114" y="5" width="54" height="25"/><text class="text" x="124" y="22">name</text></a><polygon points="179,29 183,29 183,15 179,15" style="fill:black;stroke-width:0"/></svg>
+
+### savepoint_release
+```
+savepoint_release ::= RELEASE [ SAVEPOINT ] name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="308" height="50" viewbox="0 0 308 50"><path class="connector" d="M0 22h15m75 0h30m89 0h20m-124 0q5 0 5 5v8q0 5 5 5h99q5 0 5-5v-8q0-5 5-5m5 0h10m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="75" height="25" rx="7"/><text class="text" x="25" y="22">RELEASE</text><rect class="literal" x="120" y="5" width="89" height="25" rx="7"/><text class="text" x="130" y="22">SAVEPOINT</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="239" y="5" width="54" height="25"/><text class="text" x="249" y="22">name</text></a><polygon points="304,29 308,29 308,15 304,15" style="fill:black;stroke-width:0"/></svg>
+
+### savepoint_rollback
+```
+savepoint_rollback ::= ROLLBACK [ WORK | TRANSACTION ] TO 
+                       [ SAVEPOINT ] name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="518" height="70" viewbox="0 0 518 70"><path class="connector" d="M0 22h15m83 0h30m57 0h69m-136 25q0 5 5 5h5m106 0h5q5 0 5-5m-131-25q5 0 5 5v33q0 5 5 5h116q5 0 5-5v-33q0-5 5-5m5 0h10m36 0h30m89 0h20m-124 0q5 0 5 5v8q0 5 5 5h99q5 0 5-5v-8q0-5 5-5m5 0h10m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="83" height="25" rx="7"/><text class="text" x="25" y="22">ROLLBACK</text><rect class="literal" x="128" y="5" width="57" height="25" rx="7"/><text class="text" x="138" y="22">WORK</text><rect class="literal" x="128" y="35" width="106" height="25" rx="7"/><text class="text" x="138" y="52">TRANSACTION</text><rect class="literal" x="264" y="5" width="36" height="25" rx="7"/><text class="text" x="274" y="22">TO</text><rect class="literal" x="330" y="5" width="89" height="25" rx="7"/><text class="text" x="340" y="22">SAVEPOINT</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="449" y="5" width="54" height="25"/><text class="text" x="459" y="22">name</text></a><polygon points="514,29 518,29 518,15 514,15" style="fill:black;stroke-width:0"/></svg>
 

@@ -1,7 +1,93 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import '../../../_style/colors.scss';
-@import '../../../_style/mixins.scss';
+
+.universe-action-bar {
+  display: flex;
+
+  .search-bar-container {
+    width: 100%;
+    .search-bar {
+      border-radius: 8px;
+    }
+    .autocomplete-wrapper {
+      background: $YB_WHITE;
+      z-index: 700;
+      border: 1px solid $YB_GRAY_BORDER;
+      position: relative;
+      width: 200px;
+
+      ul {
+        position: absolute;
+        padding: 0;
+        margin: 5px 0;
+        background-color: $YB_WHITE;
+        box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05),
+          0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+        li {
+          padding: 5px 15px;
+          cursor: pointer;
+        }
+        li.active,
+        li:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+      }
+    }
+  }
+  .universe-button {
+    width: auto;
+    font-size: 14px;
+
+    padding-top: 12px;
+    padding-bottom: 12px;
+    &.btn-orange {
+      margin-left: 15px;
+    }
+
+    .fa-mail-forward {
+      transform: rotate(90deg) translateX(3px);
+    }
+  }
+}
+
+.universes-stats-container {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  width: 100%;
+  height: 100px;
+  margin: 15px 0 15px 0;
+  padding: 0 50px 0 50px;
+  background-color: $YB_WHITE;
+  border: 1px solid $YB_GRAY_BORDER;
+  border-radius: 8px;
+  .yb-resource-count {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    .yb-resource-count-size {
+      display: flex;
+      font-size: x-large;
+      .yb-resource-count-size-prefix {
+        font-size: small;
+        line-height: normal;
+        margin: 2px 2px 0 0;
+      }
+    }
+    .yb-resource-separator-line {
+      height: 1px;
+      width: 50%;
+      margin: 5px 0 5px 0;
+      background-color: $YB_DARK_GRAY;
+    }
+    .yb-resource-count-kind {
+      .fa {
+        margin-right: 5px;
+      }
+    }
+  }
+}
 
 .list-group {
   margin-bottom: 0;
@@ -10,7 +96,7 @@
 
 .universe-list-item {
   background-color: white;
-  border-radius: 7px !important;
+  border-radius: 8px !important;
   border: none;
   box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
   color: $YB_TEXT_COLOR;
@@ -38,15 +124,15 @@ a:hover .universe-name-cell {
   margin: 0;
 }
 
-.universe-list-item .list-group-item {
+.universe-list-item {
   margin: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   margin-bottom: 20px;
   padding: 0;
   line-height: 1.3;
 }
 
-.universe-list-item:last-child .list-group-item {
+.universe-list-item:last-child {
   margin-bottom: 0px;
 }
 
@@ -284,47 +370,163 @@ a:hover .universe-name-cell {
   }
 }
 
-.search-bar-container {
-  margin-top: 5px;
-  width: 100%;
-  .autocomplete-wrapper {
-    background: $YB_WHITE;
-    z-index: 700;
-    border: 1px solid $YB_GRAY_BORDER;
-    position: relative;
-    width: 200px;
+.universe-view-toolbar-container {
+  display: flex;
 
-    ul {
-      position: absolute;
-      padding: 0;
-      margin: 5px 0;
-      background-color: $YB_WHITE;
-      box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
-      li {
-        padding: 5px 15px;
-        cursor: pointer;
+  margin-top: 15px;
+  .form-group {
+    .form-item-label {
+      margin-bottom: 0;
+    }
+    .yb-field-group {
+      margin-right: 15px;
+      padding-bottom: 0;
+      .form-control {
+        width: auto;
       }
-      li.active,
-      li:hover {
-        background: rgba(0, 0, 0, 0.05);
+    }
+  }
+  .universe-status-filter {
+    // Hidden for now due to a width styling issue with react-select and portal on chrome browser
+    // - Issue is not seen on portal with firefox, nor on localhost (firefox + chrome)
+    // - JIRA: https://yugabyte.atlassian.net/browse/PLAT-2269
+    display: none;
+
+    .YBMultiValue {
+      animation-duration: 0.3s;
+      animation-name: slidein;
+    }
+    @keyframes slidein {
+      from {
+        width: 0%;
       }
+
+      to {
+        width: 100%;
+      }
+    }
+  }
+
+  .view-toggle {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    .fa {
+      color: $YB_DARK_GRAY_2;
+    }
+    padding: 12px;
+  }
+}
+
+.universe-view-data-container {
+  margin-top: 5px;
+  h5 {
+    text-align: center;
+  }
+  .list-group {
+    margin-top: 0px;
+  }
+  .list-pagination-control {
+    display: flex;
+    .form-control {
+      margin-top: 20px;
+      width: auto;
+    }
+    .universe-list-pagination {
+      margin-left: auto;
     }
   }
 }
 
-.universe-list-table-toolbar-container {
-  display: flex;
-  justify-content: left;
-  .form-control {
-    width: auto;
+.universe-table {
+  position: relative;
+  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+  border: none;
+  background-color: #fff;
+  padding: 20px 25px 25px 25px;
+  border-radius: 8px;
+  &.body-transparent {
+    padding: 0;
+    background-color: transparent;
+    box-shadow: none;
   }
+  margin: 0 0 0 auto;
+  .react-bs-table {
+    overflow: inherit !important;
 
-  .yb-field-group {
-    margin-right: 15px;
-  }
+    table {
+      th {
+        padding-right: 32px;
+      }
+      td {
+        padding-right: 32px;
+        .universe-cost-cell {
+          display: flex;
+          justify-content: flex-end;
+        }
+        .universe-status-cell {
+          display: flex;
+          font-weight: 500;
 
-  .universe-list-table-toolbar-button-container {
-    margin-top: 24px;
-    margin-left: auto;
+          .yb-loader-circle {
+            margin: 5px 5px 0 0;
+            width: 10px;
+            height: 10px;
+            position: relative;
+          }
+          .fa {
+            padding: 3px 3px 0 0;
+          }
+          &.good {
+            color: $YB_SUCCESS_COLOR;
+          }
+          &.paused {
+            color: $YB_WARNING_COLOR;
+          }
+          &.pending {
+            color: $YB_PENDING_COLOR;
+          }
+          &.bad {
+            color: $YB_FAIL_COLOR;
+          }
+          &.warning {
+            color: $YB_WARNING_COLOR;
+          }
+          &.unknown {
+            color: $YB_PENDING_COLOR;
+          }
+          span {
+            display: flex;
+            padding-left: 4px;
+          }
+        }
+      }
+      .universe-action-column {
+        overflow: inherit !important;
+        * {
+          overflow: inherit !important;
+        }
+        padding: 6px 0 6px 0 !important;
+
+        .btn {
+          border: none;
+          padding: 6px 12px 6px 12px;
+          background-color: transparent;
+        }
+        .btn:hover {
+          background-color: $YB_GRAY_HOVER;
+        }
+      }
+    }
+    tbody {
+      a {
+        color: $YB_VIOLET_TEXT;
+        @include transition(0.125s);
+      }
+      a:hover {
+        color: $YB_ORANGE;
+        @include transition(0.125s);
+      }
+    }
   }
 }

@@ -30,21 +30,26 @@
 // under the License.
 //
 
+#include "yb/server/rpc_server.h"
+
 #include <list>
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/acceptor.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
-#include "yb/rpc/thread_pool.h"
-#include "yb/server/rpc_server.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
 using yb::rpc::Messenger;
@@ -178,8 +183,8 @@ void RpcServer::Shutdown() {
   }
 }
 
-const rpc::ServicePool* RpcServer::service_pool(const string& service_name) const {
-  return down_cast<rpc::ServicePool*>(messenger_->rpc_service(service_name).get());
+const rpc::ServicePool* RpcServer::TEST_service_pool(const string& service_name) const {
+  return down_cast<rpc::ServicePool*>(messenger_->TEST_rpc_service(service_name).get());
 }
 
 } // namespace server

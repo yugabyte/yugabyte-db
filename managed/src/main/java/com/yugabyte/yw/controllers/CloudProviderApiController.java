@@ -11,6 +11,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -29,13 +30,14 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import java.util.UUID;
-import play.db.ebean.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
     value = "Cloud providers",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
@@ -95,7 +97,6 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  @Transactional
   public Result create(UUID customerUUID) throws IOException {
     JsonNode requestBody = request().body().asJson();
     Provider reqProvider = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
@@ -117,14 +118,22 @@ public class CloudProviderApiController extends AuthenticatedController {
     }
 
     if (providerCode.isRequiresBootstrap()) {
-      CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
+      UUID taskUUID = null;
+      try {
+        CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
 
-      UUID taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
-      auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
+        taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
+        auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
+      } catch (Throwable e) {
+        log.warn("Bootstrap failed. Deleting provider");
+        providerEbean.delete();
+        Throwables.propagate(e);
+      }
       return new YBPTask(taskUUID, providerEbean.uuid).asResult();
+    } else {
+      auditService().createAuditEntry(ctx(), request(), requestBody, null);
+      return new YBPTask(null, providerEbean.uuid).asResult();
     }
-
-    return new YBPTask(null, providerEbean.uuid).asResult();
   }
 
   private static String getFirstRegionCode(Provider provider) {

@@ -23,21 +23,25 @@
 
 #include <algorithm>
 #include <atomic>
-#include <vector>
 #include <string>
 #include <thread>
 
-#include "yb/rocksdb/db/db_impl.h"
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/options_parser.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(memstore_arena_size_kb);
 

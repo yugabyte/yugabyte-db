@@ -115,28 +115,30 @@ public class QueryAlerts {
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (HighAvailabilityConfig.isFollower()) {
-      log.debug("Skipping querying for alerts for follower platform");
+    if (!running.compareAndSet(false, true)) {
+      log.info("Previous run of alert query is still underway");
       return;
     }
-    if (running.compareAndSet(false, true)) {
-      try {
-        try {
-          List<UUID> activeAlertsUuids = processActiveAlerts();
-          resolveAlerts(activeAlertsUuids);
-          metricService.setOkStatusMetric(buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS));
-        } catch (Exception e) {
-          metricService.setStatusMetric(
-              buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS),
-              "Error querying for alerts: " + e.getMessage());
-          log.error("Error querying for alerts", e);
-        }
-        alertManager.sendNotifications();
-      } catch (Exception e) {
-        log.error("Error processing alerts", e);
-      } finally {
-        running.set(false);
+    try {
+      if (HighAvailabilityConfig.isFollower()) {
+        log.debug("Skipping querying for alerts for follower platform");
+        return;
       }
+      try {
+        List<UUID> activeAlertsUuids = processActiveAlerts();
+        resolveAlerts(activeAlertsUuids);
+        metricService.setOkStatusMetric(buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS));
+      } catch (Exception e) {
+        metricService.setStatusMetric(
+            buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS),
+            "Error querying for alerts: " + e.getMessage());
+        log.error("Error querying for alerts", e);
+      }
+      alertManager.sendNotifications();
+    } catch (Exception e) {
+      log.error("Error processing alerts", e);
+    } finally {
+      running.set(false);
     }
   }
 
@@ -153,6 +155,7 @@ public class QueryAlerts {
             .filter(alertData -> getCustomerUuid(alertData) != null)
             .filter(alertData -> getConfigurationUuid(alertData) != null)
             .filter(alertData -> getDefinitionUuid(alertData) != null)
+            .filter(alertData -> getSourceUuid(alertData) != null)
             .collect(Collectors.toList());
     if (alerts.size() > validAlerts.size()) {
       log.warn(
@@ -372,7 +375,8 @@ public class QueryAlerts {
               .setDefinitionUuid(definitionUuid)
               .setConfigurationUuid(configurationUuid)
               .setName(alertData.getLabels().get(KnownAlertLabels.DEFINITION_NAME.labelName()))
-              .setSourceName(alertData.getLabels().get(KnownAlertLabels.SOURCE_NAME.labelName()));
+              .setSourceName(alertData.getLabels().get(KnownAlertLabels.SOURCE_NAME.labelName()))
+              .setSourceUUID(UUID.fromString(alertKey.getSourceUuid()));
     }
     AlertConfiguration.Severity severity = getSeverity(alertData);
     AlertConfiguration.TargetType configurationType = getConfigurationType(alertData);

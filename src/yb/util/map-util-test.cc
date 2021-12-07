@@ -34,7 +34,6 @@
 // part of util.
 #include "yb/gutil/map-util.h"
 
-#include <map>
 
 #include <gtest/gtest.h>
 

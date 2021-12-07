@@ -12,11 +12,12 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+#include "yb/yql/cql/ql/parser/parse_context.h"
 
 #include <stdio.h>
 
-#include "yb/yql/cql/ql/parser/parse_context.h"
-#include "yb/util/logging.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
 namespace ql {
@@ -35,7 +36,7 @@ ParseContext::ParseContext(const string& stmt,
                            const bool reparsed,
                            const MemTrackerPtr& mem_tracker,
                            const bool internal)
-    : ProcessContext(ParseTree::UniPtr(new ParseTree(stmt, reparsed, mem_tracker, internal))),
+    : ProcessContext(std::make_unique<ParseTree>(stmt, reparsed, mem_tracker, internal)),
       bind_variables_(PTreeMem()),
       stmt_offset_(0),
       trace_scanning_(false),
@@ -43,7 +44,7 @@ ParseContext::ParseContext(const string& stmt,
 
   // The MAC version of FLEX requires empty or valid input stream. It does not allow input file to
   // be nullptr.
-  ql_file_ = std::unique_ptr<istream>(new istream(nullptr));
+  ql_file_ = std::make_unique<istream>(nullptr);
 
   if (VLOG_IS_ON(3)) {
     trace_scanning_ = true;
@@ -80,6 +81,33 @@ void ParseContext::GetBindVariables(MCVector<PTBindVar*> *vars) {
   // Once the current statement has copied the bind variables found in it, clear the bind vars
   // before we process the next statement.
   bind_variables_.clear();
+}
+
+void ParseContext::Warn(const location& loc, const char *msg, ErrorCode error_code) {
+  ProcessContext::Warn(Location(loc), msg, error_code);
+}
+
+// Handling parsing error.
+CHECKED_STATUS ParseContext::Error(const location& loc,
+                                   const char *msg,
+                                   ErrorCode error_code,
+                                   const char* token) {
+  return ProcessContext::Error(Location(loc), msg, error_code, token);
+}
+
+CHECKED_STATUS ParseContext::Error(const location& loc, const char *msg, const char* token) {
+  return ProcessContext::Error(Location(loc), msg, token);
+}
+
+CHECKED_STATUS ParseContext::Error(const location& loc, ErrorCode error_code, const char* token) {
+  return ProcessContext::Error(Location(loc), error_code, token);
+}
+
+bool ParseContext::SetCmp::operator()(const PTBindVar* v1, const PTBindVar* v2) const {
+  const YBLocation& l1 = v1->loc();
+  const YBLocation& l2 = v2->loc();
+  return (l1.BeginLine() < l2.BeginLine() ||
+          (l1.BeginLine() == l2.BeginLine() && l1.BeginColumn() < l2.BeginColumn()));
 }
 
 }  // namespace ql

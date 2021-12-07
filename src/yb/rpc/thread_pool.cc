@@ -17,13 +17,12 @@
 
 #include <condition_variable>
 #include <mutex>
-#include <thread>
 
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
 
-#include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 
 namespace yb {

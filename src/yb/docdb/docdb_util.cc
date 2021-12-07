@@ -11,20 +11,21 @@
 // under the License.
 //
 
-#include <iostream>
-
-#include "yb/rocksdb/util/statistics.h"
+#include "yb/docdb/docdb_util.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/docdb_util.h"
 
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/env.h"
-#include "yb/util/path_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"
 
 using std::string;

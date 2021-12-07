@@ -18,13 +18,17 @@
 #include <boost/preprocessor/cat.hpp>
 
 #include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
 #include "yb/client/tablet_rpc.h"
 
+#include "yb/common/transaction.h"
+
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 
@@ -39,7 +43,6 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
                      internal::RemoteTablet* tablet,
                      YBClient* client)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
-        trace_(new Trace),
         invoker_(false /* local_tserver_only */,
                  false /* consistent_prefix */,
                  client,
@@ -85,7 +88,6 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
                            rpc::RpcController* controller,
                            rpc::ResponseCallback callback) = 0;
 
-  TracePtr trace_;
   internal::TabletInvoker invoker_;
 };
 
@@ -101,6 +103,7 @@ class TransactionRpc : public TransactionRpcBase {
       : TransactionRpcBase(deadline, tablet, client),
         callback_(std::move(callback)) {
     req_.Swap(req);
+    TRACE_TO(trace_, Traits::kName);
   }
 
   virtual ~TransactionRpc() {}

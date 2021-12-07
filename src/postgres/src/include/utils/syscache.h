@@ -95,7 +95,6 @@ enum SysCacheIdentifier
 	SUBSCRIPTIONNAME,
 	SUBSCRIPTIONOID,
 	SUBSCRIPTIONRELMAP,
-	TABLEGROUPOID,
 	TABLESPACEOID,
 	TRFOID,
 	TRFTYPELANG,
@@ -111,9 +110,10 @@ enum SysCacheIdentifier
 	TYPENAMENSP,
 	TYPEOID,
 	USERMAPPINGOID,
-	USERMAPPINGUSERSERVER
+	USERMAPPINGUSERSERVER,
+	YBTABLEGROUPOID
 
-#define SysCacheSize (USERMAPPINGUSERSERVER + 1)
+#define SysCacheSize (YBTABLEGROUPOID + 1)
 };
 
 extern Bitmapset *YBSysTablePrimaryKey(Oid relid);
@@ -122,8 +122,7 @@ extern Bitmapset *YBSysTablePrimaryKey(Oid relid);
 extern void YBSetSysCacheTuple(Relation rel, HeapTuple tup);
 extern void YBPreloadCatalogCaches(void);
 extern void YBPreloadCatalogCache(int cache_id, int idx_cache_id);
-extern void YBLoadPinnedObjectsCache();
-extern bool YBHasPinnedObjectsCache();
+extern bool YBIsPinnedObjectsCacheAvailable();
 extern bool YBIsObjectPinned(Oid classId, Oid objectId);
 extern bool YBIsSharedObjectPinned(Oid classId, Oid objectId);
 

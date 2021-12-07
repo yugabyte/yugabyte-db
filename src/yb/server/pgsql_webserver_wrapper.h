@@ -16,6 +16,8 @@
 #ifdef __cplusplus
 #include <atomic>
 using std::atomic_ullong;
+using int64 = int64_t;
+using uint8 = uint8_t;
 #else
 #include <stdatomic.h>
 #endif
@@ -54,7 +56,7 @@ typedef struct rpczEntry {
 typedef struct YsqlStatementStat {
   char   *query;
 
-  // Prefix of Counters in pg_stat_statements.c.
+  // Prefix of Counters in pg_stat_monitor.c
 
   int64  calls;        /* # of times executed */
   double total_time;   /* total execution time, in msec */

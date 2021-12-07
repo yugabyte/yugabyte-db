@@ -10,14 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <google/protobuf/any.pb.h>
 
 #include "yb/docdb/consensus_frontier.h"
-
-#include "yb/common/common_fwd.h"
-#include "yb/util/test_util.h"
-#include "yb/rocksdb/metadata.h"
-
 #include "yb/docdb/docdb.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/util/test_util.h"
 
 using rocksdb::UpdateUserValueType;
 

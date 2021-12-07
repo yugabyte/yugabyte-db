@@ -38,7 +38,10 @@ YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
 VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
 
 K8S_CERTS_PATH = "/opt/certs/yugabyte/"
+K8S_CLIENT_CERTS_PATH = "/root/.yugabytedb/"
 K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
+K8S_CLIENT_CA_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "root.crt")
+K8S_CLIENT_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "yugabytedb.crt")
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
@@ -220,7 +223,8 @@ class NodeChecker():
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
                  root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth,
-                 master_http_port, tserver_http_port, collect_metrics_script, universe_version):
+                 master_http_port, tserver_http_port, ysql_server_http_port,
+                 collect_metrics_script, universe_version):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
@@ -244,6 +248,7 @@ class NodeChecker():
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
         self.tserver_http_port = tserver_http_port
+        self.ysql_server_http_port = ysql_server_http_port
         self.collect_metrics_script = collect_metrics_script
         self.universe_version = universe_version
         self.additional_info = {}
@@ -384,7 +389,23 @@ class NodeChecker():
             False,
             days_till_expiry)
 
+    def get_node_to_node_ca_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CERT_FILE_PATH
+
+        return VM_ROOT_CERT_FILE_PATH
+
+    def get_node_to_node_certificate_path(self):
+        if self.is_k8s:
+            return os.path.join(K8S_CERTS_PATH, "node.{}.crt".format(self.node))
+
+        return os.path.join(YB_HOME_DIR,
+                            "yugabyte-tls-config/node.{}.crt".format(self.node))
+
     def get_client_to_node_ca_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CLIENT_CA_CERT_FILE_PATH
+
         remote_cmd = 'if [ -f "{0}" ]; then echo "{0}";'.format(
             os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt"))
 
@@ -395,48 +416,38 @@ class NodeChecker():
         remote_cmd += ' fi;'
         return self._remote_check_output(remote_cmd).strip()
 
-    def check_node_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration("Node To Node CA",
-                                                 VM_ROOT_CERT_FILE_PATH if not self.is_k8s
-                                                 else K8S_CERT_FILE_PATH)
-
-    def check_node_to_node_certificate_expiration(self):
-        if not self.is_k8s:
-            cert_path = os.path.join(YB_HOME_DIR,
-                                     "yugabyte-tls-config/node.{}.crt".format(self.node))
-        else:
-            cert_path = os.path.join(K8S_CERTS_PATH, "node.{}.crt".format(self.node))
-        return self.check_certificate_expiration("Node To Node", cert_path)
-
-    def check_client_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration(
-            "Client To Node CA", self.get_client_to_node_ca_certificate_path())
-
     def get_client_to_node_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CLIENT_CERT_FILE_PATH
+
         cert_path = os.path.join(
             YB_HOME_DIR, "yugabyte-client-tls-config/node.{}.crt".format(self.node))
-        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}"; elif [ -f "{1}" ]; then echo "{1}"; fi'.\
+        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}"; elif [ -f "{1}" ]; then echo "{1}"; fi'. \
             format(cert_path, os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt"))
         return self._remote_check_output(remote_cmd).strip()
 
-    def check_client_to_node_certificate_expiration(self):
-        return self.check_certificate_expiration(
-            "Client To Node", self.get_client_to_node_certificate_path())
+    def check_node_to_node_ca_certificate_expiration(self):
+        return self.check_certificate_expiration("Node To Node CA",
+                                                 self.get_node_to_node_ca_certificate_path())
 
-    def get_yb_version(self, host_port):
-        try:
-            url = 'http://{}/api/v1/version'.format(host_port)
-            response = requests.get(url, timeout=2)
-            return response.text
-        except Exception as ex:
-            message = str(ex)
-            return "Error querying for version: " + message
+    def check_node_to_node_certificate_expiration(self):
+        return self.check_certificate_expiration("Node To Node",
+                                                 self.get_node_to_node_certificate_path())
+
+    def check_client_to_node_ca_certificate_expiration(self):
+        return self.check_certificate_expiration("Client To Node CA",
+                                                 self.get_client_to_node_ca_certificate_path())
+
+    def check_client_to_node_certificate_expiration(self):
+        return self.check_certificate_expiration("Client To Node",
+                                                 self.get_client_to_node_certificate_path())
 
     def check_yb_version(self, ip_address, process, port, expected):
         logging.info("Checking YB Version on node {} process {}".format(self.node, process))
         e = self._new_entry("YB Version")
 
-        output = self.get_yb_version('{}:{}'.format(ip_address, port))
+        remote_cmd = 'curl --silent http://{}:{}/api/v1/version'.format(ip_address, port)
+        output = self._remote_check_output(remote_cmd)
         if has_errors(output):
             return e.fill_and_return_entry([output], True)
 
@@ -616,10 +627,7 @@ class NodeChecker():
         cqlsh = '{}/bin/cqlsh'.format(YB_TSERVER_DIR)
         remote_cmd = '{} {} {} -e "SHOW HOST"'.format(cqlsh, self.node, self.ycql_port)
         if self.enable_tls_client:
-            if self.is_k8s:
-                cert_file = K8S_CERT_FILE_PATH
-            else:
-                cert_file = self.get_client_to_node_ca_certificate_path()
+            cert_file = self.get_client_to_node_ca_certificate_path()
             protocols = re.split('\\W+', self.ssl_protocol or "")
             ssl_version = DEFAULT_SSL_VERSION
             for protocol in protocols:
@@ -731,15 +739,35 @@ class NodeChecker():
         remote_cmd = "which openssl &>/dev/null; echo $?"
         output = self._remote_check_output(remote_cmd).rstrip()
         logging.info("OpenSSL installed state for node %s: %s",  self.node, output)
+
         return {"ssl_installed:" + self.node: (output == "0")
                 if not has_errors(output) else None}
 
     def upload_collect_metrics_script(self):
+        with open(self.collect_metrics_script, 'r') as file:
+            script_content = file.read()
+
+        script_content = script_content.replace('{{NODE_PRIVATE_IP}}', self.node)
+        script_content = script_content.replace('{{MASTER_HTTP_PORT}}',
+                                                str(self.master_http_port))
+        script_content = script_content.replace('{{TSERVER_HTTP_PORT}}',
+                                                str(self.tserver_http_port))
+        script_content = script_content.replace('{{YSQL_SERVER_HTTP_PORT}}',
+                                                str(self.ysql_server_http_port))
+
+        script_dir = os.path.dirname(os.path.abspath(self.collect_metrics_script))
+        node_script = os.path.join(script_dir, "cluster_health_" + self.node + ".sh")
+        with open(node_script, 'w') as file:
+            file.write(script_content)
+
         remote_script_path = "{}/bin/collect_metrics.sh".format(YB_HOME_DIR)
-        output = self._upload_file(self.collect_metrics_script, remote_script_path).rstrip()
-        logging.info("Metrics collection script uploaded to node %s: %s",  self.node, output)
-        return {"collect_metrics_script_uploaded:" + self.node: (output == "0")
-                if not has_errors(output) else None}
+        output = self._upload_file(node_script, remote_script_path).rstrip()
+        if (has_errors(output)):
+            return {"collect_metrics_script_uploaded:" + self.node: None}
+
+        remote_cmd = "chmod +x {}".format(remote_script_path)
+        output = self._remote_check_output(remote_cmd).rstrip()
+        return {"collect_metrics_script_uploaded:" + self.node: has_errors(output)}
 
 
 ###################################################################################################
@@ -924,6 +952,7 @@ class Cluster():
         self.enable_ysql_auth = data["enableYSQLAuth"]
         self.master_http_port = data["masterHttpPort"]
         self.tserver_http_port = data["tserverHttpPort"]
+        self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.collect_metrics_script = data["collectMetricsScript"]
 
 
@@ -969,8 +998,8 @@ def main():
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth,
-                        c.master_http_port, c.tserver_http_port, c.collect_metrics_script,
-                        universe_version)
+                        c.master_http_port, c.tserver_http_port, c.ysql_server_http_port,
+                        c.collect_metrics_script, universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")

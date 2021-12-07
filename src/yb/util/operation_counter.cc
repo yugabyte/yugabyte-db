@@ -21,6 +21,8 @@
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -89,6 +91,8 @@ uint64_t RWOperationCounter::Update(uint64_t delta) {
 bool RWOperationCounter::WaitMutexAndIncrement(CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::now() + 10ms;
+  } else if (deadline == CoarseTimePoint::min()) {
+    return false;
   }
   for (;;) {
     std::unique_lock<decltype(disable_)> lock(disable_, deadline);
@@ -234,6 +238,11 @@ void ScopedRWOperationPause::ReleaseMutexButKeepDisabled() {
   data_.counter_->UnlockExclusiveOpMutex();
   // Make sure the destructor has no effect when it runs.
   data_.counter_ = nullptr;
+}
+
+Status MoveStatus(const ScopedRWOperation& scoped) {
+  return scoped.ok() ? Status::OK()
+                     : STATUS_FORMAT(TryAgain, "Resource unavailable: $0", scoped.resource_name());
 }
 
 }  // namespace yb

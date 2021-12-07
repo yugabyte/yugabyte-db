@@ -37,14 +37,12 @@
 
 #include "yb/util/pb_util.h"
 
-#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 #include <glog/logging.h>
-#include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/descriptor_database.h>
 #include <google/protobuf/dynamic_message.h>
@@ -52,15 +50,13 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/message.h>
-#include <google/protobuf/message_lite.h>
 #include <google/protobuf/util/message_differencer.h>
 
-#include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
@@ -71,7 +67,9 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 using google::protobuf::Descriptor;
 using google::protobuf::DescriptorPool;

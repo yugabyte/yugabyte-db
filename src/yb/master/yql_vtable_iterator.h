@@ -14,15 +14,14 @@
 #ifndef YB_MASTER_YQL_VTABLE_ITERATOR_H
 #define YB_MASTER_YQL_VTABLE_ITERATOR_H
 
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
-#include "yb/common/ql_scanspec.h"
-#include "yb/docdb/doc_key.h"
 
 namespace yb {
 namespace master {
 
 // An iterator over a YQLVirtualTable.
-class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
+class YQLVTableIterator : public YQLRowwiseIteratorIf {
  public:
   // hashed_column_values - is used to filter rows, i.e. if hashed_column_values is not empty
   // only rows starting with specified hashed columns will be iterated.
@@ -40,7 +39,7 @@ class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
 
   const Schema &schema() const override;
 
-  HybridTime RestartReadHt() override { return HybridTime::kInvalid; }
+  HybridTime RestartReadHt() override;
 
  private:
   CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) override;

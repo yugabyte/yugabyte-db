@@ -37,8 +37,8 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/schema.h"
 
 namespace yb {
 namespace client {

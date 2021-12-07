@@ -12,10 +12,11 @@
 // under the License.
 //
 //
+
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 
-#include "yb/yql/cql/cqlserver/cql_service.h"
-#include "yb/yql/cql/cqlserver/cql_statement.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/escaping.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
@@ -23,7 +24,11 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+
+#include "yb/yql/cql/cqlserver/cql_service.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -126,7 +131,7 @@ Status CQLConnectionContext::HandleCall(
     return s;
   }
 
-  reactor->messenger()->QueueInboundCall(call);
+  reactor->messenger()->Handle(call, rpc::Queue::kTrue);
 
   return Status::OK();
 }
@@ -159,6 +164,7 @@ Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallDat
   consumption_ = ScopedTrackedConsumption(call_tracker, call_data->size());
 
   // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
+  request_data_memory_usage_.store(call_data->size(), std::memory_order_release);
   request_data_ = std::move(*call_data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
@@ -169,14 +175,22 @@ Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallDat
   return Status::OK();
 }
 
-const std::string& CQLInboundCall::service_name() const {
-  static std::string result = "yb.cqlserver.CQLServerService"s;
-  return result;
+namespace {
+
+const rpc::RemoteMethod remote_method("yb.cqlserver.CQLServerService", "ExecuteRequest");
+
 }
 
-const std::string& CQLInboundCall::method_name() const {
-  static std::string result = "ExecuteRequest"s;
-  return result;
+Slice CQLInboundCall::serialized_remote_method() const {
+  return remote_method.serialized_body();
+}
+
+Slice CQLInboundCall::static_serialized_remote_method() {
+  return remote_method.serialized_body();
+}
+
+Slice CQLInboundCall::method_name() const {
+  return remote_method.method_name();
 }
 
 void CQLInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {

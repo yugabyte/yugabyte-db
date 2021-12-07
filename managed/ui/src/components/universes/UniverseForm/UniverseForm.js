@@ -325,26 +325,6 @@ class UniverseForm extends Component {
     return null;
   };
 
-  getYSQLAuthstate = () => {
-    const { formValues, universe } = this.props;
-
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].enableYSQLAuth;
-    }
-
-    const {
-      currentUniverse: {
-        data: { universeDetails }
-      }
-    } = universe;
-    if (isNonEmptyObject(universeDetails)) {
-      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
-      return primaryCluster.userIntent.enableYSQLAuth;
-    }
-    // We shouldn't get here!!!
-    return null;
-  };
-
   getYCQLstate = () => {
     const { formValues, universe } = this.props;
 
@@ -360,26 +340,6 @@ class UniverseForm extends Component {
     if (isNonEmptyObject(universeDetails)) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       return primaryCluster.userIntent.enableYCQL;
-    }
-    // We shouldn't get here!!!
-    return null;
-  };
-
-  getYCQLAuthstate = () => {
-    const { formValues, universe } = this.props;
-
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].enableYCQLAuth;
-    }
-
-    const {
-      currentUniverse: {
-        data: { universeDetails }
-      }
-    } = universe;
-    if (isNonEmptyObject(universeDetails)) {
-      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
-      return primaryCluster.userIntent.enableYCQLAuth;
     }
     // We shouldn't get here!!!
     return null;
@@ -433,10 +393,10 @@ class UniverseForm extends Component {
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
         enableYSQL: self.getYSQLstate(),
-        enableYSQLAuth: self.getYSQLAuthstate(),
+        enableYSQLAuth: formValues[clusterType].enableYSQLAuth,
         ysqlPassword: formValues[clusterType].ysqlPassword,
         enableYCQL: self.getYCQLstate(),
-        enableYCQLAuth: self.getYCQLAuthstate(),
+        enableYCQLAuth: formValues[clusterType].enableYCQLAuth,
         ycqlPassword: formValues[clusterType].ycqlPassword,
         enableYEDIS: self.getYEDISstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
@@ -477,7 +437,7 @@ class UniverseForm extends Component {
             return { name: tserverFlag.name.trim(), value: tserverFlag.value.trim() };
           });
 
-        if (currentProvider === 'aws' || currentProvider === 'azu') {
+        if (['aws', 'azu', 'gcp'].includes(currentProvider)) {
           clusterIntent.instanceTags = formValues.primary.instanceTags
             .filter((userTag) => {
               return isNonEmptyString(userTag.name) && isNonEmptyString(userTag.value);
@@ -488,15 +448,16 @@ class UniverseForm extends Component {
         }
       } else {
         if (isDefinedNotNull(formValues.primary)) {
-          clusterIntent.tserverGFlags = (
-              formValues.primary.tserverGFlags && formValues.primary.tserverGFlags
-              .filter((tserverFlag) => {
-                return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
-              })
-              .map((tserverFlag) => {
-                return { name: tserverFlag.name, value: tserverFlag.value.trim() };
-              })
-            ) || {};
+          clusterIntent.tserverGFlags =
+            (formValues.primary.tserverGFlags &&
+              formValues.primary.tserverGFlags
+                .filter((tserverFlag) => {
+                  return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
+                })
+                .map((tserverFlag) => {
+                  return { name: tserverFlag.name, value: tserverFlag.value.trim() };
+                })) ||
+            {};
         } else {
           const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent
             .tserverGFlags;
@@ -574,15 +535,15 @@ class UniverseForm extends Component {
       ];
     }
 
-    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map(nodeDetail => {
+    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
       return {
         ...nodeDetail,
         cloudInfo: {
           ...nodeDetail.cloudInfo,
-          assignPublicIP: formValues["primary"].assignPublicIP
+          assignPublicIP: formValues['primary'].assignPublicIP
         }
-      }
-    })
+      };
+    });
 
     submitPayload.clusters = submitPayload.clusters.filter((c) => c.userIntent !== null);
     // filter clusters array if configuring(adding only) Read Replica due to server side validation

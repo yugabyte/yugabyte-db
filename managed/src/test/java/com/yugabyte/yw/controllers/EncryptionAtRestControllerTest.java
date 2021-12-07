@@ -176,7 +176,10 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   public void testCreateSMARTKEYKmsProviderWithInvalidAPIUrl() {
     String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
     ObjectNode kmsConfigReq =
-        Json.newObject().put("base_url", "some_base_url").put("api_key", "some_api_token");
+        Json.newObject()
+            .put("base_url", "some_base_url")
+            .put("api_key", "some_api_token")
+            .put("name", "test");
     Result createKMSResult =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
@@ -222,6 +225,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
             .put(EncryptionAtRestController.AWS_ACCESS_KEY_ID_FIELDNAME, "valid_accessKey")
             .put(EncryptionAtRestController.AWS_REGION_FIELDNAME, "ap-south-1")
             .put(EncryptionAtRestController.AWS_SECRET_ACCESS_KEY_FIELDNAME, "valid_secretKey")
+            .put(
+                EncryptionAtRestController.AWS_KMS_ENDPOINT_FIELDNAME,
+                "https://kms.ap-south-1.amazonaws.com")
             .put("name", "test");
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
@@ -250,5 +256,25 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         String.format("No universe key found for universe %s", universe.universeUUID.toString());
     assertErrorNodeValue(json, expectedErrorMsg);
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCreateKMSProviderWithDuplicateName() {
+    ObjectNode authConfig = Json.newObject().put("cmk_id", "test_id");
+    ModelFactory.createKMSConfig(customer.uuid, "AWS", authConfig, "test");
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
+    ObjectNode kmsConfigReq =
+        Json.newObject()
+            .put(EncryptionAtRestController.AWS_ACCESS_KEY_ID_FIELDNAME, "valid_accessKey")
+            .put(EncryptionAtRestController.AWS_REGION_FIELDNAME, "ap-south-1")
+            .put(EncryptionAtRestController.AWS_SECRET_ACCESS_KEY_FIELDNAME, "valid_secretKey")
+            .put(
+                EncryptionAtRestController.AWS_KMS_ENDPOINT_FIELDNAME,
+                "https://kms.ap-south-1.amazonaws.com")
+            .put("name", "test");
+    Result createKMSResult =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
+    assertBadRequest(createKMSResult, "Kms config with test name already exists");
   }
 }

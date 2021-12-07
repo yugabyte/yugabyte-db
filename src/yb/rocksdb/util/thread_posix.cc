@@ -22,11 +22,18 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/util/thread_posix.h"
+
+#include <pthread.h>
 #include <unistd.h>
+
 #include <atomic>
 #ifdef __linux__
 #include <sys/syscall.h>
 #endif
+
+#include "yb/util/format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 namespace rocksdb {
 

@@ -20,7 +20,6 @@
 #include <boost/unordered_map.hpp>
 
 #include "yb/cdc/cdc_service.service.h"
-#include "yb/client/client.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
@@ -30,6 +29,9 @@
 #include "yb/util/opid.h"
 
 namespace yb {
+
+class MemTracker;
+
 namespace cdc {
 
 struct StreamMetadata {

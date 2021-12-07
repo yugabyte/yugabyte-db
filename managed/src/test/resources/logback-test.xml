@@ -1,0 +1,71 @@
+<!-- https://www.playframework.com/documentation/latest/SettingsLogger -->
+<configuration>
+
+  <property name="cloud" value="${yb.cloud.enabled}"/>
+  <conversionRule conversionWord="coloredLevel" converterClass="play.api.libs.logback.ColoredLevel" />
+
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <if condition='property("cloud").equals("true")'>
+      <then>
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+          <providers>
+            <timestamp/>
+            <version/>
+            <logLevel/>
+            <mdc/>
+            <pattern>
+              <pattern>
+                {
+                  "message": "%message%n%xException",
+                  "logger":
+                  {
+                    "thread": "%thread",
+                    "name": "%logger",
+                    "file": "%file",
+                    "line": "#asLong{%line}"
+                  }
+                }
+              </pattern>
+            </pattern>
+          </providers>
+        </encoder>
+
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+              <marker>fileOnly</marker>
+          </evaluator>
+          <onMatch>DENY</onMatch>
+        </filter>
+      </then>
+      <else>
+        <encoder>
+          <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5coloredLevel %F:%L [%thread] %msg%n</pattern>
+        </encoder>
+      </else>
+    </if>
+
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>${APPLICATION_CONSOLE_LOG_LEVEL:-${applicationLogLevel:-DEBUG}}</level>
+    </filter>
+  </appender>
+
+  <appender name="ASYNCSTDOUT" class="ch.qos.logback.classic.AsyncAppender">
+    <appender-ref ref="STDOUT" />
+    <includeCallerData>true</includeCallerData>
+  </appender>
+
+  <logger name="play" level="INFO" />
+  <logger name="org.yb" level="INFO" />
+  <logger name="application" level="TRACE" />
+  <logger name="com.yugabyte.yw" level="TRACE" />
+
+  <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
+  <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />
+
+  <logger name="oshi.software.os.linux.LinuxFileSystem" level="ERROR" />
+
+  <root level="WARN">
+    <appender-ref ref="ASYNCSTDOUT" />
+  </root>
+
+</configuration>

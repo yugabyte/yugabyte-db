@@ -1191,32 +1191,43 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 
 Changes the universe replication for the specified producer universe. Use this command to:
 
-* Add or remove tables in an existing replication UUID.
-* Modify the master addresses.
+* Add or remove tables in an existing replication UUID
+* Modify the producer master addresses
 
 If no tables have been configured for replication, use [`setup_universe_replication`](#setup-universe-replication).
 
-To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
+To check if any tables are configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
 
 **Syntax**
+
+Use the `set_master_addresses` subcommand to replace the producer master address list. Use this if the set of masters on the producer changes:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
     alter_universe_replication <producer_universe_uuid> \
-    { \
-      set_master_addresses <producer_master_addresses> | \
-      add_table <table_id>[, <table_id>...] | \
-      remove_table <table_id>[, <table_id>...] \
-    }
+    set_master_addresses <producer_master_addresses>
+```
+
+Use the `add_table` subcommand to add one or more tables to the existing list:
+
+```sh
+yb-admin -master_addresses <master-addresses> \
+    alter_universe_replication <producer_universe_uuid> \
+    add_table <table_id>[, <table_id>...]
+```
+
+Use the `remove_table` subcommand to remove one or more tables from the existing list:
+
+```sh
+yb-admin -master_addresses <master-addresses> \
+    alter_universe_replication <producer_universe_uuid> \
+    remove_table <table_id>[, <table_id>...]
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *producer_universe_uuid*: The UUID of the producer universe.
-* set_master_addresses: Use this subcommand to modify master addresses.
-* *producer_master_addresses*: Comma-separated list of new producer master addresses.
-* add_table: Subcommand to add a table.
-* remove_table: Subcommand to remove a table.
-* *table_id*: The identifier (ID) of the table.
+* _producer_universe_uuid_: The UUID of the producer universe.
+* _producer_master_addresses_: Comma-separated list of new producer master addresses.
+* _table_id_: The identifier (ID) of the table.
 
 #### delete_universe_replication <producer_universe_uuid>
 

@@ -26,7 +26,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/common/ybc_util.h"
 
-#include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/async_initializer.h"
 #include "yb/server/server_base_options.h"
@@ -76,7 +75,8 @@ struct PgApiContext {
   std::unique_ptr<rpc::ProxyCache> proxy_cache;
 
   PgApiContext();
-  PgApiContext(PgApiContext&&) = default;
+  PgApiContext(PgApiContext&&);
+  ~PgApiContext();
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -355,6 +355,11 @@ class PgApiImpl {
   CHECKED_STATUS DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
       YBCPgExpr *attr_value);
 
+  CHECKED_STATUS DmlBindHashCode(PgStatement *handle, bool start_valid,
+                                bool start_inclusive, uint64_t start_hash_val,
+                                bool end_valid, bool end_inclusive,
+                                uint64_t end_hash_val);
+
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
 
@@ -468,11 +473,13 @@ class PgApiImpl {
   CHECKED_STATUS BeginTransaction();
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
+  CHECKED_STATUS MaybeResetTransactionReadPoint();
   CHECKED_STATUS CommitTransaction();
   void AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
+  CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
   CHECKED_STATUS ExitSeparateDdlTxnMode();
   void ClearSeparateDdlTxnMode();

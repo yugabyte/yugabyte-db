@@ -25,7 +25,6 @@
 
 #include <algorithm>
 #include "yb/util/slice.h"
-#include "yb/rocksdb/slice_transform.h"
 
 namespace rocksdb {
 
@@ -75,7 +74,7 @@ const char* GetVarint32PtrFallback(const char* p, const char* limit,
   return nullptr;
 }
 
-const char* GetVarint64Ptr(const char* p, const char* limit, uint64_t* value) {
+const char* GetVarint64PtrFallback(const char* p, const char* limit, uint64_t* value) {
   uint64_t result = 0;
   for (uint32_t shift = 0; shift <= 63 && p < limit; shift += 7) {
     uint64_t byte = *(reinterpret_cast<const unsigned char*>(p));

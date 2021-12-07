@@ -13,14 +13,17 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/client/table.h"
-#include "yb/client/yb_op.h"
-#include "yb/common/pg_system_attr.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/util/debug-util.h"
 #include "yb/yql/pggate/pg_dml.h"
-#include "yb/yql/pggate/pggate_flags.h"
+
+#include "yb/client/yb_op.h"
+
+#include "yb/common/pg_system_attr.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/status_format.h"
+
 #include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -143,8 +146,10 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   PgColumn& column = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
-  SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
-            "Attribute value type does not match column type");
+  if (attr_value->internal_type() != InternalType::kGinNullValue) {
+    SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
+              "Attribute value type does not match column type");
+  }
 
   // Alloc the protobuf.
   PgsqlExpressionPB *bind_pb = column.bind_pb();

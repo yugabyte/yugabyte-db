@@ -33,34 +33,38 @@
 #ifndef YB_RPC_CONNECTION_H_
 #define YB_RPC_CONNECTION_H_
 
+#include <stdint.h>
+
 #include <atomic>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <queue>
 #include <string>
+#include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/version.hpp>
 #include <ev++.h>
+#include <gflags/gflags_declare.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/connection_context.h"
-#include "yb/rpc/server_event.h"
 #include "yb/rpc/stream.h"
 
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/ev_util.h"
-#include "yb/util/metrics.h"
+#include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/object_pool.h"
-#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 

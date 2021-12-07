@@ -18,17 +18,13 @@
 #include <string>
 #include <vector>
 
-#include <boost/function.hpp>
-
 #include "yb/client/client_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/service_if.h"
-#include "yb/util/result.h"
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
-
 
 namespace yb {
 namespace redisserver {

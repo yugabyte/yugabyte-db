@@ -15,12 +15,10 @@
 #define YB_COMMON_ENTITY_IDS_H
 
 #include <string>
-#include <set>
-#include <utility>
 
 #include "yb/common/entity_ids_types.h"
 
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -37,7 +35,7 @@ static const uint32_t kPgFirstNormalObjectId = 16384; // Hardcoded in transam.h
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgTablespaceTableId;
-extern const string kPgSequencesDataNamespaceId;
+extern const std::string kPgSequencesDataNamespaceId;
 
 // Get YB namespace id for a Postgres database.
 NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);
@@ -52,7 +50,7 @@ TablegroupId GetPgsqlTablegroupId(uint32_t database_oid, uint32_t tablegroup_oid
 TablespaceId GetPgsqlTablespaceId(uint32_t tablespace_oid);
 
 // Is the namespace/table id a Postgres database or table id?
-bool IsPgsqlId(const string& id);
+bool IsPgsqlId(const std::string& id);
 
 // Get Postgres database and table oids from a YB namespace/table id.
 Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id);

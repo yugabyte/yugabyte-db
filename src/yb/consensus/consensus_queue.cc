@@ -32,35 +32,29 @@
 
 #include "yb/consensus/consensus_queue.h"
 
-#include <shared_mutex>
 #include <algorithm>
-#include <iostream>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
-
-#include <gflags/gflags.h>
-
-#include "yb/common/wire_protocol.h"
+#include <glog/logging.h>
 
 #include "yb/consensus/consensus_context.h"
-#include "yb/consensus/log.h"
-#include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/human_readable.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
@@ -70,10 +64,10 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/url-coding.h"
-#include "yb/util/enums.h"
 #include "yb/util/tostring.h"
+#include "yb/util/url-coding.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
@@ -313,7 +307,7 @@ void PeerMessageQueue::UntrackPeer(const string& uuid) {
 
 void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
   if (queue_state_.mode != Mode::LEADER) return;
-  unordered_set<string> config_peer_uuids;
+  std::unordered_set<std::string> config_peer_uuids;
   for (const RaftPeerPB& peer_pb : queue_state_.active_config->peers()) {
     InsertOrDie(&config_peer_uuids, peer_pb.permanent_uuid());
   }

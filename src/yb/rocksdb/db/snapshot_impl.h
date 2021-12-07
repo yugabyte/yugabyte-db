@@ -22,9 +22,12 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
+
 #include <vector>
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/snapshot.h"
 
 namespace rocksdb {
 

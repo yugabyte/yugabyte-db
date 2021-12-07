@@ -24,8 +24,8 @@ export default class RegionMapLegend extends Component {
     }
     return (
       <div className="yb-region-map-legend">
-        <h4>Cloud Providers</h4>
-        <div>
+        <h4 className="shrink-flex">Cloud Providers</h4>
+        <div className="shrink-flex">
           <span>
             Select
             <small>
@@ -43,6 +43,8 @@ export default class RegionMapLegend extends Component {
               </span>
             </small>
           </span>
+        </div>
+        <div className="provider-list">
           <SelectList
             data={self.props.providers}
             valueField={'code'}

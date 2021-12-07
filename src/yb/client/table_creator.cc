@@ -13,13 +13,16 @@
 
 #include "yb/client/table_creator.h"
 
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/client.h"
+#include "yb/client/table_info.h"
 
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/common_flags.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
@@ -41,7 +44,7 @@ YBTableCreator& YBTableCreator::table_name(const YBTableName& name) {
 }
 
 YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
-  table_type_ = YBTable::ClientToPBTableType(table_type);
+  table_type_ = ClientToPBTableType(table_type);
   return *this;
 }
 

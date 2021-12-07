@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -23,6 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -188,6 +191,7 @@ public class TaskRunner implements Runnable {
       // Update the task state to failure and checkpoint it.
       updateTaskState(TaskInfo.State.Failure);
       writeTaskFailedMetric(executionStart);
+      addTaskErrorMessage(t.getMessage());
     } finally {
       // Update the customer task to a completed state.
       CustomerTask customerTask = CustomerTask.findByTaskUUID(taskInfo.getTaskUUID());
@@ -203,6 +207,21 @@ public class TaskRunner implements Runnable {
 
       // Run a one-off Platform HA sync every time a task finishes.
       replicationManager.oneOffSync();
+
+      // Terminate the task to release resources.
+      // Any added subtasks in the subgroups are also terminated.
+      task.terminate();
+    }
+  }
+
+  private void addTaskErrorMessage(String message) {
+    ObjectNode details = taskInfo.getTaskDetails().deepCopy();
+    JsonNode errorStringNode = details.get("errorString");
+    String errorString = errorStringNode == null ? null : errorStringNode.asText();
+    if (StringUtils.isEmpty(errorString)) {
+      details.put("errorString", message);
+      taskInfo.setTaskDetails(details);
+      taskInfo.save();
     }
   }
 

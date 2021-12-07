@@ -37,12 +37,13 @@
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/service_pool.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 namespace server {
@@ -81,7 +82,7 @@ class RpcServer {
 
   std::string ToString() const;
 
-  const rpc::ServicePool* service_pool(const std::string& service_name) const;
+  const rpc::ServicePool* TEST_service_pool(const std::string& service_name) const;
 
  private:
   enum ServerState {
@@ -95,7 +96,7 @@ class RpcServer {
     STARTED
   };
 
-  string name_;
+  std::string name_;
 
   ServerState server_state_;
 

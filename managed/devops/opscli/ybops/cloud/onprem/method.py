@@ -17,13 +17,14 @@ from ybops.cloud.common.method import DestroyInstancesMethod
 from ybops.cloud.common.method import ProvisionInstancesMethod, ListInstancesMethod
 from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR, \
                         get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp, \
-                        SSH_RETRY_LIMIT_PRECHECK
+                        SSH_RETRY_LIMIT_PRECHECK, DEFAULT_MASTER_HTTP_PORT, \
+                        DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
+                        DEFAULT_TSERVER_RPC_PORT
 
 
 import json
 import logging
 import os
-import subprocess
 import stat
 import ybops.utils as ybutils
 
@@ -198,6 +199,17 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
     def add_extra_args(self):
         super(OnPremPrecheckInstanceMethod, self).add_extra_args()
+        self.parser.add_argument('--master_http_port', default=DEFAULT_MASTER_HTTP_PORT)
+        self.parser.add_argument('--master_rpc_port', default=DEFAULT_MASTER_RPC_PORT)
+        self.parser.add_argument('--tserver_http_port', default=DEFAULT_TSERVER_HTTP_PORT)
+        self.parser.add_argument('--tserver_rpc_port', default=DEFAULT_TSERVER_RPC_PORT)
+        self.parser.add_argument('--cql_proxy_http_port', default=None)
+        self.parser.add_argument('--cql_proxy_rpc_port', default=None)
+        self.parser.add_argument('--ysql_proxy_http_port', default=None)
+        self.parser.add_argument('--ysql_proxy_rpc_port', default=None)
+        self.parser.add_argument('--redis_proxy_http_port', default=None)
+        self.parser.add_argument('--redis_proxy_rpc_port', default=None)
+        self.parser.add_argument('--node_exporter_http_port', default=None)
         self.parser.add_argument("--precheck_type", required=True,
                                  choices=['provision', 'configure'],
                                  help="Preflight check to determine if instance is ready.")
@@ -241,10 +253,22 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                                             print_output=False)
         results["Try Ansible Command"] = ansible_status == 0
 
+        ports_to_check = ",".join([str(p) for p in [args.master_http_port,
+                                                    args.master_rpc_port,
+                                                    args.tserver_http_port,
+                                                    args.tserver_rpc_port,
+                                                    args.cql_proxy_http_port,
+                                                    args.cql_proxy_rpc_port,
+                                                    args.ysql_proxy_http_port,
+                                                    args.ysql_proxy_rpc_port,
+                                                    args.redis_proxy_http_port,
+                                                    args.redis_proxy_rpc_port,
+                                                    args.node_exporter_http_port] if p is not None])
+
         cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
-              "--sudo_pass_file {} --cleanup".format(
+              "--ports_to_check {} --sudo_pass_file {} --cleanup".format(
                 args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args),
-                sudo_pass_file)
+                ports_to_check, sudo_pass_file)
         if args.install_node_exporter:
             cmd += " --install_node_exporter"
         if args.air_gap:

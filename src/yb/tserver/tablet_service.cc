@@ -37,19 +37,22 @@
 #include <string>
 #include <vector>
 
+#include <glog/logging.h>
+
 #include "yb/client/forward_rpc.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/leader_lease.h"
+
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/pgsql_operation.h"
 
 #include "yb/gutil/bind.h"
@@ -57,46 +60,50 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/master/sys_catalog_constants.h"
+
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metrics.h"
-
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
-#include "yb/util/trace.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
-#include "yb/consensus/consensus.pb.h"
-#include "yb/tserver/service_util.h"
+#include "yb/util/trace.h"
 
-#include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT
@@ -414,8 +421,13 @@ class WriteOperationCompletionCallback {
       tablet::WriteOperation* operation,
       const server::ClockPtr& clock,
       bool trace = false)
-      : tablet_peer_(std::move(tablet_peer)), context_(std::move(context)), response_(response),
-        operation_(operation), clock_(clock), include_trace_(trace) {}
+      : tablet_peer_(std::move(tablet_peer)),
+        context_(std::move(context)),
+        response_(response),
+        operation_(operation),
+        clock_(clock),
+        include_trace_(trace),
+        trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
     VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
@@ -427,8 +439,13 @@ class WriteOperationCompletionCallback {
       status = Status::OK();
     }
 
+    TRACE("Write completing with status $0", yb::ToString(status));
+
     if (!status.ok()) {
       LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
+      if (include_trace_ && trace_) {
+        response_->set_trace_buffer(trace_->DumpToString(true));
+      }
       SetupErrorAndRespond(get_error(), status, context_.get());
       return;
     }
@@ -467,8 +484,8 @@ class WriteOperationCompletionCallback {
       }
     }
 
-    if (include_trace_ && Trace::CurrentTrace() != nullptr) {
-      response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
+    if (include_trace_ && trace_) {
+      response_->set_trace_buffer(trace_->DumpToString(true));
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
     context_->RespondSuccess();
@@ -486,6 +503,7 @@ class WriteOperationCompletionCallback {
   tablet::WriteOperation* const operation_;
   server::ClockPtr clock_;
   const bool include_trace_;
+  scoped_refptr<Trace> trace_;
 };
 
 // Checksums the scan result.
@@ -884,7 +902,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   } else {
     table_info = tablet.peer->tablet_metadata()->primary_table_info();
   }
-  const Schema& tablet_schema = table_info->schema;
+  const Schema& tablet_schema = *table_info->schema;
   uint32_t schema_version = table_info->schema_version;
   // Sanity check, to verify that the tablet should have the same schema
   // specified in the request.
@@ -1023,7 +1041,7 @@ void TabletServiceImpl::VerifyTableRowRange(
     (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
   } else {
     const IndexMap index_map =
-        peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
+        *peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
     vector<IndexInfo> indexes;
     vector<TableId> index_ids;
     if (req->index_ids().empty()) {
@@ -1288,7 +1306,7 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   Partition partition;
   Partition::FromPB(req->partition(), &partition);
 
-  LOG(INFO) << "Processing CreateTablet for tablet " << req->tablet_id()
+  LOG(INFO) << "Processing CreateTablet for T " << req->tablet_id() << " P " << req->dest_uuid()
             << " (table=" << req->table_name()
             << " [id=" << req->table_id() << "]), partition="
             << partition_schema.PartitionDebugString(partition, schema);
@@ -1663,8 +1681,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
         }
         if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
           SetupErrorAndRespond(resp->mutable_error(),
-              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
-                                        "processing this query. Try again."),
+              STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
+                                         "transaction has been invalidated."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
           return;
         }
@@ -2048,8 +2066,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         }
         if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
           SetupErrorAndRespond(resp->mutable_error(),
-              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
-                                        "processing this query. Try again."),
+              STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
+                                         "transaction has been invalidated."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
           return;
         }
@@ -2929,7 +2947,8 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
 void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
                                         TakeTransactionResponsePB* resp,
                                         rpc::RpcContext context) {
-  auto transaction = server_->TransactionPool()->Take();
+  auto transaction = server_->TransactionPool()->Take(
+      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()));
   auto metadata = transaction->Release();
   if (!metadata.ok()) {
     LOG(INFO) << "Take failed: " << metadata.status();
@@ -2975,7 +2994,7 @@ void TabletServiceImpl::Shutdown() {
 }
 
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
-    TabletServerServiceIf::RpcMetricIndexes metric) {
+    TabletServerServiceRpcMethodIndexes metric) {
   // Returns the metric Histogram by holding a lock to make sure tablet_server_service_ remains
   // unchanged during the operation.
   std::lock_guard<simple_spinlock> l(lock_);

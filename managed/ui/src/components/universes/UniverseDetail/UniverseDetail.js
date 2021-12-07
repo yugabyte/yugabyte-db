@@ -47,14 +47,13 @@ import {
 } from '../../../utils/LayoutUtils';
 import './UniverseDetail.scss';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
+import Replication from '../../xcluster/Replication';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
-  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(
-    instanceType?.split?.('.')[0]
-  );
-}
+  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]);
+};
 
 class UniverseDetail extends Component {
   constructor(props) {
@@ -173,8 +172,7 @@ class UniverseDetail extends Component {
     this.props.router.push(currentLocation);
   };
 
-  handleSubmitManageKey = (response) => {
-    response.then((res) => {
+  handleSubmitManageKey = (res) => {
       if (res.payload.isAxiosError) {
         this.setState({
           showAlert: true,
@@ -185,11 +183,13 @@ class UniverseDetail extends Component {
         this.setState({
           showAlert: true,
           alertType: 'success',
-          alertMessage: 'Encryption key has been set!'
+          alertMessage:
+            JSON.parse(res.payload.config.data).key_op === 'ENABLE'
+              ? 'Encryption key has been set!'
+              : 'Encryption-at-Rest has been disabled!'
         });
       }
       setTimeout(() => this.setState({ showAlert: false }), 3000);
-    });
 
     this.props.closeModal();
   };
@@ -223,7 +223,9 @@ class UniverseDetail extends Component {
       customer,
       customer: { currentCustomer },
       params: { tab },
-      featureFlags
+      featureFlags,
+      providers,
+      accessKeys
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
@@ -239,6 +241,17 @@ class UniverseDetail extends Component {
     const isProviderK8S =
       getPromiseState(currentUniverse).isSuccess() &&
       isUniverseType(currentUniverse.data, 'kubernetes');
+
+    const providerUUID = primaryCluster?.userIntent?.provider;
+    const provider = providers.data.find((provider) => provider.uuid === providerUUID);
+
+    var onPremSkipProvisioning = false;
+    if (provider && provider.code === 'onprem') {
+      const onPremKey = accessKeys.data.find(
+        (accessKey) => accessKey.idKey.providerUUID === provider.uuid
+      );
+      onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
+    }
 
     const type =
       pathname.indexOf('edit') < 0
@@ -403,7 +416,13 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
-            <ReplicationContainer />
+            {
+              featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+                <Replication currentUniverseUUID={currentUniverse.data.universeUUID}/>
+              ): (
+                <ReplicationContainer />
+              )
+            }
           </Tab.Pane>
         ),
 
@@ -421,6 +440,7 @@ class UniverseDetail extends Component {
               tasks={tasks}
               isCommunityEdition={!!customer.INSECURE_apiToken}
               fetchCustomerTasks={this.props.fetchCustomerTasks}
+              refreshUniverseData={this.getUniverseInfo}
             />
           </Tab.Pane>
         )
@@ -549,10 +569,9 @@ class UniverseDetail extends Component {
                           )}
                         </YBMenuItem>
                       )}
-
                       {!universePaused && !useSystemd && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={updateInProgress || onPremSkipProvisioning}
                           onClick={showUpgradeSystemdModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -694,22 +713,23 @@ class UniverseDetail extends Component {
 
                       {/*
                       Read-only users should not be given the rights to "Pause Universe"
-                      */
-                      }
+                      */}
 
                       {isPausableUniverse(currentUniverse?.data) &&
                         !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
                           featureFlags.released['pausedUniverse']) && (
-                          <YBMenuItem 
+                          <YBMenuItem
                             onClick={showToggleUniverseStateModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
                               'universes.details.overview.pausedUniverse'
                             )}
                           >
-                            <YBLabelWithIcon icon="fa fa-pause-circle-o">
-                              {!universePaused ? 'Pause Universe' : 'Resume Universe'}
+                            <YBLabelWithIcon
+                              icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                            >
+                              {universePaused ? 'Resume Universe' : 'Pause Universe'}
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         )}
@@ -730,12 +750,13 @@ class UniverseDetail extends Component {
                   subMenus={{
                     security: (backToMainMenu) => (
                       <>
-                      <SecurityMenu
+                        <SecurityMenu
                           backToMainMenu={backToMainMenu}
                           showTLSConfigurationModal={showTLSConfigurationModal}
                           editTLSAvailability={editTLSAvailability}
                           showManageKeyModal={showManageKeyModal}
                           manageKeyAvailability={manageKeyAvailability}
+                          isItKubernetesUniverse={isItKubernetesUniverse}
                         />
                       </>
                     )

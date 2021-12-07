@@ -22,19 +22,20 @@
 #include <map>
 #include <string>
 
-#include <boost/functional/hash.hpp>
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/flush_job.h"
-#include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/table/mock_table.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/table/mock_table.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

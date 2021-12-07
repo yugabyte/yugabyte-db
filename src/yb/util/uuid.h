@@ -15,17 +15,17 @@
 #define YB_UTIL_UUID_H
 
 #include <uuid/uuid.h>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/system/error_code.hpp>
 
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/status.h"
-#include "yb/util/hexdump.h"
-#include "yb/util/slice.h"
+#include <array>
+#include <random>
+
+#include <boost/uuid/uuid.hpp>
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
 
 constexpr size_t kUuidSize = 16;
 constexpr int kShaDigestSize = 5;
@@ -55,10 +55,15 @@ class Uuid {
   Uuid(const Uuid& other);
 
   // Generate a new boost uuid
-  static boost::uuids::uuid Generate();
+  static Uuid Generate();
+  static Uuid Generate(std::mt19937_64* rng);
+  static Uuid Nil();
 
-  // Builds an Uuid object given a string representation of the UUID.
-  CHECKED_STATUS FromString(const std::string& strval);
+  static Result<Uuid> FromString(const std::string& strval);
+  // name is used in error message in case of failure.
+  static Result<Uuid> FullyDecode(const Slice& slice, const char* name = nullptr);
+  static Uuid TryFullyDecode(const Slice& slice);
+  static Result<Uuid> Decode(Slice* slice, const char* name = nullptr);
 
   // Fills in strval with the string representation of the UUID.
   CHECKED_STATUS ToString(std::string* strval) const;
@@ -112,13 +117,7 @@ class Uuid {
   // number of milliseconds since epoch.
   CHECKED_STATUS ToUnixTimestamp(int64_t *timestamp_ms) const;
 
-  CHECKED_STATUS IsTimeUuid() const {
-    if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
-      return Status::OK();
-    }
-    return STATUS_SUBSTITUTE(InvalidArgument,
-                             "Not a type 1 UUID. Current type: $0", boost_uuid_.version());
-  }
+  CHECKED_STATUS IsTimeUuid() const;
 
   bool IsNil() const {
     return boost_uuid_.is_nil();
@@ -134,59 +133,7 @@ class Uuid {
 
   // A custom comparator that compares UUID v1 according to their timestamp.
   // If not, it will compare the version first and then lexicographically.
-  bool operator<(const Uuid& other) const {
-    // First compare the version, variant and then the timestamp bytes.
-    if (boost_uuid_.version() < other.boost_uuid_.version()) {
-      return true;
-    } else if (boost_uuid_.version() > other.boost_uuid_.version()) {
-      return false;
-    }
-    if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
-      // Compare the hi timestamp bits.
-      for (size_t i = 6; i < kUuidMsbSize; i++) {
-        if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
-          return true;
-        } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
-          return false;
-        }
-      }
-      // Compare the mid timestamp bits.
-      for (int i = 4; i < 6; i++) {
-        if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
-          return true;
-        } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
-          return false;
-        }
-      }
-      // Compare the low timestamp bits.
-      for (int i = 0; i < 4; i++) {
-        if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
-          return true;
-        } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
-          return false;
-        }
-      }
-    } else {
-      // Compare all the other bits
-      for (size_t i = 0; i < kUuidMsbSize; i++) {
-        if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
-          return true;
-        } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
-          return false;
-        }
-      }
-    }
-
-    // Then compare the remaining bytes.
-    for (size_t i = kUuidMsbSize; i < kUuidSize; i++) {
-      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
-        return true;
-      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
-        return false;
-      }
-    }
-    return false;
-  }
+  bool operator<(const Uuid& other) const;
 
   bool operator>(const Uuid& other) const {
     return (other < *this);
@@ -203,6 +150,26 @@ class Uuid {
   Uuid& operator=(const Uuid& other) {
     boost_uuid_ = other.boost_uuid_;
     return *this;
+  }
+
+  const boost::uuids::uuid& impl() const {
+    return boost_uuid_;
+  }
+
+  uint8_t* data() {
+    return boost_uuid_.data;
+  }
+
+  const uint8_t* data() const {
+    return boost_uuid_.data;
+  }
+
+  size_t size() const {
+    return boost_uuid_.size();
+  }
+
+  auto version() const {
+    return boost_uuid_.version();
   }
 
  private:

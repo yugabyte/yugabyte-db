@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 import org.yb.client.YBClient;
 import org.yb.minicluster.MiniYBDaemon;
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
 import java.net.MalformedURLException;

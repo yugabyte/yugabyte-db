@@ -30,11 +30,12 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <gtest/gtest.h>
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/macros.h"
-
-#include <gtest/gtest.h>
 
 namespace yb {
 

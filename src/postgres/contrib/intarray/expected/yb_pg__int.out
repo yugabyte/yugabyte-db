@@ -453,6 +453,4 @@ CREATE INDEX text_idx on test__int using gist ( a gist__intbig_ops );
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX text_idx on test__int using gin ( a gin__int_ops );
-NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  index method "ybgin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+ERROR:  operator class "gin__int_ops" does not exist for access method "ybgin"

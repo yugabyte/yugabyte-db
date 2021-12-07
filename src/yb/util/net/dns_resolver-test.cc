@@ -34,13 +34,17 @@
 
 #include <vector>
 
+#include <boost/optional/optional.hpp>
+
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/util.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 

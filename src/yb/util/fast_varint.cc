@@ -10,13 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/fast_varint.h"
 
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/debug/leakcheck_disabler.h"
+#include <array>
+
 #include "yb/util/cast.h"
-#include "yb/util/debug-util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using std::string;
 
@@ -251,7 +251,7 @@ Result<int64_t> FastDecodeSignedVarIntUnsafe(Slice* slice) {
 
 Status FastDecodeSignedVarIntUnsafe(const std::string& encoded, int64_t* v, size_t* decoded_size) {
   return FastDecodeSignedVarIntUnsafe(
-      util::to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
+      to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
 }
 
 Status FastDecodeDescendingSignedVarIntUnsafe(yb::Slice *slice, int64_t *dest) {

@@ -14,20 +14,31 @@
 #include <chrono>
 #include <regex>
 
-#include "yb/integration-tests/test_workload.h"
-#include "yb/integration-tests/ts_itest-base.h"
+#include "yb/client/table.h"
+
+#include "yb/common/common.pb.h"
+
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/test_workload.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/memory_monitor.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_memory_manager.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 

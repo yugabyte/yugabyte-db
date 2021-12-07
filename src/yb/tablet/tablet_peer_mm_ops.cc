@@ -38,11 +38,11 @@
 #include <string>
 
 #include <gflags/gflags.h>
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metrics.h"
-#include "yb/util/flag_tags.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/metrics.h"
 
 METRIC_DEFINE_gauge_uint32(table, log_gc_running,

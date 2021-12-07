@@ -29,21 +29,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/yb-admin_cli.h"
 
-#include <iostream>
 #include <memory>
 #include <utility>
 
 #include <boost/lexical_cast.hpp>
-#include <boost/range.hpp>
 
 #include "yb/common/json_util.h"
-#include "yb/rpc/messenger.h"
-#include "yb/tools/yb-admin_client.h"
-#include "yb/util/flags.h"
-#include "yb/util/stol_utils.h"
+
 #include "yb/master/master_defaults.h"
+
+#include "yb/tools/yb-admin_client.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 
 DEFINE_string(master_addresses, "localhost:7100",
@@ -826,6 +829,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const string tablet_id = args[0];
         RETURN_NOT_OK_PREPEND(client->SplitTablet(tablet_id),
                               Format("Unable to start split of tablet $0", tablet_id));
+        return Status::OK();
+      });
+
+  Register(
+      "create_transaction_table", " <table_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string table_name = args[0];
+        RETURN_NOT_OK_PREPEND(client->CreateTransactionsStatusTable(table_name),
+                              Format("Unable to create transaction table named $0", table_name));
         return Status::OK();
       });
 

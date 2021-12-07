@@ -1,7 +1,7 @@
 ---
 title: Recommended practice for specifying the UTC offset [YSQL]
 headerTitle: Recommended practice for specifying the UTC offset
-linkTitle: recommended practice
+linkTitle: Recommended practice
 description: Recommends a practice to for specifying the offset from the UTC Time Standard safely. [YSQL]
 menu:
   stable:
@@ -25,13 +25,19 @@ Yugabyte recommends that you create two user-defined function overload sets, thu
 - When a timezone is specified using an _interval_ value, this is checked to ensure that it lies in the range defined by the overall maximum and minimum values of _utc_offset_ columns in the _pg_timezone_names_ and _pg_timezone_abbrevs_ catalog views. It's also checked to ensure that it's an integral multiple of fifteen minutes, respecting the convention followed by every timezone shown by _pg_timezone_names_.
 
 Following these recommendations protects you from the many opportunities to go wrong brought by using the native functionality with no constraints; and yet doing so still allows you all the functionality that you could need.
+{{< /tip >}}</br>
 
-The code that this page presents is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../intro/#download). The code on this page depends on the [custom _interval_ domains](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) code. And this, in turn, depends on the [user-defined _interval_ utilities](../../date-time-data-types-semantics/type-interval/interval-utilities/).
+{{< tip title="Download and install the date-time utilities code." >}}
+The code on this page depends on the [_extended_timezone_names_ view](../extended-timezone-names/). It also depends on the [custom _interval_ domains](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) code. And this, in turn, depends on the [user-defined _interval_ utilities](../../date-time-data-types-semantics/type-interval/interval-utilities/).
+
+These components are all included in the larger [code kit](../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../type_datetime)_ section describes and uses.
+
+The code on that this page defines is intended for reuse. It, too, is therefore included in the _date-time utilities_ downloadable code kit.
 {{< /tip >}}
 
 ## The approved_timezone_names view
 
-This is the union of the [Real timezones that observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-with-dst/) view, the [Real timezones that do not observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-no-dst/) view, and the single row that specifies the facts about the _UTC Time Standard_.
+This is the union of the [Real timezones that observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-with-dst/) view, the [Real timezones that don't observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-no-dst/) view, and the single row that specifies the facts about the _UTC Time Standard_.
 
 ```plpgslq
 drop view if exists approved_timezone_names cascade;
@@ -74,7 +80,7 @@ where
 
 ## Common procedures to assert the approval of a timezone name and an interval value
 
-These two _"assert"_ procedures are used by both the _[set_timezone()](#the-set-timezone-procedure-overloads)_ and the _[at_timezone()](#the-at-timezone-function-overloads)_ user-defined function overloads. They depend upon some code described in the section [Defining and using custom domain types to specialize the native interval functionality](../../date-time-data-types-semantics/type-interval/custom-interval-domains/). And these, in turn, depend on some code described in the [User-defined interval utility functions](../../date-time-data-types-semantics/type-interval/interval-utilities/) section.
+These two _"assert"_ procedures are used by both the _[set_timezone()](#the-set-timezone-procedure-overloads)_ and the _[at_timezone()](#the-at-timezone-function-overloads)_ user-defined function overloads. They depend upon some code described in the section [Custom domain types for specializing the native _interval_ functionality](../../date-time-data-types-semantics/type-interval/custom-interval-domains/). And these, in turn, depend on some code described in the [User-defined _interval_ utility functions](../../date-time-data-types-semantics/type-interval/interval-utilities/) section.
 
 ### assert_approved_timezone_name()
 
@@ -278,7 +284,7 @@ $body$;
 
 ## Test the set_timezone() and the at_timezone() overloads
 
-The following tests contain some commented out _raise info_ statements. They show the error messages that you get when you supply a timezone name that isn't approved or, or an interval value that isn't acceptable.
+The following tests contain some commented out _raise info_ statements. They show the error messages that you get when you supply a timezone name that isn't approved or, or an _interval_ value that isn't acceptable.
 
 ### Test the set_timezone(text) overload
 

@@ -18,11 +18,9 @@
 #include <thread>
 
 #include <boost/ptr_container/ptr_vector.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/util/ref_cnt_buffer.h"
-
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -76,7 +74,7 @@ TEST_F(RefCntBufferTest, TestVector) {
   std::vector<RefCntBuffer> v;
   for (auto i = 10000; i--;) {
     v.emplace_back(kSizeLimit);
-    YB_ASSERT_TRUE(v.back());
+    ASSERT_TRUE(v.back());
   }
 
   unsigned int seed = SeedRandom();
@@ -85,7 +83,7 @@ TEST_F(RefCntBufferTest, TestVector) {
     auto temp = v[idx];
     v[idx] = v.back();
     v.pop_back();
-    YB_ASSERT_TRUE(temp);
+    ASSERT_TRUE(temp);
   }
 }
 
@@ -107,7 +105,7 @@ class TestQueue {
   void Enqueue(RefCntBuffer buffer) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      YB_ASSERT_TRUE(buffer);
+      ASSERT_TRUE(buffer);
       // We don't use std::move in this test because we want to check reference counting.
       buffers_.push_back(buffer);
       ++received_buffers_;
@@ -133,7 +131,7 @@ class TestQueue {
     std::unique_lock<std::mutex> lock(mutex_);
     for (auto i = kInitialBuffers; i--;) {
       buffers_.emplace_back(kSizeLimit);
-      YB_ASSERT_TRUE(buffers_.back());
+      ASSERT_TRUE(buffers_.back());
     }
 
     unsigned int seed = SeedRandom();
@@ -145,7 +143,7 @@ class TestQueue {
         buffers_[idx] = buffers_.back();
         buffers_.pop_back();
         ++sent_buffers_;
-        YB_ASSERT_TRUE(buffer);
+        ASSERT_TRUE(buffer);
       }
 
       if (buffer) {

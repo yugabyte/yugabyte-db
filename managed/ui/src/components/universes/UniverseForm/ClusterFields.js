@@ -131,15 +131,17 @@ const initialState = {
   enableClientToNodeEncrypt: true,
   enableEncryptionAtRest: false,
   useSystemd: false,
-  customizePorts: false
+  customizePorts: false,
+  // Geo-partitioning settings.
+  defaultRegion: ''
 };
 
 export default class ClusterFields extends Component {
-
   constructor(props) {
     super(props);
     this.providerChanged = this.providerChanged.bind(this);
     this.numNodesChanged = this.numNodesChanged.bind(this);
+    this.defaultRegionChanged = this.defaultRegionChanged.bind(this);
     this.instanceTypeChanged = this.instanceTypeChanged.bind(this);
     this.regionListChanged = this.regionListChanged.bind(this);
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
@@ -175,6 +177,7 @@ export default class ClusterFields extends Component {
     this.validateUserTags = this.validateUserTags.bind(this);
     this.validatePassword = this.validatePassword.bind(this);
     this.validateConfirmPassword = this.validateConfirmPassword.bind(this);
+    this.tlsCertChanged = this.tlsCertChanged.bind(this);
 
     this.currentInstanceType = _.get(
       this.props.universe,
@@ -195,7 +198,16 @@ export default class ClusterFields extends Component {
           gcpInstanceWithEphemeralStorage: false
         };
       } else {
-        const {userIntent} = getPrimaryCluster(this.props.universe.currentUniverse.data.universeDetails.clusters);
+        const {
+          universe: {
+            currentUniverse: {
+              data: { universeDetails }
+            }
+          }
+        } = this.props;
+
+        const { userIntent } = getPrimaryCluster(universeDetails.clusters);
+
         this.state = {
           ...initialState,
           enableYSQL: userIntent.enableYSQL,
@@ -203,7 +215,11 @@ export default class ClusterFields extends Component {
           enableYCQL: userIntent.enableYCQL,
           enableYCQLAuth: userIntent.enableYCQLAuth,
           isReadOnlyExists: false,
-          editNotAllowed: false
+          editNotAllowed: false,
+          useSystemd: userIntent.useSystemd,
+          enableEncryptionAtRest:
+            universeDetails.encryptionAtRestConfig &&
+            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled
         };
       }
     } else {
@@ -215,10 +231,15 @@ export default class ClusterFields extends Component {
           enableYSQLAuth: tempState.enableYSQLAuth,
           enableYCQL: tempState.enableYCQL,
           enableYCQLAuth: tempState.enableYCQLAuth,
-          isReadOnlyExists: tempState.provider && this.props.type === 'Create' && this.props.clusterType === 'async'
-        }
+          isReadOnlyExists:
+            tempState.provider &&
+            this.props.type === 'Create' &&
+            this.props.clusterType === 'async',
+          useSystemd: tempState.useSystemd,
+          enableEncryptionAtRest: tempState.enableEncryptionAtRest
+        };
       }
-      this.state = tempState? tempState : initialState;
+      this.state = tempState ? tempState : initialState;
     }
   }
 
@@ -259,7 +280,8 @@ export default class ClusterFields extends Component {
         }
       } else {
         // when adding read replica post universe creation
-        currentSoftwareVersion = getPrimaryCluster(universeDetails.clusters).userIntent.ybSoftwareVersion;
+        currentSoftwareVersion = getPrimaryCluster(universeDetails.clusters).userIntent
+          .ybSoftwareVersion;
       }
       this.setState({ ybSoftwareVersion: currentSoftwareVersion });
       updateFormField(`${clusterType}.ybSoftwareVersion`, currentSoftwareVersion);
@@ -308,14 +330,16 @@ export default class ClusterFields extends Component {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       const readOnlyCluster = getReadOnlyCluster(universeDetails.clusters);
       const userIntent =
-        clusterType === 'async' ?
-          readOnlyCluster ? (readOnlyCluster && {
-              ...readOnlyCluster.userIntent,
-              universeName: primaryCluster.userIntent.universeName
-            }) : (primaryCluster && {
-              ...primaryCluster.userIntent,
-              universeName: primaryCluster.userIntent.universeName
-            })
+        clusterType === 'async'
+          ? readOnlyCluster
+            ? readOnlyCluster && {
+                ...readOnlyCluster.userIntent,
+                universeName: primaryCluster.userIntent.universeName
+              }
+            : primaryCluster && {
+                ...primaryCluster.userIntent,
+                universeName: primaryCluster.userIntent.universeName
+              }
           : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       const encryptionAtRestEnabled =
@@ -334,7 +358,9 @@ export default class ClusterFields extends Component {
           'async.enableYEDIS': userIntent.enableYEDIS,
           'async.enableNodeToNodeEncrypt': userIntent.enableNodeToNodeEncrypt,
           'async.enableClientToNodeEncrypt': userIntent.enableClientToNodeEncrypt,
-          'async.enableEncryptionAtRest': userIntent.enableEncryptionAtRest
+          'async.enableEncryptionAtRest': encryptionAtRestEnabled,
+          'async.useSystemd': userIntent.useSystemd,
+          'async.tlsCertificateId': universeDetails.rootCA
         });
       }
       if (userIntent && providerUUID) {
@@ -358,16 +384,28 @@ export default class ClusterFields extends Component {
           enableYEDIS: userIntent.enableYEDIS,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
-          enableEncryptionAtRest: encryptionAtRestEnabled,
+          enableEncryptionAtRest:
+            universeDetails.encryptionAtRestConfig &&
+            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageType: storageType,
           regionList: userIntent.regionList,
-          volumeType: storageType === null ? 'SSD' : 'EBS' //TODO(wesley): fixme - establish volumetype/storagetype relationship
+          volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
+          useSystemd: userIntent.useSystemd
         });
       }
 
       this.props.getRegionListItems(providerUUID);
+      if (
+        clusterType === 'primary' &&
+        isNonEmptyObject(primaryCluster?.placementInfo?.cloudList[0])
+      ) {
+        const value = primaryCluster.placementInfo.cloudList[0].defaultRegion;
+        this.setState({ defaultRegion: value });
+        updateFormField(`primary.defaultRegion`, value);
+      }
+
       if (primaryCluster.userIntent.providerType === 'onprem') {
         this.props.fetchNodeInstanceList(providerUUID);
       }
@@ -435,6 +473,12 @@ export default class ClusterFields extends Component {
             this.setState({
               enableClientToNodeEncrypt: formValues['primary'].enableClientToNodeEncrypt
             });
+          }
+          if (formValues[clusterType].useSystemd) {
+            this.setState({ useSystemd: formValues['primary'].useSystemd });
+          }
+          if (formValues[clusterType].enableEncryptionAtRest) {
+            this.setState({ enableEncryptionAtRest: formValues['primary'].enableEncryptionAtRest });
           }
         }
       } else {
@@ -580,6 +624,36 @@ export default class ClusterFields extends Component {
     }
   }
 
+  componentDidMount() {
+    const {
+      cloud,
+      clusterType,
+      updateFormField,
+      type,
+      formValues,
+      universe: { currentUniverse }
+    } = this.props;
+    if (!formValues[clusterType] && isNonEmptyArray(cloud.providers?.data)) {
+      // AC: Editing Read-Replica is type 'Async'. We should change this at some point
+      if (type === 'Edit' || type === 'Async') {
+        let currentCluster =
+          type === 'Edit'
+            ? getPrimaryCluster(currentUniverse.data.universeDetails.clusters)
+            : getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
+        if (!currentCluster)
+          //init primary cluster as current cluster (creation of first read replica) -
+          currentCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+
+        const currentProviderUuid = currentCluster.userIntent.provider;
+        updateFormField(`${clusterType}.provider`, currentProviderUuid);
+      } else {
+        const firstProviderUuid = cloud.providers.data[0]?.uuid;
+        updateFormField(`${clusterType}.provider`, firstProviderUuid);
+        this.providerChanged(firstProviderUuid);
+      }
+    }
+  }
+
   componentDidUpdate(prevProps, prevState) {
     const {
       universe: { currentUniverse, universeConfigTemplate },
@@ -706,9 +780,13 @@ export default class ClusterFields extends Component {
         .join(',');
     }
     if (volumeDetail) {
-      let storageType = this.state.deviceInfo.storageType ? this.state.deviceInfo.storageType : DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
-      if (instanceTypeSelectedData.providerCode === 'aws' &&
-        isEphemeralAwsStorageInstance(instanceTypeCode)) {
+      let storageType = this.state.deviceInfo.storageType
+        ? this.state.deviceInfo.storageType
+        : DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
+      if (
+        instanceTypeSelectedData.providerCode === 'aws' &&
+        isEphemeralAwsStorageInstance(instanceTypeCode)
+      ) {
         storageType = null;
       }
 
@@ -776,11 +854,14 @@ export default class ClusterFields extends Component {
   setThroughputByIops(currentIops, currentThroughput) {
     const { updateFormField, clusterType } = this.props;
     if (this.state.deviceInfo.storageType === 'GP3') {
-      if ((currentIops > GP3_DEFAULT_DISK_IOPS ||
-          currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
-          currentIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT) {
-        const newThroughput = Math.min(GP3_MAX_THROUGHPUT,
-          Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT));
+      if (
+        (currentIops > GP3_DEFAULT_DISK_IOPS || currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
+        currentIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT
+      ) {
+        const newThroughput = Math.min(
+          GP3_MAX_THROUGHPUT,
+          Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT)
+        );
         updateFormField(`${clusterType}.throughput`, newThroughput);
         this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: newThroughput } });
       }
@@ -789,11 +870,14 @@ export default class ClusterFields extends Component {
 
   diskIopsChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    const maxDiskIops = this.state.deviceInfo.storageType === 'IO1' ?
-      IO1_MAX_DISK_IOPS : GP3_MAX_IOPS;
+    const maxDiskIops =
+      this.state.deviceInfo.storageType === 'IO1' ? IO1_MAX_DISK_IOPS : GP3_MAX_IOPS;
     const actualVal = Math.max(0, Math.min(maxDiskIops, val));
     updateFormField(`${clusterType}.diskIops`, actualVal);
-    if (this.state.deviceInfo.storageType === 'IO1' || this.state.deviceInfo.storageType === 'GP3') {
+    if (
+      this.state.deviceInfo.storageType === 'IO1' ||
+      this.state.deviceInfo.storageType === 'GP3'
+    ) {
       this.setState({ deviceInfo: { ...this.state.deviceInfo, diskIops: actualVal } });
       this.setThroughputByIops(actualVal, this.state.deviceInfo.throughput);
     }
@@ -806,6 +890,13 @@ export default class ClusterFields extends Component {
       this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: val } });
       this.setThroughputByIops(this.state.deviceInfo.diskIops, val);
     }
+  }
+
+  defaultRegionChanged(val) {
+    const { updateFormField, clusterType } = this.props;
+    this.setState({ nodeSetViaAZList: false });
+    updateFormField(`${clusterType}.defaultRegion`, val);
+    this.setState({ defaultRegion: val });
   }
 
   toggleUseTimeSync(event) {
@@ -830,8 +921,8 @@ export default class ClusterFields extends Component {
   }
 
   updateFormFields(obj) {
-    const { updateFormField} = this.props;
-    for (let x in obj) {
+    const { updateFormField } = this.props;
+    for (const x in obj) {
       updateFormField(x, obj[x]);
     }
   }
@@ -988,10 +1079,14 @@ export default class ClusterFields extends Component {
   }
 
   toggleEnableEncryptionAtRest(event) {
-    const { updateFormField, clusterType, getKMSConfigs, cloud } = this.props;
+    const { clusterType, getKMSConfigs, cloud } = this.props;
     const toggleValue = event.target.checked;
+
     if (clusterType === 'primary') {
-      updateFormField('primary.enableEncryptionAtRest', toggleValue);
+      this.updateFormFields({
+        'primary.enableEncryptionAtRest': toggleValue,
+        'async.enableEncryptionAtRest': toggleValue
+      });
       this.setState({ enableEncryptionAtRest: toggleValue });
       /*
        * Check if toggle is set to true and fetch list of KMS configs if
@@ -1010,9 +1105,18 @@ export default class ClusterFields extends Component {
   }
 
   toggleUseSystemd(event) {
-    const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.useSystemd`, event.target.checked);
-    this.setState({ useSystemd: event.target.checked });
+    const { clusterType } = this.props;
+
+    if (clusterType === 'primary') {
+      this.updateFormFields({
+        'primary.useSystemd': event.target.checked,
+        'async.useSystemd': event.target.checked
+      });
+
+      this.setState({
+        useSystemd: event.target.checked
+      });
+    }
   }
 
   handleAwsArnChange(event) {
@@ -1139,7 +1243,8 @@ export default class ClusterFields extends Component {
       formValues,
       clusterType,
       getCurrentUserIntent,
-      updateTaskParams
+      updateTaskParams,
+      featureFlags
     } = this.props;
     const { hasInstanceTypeChanged } = this.state;
     const currentProviderUUID = this.state.providerSelected;
@@ -1169,8 +1274,7 @@ export default class ClusterFields extends Component {
     if (
       isNonEmptyObject(formValues[clusterType].instanceTags) &&
       currentProviderUUID &&
-      (this.getCurrentProvider(currentProviderUUID).code === 'aws' ||
-        this.getCurrentProvider(currentProviderUUID).code === 'azu')
+      ['aws', 'azu', 'gcp'].includes(this.getCurrentProvider(currentProviderUUID).code)
     ) {
       userIntent['instanceTags'] = formValues[clusterType].instanceTags;
     }
@@ -1185,6 +1289,24 @@ export default class ClusterFields extends Component {
       this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists);
     updateTaskParams(universeTaskParams, userIntent, clusterType, isEdit);
     universeTaskParams.userAZSelected = false;
+
+    const allowGeoPartitioning =
+      featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
+
+    const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
+    if (
+      clusterType === 'primary' &&
+      isNonEmptyObject(cluster.placementInfo) &&
+      isNonEmptyArray(cluster.placementInfo.cloudList)
+    ) {
+      universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
+      if (allowGeoPartitioning && this.state.defaultRegion !== '') {
+        cluster.placementInfo.cloudList[0].defaultRegion = this.state.defaultRegion;
+      } else {
+        delete cluster.placementInfo.defaultRegion;
+      }
+    }
+
     this.handleUniverseConfigure(universeTaskParams);
   }
 
@@ -1200,7 +1322,7 @@ export default class ClusterFields extends Component {
 
   setDefaultProviderStorage = (providerData) => {
     this.storageTypeChanged(DEFAULT_STORAGE_TYPES[providerData.code.toUpperCase()]);
-  }
+  };
 
   providerChanged = (value) => {
     const {
@@ -1239,7 +1361,8 @@ export default class ClusterFields extends Component {
         accessKeyCode: defaultAccessKeyCode,
         awsInstanceWithEphemeralStorage: false,
         gcpInstanceWithEphemeralStorage: false,
-        isReadOnlyExists: providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
+        isReadOnlyExists:
+          providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
       });
 
       this.props.getRegionListItems(providerUUID, true);
@@ -1272,6 +1395,16 @@ export default class ClusterFields extends Component {
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
   }
 
+  tlsCertChanged(value) {
+    this.updateFormFields({
+      'primary.tlsCertificateId': value,
+      'async.tlsCertificateId': value
+    });
+    this.setState({
+      tlsCertificateId: value
+    });
+  }
+
   regionListChanged(value) {
     const {
       formValues,
@@ -1279,7 +1412,11 @@ export default class ClusterFields extends Component {
       updateFormField,
       cloud: { providers }
     } = this.props;
-    this.setState({ nodeSetViaAZList: false, regionList: value });
+
+    updateFormField(`${clusterType}.regionList`, value || []);
+
+    this.setState({ nodeSetViaAZList: false, regionList: value || [] });
+
     const currentProvider = providers.data.find((a) => a.uuid === formValues[clusterType].provider);
     if (!isNonEmptyString(formValues[clusterType].instanceType)) {
       updateFormField(
@@ -1299,20 +1436,29 @@ export default class ClusterFields extends Component {
   }
 
   validatePassword(value, formValues, formikBag, fieldName) {
-    const errorMsg = 'Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.';
-    const isAuthEnabled = formValues.primary[(fieldName === 'primary.ysqlPassword')? "enableYSQLAuth" : "enableYCQLAuth"];
-    if (!isAuthEnabled) {return undefined;}
+    const errorMsg =
+      'Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.';
+    const isAuthEnabled =
+      formValues.primary[
+        fieldName === 'primary.ysqlPassword' ? 'enableYSQLAuth' : 'enableYCQLAuth'
+      ];
+    if (!isAuthEnabled) {
+      return undefined;
+    }
     if (value) {
       const passwordValidationRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
-      return (passwordValidationRegex.test(value) ? undefined : errorMsg);
+      return passwordValidationRegex.test(value) ? undefined : errorMsg;
     }
     return errorMsg;
   }
 
   validateConfirmPassword(value, formValues, formikBag, fieldName) {
-    const passwordValue = formValues.primary[(fieldName === 'primary.ysqlConfirmPassword')? 'ysqlPassword' : 'ycqlPassword'];
+    const passwordValue =
+      formValues.primary[
+        fieldName === 'primary.ysqlConfirmPassword' ? 'ysqlPassword' : 'ycqlPassword'
+      ];
     if (!_.isEmpty(passwordValue)) {
-      return (value === passwordValue) ? undefined : 'Password should match';
+      return value === passwordValue ? undefined : 'Password should match';
     }
     return undefined;
   }
@@ -1434,19 +1580,16 @@ export default class ClusterFields extends Component {
       })
     ];
     const isFieldReadOnly =
-      (
-        isNonEmptyObject(universe.currentUniverse.data) &&
-        (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists))
-      ) || (
-        this.props.type === 'Create' && this.props.clusterType === 'async' && this.state.isReadOnlyExists
-      );
-    const isSWVersionReadOnly = 
-      (
-        isNonEmptyObject(universe.currentUniverse.data) &&
-        (this.props.type === 'Edit' || this.props.type === 'Async')
-      ) || (
-        this.props.type === 'Create' && this.props.clusterType === 'async'
-      );
+      (isNonEmptyObject(universe.currentUniverse.data) &&
+        (this.props.type === 'Edit' ||
+          (this.props.type === 'Async' && this.state.isReadOnlyExists))) ||
+      (this.props.type === 'Create' &&
+        this.props.clusterType === 'async' &&
+        this.state.isReadOnlyExists);
+    const isSWVersionReadOnly =
+      (isNonEmptyObject(universe.currentUniverse.data) &&
+        (this.props.type === 'Edit' || this.props.type === 'Async')) ||
+      (this.props.type === 'Create' && this.props.clusterType === 'async');
     const isReadOnlyOnEdit =
       isNonEmptyObject(universe.currentUniverse.data) &&
       (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists));
@@ -1641,7 +1784,6 @@ export default class ClusterFields extends Component {
         currentProvider.code === 'onprem' ||
         currentProvider.code === 'kubernetes')
     ) {
-
       enableYSQL = (
         <Field
           name={`${clusterType}.enableYSQL`}
@@ -1671,34 +1813,33 @@ export default class ClusterFields extends Component {
             </div>
           </Col>
         </Row>
-
       );
       ysqlAuthPassword = (
         <Row>
           <Col sm={12} md={6} lg={6}>
             <div className="form-right-aligned-labels">
-            <Field
-              name={`${clusterType}.ysqlPassword`}
-              type="password"
-              component={YBTextInputWithLabel}
-              validate={this.validatePassword}
-              autoComplete="new-password"
-              label="YSQL Auth Password"
-              placeholder="Enter Password"
-            />
+              <Field
+                name={`${clusterType}.ysqlPassword`}
+                type="password"
+                component={YBTextInputWithLabel}
+                validate={this.validatePassword}
+                autoComplete="new-password"
+                label="YSQL Auth Password"
+                placeholder="Enter Password"
+              />
             </div>
           </Col>
           <Col sm={12} md={6} lg={6}>
             <div className="form-right-aligned-labels">
-            <Field
-              name={`${clusterType}.ysqlConfirmPassword`}
-              type="password"
-              component={YBTextInputWithLabel}
-              validate={this.validateConfirmPassword}
-              autoComplete="new-password"
-              label="Confirm Password"
-              placeholder="Confirm Password"
-            />
+              <Field
+                name={`${clusterType}.ysqlConfirmPassword`}
+                type="password"
+                component={YBTextInputWithLabel}
+                validate={this.validateConfirmPassword}
+                autoComplete="new-password"
+                label="Confirm Password"
+                placeholder="Confirm Password"
+              />
             </div>
           </Col>
         </Row>
@@ -1738,28 +1879,28 @@ export default class ClusterFields extends Component {
         <Row>
           <Col sm={12} md={6} lg={6}>
             <div className="form-right-aligned-labels">
-            <Field
-              name={`${clusterType}.ycqlPassword`}
-              type="password"
-              component={YBTextInputWithLabel}
-              validate={this.validatePassword}
-              autoComplete="new-password"
-              label="YCQL Auth Password"
-              placeholder="Enter Password"
-            />
+              <Field
+                name={`${clusterType}.ycqlPassword`}
+                type="password"
+                component={YBTextInputWithLabel}
+                validate={this.validatePassword}
+                autoComplete="new-password"
+                label="YCQL Auth Password"
+                placeholder="Enter Password"
+              />
             </div>
           </Col>
           <Col sm={12} md={6} lg={6}>
             <div className="form-right-aligned-labels">
-            <Field
-              name={`${clusterType}.ycqlConfirmPassword`}
-              type="password"
-              component={YBTextInputWithLabel}
-              validate={this.validateConfirmPassword}
-              autoComplete="new-password"
-              label="Confirm Password"
-              placeholder="Confirm Password"
-            />
+              <Field
+                name={`${clusterType}.ycqlConfirmPassword`}
+                type="password"
+                component={YBTextInputWithLabel}
+                validate={this.validateConfirmPassword}
+                autoComplete="new-password"
+                label="Confirm Password"
+                placeholder="Confirm Password"
+              />
             </div>
           </Col>
         </Row>
@@ -1874,12 +2015,15 @@ export default class ClusterFields extends Component {
           });
         }
 
-        const isSelectReadOnly = this.props.type === 'Edit' && currentProvider.code !== 'onprem';
+        const isSelectReadOnly =
+          (this.props.type === 'Edit' && currentProvider.code !== 'onprem') ||
+          clusterType === 'async';
         selectTlsCert = (
           <Field
             name={`${clusterType}.tlsCertificateId`}
             component={YBSelectWithLabel}
             options={tlsCertOptions}
+            onInputChanged={this.tlsCertChanged}
             readOnlySelect={isSelectReadOnly}
             label="Root Certificate"
           />
@@ -1927,8 +2071,6 @@ export default class ClusterFields extends Component {
       );
     }
 
-    universeProviderList.unshift(<option key="" value=""></option>);
-
     let universeRegionList = [];
     if (self.state.providerSelected) {
       universeRegionList =
@@ -1937,6 +2079,28 @@ export default class ClusterFields extends Component {
           return { value: regionItem.uuid, label: regionItem.name };
         });
     }
+
+    const universeRegionListWithNone = this.state.regionList && [
+      <option value="" key={`region-option-none`}>
+        None
+      </option>,
+      isNonEmptyObject(cloud.regions.data) &&
+        this.state.regionList.map?.(function (regionItem) {
+          if (typeof regionItem === 'string') {
+            const region = cloud.regions.data.find((region) => region.uuid === regionItem);
+            regionItem = !isEmptyObject(region) ? { value: region.uuid, label: region.name } : null;
+          }
+          return isNonEmptyObject(regionItem) ? (
+            <option key={regionItem.value} value={regionItem.value}>
+              {regionItem.label}
+            </option>
+          ) : (
+            <option value="" key={`region-option-unknown`}>
+              Unknown region {regionItem}
+            </option>
+          );
+        })
+    ];
 
     let universeInstanceTypeList = <option />;
 
@@ -2075,6 +2239,8 @@ export default class ClusterFields extends Component {
         : clusterType === 'async'
         ? !!getReadOnlyCluster(clusters)
         : false;
+    const enableGeoPartitioning =
+      featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
     const azSelectorTable = (
       <div>
         <AZSelectorTable
@@ -2085,6 +2251,7 @@ export default class ClusterFields extends Component {
           maxNumNodes={this.state.maxNumNodes}
           currentProvider={this.getCurrentProvider(currentProviderUUID)}
           isKubernetesUniverse={this.state.isKubernetesUniverse}
+          enableGeoPartitioning={enableGeoPartitioning}
         />
         {showPlacementStatus && placementStatus}
       </div>
@@ -2116,7 +2283,7 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-      if (currentProviderCode === 'azu' || currentProviderCode === 'aws') {
+      if (['azu', 'aws', 'gcp'].includes(currentProviderCode)) {
         tagsArray = (
           <Row>
             <Col md={12}>
@@ -2227,7 +2394,7 @@ export default class ClusterFields extends Component {
                   : null}
               </div>
 
-              {clusterType !== 'async' && (
+              {clusterType !== 'async' && [
                 <Row>
                   <div className="form-right-aligned-labels">
                     <Col lg={5}>
@@ -2260,8 +2427,24 @@ export default class ClusterFields extends Component {
                       />
                     </Col>
                   </div>
+                </Row>,
+                <Row>
+                  <div className="form-right-aligned-labels">
+                    {enableGeoPartitioning && (
+                      <Field
+                        name={`${clusterType}.defaultRegion`}
+                        type="select"
+                        component={YBSelectWithLabel}
+                        label="Default Region"
+                        initialValue={this.state.defaultRegion}
+                        options={universeRegionListWithNone}
+                        onInputChanged={this.defaultRegionChanged}
+                        readOnlySelect={isFieldReadOnly}
+                      />
+                    )}
+                  </div>
                 </Row>
-              )}
+              ]}
             </Col>
             <Col md={6} className={'universe-az-selector-container'}>
               {placementStatusOnprem || (regionAndProviderDefined && azSelectorTable)}
@@ -2332,27 +2515,35 @@ export default class ClusterFields extends Component {
               </div>
             </Col>
           </Row>
-          {(currentProviderUUID && !this.state.enableYSQL && !this.state.enableYCQL) && (
-            <div className="has-error"><div className="help-block standard-error">Enable atleast one endpoint among YSQL and YCQL</div></div>
+          {currentProviderUUID && !this.state.enableYSQL && !this.state.enableYCQL && (
+            <div className="has-error">
+              <div className="help-block standard-error">
+                Enable atleast one endpoint among YSQL and YCQL
+              </div>
+            </div>
           )}
           <Row>
             <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels">
-                {enableYSQL}
-              </div>
+              <div className="form-right-aligned-labels">{enableYSQL}</div>
             </Col>
           </Row>
           {this.state.enableYSQL && enableYSQLAuth}
-          { clusterType === 'primary' && type === 'Create' && this.state.enableYSQL && this.state.enableYSQLAuth && ysqlAuthPassword}
+          {clusterType === 'primary' &&
+            type === 'Create' &&
+            this.state.enableYSQL &&
+            this.state.enableYSQLAuth &&
+            ysqlAuthPassword}
           <Row>
             <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels">
-                {enableYCQL}
-              </div>
+              <div className="form-right-aligned-labels">{enableYCQL}</div>
             </Col>
           </Row>
           {this.state.enableYCQL && enableYCQLAuth}
-          { clusterType === 'primary' && type === 'Create' && this.state.enableYCQL && this.state.enableYCQLAuth && ycqlAuthPassword}
+          {clusterType === 'primary' &&
+            type === 'Create' &&
+            this.state.enableYCQL &&
+            this.state.enableYCQLAuth &&
+            ycqlAuthPassword}
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">

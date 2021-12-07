@@ -11,22 +11,22 @@
 // under the License.
 //
 
+#include "yb/client/schema.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
-
-#include "yb/client/session.h"
-
 #include "yb/client/txn-test-base.h"
-#include "yb/master/catalog_manager.h"
+
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 
@@ -147,7 +147,7 @@ TEST_F(SnapshotScheduleTest, GC) {
 
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-    peers.push_back(master_leader->master()->catalog_manager()->tablet_peer());
+    peers.push_back(master_leader->tablet_peer());
     for (const auto& peer : peers) {
       if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
         continue;

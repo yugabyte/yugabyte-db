@@ -15,11 +15,10 @@
 #define YB_TOOLS_BULK_LOAD_UTILS_H
 
 #include <set>
+
 #include <boost/tokenizer.hpp>
 
-#include "yb/util/date_time.h"
-#include "yb/util/status.h"
-#include "yb/util/stol_utils.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/timestamp.h"
 
 namespace yb {

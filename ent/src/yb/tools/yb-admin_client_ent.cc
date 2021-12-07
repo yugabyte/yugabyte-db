@@ -29,6 +29,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
@@ -43,6 +44,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/encryption_util.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");
@@ -92,6 +95,7 @@ using master::RestoreSnapshotResponsePB;
 using master::SnapshotInfoPB;
 using master::SysNamespaceEntryPB;
 using master::SysRowEntry;
+using master::SysRowEntryType;
 using master::BackupRowEntryPB;
 using master::SysTablesEntryPB;
 using master::SysSnapshotEntryPB;
@@ -153,13 +157,13 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
       for (SysRowEntry& entry : *snapshot.mutable_entry()->mutable_entries()) {
         string decoded_data;
         switch (entry.type()) {
-          case SysRowEntry::NAMESPACE: {
+          case SysRowEntryType::NAMESPACE: {
             auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
             meta.clear_transaction();
             decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
-          case SysRowEntry::TABLE: {
+          case SysRowEntryType::TABLE: {
             auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
             meta.clear_schema();
             meta.clear_partition_schema();
@@ -605,16 +609,23 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
     req.set_snapshot_id(StringToSnapshotId(snapshot_id));
 
     // Format 0 - latest format (== Format 2 at the moment).
+    // Format -1 - old format (no 'namespace_name' in the Table entry).
     // Format 1 - old format.
     // Format 2 - new format.
-    if (FLAGS_TEST_metadata_file_format_version != 1) {
+    if (FLAGS_TEST_metadata_file_format_version == 0 ||
+        FLAGS_TEST_metadata_file_format_version >= 2) {
       req.set_prepare_for_backup(true);
     }
     return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
   }));
 
-  const SnapshotInfoPB* snapshot = nullptr;
-  for (const auto& snapshot_entry : resp.snapshots()) {
+  if (resp.snapshots_size() > 1) {
+    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                 << resp.snapshots_size() << " snapshots in the response";
+  }
+
+  SnapshotInfoPB* snapshot = nullptr;
+  for (SnapshotInfoPB& snapshot_entry : *resp.mutable_snapshots()) {
     if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
       snapshot = &snapshot_entry;
       break;
@@ -625,9 +636,17 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
         InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
         resp.snapshots_size(), snapshot_id);
   }
-  if (resp.snapshots_size() > 1) {
-    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
-                 << resp.snapshots_size() << " snapshots in the response";
+
+  if (FLAGS_TEST_metadata_file_format_version == -1) {
+    // Remove 'namespace_name' from SysTablesEntryPB.
+    SysSnapshotEntryPB& sys_entry = *snapshot->mutable_entry();
+    for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      if (entry.type() == SysRowEntryType::TABLE) {
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+        meta.clear_namespace_name();
+        entry.set_data(meta.SerializeAsString());
+      }
+    }
   }
 
   cout << "Exporting snapshot " << snapshot_id << " ("
@@ -682,7 +701,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         ? tables[table_index] : YBTableName();
 
     switch (entry.type()) {
-      case SysRowEntry::NAMESPACE: {
+      case SysRowEntryType::NAMESPACE: {
         auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
 
         if (!keyspace.name.empty() && keyspace.name != meta.name()) {
@@ -691,7 +710,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         }
         break;
       }
-      case SysRowEntry::TABLE: {
+      case SysRowEntryType::TABLE: {
         if (was_table_renamed && table_name.empty()) {
           // Renaming is allowed for all tables OR for no one table.
           return STATUS_FORMAT(InvalidArgument,
@@ -714,10 +733,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
 
         if (meta.name().empty()) {
           return STATUS(IllegalState, "Could not find table name from snapshot metadata");
-        }
-
-        if (meta.namespace_name().empty()) {
-          return STATUS(IllegalState, "Could not find keyspace name from snapshot metadata");
         }
 
         // Update the table name if needed.
@@ -745,7 +760,9 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         }
 
         cout << (meta.colocated() ? "Colocated t" : "T") << "able being imported: "
-             << meta.namespace_name() << "." << meta.name() << endl;
+             << (meta.namespace_name().empty() ?
+                 "[" + meta.namespace_id() + "]" : meta.namespace_name())
+             << "." << meta.name() << endl;
         ++table_index;
         break;
       }
@@ -1274,7 +1291,8 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables,
     const std::vector<TableId>& remove_tables,
-    const std::vector<std::string>& producer_bootstrap_ids_to_add) {
+    const std::vector<std::string>& producer_bootstrap_ids_to_add,
+    const std::string& new_producer_universe_id) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
@@ -1314,6 +1332,10 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     for (const auto& table : remove_tables) {
       req.add_producer_table_ids_to_remove(table);
     }
+  }
+
+  if (!new_producer_universe_id.empty()) {
+    req.set_new_producer_universe_id(new_producer_universe_id);
   }
 
   RpcController rpc;

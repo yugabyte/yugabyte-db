@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -41,14 +42,21 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Predicate;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Configuration;
 
@@ -113,6 +121,59 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * This sets the user intent from the task params to the universe in memory. Note that the changes
+   * are not saved to the DB in this method.
+   *
+   * @param universe
+   * @param isReadOnlyCreate
+   */
+  public static void setUserIntentToUniverse(
+      Universe universe, UniverseDefinitionTaskParams taskParams, boolean isReadOnlyCreate) {
+    // Persist the updated information about the universe.
+    // It should have been marked as being edited in lockUniverseForUpdate().
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    if (!universeDetails.updateInProgress) {
+      String msg = "Universe " + taskParams.universeUUID + " has not been marked as being updated.";
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    if (!isReadOnlyCreate) {
+      universeDetails.nodeDetailsSet = taskParams.nodeDetailsSet;
+      universeDetails.nodePrefix = taskParams.nodePrefix;
+      universeDetails.universeUUID = taskParams.universeUUID;
+      universeDetails.allowInsecure = taskParams.allowInsecure;
+      universeDetails.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
+      Cluster cluster = taskParams.getPrimaryCluster();
+      if (cluster != null) {
+        universeDetails.rootCA = null;
+        universeDetails.clientRootCA = null;
+        if (CertificateHelper.isRootCARequired(taskParams)) {
+          universeDetails.rootCA = taskParams.rootCA;
+        }
+        if (CertificateHelper.isClientRootCARequired(taskParams)) {
+          universeDetails.clientRootCA = taskParams.clientRootCA;
+        }
+        universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
+      } // else read only cluster edit mode.
+    } else {
+      // Combine the existing nodes with new read only cluster nodes.
+      universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
+    }
+    taskParams
+        .getReadOnlyClusters()
+        .forEach(
+            (async) -> {
+              // Update read replica cluster TLS params to be same as primary cluster
+              async.userIntent.enableNodeToNodeEncrypt =
+                  universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
+              async.userIntent.enableClientToNodeEncrypt =
+                  universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
+              universeDetails.upsertCluster(async.userIntent, async.placementInfo, async.uuid);
+            });
+    universe.setUniverseDetails(universeDetails);
+  }
+
+  /**
    * Writes all the user intent to the universe.
    *
    * @return
@@ -131,50 +192,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
-          // Persist the updated information about the universe.
-          // It should have been marked as being edited in lockUniverseForUpdate().
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress) {
-            String msg =
-                "Universe " + taskParams().universeUUID + " has not been marked as being updated.";
-            log.error(msg);
-            throw new RuntimeException(msg);
-          }
-          if (!isReadOnlyCreate) {
-            universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
-            universeDetails.nodePrefix = taskParams().nodePrefix;
-            universeDetails.universeUUID = taskParams().universeUUID;
-            universeDetails.allowInsecure = taskParams().allowInsecure;
-            universeDetails.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-            Cluster cluster = taskParams().getPrimaryCluster();
-            if (cluster != null) {
-              universeDetails.rootCA = null;
-              universeDetails.clientRootCA = null;
-              if (CertificateHelper.isRootCARequired(taskParams())) {
-                universeDetails.rootCA = taskParams().rootCA;
-              }
-              if (CertificateHelper.isClientRootCARequired(taskParams())) {
-                universeDetails.clientRootCA = taskParams().clientRootCA;
-              }
-              universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
-            } // else read only cluster edit mode.
-          } else {
-            // Combine the existing nodes with new read only cluster nodes.
-            universeDetails.nodeDetailsSet.addAll(taskParams().nodeDetailsSet);
-          }
-          taskParams()
-              .getReadOnlyClusters()
-              .forEach(
-                  (async) -> {
-                    // Update read replica cluster TLS params to be same as primary cluster
-                    async.userIntent.enableNodeToNodeEncrypt =
-                        universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
-                    async.userIntent.enableClientToNodeEncrypt =
-                        universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-                    universeDetails.upsertCluster(
-                        async.userIntent, async.placementInfo, async.uuid);
-                  });
-          universe.setUniverseDetails(universeDetails);
+          setUserIntentToUniverse(universe, taskParams(), isReadOnlyCreate);
         };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
@@ -421,17 +439,25 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return nodeMap;
   }
 
-  public SelectMastersResult selectMasters() {
-    return selectMasters(null);
+  public SelectMastersResult selectAndApplyMasters() {
+    return selectMasters(null, true);
   }
 
   public SelectMastersResult selectMasters(String masterLeader) {
+    return selectMasters(masterLeader, false);
+  }
+
+  private SelectMastersResult selectMasters(String masterLeader, boolean applySelection) {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster != null) {
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       SelectMastersResult result =
           PlacementInfoUtil.selectMasters(
-              masterLeader, primaryNodes, primaryCluster.userIntent.replicationFactor);
+              masterLeader,
+              primaryNodes,
+              primaryCluster.userIntent.replicationFactor,
+              PlacementInfoUtil.getDefaultRegionCode(taskParams()),
+              applySelection);
       log.info(
           "Active masters count after balancing = "
               + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
@@ -446,13 +472,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return SelectMastersResult.NONE;
   }
 
-  public void verifyMastersSelection() {
+  public void verifyMastersSelection(SelectMastersResult selection) {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster != null) {
       log.trace("Masters verification for PRIMARY cluster");
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       PlacementInfoUtil.verifyMastersSelection(
-          primaryNodes, primaryCluster.userIntent.replicationFactor);
+          primaryNodes, primaryCluster.userIntent.replicationFactor, selection);
     } else {
       log.trace("Masters verification skipped - no PRIMARY cluster found");
     }
@@ -622,6 +648,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
+  @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForMasterLeader", executor);
     WaitForMasterLeader task = createTask(WaitForMasterLeader.class);
@@ -929,11 +956,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
       if (opType == UniverseOpType.EDIT
           && cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
-        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-        Cluster univCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
+        Cluster univCluster = universeDetails.getClusterByUuid(cluster.uuid);
         if (univCluster == null) {
           throw new IllegalStateException(
               "No cluster " + cluster.uuid + " found in " + taskParams().universeUUID);
@@ -1048,5 +1076,84 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
     return failedNodes.isEmpty();
+  }
+
+  /**
+   * Finds the given list of nodes in the universe. The lookup is done by the node name.
+   *
+   * @param universe Universe to which the node belongs.
+   * @param nodes Set of nodes to be searched.
+   * @return stream of the matching nodes.
+   */
+  public Stream<NodeDetails> findNodesInUniverse(Universe universe, Set<NodeDetails> nodes) {
+    // Node names to nodes in Universe map to find.
+    Map<String, NodeDetails> nodesInUniverseMap =
+        universe
+            .getUniverseDetails()
+            .nodeDetailsSet
+            .stream()
+            .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
+    // Locate the given node in the Universe by using the node name.
+    return nodes
+        .stream()
+        .map(
+            node -> {
+              String nodeName = node.getNodeName();
+              NodeDetails nodeInUniverse = nodesInUniverseMap.get(nodeName);
+              if (nodeInUniverse == null) {
+                log.warn(
+                    "Node {} is not found in the Universe {}",
+                    nodeName,
+                    universe.getUniverseUUID());
+              }
+              return nodeInUniverse;
+            })
+        .filter(Objects::nonNull);
+  }
+
+  /**
+   * Filters nodes by the given node status and invokes the callback if at least a node is in the
+   * given status or the given parameter skipNodeStatusCheck is true. As the nodes advance one state
+   * at a time, there can be a mix of nodes states which are only one state apart. This means once
+   * the first set of nodes matching the given node status is found and processed successfully, all
+   * the given nodes can be picked for the next state processing. The nodes which are absent in the
+   * Universe are also filtered out.
+   *
+   * @param universe the Universe to which the nodes belong.
+   * @param nodes subset of the universe nodes on which the filters are applied.
+   * @param skipNodeStatusCheck the flag to override the node status check.
+   * @param nodeStatus the status to be matched against.
+   * @param consumer the callback to be invoked with the nodes satisfying the node status.
+   * @return true if the status of any node is in the node status or the given parameter
+   *     skipNodeStatusCheck is true.
+   */
+  public boolean applyOnNodesWithStatus(
+      Universe universe,
+      Set<NodeDetails> nodes,
+      boolean skipNodeStatusCheck,
+      NodeStatus nodeStatus,
+      Consumer<Set<NodeDetails>> consumer) {
+    boolean wasCallbackRun = skipNodeStatusCheck;
+    Set<NodeDetails> filteredNodes =
+        findNodesInUniverse(universe, nodes)
+            .filter(
+                n -> {
+                  if (skipNodeStatusCheck) {
+                    return true;
+                  }
+                  NodeStatus currentNodeStatus = NodeStatus.fromNode(n);
+                  log.info(
+                      "Expected node status {}, found {} for node {}",
+                      nodeStatus,
+                      currentNodeStatus,
+                      n.getNodeName());
+                  return currentNodeStatus.equalsIgnoreNull(nodeStatus);
+                })
+            .collect(Collectors.toSet());
+    if (CollectionUtils.isNotEmpty(filteredNodes)) {
+      consumer.accept(filteredNodes);
+      wasCallbackRun = true;
+    }
+    return wasCallbackRun;
   }
 }

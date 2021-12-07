@@ -23,7 +23,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/table_properties.h"

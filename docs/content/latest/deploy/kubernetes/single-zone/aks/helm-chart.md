@@ -122,7 +122,7 @@ You should now be able to view showing the “yugabytedbRG” resource group in 
 
 ### Step 3: Create the Kubernetes cluster
 
-You can now create a Kubernetes cluster by running the following command. 
+You can now create a Kubernetes cluster by running the following command.
 
 {{< note title="Note" >}}
 
@@ -183,7 +183,7 @@ You should see output similar to the following:
 Merged "yugabytedbAKSCluster" as current context in /Users/yugabyte-user/.kube/config
 ```
 
-If you generated your own SSH keys, point `kubectl `to the cluster by running the following command instead:
+If you generated your own SSH keys, point `kubectl` to the cluster by running the following command instead:
 
 ```sh
 $ az aks get-credentials --resource-group yugabytedbRG --name yugabytedbAKSCluster -ssh-key-file <path_to>id_rsa
@@ -247,8 +247,8 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.9.0           2.9.0.0-b4      YugabyteDB is the high-performance distributed ...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+yugabytedb/yugabyte     2.11.0           2.11.0.1-b1    YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace
@@ -286,7 +286,7 @@ $ helm install yb-demo -n yb-demo yugabytedb/yugabyte \
  --timeout=15m
 ```
 
-Depending on your resources, it may take some time to get everything installed, deployed, and configured. 
+Depending on your resources, it may take some time to get everything installed, deployed, and configured.
 
 After you see a `success` message, you can verify that the YugabyteDB pods are running by running the following command:
 

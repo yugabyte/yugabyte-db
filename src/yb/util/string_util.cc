@@ -17,13 +17,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/string_util.h"
 
 #include <regex>
-#include <boost/algorithm/string/predicate.hpp>
 
-#include "yb/util/logging.h"
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <glog/logging.h>
 
 using std::vector;
 using std::regex;
@@ -61,6 +61,10 @@ vector<string> StringSplit(const string& arg, char delim) {
     splits.push_back(std::move(item));
   }
   return splits;
+}
+
+bool StringStartsWithOrEquals(const string& s, const char* start, size_t start_len) {
+  return s.rfind(start, 0) == 0;
 }
 
 bool StringEndsWith(const string& s, const char* end, size_t end_len, string* left) {

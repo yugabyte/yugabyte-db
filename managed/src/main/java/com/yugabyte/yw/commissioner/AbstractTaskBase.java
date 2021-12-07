@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -18,9 +19,13 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeStatus;
+
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -99,6 +104,16 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public abstract void run();
 
+  @Override
+  public void terminate() {
+    if (executor != null && !executor.isShutdown()) {
+      MoreExecutors.shutdownAndAwaitTermination(executor, 5, TimeUnit.MINUTES);
+    }
+    if (subTaskGroupQueue != null) {
+      subTaskGroupQueue.cleanup();
+    }
+  }
+
   // Create an task pool which can handle an unbounded number of tasks, while using an initial set
   // of threads which get spawned upto TASK_THREADS limit.
   public void createThreadpool() {
@@ -130,7 +145,7 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   public UniverseUpdater nodeStateUpdater(
-      final UUID universeUUID, final String nodeName, final NodeDetails.NodeState state) {
+      final UUID universeUUID, final String nodeName, final NodeStatus nodeStatus) {
     UniverseUpdater updater =
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -138,14 +153,15 @@ public abstract class AbstractTaskBase implements ITask {
           if (node == null) {
             return;
           }
+          NodeStatus currentStatus = NodeStatus.fromNode(node);
           log.info(
               "Changing node {} state from {} to {} in universe {}.",
               nodeName,
-              node.state,
-              state,
+              currentStatus,
+              nodeStatus,
               universeUUID);
-          node.state = state;
-          if (state == NodeDetails.NodeState.Decommissioned) {
+          nodeStatus.fillNodeStates(node);
+          if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
             node.cloudInfo.private_ip = null;
             node.cloudInfo.public_ip = null;
           }
@@ -172,5 +188,15 @@ public abstract class AbstractTaskBase implements ITask {
     } catch (Exception e) {
       return 1;
     }
+  }
+
+  @Override
+  public boolean isAbortable() {
+    return false;
+  }
+
+  @Override
+  public boolean isRetryable() {
+    return false;
   }
 }

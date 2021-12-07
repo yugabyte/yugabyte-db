@@ -13,7 +13,9 @@
 
 #include "yb/master/ysql_tablespace_manager.h"
 
-#include "yb/util/logging.h"
+#include "yb/master/catalog_entity_info.h"
+
+#include "yb/util/atomic.h"
 
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
@@ -58,7 +60,7 @@ Result<boost::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTablespaceR
 }
 
 Result<boost::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable(
-  const scoped_refptr<TableInfo>& table) {
+  const scoped_refptr<const TableInfo>& table) {
 
   if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
       !table->UsesTablespacesForPlacement()) {
@@ -87,7 +89,7 @@ Result<boost::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTab
 }
 
 Result<boost::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTableReplicationInfo(
-    const scoped_refptr<TableInfo>& table) {
+    const scoped_refptr<const TableInfo>& table) {
 
   // Lookup tablespace for the given table.
   auto tablespace_id = VERIFY_RESULT(GetTablespaceForTable(table));

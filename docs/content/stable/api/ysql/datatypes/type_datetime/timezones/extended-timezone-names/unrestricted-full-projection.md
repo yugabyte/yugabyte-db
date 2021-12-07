@@ -1,7 +1,7 @@
 ---
 title: extended_timezone_names — unrestricted full projection [YSQL]
 headerTitle: extended_timezone_names — unrestricted full projection
-linkTitle: unrestricted full projection
+linkTitle: Unrestricted full projection
 description: Table. [YSQL]
 menu:
   stable:

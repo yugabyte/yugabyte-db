@@ -30,13 +30,28 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <limits>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/common/partial_row.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
+
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/substitute.h"
+
+#include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet-test-base.h"
+
+#include "yb/util/env.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

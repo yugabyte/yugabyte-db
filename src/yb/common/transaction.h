@@ -16,32 +16,29 @@
 #ifndef YB_COMMON_TRANSACTION_H
 #define YB_COMMON_TRANSACTION_H
 
+#include <stdint.h>
+
+#include <functional>
+#include <iterator>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+
 #include <boost/container/small_vector.hpp>
-#include <boost/functional/hash.hpp>
-#include <boost/optional.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/nil_generator.hpp>
+#include <boost/functional/hash/hash.hpp>
+#include <boost/optional/optional.hpp>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
-#include "yb/util/async_util.h"
+#include "yb/gutil/template_util.h"
+
 #include "yb/util/enums.h"
-#include "yb/util/monotime.h"
-#include "yb/util/logging.h"
-#include "yb/util/result.h"
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_uuid.h"
-#include "yb/util/tostring.h"
 #include "yb/util/uint_set.h"
-#include "yb/util/uuid.h"
-
-namespace rocksdb {
-
-class DB;
-
-}
 
 namespace yb {
 
@@ -250,27 +247,26 @@ struct SubTransactionMetadata {
 std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata);
 
 struct TransactionOperationContext {
+  TransactionOperationContext();
+
   TransactionOperationContext(
-      const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_)
-      : transaction_id(transaction_id_),
-        txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
+      const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_);
 
   TransactionOperationContext(
       const TransactionId& transaction_id_,
       SubTransactionMetadata&& subtransaction_,
-      TransactionStatusManager* txn_status_manager_)
-      : transaction_id(transaction_id_),
-        subtransaction(std::move(subtransaction_)),
-        txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
+      TransactionStatusManager* txn_status_manager_);
 
   bool transactional() const;
 
+  explicit operator bool() const {
+    return txn_status_manager != nullptr;
+  }
+
   TransactionId transaction_id;
   SubTransactionMetadata subtransaction;
-  TransactionStatusManager& txn_status_manager;
+  TransactionStatusManager* txn_status_manager;
 };
-
-typedef boost::optional<TransactionOperationContext> TransactionOperationContextOpt;
 
 inline std::ostream& operator<<(std::ostream& out, const TransactionOperationContext& context) {
   if (context.transactional()) {
@@ -292,6 +288,9 @@ struct TransactionMetadata {
   // Used for snapshot isolation (as read time and for conflict resolution).
   // start_time is used only for backward compability during rolling update.
   HybridTime start_time;
+
+  // Indicates whether this transaction is a local transaction or global transaction.
+  TransactionLocality locality = TransactionLocality::GLOBAL;
 
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
@@ -320,8 +319,9 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();
 
-extern const std::string kTransactionsTableName;
+extern const std::string kGlobalTransactionsTableName;
 extern const std::string kMetricsSnapshotsTableName;
+extern const std::string kTransactionTablePrefix;
 
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
 

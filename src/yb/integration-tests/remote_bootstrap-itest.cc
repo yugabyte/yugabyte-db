@@ -30,34 +30,43 @@
 // under the License.
 //
 
+#include <memory>
 #include <string>
 #include <unordered_map>
-#include <memory>
+
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/integration-tests/test_workload.h"
+
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
+
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pstack_watcher.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -215,7 +224,7 @@ void RemoteBootstrapITest::CheckCheckpointsCleared() {
   auto deadline = MonoTime::Now() + 10s * kTimeMultiplier;
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto tablet_server = cluster_->tablet_server(i);
-    auto data_dir = tablet_server->GetFullDataDir();
+    auto data_dir = tablet_server->GetDataDirs()[0];
     SCOPED_TRACE(Format("Index: $0", i));
     SCOPED_TRACE(Format("UUID: $0", tablet_server->uuid()));
     SCOPED_TRACE(Format("Data dir: $0", data_dir));
@@ -475,10 +484,11 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   // It's not necessarily part of the API but this could return faliure due to
   // rejecting the remote. We intend to make that part async though, so ignoring
   // this return value in this test.
-  ignore_result(itest::StartRemoteBootstrap(ts, tablet_id, zombie_leader_uuid,
-                                            HostPort(zombie_ets->bound_rpc_addr()),
-                                            2, // Say I'm from term 2.
-                                            timeout));
+  WARN_NOT_OK(itest::StartRemoteBootstrap(ts, tablet_id, zombie_leader_uuid,
+                                          HostPort(zombie_ets->bound_rpc_addr()),
+                                          2, // Say I'm from term 2.
+                                          timeout),
+              "Start remote bootstrap failed");
 
   // Wait another few seconds to be sure the remote bootstrap is rejected.
   deadline = MonoTime::Now();
@@ -1409,7 +1419,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
   ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::RUNNING, kTimeout));
 
   auto* env = Env::Default();
-  const string& data_dir = cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->GetFullDataDir();
+  const string data_dir = cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->GetDataDirs()[0];
   auto meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
   auto metadata_path = JoinPathSegments(meta_dir, tablet_id);
   tablet::RaftGroupReplicaSuperBlockPB superblock;

@@ -36,20 +36,17 @@
 
 // This module gets enough CPU information to optimize the
 // atomicops module on x86.
-
 #include "yb/gutil/atomicops-internals-x86.h"
 
-#include <string.h>
-
 #include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
+
 #include "yb/gutil/integral_types.h"
 
 // This file only makes sense with atomicops-internals-x86.h -- it
 // depends on structs that are defined in that file.  If atomicops.h
 // doesn't sub-include that file, then we aren't needed, and shouldn't
 // try to do anything.
-#ifdef GUTIL_ATOMICOPS_INTERNALS_X86_H_
+#ifdef YB_GUTIL_ATOMICOPS_INTERNALS_X86_H
 
 // This macro was copied from //util/cpuid/cpuid.cc
 // Inline cpuid instruction.  In PIC compilations, %ebx contains the address
@@ -139,4 +136,16 @@ void AtomicOps_x86CPUFeaturesInit() {
 
 #endif
 
-#endif  // GUTIL_ATOMICOPS_INTERNALS_X86_H_
+namespace base {
+namespace subtle {
+
+#ifndef NDEBUG
+void CheckNaturalAlignmentHelper(uintptr_t value) {
+  DCHECK_EQ(0, value) << "unaligned pointer not allowed for atomics";
+}
+#endif
+
+} // namespace subtle
+} // namespace base
+
+#endif  // YB_GUTIL_ATOMICOPS_INTERNALS_X86_H

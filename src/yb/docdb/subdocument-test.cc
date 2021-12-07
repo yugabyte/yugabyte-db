@@ -11,12 +11,15 @@
 // under the License.
 //
 
-#include "yb/docdb/subdocument.h"
-
 #include <string>
 
+#include <gtest/gtest.h>
+
+#include "yb/docdb/subdocument.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 
 using std::string;
 

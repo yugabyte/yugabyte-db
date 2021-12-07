@@ -32,8 +32,9 @@
 #ifndef YB_UTIL_INIT_H
 #define YB_UTIL_INIT_H
 
-#include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+#include <string>
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

@@ -32,27 +32,36 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <thread>
 
 #include <boost/optional.hpp>
-#include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+
 #include "yb/master/master_defaults.h"
+
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet.pb.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/curl_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 
 using yb::client::YBClient;
@@ -1343,7 +1352,8 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kTsIndex), fault_flag, "1.0"));
   tablet_id = tablets[1].tablet_status().tablet_id();
   LOG(INFO) << "Tombstoning second tablet " << tablet_id << "...";
-  ignore_result(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  WARN_NOT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout),
+              "Delete tablet failed");
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // Restart the tablet server and wait for the WALs to be deleted and for the

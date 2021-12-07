@@ -21,14 +21,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include "yb/rocksdb/util/mock_env.h"
+
 #include <algorithm>
 #include <chrono>
 
-#include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/port/sys_time.h"
-#include "yb/rocksdb/util/rate_limiter.h"
-#include "yb/rocksdb/util/random.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/murmurhash.h"
+#include "yb/rocksdb/util/mutexlock.h"
+#include "yb/rocksdb/util/random.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

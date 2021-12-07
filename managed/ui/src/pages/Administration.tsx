@@ -4,7 +4,7 @@ import { browserHistory } from 'react-router';
 import { Selector, useSelector } from 'react-redux';
 import { RouteComponentProps } from 'react-router-dom';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
-import { showOrRedirect } from '../utils/LayoutUtils';
+import { isAvailable, showOrRedirect } from '../utils/LayoutUtils';
 import { HAInstances, HAReplication } from '../components/ha';
 import './Administration.scss';
 import { AlertConfigurationContainer } from '../components/alerts';
@@ -50,20 +50,24 @@ interface RouteParams {
   section: HighAvailabilityTabs | AlertConfigurationTabs;
 }
 
-const DEFAULT_ADMIN_PAGE = `/admin/${AdministrationTabs.HA}/${HighAvailabilityTabs.Replication}`;
 const customerSelector: Selector<Store, Customer> = (state) => state.customer.currentCustomer;
 const featureFlags: Selector<FeatureStore, FetureFlags> = (state) => state.featureFlags;
 
 export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ params }) => {
   const currentCustomer = useSelector(customerSelector);
   const { test, released } = useSelector(featureFlags);
+  const defaultTab = isAvailable(currentCustomer.data.features, 'administration.highAvailability')
+    ? AdministrationTabs.HA
+    : AdministrationTabs.AC;
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
+    // redirect to a proper url on navigation from sidebar "Admin" button (the "/admin" route)
     if (!params.tab && !params.section) {
-      browserHistory.replace(DEFAULT_ADMIN_PAGE);
+      const url = `/admin/${defaultTab}`;
+      browserHistory.replace(url);
     }
-  }, [currentCustomer, params.tab, params.section]);
+  }, [currentCustomer, defaultTab, params.tab, params.section]);
 
   const getAlertTab = () => {
     return test?.adminAlertsConfig || released?.adminAlertsConfig ? (
@@ -74,55 +78,59 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
           routePrefix={`/admin/${AdministrationTabs.AC}/`}
         />
       </Tab>
-    ) : (
-      <span />
-    );
+    ) : null;
   };
+
+  const getHighAvailabilityTab = () => {
+    return isAvailable(currentCustomer.data.features, 'administration.highAvailability') ? (
+      <Tab eventKey="ha" title="High Availability" key="high-availability">
+        <YBTabsPanel
+          defaultTab={HighAvailabilityTabs.Replication}
+          activeTab={params.section}
+          routePrefix={`/admin/${AdministrationTabs.HA}/`}
+          id="administration-ha-subtab"
+          className="config-tabs"
+        >
+          <Tab
+            eventKey={HighAvailabilityTabs.Replication}
+            title={
+              <span>
+                <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Replication
+                Configuration
+              </span>
+            }
+            unmountOnExit
+          >
+            <HAReplication />
+          </Tab>
+          <Tab
+            eventKey={HighAvailabilityTabs.Instances}
+            title={
+              <span>
+                <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance
+                Configuration
+              </span>
+            }
+            unmountOnExit
+          >
+            <HAInstances />
+          </Tab>
+        </YBTabsPanel>
+      </Tab>
+    ) : null;
+  }
 
   return (
     <div>
       <h2 className="content-title">Platform Configuration</h2>
       <YBTabsWithLinksPanel
-        defaultTab={AdministrationTabs.HA}
+        defaultTab={defaultTab}
         activeTab={params.tab}
         routePrefix="/admin/"
         id="administration-main-tabs"
         className="universe-detail data-center-config-tab"
       >
-        <Tab eventKey="ha" title="High Availability" key="high-availability">
-          <YBTabsPanel
-            defaultTab={HighAvailabilityTabs.Replication}
-            activeTab={params.section}
-            routePrefix={`/admin/${AdministrationTabs.HA}/`}
-            id="administration-ha-subtab"
-            className="config-tabs"
-          >
-            <Tab
-              eventKey={HighAvailabilityTabs.Replication}
-              title={
-                <span>
-                  <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Replication
-                  Configuration
-                </span>
-              }
-              unmountOnExit
-            >
-              <HAReplication />
-            </Tab>
-            <Tab
-              eventKey={HighAvailabilityTabs.Instances}
-              title={
-                <span>
-                  <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance
-                  Configuration
-                </span>
-              }
-              unmountOnExit
-            >
-              <HAInstances />
-            </Tab>
-          </YBTabsPanel>
-        </Tab>
+        {getHighAvailabilityTab()}
         {getAlertTab()}
       </YBTabsWithLinksPanel>
     </div>

@@ -15,10 +15,12 @@
 #ifndef YB_YQL_PGGATE_PG_EXPR_H_
 #define YB_YQL_PGGATE_PG_EXPR_H_
 
-#include "yb/client/client.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_datatype.h"
+
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_tuple.h"
-#include "yb/util/bfpg/tserver_opcodes.h"
+#include "yb/bfpg/tserver_opcodes.h"
 
 namespace yb {
 namespace pggate {
@@ -100,10 +102,11 @@ class PgExpr {
   // - For each postgres data type, to_datum() function pointer must be setup properly during
   //   the compilation of a statement.
   void TranslateData(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                     PgTuple *pg_tuple) const {
-    CHECK(translate_data_) << "Data format translation is not provided";
-    translate_data_(yb_cursor, header, index, type_entity_, &type_attrs_, pg_tuple);
-  }
+                     PgTuple *pg_tuple) const;
+
+  static bool TranslateNumberHelper(
+      const PgWireDataHeader& header, int index, const YBCPgTypeEntity *type_entity,
+      PgTuple *pg_tuple);
 
   // Implementation for "translate_data()" for each supported datatype.
   // Translates DocDB-numeric datatypes.
@@ -111,11 +114,9 @@ class PgExpr {
   static void TranslateNumber(Slice *yb_cursor, const PgWireDataHeader& header, int index,
                               const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
                               PgTuple *pg_tuple) {
-    if (header.is_null()) {
-      return pg_tuple->WriteNull(index, header);
+    if (TranslateNumberHelper(header, index, type_entity, pg_tuple)) {
+      return;
     }
-    DCHECK(type_entity) << "Type entity not provided";
-    DCHECK(type_entity->yb_to_datum) << "Type entity converter not provided";
 
     data_type result = 0;
     size_t read_size = PgDocData::ReadNumber(yb_cursor, &result);
@@ -248,7 +249,7 @@ class PgConstant : public PgExpr {
   CHECKED_STATUS Eval(QLValuePB *result) override;
 
   // Read binary value.
-  const string &binary_value() {
+  const std::string &binary_value() {
     return ql_value_.binary_value();
   }
 
@@ -303,7 +304,7 @@ class PgOperator : public PgExpr {
   virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
  private:
-  const string opname_;
+  const std::string opname_;
   std::vector<PgExpr*> args_;
 };
 

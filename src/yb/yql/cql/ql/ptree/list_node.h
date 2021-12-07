@@ -23,7 +23,12 @@
 #ifndef YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
 #define YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
 
+#include "yb/util/math_util.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/status.h"
+
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
@@ -33,7 +38,7 @@ template<typename ContextType, typename NodeType = TreeNode>
 using TreeNodePtrOperator = std::function<Status(NodeType*, ContextType*)>;
 
 // TreeNode base class.
-template<typename NodeType = TreeNode, TreeNodeOpcode op = TreeNodeOpcode::kPTListNode>
+template<typename NodeType>
 class TreeListNode : public TreeNode {
  public:
   //------------------------------------------------------------------------------------------------
@@ -44,7 +49,7 @@ class TreeListNode : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Public functions.
   explicit TreeListNode(MemoryContext *memory_context,
-                        YBLocation::SharedPtr loc,
+                        YBLocationPtr loc,
                         const MCSharedPtr<NodeType>& tnode = nullptr)
       : TreeNode(memory_context, loc),
         node_list_(memory_context) {
@@ -55,7 +60,7 @@ class TreeListNode : public TreeNode {
 
   // Node type.
   virtual TreeNodeOpcode opcode() const override {
-    return op;
+    return TreeNodeOpcode::kPTListNode;
   }
 
   // Add a tree node at the end.

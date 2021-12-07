@@ -16,7 +16,13 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/server/clock.h"
+
+#include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/shared_mem.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace tserver {
@@ -26,10 +32,15 @@ DbServerBase::DbServerBase(
     const std::string& metrics_namespace,
     std::shared_ptr<MemTracker> mem_tracker)
     : RpcAndWebServerBase(std::move(name), options, metrics_namespace, std::move(mem_tracker)),
-      shared_object_(CHECK_RESULT(tserver::TServerSharedObject::Create())) {
+      shared_object_(new tserver::TServerSharedObject(
+          CHECK_RESULT(tserver::TServerSharedObject::Create()))) {
 }
 
 DbServerBase::~DbServerBase() {
+}
+
+client::TransactionManager* DbServerBase::TransactionManager() {
+  return transaction_manager_holder_.get();
 }
 
 client::TransactionPool* DbServerBase::TransactionPool() {
@@ -43,6 +54,7 @@ client::TransactionPool* DbServerBase::TransactionPool() {
   }
   transaction_manager_holder_ = std::make_unique<client::TransactionManager>(
       client_future().get(), clock(), CreateLocalTabletFilter());
+  transaction_manager_.store(transaction_manager_holder_.get(), std::memory_order_release);
   transaction_pool_holder_ = std::make_unique<client::TransactionPool>(
       transaction_manager_holder_.get(), metric_entity().get());
   transaction_pool_.store(transaction_pool_holder_.get(), std::memory_order_release);
@@ -50,7 +62,11 @@ client::TransactionPool* DbServerBase::TransactionPool() {
 }
 
 tserver::TServerSharedData& DbServerBase::shared_object() {
-  return *shared_object_;
+  return **shared_object_;
+}
+
+int DbServerBase::GetSharedMemoryFd() {
+  return shared_object_->GetFd();
 }
 
 }  // namespace tserver

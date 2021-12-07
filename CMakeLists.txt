@@ -47,7 +47,7 @@ include(YugabyteTesting)
 
 ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -Wall -Wno-sign-compare -Wno-deprecated")
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
   # Certain platforms such as ARM do not use signed chars by default
   # which causes issues with certain bounds checks.
   ADD_CXX_FLAGS("-fsigned-char")
@@ -58,6 +58,14 @@ elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
 else()
   message(FATAL_ERROR "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
+
+if (NOT "$ENV{YB_TARGET_ARCH}" STREQUAL "" AND
+    NOT "$ENV{YB_TARGET_ARCH}" STREQUAL "${CMAKE_SYSTEM_PROCESSOR}")
+  message(FATAL_ERROR "YB_TARGET_ARCH is set to $ENV{YB_TARGET_ARCH} but CMAKE_SYSTEM_PROCESSOR "
+                      "is ${CMAKE_SYSTEM_PROCESSOR}.")
+endif()
+set(ENV{YB_TARGET_ARCH} "${CMAKE_SYSTEM_PROCESSOR}")
+
 ADD_CXX_FLAGS("-Winvalid-pch")
 ADD_CXX_FLAGS("-pthread -DBOOST_BIND_NO_PLACEHOLDERS")
 ADD_LINKER_FLAGS("-pthread")
@@ -430,7 +438,7 @@ ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 #   3. Build again with CMAKE_BUILD_TYPE_PROFILE_BUILD
 #     -fprofile-use: Compiler will use the profile outputs for optimizations
 set(CXX_FLAGS_DEBUG "-ggdb")
-set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer")
+set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer -DFASTDEBUG")
 set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
 
 # Nullify CMake's predefined flags since we are handling different build types on our own.
@@ -756,8 +764,8 @@ add_subdirectory(src/yb/common)
 add_subdirectory(src/yb/fs)
 add_subdirectory(src/yb/server)
 add_subdirectory(src/yb/tablet)
-add_subdirectory(src/yb/util/bfql)
-add_subdirectory(src/yb/util/bfpg)
+add_subdirectory(src/yb/bfql)
+add_subdirectory(src/yb/bfpg)
 add_subdirectory(src/yb/rpc)
 add_subdirectory(src/yb/tserver)
 add_subdirectory(src/yb/consensus)

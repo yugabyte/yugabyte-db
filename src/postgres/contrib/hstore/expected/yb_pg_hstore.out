@@ -1307,10 +1307,104 @@ create index hidx on testhstore using gist(h);
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 create index hidx on testhstore using gin (h);
-NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  index method "ybgin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+set enable_seqscan=off;
+select count(*) from testhstore where h @> 'wait=>NULL';
+ count
+-------
+     1
+(1 row)
+
+select count(*) from testhstore where h @> 'wait=>CC';
+ count
+-------
+    15
+(1 row)
+
+select count(*) from testhstore where h @> 'wait=>CC, public=>t';
+ count
+-------
+     2
+(1 row)
+
+select count(*) from testhstore where h ? 'public';
+ count
+-------
+   194
+(1 row)
+
+select count(*) from testhstore where h ?| ARRAY['public','disabled'];
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+select count(*) from testhstore where h ?& ARRAY['public','disabled'];
+ count
+-------
+    42
+(1 row)
+
+select count(*) from (select (each(h)).key from testhstore) as wow ;
+ count
+-------
+  4781
+(1 row)
+
+select key, count(*) from (select (each(h)).key from testhstore) as wow group by key order by count desc, key;
+    key    | count
+-----------+-------
+ line      |   884
+ query     |   207
+ pos       |   203
+ node      |   202
+ space     |   197
+ status    |   195
+ public    |   194
+ title     |   190
+ wait      |   190
+ org       |   189
+ user      |   189
+ coauthors |   188
+ disabled  |   185
+ indexed   |   184
+ cleaned   |   180
+ bad       |   179
+ date      |   179
+ world     |   176
+ state     |   172
+ subtitle  |   169
+ auth      |   168
+ abstract  |   161
+(22 rows)
+
+-- sort/hash
+-- TODO(#10441): fix output
+select count(distinct h) from testhstore;
+ERROR:  could not identify an ordering operator for type hstore
+LINE 1: select count(distinct h) from testhstore;
+                              ^
+DETAIL:  Aggregates with DISTINCT must be able to sort their inputs.
+set enable_hashagg = false;
+select count(*) from (select h from (select * from testhstore union all select * from testhstore) hs group by h) hs2;
+ count
+-------
+   885
+(1 row)
+
+set enable_hashagg = true;
+set enable_sort = false;
+select count(*) from (select h from (select * from testhstore union all select * from testhstore) hs group by h) hs2;
+ count
+-------
+   885
+(1 row)
+
+select distinct * from (values (hstore '' || ''),('')) v(h);
+ h
+---
+
+(1 row)
+
+set enable_sort = true;
 -- btree
+drop index hidx;
 create index hidx on testhstore using btree (h);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 ERROR:  data type hstore has no default operator class for access method "lsm"

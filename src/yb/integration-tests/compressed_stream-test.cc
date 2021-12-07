@@ -12,8 +12,10 @@
 //
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
 
@@ -21,12 +23,8 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/tcp_stream.h"
 
-#include "yb/server/secure.h"
-
 #include "yb/util/size_literals.h"
-#include "yb/util/env_util.h"
 
-#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;

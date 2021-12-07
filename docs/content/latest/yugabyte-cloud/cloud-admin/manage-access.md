@@ -1,6 +1,6 @@
 ---
 title: Manage cloud access
-linkTitle: Users
+linkTitle: Manage cloud users
 description: Manage access to Yugabyte Cloud and your clusters.
 headcontent:
 image: /images/section_icons/secure/create-roles.png
@@ -13,51 +13,58 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Invite other users to your cloud so that they can create, manage, and connect to clusters, and add IP allow lists. Invited users cannot perform cloud administration tasks.
+Invite team members to your cloud so that they can create, manage, and connect to clusters.
 
-You must be signed in as the Admin user (the user who created the Yugabyte Cloud account) to invite other users.
+You must be signed in as an Admin user to invite other users.
 
-The **Users** tab displays a list of users that have been invited to the cloud, including their email, display name, role, and status.
+The **Users** tab displays a list of users that are either active or have been invited to the cloud, including their email, display name, role, and status.
 
 ![Admin Users page](/images/yb-cloud/cloud-admin-users.png)
 
 ## User roles
 
-A Yugabyte Cloud user is either a Developer or the console Admin.
+A Yugabyte Cloud user is either an Admin or a Developer.
 
 ### Admin
 
-The Admin user is the primary account user (the user who created the Yugabyte Cloud account), and has full access to all cloud console features. There is only one Admin account, and this account cannot be deleted or transferred.
+Admin users have full access to all cloud console features. There must always be at least one Admin account. The primary account user (the user who created the Yugabyte Cloud account) is automatically assigned an Admin role.
 
 ### Developer
 
-Anyone who has been invited to the cloud by the Admin user is assigned the Developer role. Developer users have access to cluster management, but cannot perform any administrative tasks, including the following:
+Developer users have access to all cloud features, with the exception of administrative tasks, including the following:
 
 - invite users to the cloud.
-- delete other users.
+- delete or change the role of other users.
 - create a billing profile. 
 
-To access a cluster database, you need to ask the Admin for the username and password of a database user created on your behalf.
+To access a cluster database, you need to ask an Admin for the username and password of a database user created on your behalf.
 
 ## Invite users
 
-You add users to your cloud by sending them an invitation. Only the Admin user can invite users.
+You add users to your cloud by sending them an invitation. Only an Admin user can invite users.
 
 To invite a user:
 
-1. On the **Users** tab, click **Invite User** to display the **Invite User** dialog.
-1. Enter the email address of the person you're inviting.
+1. On the **Admin** page, select the **Users** tab, then click **Invite User** to display the **Invite User** dialog.
+1. Enter one or more email addresses of people you're inviting.
+1. Choose a role for the new users.
 1. Click **Invite**.
 
-The user will receive a verification email with a link to create their account and set up a password. Invitations expire after 24 hours.
+Users will receive a verification email with a link to create their account and set up a password. Invitations expire after 24 hours.
 
 For users that have not responded to their invitation (their status is Invited), you can click **Resend Invite** to send a fresh invitation. 
 
 ## Delete a user
 
-Only the Admin user can delete users. The Admin account cannot be deleted.
+Only an Admin user can delete users. You cannot delete your own account.
 
 To delete a user, click **Delete** next to the username in the list, then click **Confirm**.
+
+## Change a user's role
+
+Only an Admin user can change the role of other users. You cannot change your own role.
+
+To change a user's role, in the **User Role** column, select a role for the user.
 
 ## Reset your password
 
@@ -71,10 +78,8 @@ You can't change your password, or request a password reset, within 60 minutes o
 
 If you request a password reset for a non-existent user, the request fails silently for security reasons.
 
-<!--
-## View user details
+## Change your password and display name
 
-The user details include a note that the credentials give admin access to the Yugabyte database, the username, and the password. 
-Click **INFO** under **Actions** for the user whose details you want to see.
-To see the password, click **Show password**. Click **Close** when finished.
--->
+To change your password or display name, click the Profile icon in the top right corner and choose **Profile** to display the **User Profile** page.
+
+You can edit your first and last name. Click **Change Password** to change your Yugabyte Cloud password.

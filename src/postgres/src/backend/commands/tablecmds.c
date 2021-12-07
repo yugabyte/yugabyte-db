@@ -326,6 +326,8 @@ struct DropRelationCallbackState
 #define child_dependency_type(child_is_partition)	\
 	((child_is_partition) ? DEPENDENCY_AUTO : DEPENDENCY_NORMAL)
 
+static Oid GetTablegroupOidFromCommand(OptTableGroup *tablegroup);
+static Oid GetTablegroupOidFromCreateStmt(CreateStmt *stmt);
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, char relpersistence,
 				bool is_partition, List **supconstr, int *supOidCount);
@@ -768,57 +770,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		}
 	}
 
-	/*
-	 * Select tablegroup to use. If not specified, InvalidOid.
-	 * Disallow mixing of COLOCATED=true/false syntax and TABLEGROUP. Cannot use tablegroups
-	 * in colocated databases.
-	 * If the pg_tablegroup system table has not been created, get_tablegroup_oid will produce
-	 * an error.
-	 */
-	Oid tablegroupId = InvalidOid;
-	if (stmt->tablegroup)
-	{
-		OptTableGroup *grp = stmt->tablegroup;
-		if (MyDatabaseColocated)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot use tablegroups in a colocated database")));
-		else if (!grp->has_tablegroup)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("Cannot use NO TABLEGROUP in CREATE TABLE statement.")));
-		}
-		else
-			tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
-	}
-
-	/*
-	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
-	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
-	 */
-	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
-	{
-		AclResult  aclresult;
-
-		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
-		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, OBJECT_TABLEGROUP,
-						   get_tablegroup_name(tablegroupId));
-	}
-
-	/*
-	 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid.
-	 * We set this here instead of in parse_utilcmd since we need to do the above
-	 * preprocessing and RBAC checks first. This still happens before transformReloptions
-	 * so this option is included in the reloptions text array.
-	 */
-	if (OidIsValid(tablegroupId))
-	{
-		stmt->options = lcons(makeDefElem("tablegroup",
-										  (Node *) makeInteger(tablegroupId), -1),
-										  stmt->options);
-	}
+	Oid tablegroupId = GetTablegroupOidFromCreateStmt(stmt);
 
 	/* Identify user ID that will own the table */
 	if (!OidIsValid(ownerId))
@@ -1235,6 +1187,92 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relation_close(rel, NoLock);
 
 	return address;
+}
+
+/*
+ * Select tablegroup to use. If not specified, InvalidOid.
+ * Will produce an error if the pg_tablegroup system table has not been created.
+ * Checks both
+ *  - the reloptions array (for syntax `CREATE TABLE (...) WITH (tablegroup=###);`)
+ *  - the tablegroup syntax (for syntax `CREATE TABLE (...) TABLEGROUP grp;`)
+ * Disallows
+ *  - mixing the two tablegroup syntaxes
+ *  - supplying an invalid tablegroup oid
+ *  - creating a table within a tablegroup without the correct permissions
+ */
+static Oid
+GetTablegroupOidFromCreateStmt(CreateStmt *stmt)
+{
+	Oid tablegroupId = InvalidOid;
+
+	Oid tablegroupIdFromOptions = GetTablegroupOidFromRelOptions(stmt->options);
+	Oid tablegroupIdFromCommand = GetTablegroupOidFromCommand(stmt->tablegroup);
+
+	if (tablegroupIdFromOptions != InvalidOid && tablegroupIdFromCommand != InvalidOid)
+		ereport(ERROR,
+		        (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+		         errmsg("cannot specify both tablegroup and tablegroup oid")));
+	else if (tablegroupIdFromOptions != InvalidOid)
+	{
+		/* Check that this OID corresponds to a tablegroup */
+		char *name = get_tablegroup_name(tablegroupIdFromOptions);
+		if (name == NULL)
+			ereport(ERROR,
+			        (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+			         errmsg("tablegroup with oid %d does not exist", tablegroupIdFromOptions)));
+
+		tablegroupId = tablegroupIdFromOptions;
+	}
+	else if (tablegroupIdFromCommand != InvalidOid)
+		tablegroupId = tablegroupIdFromCommand;
+	else
+		return InvalidOid;
+
+	/*
+	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
+	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
+	 */
+	if (!pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+	{
+		AclResult  aclresult;
+
+		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
+						   get_tablegroup_name(tablegroupId));
+	}
+
+	if (tablegroupIdFromCommand != InvalidOid)
+	{
+		/*
+		 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid. We need
+		 * to do the preprocessing and RBAC checks first. This still happens before
+		 * transformReloptions so this option is included in the reloptions text array.
+		 */
+		stmt->options = lcons(makeDefElem("tablegroup",
+										  (Node *) makeInteger(tablegroupIdFromCommand), -1),
+										  stmt->options);
+	}
+
+	return tablegroupId;
+}
+
+/*
+ * Returns the Oid of the tablegroup from the CREATE TABLE ... TABLEGROUP grp; syntax
+ * Returns InvalidOid if no tablegroup was specified.
+ */
+static Oid
+GetTablegroupOidFromCommand(OptTableGroup *tablegroup)
+{
+	if (!tablegroup)
+		return InvalidOid;
+
+	if (!tablegroup->has_tablegroup)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Cannot use NO TABLEGROUP in CREATE TABLE statement.")));
+
+	return get_tablegroup_oid(tablegroup->tablegroup_name, false);
 }
 
 /*
@@ -4502,11 +4540,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 			break;
 		case AT_SetTableSpace:	/* SET TABLESPACE */
 			/*
-			 * Only do this for partitioned tables and indexes, for which this
-			 * is just a catalog change.  Other relation types which have
-			 * storage are handled by Phase 3.
+			 * Only do this for partitioned tables and indexes or when Yugabyte is
+			 * enabled, for which this is just a catalog change.  Other relation types
+			 * which have storage are handled by Phase 3.
 			 */
-			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
+			if (IsYBRelation(rel) ||
+				rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
 				rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 				ATExecSetTableSpaceNoStorage(rel, tab->newTableSpace);
 
@@ -4643,9 +4682,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		 * Foreign tables have no storage, nor do partitioned tables and
 		 * indexes.
 		 */
-		if (tab->relkind == RELKIND_FOREIGN_TABLE ||
-			tab->relkind == RELKIND_PARTITIONED_TABLE ||
-			tab->relkind == RELKIND_PARTITIONED_INDEX)
+		if (!RELKIND_CAN_HAVE_STORAGE(tab->relkind))
 			continue;
 
 		/*
@@ -4806,7 +4843,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 			 * If we had SET TABLESPACE but no reason to reconstruct tuples,
 			 * just do a block-by-block copy.
 			 */
-			if (tab->newTableSpace)
+			if (tab->newTableSpace && !IsYBRelationById(tab->relid))
 				ATExecSetTableSpace(tab->relid, tab->newTableSpace, lockmode);
 		}
 	}
@@ -12550,6 +12587,18 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 {
 	Oid			tablespaceId;
 
+	if (IsYugaByteEnabled() && tablespacename &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Disable setting tablespaces for temporary tables in Yugabyte
+		 * clusters.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespaces for temporary tables")));
+	}
+
 	/* Check that the tablespace exists */
 	tablespaceId = get_tablespace_oid(tablespacename, false);
 
@@ -12797,6 +12846,12 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 	rel = relation_open(tableOid, lockmode);
 
 	/*
+	 * Should only be called on relations having storage, namely non-Yugabyte and
+	 * non-parititoned relations.
+	 */
+	Assert(!IsYBRelation(rel) && RELKIND_CAN_HAVE_STORAGE(rel->rd_rel->relkind));
+
+	/*
 	 * No work if no change in tablespace.
 	 */
 	oldTableSpace = rel->rd_rel->reltablespace;
@@ -12957,9 +13012,10 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/*
 	 * Shouldn't be called on relations having storage; these are processed
-	 * in phase 3.
+	 * in phase 3.  Yugabyte tables do not use the Postgres store so it appears to
+	 * Postgres as if there is no associated storage.
 	 */
-	Assert(!RELKIND_CAN_HAVE_STORAGE(rel->rd_rel->relkind));
+	Assert(IsYBRelation(rel) || !RELKIND_CAN_HAVE_STORAGE(rel->rd_rel->relkind));
 
 	/* Can't allow a non-shared relation in pg_global */
 	if (newTableSpace == GLOBALTABLESPACE_OID)
@@ -12989,6 +13045,10 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 	/* update the pg_class row */
 	rd_rel->reltablespace = (newTableSpace == MyDatabaseTableSpace) ? InvalidOid : newTableSpace;
 	CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+
+	/* Record dependency on tablespace */
+	changeDependencyOnTablespace(RelationRelationId,
+								 reloid, rd_rel->reltablespace);
 
 	InvokeObjectPostAlterHook(RelationRelationId, reloid, 0);
 
@@ -16296,6 +16356,22 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd)
 
 	ObjectAddressSet(address, RelationRelationId, RelationGetRelid(attachrel));
 
+	/*
+	 * If the partition we just attached is partitioned itself, invalidate
+	 * relcache for all descendent partitions too to ensure that their
+	 * rd_partcheck expression trees are rebuilt; partitions already locked
+	 * at the beginning of this function.
+	 */
+	if (attachrel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		ListCell *l;
+
+		foreach(l, attachrel_children)
+		{
+			CacheInvalidateRelcacheByRelid(lfirst_oid(l));
+		}
+	}
+
 	/* keep our lock until commit */
 	heap_close(attachrel, NoLock);
 
@@ -16792,6 +16868,25 @@ ATExecDetachPartition(Relation rel, RangeVar *name)
 	 * included in its partition descriptor.
 	 */
 	CacheInvalidateRelcache(rel);
+
+	/*
+	 * If the partition we just detached is partitioned itself, invalidate
+	 * relcache for all descendent partitions too to ensure that their
+	 * rd_partcheck expression trees are rebuilt; must lock partitions
+	 * before doing so, using the same lockmode as what partRel has been
+	 * locked with by the caller.
+	 */
+	if (partRel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		List   *children;
+
+		children = find_all_inheritors(RelationGetRelid(partRel),
+									   AccessExclusiveLock, NULL);
+		foreach(cell, children)
+		{
+			CacheInvalidateRelcacheByRelid(lfirst_oid(cell));
+		}
+	}
 
 	ObjectAddressSet(address, RelationRelationId, RelationGetRelid(partRel));
 

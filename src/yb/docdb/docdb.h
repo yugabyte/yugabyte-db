@@ -18,31 +18,27 @@
 #include <ostream>
 #include <string>
 #include <vector>
-#include <boost/function.hpp>
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/db.h"
+#include <boost/function.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/docdb_types.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/expiration.h"
-#include "yb/docdb/intent.h"
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/lock_batch.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/value.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/docdb/value.h"
 
-#include "yb/util/status.h"
+#include "yb/rocksdb/db.h"
+
+#include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
 // DocDB mapping on top of the key-value map in RocksDB:
@@ -128,7 +124,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-CHECKED_STATUS ExecuteDocWriteOperation(
+CHECKED_STATUS AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,

@@ -22,12 +22,16 @@
 
 #include "yb/rocksdb/table/mock_table.h"
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 namespace mock {

@@ -32,9 +32,15 @@
 
 #include "yb/common/row_key-util.h"
 
-#include <boost/type_traits/is_unsigned.hpp>
 
+#include "yb/gutil/mathlimits.h"
+
+#include "yb/common/common.pb.h"
 #include "yb/common/row.h"
+#include "yb/common/schema.h"
+#include "yb/common/types.h"
+
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 namespace row_key_util {

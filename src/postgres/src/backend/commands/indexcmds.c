@@ -25,6 +25,7 @@
 #include "catalog/indexing.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_opclass.h"
@@ -647,7 +648,7 @@ DefineIndex(Oid relationId,
 	 * If tablegroup specified then perform a lookup unless has_tablegroup is false.
 	 */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 	{
 		if (!stmt->tablegroup)
 		{
@@ -687,7 +688,7 @@ DefineIndex(Oid relationId,
 
 		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, OBJECT_TABLEGROUP,
+			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
 						   get_tablegroup_name(tablegroupId));
 	}
 
@@ -761,8 +762,8 @@ DefineIndex(Oid relationId,
 			{
 				char	   *new_name = "ybgin";
 
-				ereport(NOTICE,
-						(errmsg("replacing access method \"%s\" with \"%s\"",
+				ereport(LOG,
+						(errmsg("substituting access method \"%s\" for \"%s\"",
 								accessMethodName, new_name)));
 				accessMethodName = new_name;
 			}
@@ -792,7 +793,8 @@ DefineIndex(Oid relationId,
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
 
-	if (IsYBRelation(rel) && accessMethodId != LSM_AM_OID)
+	if (IsYBRelation(rel) && (accessMethodId != LSM_AM_OID &&
+							  accessMethodId != YBGIN_AM_OID))
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
@@ -1477,6 +1479,46 @@ CheckPredicate(Expr *predicate)
 }
 
 /*
+ * YbCheckCollationRestrictions
+ *		Checks that the given partial-index predicate is valid.
+ * Disallow some built-in operator classes if the column has non-C collation.
+ * We already accept them if the column has C collation so continue to allow that.
+ */
+static void
+YbCheckCollationRestrictions(Oid attcollation, Oid opclassoid)
+{
+	HeapTuple classtup;
+	Form_pg_opclass classform;
+	char *opclassname;
+	HeapTuple collationtup;
+	Form_pg_collation collform;
+	char *collname;
+
+	classtup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassoid));
+	if (!HeapTupleIsValid(classtup))
+		elog(ERROR, "cache lookup failed for operator class %u", opclassoid);
+	classform = (Form_pg_opclass) GETSTRUCT(classtup);
+	opclassname = NameStr(classform->opcname);
+	if (strcasecmp(opclassname, "bpchar_pattern_ops") == 0 ||
+		strcasecmp(opclassname, "text_pattern_ops") == 0 ||
+		strcasecmp(opclassname, "varchar_pattern_ops") == 0)
+	{
+		collationtup = SearchSysCache1(COLLOID, ObjectIdGetDatum(attcollation));
+		if (!HeapTupleIsValid(collationtup))
+			elog(ERROR, "cache lookup failed for collation %u", attcollation);
+		collform = (Form_pg_collation) GETSTRUCT(collationtup);
+		collname = NameStr(collform->collname);
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("could not use operator class \"%s\" with column collation \"%s\"",
+						opclassname, collname),
+				 errhint("Use the COLLATE clause to set \"C\" collation explicitly.")));
+		ReleaseSysCache(collationtup);
+	}
+	ReleaseSysCache(classtup);
+}
+
+/*
  * Compute per-index-column information, including indexed column numbers
  * or index expressions, opclasses, and indoptions. Note, all output vectors
  * should be allocated for all columns, including "including" ones.
@@ -1535,7 +1577,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 
 	/* Get whether the index is part of a tablegroup */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists && IsYugaByteEnabled() &&
+	if (YbTablegroupCatalogExists && IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
 		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
 
@@ -1755,6 +1797,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 										 atttype,
 										 accessMethodName,
 										 accessMethodId);
+
+		/*
+	 	 * In Yugabyte mode, disallow some built-in operator classes if the column has non-C
+	 	 * collation.
+		 */
+		if (IsYugaByteEnabled() &&
+			YBIsCollationValidNonC(attcollation) &&
+			!kTestOnlyUseOSDefaultCollation)
+			YbCheckCollationRestrictions(attcollation, classOidP[attn]);
 
 		/*
 		 * Identify the exclusion operator, if any.

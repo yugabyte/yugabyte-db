@@ -29,22 +29,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/test_util.h"
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest-spi.h>
 
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/env.h"
-#include "yb/util/path_util.h"
-#include "yb/util/random.h"
-#include "yb/util/spinlock_profiling.h"
-#include "yb/util/thread.h"
 #include "yb/util/logging.h"
+#include "yb/util/path_util.h"
+#include "yb/util/spinlock_profiling.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 DEFINE_string(test_leave_files, "on_failure",
               "Whether to leave test files around after the test run. "
@@ -354,25 +355,6 @@ int CalcNumTablets(int num_tablet_servers) {
 #else
   return num_tablet_servers * 3;
 #endif
-}
-
-void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop) {
-  auto end = CoarseMonoClock::now() + duration;
-  while (!stop->load(std::memory_order_acquire) && CoarseMonoClock::now() < end) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
-}
-
-void TestThreadHolder::JoinAll() {
-  LOG(INFO) << __func__;
-
-  for (auto& thread : threads_) {
-    if (thread.joinable()) {
-      thread.join();
-    }
-  }
-
-  LOG(INFO) << __func__ << " done";
 }
 
 } // namespace yb

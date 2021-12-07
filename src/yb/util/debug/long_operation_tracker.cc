@@ -13,6 +13,7 @@
 
 #include "yb/util/debug/long_operation_tracker.h"
 
+#include <condition_variable>
 #include <mutex>
 #include <queue>
 #include <thread>

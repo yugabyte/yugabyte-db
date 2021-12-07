@@ -17,17 +17,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rocksdb/util/options_helper.h"
 
 #include <cassert>
-#include <cctype>
-#include <cstdlib>
-#include <unordered_set>
 #include <vector>
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/convenience.h"
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/options.h"
@@ -36,7 +37,7 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
-#include "yb/rocksdb/util/logging.h"
+
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

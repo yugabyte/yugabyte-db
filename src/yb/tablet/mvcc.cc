@@ -32,20 +32,17 @@
 
 #include "yb/tablet/mvcc.h"
 
-#include <sstream>
-
 #include <boost/circular_buffer.hpp>
-#include <boost/circular_buffer/space_optimized.hpp>
 #include <boost/variant.hpp>
 
 #include "yb/gutil/macros.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
 
 using namespace std::literals;
 
@@ -192,6 +189,10 @@ class ItemPrintingVisitor : public boost::static_visitor<>{
 };
 
 }  // namespace
+
+std::string FixedHybridTimeLease::ToString() const {
+  return YB_STRUCT_TO_STRING(time, lease);
+}
 
 class MvccManager::MvccOpTrace {
  public:
@@ -654,6 +655,15 @@ MvccManager::InvariantViolationLoggingHelper MvccManager::InvariantViolationLogP
 void MvccManager::TEST_DumpTrace(std::ostream* out) NO_THREAD_SAFETY_ANALYSIS {
   if (op_trace_)
     op_trace_->DumpTrace(out);
+}
+
+std::string MvccManager::QueueItem::ToString() const {
+  return YB_STRUCT_TO_STRING(hybrid_time, op_id);
+}
+
+bool MvccManager::QueueItem::Eq(const MvccManager::QueueItem& rhs) const {
+  const auto& lhs = *this;
+  return YB_STRUCT_EQUALS(hybrid_time, op_id);
 }
 
 }  // namespace tablet

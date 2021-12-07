@@ -35,8 +35,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/util.h"
-#include "yb/util/metrics.h"
+
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

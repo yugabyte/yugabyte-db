@@ -12,19 +12,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section and its peer, [Timezones and _UTC offsets_](../timezones/), are placed, with respect to the sequential reading order of the overall _date-time_ time data types section that the [table of contents](../../type_datetime/) presents, before the main treatment of the [semantics of the _date-time_ data types](../date-time-data-types-semantics/) because the code examples in those subsequent sections rely on typecasting between _date-time_ values and _text_ values and on setting the timezone, either as a session parameter or as part of a _date-time_ expression with the _at time zone_ operator.
+This section and its peer, [Timezones and _UTC offsets_](../timezones/), are placed, with respect to the sequential reading order of the overall _date-time_ time data types section that the [table of contents](../../type_datetime/toc/) presents, before the main treatment of the [semantics of the _date-time_ data types](../date-time-data-types-semantics/) because the code examples in those subsequent sections rely on typecasting between _date-time_ values and _text_ values and on setting the timezone, either as a session parameter or as part of a _date-time_ expression with the _at time zone_ operator.
 
 ## Introduction
 
 Typecasting between _date-time_ values and _text_ values, rather than using explicit built-in functions like _to_char()_, _to_timestamp()_, or _to_date()_ allows the demonstration code to be uncluttered and easy to understand. However, as this section shows, the typecast semantics is sensitive to the current settings of the _DateStyle_ and _IntervalStyle_ session parameters.
 
 {{< note title="'Date-time' functions and operators in the PostgreSQL documentation." >}}
-PostgreSQL, and therefore YSQL, provide many functions and equivalent syntactical constructs that operate on, or produce, _date-time_ values. These will presently be documented in a dedicated section within the main section [Functions and operators](../../../exprs/). Meanwhile, refer to the PostgreSQL documentation sections:
+PostgreSQL, and therefore YSQL, provide many functions and equivalent syntactical constructs that operate on, or produce, _date-time_ values. These are documented in dthese edicated sections within the main section [Functions and operators](../../../exprs/) and its children:
 
-- <a href="https://www.postgresql.org/docs/11/functions-datetime.html" target="_blank">9.9. Date/Time Functions and Operators <i class="fas fa-external-link-alt"></i></a>
-- <a href="https://www.postgresql.org/docs/11/functions-formatting.html" target="_blank">9.8. Data Type Formatting Functions <i class="fas fa-external-link-alt"></i></a>
-
-and the other sections that are referenced below.
+- [Date and time operators](../operators/).
+- [General-purpose date and time functions](../functions/).
+- [Date and time formatting functions](../formatting-functions/).
 
 The following _to_char_demo()_ code example uses the _to_timestamp()_ function to produce a _timestamptz_ value from a _double precision_ value. The input represents the real number of seconds after, or before, the start of the Unix Epoch (a.k.a. the POSIX Epoch). See the Wikipedia article <a href="https://en.wikipedia.org/wiki/Unix_time" target="_blank">Unix time <i class="fas fa-external-link-alt"></i></a>. The Unix Epoch begins at midnight on 1-January-1970 _UTC_. Try this:
 
@@ -70,7 +69,7 @@ This is the result:
  timestamp without time zone | 1970-01-01 01:00:00
 ```
 
-The  _at time zone_ clause has _function syntax_ equivalent:
+The _at time zone_ clause has _function syntax_ equivalent:
 
 ```output
 timezone(timestamptz_value=>$1, timezone=>$2)
@@ -148,14 +147,14 @@ select to_timestamp(
 
 This is the result:
 
-```
+```output
  07.09.1042 11:59:59.543216 BC
 ```
 {{< /note >}}
 
 ## Two syntaxes for typecasting
 
-**Approach One:** You can write the name of the target data type _after_ the to-be-typecasted value using the notation exemplified by _::timestamptz_. Try these examples:
+**Approach One:** You can write the name of the target data type _after_ the to-be-typecast value using the notation exemplified by _::timestamptz_. Try these examples:
 
 ```postgresql
 drop table if exists t cascade;
@@ -178,7 +177,7 @@ insert into t(c1, c2, c3, c4, c5, c6) values (
 
 The test silently succeeds.
 
-**Approach Two:** You can write the bare name of the target data type _before_ the to-be-typecasted value. Try these examples:
+**Approach Two:** You can write the bare name of the target data type _before_ the to-be-typecast value. Try these examples:
 
 ```plpgsql
 insert into t(c1, c2, c3, c4, c5, c6) values (
@@ -206,7 +205,7 @@ Approach One is used consistently throughout the whole of the [Date and time dat
 
 ## The DateStyle session parameter
 
-See the PostgreSQL documentation section [19.11.2. Locale and Formatting](https://www.postgresql.org/docs/11/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-FORMAT). The _DateStyle_ session parameter determines the format of the _::text_ typecast of a _date-time_ value. It also, but in a subtle fashion, determines how a _text_ value is interpreted when it's typecasted to a _date-time_ value. It has two orthogonal components: the _style_ and the _substyle_. The _style_ has these legal values:
+See the PostgreSQL documentation section [19.11.2. Locale and Formatting](https://www.postgresql.org/docs/11/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-FORMAT). The _DateStyle_ session parameter determines the format of the _::text_ typecast of a _date-time_ value. It also, but in a subtle fashion, determines how a _text_ value is interpreted when it's typecast to a _date-time_ value. It has two orthogonal components: the _style_ and the _substyle_. The _style_ has these legal values:
 
 ```output
 ISO
@@ -229,6 +228,7 @@ The components can be set together, like this:
 set datestyle = 'PostgreSQL, YMD';
 show datestyle;
 ```
+
 This is the result:
 
 ```output
@@ -242,6 +242,7 @@ set datestyle = 'German';
 set datestyle = 'DMY';
 show datestyle;
 ```
+
 This is the result:
 
 ```output

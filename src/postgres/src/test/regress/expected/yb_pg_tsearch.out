@@ -120,9 +120,60 @@ create index wowidx on test_tsvector using gist (a);
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX wowidx ON test_tsvector USING gin (a);
-NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  index method "ybgin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+SET enable_seqscan=OFF;
+-- GIN only supports bitmapscan, so no need to test plain indexscan
+-- YB note: ybgin is the opposite: it supports indexscan, not bitmapscan
+explain (costs off) SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+                      QUERY PLAN
+-------------------------------------------------------
+ Aggregate
+   ->  Index Scan using wowidx on test_tsvector
+         Index Cond: (a @@ '''wr'' | ''qh'''::tsquery)
+(3 rows)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr&qh';
+ count
+-------
+    17
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq&yt';
+ count
+-------
+     6
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq|yt';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq&yt)|(wr&qh)';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq|yt)&(wr|qh)';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ 'w:*|q:*';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ any ('{wr,qh}');
+ count
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'no_such_lexeme';
+ count
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
+RESET enable_seqscan;
 INSERT INTO test_tsvector VALUES ('???', 'DFG:1A,2B,6C,10 FGH');
 SELECT * FROM ts_stat('SELECT a FROM test_tsvector') ORDER BY ndoc DESC, nentry DESC, word LIMIT 10;
  word | ndoc | nentry
@@ -147,9 +198,17 @@ SELECT * FROM ts_stat('SELECT a FROM test_tsvector', 'AB') ORDER BY ndoc DESC, n
 
 --dictionaries and to_tsvector
 SELECT ts_lexize('english_stem', 'skies');
-ERROR:  text search dictionary "english_stem" does not exist
-LINE 1: SELECT ts_lexize('english_stem', 'skies');
-                         ^
+ ts_lexize
+-----------
+ {sky}
+(1 row)
+
+SELECT ts_lexize('english_stem', 'identity');
+ ts_lexize
+-----------
+ {ident}
+(1 row)
+
 SELECT * FROM ts_token_type('default');
  tokid |      alias      |               description
 -------+-----------------+------------------------------------------
@@ -329,14 +388,18 @@ SELECT * FROM ts_parse('default', '345 qwe@efd.r '' http://www.com/ http://aew.w
 SELECT to_tsvector('english', '345 qwe@efd.r '' http://www.com/ http://aew.werc.ewr/?ad=qwe&dw 1aew.werc.ewr/?ad=qwe&dw 2aew.werc.ewr http://3aew.werc.ewr/?ad=qwe&dw http://4aew.werc.ewr http://5aew.werc.ewr:8100/?  ad=qwe&dw 6aew.werc.ewr:8100/?ad=qwe&dw 7aew.werc.ewr:8100/?ad=qwe&dw=%20%32 +4.0e-10 qwe qwe qwqwe 234.435 455 5.005 teodor@stack.net teodor@123-stack.net 123_teodor@stack.net 123-teodor@stack.net qwe-wer asdf <fr>qwer jf sdjk<we hjwer <werrwe> ewr1> ewri2 <a href="qwe<qwe>">
 /usr/local/fff /awdf/dwqe/4325 rewt/ewr wefjn /wqe-324/ewr gist.h gist.h.c gist.c. readline 4.2 4.2. 4.2, readline-4.2 readline-4.2. 234
 <i <b> wow  < jqw <> qwerty');
-ERROR:  text search configuration "english" does not exist
-LINE 1: SELECT to_tsvector('english', '345 qwe@efd.r '' http://www.c...
-                           ^
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                              to_tsvector
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ '+4.0e-10':28 '-4.2':63,65 '/?':18 '/?ad=qwe&dw':7,10,14,24 '/?ad=qwe&dw=%20%32':27 '/awdf/dwqe/4325':51 '/usr/local/fff':50 '/wqe-324/ewr':54 '123-teodor@stack.net':38 '123_teodor@stack.net':37 '1aew.werc.ewr':9 '1aew.werc.ewr/?ad=qwe&dw':8 '234':66 '234.435':32 '2aew.werc.ewr':11 '345':1 '3aew.werc.ewr':13 '3aew.werc.ewr/?ad=qwe&dw':12 '4.2':59,60,61 '455':33 '4aew.werc.ewr':15 '5.005':34 '5aew.werc.ewr:8100':17 '5aew.werc.ewr:8100/?':16 '6aew.werc.ewr:8100':23 '6aew.werc.ewr:8100/?ad=qwe&dw':22 '7aew.werc.ewr:8100':26 '7aew.werc.ewr:8100/?ad=qwe&dw=%20%32':25 'ad':19 'aew.werc.ewr':6 'aew.werc.ewr/?ad=qwe&dw':5 'asdf':42 'dw':21 'efd.r':3 'ewr1':48 'ewri2':49 'gist.c':57 'gist.h':55 'gist.h.c':56 'hjwer':47 'jf':44 'jqw':69 'qwe':2,20,29,30,40 'qwe-wer':39 'qwer':43 'qwerti':70 'qwqwe':31 'readlin':58,62,64 'rewt/ewr':52 'sdjk':45 'teodor@123-stack.net':36 'teodor@stack.net':35 'wefjn':53 'wer':41 'wow':68 'www.com':4
+(1 row)
+
 -- to_tsquery
 SELECT to_tsquery('english', 'qwe & sKies ');
-ERROR:  text search configuration "english" does not exist
-LINE 1: SELECT to_tsquery('english', 'qwe & sKies ');
-                          ^
+  to_tsquery
+---------------
+ 'qwe' & 'sky'
+(1 row)
+
 SELECT to_tsquery('simple', 'qwe & sKies ');
    to_tsquery
 -----------------
@@ -382,11 +445,10 @@ SELECT to_tsquery('SKIES & My | booKs');
 (1 row)
 
 SET default_text_search_config=english;
-ERROR:  invalid value for parameter "default_text_search_config": "english"
 SELECT to_tsvector('SKIES My booKs');
-        to_tsvector
-----------------------------
- 'books':3 'my':2 'skies':1
+   to_tsvector
+------------------
+ 'book':3 'sky':1
 (1 row)
 
 -- test finding items in GIN's pending list

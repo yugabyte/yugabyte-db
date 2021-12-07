@@ -108,21 +108,13 @@ public enum TaskType {
 
   StartMasterOnNode("StartMasterOnNode"),
 
-  SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
-
-  CreateXClusterReplication("CreateXClusterReplication"),
-
   CreateXClusterConfig("CreateXClusterConfig"),
-
-  DeleteXClusterReplication("DeleteXClusterReplication"),
 
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
-  EditXClusterReplication("EditXClusterReplication"),
-
   EditXClusterConfig("EditXClusterConfig"),
 
-  PauseOrResumeXClusterReplication("PauseOrResumeXClusterReplication"),
+  CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
@@ -141,6 +133,8 @@ public enum TaskType {
 
   PrecheckNode("subtasks.PrecheckNode"),
 
+  PrecheckNodeDetached("subtasks.PrecheckNodeDetached"),
+
   AnsibleUpdateNodeInfo("subtasks.AnsibleUpdateNodeInfo"),
 
   BulkImport("subtasks.BulkImport"),
@@ -154,6 +148,8 @@ public enum TaskType {
   DeleteNode("subtasks.DeleteNode"),
 
   DeleteBackup("subtasks.DeleteBackup"),
+
+  DeleteCustomerConfig("DeleteCustomerConfig"),
 
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
@@ -183,6 +179,8 @@ public enum TaskType {
 
   WaitForDataMove("subtasks.WaitForDataMove"),
 
+  WaitForLeaderBlacklistCompletion("subtasks.WaitForLeaderBlacklistCompletion"),
+
   WaitForLoadBalance("subtasks.WaitForLoadBalance"),
 
   WaitForMasterLeader("subtasks.WaitForMasterLeader"),
@@ -198,6 +196,15 @@ public enum TaskType {
   WaitForServerReady("subtasks.WaitForServerReady"),
 
   RunExternalScript("subtasks.RunExternalScript"),
+
+  // Tasks belonging to subtasks.xcluster classpath
+  XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
+
+  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
+
+  XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
+
+  XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
@@ -247,22 +254,7 @@ public enum TaskType {
 
   UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
 
-  AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
-
-  AsyncReplicationSetup("subtasks.AsyncReplicationSetup"),
-
-  AsyncReplicationDelete("subtasks.AsyncReplicationDelete"),
-
   ResetUniverseVersion("subtasks.ResetUniverseVersion"),
-
-  AlterXClusterReplicationAddTables("subtasks.AlterXClusterReplicationAddTables"),
-
-  AlterXClusterReplicationRemoveTables("subtasks.AlterXClusterReplicationRemoveTables"),
-
-  AlterXClusterReplicationChangeMasterAddresses(
-      "subtasks.AlterXClusterReplicationChangeMasterAddresses"),
-
-  XClusterReplicationSetActive("subtasks.XClusterReplicationSetActive"),
 
   DeleteCertificate("subtasks.DeleteCertificate");
 

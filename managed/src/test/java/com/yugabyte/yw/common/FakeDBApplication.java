@@ -10,6 +10,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -17,6 +18,7 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.HashMap;
 import java.util.Map;
@@ -57,6 +59,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Executors mockExecutors = mock(Executors.class);
   public ShellProcessHandler mockShellProcessHandler = mock(ShellProcessHandler.class);
   public TableManager mockTableManager = mock(TableManager.class);
+  public TaskInfoManager mockTaskManager = mock(TaskInfoManager.class);
+  public GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
+  public NodeManager mockNodeManager = mock(NodeManager.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -101,7 +106,10 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
                 .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
                 .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
-                .overrides(bind(TableManager.class).toInstance(mockTableManager)))
+                .overrides(bind(TableManager.class).toInstance(mockTableManager))
+                .overrides(bind(TaskInfoManager.class).toInstance(mockTaskManager))
+                .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
+                .overrides(bind(NodeManager.class).toInstance(mockNodeManager)))
         .build();
   }
 

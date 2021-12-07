@@ -14,13 +14,13 @@
 //
 // Tree node definitions for INSERT INTO ... JSON clause.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
 
-#include "yb/yql/cql/ql/ptree/sem_context.h"
-#include "yb/util/flag_tags.h"
-
 #include <boost/optional.hpp>
+
+#include "yb/common/ql_type.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {

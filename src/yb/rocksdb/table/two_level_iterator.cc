@@ -23,13 +23,8 @@
 
 #include "yb/rocksdb/table/two_level_iterator.h"
 
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block.h"
-#include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/util/arena.h"
-
-#include "yb/util/debug-util.h"
 
 namespace rocksdb {
 

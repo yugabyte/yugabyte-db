@@ -17,22 +17,26 @@
 #include <functional>
 
 #include "yb/common/ql_scanspec.h"
+
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bytes.h"
+
 #include "yb/rocksdb/options.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
 
 namespace yb {
 namespace docdb {
 
 // DocDB variant of scanspec.
-class DocPgsqlScanSpec : public common::PgsqlScanSpec {
+class DocPgsqlScanSpec : public PgsqlScanSpec {
  public:
 
   // Scan for the specified doc_key.
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const DocKey& doc_key,
-                   const DocKey& start_doc_key = DocKey(),
+                   const boost::optional<int32_t> hash_code = boost::none,
+                   const boost::optional<int32_t> max_hash_code = boost::none,
+                   const DocKey& start_doc_key = DefaultStartDocKey(),
                    bool is_forward_scan = true);
 
   // Scan for the given hash key, a condition, and optional doc_key.
@@ -49,7 +53,7 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
                    boost::optional<int32_t> hash_code,
                    boost::optional<int32_t> max_hash_code,
                    const PgsqlExpressionPB *where_expr,
-                   const DocKey& start_doc_key = DocKey(),
+                   const DocKey& start_doc_key = DefaultStartDocKey(),
                    bool is_forward_scan = true);
 
   //------------------------------------------------------------------------------------------------
@@ -67,18 +71,13 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const;
 
   // Return the inclusive lower and upper bounds of the scan.
-  Result<KeyBytes> LowerBound() const {
-    return Bound(true /* lower_bound */);
-  }
-
-  Result<KeyBytes> UpperBound() const {
-    return Bound(false /* upper_bound */);
-  }
+  Result<KeyBytes> LowerBound() const;
+  Result<KeyBytes> UpperBound() const;
 
   // Returns the lower/upper range components of the key.
   std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
 
-  const common::QLScanRange* range_bounds() const {
+  const QLScanRange* range_bounds() const {
     return range_bounds_.get();
   }
 
@@ -87,6 +86,8 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   }
 
  private:
+  static const DocKey& DefaultStartDocKey();
+
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   Result<KeyBytes> Bound(const bool lower_bound) const;
 
@@ -94,7 +95,7 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   KeyBytes bound_key(const Schema& schema, const bool lower_bound) const;
 
   // The scan range within the hash key when a WHERE condition is specified.
-  const std::unique_ptr<const common::QLScanRange> range_bounds_;
+  const std::unique_ptr<const QLScanRange> range_bounds_;
 
   // Initialize range_options_ if hashed_components_ in set and all range columns have one or more
   // options (i.e. using EQ/IN conditions). Otherwise range_options_ will stay null and we will

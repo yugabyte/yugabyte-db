@@ -22,23 +22,24 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/db_iter.h"
-#include <stdexcept>
+
 #include <deque>
-#include <string>
 #include <limits>
 
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/util/statistics.h"
+#include "yb/rocksdb/util/stop_watch.h"
+
+#include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

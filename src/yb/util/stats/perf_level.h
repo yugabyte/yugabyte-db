@@ -21,8 +21,6 @@
 #ifndef YB_UTIL_STATS_PERF_LEVEL_H
 #define YB_UTIL_STATS_PERF_LEVEL_H
 
-#include <stdint.h>
-#include <string>
 
 namespace yb {
 

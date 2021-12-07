@@ -15,17 +15,16 @@
 // under the License.
 //
 //
-
 #include "yb/gutil/strings/stringpiece.h"
 
-#include <algorithm>
-#include <climits>
-#include <glog/logging.h>
 #include <string.h>
+
+#include <algorithm>
 #include <string>
 
+#include <glog/logging.h>
+
 #include "yb/gutil/hash/hash.h"
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/memutil.h"
 
@@ -236,3 +235,7 @@ GStringPiece GStringPiece::substr(size_type pos, size_type n) const {
 }
 
 const GStringPiece::size_type GStringPiece::npos = size_type(-1);
+
+size_t GStringPiece::hash() const {
+  return HashStringThoroughly(data(), size());
+}

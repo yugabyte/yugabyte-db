@@ -123,23 +123,16 @@
 // (3) A null GStringPiece is empty.
 //     An empty GStringPiece may or may not be a null GStringPiece.
 
-#ifndef STRINGS_STRINGPIECE_H_
-#define STRINGS_STRINGPIECE_H_
-
+#ifndef YB_GUTIL_STRINGS_STRINGPIECE_H
+#define YB_GUTIL_STRINGS_STRINGPIECE_H
 
 #include <assert.h>
-#include <functional>
+
 #include <iosfwd>
 #include <limits>
-#include <stddef.h>
-#include <string.h>
 #include <string>
 
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/type_traits.h"
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/gutil/hash/hash.h"
 
 class GStringPiece {
  private:
@@ -309,11 +302,9 @@ class GStringPiece {
   int find_last_not_of(char c, size_type pos = npos) const;
 
   GStringPiece substr(size_type pos, size_type n = npos) const;
-};
 
-#ifndef SWIG
-DECLARE_POD(GStringPiece);  // So vector<GStringPiece> becomes really fast
-#endif
+  size_t hash() const;
+};
 
 // This large function is defined inline so that in a fairly common case where
 // one of the arguments is a literal, the compiler can elide a lot of the
@@ -373,8 +364,9 @@ template<> struct hash<GStringPiece> {
 // GoodFastHash values.
 template<> struct GoodFastHash<GStringPiece> {
   size_t operator()(GStringPiece s) const {
-    return HashStringThoroughly(s.data(), s.size());
+    return s.hash();
   }
+
   // Less than operator, for MSVC.
   bool operator()(const GStringPiece& s1, const GStringPiece& s2) const {
     return s1 < s2;
@@ -385,7 +377,6 @@ template<> struct GoodFastHash<GStringPiece> {
 #endif
 
 // allow GStringPiece to be logged
-extern ostream& operator<<(ostream& o, GStringPiece piece);
+extern std::ostream& operator<<(std::ostream& o, GStringPiece piece);
 
-
-#endif  // STRINGS_STRINGPIECE_H__
+#endif  // YB_GUTIL_STRINGS_STRINGPIECE_H

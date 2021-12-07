@@ -17,6 +17,7 @@
 
 #include <google/protobuf/io/coded_stream.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
 #include "yb/rpc/connection.h"
@@ -25,10 +26,13 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using google::protobuf::io::CodedInputStream;
 using namespace yb::size_literals;
@@ -195,7 +199,7 @@ Status YBInboundConnectionContext::HandleCall(
     return Status::OK();
   }
 
-  reactor->messenger()->QueueInboundCall(call);
+  reactor->messenger()->Handle(call, Queue::kTrue);
 
   return Status::OK();
 }
@@ -257,16 +261,16 @@ YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_proc
 
 YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
     : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */) {
-  remote_method_ = remote_method;
+  header_.remote_method = remote_method.serialized_body();
 }
 
 YBInboundCall::~YBInboundCall() {}
 
 CoarseTimePoint YBInboundCall::GetClientDeadline() const {
-  if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {
+  if (header_.timeout_ms == 0) {
     return CoarseTimePoint::max();
   }
-  return ToCoarse(timing_.time_received) + header_.timeout_millis() * 1ms;
+  return ToCoarse(timing_.time_received) + header_.timeout_ms * 1ms;
 }
 
 Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call_data) {
@@ -275,20 +279,16 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
 
   Slice source(call_data->data(), call_data->size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &serialized_request_));
-  DVLOG(4) << "Parsed YBInboundCall header: " << AsString(header_);
+  DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
+  request_data_memory_usage_.store(call_data->size(), std::memory_order_release);
   request_data_ = std::move(*call_data);
 
   // Adopt the service/method info from the header as soon as it's available.
-  if (PREDICT_FALSE(!header_.has_remote_method())) {
+  if (PREDICT_FALSE(header_.remote_method.empty())) {
     return STATUS(Corruption, "Non-connection context request header must specify remote_method");
   }
-  if (PREDICT_FALSE(!header_.remote_method().IsInitialized())) {
-    return STATUS(Corruption, "remote_method in request header is not initialized",
-        header_.remote_method().InitializationErrorString());
-  }
-  remote_method_ = header_.remote_method();
 
   return Status::OK();
 }
@@ -362,7 +362,7 @@ Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLit
   uint32_t protobuf_msg_size = response.ByteSize();
 
   ResponseHeader resp_hdr;
-  resp_hdr.set_call_id(header_.call_id());
+  resp_hdr.set_call_id(header_.call_id);
   resp_hdr.set_is_error(!is_success);
   for (auto& offset : sidecar_offsets_) {
     offset += protobuf_msg_size;
@@ -396,16 +396,13 @@ Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLit
 }
 
 string YBInboundCall::ToString() const {
-  return strings::Substitute("Call $0 $1 => $2 (request call id $3)",
-      remote_method_.ToString(),
-      AsString(remote_address()),
-      AsString(local_address()),
-      header_.call_id());
+  return Format("Call $0 $1 => $2 (request call id $3)",
+                header_.RemoteMethodAsString(), remote_address(), local_address(), header_.call_id);
 }
 
 bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                            RpcCallInProgressPB* resp) {
-  resp->mutable_header()->CopyFrom(header_);
+  header_.ToPB(resp->mutable_header());
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
@@ -418,14 +415,14 @@ void YBInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
-  if (header_.has_timeout_millis() && header_.timeout_millis() > 0) {
-    double log_threshold = header_.timeout_millis() * 0.75f;
+  if (header_.timeout_ms > 0) {
+    double log_threshold = header_.timeout_ms * 0.75f;
     if (total_time > log_threshold) {
       // TODO: consider pushing this onto another thread since it may be slow.
       // The traces may also be too large to fit in a log message.
       LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
-                   << header_.timeout_millis() << "ms).";
-      std::string s = trace_->DumpToString("==>", true);
+                   << header_.timeout_ms << "ms).";
+      std::string s = trace_->DumpToString(1, true);
       if (!s.empty()) {
         LOG(WARNING) << "Trace:\n" << s;
       }
@@ -463,8 +460,8 @@ Status YBInboundCall::ParseParam(google::protobuf::Message *message) {
   in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size*3/4);
   if (PREDICT_FALSE(!message->ParseFromCodedStream(&in))) {
     string err = Format("Invalid parameter for call $0: $1",
-                        remote_method_.ToString(),
-                        message->InitializationErrorString().c_str());
+                        header_.RemoteMethodAsString(),
+                        message->InitializationErrorString());
     LOG(WARNING) << err;
     return STATUS(InvalidArgument, err);
   }
@@ -476,15 +473,6 @@ Status YBInboundCall::ParseParam(google::protobuf::Message *message) {
   }
 
   return Status::OK();
-}
-
-void YBInboundCall::RespondBadMethod() {
-  auto err = Format("Call on service $0 received from $1 with an invalid method name: $2",
-                    remote_method_.service_name(),
-                    connection()->ToString(),
-                    remote_method_.method_name());
-  LOG(WARNING) << err;
-  RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD, STATUS(InvalidArgument, err));
 }
 
 void YBInboundCall::RespondSuccess(const MessageLite& response) {
@@ -531,9 +519,14 @@ void YBInboundCall::Respond(const MessageLite& response, bool is_success) {
     LOG(DFATAL) << "Unable to serialize response: " << s.ToString();
   }
 
-  TRACE_EVENT_ASYNC_END1("rpc", "InboundCall", this, "method", method_name());
+  TRACE_EVENT_ASYNC_END1("rpc", "InboundCall", this, "method", method_name().ToBuffer());
 
   QueueResponse(is_success);
+}
+
+Slice YBInboundCall::method_name() const {
+  auto parsed_remote_method = serialization::ParseRemoteMethod(header_.remote_method);
+  return parsed_remote_method.ok() ? parsed_remote_method->method : Slice();
 }
 
 Status YBOutboundConnectionContext::HandleCall(

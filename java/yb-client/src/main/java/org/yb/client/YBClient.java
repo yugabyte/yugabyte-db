@@ -1299,21 +1299,13 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public CreateXClusterReplicationResponse createXClusterReplication(
+  public SetupUniverseReplicationResponse setupUniverseReplication(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDs,
-    List<Common.HostPortPB> sourceMasterAddresses) throws Exception {
-    return createXClusterReplication(
-      sourceUniverseUUID, sourceTableIDs, sourceMasterAddresses, new ArrayList<>());
-  }
-
-  public CreateXClusterReplicationResponse createXClusterReplication(
-    UUID sourceUniverseUUID,
-    List<String> sourceTableIDs,
-    List<Common.HostPortPB> sourceMasterAddresses,
-    List<String> sourceBootstrapIDs) throws Exception {
-    Deferred<CreateXClusterReplicationResponse> d =
-      asyncClient.createXClusterReplication(
+    Set<String> sourceTableIDs,
+    Set<Common.HostPortPB> sourceMasterAddresses,
+    Set<String> sourceBootstrapIDs) throws Exception {
+    Deferred<SetupUniverseReplicationResponse> d =
+      asyncClient.setupUniverseReplication(
         sourceUniverseUUID,
         sourceTableIDs,
         sourceMasterAddresses,
@@ -1321,59 +1313,66 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public IsCreateXClusterReplicationDoneResponse isCreateXClusterReplicationDone(
+  public IsSetupUniverseReplicationDoneResponse isSetupUniverseReplicationDone(
     UUID sourceUniverseUUID) throws Exception {
-    Deferred<IsCreateXClusterReplicationDoneResponse> d =
-      asyncClient.isCreateXClusterReplicationDone(sourceUniverseUUID);
+    Deferred<IsSetupUniverseReplicationDoneResponse> d =
+      asyncClient.isSetupUniverseReplicationDone(sourceUniverseUUID.toString());
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public AlterXClusterReplicationResponse alterXClusterReplicationAddTables(
+  public SetUniverseReplicationEnabledResponse setUniverseReplicationEnabled(
+    UUID sourceUniverseUUID, boolean active) throws Exception {
+    Deferred<SetUniverseReplicationEnabledResponse> d =
+      asyncClient.setUniverseReplicationEnabled(sourceUniverseUUID, active);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterUniverseReplicationResponse alterUniverseReplicationAddTables(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToAdd) throws Exception {
-    Deferred<AlterXClusterReplicationResponse> d =
-      asyncClient.alterXClusterReplicationAddTables(
+    Set<String> sourceTableIDsToAdd) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationAddTables(
         sourceUniverseUUID, sourceTableIDsToAdd);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public AlterXClusterReplicationResponse alterXClusterReplicationRemoveTables(
+  public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToRemove) throws Exception {
-    Deferred<AlterXClusterReplicationResponse> d =
-      asyncClient.alterXClusterReplicationRemoveTables(
+    Set<String> sourceTableIDsToRemove) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationRemoveTables(
         sourceUniverseUUID, sourceTableIDsToRemove);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public AlterXClusterReplicationResponse alterXClusterReplicationChangeSourceMasterAddresses(
+  public AlterUniverseReplicationResponse alterUniverseReplicationSourceMasterAddresses(
     UUID sourceUniverseUUID,
-    List<Common.HostPortPB> sourceMasterAddresses) throws Exception {
-    Deferred<AlterXClusterReplicationResponse> d =
-      asyncClient.alterXClusterReplicationChangeSourceMasterAddresses(
+    Set<Common.HostPortPB> sourceMasterAddresses) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationSourceMasterAddresses(
         sourceUniverseUUID, sourceMasterAddresses);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public DeleteXClusterReplicationResponse deleteXClusterReplication(
+  public IsSetupUniverseReplicationDoneResponse isAlterUniverseReplicationDone(
     UUID sourceUniverseUUID) throws Exception {
-    Deferred<DeleteXClusterReplicationResponse> d =
-      asyncClient.deleteXClusterReplication(
+    Deferred<IsSetupUniverseReplicationDoneResponse> d =
+      asyncClient.isSetupUniverseReplicationDone(sourceUniverseUUID + ".ALTER");
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public DeleteUniverseReplicationResponse deleteUniverseReplication(
+    UUID sourceUniverseUUID) throws Exception {
+    Deferred<DeleteUniverseReplicationResponse> d =
+      asyncClient.deleteUniverseReplication(
         sourceUniverseUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public GetXClusterReplicationInfoResponse getXClusterReplicationInfo(
+  public GetUniverseReplicationResponse getUniverseReplication(
     UUID sourceUniverseUUID) throws Exception {
-    Deferred<GetXClusterReplicationInfoResponse> d =
-      asyncClient.getXClusterReplicationInfo(sourceUniverseUUID);
-    return d.join(getDefaultAdminOperationTimeoutMs());
-  }
-
-  public SetXClusterReplicationActiveResponse setXClusterReplicationActive(
-    UUID sourceUniverseUUID, boolean active) throws Exception {
-    Deferred<SetXClusterReplicationActiveResponse> d =
-      asyncClient.setXClusterReplicationActive(sourceUniverseUUID, active);
+    Deferred<GetUniverseReplicationResponse> d =
+      asyncClient.getUniverseReplication(sourceUniverseUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

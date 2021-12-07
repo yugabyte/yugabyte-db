@@ -39,12 +39,7 @@
 #include "access/tupdesc.h"
 #include "access/xact.h"
 #include "executor/ybcExpr.h"
-#include "utils/lsyscache.h"
-#include "utils/pg_locale.h"
-#include "utils/rel.h"
 #include "catalog/pg_authid.h"
-#include "catalog/pg_database.h"
-#include "utils/builtins.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_type.h"
@@ -65,6 +60,10 @@
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -88,6 +87,7 @@ int ybc_disable_pg_locking = -1;
 static void YBCInstallTxnDdlHook();
 
 bool yb_read_from_followers = false;
+int32_t yb_follower_read_staleness_ms = 0;
 
 bool
 IsYugaByteEnabled()
@@ -329,6 +329,18 @@ YBTransactionsEnabled()
 }
 
 bool
+IsYBReadCommitted()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
+	}
+	return IsYugaByteEnabled() && cached_value &&
+				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
+}
+
+bool
 YBSavepointsEnabled()
 {
 	static int cached_value = -1;
@@ -564,6 +576,33 @@ YBSetPreparingTemplates() {
 bool
 YBIsPreparingTemplates() {
 	return yb_preparing_templates;
+}
+
+Oid
+GetTypeId(int attrNum, TupleDesc tupleDesc)
+{
+	switch (attrNum)
+	{
+		case SelfItemPointerAttributeNumber:
+			return TIDOID;
+		case ObjectIdAttributeNumber:
+			return OIDOID;
+		case MinTransactionIdAttributeNumber:
+			return XIDOID;
+		case MinCommandIdAttributeNumber:
+			return CIDOID;
+		case MaxTransactionIdAttributeNumber:
+			return XIDOID;
+		case MaxCommandIdAttributeNumber:
+			return CIDOID;
+		case TableOidAttributeNumber:
+			return OIDOID;
+		default:
+			if (attrNum > 0 && attrNum <= tupleDesc->natts)
+				return TupleDescAttr(tupleDesc, attrNum - 1)->atttypid;
+			else
+				return InvalidOid;
+	}
 }
 
 const char*
@@ -1378,6 +1417,10 @@ bool YBReadFromFollowersEnabled() {
   return yb_read_from_followers;
 }
 
+int32_t YBFollowerReadStalenessMs() {
+  return yb_follower_read_staleness_ms;
+}
+
 YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs) {
 	void* mem = palloc(sizeof(YBCPgYBTupleIdDescriptor) + nattrs * sizeof(YBCPgAttrValueDescriptor));
 	YBCPgYBTupleIdDescriptor* result = mem;
@@ -1548,6 +1591,42 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	PG_RETURN_UINT16(hashed_val);
 }
 
+Datum
+yb_table_properties(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	TupleDesc	tupdesc;
+	Datum		values[3];
+	bool		nulls[3];
+	YBCPgTableDesc ybc_tabledesc = NULL;
+	YBCPgTableProperties yb_table_properties;
+
+	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &ybc_tabledesc));
+	HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
+
+	tupdesc = CreateTemplateTupleDesc(3, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+					   "num_tablets", INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+					   "num_hash_key_columns", INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+					   "is_colocated", BOOLOID, -1, 0);
+	BlessTupleDesc(tupdesc);
+
+	values[0] = Int64GetDatum(yb_table_properties.num_tablets);
+	values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
+	values[2] = BoolGetDatum(yb_table_properties.is_colocated);
+	memset(nulls, 0, sizeof(nulls));
+
+	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
+}
+
+Datum
+yb_is_database_colocated(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(MyDatabaseColocated);
+}
+
 /*
  * This function serves mostly as a helper for YSQL migration to introduce
  * pg_yb_catalog_version table without breaking version continuity.
@@ -1555,9 +1634,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 Datum
 yb_catalog_version(PG_FUNCTION_ARGS)
 {
-	uint64_t version;
-	YbGetMasterCatalogVersion(&version, true /* can_use_cache */);
-	PG_RETURN_UINT64(version);
+	PG_RETURN_UINT64(YbGetMasterCatalogVersion());
 }
 
 Datum
@@ -1796,9 +1873,20 @@ void YBGetCollationInfo(
 		 * A character array type is processed as YB_YQL_DATA_TYPE_BINARY but it
 		 * can have a collation. For example:
 		 *   CREATE TABLE t (id text[] COLLATE "en_US.utf8");
+		 *
+		 * GIN indexes have null categories, so ybgin indexes pass the category
+		 * number down using GIN_NULL type.  Even if the column is collatable,
+		 * nulls should be unaffected by collation.
+		 *
+		 * pg_trgm GIN indexes have key type int32 but also valid collation for
+		 * regex purposes on the indexed type text.  Add an exception here for
+		 * int32.  Since this relaxes the assert for other situations involving
+		 * int32, a proper fix should be done in the future.
 		 */
 		Assert(collation_id == InvalidOid ||
-			   type_entity->yb_type == YB_YQL_DATA_TYPE_BINARY);
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_BINARY ||
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_GIN_NULL ||
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_INT32);
 		collation_info->collate_is_valid_non_c = false;
 		collation_info->sortkey = NULL;
 		return;
@@ -1896,4 +1984,42 @@ Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation) {
 
 bool IsYbExtensionUser(Oid member) {
 	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_EXTENSION);
+}
+
+bool IsYbFdwUser(Oid member) {
+	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_FDW);
+}
+
+void YBSetParentDeathSignal()
+{
+#ifdef __linux__
+	char* pdeathsig_str = getenv("YB_PG_PDEATHSIG");
+	if (pdeathsig_str)
+	{
+		char* end_ptr = NULL;
+		long int pdeathsig = strtol(pdeathsig_str, &end_ptr, 10);
+		if (end_ptr == pdeathsig_str + strlen(pdeathsig_str)) {
+			if (pdeathsig >= 1 && pdeathsig <= 31) {
+				// TODO: prctl(PR_SET_PDEATHSIG) is Linux-specific, look into portable ways to
+				// prevent orphans when parent is killed.
+				prctl(PR_SET_PDEATHSIG, pdeathsig);
+			}
+			else
+			{
+				fprintf(
+					stderr,
+					"Error: YB_PG_PDEATHSIG is an invalid signal value: %ld",
+					pdeathsig);
+			}
+
+		}
+		else
+		{
+			fprintf(
+				stderr,
+				"Error: failed to parse the value of YB_PG_PDEATHSIG: %s",
+				pdeathsig_str);
+		}
+	}
+#endif
 }

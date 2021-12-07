@@ -9,7 +9,7 @@ section: RELEASES
 menu:
   latest:
     identifier: whats-new
-    weight: 2588 
+    weight: 2588
 ---
 
 <div>
@@ -18,10 +18,10 @@ menu:
       <a class="section-link icon-offset" href="latest-release/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-              <div class="title">What's new in the v2.9 latest release series</div>
+              <div class="title">What's new in the v2.11 latest release series</div>
           </div>
           <div class="body">
-              Features, enhancements, and fixes in the v2.9 latest release series.
+              Features, enhancements, and fixes in the v2.11 latest release series.
           </div>
       </a>
   </div>
@@ -30,10 +30,10 @@ menu:
       <a class="section-link icon-offset" href="stable-release/">
           <div class="head">
               <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-              <div class="title">What's new in the v2.6 current stable release series</div>
+              <div class="title">What's new in the v2.8 current stable release series</div>
           </div>
           <div class="body">
-              Features, enhancements, and fixes in the recommended stable release series v2.6.
+              Features, enhancements, and fixes in the recommended stable release series v2.8.
           </div>
       </a>
   </div>

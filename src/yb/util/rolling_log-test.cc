@@ -29,20 +29,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/util/rolling_log.h"
-
 #include <string>
 #include <vector>
 
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/env.h"
-#include "yb/util/memenv/memenv.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/rolling_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 using std::string;

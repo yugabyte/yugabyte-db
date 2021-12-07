@@ -11,30 +11,29 @@
 // under the License.
 //
 
-#include <locale>
 #include <thread>
 
 #include "yb/common/common.pb.h"
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/internal_stats.h"
-
-#include "yb/common/partial_row.h"
+#include "yb/common/index.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/db/internal_stats.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -173,7 +172,7 @@ class DocOperationTest : public DocDBTestBase {
   void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
                QLResponsePB* ql_writeresp_pb,
                const HybridTime& hybrid_time = HybridTime::kMax,
-               const TransactionOperationContextOpt& txn_op_context =
+               const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
     IndexMap index_map;
     QLWriteOperation ql_write_op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
@@ -251,7 +250,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
   yb::QLWriteRequestPB WriteQLRowReq(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
                   const vector<int32_t>& column_values, const HybridTime& hybrid_time,
-                  const TransactionOperationContextOpt& txn_op_content =
+                  const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb;
     ql_writereq_pb.set_type(stmt_type);
@@ -273,7 +272,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
                   const vector<int32_t>& column_values, int64_t ttl, const HybridTime& hybrid_time,
-                  const TransactionOperationContextOpt& txn_op_content =
+                  const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb = WriteQLRowReq(
         stmt_type, schema, column_values, hybrid_time, txn_op_content);
@@ -285,7 +284,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
                   const vector<int32_t>& column_values, const HybridTime& hybrid_time,
-                  const TransactionOperationContextOpt& txn_op_content =
+                  const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb = WriteQLRowReq(
         stmt_type, schema, column_values, hybrid_time, txn_op_content);
@@ -764,7 +763,7 @@ class DocOperationScanTest : public DocOperationTest {
     Seed(&rng_);
   }
 
-  void InitSchema(ColumnSchema::SortingType range_column_sorting) {
+  void InitSchema(SortingType range_column_sorting) {
     range_column_sorting_type_ = range_column_sorting;
     ColumnSchema hash_column("k", INT32, false, true);
     ColumnSchema range_column("r", INT32, false, false, false, false, 1, range_column_sorting);
@@ -821,7 +820,7 @@ class DocOperationScanTest : public DocOperationTest {
   }
 
   void PerformScans(const bool is_forward_scan,
-      const TransactionOperationContextOpt& txn_op_context,
+      const TransactionOperationContext& txn_op_context,
       boost::function<void(const size_t keys_in_scan_range)> after_scan_callback) {
     std::vector <PrimitiveValue> hashed_components = {PrimitiveValue::Int32(h_key_)};
     std::vector <QLOperator> operators = {
@@ -871,7 +870,7 @@ class DocOperationScanTest : public DocOperationTest {
           }
 
           if (is_forward_scan ==
-              (range_column_sorting_type_ == ColumnSchema::SortingType::kDescending)) {
+              (range_column_sorting_type_ == SortingType::kDescending)) {
             std::reverse(expected_rows.begin(), expected_rows.end());
           }
           DocQLScanSpec ql_scan_spec(
@@ -904,14 +903,14 @@ class DocOperationScanTest : public DocOperationTest {
     }
   }
 
-  void TestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan) {
+  void TestWithSortingType(SortingType sorting_type, bool is_forward_scan) {
     DoTestWithSortingType(sorting_type, is_forward_scan, 1 /* num_rows_per_key */);
     ASSERT_OK(DestroyRocksDB());
     ASSERT_OK(ReopenRocksDB());
     DoTestWithSortingType(sorting_type, is_forward_scan, 5 /* num_rows_per_key */);
   }
 
-  virtual void DoTestWithSortingType(ColumnSchema::SortingType schema_type, bool is_forward_scan,
+  virtual void DoTestWithSortingType(SortingType schema_type, bool is_forward_scan,
       size_t num_rows_per_key) = 0;
 
   constexpr static int32_t kNumKeys = 20;
@@ -919,7 +918,7 @@ class DocOperationScanTest : public DocOperationTest {
   constexpr static uint32_t kMaxTime = 1500;
 
   std::mt19937_64 rng_;
-  ColumnSchema::SortingType range_column_sorting_type_;
+  SortingType range_column_sorting_type_;
   Schema schema_;
   int32_t h_key_;
   std::vector<RowDataWithHt> rows_;
@@ -927,13 +926,13 @@ class DocOperationScanTest : public DocOperationTest {
 
 class DocOperationRangeFilterTest : public DocOperationScanTest {
  protected:
-  void DoTestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan,
+  void DoTestWithSortingType(SortingType sorting_type, bool is_forward_scan,
       size_t num_rows_per_key) override;
 };
 
 // Currently we test using one column and one scan type.
 // TODO(akashnil): In future we want to implement and test arbitrary ASC DESC combinations for scan.
-void DocOperationRangeFilterTest::DoTestWithSortingType(ColumnSchema::SortingType sorting_type,
+void DocOperationRangeFilterTest::DoTestWithSortingType(SortingType sorting_type,
     const bool is_forward_scan, const size_t num_rows_per_key) {
   ASSERT_OK(DisableCompactions());
 
@@ -960,24 +959,24 @@ void DocOperationRangeFilterTest::DoTestWithSortingType(ColumnSchema::SortingTyp
 }
 
 TEST_F_EX(DocOperationTest, QLRangeFilterAscendingForwardScan, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kAscending, true);
+  TestWithSortingType(SortingType::kAscending, true);
 }
 
 TEST_F_EX(DocOperationTest, QLRangeFilterDescendingForwardScan, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kDescending, true);
+  TestWithSortingType(SortingType::kDescending, true);
 }
 
 TEST_F_EX(DocOperationTest, QLRangeFilterAscendingReverseScan, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kAscending, false);
+  TestWithSortingType(SortingType::kAscending, false);
 }
 
 TEST_F_EX(DocOperationTest, QLRangeFilterDescendingReverseScan, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kDescending, false);
+  TestWithSortingType(SortingType::kDescending, false);
 }
 
 class DocOperationTxnScanTest : public DocOperationScanTest {
  protected:
-  void DoTestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan,
+  void DoTestWithSortingType(SortingType sorting_type, bool is_forward_scan,
       size_t num_rows_per_key) override {
     ASSERT_OK(DisableCompactions());
 
@@ -995,19 +994,19 @@ class DocOperationTxnScanTest : public DocOperationScanTest {
 };
 
 TEST_F_EX(DocOperationTest, QLTxnAscendingForwardScan, DocOperationTxnScanTest) {
-  TestWithSortingType(ColumnSchema::kAscending, true);
+  TestWithSortingType(SortingType::kAscending, true);
 }
 
 TEST_F_EX(DocOperationTest, QLTxnDescendingForwardScan, DocOperationTxnScanTest) {
-  TestWithSortingType(ColumnSchema::kDescending, true);
+  TestWithSortingType(SortingType::kDescending, true);
 }
 
 TEST_F_EX(DocOperationTest, QLTxnAscendingReverseScan, DocOperationTxnScanTest) {
-  TestWithSortingType(ColumnSchema::kAscending, false);
+  TestWithSortingType(SortingType::kAscending, false);
 }
 
 TEST_F_EX(DocOperationTest, QLTxnDescendingReverseScan, DocOperationTxnScanTest) {
-  TestWithSortingType(ColumnSchema::kDescending, false);
+  TestWithSortingType(SortingType::kDescending, false);
 }
 
 TEST_F(DocOperationTest, TestQLCompactions) {

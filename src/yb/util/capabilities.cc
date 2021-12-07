@@ -13,7 +13,6 @@
 
 #include "yb/util/capabilities.h"
 
-#include <mutex>
 
 #include "yb/gutil/spinlock.h"
 

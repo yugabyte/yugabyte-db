@@ -29,18 +29,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <memory>
 #include <mutex>
 #include <vector>
-#include <gflags/gflags.h>
+
 #include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"

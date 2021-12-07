@@ -24,18 +24,29 @@
 #ifndef YB_ROCKSDB_DB_VERSION_EDIT_H
 #define YB_ROCKSDB_DB_VERSION_EDIT_H
 
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
 #include <algorithm>
+#include <limits>
+#include <memory>
 #include <set>
+#include <stack>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <string>
 
 #include <boost/optional.hpp>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
 
 namespace rocksdb {
 
@@ -135,6 +146,9 @@ struct FileMetaData {
   bool Unref(TableCache* table_cache);
 
   Slice UserFilter() const; // Extracts user filter from largest boundary value if present.
+
+  // Outputs smallest and largest user frontiers to string, if they exist.
+  std::string FrontiersToString() const;
 
   std::string ToString() const;
 };

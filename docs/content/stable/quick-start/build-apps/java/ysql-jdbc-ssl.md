@@ -16,31 +16,37 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
+    <a href="../ysql-yb-jdbc/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - YB - JDBC
+    </a>
+  </li>
+   <li >
+    <a href="../ysql-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link active">
+    <a href="../ysql-jdbc-ssl/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC SSL/TLS
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
+    <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/java/ycql" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/java/ycql-4.6" class="nav-link">
+    <a href="../ycql-4.6/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL (4.6)
     </a>
@@ -213,7 +219,7 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
 1. Run your new program.
 
     ```sh
-    $ java -Djavax.net.ssl.trustStore=ybtruststore -Djavax.net.ssl.trustStorePassword=yugabyte -cp "target/MySample-1.0-SNAPSHOT.jar:target/lib/*" -jar target/MySample-1.0-SNAPSHOT.jar
+    $ mvn -q package exec:java -DskipTests -Djavax.net.ssl.trustStore=ybtruststore -Djavax.net.ssl.trustStorePassword=yugabyte -Dexec.mainClass=com.yugabyte.HelloSqlSslApp
     ```
 
     You should see the following output:

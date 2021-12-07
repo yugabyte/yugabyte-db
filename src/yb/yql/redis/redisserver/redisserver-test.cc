@@ -12,37 +12,43 @@
 //
 
 #include <chrono>
-#include <cstdio>
 #include <memory>
 #include <random>
 #include <string>
 #include <thread>
 #include <vector>
-#include <algorithm>
 
 #include <boost/algorithm/string.hpp>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/client/meta_cache.h"
-
 #include "yb/integration-tests/redis_table_test_base.h"
+
+#include "yb/master/flush_manager.h"
+
+#include "yb/rpc/io_thread_pool.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/util/cast.h"
+#include "yb/util/enums.h"
+#include "yb/util/metrics.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/protobuf.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/value_changer.h"
 
 #include "yb/yql/redis/redisserver/redis_client.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
-
-#include "yb/rpc/io_thread_pool.h"
-
-#include "yb/util/cast.h"
-#include "yb/util/enums.h"
-#include "yb/util/protobuf.h"
-#include "yb/util/test_util.h"
-#include "yb/util/value_changer.h"
-
-#include "yb/master/flush_manager.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
@@ -307,7 +313,7 @@ class TestRedisService : public RedisTableTestBase {
     req.set_is_compaction(false);
     table_name().SetIntoTableIdentifierPB(req.add_tables());
     master::FlushTablesResponsePB resp;
-    RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->flush_manager()->
+    RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->flush_manager().
                   FlushTables(&req, &resp));
 
     master::IsFlushTablesDoneRequestPB wait_req;
@@ -317,9 +323,7 @@ class TestRedisService : public RedisTableTestBase {
     for (int k = 0; k < 20; ++k) {
       master::IsFlushTablesDoneResponsePB wait_resp;
       RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())
-                        ->master()
-                        ->flush_manager()
-                        ->IsFlushTablesDone(&wait_req, &wait_resp));
+                        ->flush_manager().IsFlushTablesDone(&wait_req, &wait_resp));
       if (wait_resp.done()) {
         return Status::OK();
       }
@@ -856,7 +860,7 @@ void TestRedisService::TearDown() {
 Status TestRedisService::Send(const std::string& cmd) {
   // Send the command.
   int32_t bytes_written = 0;
-  EXPECT_OK(client_sock_.Write(util::to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
+  EXPECT_OK(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
 
   EXPECT_EQ(cmd.length(), bytes_written);
 
@@ -924,7 +928,7 @@ void TestRedisService::SendCommandAndExpectResponse(int line,
 
   // Verify that the response is as expected.
 
-  std::string response(util::to_char_ptr(resp_.data()), expected.length());
+  std::string response(to_char_ptr(resp_.data()), expected.length());
   ASSERT_EQ(expected, response)
                 << "Command: " << Slice(cmd).ToDebugString() << std::endl
                 << "Originator: " << __FILE__ << ":" << line;
@@ -2516,7 +2520,7 @@ class TestRedisServiceExternal : public TestRedisService {
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
     opts->extra_tserver_flags.push_back(
         "--redis_connection_soft_limit_grace_period_sec=" +
-        yb::ToString(kSoftLimitGracePeriod.ToSeconds()));
+        AsString(static_cast<int>(kSoftLimitGracePeriod.ToSeconds())));
   }
 
   static const MonoDelta kSoftLimitGracePeriod;

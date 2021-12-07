@@ -28,17 +28,20 @@
 #endif
 
 #include <inttypes.h>
+#include <stdint.h>
+
 #include <algorithm>
+#include <cmath>
 #include <functional>
-#include <vector>
-#include <memory>
 #include <list>
+#include <memory>
 #include <set>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "yb/rocksdb/db/builder.h"
-#include "yb/rocksdb/db/db_iter.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/event_helpers.h"
 #include "yb/rocksdb/db/filename.h"
@@ -47,7 +50,6 @@
 #include "yb/rocksdb/db/log_writer.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/memtable_list.h"
-#include "yb/rocksdb/db/merge_context.h"
 #include "yb/rocksdb/db/merge_helper.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/port/likely.h"
@@ -57,9 +59,7 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
-#include "yb/rocksdb/table/merger.h"
+#include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
@@ -67,10 +67,12 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/util/stop_watch.h"
+#include "yb/util/stats/perf_step_timer.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/result.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 
@@ -853,10 +855,11 @@ Status CompactionJob::FinishCompactionOutputFile(
       info.job_id = job_id_;
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-          " keys, %" PRIu64 " bytes%s",
+          " keys, %" PRIu64 " bytes%s %s",
           cfd->GetName().c_str(), job_id_, output_number, current_entries,
           current_total_bytes,
-          meta->marked_for_compaction ? " (need compaction)" : "");
+          meta->marked_for_compaction ? " (need compaction)" : "",
+          meta->FrontiersToString().c_str());
       EventHelpers::LogAndNotifyTableFileCreation(
           event_logger_, cfd->ioptions()->listeners, meta->fd, info);
     }

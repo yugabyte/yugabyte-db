@@ -23,13 +23,15 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
-#include "yb/util/encryption_util.h"
-#include "yb/util/random_util.h"
-#include "yb/util/header_manager_impl.h"
-#include "yb/util/universe_key_manager.h"
+#include "yb/rocksdb/util/logging.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/header_manager_impl.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/universe_key_manager.h"
 
 namespace rocksdb {
 
@@ -413,6 +415,12 @@ Options DBTestBase::CurrentOptions(
     case kConcurrentSkipList: {
       options.allow_concurrent_memtable_write = true;
       options.enable_write_thread_adaptive_yield = true;
+      break;
+    }
+    case kBlockBasedTableWithThreeSharedPartsKeyDeltaEncoding: {
+      table_options.use_delta_encoding = true;
+      table_options.data_block_key_value_encoding_format =
+          KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
       break;
     }
 

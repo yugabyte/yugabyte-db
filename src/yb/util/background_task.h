@@ -13,10 +13,17 @@
 #ifndef YB_UTIL_BACKGROUND_TASK_H
 #define YB_UTIL_BACKGROUND_TASK_H
 
-#include "yb/util/thread.h"
-#include "yb/util/status.h"
+#include <condition_variable>
+#include <functional>
+#include <memory>
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Thread;
 
 // A task that runs periodically every interval_msec, with the option to be explicitly woken up.
 // Executions of RunTask are serialized. If interval_msec is 0, the task only runs when explicitly
@@ -26,75 +33,21 @@ class BackgroundTask {
  public:
   BackgroundTask(
       std::function<void()> task, std::string category, const std::string& name,
-      std::chrono::milliseconds interval_msec = std::chrono::milliseconds(0)):
-      task_(std::move(task)),
-      category_(category),
-      name_(std::move(name)),
-      interval_(interval_msec) {}
+      std::chrono::milliseconds interval_msec = std::chrono::milliseconds(0));
+  ~BackgroundTask();
 
-  CHECKED_STATUS Init() {
-    RETURN_NOT_OK(yb::Thread::Create(category_, name_, &BackgroundTask::Run, this, &thread_));
-    return Status::OK();
-  }
+  CHECKED_STATUS Init();
 
   // Wait for pending tasks and shut down
-  void Shutdown() {
-    {
-      std::unique_lock<std::mutex> lock(mutex_);
-      if (closing_) {
-        VLOG(2) << "BackgroundTask already shut down";
-        return;
-      }
-      closing_ = true;
-    }
-    cond_.notify_one();
-    CHECK_OK(ThreadJoiner(thread_.get()).Join());
-  }
+  void Shutdown();
 
-  CHECKED_STATUS Wake() {
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (closing_) {
-        return STATUS(ShutdownInProgress, "Task is shutting down.");
-      }
-      have_job_ = true;
-    }
-    cond_.notify_one();
-    return Status::OK();
-  }
+  CHECKED_STATUS Wake();
 
  private:
-  void Run() {
-    while (WaitForJob()) {
-      task_();
-    }
-    VLOG(1) << "BackgroundTask thread shutting down";
-  }
+  void Run();
 
   // Wait for a job or closing. Return true if got a job, false if closing.
-  bool WaitForJob() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    while(true) {
-      if (closing_) {
-        return false;
-      }
-      if (have_job_) {
-        have_job_ = false;
-        return true;
-      }
-
-      // Wait
-      if (interval_ != std::chrono::milliseconds::zero()) {
-        cond_.wait_for(lock, interval_);
-        // If we wake here from the interval_ timeout, then we should behave as if we have a job. If
-        // we wake from an explicit notify from a Wake() call, we should still behave as if we have
-        // a job.
-        have_job_ = true;
-      } else {
-        cond_.wait(lock);
-      }
-    }
-  }
+  bool WaitForJob();
 
   bool closing_ = false;
   bool have_job_ = false;

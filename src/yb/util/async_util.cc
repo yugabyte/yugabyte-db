@@ -12,7 +12,10 @@
 
 #include "yb/util/async_util.h"
 
-#include "yb/util/logging.h"
+#include "yb/gutil/bind.h"
+
+#include "yb/util/logging.h" // Required in NDEBUG mode
+#include "yb/util/status_log.h"
 
 namespace yb {
 

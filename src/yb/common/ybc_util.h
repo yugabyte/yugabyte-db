@@ -44,6 +44,11 @@ extern bool yb_format_funcs_include_yb_metadata;
  */
 extern bool yb_non_ddl_txn_for_sys_tables_allowed;
 
+/*
+ * Toggles whether to force use of global transaction status table.
+ */
+extern bool yb_force_global_transaction;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 extern YBCStatus YBCStatusOK;
@@ -62,6 +67,7 @@ char* DupYBStatusMessage(YBCStatus status, bool message_only);
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
+bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 
 void YBCResolveHostname();
 
@@ -133,6 +139,8 @@ const char* YBCGetStackTrace();
 
 // Initializes global state needed for thread management, including CDS library initialization.
 void YBCInitThreading();
+
+double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 
 #ifdef __cplusplus
 } // extern "C"

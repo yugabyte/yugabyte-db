@@ -18,7 +18,8 @@
 #ifndef YB_YQL_PGGATE_PG_COLUMN_H_
 #define YB_YQL_PGGATE_PG_COLUMN_H_
 
-#include "yb/yql/pggate/pg_expr.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_datatype.h"
 
 namespace yb {
 namespace pggate {
@@ -59,19 +60,13 @@ class PgColumn {
     return assign_pb_;
   }
 
-  const string& attr_name() const {
-    return desc().name();
-  }
+  const std::string& attr_name() const;
 
-  int attr_num() const {
-    return desc().order();
-  }
+  int attr_num() const;
 
   int id() const;
 
-  InternalType internal_type() const {
-    return client::YBColumnSchema::ToInternalDataType(desc().type());
-  }
+  InternalType internal_type() const;
 
   bool read_requested() const {
     return read_requested_;

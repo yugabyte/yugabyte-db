@@ -16,9 +16,18 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+
 #include "yb/client/table.h"
 
+#include "yb/common/index.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/logging.h"
+
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -26,7 +35,7 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 PTAlterTable::PTAlterTable(MemoryContext *memctx,
-                           YBLocation::SharedPtr loc,
+                           YBLocationPtr loc,
                            PTQualifiedName::SharedPtr name,
                            const PTListNode::SharedPtr &commands)
   : TreeNode(memctx, loc),
@@ -43,7 +52,7 @@ PTAlterTable::~PTAlterTable() {
 CHECKED_STATUS PTAlterTable::Analyze(SemContext *sem_context) {
   // Populate internal table_ variable.
   bool is_system_ignored = false;
-  RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TABLE));
+  RETURN_NOT_OK(name_->AnalyzeName(sem_context, ObjectType::TABLE));
 
   // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
   RETURN_NOT_OK(sem_context->LookupTable(name_->ToTableName(), name_->loc(), true /* write_table */,

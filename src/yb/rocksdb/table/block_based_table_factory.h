@@ -29,9 +29,7 @@
 #include <memory>
 #include <string>
 
-#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 
 namespace rocksdb {

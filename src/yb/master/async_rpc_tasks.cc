@@ -10,16 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/async_rpc_tasks.h"
 
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_meta.h"
 
+#include "yb/gutil/map-util.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/tablet_split_complete_handler.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -27,9 +32,12 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
-#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/source_location.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/threadpool.h"
 
 using namespace std::literals;
 
@@ -67,7 +75,14 @@ using std::shared_ptr;
 
 using strings::Substitute;
 using consensus::RaftPeerPB;
+using server::MonitoredTaskState;
 using tserver::TabletServerErrorPB;
+
+void RetryingTSRpcTask::UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
+                                      const std::string& metric_name,
+                                      const std::string& metric_type) {
+  metric->Increment(MonoTime::Now().GetDeltaSince(start_time).ToMicroseconds());
+}
 
 // ============================================================================
 //  Class PickSpecificUUID.
@@ -81,7 +96,7 @@ Status PickSpecificUUID::PickReplica(TSDescriptor** ts_desc) {
   return Status::OK();
 }
 
-string ReplicaMapToString(const TabletInfo::ReplicaMap& replicas) {
+string ReplicaMapToString(const TabletReplicaMap& replicas) {
   string ret = "";
   for (const auto& r : replicas) {
     if (!ret.empty()) {
@@ -98,6 +113,10 @@ string ReplicaMapToString(const TabletInfo::ReplicaMap& replicas) {
 // ============================================================================
 //  Class PickLeaderReplica.
 // ============================================================================
+PickLeaderReplica::PickLeaderReplica(const scoped_refptr<TabletInfo>& tablet)
+    : tablet_(tablet) {
+}
+
 Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
   *ts_desc = VERIFY_RESULT(tablet_->GetLeader());
   return Status::OK();
@@ -126,8 +145,18 @@ RetryingTSRpcTask::~RetryingTSRpcTask() {
   VLOG_WITH_FUNC(1) << "Destroying " << this << " in " << AsString(state);
 }
 
+std::string RetryingTSRpcTask::LogPrefix() const {
+  return Format("$0 (task=$1, state=$2): ", description(), static_cast<const void*>(this), state());
+}
+
+std::string RetryingTSRpcTask::table_name() const {
+  return !table_ ? "" : table_->ToString();
+}
+
 // Send the subclass RPC request.
 Status RetryingTSRpcTask::Run() {
+  VLOG_WITH_PREFIX(1) << "Start Running";
+  attempt_start_ts_ = MonoTime::Now();
   ++attempt_;
   VLOG_WITH_PREFIX(1) << "Start Running, attempt: " << attempt_;
   for (;;) {
@@ -263,6 +292,8 @@ void RetryingTSRpcTask::DoRpcCallback() {
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
   }
+  UpdateMetrics(master_->GetMetric(type_name(), Master::AttemptMetric, description()),
+                attempt_start_ts_, type_name(), "attempt metric");
 
   // Schedule a retry if the RPC call was not successful.
   if (RescheduleWithBackoffDelay()) {
@@ -284,7 +315,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
       // Allow kWaiting for task(s) that have never successfully ResetTSProxy().
       task_state != MonitoredTaskState::kWaiting) {
     if (task_state != MonitoredTaskState::kComplete) {
-      LOG_WITH_PREFIX(INFO) << "No reschedule for this task";
+      LOG_WITH_PREFIX(INFO) << "No reschedule for this task: " << AsString(task_state);
     }
     return false;
   }
@@ -386,6 +417,9 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
   // Retain a reference to the object, in case RemoveTask would have removed the last one.
   auto self = shared_from_this();
   std::unique_lock<decltype(unregister_mutex_)> lock(unregister_mutex_);
+  UpdateMetrics(master_->GetMetric(type_name(), Master::TaskMetric, description()), start_ts_,
+                type_name(), "task metric");
+
   auto s = state();
   if (!IsStateTerminal(s)) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
@@ -445,7 +479,7 @@ void RetryingTSRpcTask::TransitionToTerminalState(MonitoredTaskState expected,
   Finished(status);
 }
 
-void RetryingTSRpcTask::TransitionToFailedState(yb::MonitoredTaskState expected,
+void RetryingTSRpcTask::TransitionToFailedState(server::MonitoredTaskState expected,
                                                 const yb::Status& status) {
   TransitionToTerminalState(expected, MonitoredTaskState::kFailed, status);
 }
@@ -487,6 +521,8 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table),
       tablet_(tablet) {
 }
+
+AsyncTabletLeaderTask::~AsyncTabletLeaderTask() = default;
 
 std::string AsyncTabletLeaderTask::description() const {
   return Format("$0 RPC for tablet $1 ($2)", type_name(), tablet_, table_name());
@@ -536,6 +572,11 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   for (const auto& id : snapshot_schedules) {
     req_schedules.Add()->assign(id.AsSlice().cdata(), id.size());
   }
+}
+
+std::string AsyncCreateReplica::description() const {
+  return Format("CreateTablet RPC for tablet $0 ($1) on TS=$2",
+                tablet_id_, table_name(), permanent_uuid_);
 }
 
 void AsyncCreateReplica::HandleResponse(int attempt) {
@@ -597,6 +638,11 @@ void AsyncStartElection::HandleResponse(int attempt) {
   TransitionToCompleteState();
 }
 
+std::string AsyncStartElection::description() const {
+  return Format("RunLeaderElection RPC for tablet $0 ($1) on TS=$2",
+                tablet_id_, table_name(), permanent_uuid_);
+}
+
 bool AsyncStartElection::SendRequest(int attempt) {
   LOG_WITH_PREFIX(INFO) << Format(
       "Hinted Leader start election at $0 for tablet $1, attempt $2",
@@ -655,6 +701,11 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
     TransitionToCompleteState();
     VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id_;
   }
+}
+
+std::string AsyncDeleteReplica::description() const {
+  return Format("$0Tablet RPC for tablet $1 ($2) on TS=$3",
+                hide_only_ ? "Hide" : "Delete", tablet_id_, table_name(), permanent_uuid_);
 }
 
 bool AsyncDeleteReplica::SendRequest(int attempt) {
@@ -731,6 +782,10 @@ void AsyncAlterTable::HandleResponse(int attempt) {
     VLOG_WITH_PREFIX(1) << "Task is not completed " << tablet_->ToString() << " for version "
                         << schema_version_;
   }
+}
+
+TableType AsyncAlterTable::table_type() const {
+  return tablet_->table()->GetTableType();
 }
 
 bool AsyncAlterTable::SendRequest(int attempt) {
@@ -892,6 +947,8 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
   deadline_ = MonoTime::Max();  // Never time out.
 }
 
+CommonInfoForRaftTask::~CommonInfoForRaftTask() = default;
+
 TabletId CommonInfoForRaftTask::tablet_id() const {
   return tablet_->tablet_id();
 }
@@ -989,7 +1046,7 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
 Status AsyncAddServerTask::PrepareRequest(int attempt) {
   // Select the replica we wish to add to the config.
   // Do not include current members of the config.
-  unordered_set<string> replica_uuids;
+  std::unordered_set<string> replica_uuids;
   for (const RaftPeerPB& peer : cstate_.config().peers()) {
     InsertOrDie(&replica_uuids, peer.permanent_uuid());
   }
@@ -1328,8 +1385,9 @@ AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key,
-    std::function<void(const Status&)> result_cb)
-    : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
+    TabletSplitCompleteHandlerIf* tablet_split_complete_handler)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet),
+      tablet_split_complete_handler_(tablet_split_complete_handler) {
   req_.set_tablet_id(tablet_id());
   req_.set_new_tablet1_id(new_tablet_ids[0]);
   req_.set_new_tablet2_id(new_tablet_ids[1]);
@@ -1369,8 +1427,13 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
 }
 
 void AsyncSplitTablet::Finished(const Status& status) {
-  if (result_cb_) {
-    result_cb_(status);
+  if (tablet_split_complete_handler_) {
+    SplitTabletIds split_tablet_ids {
+      .source = req_.tablet_id(),
+      .children = {req_.new_tablet1_id(), req_.new_tablet2_id()}
+    };
+    tablet_split_complete_handler_->ProcessSplitTabletResult(
+        status, table_->id(), split_tablet_ids);
   }
 }
 

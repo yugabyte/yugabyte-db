@@ -11,6 +11,7 @@ import { YBButton } from '../../common/forms/fields';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
 import { AddDestinationChannelForm } from './AddDestinationChannelForm';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 import './AlertDestinationChannels.scss';
 import { toast } from 'react-toastify';
@@ -22,7 +23,9 @@ const prepareInitialValues = (values) => {
     CHANNEL_TYPE: values.params.channelType.toLowerCase(),
     uuid: values.uuid,
     slack_name: values.name,
-    email_name: values.name
+    email_name: values.name,
+    pagerDuty_name: values.name,
+    webHook_name: values.name
   };
 
   switch (values.params.channelType) {
@@ -45,6 +48,13 @@ const prepareInitialValues = (values) => {
         initialValues['smtpData']['useSSL'] = values.params.smtpData.useSSL || false;
         initialValues['smtpData']['useTLS'] = values.params.smtpData.useTLS || false;
       }
+      break;
+    case 'PagerDuty':
+      initialValues['apiKey'] = values.params.apiKey;
+      initialValues['routingKey'] = values.params.routingKey;
+      break;
+    case 'WebHook':
+      initialValues['webhookURL'] = values.params.webhookUrl;
       break;
     default:
       throw new Error(`Unknown Channel type ${values.params.channelType}`);
@@ -69,6 +79,11 @@ export const AlertDestinationChannels = (props) => {
   const [showModal, setShowModal] = useState(false);
   const [type, setType] = useState('');
   const [initialValues, setInitialValues] = useState({});
+  const {
+    customer
+  } = props;
+  const isReadOnly = isNonAvailable(
+    customer.data.features, 'alert.channels.actions');
 
   const getAlertChannelsList = () => {
     dispatch(getAlertChannels()).then((resp) => setAlertChannels(resp.payload.data));
@@ -101,6 +116,7 @@ export const AlertDestinationChannels = (props) => {
     });
   };
 
+  const editActionLabel = isReadOnly ? "Channel Details" : "Edit Channel";
   const formatConfigActions = (cell, row) => {
     return (
       <>
@@ -117,9 +133,10 @@ export const AlertDestinationChannels = (props) => {
               setShowModal(true);
             }}
           >
-            <i className="fa fa-pencil"></i> Edit Channel
+            <i className="fa fa-pencil"></i> {editActionLabel}
           </MenuItem>
 
+          {!isReadOnly && (
           <MenuItem
             onClick={() => {
               deleteChannel(row);
@@ -127,6 +144,7 @@ export const AlertDestinationChannels = (props) => {
           >
             <i className="fa fa-trash"></i> Delete Channel
           </MenuItem>
+          )}
 
           {
             <YBConfirmModal
@@ -149,6 +167,7 @@ export const AlertDestinationChannels = (props) => {
           A notification channel defines the means by which an alert is sent (ex: Email) as well as
           who should receive the notification.
         </div>
+        {!isReadOnly && (
         <div>
           <YBButton
             btnText="Add Channel"
@@ -159,6 +178,7 @@ export const AlertDestinationChannels = (props) => {
             }}
           />
         </div>
+        )}
       </div>
       <Row>
         <Col xs={12} lg={12} className="noLeftPadding">

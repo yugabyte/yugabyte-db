@@ -23,7 +23,11 @@
 
 #ifndef ROCKSDB_LITE
 
+#include <glog/logging.h>
+
 #include "yb/rocksdb/utilities/env_mirror.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace rocksdb {
 
@@ -294,6 +298,117 @@ Status EnvMirror::ReuseWritableFile(const std::string& fname,
     r->reset(mf);
   else
     delete mf;
+  return as;
+}
+
+Status EnvMirror::NewDirectory(const std::string& name,
+                               unique_ptr<Directory>* result) {
+  unique_ptr<Directory> br;
+  Status as = a_->NewDirectory(name, result);
+  Status bs = b_->NewDirectory(name, &br);
+  assert(as.code() == bs.code());
+  return as;
+}
+
+Status EnvMirror::FileExists(const std::string& f) {
+  Status as = a_->FileExists(f);
+  Status bs = b_->FileExists(f);
+  assert(as.code() == bs.code());
+  return as;
+}
+
+Status EnvMirror::GetChildren(const std::string& dir,
+                              std::vector<std::string>* r) {
+  std::vector<std::string> ar, br;
+  Status as = a_->GetChildren(dir, &ar);
+  Status bs = b_->GetChildren(dir, &br);
+  assert(as.code() == bs.code());
+  std::sort(ar.begin(), ar.end());
+  std::sort(br.begin(), br.end());
+  if (!as.ok() || ar != br) {
+    assert(0 == "getchildren results don't match");
+  }
+  *r = ar;
+  return as;
+}
+
+Status EnvMirror::DeleteFile(const std::string& f) {
+  Status as = a_->DeleteFile(f);
+  Status bs = b_->DeleteFile(f);
+  assert(as.code() == bs.code());
+  return as;
+}
+
+Status EnvMirror::CreateDir(const std::string& d) {
+  Status as = a_->CreateDir(d);
+  Status bs = b_->CreateDir(d);
+  assert(as.code() == bs.code());
+  return as;
+}
+
+Status EnvMirror::CreateDirIfMissing(const std::string& d) {
+  Status as = a_->CreateDirIfMissing(d);
+  Status bs = b_->CreateDirIfMissing(d);
+  assert(as.code() == bs.code());
+  return as;
+}
+
+Status EnvMirror::DeleteDir(const std::string& d) {
+  Status as = a_->DeleteDir(d);
+  Status bs = b_->DeleteDir(d);
+  assert(as.code() == bs.code());
+  return as;
+}
+
+Status EnvMirror::GetFileSize(const std::string& f, uint64_t* s) {
+  uint64_t asize, bsize;
+  Status as = a_->GetFileSize(f, &asize);
+  Status bs = b_->GetFileSize(f, &bsize);
+  assert(as.code() == bs.code());
+  assert(!as.ok() || asize == bsize);
+  *s = asize;
+  return as;
+}
+
+Status EnvMirror::GetFileModificationTime(const std::string& fname,
+                                          uint64_t* file_mtime) {
+  uint64_t amtime, bmtime;
+  Status as = a_->GetFileModificationTime(fname, &amtime);
+  Status bs = b_->GetFileModificationTime(fname, &bmtime);
+  assert(as.code() == bs.code());
+  assert(!as.ok() || amtime - bmtime < 10000 || bmtime - amtime < 10000);
+  *file_mtime = amtime;
+  return as;
+}
+
+Status EnvMirror::RenameFile(const std::string& s, const std::string& t) {
+  Status as = a_->RenameFile(s, t);
+  Status bs = b_->RenameFile(s, t);
+  assert(as.code() == bs.code());
+  return as;
+}
+
+Status EnvMirror::LinkFile(const std::string& s, const std::string& t) {
+  Status as = a_->LinkFile(s, t);
+  Status bs = b_->LinkFile(s, t);
+  assert(as.code() == bs.code());
+  return as;
+}
+
+Status EnvMirror::LockFile(const std::string& f, FileLock** l) {
+  FileLock* al, *bl;
+  Status as = a_->LockFile(f, &al);
+  Status bs = b_->LockFile(f, &bl);
+  assert(as.code() == bs.code());
+  if (as.ok()) *l = new FileLockMirror(al, bl);
+  return as;
+}
+
+Status EnvMirror::UnlockFile(FileLock* l) {
+  FileLockMirror* ml = static_cast<FileLockMirror*>(l);
+  Status as = a_->UnlockFile(ml->a_);
+  Status bs = b_->UnlockFile(ml->b_);
+  assert(as.code() == bs.code());
   return as;
 }
 

@@ -22,6 +22,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 
+#include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -284,7 +285,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Generate a new random and unique rowid. It is a v4 UUID.
   string GenerateNewRowid() {
-    return rowid_generator_.Next(true /* binary_id */);
+    return GenerateObjectId(true /* binary_id */);
   }
 
   void InvalidateCache() {
@@ -323,13 +324,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
-
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
-
   PgClient& pg_client() const {
     return pg_client_;
   }
+
+  bool ShouldUseFollowerReads() const;
 
  private:
   using Flusher = std::function<Status(PgsqlOpBuffer, IsTransactionalSession)>;
@@ -407,9 +406,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status status_;
   string errmsg_;
 
-  // Rowid generator.
-  ObjectIdGenerator rowid_generator_;
-
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_intent_;
@@ -422,8 +418,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
-
-  bool read_from_followers_ = false;
 };
 
 }  // namespace pggate

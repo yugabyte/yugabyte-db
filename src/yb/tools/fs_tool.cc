@@ -37,25 +37,26 @@
 #include <memory>
 #include <vector>
 
-#include <boost/function.hpp>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
+
+#include "yb/common/schema.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/log_reader.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+
+#include "yb/master/sys_catalog_constants.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/env.h"
-#include "yb/util/logging.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
-#include "yb/master/sys_catalog_constants.h"
 
 namespace yb {
 namespace tools {

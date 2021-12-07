@@ -11,22 +11,18 @@
 // under the License.
 //
 
-#include "yb/client/client.h"
-#include "yb/client/client_error.h"
-#include "yb/client/client-internal.h"
 #include "yb/client/forward_rpc.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/table.h"
-#include "yb/client/yb_op.h"
 
-#include "yb/common/pgsql_error.h"
-#include "yb/common/transaction_error.h"
+#include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/cast.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/logging.h"
-#include "yb/util/yb_pg_errcodes.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 using namespace std::placeholders;
 

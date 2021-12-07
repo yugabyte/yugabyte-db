@@ -18,18 +18,15 @@
 
 #include <string>
 
-#include "yb/util/slice.h"
-
-#include "yb/common/hybrid_time.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/schema.h"
+#include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/endian.h"
-#include "yb/util/decimal.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/kv_util.h"
-#include "yb/util/memcmpable_varint.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
-#include "yb/util/fast_varint.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace docdb {
@@ -79,18 +76,13 @@ void AppendUInt64ToKey(uint64_t val, Buffer* dest) {
   dest->append(buf, sizeof(buf));
 }
 
-template <class Buffer>
-inline void AppendColumnIdToKey(ColumnId val, Buffer* dest) {
-  yb::util::FastAppendSignedVarIntToBuffer(val.rep(), dest);
-}
-
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given
 // destination string.
 void AppendZeroEncodedStrToKey(const std::string &s, KeyBuffer *dest);
 
 // Encodes the given string by replacing '\xff' with "\xff\xfe" and appends it to the given
 // destination string.
-void AppendComplementZeroEncodedStrToKey(const string &s, KeyBuffer *dest);
+void AppendComplementZeroEncodedStrToKey(const std::string &s, KeyBuffer *dest);
 
 // Appends two zero characters to the given string. We don't add final end-of-string characters in
 // this function.

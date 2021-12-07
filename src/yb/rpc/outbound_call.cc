@@ -30,13 +30,14 @@
 // under the License.
 //
 
+#include "yb/rpc/outbound_call.h"
+
 #include <algorithm>
-#include <string>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-
 #include <gflags/gflags.h>
 
 #include "yb/gutil/strings/substitute.h"
@@ -44,17 +45,20 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
-#include "yb/rpc/outbound_call.h"
+#include "yb/rpc/proxy_base.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/concurrent_value.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/scope_exit.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -152,16 +156,15 @@ OutboundCall::OutboundCall(const RemoteMethod* remote_method,
       start_(CoarseMonoClock::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
+      trace_(new Trace),
       call_id_(NextCallId()),
       remote_method_(remote_method),
       callback_(std::move(callback)),
       callback_thread_pool_(callback_thread_pool),
-      trace_(new Trace),
       outbound_call_metrics_(outbound_call_metrics),
       rpc_metrics_(rpc_metrics),
       method_metrics_(std::move(method_metrics)) {
-  // Avoid expensive conn_id.ToString() in production.
-  TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated.");
+  TRACE_TO_WITH_TIME(trace_, start_, "$0.", remote_method_->ToString());
 
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
@@ -226,24 +229,38 @@ Status OutboundCall::SetRequestParam(
   if (!status.ok()) {
     return status;
   }
-  size_t header_size = 0;
 
-  {
-    RequestHeader header;
-    status = InitHeader(&header, false /* copy */);
-    auto se = ScopeExit([&header] {
-      // Prevent header to free its RemoteMethodPB pointer incorrectly when header
-      // goes out of scope, because RemoteMethodPB is owned by the containing remote_method_.
-      header.release_remote_method();
-    });
-    if (status.ok()) {
-      status = SerializeHeader(header, message_size, &buffer_, message_size, &header_size);
-    }
-  }
+  using Output = google::protobuf::io::CodedOutputStream;
+  auto timeout_ms = VERIFY_RESULT(TimeoutMs());
+  size_t call_id_size = Output::VarintSize32(call_id_);
+  size_t timeout_ms_size = Output::VarintSize32(timeout_ms);
+  auto serialized_remote_method = remote_method_->serialized();
 
-  if (!status.ok()) {
-    return status;
-  }
+  size_t header_pb_len = 1 + call_id_size + serialized_remote_method.size() + 1 + timeout_ms_size;
+  size_t header_size =
+      kMsgLengthPrefixLength                            // Int prefix for the total length.
+      + CodedOutputStream::VarintSize32(header_pb_len)  // Varint delimiter for header PB.
+      + header_pb_len;                                  // Length for the header PB itself.
+  size_t total_size = header_size + message_size;
+
+  buffer_ = RefCntBuffer(total_size);
+  uint8_t* dst = buffer_.udata();
+
+  // 1. The length for the whole request, not including the 4-byte
+  // length prefix.
+  NetworkByteOrder::Store32(dst, total_size - kMsgLengthPrefixLength);
+  dst += sizeof(uint32_t);
+
+  // 2. The varint-prefixed RequestHeader PB
+  dst = CodedOutputStream::WriteVarint32ToArray(header_pb_len, dst);
+  dst = Output::WriteTagToArray(RequestHeader::kCallIdFieldNumber << 3, dst);
+  dst = Output::WriteVarint32ToArray(call_id_, dst);
+  memcpy(dst, serialized_remote_method.data(), serialized_remote_method.size());
+  dst += serialized_remote_method.size();
+  dst = CodedOutputStream::WriteTagToArray(RequestHeader::kTimeoutMillisFieldNumber << 3, dst);
+  dst = Output::WriteVarint32ToArray(timeout_ms, dst);
+
+  DCHECK_EQ(dst - buffer_.udata(), header_size);
 
   if (mem_tracker) {
     buffer_consumption_ = ScopedTrackedConsumption(mem_tracker, buffer_.size());
@@ -336,10 +353,10 @@ void OutboundCall::InvokeCallback() {
   if (callback_thread_pool_) {
     callback_task_.SetOutboundCall(shared_from(this));
     callback_thread_pool_->Enqueue(&callback_task_);
-    TRACE_TO(trace_, "Callback called asynchronously.");
+    TRACE_TO(trace_, "Callback will be called asynchronously.");
   } else {
     InvokeCallbackSync();
-    TRACE_TO(trace_, "Callback called.");
+    TRACE_TO(trace_, "Callback called synchronously.");
   }
 }
 
@@ -375,6 +392,8 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
 
   auto now = CoarseMonoClock::Now();
   TRACE_TO_WITH_TIME(trace_, now, "Response received.");
+  // Avoid expensive conn_id.ToString() in production.
+  VTRACE_TO(1, trace_, "from $0", conn_id_.ToString());
   // Track time taken to be responded.
 
   if (outbound_call_metrics_) {
@@ -446,7 +465,6 @@ void OutboundCall::SetFinished() {
   if (SetState(FINISHED_SUCCESS)) {
     InvokeCallback();
   }
-  TRACE_TO(trace_, "Callback called.");
 }
 
 void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB> err_pb) {
@@ -460,6 +478,9 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
     if (status_.IsRemoteError()) {
       CHECK(err_pb);
       error_pb_ = std::move(err_pb);
+      if (error_pb_->has_code()) {
+        status_ = status_.CloneAndAddErrorCode(RpcError(error_pb_->code()));
+      }
     } else {
       CHECK(!err_pb);
     }
@@ -515,8 +536,7 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (!req.dump_timed_out() && state_value == RpcCallState::TIMED_OUT) {
     return false;
   }
-  if (!InitHeader(resp->mutable_header(), true /* copy */).ok() &&
-      !req.dump_timed_out()) {
+  if (!InitHeader(resp->mutable_header()).ok() && !req.dump_timed_out()) {
     // Note that if we proceed here due to req.dump_timed_out() being true, then the
     // header.timeout_millis() will be inaccurate/not-set. This is ok because DumpPB
     // is only used for dumping the PB and not to send the RPC over the wire.
@@ -534,24 +554,25 @@ std::string OutboundCall::LogPrefix() const {
   return Format("{ OutboundCall@$0 } ", this);
 }
 
-Status OutboundCall::InitHeader(RequestHeader* header, bool copy) {
-  header->set_call_id(call_id_);
-  const RemoteMethodPB& remote_method_pb = remote_method_->remote_method_pb();
-  if (copy) {
-    *header->mutable_remote_method() = remote_method_pb;
+Result<uint32_t> OutboundCall::TimeoutMs() const {
+  MonoDelta timeout = controller_->timeout();
+  if (timeout.Initialized()) {
+    auto timeout_millis = timeout.ToMilliseconds();
+    if (timeout_millis <= 0) {
+      return STATUS(TimedOut, "Call timed out before sending");
+    }
+    return timeout_millis;
   } else {
-    header->set_allocated_remote_method(const_cast<RemoteMethodPB*>(&remote_method_pb));
+    return 0;
   }
+}
+
+Status OutboundCall::InitHeader(RequestHeader* header) {
+  header->set_call_id(call_id_);
+  remote_method_->ToPB(header->mutable_remote_method());
 
   if (!IsFinished()) {
-    MonoDelta timeout = controller_->timeout();
-    if (timeout.Initialized()) {
-      auto timeout_millis = timeout.ToMilliseconds();
-      if (timeout_millis <= 0) {
-        return STATUS(TimedOut, "Call timed out before sending");
-      }
-      header->set_timeout_millis(timeout_millis);
-    }
+    header->set_timeout_millis(VERIFY_RESULT(TimeoutMs()));
   }
   return Status::OK();
 }
@@ -629,6 +650,11 @@ Status CallResponse::ParseFrom(CallData* call_data) {
   parsed_ = true;
   return Status::OK();
 }
+
+const std::string kRpcErrorCategoryName = "rpc error";
+
+StatusCategoryRegisterer rpc_error_category_registerer(
+    StatusCategoryDescription::Make<RpcErrorTag>(&kRpcErrorCategoryName));
 
 }  // namespace rpc
 }  // namespace yb

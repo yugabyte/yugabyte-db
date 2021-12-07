@@ -87,6 +87,7 @@ set(YRPC_SRCS
     serialization.cc
     service_if.cc
     service_pool.cc
+    stream.cc
     strand.cc
     tcp_stream.cc
     thread_pool.cc

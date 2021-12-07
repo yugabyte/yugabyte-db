@@ -8,8 +8,24 @@
     "backup": "disabled"
   },
   "menu": {
-    "config": "disabled",
-    "administration": "disabled"
+    "config": "disabled"
+  },
+  "health": {
+    "configure": "disabled"
+  },
+  "alert": {
+    "list": {
+      "actions": "disabled"
+    },
+    "configuration": {
+      "actions": "disabled"
+    },
+    "destinations": {
+      "actions": "disabled"
+    },
+    "channels": {
+      "actions": "disabled"
+    }
   },
   "universes": {
     "details": {
@@ -22,12 +38,16 @@
         "restartUniverse": "hidden",
         "pausedUniverse": "disabled",
         "deleteUniverse": "hidden",
-        "costs": "hidden"
+        "costs": "hidden",
+        "systemdUpgrade": "hidden"
       }
     },
     "tableActions": "disabled",
     "actions": "disabled",
     "backup": "disabled"
+  },
+  "administration": {
+    "highAvailability": "hidden"
   },
   "main": {
     "stats": "hidden"

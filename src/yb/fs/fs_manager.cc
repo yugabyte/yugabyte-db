@@ -32,33 +32,34 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include <deque>
-#include <iostream>
 #include <map>
+#include <set>
 #include <unordered_set>
 
 #include <boost/algorithm/string/predicate.hpp>
-
+#include <boost/preprocessor/cat.hpp>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
 
 #include "yb/fs/fs.pb.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
-#include "yb/gutil/strtoint.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metric_entity.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 
 DEFINE_bool(enable_data_block_fsync, true,
             "Whether to enable fsync() of data blocks, metadata, and their parent directories. "
@@ -118,8 +119,9 @@ FsManagerOpts::FsManagerOpts()
   data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());
 }
 
-FsManagerOpts::~FsManagerOpts() {
-}
+FsManagerOpts::~FsManagerOpts() = default;
+FsManagerOpts::FsManagerOpts(const FsManagerOpts&) = default;
+FsManagerOpts& FsManagerOpts::operator=(const FsManagerOpts&) = default;
 
 FsManager::FsManager(Env* env, const string& root_path, const std::string& server_type)
     : env_(DCHECK_NOTNULL(env)),
@@ -436,11 +438,10 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
 }
 
 void FsManager::CreateInstanceMetadata(InstanceMetadataPB* metadata) {
-  ObjectIdGenerator oid_generator;
   if (!FLAGS_instance_uuid_override.empty()) {
     metadata->set_uuid(FLAGS_instance_uuid_override);
   } else {
-    metadata->set_uuid(oid_generator.Next());
+    metadata->set_uuid(GenerateObjectId());
   }
 
   string time_str;
@@ -650,6 +651,16 @@ void FsManager::DumpFileSystemTree(ostream& out, const string& prefix,
       out << prefix << name << std::endl;
     }
   }
+}
+
+Result<std::vector<std::string>> FsManager::ListDir(const std::string& path) const {
+  std::vector<std::string> result;
+  RETURN_NOT_OK(env_->GetChildren(path, ExcludeDots::kTrue, &result));
+  return result;
+}
+
+Status FsManager::ListDir(const std::string& path, std::vector<std::string> *objects) const {
+  return env_->GetChildren(path, objects);
 }
 
 } // namespace yb

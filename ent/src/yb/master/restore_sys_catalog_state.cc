@@ -37,7 +37,10 @@
 
 #include "yb/rocksdb/write_batch.h"
 #include "yb/tablet/tablet.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 using namespace std::placeholders;
 
@@ -52,7 +55,7 @@ CHECKED_STATUS ApplyWriteRequest(
   std::shared_ptr<const Schema> schema_ptr(&schema, [](const Schema* schema){});
   docdb::DocOperationApplyData apply_data{.doc_write_batch = write_batch};
   IndexMap index_map;
-  docdb::QLWriteOperation operation(schema_ptr, index_map, nullptr, boost::none);
+  docdb::QLWriteOperation operation(schema_ptr, index_map, nullptr, TransactionOperationContext());
   QLResponsePB response;
   RETURN_NOT_OK(operation.Init(write_request, &response));
   return operation.Apply(apply_data);
@@ -95,13 +98,13 @@ template <class PB>
 struct GetEntryType;
 
 template<> struct GetEntryType<SysNamespaceEntryPB>
-    : public std::integral_constant<SysRowEntry::Type, SysRowEntry::NAMESPACE> {};
+    : public std::integral_constant<SysRowEntryType, SysRowEntryType::NAMESPACE> {};
 
 template<> struct GetEntryType<SysTablesEntryPB>
-    : public std::integral_constant<SysRowEntry::Type, SysRowEntry::TABLE> {};
+    : public std::integral_constant<SysRowEntryType, SysRowEntryType::TABLE> {};
 
 template<> struct GetEntryType<SysTabletsEntryPB>
-    : public std::integral_constant<SysRowEntry::Type, SysRowEntry::TABLET> {};
+    : public std::integral_constant<SysRowEntryType, SysRowEntryType::TABLET> {};
 
 } // namespace
 
@@ -144,7 +147,7 @@ template <class PB>
 Status RestoreSysCatalogState::AddRestoringEntry(
     const std::string& id, PB* pb, faststring* buffer) {
   auto type = GetEntryType<PB>::value;
-  VLOG_WITH_FUNC(1) << SysRowEntry::Type_Name(type) << ": " << id << ", " << pb->ShortDebugString();
+  VLOG_WITH_FUNC(1) << SysRowEntryType_Name(type) << ": " << id << ", " << pb->ShortDebugString();
 
   if (!VERIFY_RESULT(PatchRestoringEntry(id, pb))) {
     return Status::OK();
@@ -300,7 +303,7 @@ Status RestoreSysCatalogState::IterateSysCatalog(
     const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
     std::unordered_map<std::string, PB>* map) {
   auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      schema, schema, boost::none, doc_db, CoarseTimePoint::max(),
+      schema, schema, TransactionOperationContext(), doc_db, CoarseTimePoint::max(),
       ReadHybridTime::SingleTime(read_time), nullptr);
   return EnumerateSysCatalog(iter.get(), schema, GetEntryType<PB>::value, [map](
           const Slice& id, const Slice& data) -> Status {
@@ -310,7 +313,7 @@ Status RestoreSysCatalogState::IterateSysCatalog(
     }
     if (!map->emplace(id.ToBuffer(), std::move(pb)).second) {
       return STATUS_FORMAT(IllegalState, "Duplicate $0: $1",
-                           SysRowEntry::Type_Name(GetEntryType<PB>::value), id.ToBuffer());
+                           SysRowEntryType_Name(GetEntryType<PB>::value), id.ToBuffer());
     }
     return Status::OK();
   });
@@ -412,7 +415,7 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
     }
   }
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
-      SysRowEntry::TABLET, id, pb.SerializeAsString(),
+      SysRowEntryType::TABLET, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
   return ApplyWriteRequest(schema, &write_request, write_batch);
 }
@@ -426,7 +429,7 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
   pb.set_hide_state(SysTablesEntryPB::HIDING);
   pb.set_version(pb.version() + 1);
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
-      SysRowEntry::TABLE, id, pb.SerializeAsString(),
+      SysRowEntryType::TABLE, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
   return ApplyWriteRequest(schema, &write_request, write_batch);
 }
@@ -461,7 +464,7 @@ class FetchState {
           docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
           boost::none,
           rocksdb::kDefaultQueryId,
-          boost::none,
+          TransactionOperationContext(),
           CoarseTimePoint::max(),
           read_time)) {
   }
@@ -474,7 +477,10 @@ class FetchState {
     }
     prefix_ = prefix;
     finished_ = false;
-    return Update();
+    last_deleted_key_bytes_.clear();
+    last_deleted_key_write_time_ = DocHybridTime::kInvalid;
+    RETURN_NOT_OK(Update());
+    return NextNonDeletedEntry();
   }
 
   bool finished() const {
@@ -482,16 +488,49 @@ class FetchState {
   }
 
   Slice key() const {
-    return key_;
+    return key_.key;
   }
 
   Slice value() const {
     return iterator_->value();
   }
 
-  CHECKED_STATUS Next() {
-    iterator_->SeekOutOfSubDoc(key_);
+  docdb::FetchKeyResult FullKey() const {
+    return key_;
+  }
+
+  CHECKED_STATUS NextEntry() {
+    iterator_->SeekPastSubKey(key_.key);
     return Update();
+  }
+
+  CHECKED_STATUS Next() {
+    RETURN_NOT_OK(NextEntry());
+    return NextNonDeletedEntry();
+  }
+
+  // Returns true if the entry corresponds to a deleted row
+  // in rocksdb.
+  Result<bool> IsDeletedRowEntry() {
+    bool is_tombstoned = false;
+    is_tombstoned = VERIFY_RESULT(docdb::Value::IsTombstoned(value()));
+
+    // Because Postgres doesn't have a concept of frozen types, kGroupEnd will only demarcate the
+    // end of hashed and range components. It is reasonable to assume then that if the last byte
+    // is kGroupEnd then it does not have any subkeys.
+    bool no_subkey =
+        key()[key().size() - 1] == docdb::ValueTypeAsChar::kGroupEnd;
+
+    return no_subkey && is_tombstoned;
+  }
+
+  // Returns true if it has been deleted since the time it was inserted.
+  bool IsDeletedSinceInsertion() {
+    if (last_deleted_key_bytes_.size() == 0) {
+      return false;
+    }
+    return key().starts_with(last_deleted_key_bytes_.AsSlice()) &&
+           FullKey().write_time < last_deleted_key_write_time_;
   }
 
  private:
@@ -500,9 +539,12 @@ class FetchState {
       finished_ = true;
       return Status::OK();
     }
-    auto fetched_key = VERIFY_RESULT(iterator_->FetchKey());
-    key_ = fetched_key.key;
-    if (!key_.starts_with(prefix_)) {
+    key_ = VERIFY_RESULT(iterator_->FetchKey());
+    if (VERIFY_RESULT(IsDeletedRowEntry())) {
+      last_deleted_key_write_time_ = key_.write_time;
+      last_deleted_key_bytes_ = key_.key;
+    }
+    if (!key_.key.starts_with(prefix_)) {
       finished_ = true;
       return Status::OK();
     }
@@ -510,9 +552,23 @@ class FetchState {
     return Status::OK();
   }
 
+  CHECKED_STATUS NextNonDeletedEntry() {
+    while (!finished()) {
+      if (VERIFY_RESULT(IsDeletedRowEntry()) ||
+          IsDeletedSinceInsertion()) {
+        RETURN_NOT_OK(NextEntry());
+        continue;
+      }
+      break;
+    }
+    return Status::OK();
+  }
+
   std::unique_ptr<docdb::IntentAwareIterator> iterator_;
   Slice prefix_;
-  Slice key_;
+  docdb::FetchKeyResult key_;
+  KeyBuffer last_deleted_key_bytes_;
+  DocHybridTime last_deleted_key_write_time_;
   bool finished_ = false;
 };
 

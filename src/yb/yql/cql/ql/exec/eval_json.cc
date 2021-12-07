@@ -12,20 +12,26 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/exec/executor.h"
-
 #include <numeric> // NOLINT - needed because header name mismatch source name
 
+#include <boost/algorithm/string.hpp>
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
 
-#include <boost/algorithm/string.hpp>
+#include "yb/client/schema.h"
 
 #include "yb/common/ql_value.h"
 
+#include "yb/util/result.h"
 #include "yb/util/string_util.h"
+
+#include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
 
 namespace yb {
 namespace ql {
@@ -51,7 +57,7 @@ std::string GetCoercionErr(const DataType src_type,
 // Parses JSON string as rapidjson document
 Result<rapidjson::Document> ParseJsonString(const char* json_string,
                                             ExecContext* exec_context,
-                                            const YBLocation::SharedPtr& loc) {
+                                            const YBLocationPtr& loc) {
   // Special case: boolean strings in CQL are case-insensitive, but rapidjson disagrees
   if (strcasecmp(json_string, "true") == 0) {
     json_string = "true";
@@ -81,7 +87,7 @@ std::string NormalizeJsonKey(const std::string& key) {
 
 Result<PTExpr::SharedPtr> Executor::ConvertJsonToExpr(const rapidjson::Value& json_value,
                                                       const QLType::SharedPtr& type,
-                                                      const YBLocation::SharedPtr& loc) {
+                                                      const YBLocationPtr& loc) {
   CHECK_NOTNULL(type.get());
 
   // Strip FROZEN wrapping and process underlying type
@@ -104,7 +110,7 @@ Result<PTExpr::SharedPtr> Executor::ConvertJsonToExpr(const rapidjson::Value& js
 
 Result<PTExpr::SharedPtr> Executor::ConvertJsonToExprInner(const rapidjson::Value& json_value,
                                                            const QLType::SharedPtr& type,
-                                                           const YBLocation::SharedPtr& loc) {
+                                                           const YBLocationPtr& loc) {
   MemoryContext* memctx = exec_context_->PTempMem();
   switch (json_value.GetType()) {
     case rapidjson::Type::kNullType: {
@@ -232,8 +238,8 @@ CHECKED_STATUS Executor::PreExecTreeNode(PTInsertJsonClause* json_clause) {
 CHECKED_STATUS Executor::InsertJsonClauseToPB(const PTInsertStmt* insert_stmt,
                                               const PTInsertJsonClause* json_clause,
                                               QLWriteRequestPB* req) {
-  const MCMap<MCString, ColumnDesc>& column_map = insert_stmt->column_map();
-  const YBLocation::SharedPtr&       loc        = json_clause->Expr()->loc_ptr();
+  const auto& column_map = insert_stmt->column_map();
+  const auto& loc        = json_clause->Expr()->loc_ptr();
 
   // Processed columns with their associated QL expressions
   std::map<const ColumnDesc*, QLExpressionPB*> processed_cols;

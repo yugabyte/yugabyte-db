@@ -11,21 +11,26 @@
 // under the License.
 //
 
+#include "yb/rpc/proxy.h"
+
 #include "yb/tserver/remote_bootstrap_session-test.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace tserver {
 
-class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
+class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
  public:
-  RemoteBootstrapRocksDBTest() : RemoteBootstrapTest(YQL_TABLE_TYPE) {}
+  RemoteBootstrapRocksDBTest() : RemoteBootstrapSessionTest(YQL_TABLE_TYPE) {}
 
   void SetUp() override {
-    RemoteBootstrapTest::SetUp();
+    RemoteBootstrapSessionTest::SetUp();
   }
 
   void TearDown() override {
-    RemoteBootstrapTest::TearDown();
+    RemoteBootstrapSessionTest::TearDown();
   }
 };
 

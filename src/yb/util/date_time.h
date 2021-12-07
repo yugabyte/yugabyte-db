@@ -22,12 +22,9 @@
 #ifndef YB_UTIL_DATE_TIME_H_
 #define YB_UTIL_DATE_TIME_H_
 
-
-#include <locale>
 #include <regex>
 
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
 #include "yb/util/timestamp.h"
 
 namespace yb {

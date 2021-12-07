@@ -14,6 +14,10 @@
 #ifndef YB_UTIL_COMPARE_UTIL_H
 #define YB_UTIL_COMPARE_UTIL_H
 
+#include <vector>
+
+#include <boost/preprocessor/config/config.hpp>
+
 namespace yb {
 namespace util {
 
@@ -41,7 +45,6 @@ int CompareVectors(const std::vector<T>& a, const std::vector<T>& b) {
   if (a_iter == a.end()) {
     return b_iter == b.end() ? 0 : -1;
   }
-  DCHECK(b_iter == b.end());  // This follows from the while loop condition.
   return 1;
 }
 

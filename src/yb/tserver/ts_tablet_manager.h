@@ -38,15 +38,11 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/container/static_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
-#include <boost/thread/shared_mutex.hpp>
 #include <gtest/gtest_prod.h>
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/options.h"
-#include "yb/client/async_initializer.h"
 #include "yb/client/client_fwd.h"
+#include "yb/client/async_initializer.h"
 
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
@@ -54,23 +50,29 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
-#include "yb/master/master_fwd.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/master/master_fwd.h"
+
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_splitter.h"
-#include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/tserver/tablet_memory_manager.h"
+#include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
