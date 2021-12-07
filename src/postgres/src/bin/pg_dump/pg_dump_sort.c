@@ -63,38 +63,39 @@ static const int dbObjectTypePriority[] =
 	10,							/* DO_OPFAMILY */
 	3,							/* DO_COLLATION */
 	11,							/* DO_CONVERSION */
-	18,							/* DO_TABLE */
-	20,							/* DO_ATTRDEF */
-	28,							/* DO_INDEX */
-	29,							/* DO_INDEX_ATTACH */
-	30,							/* DO_STATSEXT */
-	31,							/* DO_RULE */
-	32,							/* DO_TRIGGER */
-	27,							/* DO_CONSTRAINT */
-	33,							/* DO_FK_CONSTRAINT */
+	19,							/* DO_TABLE */
+	21,							/* DO_ATTRDEF */
+	29,							/* DO_INDEX */
+	30,							/* DO_INDEX_ATTACH */
+	31,							/* DO_STATSEXT */
+	32,							/* DO_RULE */
+	33,							/* DO_TRIGGER */
+	28,							/* DO_CONSTRAINT */
+	34,							/* DO_FK_CONSTRAINT */
 	2,							/* DO_PROCLANG */
 	6,							/* DO_CAST */
-	23,							/* DO_TABLE_DATA */
-	24,							/* DO_SEQUENCE_SET */
-	19,							/* DO_DUMMY_TYPE */
+	24,							/* DO_TABLE_DATA */
+	25,							/* DO_SEQUENCE_SET */
+	20,							/* DO_DUMMY_TYPE */
 	12,							/* DO_TSPARSER */
 	14,							/* DO_TSDICT */
 	13,							/* DO_TSTEMPLATE */
 	15,							/* DO_TSCONFIG */
 	16,							/* DO_FDW */
 	17,							/* DO_FOREIGN_SERVER */
-	33,							/* DO_DEFAULT_ACL */
+	34,							/* DO_DEFAULT_ACL */
 	3,							/* DO_TRANSFORM */
-	21,							/* DO_BLOB */
-	25,							/* DO_BLOB_DATA */
-	22,							/* DO_PRE_DATA_BOUNDARY */
-	26,							/* DO_POST_DATA_BOUNDARY */
-	34,							/* DO_EVENT_TRIGGER */
-	39,							/* DO_REFRESH_MATVIEW */
-	35,							/* DO_POLICY */
-	36,							/* DO_PUBLICATION */
-	37,							/* DO_PUBLICATION_REL */
-	38							/* DO_SUBSCRIPTION */
+	22,							/* DO_BLOB */
+	26,							/* DO_BLOB_DATA */
+	23,							/* DO_PRE_DATA_BOUNDARY */
+	27,							/* DO_POST_DATA_BOUNDARY */
+	35,							/* DO_EVENT_TRIGGER */
+	40,							/* DO_REFRESH_MATVIEW */
+	36,							/* DO_POLICY */
+	37,							/* DO_PUBLICATION */
+	38,							/* DO_PUBLICATION_REL */
+	39,							/* DO_SUBSCRIPTION */
+	18,							/* DO_TABLEGROUP */
 };
 
 static DumpId preDataBoundId;
@@ -1331,6 +1332,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 			snprintf(buf, bufsize,
 					 "TABLE %s  (ID %d OID %u)",
 					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_TABLEGROUP:
+			snprintf(buf, bufsize,
+					"TABLEGROUP %s  (ID %d OID %u)",
+					obj->name, obj->dumpId, obj->catId.oid);
 			return;
 		case DO_ATTRDEF:
 			snprintf(buf, bufsize,
