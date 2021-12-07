@@ -1296,6 +1296,7 @@ export default class ClusterFields extends Component {
 
     const allowGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
+    universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
 
     const cluster = getClusterByType(universeTaskParams.clusters, clusterType);
     if (
@@ -1303,11 +1304,10 @@ export default class ClusterFields extends Component {
       isNonEmptyObject(cluster.placementInfo) &&
       isNonEmptyArray(cluster.placementInfo.cloudList)
     ) {
-      universeTaskParams.allowGeoPartitioning = allowGeoPartitioning;
       if (allowGeoPartitioning && this.state.defaultRegion !== '') {
         cluster.placementInfo.cloudList[0].defaultRegion = this.state.defaultRegion;
       } else {
-        delete cluster.placementInfo.defaultRegion;
+        delete cluster.placementInfo.cloudList[0].defaultRegion;
       }
     }
 
