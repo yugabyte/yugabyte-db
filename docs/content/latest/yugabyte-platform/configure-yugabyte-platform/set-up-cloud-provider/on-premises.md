@@ -65,17 +65,17 @@ showAsideToc: true
 
 </ul>
 
-This page details how to configure the Onprem cloud provider for YugabyteDB using the Yugabyte Platform console. If no cloud providers are configured, the main Dashboard page highlights that you need to configure at least one cloud provider.
+You can configure the on-premises cloud provider for YugabyteDB using the Yugabyte Platform UI. If no cloud providers are configured, the main Dashboard prompts you to configure at least one cloud provider.
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-0.png)
 
-## Step 1. Configure the on-premises provider
+## Configure the on-premises provider
 
-### On-premise Provider Info {#on-premise-provider-info}
+### Provider Info {#on-premise-provider-info}
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
 
-#### Provider name
+#### Provider Name
 
 This is an internal tag used for organizing your providers, so you know where you want to deploy your YugabyteDB universes.
 
@@ -83,7 +83,7 @@ This is an internal tag used for organizing your providers, so you know where yo
 
 To provision on-prem nodes with YugabyteDB, the Yugabyte Platform requires SSH access to these nodes. Unless you plan to provision the database nodes manually, this user needs to have _passwordless sudo permissions_ to complete a few tasks.
 
-If the SSH user requires a password for sudo access **or** the SSH user does not have sudo access, follow the steps in the [Manually provision nodes](#manually-provision-nodes) section.
+If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps in the [Manually provision nodes](#manually-provision-nodes) section.
 
 #### SSH Port
 
@@ -98,20 +98,16 @@ If any of the items from this checklist are true, you need to [provision the nod
 
 * Pre-provisioned `yugabyte:yugabyte` user + group
 * Sudo user requires a password
-* The SSH user is **not** a sudo user
-{{< /note >}}
+* The SSH user is not a sudo user
+  {{< /note >}}
 
 #### SSH Key
 
 Ensure that the SSH key is pasted correctly (Supported format is RSA).
 
-#### Air Gap install 
+#### Air Gap Install 
 
 If enabled, the installation will run in an air-gapped mode without expecting any internet access.
-
-#### Use Hostnames
-
-Indicates if nodes are expected to use DNS or IP addresses. If enabled, then all internal communication will use DNS resolution.
 
 #### Desired Home Directory (Optional)
 
@@ -139,7 +135,7 @@ Follow the steps below to provide node hardware configuration (CPU, memory, and 
 
 This is an internal user-defined tag used as an identifier in the “Instance Type” universe field.
 
-#### Number of cores
+#### Number of Cores
 
 This is the number of cores assigned to a node.
 
@@ -161,7 +157,7 @@ Follow the steps below to provide the location of DB nodes. All these fields are
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
 
-## Step 2. Provision the YugabyteDB nodes
+## Provision the YugabyteDB nodes
 
 After finishing the cloud provider configuration, click Manage Instances to provision as many nodes as your application requires.
 
@@ -169,7 +165,7 @@ After finishing the cloud provider configuration, click Manage Instances to prov
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-4.png)
 
-**For each node you want to add**, click Add Instances to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances. (Instance ID is an optional user-defined identifier.)
+For each node you want to add, click Add Instances to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances. (Instance ID is an optional user-defined identifier.)
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
 
@@ -184,7 +180,7 @@ To provision your nodes manually, you have two options:
 #### Run the pre-provisioning script
 
 {{< note title="Note" >}}
-This step is only required if you set Manually Provision Nodes to true **and** the SSH user has sudo privileges which require a password; otherwise, skip this step.
+This step is only required if you set Manually Provision Nodes to true and the SSH user has sudo privileges which require a password; otherwise, skip this step.
 {{< /note >}}
 
 Follow these steps to manually provision each node using the pre-provisioning Python script. 
@@ -219,7 +215,7 @@ Follow these steps to manually provision each node using the pre-provisioning Py
 #### Set up database nodes manually
 
 {{< note title="Note" >}}
-This step is only required if you set Manually Provision Nodes to true **and** the SSH user doesn't have sudo privileges at all; otherwise, skip this step.
+This step is only required if you set Manually Provision Nodes to true and the SSH user doesn't have sudo privileges at all; otherwise, skip this step.
 {{< /note >}}
 
 If the SSH user configured in the Onprem Provider does not have sudo privileges, then set up each of the database nodes manually by following the steps in this section. Note that you will need access to a user with sudo privileges in order to complete these steps.
@@ -290,7 +286,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     ```
 
 1. Copy the SSH public key to each DB node.
-    
+   
     \
     This public key should correspond to the private key entered into the Platform Provider elsewhere in this document.
 
@@ -396,7 +392,7 @@ If you’re doing an airgapped installation, download the node exporter using a 
 
 Note that the instructions here are for the 0.13.0 version. The same instructions work with the 1.2.2 version, but make sure to use the right filename.
 
-**On each node**, do the following as a user with sudo access:
+On each node, do the following as a user with sudo access:
 
 1. Copy the `node_exporter-....tar.gz` package file you downloaded into the `/tmp` directory on each of the DB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
 
@@ -530,7 +526,7 @@ Platform supports performing yugabyte database liveness checks, log file managem
 
 **Sudo is required to set up this service!**
 
-If Platform will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab:
+If Platform will be using cron jobs, make sure the yugabyte user is allowed to run crontab:
 
 * If you’re using the `cron.allow` file to manage crontab access, add the yugabyte user to this file.
 * If you’re using the `cron.deny` file, remove the yugabyte user from this file.
@@ -549,4 +545,4 @@ If Platform will be using **cron jobs**, make sure the yugabyte user is allowed 
 If you plan to have Platform use **systemd services** to perform the monitoring operations mentioned above, then make sure ...
 -->
 
-**You’re finished configuring your on-premises cloud provider.** Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
+You’re finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
