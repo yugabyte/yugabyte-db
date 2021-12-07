@@ -296,6 +296,12 @@ class StackableDB : public DB {
     db_->GetColumnFamilyMetaData(column_family, cf_meta);
   }
 
+  virtual void GetColumnFamiliesOptions(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options) override {
+    db_->GetColumnFamiliesOptions(column_family_names, column_family_options);
+  }
+
 #endif  // ROCKSDB_LITE
 
   virtual Status GetLiveFiles(std::vector<std::string>& vec, uint64_t* mfs,

@@ -4758,6 +4758,10 @@ class ModelDB: public DB {
   virtual void GetColumnFamilyMetaData(
       ColumnFamilyHandle* column_family,
       ColumnFamilyMetaData* metadata) override {}
+
+  virtual void GetColumnFamiliesOptions(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options) override {}
 #endif  // ROCKSDB_LITE
 
   Status GetDbIdentity(std::string* identity) const override {
