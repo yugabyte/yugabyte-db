@@ -848,6 +848,12 @@ class DB {
     GetColumnFamilyMetaData(DefaultColumnFamily(), metadata);
   }
 
+  // Obtains all column family options and corresponding names,
+  // dropped columns are not included into the resulting collections.
+  virtual void GetColumnFamiliesOptions(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options) = 0;
+
   // Load table file located at "file_path" into "column_family", a pointer to
   // ExternalSstFileInfo can be used instead of "file_path" to do a blind add
   // that wont need to read the file, move_file can be set to true to

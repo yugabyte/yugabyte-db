@@ -111,6 +111,61 @@ TEST_F(OptionsUtilTest, SaveAndLoad) {
   }
 }
 
+TEST_F(OptionsUtilTest, CompareIncludeOptions) {
+  const size_t kCFCount = 5;
+
+  DBOptions db_opt;
+  std::vector<std::string> cf_names;
+  std::vector<ColumnFamilyOptions> cf_opts;
+  test::RandomInitDBOptions(&db_opt, &rnd_);
+  for (size_t i = 0; i < kCFCount; ++i) {
+    cf_names.push_back(i == 0 ? kDefaultColumnFamilyName
+                              : test::RandomName(&rnd_, 10));
+    cf_opts.emplace_back();
+    test::RandomInitCFOptions(&cf_opts.back(), &rnd_);
+  }
+
+  std::tuple<IncludeHeader, IncludeFileVersion> include_opts[] {
+    std::make_tuple(IncludeHeader::kTrue, IncludeFileVersion::kTrue),
+    std::make_tuple(IncludeHeader::kTrue, IncludeFileVersion::kFalse),
+    std::make_tuple(IncludeHeader::kFalse, IncludeFileVersion::kTrue),
+    std::make_tuple(IncludeHeader::kFalse, IncludeFileVersion::kFalse)
+  };
+
+  const std::string kFileName = "OPTIONS-123456";
+
+  for (auto const& opts : include_opts) {
+    if (env_->FileExists(kFileName).ok()) {
+      ASSERT_OK(env_->DeleteFile(kFileName));
+    }
+    ASSERT_OK(PersistRocksDBOptions(
+      db_opt, cf_names, cf_opts, kFileName, env_.get(), std::get<0>(opts), std::get<1>(opts)));
+
+    DBOptions loaded_db_opt;
+    std::vector<ColumnFamilyDescriptor> loaded_cf_descs;
+    ASSERT_OK(LoadOptionsFromFile(kFileName, env_.get(), &loaded_db_opt, &loaded_cf_descs));
+    ASSERT_OK(env_->DeleteFile(kFileName));
+
+    ASSERT_OK(RocksDBOptionsParser::VerifyDBOptions(db_opt, loaded_db_opt));
+    ASSERT_EQ(loaded_cf_descs.size(), cf_names.size());
+    ASSERT_EQ(loaded_cf_descs.size(), cf_opts.size());
+    for (size_t i = 0; i < loaded_cf_descs.size(); ++i) {
+      ASSERT_EQ(cf_names[i], loaded_cf_descs[i].name);
+      ASSERT_OK(RocksDBOptionsParser::VerifyCFOptions(cf_opts[i], loaded_cf_descs[i].options));
+      if (IsBlockBasedTableFactory(cf_opts[i].table_factory.get())) {
+        ASSERT_OK(RocksDBOptionsParser::VerifyTableFactory(
+            cf_opts[i].table_factory.get(), loaded_cf_descs[i].options.table_factory.get()));
+      }
+    }
+  }
+
+  for (size_t i = 0; i < cf_opts.size(); ++i) {
+    if (cf_opts[i].compaction_filter) {
+      delete cf_opts[i].compaction_filter;
+    }
+  }
+}
+
 namespace {
 class DummyTableFactory : public TableFactory {
  public:

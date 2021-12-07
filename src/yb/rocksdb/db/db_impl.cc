@@ -5444,6 +5444,27 @@ Status DBImpl::GetPropertiesOfTablesInRange(ColumnFamilyHandle* column_family,
   return s;
 }
 
+void DBImpl::GetColumnFamiliesOptions(
+    std::vector<std::string>* column_family_names,
+    std::vector<ColumnFamilyOptions>* column_family_options) {
+  DCHECK(column_family_names);
+  DCHECK(column_family_options);
+  InstrumentedMutexLock lock(&mutex_);
+  GetColumnFamiliesOptionsUnlocked(column_family_names, column_family_options);
+}
+
+void DBImpl::GetColumnFamiliesOptionsUnlocked(
+    std::vector<std::string>* column_family_names,
+    std::vector<ColumnFamilyOptions>* column_family_options) {
+  for (auto cfd : *versions_->GetColumnFamilySet()) {
+    if (cfd->IsDropped()) {
+      continue;
+    }
+    column_family_names->push_back(cfd->GetName());
+    column_family_options->push_back(
+      BuildColumnFamilyOptions(*cfd->options(), *cfd->GetLatestMutableCFOptions()));
+  }
+}
 #endif  // ROCKSDB_LITE
 
 const std::string& DBImpl::GetName() const {
@@ -6480,14 +6501,7 @@ Status DBImpl::WriteOptionsFile() {
   std::vector<ColumnFamilyOptions> cf_opts;
 
   // This part requires mutex to protect the column family options
-  for (auto cfd : *versions_->GetColumnFamilySet()) {
-    if (cfd->IsDropped()) {
-      continue;
-    }
-    cf_names.push_back(cfd->GetName());
-    cf_opts.push_back(BuildColumnFamilyOptions(
-        *cfd->options(), *cfd->GetLatestMutableCFOptions()));
-  }
+  GetColumnFamiliesOptionsUnlocked(&cf_names, &cf_opts);
 
   // Unlock during expensive operations.  New writes cannot get here
   // because the single write thread ensures all new writes get queued.
