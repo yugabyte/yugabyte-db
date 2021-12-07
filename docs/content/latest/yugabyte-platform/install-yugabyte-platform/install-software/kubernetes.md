@@ -80,7 +80,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugabyte  2.11.0          2.11.0.0      YugabyteDB is the high-performance distributed ...
+    yugabytedb/yugaware  2.11.0         2.11.0.1-b1  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
@@ -129,13 +129,13 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
   - For AWS, see [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
 
+  \
+  For example, for a GKE version earlier than 1.17, you would run a command similar to the following:
 
-   For example, for a GKE version earlier than 1.17, you would execute a command similar to the following:
-
-    ```sh
+  ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
-    --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
-    ```
+  --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
+  ```
 
 ## Delete the Helm Installation of Yugabyte Platform
 
