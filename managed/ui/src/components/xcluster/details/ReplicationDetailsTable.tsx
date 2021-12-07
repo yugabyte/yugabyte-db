@@ -7,7 +7,7 @@ import { openDialog } from '../../../actions/modal';
 import { fetchTablesInUniverse, getUniverseInfo } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { IReplication, IReplicationTable } from '../IClusterReplication';
-import { GetCurrentLagForTable } from '../ReplicationUtils';
+import { GetCurrentLagForTable, YSQL_TABLE_TYPE } from '../ReplicationUtils';
 
 import './ReplicationDetailsTable.scss';
 interface props {
@@ -77,10 +77,25 @@ export function ReplicationDetailsTable({ replication }: props) {
               tableContainerClass="add-to-table-container"
             >
               <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-              <TableHeaderColumn dataField="tableName">Name</TableHeaderColumn>
-              <TableHeaderColumn dataField="tableType">Type</TableHeaderColumn>
-              <TableHeaderColumn dataField="keySpace">Keyspace</TableHeaderColumn>
-              <TableHeaderColumn dataField="sizeBytes">Size</TableHeaderColumn>
+              <TableHeaderColumn dataField="tableName" width="50%">
+                Name
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="tableType"
+                width="20%"
+                dataFormat={(cell) => {
+                  if (cell === YSQL_TABLE_TYPE) return 'YSQL';
+                  return 'YCQL';
+                }}
+              >
+                Type
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="keySpace" width="20%">
+                Keyspace
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="sizeBytes" width="10%">
+                Size
+              </TableHeaderColumn>
               <TableHeaderColumn
                 dataFormat={(_cell, row) => (
                   <span className="lag-text">
