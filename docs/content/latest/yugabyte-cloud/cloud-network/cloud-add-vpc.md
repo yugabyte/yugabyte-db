@@ -6,7 +6,7 @@ description: Manage your cloud VPCs.
 menu:
   latest:
     identifier: cloud-add-vpc
-    parent: vpc-peers
+    parent: cloud-network
     weight: 30
 isTocNested: true
 showAsideToc: true

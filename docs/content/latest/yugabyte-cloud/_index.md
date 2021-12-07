@@ -119,10 +119,10 @@ To begin using Yugabyte Cloud, go to [Quick start](cloud-quickstart).
       <a class="section-link icon-offset" href="cloud-network/">
           <div class="head">
               <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
-              <div class="title">Network access</div>
+              <div class="title">VPC networking</div>
           </div>
           <div class="body">
-              Set up network security for your cluster.
+              Set up VPC networking to peer clusters with application VPCs.
           </div>
       </a>
   </div>

@@ -6,7 +6,7 @@ description: How to set up and VPC network in Yugabyte Cloud.
 menu:
   latest:
     identifier: cloud-vpc-setup
-    parent: vpc-peers
+    parent: cloud-network
     weight: 20
 isTocNested: true
 showAsideToc: true
@@ -39,7 +39,7 @@ Before setting up the VPC network, you will need the following:
 
 ## Deploy a cluster in the VPC
 
-Once a VPC has been created, you can deploy your cluster in the VPN.
+Once a VPC has been created, you can [deploy your cluster](../../cloud-basics/create-clusters/) in the VPN.
 
 1. On the **Clusters** page, click **Add Cluster**.
 1. Choose **Yugabyte Cloud** and click **Next**.
@@ -104,7 +104,7 @@ For information on VPC network peering in GCP, refer to [VPC Network Peering ove
 
 ## Add the peered application VPC to the IP allow list for your cluster
 
-Once the cluster and the peering connection are active, you need add at least one of the CIDR blocks associated with the peered application VPC to the IP allow list for your cluster.
+Once the cluster and the peering connection are active, you need add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../cloud-basics/add-connections/) for your cluster.
 
 1. On the **Clusters** page, select your cluster.
 1. Click **Quick Links** and **Edit IP Allow List**.

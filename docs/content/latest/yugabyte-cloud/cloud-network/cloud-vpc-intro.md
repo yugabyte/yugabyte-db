@@ -6,7 +6,7 @@ description: Requirements and considerations for setting up a VPC network.
 menu:
   latest:
     identifier: cloud-vpc-intro
-    parent: vpc-peers
+    parent: cloud-network
     weight: 10
 isTocNested: true
 showAsideToc: true
@@ -68,7 +68,7 @@ Yugabyte Cloud reserves the `10.21.0.0.16` range for internal operations.
 - You assign a VPC when you create a cluster. You cannot change VPCs after cluster creation.
 - You cannot change the size of your VPC once it is created.
 - VPC network ranges cannot overlap with the ranges of other networks in the same account.
-- IP addresses of peered application VPCs must be [added to the IP allow list](../../ip-whitelists/) of your cluster to be able to connect to the database.
+- IP addresses of peered application VPCs must be [added to the IP allow list](../../cloud-basics/add-connections/) of your cluster to be able to connect to the database.
 
 ## Next steps
 
