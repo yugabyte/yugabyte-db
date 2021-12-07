@@ -706,6 +706,10 @@ public class UniverseTest extends FakeDBApplication {
         assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Adding) {
         assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.InstanceCreated) {
+        assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+      } else if (nodeState == NodeDetails.NodeState.ServerSetup) {
+        assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
         // Cannot REMOVE host-n1: As it will under replicate the masters.
         assertEquals(ImmutableSet.of(), allowedActions);

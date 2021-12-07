@@ -24,6 +24,8 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -72,6 +74,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AlertService alertService;
   protected AlertDefinitionService alertDefinitionService;
   protected AlertConfigurationService alertConfigurationService;
+  protected YcqlQueryExecutor mockYcqlQueryExecutor;
+  protected YsqlQueryExecutor mockYsqlQueryExecutor;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -128,6 +132,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
+    mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
+    mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -150,7 +156,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
-                .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies)))
+                .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))
+                .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
+                .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor)))
         .build();
   }
 
