@@ -45,7 +45,7 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 ## Semantics
 
-`CONCURRENTLY`, `USING method`, `COLLATE`, and `TABLESPACE` options are not yet supported.
+`CONCURRENTLY`, `COLLATE`, and `TABLESPACE` options are not yet supported.
 
 When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index.
 In most cases, this uses an online schema migration.
@@ -69,6 +69,18 @@ For details on how online index backfill works, refer to [Online Index Backfill]
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
+
+### NONCONCURRENTLY
+
+Disable online schema migration (see [Semantics](#semantics) for details).
+
+Concurrent is the default, but the grammar does not yet support `CONCURRENTLY`.
+
+### *access_method_name*
+
+The name of the index access method.
+By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (for example, temporary tables).
+[GIN indexes](../../../../../explore/ysql-language-features/gin) can be created in YugabyteDB by using the `ybgin` access method.
 
 ### INCLUDE clause
 
@@ -99,7 +111,7 @@ Specify the name of a column of the table.
 
 Specify one or more columns of the table and must be surrounded by parentheses.
 
-- `HASH` - Use hash of the column. This is the default option for the first column and is used to hash partition the index table.
+- `HASH` - Use hash of the column. This is the default option for the first column and is used to shard the index table.
 - `ASC` — Sort in ascending order. This is the default option for second and subsequent columns of the index.
 - `DESC` — Sort in descending order.
 - `NULLS FIRST` - Specifies that nulls sort before non-nulls. This is the default when DESC is specified.

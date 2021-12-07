@@ -12,7 +12,9 @@
 //
 
 #include "yb/rocksdb/db/db_test_util.h"
+
 #include "yb/util/path_util.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -21,10 +23,7 @@ namespace rocksdb {
 
 namespace {
   constexpr auto kNumCompactionTrigger = 4;
-
-  void AssertLoggedWaitFor(std::function<Result<bool>()> condition, const string& description) {
-    yb::AssertLoggedWaitFor(condition, 60s, description, 100ms);
-  }
+  constexpr auto kWaitTimeout = 60s;
 }
 
 class OnFileCreationListener : public EventListener {
@@ -45,11 +44,11 @@ class OnFileCreationListener : public EventListener {
     }
 
     if (do_pause) {
-      AssertLoggedWaitFor(
+      ASSERT_OK(yb::LoggedWaitFor(
           [this, &file_name] {
             std::lock_guard<std::mutex> l(mutex_);
             return file_names_to_resume_.erase(file_name) > 0;
-          }, yb::Format("Pausing on $0 ...", file_name));
+          }, kWaitTimeout, yb::Format("Pausing on $0 ...", file_name)));
     }
   }
 
@@ -122,9 +121,39 @@ class DBTestUniversalCompactionDeletion : public DBTestBase {
     return options;
   }
 
-  void WaitForNumFilesCreated(const std::string& desc, size_t num_files) {
-    AssertLoggedWaitFor(
-        [this, num_files] { return file_create_listener_->NumFilesCreated() >= num_files; }, desc);
+  CHECKED_STATUS WaitForNumFilesCreated(const std::string& desc, size_t num_files) {
+    return yb::LoggedWaitFor(
+        [this, num_files] { return file_create_listener_->NumFilesCreated() >= num_files; },
+        kWaitTimeout, desc);
+  }
+
+  template <class FilePathsContainer>
+  CHECKED_STATUS WaitFilePathsDeleted(
+      FilePathsContainer file_paths, const std::string& description) {
+    RETURN_NOT_OK_PREPEND(
+        yb::LoggedWaitFor(
+            [this, &file_paths] {
+              for (auto it = file_paths.begin(); it != file_paths.end();) {
+                if (env_->FileExists(*it).IsNotFound()) {
+                  it = file_paths.erase(it);
+                } else {
+                  ++it;
+                }
+              }
+              return file_paths.empty();
+            },
+            kWaitTimeout, yb::Format("Waiting for $0 to be deleted", description)),
+        yb::Format("$0 should be deleted: $1", description, file_paths));
+    return Status::OK();
+  }
+
+  CHECKED_STATUS WaitLiveFilesDeleted(
+      const std::vector<LiveFileMetaData>& files, const std::string& description) {
+    std::vector<std::string> file_paths;
+    for (const auto& file : files) {
+      file_paths.push_back(dbname_ + file.name);
+    }
+    return WaitFilePathsDeleted(std::move(file_paths), description);
   }
 
   Random rnd_;
@@ -159,7 +188,8 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByFlush) {
     LOG(INFO) << "Input file: " << file.ToString();
   }
 
-  WaitForNumFilesCreated("Waiting for compaction (1) delay ...", kNumCompactionTrigger + 1);
+  ASSERT_OK(
+      WaitForNumFilesCreated("Waiting for compaction (1) delay ...", kNumCompactionTrigger + 1));
   const auto compaction_1_output = file_create_listener_->GetLastCreatedFileName();
 
   size_t num_files = file_create_listener_->NumFilesCreated();
@@ -168,20 +198,18 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByFlush) {
     ASSERT_OK(Flush());
   });
 
-  WaitForNumFilesCreated("Waiting for flush (2) delay ...", num_files + 1);
+  ASSERT_OK(WaitForNumFilesCreated("Waiting for flush (2) delay ...", num_files + 1));
   const auto flush_2_output = file_create_listener_->GetLastCreatedFileName();
   file_create_listener_->DisablePausing();
 
   LOG(INFO) << "Resuming compaction (1) ...";
   file_create_listener_->ResumeFileName(compaction_1_output);
-  AssertLoggedWaitFor(
+  ASSERT_OK(yb::LoggedWaitFor(
       [this] { return dbfull()->TEST_NumTotalRunningCompactions() == 0; },
-      "Waiting for compaction (1) to be completed ...");
+      kWaitTimeout, "Waiting for compaction (1) to be completed ..."));
 
   // Compaction (1) input files should be deleted before flush (2) is completed.
-  for (auto file : input_files) {
-    ASSERT_TRUE(env_->FileExists(dbname_ + file.name).IsNotFound());
-  }
+  ASSERT_OK(WaitLiveFilesDeleted(input_files, "compaction (1) input files"));
 
   LOG(INFO) << "Resuming flush (2) ...";
   file_create_listener_->ResumeFileName(flush_2_output);
@@ -209,7 +237,8 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesMinPendingOutput) {
   for (int i = 0; i < kNumCompactionTrigger; ++i) {
     CreateSstFile();
   }
-  WaitForNumFilesCreated("Waiting for compaction (1) delay ...", kNumCompactionTrigger + 1);
+  ASSERT_OK(
+      WaitForNumFilesCreated("Waiting for compaction (1) delay ...", kNumCompactionTrigger + 1));
   const auto compaction_1_output = file_create_listener_->GetLastCreatedFileName();
   file_create_listener_->DisablePausing();
 
@@ -231,14 +260,12 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesMinPendingOutput) {
     }
   }
 
-  AssertLoggedWaitFor(
-      [this] { return dbfull()->TEST_NumTotalRunningCompactions() == 1; },
-      "Waiting for compaction (2) to be completed ...");
+  ASSERT_OK(yb::LoggedWaitFor(
+      [this] { return dbfull()->TEST_NumTotalRunningCompactions() == 1; }, kWaitTimeout,
+      "Waiting for compaction (2) to be completed ..."));
 
   // Compaction (2) input files should be deleted before compaction (1) is completed.
-  for (auto file_name : input_files_2) {
-    ASSERT_TRUE(env_->FileExists(dbname_ + file_name).IsNotFound());
-  }
+  ASSERT_OK(WaitFilePathsDeleted(input_files_2, "compaction (2) input files"));
 
   LOG(INFO) << "Resuming compaction (1)  ...";
   file_create_listener_->ResumeFileName(compaction_1_output);
@@ -276,7 +303,8 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByScheduledC
     LOG(INFO) << "Input file: " << file.ToString();
   }
 
-  WaitForNumFilesCreated("Waiting for compaction (1) delay ...", kNumCompactionTrigger + 1);
+  ASSERT_OK(
+      WaitForNumFilesCreated("Waiting for compaction (1) delay ...", kNumCompactionTrigger + 1));
   const auto compaction_1_output = file_create_listener_->GetLastCreatedFileName();
 
   // Allow kNumCompactionTrigger more files to be created without delay and enqueue compaction (3).
@@ -286,17 +314,17 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByScheduledC
     CreateSstFile();
   }
 
-  AssertLoggedWaitFor(
-      [this] { return dbfull()->TEST_NumRunningFlushes() == 0; },
-      "Waiting for flush (2) completion ...");
+  ASSERT_OK(yb::LoggedWaitFor(
+      [this] { return dbfull()->TEST_NumRunningFlushes() == 0; }, kWaitTimeout,
+      "Waiting for flush (2) completion ..."));
 
-  AssertLoggedWaitFor(
-      [this] { return dbfull()->TEST_NumBackgroundCompactionsScheduled() == 2; },
-      "Waiting for compaction (3) to be enqueued ...");
+  ASSERT_OK(yb::LoggedWaitFor(
+      [this] { return dbfull()->TEST_NumBackgroundCompactionsScheduled() == 2; }, kWaitTimeout,
+      "Waiting for compaction (3) to be enqueued ..."));
 
   LOG(INFO) << "Resuming compaction (1)  ...";
   file_create_listener_->ResumeFileName(compaction_1_output);
-  AssertLoggedWaitFor(
+  ASSERT_OK(yb::LoggedWaitFor(
       [this, &compaction_1_output] {
         std::vector<LiveFileMetaData> files;
         db_->GetLiveFilesMetaData(&files);
@@ -306,18 +334,16 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByScheduledC
           }
         }
         return false;
-      }, "Waiting for compaction (1) to be completed ...");
+      }, kWaitTimeout, "Waiting for compaction (1) to be completed ..."));
 
   // Compaction (1) input files should be deleted before compaction (3) is completed.
-  for (auto file : input_files) {
-    ASSERT_TRUE(env_->FileExists(dbname_ + file.name).IsNotFound());
-  }
+  ASSERT_OK(WaitLiveFilesDeleted(input_files, "compaction (1) input files"));
 
   // Need to wait for compaction 3 to actually generate its output file, before we try to get that
-  // filename below.
-  AssertLoggedWaitFor(
+  // file's name below.
+  ASSERT_OK(yb::LoggedWaitFor(
       [this]{ return file_create_listener_->NumFilesCreated() == 2 * kNumCompactionTrigger + 2; },
-      "Waiting for compaction (3) to be completed");
+      kWaitTimeout, "Waiting for compaction (3) to be completed"));
 
   const auto compaction_3_output = file_create_listener_->GetLastCreatedFileName();
   file_create_listener_->ResumeFileName(compaction_3_output);

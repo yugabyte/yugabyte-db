@@ -29,16 +29,17 @@
 #define YB_ROCKSDB_UTIL_CODING_H
 
 #pragma once
+
 #include <stdint.h>
 #include <string.h>
 
 #include <algorithm>
 #include <string>
 
-#include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/port/port.h"
 
-#include "yb/util/coding_consts.h"
+#include "yb/util/cast.h"
+#include "yb/util/fast_varint.h"
 
 namespace rocksdb {
 
@@ -69,6 +70,18 @@ extern Slice GetSliceUntil(Slice* slice, char delimiter);
 extern const char* GetVarint32Ptr(const char* p, const char* limit, uint32_t* v);
 extern const char* GetVarint64Ptr(const char* p, const char* limit, uint64_t* v);
 
+// Might use effective performance optimization that reads before src, but not before
+// read_allowed_from.
+inline const char* GetSignedVarint64Ptr(
+    const char* p, const char* limit, const char* read_allowed_from, int64_t* value) {
+  size_t decoded_size;
+  if (!yb::util::FastDecodeSignedVarInt(p, limit - p, read_allowed_from, value, &decoded_size)
+           .ok()) {
+    return nullptr;
+  }
+  return p + decoded_size;
+}
+
 // Returns the length of the varint32 or varint64 encoding of "v"
 extern int VarintLength(uint64_t v);
 
@@ -85,6 +98,10 @@ extern char* EncodeVarint64(char* dst, uint64_t value);
 
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
+
+inline uint8_t DecodeFixed8(const char* ptr) {
+  return pointer_cast<const uint8_t*>(ptr)[0];
+}
 
 inline uint32_t DecodeFixed32(const char* ptr) {
   if (port::kLittleEndian) {
@@ -125,6 +142,9 @@ inline uint64_t DecodeFixed64(const uint8_t* ptr) {
 extern const char* GetVarint32PtrFallback(const char* p,
                                           const char* limit,
                                           uint32_t* value);
+
+const char* GetVarint64PtrFallback(const char* p, const char* limit, uint64_t* value);
+
 inline const char* GetVarint32Ptr(const char* p,
                                   const char* limit,
                                   uint32_t* value) {
@@ -136,6 +156,19 @@ inline const char* GetVarint32Ptr(const char* p,
     }
   }
   return GetVarint32PtrFallback(p, limit, value);
+}
+
+inline const char* GetVarint64Ptr(const char* p,
+                                  const char* limit,
+                                  uint64_t* value) {
+  if (p < limit) {
+    uint64_t result = *(reinterpret_cast<const unsigned char*>(p));
+    if ((result & 128) == 0) {
+      *value = result;
+      return p + 1;
+    }
+  }
+  return GetVarint64PtrFallback(p, limit, value);
 }
 
 // -- Implementation of the functions declared above
@@ -165,6 +198,10 @@ inline void EncodeFixed64(char* buf, uint64_t value) {
 #endif
 }
 
+inline void PutFixed8(std::string* dst, uint8_t value) {
+  dst->push_back(value);
+}
+
 inline void PutFixed32(std::string* dst, uint32_t value) {
   char buf[sizeof(value)];
   EncodeFixed32(buf, value);
@@ -183,6 +220,13 @@ inline void PutVarint32(std::string* dst, uint32_t v) {
   dst->append(buf, static_cast<size_t>(ptr - buf));
 }
 
+inline void PutSignedVarint(std::string* dst, int64_t v) {
+  char buf[yb::util::kMaxVarIntBufferSize];
+  size_t encoded_size;
+  yb::util::FastEncodeSignedVarInt(v, pointer_cast<uint8_t*>(buf), &encoded_size);
+  dst->append(buf, encoded_size);
+}
+
 inline char* EncodeVarint64(char* dst, uint64_t v) {
   static const unsigned int B = 128;
   unsigned char* ptr = reinterpret_cast<unsigned char*>(dst);
@@ -194,9 +238,22 @@ inline char* EncodeVarint64(char* dst, uint64_t v) {
   return reinterpret_cast<char*>(ptr);
 }
 
+inline char* FastEncodeVarint64(char* dst, uint64_t v) {
+  if (v <= std::numeric_limits<uint32_t>::max()) {
+    return EncodeVarint32(dst, static_cast<uint32_t>(v));
+  }
+  return EncodeVarint64(dst, v);
+}
+
 inline void PutVarint64(std::string* dst, uint64_t v) {
   char buf[10];
   char* ptr = EncodeVarint64(buf, v);
+  dst->append(buf, static_cast<size_t>(ptr - buf));
+}
+
+inline void FastPutVarint64(std::string* dst, uint64_t v) {
+  char buf[yb::util::kMaxVarIntBufferSize];
+  char* ptr = FastEncodeVarint64(buf, v);
   dst->append(buf, static_cast<size_t>(ptr - buf));
 }
 

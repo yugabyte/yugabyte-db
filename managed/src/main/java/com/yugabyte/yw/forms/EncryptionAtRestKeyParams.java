@@ -11,38 +11,26 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
-
-import java.util.UUID;
-
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.yugabyte.yw.common.PlatformServiceException;
+import java.util.UUID;
+import play.libs.Json;
+import play.mvc.Http;
+
 public class EncryptionAtRestKeyParams extends UniverseTaskParams {
-  public static OpType opTypeFromString(String opTypeString) {
-    return opTypeString == null ? OpType.UNDEFINED : OpType.valueOf(opTypeString);
-  }
 
   public static EncryptionAtRestKeyParams bindFromFormData(
-    UUID universeUUID, ObjectNode formData) {
-    EncryptionAtRestKeyParams params = new EncryptionAtRestKeyParams();
-    if (formData.get("kmsConfigUUID") != null) {
-      params.encryptionAtRestConfig.kmsConfigUUID =
-        UUID.fromString(formData.get("kmsConfigUUID").asText());
-      if (formData.get("key_type") != null) {
-        params.encryptionAtRestConfig.type =
-          Enum.valueOf(KeyType.class, formData.get("key_type").asText());
-      }
-      if (formData.get("key_op") != null) {
-        params.encryptionAtRestConfig.opType =
-          opTypeFromString(formData.get("key_op").asText());
-      }
-    } else {
-      throw new YWServiceException(BAD_REQUEST, "kmsConfigUUID is a required field");
+      UUID universeUUID, Http.Request request) {
+    EncryptionAtRestKeyParams taskParams = new EncryptionAtRestKeyParams();
+    taskParams.universeUUID = universeUUID;
+    try {
+      taskParams.encryptionAtRestConfig =
+          Json.mapper().treeToValue(request.body().asJson(), EncryptionAtRestConfig.class);
+    } catch (JsonProcessingException e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    params.universeUUID = universeUUID;
-    return params;
+    return taskParams;
   }
 }

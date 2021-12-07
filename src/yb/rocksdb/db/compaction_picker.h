@@ -33,7 +33,6 @@
 #include <vector>
 
 #include "yb/rocksdb/db/compaction.h"
-#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/status.h"
@@ -185,6 +184,9 @@ class CompactionPicker {
                        const CompactionInputFiles& inputs,
                        const CompactionInputFiles& output_level_inputs,
                        std::vector<FileMetaData*>* grandparents);
+
+  static void MarkL0FilesForDeletion(const VersionStorageInfo* vstorage,
+                                     const ImmutableCFOptions* ioptions);
 
   const ImmutableCFOptions& ioptions_;
 

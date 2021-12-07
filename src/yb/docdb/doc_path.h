@@ -14,14 +14,24 @@
 #ifndef YB_DOCDB_DOC_PATH_H_
 #define YB_DOCDB_DOC_PATH_H_
 
+#include <stdint.h>
+
+#include <cstring>
+#include <functional>
 #include <ostream>
 #include <string>
+#include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bytes.h"
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/string_util.h"
 
 namespace yb {
@@ -60,18 +70,11 @@ class DocPath {
     return subkeys_[i];
   }
 
-  std::string ToString() const {
-    return strings::Substitute("DocPath($0, $1)",
-        BestEffortDocDBKeyToStr(encoded_doc_key_), rocksdb::VectorToString(subkeys_));
-  }
+  std::string ToString() const;
 
-  void AddSubKey(const PrimitiveValue& subkey) {
-    subkeys_.emplace_back(subkey);
-  }
+  void AddSubKey(const PrimitiveValue& subkey);
 
-  void AddSubKey(PrimitiveValue&& subkey) {
-    subkeys_.emplace_back(std::move(subkey));
-  }
+  void AddSubKey(PrimitiveValue&& subkey);
 
   const PrimitiveValue& last_subkey() const {
     assert(!subkeys_.empty());
@@ -81,13 +84,7 @@ class DocPath {
   // Note: the hash is supposed to be uint16_t, but protobuf only supports uint32.
   // So this function takes in uint32_t.
   // TODO (akashnil): Add uint16 data type in docdb.
-  static DocPath DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey = "") {
-    DocPath doc_path = DocPath(DocKey::FromRedisKey(hash, key).Encode());
-    if (!subkey.empty()) {
-      doc_path.AddSubKey(PrimitiveValue(subkey));
-    }
-    return doc_path;
-  }
+  static DocPath DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey = "");
 
   const std::vector<PrimitiveValue>& subkeys() const {
     return subkeys_;

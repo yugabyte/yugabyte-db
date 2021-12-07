@@ -25,18 +25,29 @@ class GetTransactionStatusAtParticipantRequestPB;
 class GetTransactionStatusAtParticipantResponsePB;
 class GetTransactionStatusRequestPB;
 class GetTransactionStatusResponsePB;
+class Heartbeater;
 class LocalTabletServer;
+class MetricsSnapshotter;
+class PgCreateColumnPB;
+class PgCreateTableRequestPB;
 class TSTabletManager;
 class TabletPeerLookupIf;
 class TabletServer;
 class TabletServerAdminServiceProxy;
 class TabletServerBackupServiceProxy;
+class TabletServerIf;
 class TabletServerOptions;
 class TabletServerServiceProxy;
+class TabletServerForwardServiceProxy;
+class TabletServiceImpl;
+class TabletServerPathHandlers;
 class TabletSnapshotOpRequestPB;
 class TabletSnapshotOpResponsePB;
+class TransactionStatePB;
 class UpdateTransactionRequestPB;
 class UpdateTransactionResponsePB;
+
+enum class TabletServerServiceRpcMethodIndexes;
 
 } // namespace tserver
 } // namespace yb

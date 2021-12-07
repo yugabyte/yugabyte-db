@@ -13,13 +13,20 @@
 
 #include "yb/client/table_alterer.h"
 
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
-#include "yb/client/schema.h"
 #include "yb/client/schema-internal.h"
+
+#include "yb/common/transaction.h"
+
+#include "yb/master/master.pb.h"
 
 namespace yb {
 namespace client {
+
+struct YBTableAlterer::Step {
+  master::AlterTableRequestPB::StepType step_type;
+  std::unique_ptr<YBColumnSpec> spec;
+};
 
 YBTableAlterer::YBTableAlterer(YBClient* client, const YBTableName& name)
   : client_(client), table_name_(name) {
@@ -76,6 +83,11 @@ YBTableAlterer* YBTableAlterer::timeout(const MonoDelta& timeout) {
 
 YBTableAlterer* YBTableAlterer::wait(bool wait) {
   wait_ = wait;
+  return this;
+}
+
+YBTableAlterer* YBTableAlterer::part_of_transaction(const TransactionMetadata* txn) {
+  txn_ = txn;
   return this;
 }
 
@@ -178,6 +190,10 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   if (replication_info_) {
     // TODO: Maybe add checks for the sanity of the replication_info.
     req->mutable_replication_info()->CopyFrom(replication_info_.get());
+  }
+
+  if (txn_) {
+    txn_->ToPB(req->mutable_transaction());
   }
 
   return Status::OK();

@@ -13,7 +13,7 @@ import {
 import { change, Field } from 'redux-form';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
-import { isNonEmptyObject, isNonEmptyString } from '../../../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../utils/ObjectUtils';
 import { reduxForm, FieldArray } from 'redux-form';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 
@@ -45,6 +45,14 @@ class renderRegionInput extends Component {
                 validate={validationIsRequired}
                 component={YBInputField}
                 placeHolder="Subnet ID"
+              />
+            </Col>
+            <Col lg={12}>
+              <Field
+                name={`${item}.customImageId`}
+                component={YBInputField}
+                placeHolder="Custom Machine Image (Optional)"
+                normalize={trimString}
               />
             </Col>
           </Row>
@@ -100,7 +108,7 @@ class GCPProviderInitView extends Component {
     }
     if (vals.network_setup !== 'new_vpc') {
       vals.regionMapping.forEach(
-        (item) => (perRegionMetadata[item.region] = { subnetId: item.subnet })
+        (item) => (perRegionMetadata[item.region] = { subnetId: item.subnet , customImageId: item.customImageId})
       );
     }
     if (isNonEmptyString(vals.firewall_tags)) {

@@ -14,26 +14,26 @@
 #ifndef YB_DOCDB_PRIMITIVE_VALUE_H_
 #define YB_DOCDB_PRIMITIVE_VALUE_H_
 
-#include <memory.h>
-
+#include <ostream>
 #include <string>
 #include <vector>
-#include <ostream>
 
-#include "yb/util/slice.h"
+#include <glog/logging.h>
 
-#include "yb/common/common.pb.h"
-#include "yb/common/hybrid_time.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/schema.h"
-#include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/common/hybrid_time.h"
+
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/value_type.h"
-#include "yb/util/decimal.h"
-#include "yb/util/timestamp.h"
+
 #include "yb/util/algorithm_util.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace docdb {
@@ -42,10 +42,6 @@ namespace docdb {
 // PREPEND prepends the arguments one by one (PREPEND a b c) will prepend [c b a] to the list,
 // while PREPEND_BLOCK prepends the arguments together, so it will prepend [a b c] to the list.
 YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
-
-// Automatically decode keys that are stored in string-typed PrimitiveValues when converting a
-// PrimitiveValue to string. This is useful when displaying write batches for secondary indexes.
-YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
 
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
@@ -59,6 +55,8 @@ class PrimitiveValue {
   static const PrimitiveValue kInvalid;
   static const PrimitiveValue kTombstone;
   static const PrimitiveValue kObject;
+  static const PrimitiveValue kLivenessColumn;
+
   // Flags for jsonb.
   // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
   static constexpr int64_t kCompleteJsonb = 1;
@@ -69,7 +67,7 @@ class PrimitiveValue {
   explicit PrimitiveValue(ValueType value_type);
 
   PrimitiveValue(const PrimitiveValue& other) {
-    if (other.type_ == ValueType::kString || other.type_ == ValueType::kStringDescending) {
+    if (other.IsString()) {
       type_ = other.type_;
       new(&str_val_) std::string(other.str_val_);
     } else if (other.type_ == ValueType::kJsonb) {
@@ -114,29 +112,35 @@ class PrimitiveValue {
     return *this;
   }
 
-  explicit PrimitiveValue(const Slice& s, SortOrder sort_order = SortOrder::kAscending) {
+  explicit PrimitiveValue(const Slice& s,
+                          SortOrder sort_order = SortOrder::kAscending,
+                          bool is_collate = false) {
     if (sort_order == SortOrder::kDescending) {
-      type_ = ValueType::kStringDescending;
+      type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
     } else {
-      type_ = ValueType::kString;
+      type_ = is_collate ? ValueType::kCollString : ValueType::kString;
     }
     new(&str_val_) std::string(s.cdata(), s.cend());
   }
 
-  explicit PrimitiveValue(const std::string& s, SortOrder sort_order = SortOrder::kAscending) {
+  explicit PrimitiveValue(const std::string& s,
+                          SortOrder sort_order = SortOrder::kAscending,
+                          bool is_collate = false) {
     if (sort_order == SortOrder::kDescending) {
-      type_ = ValueType::kStringDescending;
+      type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
     } else {
-      type_ = ValueType::kString;
+      type_ = is_collate ? ValueType::kCollString : ValueType::kString;
     }
     new(&str_val_) std::string(s);
   }
 
-  explicit PrimitiveValue(const char* s, SortOrder sort_order = SortOrder::kAscending) {
+  explicit PrimitiveValue(const char* s,
+                          SortOrder sort_order = SortOrder::kAscending,
+                          bool is_collate = false) {
     if (sort_order == SortOrder::kDescending) {
-      type_ = ValueType::kStringDescending;
+      type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
     } else {
-      type_ = ValueType::kString;
+      type_ = is_collate ? ValueType::kCollString : ValueType::kString;
     }
     new(&str_val_) std::string(s);
   }
@@ -195,17 +199,17 @@ class PrimitiveValue {
     column_id_val_ = column_id;
   }
 
-  static PrimitiveValue NullValue(ColumnSchema::SortingType sorting);
+  static PrimitiveValue NullValue(SortingType sorting);
 
-  // Converts a ColumnSchema::SortingType to its SortOrder equivalent.
-  // ColumnSchema::SortingType::kAscending and ColumnSchema::SortingType::kNotSpecified get
+  // Converts a SortingType to its SortOrder equivalent.
+  // SortingType::kAscending and SortingType::kNotSpecified get
   // converted to SortOrder::kAscending.
-  // ColumnSchema::SortingType::kDescending gets converted to SortOrder::kDescending.
-  static SortOrder SortOrderFromColumnSchemaSortingType(ColumnSchema::SortingType sorting_type);
+  // SortingType::kDescending gets converted to SortOrder::kDescending.
+  static SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 
   // Construct a primitive value from a QLValuePB.
   static PrimitiveValue FromQLValuePB(const QLValuePB& value,
-                                      ColumnSchema::SortingType sorting_type);
+                                      SortingType sorting_type);
 
   // Set a primitive value in a QLValuePB.
   static void ToQLValuePB(const PrimitiveValue& pv,
@@ -222,7 +226,7 @@ class PrimitiveValue {
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
 
   ~PrimitiveValue() {
-    if (type_ == ValueType::kString || type_ == ValueType::kStringDescending) {
+    if (IsString()) {
       str_val_.~basic_string();
     } else if (type_ == ValueType::kJsonb) {
       json_val_.~basic_string();
@@ -264,6 +268,7 @@ class PrimitiveValue {
   static PrimitiveValue TableId(Uuid table_id);
   static PrimitiveValue PgTableOid(const PgTableOid pgtable_id);
   static PrimitiveValue Jsonb(const std::string& json);
+  static PrimitiveValue GinNull(uint8_t v);
 
   KeyBytes ToKeyBytes() const;
 
@@ -293,7 +298,7 @@ class PrimitiveValue {
   // This returns a YB slice, not a RocksDB slice, based on what was needed when this function was
   // implemented. This distinction should go away if we merge RocksDB and YB Slice classes.
   Slice GetStringAsSlice() const {
-    DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
+    DCHECK(IsString());
     return Slice(str_val_);
   }
 
@@ -302,7 +307,8 @@ class PrimitiveValue {
   }
 
   bool IsString() const {
-    return ValueType::kString == type_ || ValueType::kStringDescending == type_;
+    return ValueType::kString == type_ || ValueType::kStringDescending == type_ ||
+           ValueType::kCollString == type_ || ValueType::kCollStringDescending == type_;
   }
 
   bool IsDouble() const {
@@ -386,6 +392,11 @@ class PrimitiveValue {
   ColumnId GetColumnId() const {
     DCHECK(type_ == ValueType::kColumnId || type_ == ValueType::kSystemColumnId);
     return column_id_val_;
+  }
+
+  uint8_t GetGinNull() const {
+    DCHECK(ValueType::kGinNull == type_);
+    return gin_null_val_;
   }
 
   bool operator <(const PrimitiveValue& other) const {
@@ -475,6 +486,7 @@ class PrimitiveValue {
     std::string decimal_val_;
     std::string varint_val_;
     std::string json_val_;
+    uint8_t gin_null_val_;
   };
 
  private:
@@ -488,7 +500,7 @@ class PrimitiveValue {
 
     ttl_seconds_ = other->ttl_seconds_;
     write_time_ = other->write_time_;
-    if (other->type_ == ValueType::kString || other->type_ == ValueType::kStringDescending) {
+    if (other->IsString()) {
       type_ = other->type_;
       new(&str_val_) std::string(std::move(other->str_val_));
       // The moved-from object should now be in a "valid but unspecified" state as per the standard.

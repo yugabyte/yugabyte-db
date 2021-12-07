@@ -21,16 +21,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-
 #include "yb/rocksdb/table/block_based_table_factory.h"
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/flush_block_policy.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table/block_based_table_builder.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/format.h"
@@ -214,6 +215,8 @@ const char BlockBasedTablePropertyNames::kWholeKeyFiltering[] =
     "rocksdb.block.based.table.whole.key.filtering";
 const char BlockBasedTablePropertyNames::kPrefixFiltering[] =
     "rocksdb.block.based.table.prefix.filtering";
+const char BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat[] =
+    "rocksdb.block.based.table.data.block.key.value.encoding.format";
 const char kHashIndexPrefixesBlock[] = "rocksdb.hashindex.prefixes";
 const char kHashIndexPrefixesMetadataBlock[] =
     "rocksdb.hashindex.metadata";

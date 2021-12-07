@@ -17,6 +17,8 @@
 
 #include "yb/rpc/growable_buffer.h"
 
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

@@ -37,22 +37,26 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/util/status.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/status.h"
+#include "yb/util/type_traits.h"
 #include "yb/common/entity_ids.h"
 #include "yb/tools/yb-admin_cli.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/messenger.h"
 
 namespace yb {
+
+class HybridTime;
 
 namespace consensus {
 class ConsensusServiceProxy;
@@ -84,6 +88,30 @@ class TableNameResolver {
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+HAS_MEMBER_FUNCTION(error);
+HAS_MEMBER_FUNCTION(status);
+
+template<class Response>
+CHECKED_STATUS ResponseStatus(
+    const Response& response,
+    typename std::enable_if<HasMemberFunction_error<Response>::value, void*>::type = nullptr) {
+  // Response has has_error method, use status from it.
+  if (response.has_error()) {
+    return StatusFromPB(response.error().status());
+  }
+  return Status::OK();
+}
+
+template<class Response>
+CHECKED_STATUS ResponseStatus(
+    const Response& response,
+    typename std::enable_if<HasMemberFunction_status<Response>::value, void*>::type = nullptr) {
+  if (response.has_status()) {
+    return StatusFromPB(response.status());
+  }
+  return Status::OK();
+}
 
 class ClusterAdminClient {
  public:
@@ -131,7 +159,7 @@ class ClusterAdminClient {
                             bool include_table_type);
 
   // List all tablets of this table
-  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets);
+  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets, bool json);
 
   // Per Tablet list of all tablet servers
   CHECKED_STATUS ListPerTabletTabletServers(const PeerId& tablet_id);
@@ -181,7 +209,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
 
-  Result<unordered_map<string, int>> GetLeaderCounts(const client::YBTableName& table_name);
+  Result<std::unordered_map<std::string, int>> GetLeaderCounts(
+      const client::YBTableName& table_name);
 
   CHECKED_STATUS SetupRedisTable();
 
@@ -236,11 +265,20 @@ class ClusterAdminClient {
 
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
+  CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
+
   Result<TableNameResolver> BuildTableNameResolver();
 
   Result<std::string> GetMasterLeaderUuid();
 
   CHECKED_STATUS GetYsqlCatalogVersion();
+
+  Result<rapidjson::Document> DdlLog();
+
+  // Upgrade YSQL cluster (all databases) to the latest version, applying necessary migrations.
+  // Note: Works with a tserver but is placed here (and not in yb-ts-cli) because it doesn't
+  //       look like this workflow is a good fit there.
+  CHECKED_STATUS UpgradeYsql();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -280,6 +318,38 @@ class ClusterAdminClient {
   CHECKED_STATUS StartElection(const std::string& tablet_id);
 
   CHECKED_STATUS WaitUntilMasterLeaderReady();
+
+  template <class Resp, class F>
+  CHECKED_STATUS RequestMasterLeader(Resp* resp, const F& f) {
+    auto deadline = CoarseMonoClock::now() + timeout_;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    for (;;) {
+      resp->Clear();
+      RETURN_NOT_OK(f(&rpc));
+
+      auto status = ResponseStatus(*resp);
+      if (status.ok()) {
+        return Status::OK();
+      }
+
+      if (!status.IsLeaderHasNoLease() && !status.IsLeaderNotReadyToServe() &&
+          !status.IsServiceUnavailable()) {
+        return status;
+      }
+
+      auto timeout = deadline - CoarseMonoClock::now();
+      if (timeout <= MonoDelta::kZero) {
+        return status;
+      }
+
+      rpc.Reset();
+      rpc.set_timeout(timeout);
+      ResetMasterProxy();
+    }
+  }
+
+  void ResetMasterProxy();
 
   std::string master_addr_list_;
   HostPort init_master_addr_;
@@ -338,6 +408,13 @@ std::string RightPadToUuidWidth(const std::string &s);
 Result<TypedNamespaceName> ParseNamespaceName(
     const std::string& full_namespace_name,
     const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL);
+
+void AddStringField(
+    const char* name, const std::string& value, rapidjson::Value* out,
+    rapidjson::Value::AllocatorType* allocator);
+
+// Renders hybrid time to string for user, time is rendered in local TZ.
+std::string HybridTimeToString(HybridTime ht);
 
 }  // namespace tools
 }  // namespace yb

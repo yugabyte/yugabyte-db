@@ -18,14 +18,13 @@
 #ifndef YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_
 #define YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_
 
-#include "yb/yql/cql/ql/util/ql_env.h"
+#include "yb/client/client_fwd.h"
+
+#include "yb/common/common.pb.h"
+#include "yb/common/ql_datatype.h"
+
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
-#include "yb/yql/cql/ql/ptree/column_desc.h"
-#include "yb/yql/cql/ql/ptree/pt_create_table.h"
-#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
-#include "yb/yql/cql/ql/ptree/pt_create_type.h"
-#include "yb/yql/cql/ql/ptree/pt_create_index.h"
-#include "yb/yql/cql/ql/ptree/sem_state.h"
 
 namespace yb {
 namespace ql {
@@ -68,13 +67,11 @@ class SemContext : public ProcessContext {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  SemContext(ParseTree::UniPtr parse_tree, QLEnv *ql_env);
+  SemContext(ParseTreePtr parse_tree, QLEnv *ql_env);
   virtual ~SemContext();
 
   // Memory pool for semantic analysis of the parse tree of a statement.
-  MemoryContext *PSemMem() const {
-    return parse_tree_->PSemMem();
-  }
+  MemoryContext *PSemMem() const;
 
   //------------------------------------------------------------------------------------------------
   // Symbol table support.
@@ -119,15 +116,9 @@ class SemContext : public ProcessContext {
     current_processing_id_.create_table_ = table;
   }
 
-  PTCreateIndex *current_create_index_stmt() {
-    PTCreateTable* const table = current_create_table_stmt();
-    return (table != nullptr && table->opcode() == TreeNodeOpcode::kPTCreateIndex)
-        ? static_cast<PTCreateIndex*>(table) : nullptr;
-  }
+  PTCreateIndex *current_create_index_stmt();
 
-  void set_current_create_index_stmt(PTCreateIndex *index) {
-    set_current_create_table_stmt(index);
-  }
+  void set_current_create_index_stmt(PTCreateIndex *index);
 
   PTAlterTable *current_alter_table() {
     return current_processing_id_.alter_table_;
@@ -160,7 +151,7 @@ class SemContext : public ProcessContext {
   std::shared_ptr<client::YBTable> GetTableDesc(const TableId& table_id);
 
   // Get (user-defined) type from metadata server.
-  std::shared_ptr<QLType> GetUDType(const string &keyspace_name, const string &type_name);
+  std::shared_ptr<QLType> GetUDType(const std::string &keyspace_name, const std::string &type_name);
 
   // Find column descriptor from symbol table.
   PTColumnDefinition *GetColumnDefinition(const MCString& col_name);
@@ -177,13 +168,9 @@ class SemContext : public ProcessContext {
   // DataType not QLType as arguments
   bool IsComparable(DataType lhs_type, DataType rhs_type) const;
 
-  std::string CurrentKeyspace() const {
-    return ql_env_->CurrentKeyspace();
-  }
+  std::string CurrentKeyspace() const;
 
-  std::string CurrentRoleName() const {
-    return ql_env_->CurrentRoleName();
-  }
+  std::string CurrentRoleName() const;
 
   // Access function to cache_used.
   bool cache_used() const { return cache_used_; }
@@ -193,90 +180,45 @@ class SemContext : public ProcessContext {
     return sem_state_;
   }
 
-  const std::shared_ptr<QLType>& expr_expected_ql_type() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->expected_ql_type();
-  }
+  const std::shared_ptr<QLType>& expr_expected_ql_type() const;
 
-  InternalType expr_expected_internal_type() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->expected_internal_type();
-  }
+  NullIsAllowed expected_ql_type_accepts_null() const;
 
-  SelectScanInfo *scan_state() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->scan_state();
-  }
+  InternalType expr_expected_internal_type() const;
 
-  bool void_primary_key_condition() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->void_primary_key_condition();
-  }
+  SelectScanInfo *scan_state() const;
 
-  WhereExprState *where_state() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->where_state();
-  }
+  bool void_primary_key_condition() const;
 
-  IfExprState *if_state() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->if_state();
-  }
+  WhereExprState *where_state() const;
 
-  bool validate_orderby_expr() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->validate_orderby_expr();
-  }
+  IfExprState *if_state() const;
 
-  bool selecting_from_index() const {
-    DCHECK(sem_state_) << "State variable is not set";
-    return sem_state_->selecting_from_index();
-  }
+  bool validate_orderby_expr() const;
 
-  bool processing_column_definition() const {
-    DCHECK(sem_state_) << "State variable is not set";
-    return sem_state_->processing_column_definition();
-  }
+  IdxPredicateState *idx_predicate_state() const;
 
-  const MCSharedPtr<MCString>& bindvar_name() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->bindvar_name();
-  }
+  bool selecting_from_index() const;
 
-  const ColumnDesc *hash_col() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->hash_col();
-  }
+  int index_select_prefix_length() const;
 
-  const ColumnDesc *lhs_col() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->lhs_col();
-  }
+  bool processing_column_definition() const;
 
-  bool processing_set_clause() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->processing_set_clause();
-  }
+  const MCSharedPtr<MCString>& bindvar_name() const;
 
-  bool processing_assignee() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->processing_assignee();
-  }
+  const ColumnDesc *hash_col() const;
 
-  bool processing_if_clause() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->processing_if_clause();
-  }
+  const ColumnDesc *lhs_col() const;
 
-  bool allowing_aggregate() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->allowing_aggregate();
-  }
+  bool processing_set_clause() const;
 
-  bool allowing_column_refs() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->allowing_column_refs();
-  }
+  bool processing_assignee() const;
+
+  bool processing_if_clause() const;
+
+  bool allowing_aggregate() const;
+
+  bool allowing_column_refs() const;
 
   void set_sem_state(SemState *new_state, SemState **existing_state_holder) {
     *existing_state_holder = sem_state_;
@@ -287,18 +229,11 @@ class SemContext : public ProcessContext {
     sem_state_ = previous_state;
   }
 
-  PTDmlStmt *current_dml_stmt() const {
-    return sem_state_->current_dml_stmt();
-  }
+  PTDmlStmt *current_dml_stmt() const;
 
-  void set_current_dml_stmt(PTDmlStmt *stmt) {
-    sem_state_->set_current_dml_stmt(stmt);
-  }
+  void set_current_dml_stmt(PTDmlStmt *stmt);
 
-  void set_void_primary_key_condition(bool val) {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    sem_state_->set_void_primary_key_condition(val);
-  }
+  void set_void_primary_key_condition(bool val);
 
   CHECKED_STATUS HasKeyspacePermission(const PermissionType permission,
                                        const NamespaceName& keyspace_name);
@@ -335,9 +270,9 @@ class SemContext : public ProcessContext {
   CHECKED_STATUS CheckHasAllRolesPermission(const YBLocation& loc,
                                             const PermissionType permission);
 
-  bool IsUncoveredIndexSelect() const {
-    return sem_state_->is_uncovered_index_select();
-  }
+  bool IsUncoveredIndexSelect() const;
+
+  bool IsPartialIndexSelect() const;
 
  private:
   CHECKED_STATUS LoadSchema(const std::shared_ptr<client::YBTable>& table,

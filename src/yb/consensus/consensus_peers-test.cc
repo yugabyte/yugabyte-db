@@ -30,24 +30,27 @@
 // under the License.
 //
 
-#include <chrono>
-
 #include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus_peers.h"
+
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/server/hybrid_clock.h"
+
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -155,13 +158,13 @@ class ConsensusPeersTest : public YBTest {
 
  protected:
   unique_ptr<ThreadPool> raft_pool_;
-  gscoped_ptr<TestRaftConsensusQueueIface> consensus_;
+  std::unique_ptr<TestRaftConsensusQueueIface> consensus_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
-  gscoped_ptr<PeerMessageQueue> message_queue_;
+  std::unique_ptr<PeerMessageQueue> message_queue_;
   const Schema schema_;
   LogOptions options_;
   unique_ptr<ThreadPoolToken> raft_pool_token_;

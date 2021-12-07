@@ -18,32 +18,27 @@
 #ifndef YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
 #define YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
 
+#include <mutex>
+#include <vector>
+
+#include <rapidjson/document.h>
+
 #include "yb/client/yb_op.h"
+
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowblock.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/ql_type.h"
+
+#include "yb/gutil/callback.h"
+
 #include "yb/rpc/thread_pool.h"
-#include "yb/yql/cql/ql/audit/audit_logger.h"
-#include "yb/yql/cql/ql/exec/exec_context.h"
-#include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_create_table.h"
-#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
-#include "yb/yql/cql/ql/ptree/pt_create_type.h"
-#include "yb/yql/cql/ql/ptree/pt_create_index.h"
-#include "yb/yql/cql/ql/ptree/pt_create_role.h"
-#include "yb/yql/cql/ql/ptree/pt_alter_role.h"
-#include "yb/yql/cql/ql/ptree/pt_drop.h"
-#include "yb/yql/cql/ql/ptree/pt_select.h"
-#include "yb/yql/cql/ql/ptree/pt_insert.h"
-#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
-#include "yb/yql/cql/ql/ptree/pt_delete.h"
-#include "yb/yql/cql/ql/ptree/pt_update.h"
-#include "yb/yql/cql/ql/ptree/pt_transaction.h"
-#include "yb/yql/cql/ql/ptree/pt_truncate.h"
-#include "yb/yql/cql/ql/ptree/pt_explain.h"
-#include "yb/yql/cql/ql/util/statement_params.h"
+
+#include "yb/util/memory/mc_types.h"
+
+#include "yb/yql/cql/ql/exec/exec_fwd.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/ptree/pt_expr_types.h"
+#include "yb/yql/cql/ql/util/util_fwd.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 namespace yb {
@@ -54,11 +49,13 @@ class YBColumnSpec;
 
 namespace ql {
 
-class QLMetrics;
+namespace audit {
 
-// A batch of statement parse trees to execute with the parameters.
-typedef std::vector<std::pair<std::reference_wrapper<const ParseTree>,
-                              std::reference_wrapper<const StatementParameters>>> StatementBatch;
+class AuditLogger;
+
+}
+
+class QLMetrics;
 
 class Executor : public QLExprExecutor {
  public:
@@ -79,11 +76,41 @@ class Executor : public QLExprExecutor {
                     StatementExecutedCallback cb);
   void ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb);
 
+  void Shutdown();
+
+  static constexpr int64_t kAsyncCallsIdle = -1;
+
  private:
+  class ResetAsyncCalls {
+   public:
+    explicit ResetAsyncCalls(std::atomic<int64_t>* num_async_calls);
+
+    ResetAsyncCalls(const ResetAsyncCalls&) = delete;
+    void operator=(const ResetAsyncCalls&) = delete;
+
+    ResetAsyncCalls(ResetAsyncCalls&& rhs);
+    void operator=(ResetAsyncCalls&& rhs);
+
+    bool empty() const {
+      return num_async_calls_ == nullptr;
+    }
+
+    void Cancel();
+    void Perform();
+
+    ~ResetAsyncCalls();
+
+   private:
+    std::atomic<int64_t>* num_async_calls_;
+  };
+
+  ResetAsyncCalls PrepareExecuteAsync();
+
+  bool HasAsyncCalls();
+
   //------------------------------------------------------------------------------------------------
   // Currently, we don't yet have code generator into byte code, so the following ExecTNode()
   // functions are operating directly on the parse tree.
-
   // Execute a parse tree.
   CHECKED_STATUS Execute(const ParseTree& parse_tree, const StatementParameters& params);
 
@@ -96,13 +123,13 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS PreExecTreeNode(PTInsertJsonClause *tnode);
 
   // Convert JSON value to an expression acording to its given expected type
-  Result<PTExpr::SharedPtr> ConvertJsonToExpr(const rapidjson::Value& json_value,
-                                              const QLType::SharedPtr& type,
-                                              const YBLocation::SharedPtr& loc);
+  Result<PTExprPtr> ConvertJsonToExpr(const rapidjson::Value& json_value,
+                                      const QLType::SharedPtr& type,
+                                      const YBLocationPtr& loc);
 
-  Result<PTExpr::SharedPtr> ConvertJsonToExprInner(const rapidjson::Value& json_value,
-                                                   const QLType::SharedPtr& type,
-                                                   const YBLocation::SharedPtr& loc);
+  Result<PTExprPtr> ConvertJsonToExprInner(const rapidjson::Value& json_value,
+                                           const QLType::SharedPtr& type,
+                                           const YBLocationPtr& loc);
 
   // Execute any TreeNode. This function determines how to execute a node.
   CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
@@ -112,7 +139,7 @@ class Executor : public QLExprExecutor {
 
   CHECKED_STATUS GetOffsetOrLimit(
       const PTSelectStmt* tnode,
-      const std::function<PTExpr::SharedPtr(const PTSelectStmt* tnode)>& get_val,
+      const std::function<PTExprPtr(const PTSelectStmt* tnode)>& get_val,
       const string& clause_type,
       int32_t* value);
 
@@ -178,13 +205,11 @@ class Executor : public QLExprExecutor {
   // Result processing.
 
   // Returns the YBSession for the statement in execution.
-  client::YBSessionPtr GetSession(ExecContext* exec_context) {
-    return exec_context->HasTransaction() ? exec_context->transactional_session() : session_;
-  }
+  client::YBSessionPtr GetSession(ExecContext* exec_context);
 
   // Flush operations that have been applied and commit. If there is none, finish the statement
   // execution.
-  void FlushAsync();
+  void FlushAsync(ResetAsyncCalls* reset_async_calls);
 
   // Callback for FlushAsync.
   void FlushAsyncDone(client::FlushStatus* s, ExecContext* exec_context = nullptr);
@@ -193,7 +218,7 @@ class Executor : public QLExprExecutor {
   void CommitDone(Status s, ExecContext* exec_context);
 
   // Process async results from FlushAsync and Commit.
-  void ProcessAsyncResults(bool rescheduled = false);
+  void ProcessAsyncResults(bool rescheduled, ResetAsyncCalls* reset_async_calls);
 
   // Process async results from FlushAsync and Commit for a tnode. Returns true if there are new ops
   // being buffered to be flushed.
@@ -256,20 +281,20 @@ class Executor : public QLExprExecutor {
                          QLValue *ql_value);
 
   // Invoke statement executed callback.
-  void StatementExecuted(const Status& s);
+  void StatementExecuted(const Status& s, ResetAsyncCalls* reset_async_calls);
 
   // Reset execution state.
-  void Reset();
+  void Reset(ResetAsyncCalls* reset_async_calls);
 
   //------------------------------------------------------------------------------------------------
   // Expression evaluation.
 
   // CHECKED_STATUS EvalTimeUuidExpr(const PTExpr::SharedPtr& expr, EvalTimeUuidValue *result);
   // CHECKED_STATUS ConvertFromTimeUuid(EvalValue *result, const EvalTimeUuidValue& uuid_value);
-  CHECKED_STATUS PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb);
+  CHECKED_STATUS PTExprToPB(const PTExprPtr& expr, QLExpressionPB *expr_pb);
 
   // Constant expressions.
-  CHECKED_STATUS PTConstToPB(const PTExpr::SharedPtr& const_pt, QLValuePB *const_pb,
+  CHECKED_STATUS PTConstToPB(const PTExprPtr& const_pt, QLValuePB *const_pb,
                              bool negate = false);
   CHECKED_STATUS PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb, bool negate);
   CHECKED_STATUS PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb, bool negate);
@@ -293,7 +318,7 @@ class Executor : public QLExprExecutor {
   // There's only one, so call it PTUMinus for now.
   CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb);
   CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb);
-  CHECKED_STATUS PTJsonOperatorToPB(const PTJsonOperator::SharedPtr& json_pt,
+  CHECKED_STATUS PTJsonOperatorToPB(const PTJsonOperatorPtr& json_pt,
                                     QLJsonOperationPB *op_pb);
 
   // Builtin calls.
@@ -327,7 +352,7 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
 
   // Convert PTExpr to appropriate QLExpressionPB with appropriate validation.
-  CHECKED_STATUS PTExprToPBValidated(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb);
+  CHECKED_STATUS PTExprToPBValidated(const PTExprPtr& expr, QLExpressionPB *expr_pb);
 
   //------------------------------------------------------------------------------------------------
   // Column evaluation.
@@ -375,7 +400,7 @@ class Executor : public QLExprExecutor {
   // Add a read/write operation for the current statement and apply it. For write operation, check
   // for inter-dependency before applying. If it is a write operation to a table with secondary
   // indexes, update them as needed.
-  CHECKED_STATUS AddOperation(const client::YBqlReadOpPtr& op, TnodeContext *tnode_context);
+  void AddOperation(const client::YBqlReadOpPtr& op, TnodeContext *tnode_context);
   CHECKED_STATUS AddOperation(const client::YBqlWriteOpPtr& op, TnodeContext *tnode_context);
 
   // Is this a batch returning status?
@@ -391,6 +416,10 @@ class Executor : public QLExprExecutor {
                                   const QLWriteRequestPB& req,
                                   TnodeContext* tnode_context);
 
+  int64_t num_async_calls() const {
+    return num_async_calls_.load(std::memory_order_acquire);
+  }
+
   //------------------------------------------------------------------------------------------------
   // Helper class to separate inter-dependent write operations.
   class WriteBatch {
@@ -398,7 +427,9 @@ class Executor : public QLExprExecutor {
     // Add a write operation. Returns true if it does not depend on another operation in the batch.
     // Returns false if it does and is not added. In that case, the operation needs to be deferred
     // until the dependent operation has been applied.
-    bool Add(const client::YBqlWriteOpPtr& op);
+    bool Add(const client::YBqlWriteOpPtr& op,
+             const TnodeContext* tnode_context,
+             ExecContext* exec_context);
 
     // Clear the batch.
     void Clear();
@@ -409,11 +440,11 @@ class Executor : public QLExprExecutor {
    private:
     // Sets of write operations separated by their primary and keys.
     std::unordered_set<client::YBqlWriteOpPtr,
-                       client::YBqlWriteOp::PrimaryKeyComparator,
-                       client::YBqlWriteOp::PrimaryKeyComparator> ops_by_primary_key_;
+                       client::YBqlWritePrimaryKeyComparator,
+                       client::YBqlWritePrimaryKeyComparator> ops_by_primary_key_;
     std::unordered_set<client::YBqlWriteOpPtr,
-                       client::YBqlWriteOp::HashKeyComparator,
-                       client::YBqlWriteOp::HashKeyComparator> ops_by_hash_key_;
+                       client::YBqlWriteHashKeyComparator,
+                       client::YBqlWriteHashKeyComparator> ops_by_hash_key_;
   };
 
   //------------------------------------------------------------------------------------------------
@@ -438,9 +469,11 @@ class Executor : public QLExprExecutor {
   // are applied using the corresponding transactional session in ExecContext.
   const client::YBSessionPtr session_;
 
-  // The number of outstanding async calls pending, the async error status and the mutex to protect
-  // its update.
-  std::atomic<int64_t> num_async_calls_ = {0};
+  // The number of outstanding async calls pending. 0 means that we are processing result of all
+  // calls, -1 (kAsyncCallsIdle) means that this executor is idle.
+  std::atomic<int64_t> num_async_calls_ = {kAsyncCallsIdle};
+
+  // The async error status and the mutex to protect its update.
   std::mutex status_mutex_;
   Status async_status_;
 
@@ -459,50 +492,37 @@ class Executor : public QLExprExecutor {
   // Whether this is a batch with statements that returns status.
   boost::optional<bool> returns_status_batch_opt_;
 
-  class ProcessAsyncResultsTask : public rpc::ThreadPoolTask {
+  class ExecutorTask : public rpc::ThreadPoolTask {
    public:
-    ProcessAsyncResultsTask& Bind(Executor* executor) {
-      executor_ = executor;
-      return *this;
-    }
+    ExecutorTask& Bind(Executor* executor, ResetAsyncCalls* reset_async_calls);
 
-    virtual ~ProcessAsyncResultsTask() {}
+    virtual ~ExecutorTask() = default;
 
    private:
-    void Run() override {
-      auto executor = executor_;
-      executor_ = nullptr;
-      executor->ProcessAsyncResults(true /* rescheduled */);
-    }
-
-    void Done(const Status& status) override {}
+    void Run() override;
+    void Done(const Status& status) override;
+    virtual void DoRun(Executor* executor, ResetAsyncCalls* reset_async_calls) = 0;
 
     Executor* executor_ = nullptr;
+    ResetAsyncCalls reset_async_calls_{nullptr};
+  };
+
+  class ProcessAsyncResultsTask : public ExecutorTask {
+   public:
+    void DoRun(Executor* executor, ResetAsyncCalls* reset_async_calls) override {
+      executor->ProcessAsyncResults(true /* rescheduled */, reset_async_calls);
+    }
   };
 
   friend class ProcessAsyncResultsTask;
 
   ProcessAsyncResultsTask process_async_results_task_;
 
-  class FlushAsyncTask : public rpc::ThreadPoolTask {
-   public:
-    FlushAsyncTask& Bind(Executor* executor) {
-      executor_ = executor;
-      return *this;
-    }
-
-    virtual ~FlushAsyncTask() {}
-
+  class FlushAsyncTask : public ExecutorTask {
    private:
-    void Run() override {
-      auto executor = executor_;
-      executor_ = nullptr;
-      executor->FlushAsync();
+    void DoRun(Executor* executor, ResetAsyncCalls* reset_async_calls) override {
+      executor->FlushAsync(reset_async_calls);
     }
-
-    void Done(const Status& status) override {}
-
-    Executor* executor_ = nullptr;
   };
 
   friend class FlushAsyncTask;

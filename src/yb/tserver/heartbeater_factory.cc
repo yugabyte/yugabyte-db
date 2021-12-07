@@ -13,7 +13,6 @@
 
 #include "yb/tserver/heartbeater_factory.h"
 
-#include "yb/tserver/tablet_split_heartbeat_data_provider.h"
 #include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
 
 namespace yb {
@@ -24,8 +23,6 @@ std::unique_ptr<Heartbeater> CreateHeartbeater(
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers;
   data_providers.push_back(
       std::make_unique<TServerMetricsHeartbeatDataProvider>(server));
-  data_providers.push_back(
-      std::make_unique<TabletSplitHeartbeatDataProvider>(server));
   return std::make_unique<Heartbeater>(options, server, std::move(data_providers));
 }
 

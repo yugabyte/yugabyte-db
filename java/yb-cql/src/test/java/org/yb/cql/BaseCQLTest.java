@@ -41,12 +41,13 @@ import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.StringUtil;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -99,7 +100,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     flagMap.put("cql_system_query_cache_empty_responses",
         String.valueOf(systemQueryCacheEmptyResponses));
     flagMap.put("client_read_write_timeout_ms",
-        String.valueOf(SanitizerUtil.adjustTimeout(clientReadWriteTimeoutMs)));
+        String.valueOf(BuildTypeUtil.adjustTimeout(clientReadWriteTimeoutMs)));
 
     return flagMap;
   }
@@ -107,7 +108,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.enablePostgres(false);
+    builder.enableYsql(false);
     // Prevent YB server processes from closing connections which are idle for less than client
     // timeout period.
     builder.addCommonFlag("rpc_default_keepalive_time_ms",
@@ -456,7 +457,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       String roleName = row.getString("role");
       if (!DEFAULT_ROLE.equals(roleName)) {
         LOG.info("Dropping role " + roleName);
-        session.execute("DROP ROLE " + roleName);
+        session.execute("DROP ROLE '" + roleName + "'");
       }
     }
   }
@@ -472,19 +473,22 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return runSelect(String.format(select_stmt, args));
   }
 
+  /**
+   * DEPRECATED: use method with error message checking
+   *             {@link #runInvalidStmt(Statement stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidQuery(Statement stmt) {
-    try {
-      session.execute(stmt);
-      fail(String.format("Statement did not fail: %s", stmt));
-      return null; // Never happens, but keeps compiler happy
-    } catch (QueryValidationException qv) {
-      LOG.info("Expected exception", qv);
-      return qv.getCause().getMessage();
-    }
+    return runInvalidStmt(stmt);
   }
 
+  /**
+   * DEPRECATED: use method with error message checking
+   *             {@link #runInvalidStmt(String stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidQuery(String stmt) {
-    return runInvalidQuery(new SimpleStatement(stmt));
+    return runInvalidStmt(new SimpleStatement(stmt));
   }
 
   protected String runInvalidStmt(Statement stmt, Session s) {
@@ -507,22 +511,45 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return result;
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(Statement stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(Statement stmt) {
     return runInvalidStmt(stmt, session);
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(String stmt, Session s, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(String stmt, Session s) {
     return runInvalidStmt(new SimpleStatement(stmt), s);
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(String stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(String stmt) {
     return runInvalidStmt(stmt, session);
   }
 
-  protected void runInvalidStmt(String stmt, String errorSubstring) {
-    String errorMsg = runInvalidStmt(stmt);
+  protected void runInvalidStmt(Statement stmt, Session s, String errorSubstring) {
+    String errorMsg = runInvalidStmt(stmt, s);
     assertTrue("Error message '" + errorMsg + "' should contain '" + errorSubstring + "'",
                errorMsg.contains(errorSubstring));
+  }
+
+  protected void runInvalidStmt(Statement stmt, String errorSubstring) {
+    runInvalidStmt(stmt, session, errorSubstring);
+  }
+
+  protected void runInvalidStmt(String stmt, String errorSubstring) {
+    runInvalidStmt(new SimpleStatement(stmt), errorSubstring);
   }
 
   protected void assertNoRow(String select_stmt) {
@@ -780,4 +807,13 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     waitForYcqlConnectivity();
   }
 
+  protected boolean doesQueryPlanContainSubstring(String query, String substring)
+      throws SQLException {
+    ResultSet rs = session.execute("EXPLAIN " + query);
+
+    for (Row row : rs) {
+      if (row.toString().contains(substring)) return true;
+    }
+    return false;
+  }
 }

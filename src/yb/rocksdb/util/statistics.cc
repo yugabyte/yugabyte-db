@@ -25,12 +25,11 @@
 
 #include <inttypes.h>
 #include <algorithm>
-#include <cstdio>
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/port/likely.h"
+#include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
-#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
@@ -81,7 +80,7 @@ class StatisticsMetricPrototypes {
           ::yb::MetricPrototype::CtorArgs(
               "table", hist_name.c_str(), description.c_str(), yb::MetricUnit::kMicroseconds,
               description.c_str(), yb::MetricLevel::kInfo),
-          1000000000LU, 2));
+          2, 1));
     }
 
     for (size_t i = 0; i < kNumTickers; i++) {

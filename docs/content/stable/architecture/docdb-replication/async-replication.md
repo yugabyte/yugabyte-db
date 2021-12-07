@@ -18,7 +18,7 @@ xCluster replication enables asynchronous replication between independent Yugaby
 
 YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
 
-For details about configuring a 2DC deployment, see [Replicate between two data centers](../../../deploy/multi-dc/2dc-deployment).
+For details about configuring a 2DC deployment, see [Replicate between two data centers](../../../deploy/multi-dc/async-replication).
 
 {{< note title="Note" >}}
 
@@ -38,7 +38,7 @@ The source-sink deployment architecture is shown in the diagram below:
 
 ### Active-Active
 
-The replication of data can be bi-directional between two clusters. In this case, both clusters can perform reads and writes. Writes to any cluster is asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters at a similar time window, this will result in the write with the larger timestamp becoming the latest write. Thus, in this case, the clusters are all active and this deployment mode is called multi-master deployments or active-active deployments).
+The replication of data can be bi-directional between two clusters. In this case, both clusters can perform reads and writes. Writes to any cluster is asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters at a similar time window, this will result in the write with the larger timestamp becoming the latest write. Thus, in this case, the clusters are all active, and this deployment mode is called a multi-master deployment or active-active deployment.
 
 {{< note title="Note" >}}
 

@@ -33,7 +33,6 @@
 #include "yb/util/mem_tracker.h"
 
 #include <algorithm>
-#include <deque>
 #include <limits>
 #include <list>
 #include <memory>
@@ -45,18 +44,21 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/mutex.h"
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/logging.h"
 
 using namespace std::literals;

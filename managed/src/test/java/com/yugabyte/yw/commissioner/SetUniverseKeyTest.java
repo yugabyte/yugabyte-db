@@ -2,7 +2,11 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.yugabyte.yw.commissioner.SetUniverseKey;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
@@ -10,13 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
 import org.mockito.Mockito;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.api.Play;
 
@@ -45,6 +43,5 @@ public class SetUniverseKeyTest extends FakeDBApplication {
     verify(task, times(1)).handleCustomerError(eq(customer1.uuid), eq(customerTaskException));
     verify(task, times(1)).handleCustomerError(eq(customer2.uuid), eq(customerTaskException));
     verify(task, times(0)).setUniverseKey(any());
-
   }
 }

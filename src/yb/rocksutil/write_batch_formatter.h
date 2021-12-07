@@ -22,7 +22,6 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
-#include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {

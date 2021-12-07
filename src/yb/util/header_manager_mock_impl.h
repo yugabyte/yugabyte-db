@@ -14,13 +14,14 @@
 #define YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
 
 #include <memory>
+#include <string>
 
 #include "yb/util/header_manager.h"
+#include "yb/util/status.h"
 
 namespace yb {
-namespace enterprise {
 
-class HeaderManagerMockImpl : public yb::enterprise::HeaderManager {
+class HeaderManagerMockImpl : public yb::HeaderManager {
  public:
   HeaderManagerMockImpl();
   void SetFileEncryption(bool file_encrypted);
@@ -42,7 +43,6 @@ class HeaderManagerMockImpl : public yb::enterprise::HeaderManager {
 
 std::unique_ptr<HeaderManager> GetMockHeaderManager();
 
-} // namespace enterprise
 } // namespace yb
 
 

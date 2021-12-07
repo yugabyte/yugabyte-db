@@ -15,19 +15,19 @@
 #define YB_DOCDB_DOC_WRITE_BATCH_H
 
 #include "yb/common/hybrid_time.h"
-#include "yb/util/enums.h"
-
 #include "yb/common/read_hybrid_time.h"
 
+#include "yb/docdb/doc_write_batch_cache.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/value.h"
+
 #include "yb/rocksdb/cache.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
 
-#include "yb/docdb/docdb_types.h"
-#include "yb/docdb/doc_path.h"
-#include "yb/docdb/doc_write_batch_cache.h"
-#include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/docdb/value.h"
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
 namespace rocksdb {
@@ -73,7 +73,7 @@ YB_DEFINE_ENUM(InitMarkerBehavior,
                (kOptional));
 
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
-// that may include a mix or write (set) or delete operations. It may read from RocksDB while
+// that may include a mix of write (set) or delete operations. It may read from RocksDB while
 // writing, and builds up an internal rocksdb::WriteBatch while handling the operations.
 // When all the operations are applied, the rocksdb::WriteBatch should be taken as output.
 // Take ownership of it using std::move if it needs to live longer than this DocWriteBatch.
@@ -211,6 +211,21 @@ class DocWriteBatch {
     return cache_.Get(encoded_key_prefix);
   }
 
+  std::pair<std::string, std::string>& AddRaw() {
+    put_batch_.emplace_back();
+    return put_batch_.back();
+  }
+
+  void UpdateMaxValueTtl(const MonoDelta& ttl);
+
+  int64_t ttl_ns() const {
+    return ttl_.ToNanoseconds();
+  }
+
+  bool has_ttl() const {
+    return ttl_.Initialized();
+  }
+
  private:
   // This member function performs the necessary operations to set a primitive value for a given
   // docpath assuming the appropriate operations have been taken care of for subkeys with index <
@@ -247,6 +262,8 @@ class DocWriteBatch {
   KeyBytes key_prefix_;
   bool subdoc_exists_ = true;
   DocWriteBatchCache::Entry current_entry_;
+
+  MonoDelta ttl_;
 };
 
 // Converts a RocksDB WriteBatch to a string.

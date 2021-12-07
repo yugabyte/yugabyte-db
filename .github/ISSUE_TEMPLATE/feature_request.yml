@@ -1,0 +1,14 @@
+name: Feature request
+description: Suggest an idea for this project.
+title: "[New Feature] Title"
+labels: ["kind/new-feature"]
+body:
+- type: textarea
+  attributes:
+    label: Description
+    placeholder: |
+      **Is your feature request related to a problem or an enhancement? Please describe.**
+      
+      **Provide a brief solution(if any) of what you want to happen.**
+  validations:
+    required: true

@@ -43,21 +43,23 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/row.h"
-#include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_graph.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet.h"
 #include "yb/gutil/strings/numbers.h"
 
 namespace yb {
@@ -379,7 +381,7 @@ class TabletTestBase : public YBTabletTest {
   }
 
   void VerifyTestRows(int64_t first_row, uint64_t expected_count) {
-    auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+    auto iter = tablet()->NewRowIterator(client_schema_);
     ASSERT_OK(iter);
 
     if (expected_count > INT_MAX) {
@@ -426,7 +428,7 @@ class TabletTestBase : public YBTabletTest {
   // a very small number of rows.
   CHECKED_STATUS IterateToStringList(vector<string> *out) {
     // TODO(dtxn) pass correct transaction ID if needed
-    auto iter = this->tablet()->NewRowIterator(this->client_schema_, boost::none);
+    auto iter = this->tablet()->NewRowIterator(this->client_schema_);
     RETURN_NOT_OK(iter);
     return yb::tablet::IterateToStringList(iter->get(), out);
   }

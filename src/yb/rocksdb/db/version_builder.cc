@@ -43,6 +43,10 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/table/table_reader.h"
 
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_log.h"
+
 namespace rocksdb {
 
 bool NewestFirstBySeqNo(FileMetaData* a, FileMetaData* b) {
@@ -201,10 +205,8 @@ class VersionBuilder::Rep {
         found = true;
       }
     }
-    if (!found) {
-      fprintf(stderr, "not found %" PRIu64 "\n", number);
-    }
-    assert(found);
+    LOG_IF(DFATAL, !found) << yb::Format(
+        "$0SST file not found: $1", info_log_ ? info_log_->Prefix() : "", number);
 #endif
   }
 

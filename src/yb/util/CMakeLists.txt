@@ -139,6 +139,7 @@ set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
   atomic.cc
+  background_task.cc
   bitmap.cc
   bitmap.cc
   bloom_filter.cc
@@ -166,6 +167,7 @@ set(UTIL_SRCS
   encrypted_file.cc
   encrypted_file_factory.cc
   encryption_util.cc
+  enums.cc
   env.cc
   env_posix.cc
   env_util.cc
@@ -196,7 +198,9 @@ set(UTIL_SRCS
   memory/arena.cc
   memory/mc_types.cc
   memory/memory.cc
+  metric_entity.cc
   metrics.cc
+  metrics_writer.cc
   monotime.cc
   mutex.cc
   net/dns_resolver.cc
@@ -225,12 +229,14 @@ set(UTIL_SRCS
   ref_cnt_buffer.cc
   rolling_log.cc
   rw_mutex.cc
+  rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
   signal_util.cc
   slice.cc
   spinlock_profiling.cc
   split.cc
+  stack_trace.cc
   stats/perf_level_imp.cc
   stats/iostats_context_imp.cc
   status.cc
@@ -240,7 +246,6 @@ set(UTIL_SRCS
   string_trim.cc
   string_util.cc
   striped64.cc
-  strongly_typed_uuid.cc
   subprocess.cc
   sync_point.cc
   test_graph.cc
@@ -259,12 +264,15 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  yb_partition.cc
+  zlib.cc
   async_util.cc
   )
 
 set(UTIL_LIBS
   boost_system
   boost_thread
+  boost_atomic
   cds
   icui18n
   icuuc
@@ -316,7 +324,9 @@ add_dependencies(yb_util gen_version_info)
 
 add_library(yb_test_util
   logging_test_util.cc
-  test_util.cc)
+  memory/memory_usage_test_util.cc
+  test_util.cc
+  test_thread_holder.cc)
 target_link_libraries(yb_test_util
   gflags
   glog
@@ -350,6 +360,7 @@ endif()
 
 set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
+ADD_YB_TEST(background_task-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
@@ -492,3 +503,6 @@ YB_TEST_TARGET_LINK_LIBRARIES(encrypted_env-test encryption_test_util)
 
 ADD_YB_TEST(ctr_cipher_stream-test)
 YB_TEST_TARGET_LINK_LIBRARIES(ctr_cipher_stream-test encryption_test_util)
+
+ADD_YB_TEST(uint_set-test)
+YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)

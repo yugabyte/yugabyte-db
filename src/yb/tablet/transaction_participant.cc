@@ -15,19 +15,11 @@
 
 #include "yb/tablet/transaction_participant.h"
 
-#include <mutex>
 #include <queue>
 
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
-#include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
-
-#include <boost/optional/optional.hpp>
-
-#include <boost/uuid/uuid_io.hpp>
-
-#include "yb/rocksdb/write_batch.h"
+#include <boost/multi_index/ordered_index.hpp>
 
 #include "yb/client/transaction_rpc.h"
 
@@ -36,34 +28,32 @@
 #include "yb/consensus/consensus_util.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/rpc/poller.h"
-#include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_context.h"
-#include "yb/rpc/thread_pool.h"
+
+#include "yb/server/clock.h"
 
 #include "yb/tablet/cleanup_aborts_task.h"
 #include "yb/tablet/cleanup_intents_task.h"
 #include "yb/tablet/operations/update_txn_operation.h"
+#include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/running_transaction.h"
-#include "yb/tablet/tablet.h"
+#include "yb/tablet/running_transaction_context.h"
 #include "yb/tablet/transaction_loader.h"
+#include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/transaction_status_resolver.h"
 
-#include "yb/tserver/tserver_service.pb.h"
-#include "yb/tserver/service_util.h"
-
-#include "yb/util/delayer.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/locks.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
-#include "yb/util/monotime.h"
-#include "yb/util/pb_util.h"
-#include "yb/util/random_util.h"
+#include "yb/util/metrics.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/thread_restrictions.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -105,6 +95,9 @@ METRIC_DEFINE_simple_counter(
 METRIC_DEFINE_simple_gauge_uint64(
     tablet, transactions_running, "Total number of transactions running in participant",
     yb::MetricUnit::kTransactions);
+
+DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0,
+                 "How much latency to inject when a update txn operation is applied.");
 
 namespace yb {
 namespace tablet {
@@ -234,6 +227,18 @@ class TransactionParticipant::Impl
       return HybridTime::kInvalid;
     }
     return (**it).local_commit_time();
+  }
+
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      return boost::none;
+    }
+    return boost::make_optional<CommitMetadata>({
+      .commit_ht = (**it).local_commit_time(),
+      .aborted_subtxn_set = (**it).local_commit_aborted_subtxn_set(),
+    });
   }
 
   std::pair<size_t, size_t> TEST_CountIntents() {
@@ -381,7 +386,7 @@ class TransactionParticipant::Impl
       }
       const auto& id = front.transaction_id;
       auto it = transactions_.find(id);
-      if (it != transactions_.end()) {
+      if (it != transactions_.end() && !(**it).ProcessingApply()) {
         (**it).ScheduleRemoveIntents(*it);
         RemoveTransaction(it, front.reason, min_running_notifier);
       }
@@ -432,10 +437,10 @@ class TransactionParticipant::Impl
     }
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
-    auto txn_status = state->request()->status();
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
+    auto txn_status = operation->request()->status();
     if (txn_status == TransactionStatus::APPLYING) {
-      HandleApplying(std::move(state), term);
+      HandleApplying(std::move(operation), term);
       return;
     }
 
@@ -444,17 +449,21 @@ class TransactionParticipant::Impl
       auto cleanup_type = txn_status == TransactionStatus::IMMEDIATE_CLEANUP
           ? CleanupType::kImmediate
           : CleanupType::kGraceful;
-      HandleCleanup(std::move(state), term, cleanup_type);
+      HandleCleanup(std::move(operation), term, cleanup_type);
       return;
     }
 
     auto error_status = STATUS_FORMAT(
-        InvalidArgument, "Unexpected status in transaction participant Handle: $0", *state);
+        InvalidArgument, "Unexpected status in transaction participant Handle: $0", *operation);
     LOG_WITH_PREFIX(DFATAL) << error_status;
-    state->CompleteWithStatus(error_status);
+    operation->CompleteWithStatus(error_status);
   }
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
+    if (FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms > 0) {
+      SleepFor(1ms * FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+    }
+
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
       return id.status();
@@ -520,7 +529,7 @@ class TransactionParticipant::Impl
             << ", new commit ht: " << data.commit_ht;
       } else {
         transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
-          txn->SetLocalCommitTime(data.commit_ht);
+          txn->SetLocalCommitData(data.commit_ht, data.aborted);
         });
 
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
@@ -862,12 +871,14 @@ class TransactionParticipant::Impl
     return result;
   }
 
-  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
+  CHECKED_STATUS StopActiveTxnsPriorTo(
+      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
     vector<TransactionId> ids_to_abort;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& txn : transactions_.get<StartTimeTag>()) {
-        if (txn->start_ht() > cutoff) {
+        if (txn->start_ht() > cutoff ||
+            (exclude_txn_id != nullptr && txn->id() == *exclude_txn_id)) {
           break;
         }
         if (!txn->WasAborted()) {
@@ -913,6 +924,12 @@ class TransactionParticipant::Impl
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
     return participant_context_.WaitForSafeTime(safe_time, deadline);
+  }
+
+  void IgnoreAllTransactionsStartedBefore(HybridTime limit) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ignore_all_transactions_started_before_ =
+        std::max(ignore_all_transactions_started_before_, limit);
   }
 
  private:
@@ -1158,6 +1175,12 @@ class TransactionParticipant::Impl
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
+        if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
+          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
+              << "Ignore transaction for '" << reason << "' because of limit: "
+              << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
+          return LockAndFindResult{};
+        }
         return LockAndFindResult{ std::move(lock), it };
       }
       recently_removed = WasTransactionRecentlyRemoved(id);
@@ -1200,7 +1223,7 @@ class TransactionParticipant::Impl
     if (pending_apply) {
       VLOG_WITH_PREFIX(4) << "Apply state found for " << txn->id() << ": "
                           << pending_apply->ToString();
-      txn->SetLocalCommitTime(pending_apply->commit_ht);
+      txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
       txn->SetApplyData(pending_apply->state);
     }
     transactions_.insert(txn);
@@ -1233,7 +1256,8 @@ class TransactionParticipant::Impl
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
     YB_TRANSACTION_DUMP(
-        Remove, transaction.id(), participant_context()->Now(), static_cast<uint8_t>(reason));
+        Remove, participant_context_.tablet_id(), transaction.id(), participant_context_.Now(),
+        static_cast<uint8_t>(reason));
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
@@ -1274,7 +1298,8 @@ class TransactionParticipant::Impl
       if (it == transactions_.end()) {
         continue;
       }
-      if ((**it).UpdateStatus(info.status, info.status_ht, info.coordinator_safe_time)) {
+      if ((**it).UpdateStatus(
+          info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set)) {
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
       } else {
@@ -1285,39 +1310,40 @@ class TransactionParticipant::Impl
     }
   }
 
-  void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
+  void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
     if (RandomActWithProbability(GetAtomicFlag(
         &FLAGS_TEST_transaction_ignore_applying_probability_in_tests))) {
       VLOG_WITH_PREFIX(2)
           << "TEST: Rejected apply: "
-          << FullyDecodeTransactionId(state->request()->transaction_id());
-      state->CompleteWithStatus(Status::OK());
+          << FullyDecodeTransactionId(operation->request()->transaction_id());
+      operation->CompleteWithStatus(Status::OK());
       return;
     }
-    participant_context_.SubmitUpdateTransaction(std::move(state), term);
+    participant_context_.SubmitUpdateTransaction(std::move(operation), term);
   }
 
   void HandleCleanup(
-      std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term,
+      std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term,
       CleanupType cleanup_type) {
     VLOG_WITH_PREFIX(3) << "Cleanup";
-    auto id = FullyDecodeTransactionId(state->request()->transaction_id());
+    auto id = FullyDecodeTransactionId(operation->request()->transaction_id());
     if (!id.ok()) {
-      state->CompleteWithStatus(id.status());
+      operation->CompleteWithStatus(id.status());
       return;
     }
 
     TransactionApplyData data = {
         .leader_term = term,
         .transaction_id = *id,
+        .aborted = AbortedSubTransactionSet(),
         .op_id = OpId(),
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
-        .sealed = state->request()->sealed(),
+        .sealed = operation->request()->sealed(),
         .status_tablet = std::string()
     };
     WARN_NOT_OK(ProcessCleanup(data, cleanup_type), "Process cleanup failed");
-    state->CompleteWithStatus(Status::OK());
+    operation->CompleteWithStatus(Status::OK());
   }
 
   CHECKED_STATUS ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
@@ -1329,8 +1355,15 @@ class TransactionParticipant::Impl
     }
     HybridTime commit_time(data.state.commit_hybrid_time());
     TransactionApplyData apply_data = {
-        data.leader_term, id, data.op_id, commit_time, data.hybrid_time, data.sealed,
-        data.state.tablets(0) };
+        .leader_term = data.leader_term,
+        .transaction_id = id,
+        .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(data.state.aborted().set())),
+        .op_id = data.op_id,
+        .commit_ht = commit_time,
+        .log_ht = data.hybrid_time,
+        .sealed = data.sealed,
+        .status_tablet = data.state.tablets(0)
+      };
     if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
     }
@@ -1489,6 +1522,8 @@ class TransactionParticipant::Impl
   // Guarded by RunningTransactionContext::mutex_
   HybridTime last_safe_time_ = HybridTime::kMin;
 
+  HybridTime ignore_all_transactions_started_before_ GUARDED_BY(mutex_) = HybridTime::kMin;
+
   std::unordered_set<TransactionId, TransactionIdHash> recently_removed_transactions_;
   struct RecentlyRemovedTransaction {
     TransactionId id;
@@ -1557,6 +1592,10 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
+boost::optional<CommitMetadata> TransactionParticipant::LocalCommitData(const TransactionId& id) {
+  return impl_->LocalCommitData(id);
+}
+
 std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {
   return impl_->TEST_CountIntents();
 }
@@ -1579,7 +1618,7 @@ void TransactionParticipant::Abort(const TransactionId& id,
 }
 
 void TransactionParticipant::Handle(
-    std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
+    std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
   impl_->Handle(std::move(request), term);
 }
 
@@ -1656,13 +1695,22 @@ std::string TransactionParticipant::DumpTransactions() const {
   return impl_->DumpTransactions();
 }
 
-Status TransactionParticipant::StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
-  return impl_->StopActiveTxnsPriorTo(cutoff, deadline);
+Status TransactionParticipant::StopActiveTxnsPriorTo(
+    HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
+  return impl_->StopActiveTxnsPriorTo(cutoff, deadline, exclude_txn_id);
 }
 
 Result<HybridTime> TransactionParticipant::WaitForSafeTime(
     HybridTime safe_time, CoarseTimePoint deadline) {
   return impl_->WaitForSafeTime(safe_time, deadline);
+}
+
+void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit) {
+  impl_->IgnoreAllTransactionsStartedBefore(limit);
+}
+
+const TabletId& TransactionParticipant::tablet_id() const {
+  return impl_->participant_context()->tablet_id();
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {

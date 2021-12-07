@@ -20,9 +20,7 @@ namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(EncryptionOverflowWorkaround);
 
-namespace enterprise {
 class BlockAccessCipherStream;
-} // namespace enterprise
 
 } // namespace yb
 

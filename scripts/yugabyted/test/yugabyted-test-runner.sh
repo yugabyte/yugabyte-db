@@ -20,11 +20,11 @@ yugabyted=
 declare -a test_args
 
 if [[ $OSTYPE == linux* ]]; then
-  package="https://github.com/yugabyte/yugabyte-db/releases/download/${yb_latest_version//\"/}/yugabyte-${yb_latest_version//[v\"]/}-linux.tar.gz"
+  package="https://downloads.yugabyte.com/yugabyte-${yb_latest_version//[v\"]/}-linux.tar.gz"
 fi
 
 if [[ $OSTYPE == darwin* ]]; then
-  package="https://github.com/yugabyte/yugabyte-db/releases/download/${yb_latest_version//\"/}/yugabyte-${yb_latest_version//[v\"]/}-darwin.tar.gz"
+  package="https://downloads.yugabyte.com/yugabyte-${yb_latest_version//[v\"]/}-darwin.tar.gz"
 fi
 
 # -------------------------------------------------------------------------------------------------

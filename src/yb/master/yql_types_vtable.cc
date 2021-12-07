@@ -11,9 +11,15 @@
 // under the License.
 //
 
-#include "yb/master/master_defaults.h"
 #include "yb/master/yql_types_vtable.h"
-#include "yb/master/catalog_manager.h"
+
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -26,14 +32,13 @@ QLTypesVTable::QLTypesVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> QLTypesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
   std::vector<scoped_refptr<UDTypeInfo> > types;
-  master_->catalog_manager()->GetAllUDTypes(&types);
+  catalog_manager().GetAllUDTypes(&types);
 
   for (const scoped_refptr<UDTypeInfo>& type : types) {
     // Get namespace for table.
-    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
-        type->namespace_id()));
+    auto ns_info = VERIFY_RESULT(catalog_manager().FindNamespaceById(type->namespace_id()));
 
     // Create appropriate row for the table;
     QLRow& row = vtable->Extend();

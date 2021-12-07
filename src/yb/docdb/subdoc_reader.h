@@ -17,24 +17,18 @@
 #include <string>
 #include <vector>
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/intent_aware_iterator.h"
-#include "yb/gutil/macros.h"
-#include "yb/rocksdb/cache.h"
-
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/expiration.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/subdocument.h"
 
+#include "yb/gutil/macros.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {

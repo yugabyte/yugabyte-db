@@ -11,24 +11,30 @@
 // under the License.
 //
 
-#include "yb/common/ql_resultset.h"
+#include "yb/tablet/abstract_tablet.h"
 
+#include "yb/common/ql_resultset.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
 
-#include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb {
 namespace tablet {
 
+Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
+                                            HybridTime min_allowed,
+                                            CoarseTimePoint deadline) const {
+  return DoGetSafeTime(require_lease, min_allowed, deadline);
+}
+
 Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                            const ReadHybridTime& read_time,
                                            const QLReadRequestPB& ql_read_request,
-                                           const TransactionOperationContextOpt& txn_op_context,
+                                           const TransactionOperationContext& txn_op_context,
                                            QLReadRequestResult* result) {
 
   // TODO(Robert): verify that all key column values are provided
@@ -75,7 +81,7 @@ Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                               const ReadHybridTime& read_time,
                                               bool is_explicit_request_read_time,
                                               const PgsqlReadRequestPB& pgsql_read_request,
-                                              const TransactionOperationContextOpt& txn_op_context,
+                                              const TransactionOperationContext& txn_op_context,
                                               PgsqlReadRequestResult* result,
                                               size_t* num_rows_read) {
 

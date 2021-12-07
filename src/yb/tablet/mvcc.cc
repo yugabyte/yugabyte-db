@@ -32,24 +32,26 @@
 
 #include "yb/tablet/mvcc.h"
 
-#include <sstream>
-
 #include <boost/circular_buffer.hpp>
-#include <boost/circular_buffer/space_optimized.hpp>
 #include <boost/variant.hpp>
 
 #include "yb/gutil/macros.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
+
+using namespace std::literals;
 
 DEFINE_test_flag(int64, mvcc_op_trace_num_items, 32,
                  "Number of items to keep in an MvccManager operation trace. Set to 0 to disable "
                  "MVCC operation tracing.");
+
+DEFINE_test_flag(int32, inject_mvcc_delay_add_leader_pending_ms, 0,
+                 "Inject delay after MvccManager::AddLeaderPending read clock.");
 
 namespace yb {
 namespace tablet {
@@ -188,6 +190,10 @@ class ItemPrintingVisitor : public boost::static_visitor<>{
 
 }  // namespace
 
+std::string FixedHybridTimeLease::ToString() const {
+  return YB_STRUCT_TO_STRING(time, lease);
+}
+
 class MvccManager::MvccOpTrace {
  public:
   explicit MvccOpTrace(size_t capacity) : items_(capacity) {}
@@ -263,7 +269,7 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
     CHECK(!queue_.empty()) << InvariantViolationLogPrefix();
     CHECK_EQ(queue_.front(),
              (QueueItem{ .hybrid_time = ht, .op_id = op_id })) << InvariantViolationLogPrefix();
-    PopFront();
+    queue_.pop_front();
     last_replicated_ = ht;
   }
   cond_.notify_all();
@@ -278,32 +284,12 @@ void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
       op_trace_->Add(AbortedTraceItem { .ht = ht, .op_id = op_id });
     }
     CHECK(!queue_.empty()) << InvariantViolationLogPrefix();
-    if (queue_.front().hybrid_time == ht) {
-      CHECK_EQ(queue_.front().op_id, op_id) << InvariantViolationLogPrefix();
-      PopFront();
-    } else {
-      aborted_.push(QueueItem {
-        .hybrid_time = ht,
-        .op_id = op_id,
-      });
-      return;
-    }
+    CHECK_EQ(queue_.back(),
+             (QueueItem{ .hybrid_time = ht, .op_id = op_id }))
+        << InvariantViolationLogPrefix() << "It is allowed to abort only last operation";
+    queue_.pop_back();
   }
   cond_.notify_all();
-}
-
-void MvccManager::PopFront() REQUIRES(mutex_) {
-  queue_.pop_front();
-  CHECK_GE(queue_.size(), aborted_.size()) << InvariantViolationLogPrefix();
-  while (!aborted_.empty()) {
-    if (queue_.front().hybrid_time != aborted_.top().hybrid_time) {
-      CHECK_LT(queue_.front(), aborted_.top()) << InvariantViolationLogPrefix();
-      break;
-    }
-    CHECK_EQ(queue_.front(), aborted_.top()) << InvariantViolationLogPrefix();
-    queue_.pop_front();
-    aborted_.pop();
-  }
 }
 
 bool BadNextOpId(const OpId& prev, const OpId& next) {
@@ -319,6 +305,7 @@ bool BadNextOpId(const OpId& prev, const OpId& next) {
 HybridTime MvccManager::AddLeaderPending(const OpId& op_id) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto ht = clock_->Now();
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms);
   VLOG_WITH_PREFIX(1) << __func__ << "(" << op_id << "), time: " << ht;
   AddPending(ht, op_id, /* is_follower_side= */ false);
 
@@ -349,25 +336,6 @@ void MvccManager::AddFollowerPending(HybridTime ht, const OpId& op_id) {
 void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_side) {
   CHECK(!op_id.empty());
 
-  if (!queue_.empty() && ht <= queue_.back().hybrid_time && !aborted_.empty()) {
-    // To avoid crashing with an invariant violation on leader changes, we detect the case when
-    // an entire tail of the operation queue has been aborted. Theoretically it is still possible
-    // that the subset of aborted operations is not contiguous and/or does not end with the last
-    // element of the queue. In practice, though, Raft should only abort and overwrite all
-    // operations starting with a particular index and until the end of the log.
-    auto iter = std::lower_bound(queue_.begin(), queue_.end(), aborted_.top());
-
-    // Every hybrid time in aborted_ must also exist in queue_.
-    CHECK(iter != queue_.end()) << InvariantViolationLogPrefix();
-
-    auto start_iter = iter;
-    while (iter != queue_.end() && iter->hybrid_time == aborted_.top().hybrid_time) {
-      CHECK_EQ(iter->op_id, aborted_.top().op_id) << InvariantViolationLogPrefix();
-      aborted_.pop();
-      iter++;
-    }
-    queue_.erase(start_iter, iter);
-  }
   HybridTime last_ht_in_queue = queue_.empty() ? HybridTime::kMin : queue_.back().hybrid_time;
 
   HybridTime sanity_check_lower_bound =
@@ -402,14 +370,6 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
          << LOG_INFO_FOR_HT_LOWER_BOUND(propagated_safe_time_)
          << "\n  " << EXPR_VALUE_FOR_LOG(queue_.size())
          << "\n  " << EXPR_VALUE_FOR_LOG(queue_);
-      if (drain_aborted) {
-        std::vector<QueueItem> aborted;
-        while (!aborted_.empty()) {
-          aborted.push_back(aborted_.top());
-          aborted_.pop();
-        }
-        ss << "\n  " << EXPR_VALUE_FOR_LOG(aborted);
-      }
       return ss.str();
 #undef LOG_INFO_FOR_HT_LOWER_BOUND
     };
@@ -435,7 +395,7 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
   }
 
   LOG_IF_WITH_PREFIX(DFATAL,
-                     !queue_.empty() && aborted_.empty() && BadNextOpId(queue_.back().op_id, op_id))
+                     !queue_.empty() && BadNextOpId(queue_.back().op_id, op_id))
       << "Op sequence failure: " << AsString(queue_.back().op_id) << " followed by "
       << AsString(op_id) << " " << InvariantViolationLogPrefix();
 
@@ -695,6 +655,15 @@ MvccManager::InvariantViolationLoggingHelper MvccManager::InvariantViolationLogP
 void MvccManager::TEST_DumpTrace(std::ostream* out) NO_THREAD_SAFETY_ANALYSIS {
   if (op_trace_)
     op_trace_->DumpTrace(out);
+}
+
+std::string MvccManager::QueueItem::ToString() const {
+  return YB_STRUCT_TO_STRING(hybrid_time, op_id);
+}
+
+bool MvccManager::QueueItem::Eq(const MvccManager::QueueItem& rhs) const {
+  const auto& lhs = *this;
+  return YB_STRUCT_EQUALS(hybrid_time, op_id);
 }
 
 }  // namespace tablet

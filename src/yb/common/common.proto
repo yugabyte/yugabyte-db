@@ -96,6 +96,8 @@ enum DataType {
   UINT16 = 101;
   UINT32 = 102;
   UINT64 = 103;
+
+  GIN_NULL = 104;
 }
 
 // This must exactly match YBTableType in client.h.
@@ -258,7 +260,15 @@ message TablePropertiesPB {
   // The field "use_mangled_column_name" helps indicating whether a table is using mangled_name.
 
   optional bool use_mangled_column_name =  6 [ default = false ];
+
+  // Save this number of tablets in table schema stored in master SysCatalog. It might not be
+  // the true number of tablets in the table at runtime due to tablet splitting. It is just
+  // the number of tablets stored in the schema (for example, when user creates the table).
+  // Note: If CreateTableRequestPB::num_tablets is not specified, but this field is specified in
+  // the field CreateTableRequestPB::schema, CatalogManager::CreateTable() will create a table
+  // with number of tablets in this field.
   optional int32 num_tablets = 7 [ default = 0 ];
+
   optional bool is_ysql_catalog_table = 8 [ default = false ];
   optional bool retain_delete_markers = 9 [ default = false ];
   optional uint64 backfilling_timestamp = 10;
@@ -326,6 +336,14 @@ message IndexInfoPB {
   // When backfill fails with error, the first message that it failed with.
   optional string backfill_error_message = 31;
   optional bool is_backfill_deferred = 32 [ default = false ]; // Should backfill be deferred.
+
+  message WherePredicateSpecPB {
+    repeated uint32 column_ids = 1; // Columns referenced in the where_expr
+    optional QLExpressionPB where_expr = 2;
+  }
+
+  // Where clause for partial index.
+  optional WherePredicateSpecPB where_predicate_spec = 33;
 }
 
 message HostPortPB {
@@ -464,6 +482,23 @@ enum RowMarkType
   ROW_MARK_ABSENT = 15;
 }
 
+// This enum matches enum LockWaitPolicy defined in src/include/nodes/lockoptions.h.
+// The "Lock" prefix is removed to keep this generic for any intent in conflict_resolution.cc (not
+// just those written for Pg's explicit row locks).
+enum WaitPolicy
+{
+  // Wait for the intent to become available (default behavior)
+  WAIT_BLOCK = 0;
+
+  // Skip operation if intents can't be locked (SKIP LOCKED)
+  WAIT_SKIP = 1;
+
+  // Raise an error if a intent cannot be locked (NOWAIT)
+  // Abort self if conflicting with a higher priority txn. Else abort the other txn. This is
+  // default behaviour as of date.
+  WAIT_ERROR = 2;
+}
+
 enum TransactionStatus {
   CREATED = 1;
   PENDING = 2;
@@ -482,6 +517,11 @@ enum TransactionStatus {
   GRACEFUL_CLEANUP = 23;
 }
 
+enum TransactionLocality {
+  GLOBAL = 1;
+  LOCAL = 2;
+}
+
 message TransactionMetadataPB {
   optional bytes transaction_id = 1; // 16 byte uuid
   optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
@@ -493,6 +533,20 @@ message TransactionMetadataPB {
   // Stores time when metadata was written to provisional records RocksDB on a
   // participating tablet. So it could be used for cleanup.
   optional fixed64 metadata_write_time = 6;
+
+  // Stores whether the transaction is local or global; treated as global if not present
+  // for backwards compatability.
+  optional TransactionLocality locality = 7;
+}
+
+message AbortedSubTransactionSetPB {
+  repeated uint32 set = 1;
+}
+
+message SubTransactionMetadataPB {
+  optional uint32 subtransaction_id = 1;
+
+  optional AbortedSubTransactionSetPB aborted = 2;
 }
 
 // See ReadHybridTime for explation of this message.
@@ -571,7 +625,11 @@ message QLValuePB {
     int64 int64_value = 4;
     float float_value = 5;
     double double_value = 6;
-    string string_value = 7;
+    // Sometimes YB sends non-UTF8 string in string field. For example, this can happen
+    // with a collated string: under "en_US.utf8" collation, string 'abc' is encoded
+    // as string_value: "\000\201\014\r\016\001\t\t\t\001\t\t\t\000abc" which is not
+    // a valid UTF8 string. That is why 'bytes' is used for string_value field.
+    bytes string_value = 7;
     bool bool_value = 8;
     int64 timestamp_value = 9;
     bytes binary_value = 10;
@@ -598,6 +656,8 @@ message QLValuePB {
     uint64 uint64_value = 24;
     // Represent various system values.
     QLVirtualValuePB virtual_value = 25;
+    // Null category for GIN indexes.
+    uint32 gin_null_value = 26;
   }
 }
 

@@ -33,6 +33,11 @@
 YB_INCLUDE_EXTENSIONS()
 
 YRPC_GENERATE(
+  MASTER_TYPES_YRPC_SRCS MASTER_TYPES_YRPC_HDRS MASTER_TYPES_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES master_types.proto)
+YRPC_GENERATE(
   MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
@@ -48,9 +53,9 @@ set(MASTER_YRPC_LIBS
   yb_pgwrapper
   cdc_consumer_proto)
 ADD_YB_LIBRARY(master_proto
-  SRCS ${MASTER_YRPC_SRCS}
+  SRCS ${MASTER_YRPC_SRCS} ${MASTER_TYPES_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
-  NONLINK_DEPS ${MASTER_YRPC_TGTS})
+  NONLINK_DEPS ${MASTER_YRPC_TGTS} ${MASTER_TYPES_YRPC_TGTS})
 
 set(MASTER_PROTO_LIBS
   master_proto
@@ -70,6 +75,7 @@ set(MASTER_SRCS
   catalog_loaders.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
+  cluster_balance_util.cc
   encryption_manager.cc
   permissions_manager.cc
   flush_manager.cc
@@ -92,6 +98,7 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   tasks_tracker.cc
+  tablet_split_manager.cc
   ts_descriptor.cc
   ts_manager.cc
   yql_virtual_table.cc
@@ -115,6 +122,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_partitions_vtable.cc
   ysql_transaction_ddl.cc
+  ysql_tablespace_manager.cc
   ${MASTER_SRCS_EXTENSIONS})
 
 set(MASTER_DEPS
@@ -167,7 +175,8 @@ ADD_YB_LIBRARY(master_util
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
-  master-test_base.cc)
+  master-test_base.cc
+  master-test-util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
   master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})

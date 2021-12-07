@@ -15,20 +15,18 @@
 // DateTime parser and serializer
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/util/date_time.h"
+
 #include <unicode/gregocal.h>
 
 #include <regex>
-#include <ctime>
 
+#include <boost/date_time/c_local_time_adjustor.hpp>
+#include <boost/date_time/local_time/local_time.hpp>
 #include <boost/smart_ptr/make_shared.hpp>
 
-#include <gflags/gflags.h>
-#include "yb/util/date_time.h"
-#include "yb/util/logging.h"
-#include "yb/util/string_case.h"
-#include "boost/date_time/gregorian/gregorian.hpp"
-#include "boost/date_time/c_local_time_adjustor.hpp"
-#include "boost/date_time/local_time/local_time.hpp"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using std::locale;
 using std::vector;
@@ -154,6 +152,16 @@ Result<string> GetTimezone(string timezoneID) {
   return buffer;
 }
 
+Result<time_zone_ptr> StringToTimezone(const std::string& tz, bool use_utc) {
+  if (tz.empty()) {
+    return use_utc ? kUtcTimezone : boost::make_shared<posix_time_zone>(GetSystemTimezone());
+  }
+  if (FLAGS_use_icu_timezones) {
+    return boost::make_shared<posix_time_zone>(VERIFY_RESULT(GetTimezone(tz)));
+  }
+  return boost::make_shared<posix_time_zone>(tz);
+}
+
 } // namespace
 
 //------------------------------------------------------------------------------------------------
@@ -176,15 +184,7 @@ Result<Timestamp> DateTime::TimestampFromString(const string& str,
       try {
         const date d(year, month, day);
         const time_duration t(hours, minutes, seconds, frac);
-        time_zone_ptr tz;
-        if (input_format.use_utc) {
-          tz = kUtcTimezone;
-        } else if (FLAGS_use_icu_timezones) {
-          tz = boost::make_shared<posix_time_zone>(VERIFY_RESULT(GetTimezone(m.str(8))));
-        } else {
-          tz = boost::make_shared<posix_time_zone>(
-              m.str(8).empty() ? GetSystemTimezone() : m.str(8));
-        }
+        time_zone_ptr tz = VERIFY_RESULT(StringToTimezone(m.str(8), input_format.use_utc));
         return ToTimestamp(local_date_time(d, t, tz, local_date_time::NOT_DATE_TIME_ON_ERROR));
       } catch (std::exception& e) {
         return STATUS(InvalidArgument, "Invalid timestamp", e.what());
@@ -201,8 +201,11 @@ Timestamp DateTime::TimestampFromInt(const int64_t val, const InputFormat& input
 string DateTime::TimestampToString(const Timestamp timestamp, const OutputFormat& output_format) {
   std::ostringstream ss;
   ss.imbue(output_format.output_locale);
+  static const local_date_time kSystemEpoch(
+      boost::posix_time::from_time_t(0), boost::make_shared<posix_time_zone>(GetSystemTimezone()));
   try {
-    ss << (kEpoch + microseconds(timestamp.value()));
+    auto epoch = output_format.use_utc ? kEpoch : kSystemEpoch;
+    ss << epoch + microseconds(timestamp.value());
   } catch (...) {
     // If we cannot produce a valid date, default to showing the exact timestamp value.
     // This can happen if timestamp value is outside the standard year range (1400..10000).
@@ -380,7 +383,9 @@ int64_t DateTime::AdjustPrecision(int64_t val,
   return val;
 }
 
-const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {
+namespace {
+
+std::vector<std::regex> InputFormatRegexes() {
   // declaring format components used to construct regexes below
   string fmt_empty = "()";
   string date_fmt = "(\\d{4})-(\\d{1,2})-(\\d{1,2})";
@@ -398,38 +403,44 @@ const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {
   // further processing to the timezone parser.
   string tzZ_fmt = " ([a-zA-Z\\+].+)";
 
-  DateTime::InputFormat result;
-  result.input_precision = 3; // Cassandra current default
-  result.use_utc = false;
+  std::vector<std::regex> result;
   for (const auto& sep : { " ", "T" }) {
     for (const auto& time : { time_fmt_no_sec, time_fmt }) {
       for (const auto& frac : { fmt_empty, frac_fmt }) {
         for (const auto& tz : { fmt_empty, tzX_fmt, tzY_fmt, tzZ_fmt }) {
-          result.regexes.emplace_back(date_fmt + sep + time + frac + tz);
+          result.emplace_back(date_fmt + sep + time + frac + tz);
         }
       }
     }
   }
   for (const auto& tz : { fmt_empty, tzX_fmt, tzY_fmt, tzZ_fmt }) {
-    result.regexes.emplace_back(date_fmt + time_empty + fmt_empty + tz);
+    result.emplace_back(date_fmt + time_empty + fmt_empty + tz);
   }
   return result;
-} ();
+}
 
-const DateTime::OutputFormat DateTime::CqlOutputFormat = OutputFormat(
-    locale(locale::classic(), new local_time_facet("%Y-%m-%dT%H:%M:%S.%f%q"))
-);
+} // namespace
 
-const DateTime::InputFormat DateTime::HumanReadableInputFormat = DateTime::InputFormat {
-  .regexes = {
-      std::regex(R"((\d{4})-(\d{1,2})-(\d{1,2})\s(\d{1,2}):(\d{1,2}):(\d{1,2})\.(\d{6}))")
-  },
-  .input_precision = 6,
+const DateTime::InputFormat DateTime::CqlInputFormat = {
+  .regexes = InputFormatRegexes(),
+  .input_precision = 3, // Cassandra current default
+  .use_utc = false,
+};
+
+const DateTime::OutputFormat DateTime::CqlOutputFormat = OutputFormat {
+  .output_locale = locale(locale::classic(), new local_time_facet("%Y-%m-%dT%H:%M:%S.%f%q")),
   .use_utc = true,
 };
 
-const DateTime::OutputFormat DateTime::HumanReadableOutputFormat = OutputFormat(
-    locale(locale::classic(), new local_time_facet("%Y-%m-%d %H:%M:%S.%f"))
-);
+const DateTime::InputFormat DateTime::HumanReadableInputFormat = DateTime::InputFormat {
+  .regexes = InputFormatRegexes(),
+  .input_precision = 6,
+  .use_utc = false,
+};
+
+const DateTime::OutputFormat DateTime::HumanReadableOutputFormat = OutputFormat {
+  .output_locale = locale(locale::classic(), new local_time_facet("%Y-%m-%d %H:%M:%S.%f")),
+  .use_utc = false,
+};
 
 } // namespace yb

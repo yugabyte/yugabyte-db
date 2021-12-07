@@ -40,18 +40,18 @@
 #include <string>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/gutil/gscoped_ptr.h"
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/master.pb.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/physical_time.h"
-#include "yb/util/status.h"
+#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/shared_ptr_tuple.h"
 #include "yb/util/shared_lock.h"
 
@@ -78,7 +78,6 @@ class TServerMetricsPB;
 typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
                              tserver::TabletServerServiceProxy,
                              consensus::ConsensusServiceProxy> ProxyTuple;
-typedef std::unordered_set<HostPort, HostPortHash> BlacklistSet;
 
 // Master-side view of a single tablet server.
 //
@@ -418,4 +417,5 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
 
 } // namespace master
 } // namespace yb
+
 #endif // YB_MASTER_TS_DESCRIPTOR_H

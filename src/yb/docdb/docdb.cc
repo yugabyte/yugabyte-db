@@ -11,7 +11,10 @@
 // under the License.
 //
 
+#include "yb/docdb/docdb.h"
+
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <stack>
 #include <string>
@@ -19,46 +22,42 @@
 #include <vector>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/redis_protocol.pb.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/deadline_info.h"
-#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/kv_debug.h"
 #include "yb/docdb/pgsql_operation.h"
-#include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
-#include "yb/rocksutil/yb_rocksdb.h"
+
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/bitmap.h"
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/date_time.h"
 #include "yb/util/enums.h"
+#include "yb/util/fast_varint.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
@@ -78,13 +77,14 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_test_flag(bool, docdb_sort_weak_intents_in_tests, false,
+DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
-DEFINE_int32(txn_max_apply_batch_records, 100000,
+// TODO(#10163) -- Revert this flag to it's previous value once #10163 is resolved.
+DEFINE_int32(txn_max_apply_batch_records, std::numeric_limits<int32>::max(),
              "Max number of apply records allowed in single RocksDB batch. "
              "When a transaction's data in one tablet does not fit into specified number of "
              "records, it will be applied using multiple RocksDB write batches.");
@@ -176,6 +176,10 @@ CHECKED_STATUS ApplyIntent(RefCntPrefix key,
 struct DetermineKeysToLockResult {
   LockBatchEntries lock_batch;
   bool need_read_snapshot;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(lock_batch, need_read_snapshot);
+  }
 };
 
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
@@ -252,6 +256,22 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   return result;
 }
 
+// Collapse keys_locked into a unique set of keys with intent_types representing the union of
+// intent_types originally present. In other words, suppose keys_locked is originally the following:
+// [
+//   (k1, {kWeakRead, kWeakWrite}),
+//   (k1, {kStrongRead}),
+//   (k2, {kWeakRead}),
+//   (k3, {kStrongRead}),
+//   (k2, {kStrongWrite}),
+// ]
+// Then after calling FilterKeysToLock we will have:
+// [
+//   (k1, {kWeakRead, kWeakWrite, kStrongRead}),
+//   (k2, {kWeakRead}),
+//   (k3, {kStrongRead, kStrongWrite}),
+// ]
+// Note that only keys which appear in order in keys_locked will be collapsed in this manner.
 void FilterKeysToLock(LockBatchEntries *keys_locked) {
   if (keys_locked->empty()) {
     return;
@@ -313,6 +333,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
       doc_write_ops, read_pairs, isolation_level, operation_kind, row_mark_type,
       transactional_table, partial_range_key_intents));
+  VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty()) {
     LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
                << ", read pairs: " << yb::ToString(read_pairs);
@@ -321,6 +342,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
 
   FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
+  VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
+                    << determine_keys_to_lock_result.ToString();
   const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::Now() : MonoTime();
   result.lock_batch = LockBatch(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
@@ -356,7 +379,7 @@ Status SetDocOpQLErrorResponse(DocOperation* doc_op, string err_msg) {
   return Status::OK();
 }
 
-Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const DocDB& doc_db,
@@ -624,10 +647,23 @@ inline bool IsEndOfSubKeys(const Slice& key) {
          (key.size() == 1 || key[1] == ValueTypeAsChar::kHybridTime);
 }
 
-// Enumerates weak intents generated by the given key by invoking the provided callback with each
-// weak intent stored in encoded_key_buffer. On return, *encoded_key_buffer contains the
-// corresponding strong intent, for which the callback has not yet been called. It is expected
-// that the caller would do so.
+// Enumerates weak intent keys generated by considering specified prefixes of the given key and
+// invoking the provided callback with each combination considered, stored in encoded_key_buffer.
+// On return, *encoded_key_buffer contains the corresponding strong intent, for which the callback
+// has not yet been called. It is left to the caller to use the final state of encoded_key_buffer.
+//
+// The prefixes of the key considered are as follows:
+// 1. Up to and including the whole hash key.
+// 2. Up to and including the whole range key, or if partial_range_key_intents is
+//    PartialRangeKeyIntents::kTrue, then enumerate the prefix up to the end of each component of
+//    the range key separately.
+// 3. Up to and including each subkey component, separately.
+//
+// In any case, we stop short of enumerating the last intent key generated based on the above, as
+// this represents the strong intent key and will be stored in encoded_key_buffer at the end of this
+// call.
+//
+// The beginning of each intent key will also include any cotable_id or PgTableOid, if present.
 Status EnumerateWeakIntents(
     Slice key,
     const EnumerateIntentsCallback& functor,
@@ -705,7 +741,7 @@ Status EnumerateWeakIntents(
       return Status::OK();
     }
 
-    // Generate a week intent that only includes the hash component.
+    // Generate a weak intent that only includes the hash component.
     RETURN_NOT_OK(functor(
         IntentStrength::kWeak, FullDocKey(key[0] == ValueTypeAsChar::kGroupEnd), kEmptyIntentValue,
         encoded_key_buffer, LastKey::kFalse));
@@ -720,6 +756,7 @@ Status EnumerateWeakIntents(
   // Range components.
   auto range_key_start = key.cdata();
   while (VERIFY_RESULT(ConsumePrimitiveValueFromKey(&key))) {
+    // Append the consumed primitive value to encoded_key_buffer.
     encoded_key_buffer->AppendRawBytes(range_key_start, key.cdata() - range_key_start);
     // We always need kGroupEnd at the end to make this a valid encoded DocKey.
     encoded_key_buffer->AppendValueType(ValueType::kGroupEnd);
@@ -745,8 +782,10 @@ Status EnumerateWeakIntents(
   // ConsumePrimitiveValueFromKey, which returned false.
   encoded_key_buffer->AppendValueType(ValueType::kGroupEnd);
 
+  // Subkey components.
   auto subkey_start = key.cdata();
   while (VERIFY_RESULT(SubDocKey::DecodeSubkey(&key))) {
+    // Append the consumed value to encoded_key_buffer.
     encoded_key_buffer->AppendRawBytes(subkey_start, key.cdata() - subkey_start);
     if (key.empty() || *key.cdata() == ValueTypeAsChar::kHybridTime) {
       // This was the last subkey.
@@ -802,11 +841,13 @@ class PrepareTransactionWriteBatchHelper {
   PrepareTransactionWriteBatchHelper(HybridTime hybrid_time,
                                      rocksdb::WriteBatch* rocksdb_write_batch,
                                      const TransactionId& transaction_id,
+                                     const SubTransactionId subtransaction_id,
                                      const Slice& replicated_batches_state,
                                      IntraTxnWriteId* intra_txn_write_id)
       : hybrid_time_(hybrid_time),
         rocksdb_write_batch_(rocksdb_write_batch),
         transaction_id_(transaction_id),
+        subtransaction_id_(subtransaction_id),
         replicated_batches_state_(replicated_batches_state),
         intra_txn_write_id_(intra_txn_write_id) {
   }
@@ -831,11 +872,26 @@ class PrepareTransactionWriteBatchHelper {
     const auto write_id_value_type = ValueTypeAsChar::kWriteId;
     const auto row_lock_value_type = ValueTypeAsChar::kRowLock;
     IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(*intra_txn_write_id_);
-    std::array<Slice, 5> value = {{
+
+    const auto subtransaction_value_type = ValueTypeAsChar::kSubTransactionId;
+    SubTransactionId big_endian_subtxn_id;
+    Slice subtransaction_marker;
+    Slice subtransaction_id;
+    if (subtransaction_id_ > kMinSubTransactionId) {
+      subtransaction_marker = Slice(&subtransaction_value_type, 1);
+      big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
+      subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
+    } else {
+      DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
+    }
+
+    std::array<Slice, 7> value = {{
         Slice(&transaction_value_type, 1),
         transaction_id_.AsSlice(),
+        subtransaction_marker,
+        subtransaction_id,
         Slice(&write_id_value_type, 1),
-        Slice(pointer_cast<char*>(&big_endian_write_id), sizeof(big_endian_write_id)),
+        Slice::FromPod(&big_endian_write_id),
         value_slice,
     }};
     // Store a row lock indicator rather than data (in value_slice) for row lock intents.
@@ -877,11 +933,7 @@ class PrepareTransactionWriteBatchHelper {
         transaction_id_.AsSlice(),
     }};
 
-    if (PREDICT_TRUE(!FLAGS_TEST_docdb_sort_weak_intents_in_tests)) {
-      for (const auto& intent_and_types : weak_intents_) {
-        AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
-      }
-    } else {
+    if (PREDICT_FALSE(FLAGS_TEST_docdb_sort_weak_intents)) {
       // This is done in tests when deterministic DocDB state is required.
       std::vector<std::pair<KeyBuffer, IntentTypeSet>> intents_and_types(
           weak_intents_.begin(), weak_intents_.end());
@@ -889,6 +941,11 @@ class PrepareTransactionWriteBatchHelper {
       for (const auto& intent_and_types : intents_and_types) {
         AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
       }
+      return;
+    }
+
+    for (const auto& intent_and_types : weak_intents_) {
+      AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
     }
   }
 
@@ -915,6 +972,7 @@ class PrepareTransactionWriteBatchHelper {
   HybridTime hybrid_time_;
   rocksdb::WriteBatch* rocksdb_write_batch_;
   const TransactionId& transaction_id_;
+  const SubTransactionId subtransaction_id_;
   Slice replicated_batches_state_;
   IntentTypeSet strong_intent_types_;
   std::unordered_map<KeyBuffer, IntentTypeSet, ByteBufferHash> weak_intents_;
@@ -945,8 +1003,13 @@ void PrepareTransactionWriteBatch(
 
   RowMarkType row_mark = GetRowMarkTypeFromPB(put_batch);
 
+  auto subtransaction_id = put_batch.has_subtransaction()
+      ? put_batch.subtransaction().subtransaction_id()
+      : kMinSubTransactionId;
+
   PrepareTransactionWriteBatchHelper helper(
-      hybrid_time, rocksdb_write_batch, transaction_id, replicated_batches_state, write_id);
+      hybrid_time, rocksdb_write_batch, transaction_id, subtransaction_id, replicated_batches_state,
+      write_id);
 
   if (!put_batch.write_pairs().empty()) {
     if (IsValidRowMarkType(row_mark)) {
@@ -981,6 +1044,7 @@ void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* o
 
 CHECKED_STATUS IntentToWriteRequest(
     const Slice& transaction_id_slice,
+    const AbortedSubTransactionSet& aborted,
     HybridTime commit_ht,
     const Slice& reverse_index_key,
     const Slice& reverse_index_value,
@@ -997,19 +1061,27 @@ CHECKED_STATUS IntentToWriteRequest(
   auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
 
   if (intent.types.Test(IntentType::kStrongWrite)) {
-    IntraTxnWriteId stored_write_id;
-    Slice intent_value;
-    RETURN_NOT_OK(DecodeIntentValue(
-        intent_iter->value(), transaction_id_slice, &stored_write_id, &intent_value));
+    auto decoded_value = VERIFY_RESULT(
+        DecodeIntentValue(intent_iter->value(), &transaction_id_slice));
 
     // Write id should match to one that were calculated during append of intents.
     // Doing it just for sanity check.
-    DCHECK_GE(stored_write_id, *write_id)
-      << "Value: " << intent_iter->value().ToDebugHexString();
-    *write_id = stored_write_id;
+    RSTATUS_DCHECK_GE(
+        decoded_value.write_id, *write_id,
+        Corruption,
+        Format("Unexpected write id. Expected: $0, found: $1, raw value: $2",
+               *write_id,
+               decoded_value.write_id,
+               intent_iter->value().ToDebugHexString()));
+    *write_id = decoded_value.write_id;
 
     // Intents for row locks should be ignored (i.e. should not be written as regular records).
-    if (intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+    if (decoded_value.body.starts_with(ValueTypeAsChar::kRowLock)) {
+      return Status::OK();
+    }
+
+    // Intents from aborted subtransactions should not be written as regular records.
+    if (aborted.Test(decoded_value.subtransaction_id)) {
       return Status::OK();
     }
 
@@ -1021,7 +1093,7 @@ CHECKED_STATUS IntentToWriteRequest(
     }};
     std::array<Slice, 2> value_parts = {{
         intent.doc_ht,
-        intent_value,
+        decoded_value.body,
     }};
 
     // Useful when debugging transaction failure.
@@ -1066,13 +1138,16 @@ void PutApplyState(
 
 ApplyTransactionState StoreApplyState(
     const Slice& transaction_id_slice, const Slice& key, IntraTxnWriteId write_id,
-    HybridTime commit_ht, rocksdb::WriteBatch* regular_batch) {
+    const AbortedSubTransactionSet& aborted, HybridTime commit_ht,
+    rocksdb::WriteBatch* regular_batch) {
   auto result = ApplyTransactionState {
     .key = key.ToBuffer(),
     .write_id = write_id,
+    .aborted = aborted,
   };
   ApplyTransactionStatePB pb;
   result.ToPB(&pb);
+  aborted.ToPB(pb.mutable_aborted()->mutable_set());
   pb.set_commit_ht(commit_ht.ToUint64());
   faststring encoded_pb;
   pb_util::SerializeToString(pb, &encoded_pb);
@@ -1086,7 +1161,9 @@ ApplyTransactionState StoreApplyState(
 }
 
 Result<ApplyTransactionState> PrepareApplyIntentsBatch(
+    const TabletId& tablet_id,
     const TransactionId& transaction_id,
+    const AbortedSubTransactionSet& aborted,
     HybridTime commit_ht,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* apply_state,
@@ -1096,6 +1173,12 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     rocksdb::WriteBatch* intents_batch) {
   SCHECK_EQ((regular_batch != nullptr) + (intents_batch != nullptr), 1, InvalidArgument,
             "Exactly one write batch should be non-null, either regular or intents");
+
+  // In case we have passed in a non-null apply_state, it's aborted set will have been loaded from
+  // persisted apply state, and the passed in aborted set will correspond to the aborted set at
+  // commit time. Rather then copy that set upstream so it is passed in as aborted, we simply grab
+  // a reference to it here, if it is defined, to use in this method.
+  const auto& latest_aborted_set = apply_state ? apply_state->aborted : aborted;
 
   // regular_batch or intents_batch could be null. In this case we don't fill apply batch for
   // appropriate DB.
@@ -1156,8 +1239,9 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
             << (regular_batch ? "R" : "") << (intents_batch ? "I" : "")
             << "]: " << EntryToString(reverse_index_iter, StorageDbType::kIntents);
 
-    // If the key ends at the transaction id then it is transaction metadata (status tablet,
-    // isolation level etc.).
+    // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
+    // txn_reverse_index_prefix in size, then they are identical, and we are seeked to transaction
+    // metadata. Otherwise, we're seeked to an intent entry in the index which we may process.
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
       auto reverse_index_value = reverse_index_iter.value();
       if (!reverse_index_value.empty() && reverse_index_value[0] == ValueTypeAsChar::kBitSet) {
@@ -1173,10 +1257,11 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
         // So doing this check here, instead of right after write_id was incremented.
         if (write_id >= write_id_limit) {
           return StoreApplyState(
-              transaction_id_slice, key_slice, write_id, commit_ht, regular_batch);
+              transaction_id_slice, key_slice, write_id, latest_aborted_set, commit_ht,
+              regular_batch);
         }
         RETURN_NOT_OK(IntentToWriteRequest(
-            transaction_id_slice, commit_ht, key_slice, reverse_index_value,
+            transaction_id_slice, latest_aborted_set, commit_ht, key_slice, reverse_index_value,
             &intent_iter, regular_batch, &write_id));
       }
 
@@ -1187,6 +1272,7 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
 
     if (intents_batch) {
       if (intents_batch->Count() >= max_records) {
+        // No need to return with .aborted, since this branch is only hit during intent clean-up.
         return ApplyTransactionState {
           .key = key_slice.ToBuffer(),
           .write_id = write_id,
@@ -1206,13 +1292,15 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
   }
 
   if (regular_batch) {
-    YB_TRANSACTION_DUMP(ApplyIntents, transaction_id_slice, log_ht, regular_batch->Data());
+    YB_TRANSACTION_DUMP(
+        ApplyIntents, tablet_id, transaction_id_slice, log_ht, regular_batch->Data());
   }
   return ApplyTransactionState {};
 }
 
 std::string ApplyTransactionState::ToString() const {
-  return Format("{ key: $0 write_id: $1 }", Slice(key).ToDebugString(), write_id);
+  return Format(
+      "{ key: $0 write_id: $1 aborted: $2 }", Slice(key).ToDebugString(), write_id, aborted);
 }
 
 void CombineExternalIntents(

@@ -32,23 +32,25 @@
 
 #include "yb/rpc/connection.h"
 
-#include <iostream>
 #include <thread>
 #include <utility>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/util/enums.h"
-
-#include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -286,22 +288,24 @@ void Connection::ParseReceived() {
   stream_->ParseReceived();
 }
 
-Result<ProcessDataResult> Connection::ProcessReceived(
-    const IoVecs& data, ReadBufferFull read_buffer_full) {
-  auto result = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
+Result<size_t> Connection::ProcessReceived(ReadBufferFull read_buffer_full) {
+  auto result = context_->ProcessCalls(
+      shared_from_this(), ReadBuffer().AppendedVecs(), read_buffer_full);
   VLOG_WITH_PREFIX(4) << "context_->ProcessCalls result: " << AsString(result);
   if (PREDICT_FALSE(!result.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << result.status();
-    return result;
+    return result.status();
   }
 
-  if (!result->consumed && read_buffer_full && context_->Idle()) {
+  if (!result->consumed && ReadBuffer().Full() && context_->Idle()) {
     return STATUS_FORMAT(
         InvalidArgument, "Command is greater than read buffer, exist data: $0",
-        IoVecsFullSize(data));
+        IoVecsFullSize(ReadBuffer().AppendedVecs()));
   }
 
-  return result;
+  ReadBuffer().Consume(result->consumed, result->buffer);
+
+  return result->bytes_to_skip;
 }
 
 Status Connection::HandleCallResponse(CallData* call_data) {

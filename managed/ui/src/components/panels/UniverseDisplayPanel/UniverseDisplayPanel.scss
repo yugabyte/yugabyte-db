@@ -3,6 +3,26 @@
 @import '../../../_style/colors.scss';
 @import '../../../_style/mixins.scss';
 
+.universe-table-header-action {
+  margin-bottom: 0;
+  text-align: right;
+  padding: 0;
+
+  .universe-button {
+    width: auto;
+    font-size: 14px;
+
+    padding-top: 12px;
+    padding-bottom: 12px;
+    &.btn-orange {
+      margin-left: 15px;
+    }
+
+    .fa-mail-forward {
+      transform: rotate(90deg) translateX(3px);
+    }
+  }
+}
 .universe-display-item-container,
 .schedule-display-item-container {
   max-height: 220px;

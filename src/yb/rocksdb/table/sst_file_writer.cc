@@ -20,11 +20,19 @@
 
 #include "yb/rocksdb/sst_file_writer.h"
 
+#include <stdint.h>
+
+#include <limits>
+#include <string>
+#include <utility>
 #include <vector>
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block_based_table_builder.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/util/string_util.h"
 

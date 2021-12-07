@@ -35,16 +35,18 @@
 #include <string>
 
 #include "yb/common/schema.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/map-util.h"
+
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/server/monitored_task.h"
+
 #include "yb/util/url-coding.h"
 
 using strings::Substitute;
 
 namespace yb {
+namespace server {
 
 void HtmlOutputSchemaTable(const Schema& schema,
                            std::stringstream* output) {
@@ -53,10 +55,10 @@ void HtmlOutputSchemaTable(const Schema& schema,
 
   for (int i = 0; i < schema.num_columns(); i++) {
     const ColumnSchema& col = schema.column(i);
-    *output << Substitute("<tr><th>$0</th><td>$1</td><td>$2</td></tr>\n",
-                          EscapeForHtmlToString(col.name()),
-                          schema.column_id(i),
-                          col.TypeToString());
+    *output << Format("<tr><th>$0</th><td>$1</td><td>$2</td></tr>\n",
+                      EscapeForHtmlToString(col.name()),
+                      schema.column_id(i),
+                      col.TypeToString());
   }
   *output << "</table>\n";
 }
@@ -99,4 +101,5 @@ void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask>>& t
   *output << "</table>\n";
 }
 
+} // namespace server
 } // namespace yb

@@ -29,29 +29,30 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tserver/remote_bootstrap_service.h"
 
 #include <algorithm>
 #include <string>
 #include <vector>
 
-#include <boost/date_time/time_duration.hpp>
-#include <boost/thread/locks.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/log.h"
-#include "yb/fs/fs_manager.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/map-util.h"
+
 #include "yb/rpc/rpc_context.h"
-#include "yb/tserver/remote_bootstrap_snapshots.h"
-#include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
@@ -136,6 +137,9 @@ RemoteBootstrapServiceImpl::RemoteBootstrapServiceImpl(
   CHECK_OK(Thread::Create("remote-bootstrap", "rb-session-exp",
                           &RemoteBootstrapServiceImpl::EndExpiredSessions, this,
                           &session_expiration_thread_));
+}
+
+RemoteBootstrapServiceImpl::~RemoteBootstrapServiceImpl() {
 }
 
 void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(

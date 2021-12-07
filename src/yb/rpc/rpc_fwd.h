@@ -18,14 +18,15 @@
 
 #include <chrono>
 #include <functional>
+#include <unordered_map>
 
-#include <boost/version.hpp>
+#include <boost/functional/hash.hpp>
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/rpc/rpc_introspection.pb.h"
-
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -34,19 +35,25 @@ namespace rpc {
 class Acceptor;
 class AcceptorPool;
 class ConnectionContext;
+class DelayedTask;
+class DumpRunningRpcsRequestPB;
+class DumpRunningRpcsResponsePB;
 class GrowableBufferAllocator;
 class MessengerBuilder;
 class Proxy;
 class ProxyCache;
+class ProxyContext;
 class Reactor;
 class ReactorTask;
+class RemoteMethod;
+class RequestHeader;
 class RpcConnectionPB;
 class RpcContext;
 class RpcController;
-class RpcService;
 class Rpcs;
 class Poller;
 class Protocol;
+class RefinedStream;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
@@ -59,9 +66,17 @@ class ThreadPoolTask;
 class LocalYBInboundCall;
 
 struct CallData;
-struct ProcessDataResult;
+struct OutboundCallMetrics;
+struct OutboundMethodMetrics;
+struct ProcessCallsResult;
+struct ReactorMetrics;
 struct RpcMethodMetrics;
 struct RpcMetrics;
+
+class RpcService;
+using RpcServicePtr = scoped_refptr<RpcService>;
+using RpcEndpointMap = std::unordered_map<
+    Slice, std::pair<RpcServicePtr, size_t>, boost::hash<Slice>>;
 
 class RpcCommand;
 typedef std::shared_ptr<RpcCommand> RpcCommandPtr;
@@ -103,12 +118,24 @@ class StreamFactory;
 typedef std::shared_ptr<StreamFactory> StreamFactoryPtr;
 
 YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
+YB_STRONGLY_TYPED_BOOL(Queue);
 
 typedef int64_t ScheduledTaskId;
 constexpr ScheduledTaskId kInvalidTaskId = -1;
 constexpr size_t kMinBufferForSidecarSlices = 16;
 
+using ProxyPtr = std::shared_ptr<Proxy>;
+using ResponseCallback = std::function<void()>;
+
 YB_DEFINE_ENUM(ServicePriority, (kNormal)(kHigh));
+
+// Specifies how to run callback for async outbound call.
+YB_DEFINE_ENUM(InvokeCallbackMode,
+    // On reactor thread.
+    (kReactorThread)
+    // On thread pool.
+    (kThreadPoolNormal)
+    (kThreadPoolHigh));
 
 } // namespace rpc
 } // namespace yb

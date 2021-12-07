@@ -1,5 +1,4 @@
 // Copyright (c) YugaByte, Inc.
-
 export { default as BulkImport } from './BulkImport/BulkImport';
 export { default as BulkImportContainer } from './BulkImport/BulkImportContainer';
 export { default as ListTables } from './ListTables/ListTables';
@@ -18,3 +17,5 @@ export { default as RestoreBackup } from './RestoreBackup/RestoreBackup';
 export { default as RestoreBackupContainer } from './RestoreBackup/RestoreBackupContainer';
 export { default as DeleteBackup } from './DeleteBackup/DeleteBackup';
 export { default as DeleteBackupContainer } from './DeleteBackup/DeleteBackupContainer';
+export { StopBackup } from './StopBackup/StopBackup';
+export { default as StopBackupContainer } from './StopBackup/StopBackupContainer';

@@ -10,22 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/async_flush_tablets_task.h"
 
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/catalog_manager.h"
-
-#include "yb/rpc/messenger.h"
+#include "yb/master/master.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
-
-#include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace master {
@@ -80,7 +73,7 @@ void AsyncFlushTablets::HandleResponse(int attempt) {
     VLOG(1) << "TS " << permanent_uuid() << ": flush tablets complete";
   }
 
-  if (state() == MonitoredTaskState::kComplete) {
+  if (state() == server::MonitoredTaskState::kComplete) {
     // TODO: this class should not know CatalogManager API,
     //       remove circular dependency between classes.
     master_->flush_manager()->HandleFlushTabletsResponse(
@@ -95,7 +88,8 @@ bool AsyncFlushTablets::SendRequest(int attempt) {
   tserver::FlushTabletsRequestPB req;
   req.set_dest_uuid(permanent_uuid_);
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
-  req.set_is_compaction(is_compaction_);
+  req.set_operation(is_compaction_ ? tserver::FlushTabletsRequestPB::COMPACT
+                                   : tserver::FlushTabletsRequestPB::FLUSH);
 
   for (const TabletId& id : tablet_ids_) {
     req.add_tablet_ids(id);

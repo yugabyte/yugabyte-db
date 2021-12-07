@@ -154,6 +154,8 @@ class ValueType(Enum):
     kInt64 = 73
     kSystemColumnId = 74
     kColumnId = 75
+    kString = 83
+    kTombstone = 88
 
     @staticmethod
     def read(inp: BinaryIO) -> 'ValueType':
@@ -211,6 +213,10 @@ class SubDocKey(NamedTuple):
         return SubDocKey(hash_components, range_components, sub_keys, doc_ht)
 
 
+class Tombstone(Enum):
+    kTombstone = 0
+
+
 def decode_value(value: bytes):
     inp = BinaryIO(BytesIO(value))
     value_type = ValueType.read(inp)
@@ -223,6 +229,10 @@ def decode_value(value: bytes):
         return inp.read_be_int32()
     if value_type == ValueType.kInt64:
         return inp.read_be_int64()
+    if value_type == ValueType.kString:
+        return inp.read_string()
+    if value_type == ValueType.kTombstone:
+        return Tombstone.kTombstone
     raise Exception('Not supported value type: {}'.format(value_type))
 
 

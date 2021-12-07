@@ -19,12 +19,14 @@
 //
 
 #include <string>
+
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/util/logging.h"
+#include "yb/rocksdb/env.h"
+
 #include "yb/util/string_util.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 

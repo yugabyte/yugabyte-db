@@ -10,112 +10,172 @@
 
 package com.yugabyte.yw.models;
 
-import com.yugabyte.yw.common.YWServiceException;
+import static com.yugabyte.yw.common.Util.doubleToString;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValue;
+import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import play.data.validation.Constraints;
-
-import javax.persistence.*;
-import java.util.Set;
+import io.ebean.PersistenceContextScope;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import java.util.stream.Collectors;
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.OneToMany;
+import javax.persistence.Version;
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
 
 @Entity
+@Data
+@Accessors(chain = true)
+@EqualsAndHashCode(callSuper = false)
 public class AlertDefinition extends Model {
-  @Constraints.Required
+
   @Id
   @Column(nullable = false, unique = true)
-  public UUID uuid;
+  private UUID uuid;
 
-  @Constraints.Required
+  @NotNull
   @Column(columnDefinition = "Text", nullable = false)
-  public String name;
+  private String query;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
-  public UUID universeUUID;
+  private UUID customerUUID;
 
-  @Constraints.Required
-  @Column(columnDefinition = "Text", nullable = false)
-  public String query;
-
-  @Constraints.Required
-  public boolean isActive;
-
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
-  public UUID customerUUID;
+  private UUID configurationUUID;
+
+  @NotNull
+  @Column(nullable = false)
+  @JsonIgnore
+  private boolean configWritten = false;
+
+  @Version
+  @Column(nullable = false)
+  private int version;
+
+  @OneToMany(mappedBy = "definition", cascade = CascadeType.ALL, orphanRemoval = true)
+  @Valid
+  private List<AlertDefinitionLabel> labels;
 
   private static final Finder<UUID, AlertDefinition> find =
-    new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
+      new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
 
-  public static AlertDefinition create(
-    UUID customerUUID,
-    UUID universeUUID,
-    String name,
-    String query,
-    boolean isActive
-  ) {
-    AlertDefinition definition = new AlertDefinition();
-    definition.uuid = UUID.randomUUID();
-    definition.name = name;
-    definition.customerUUID = customerUUID;
-    definition.universeUUID = universeUUID;
-    definition.query = query;
-    definition.isActive = isActive;
-    definition.save();
-
-    return definition;
-  }
-
-  public static AlertDefinition get(UUID alertDefinitionUUID) {
-    return find.query().where().idEq(alertDefinitionUUID).findOne();
-  }
-
-  public static AlertDefinition getOrBadRequest(UUID alertDefinitionUUID) {
-    AlertDefinition alertDefinition = get(alertDefinitionUUID);
-    if (alertDefinition == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: "
-          + alertDefinitionUUID);
+  public static ExpressionList<AlertDefinition> createQueryByFilter(AlertDefinitionFilter filter) {
+    ExpressionList<AlertDefinition> query =
+        find.query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .fetch("labels")
+            .where();
+    appendInClause(query, "uuid", filter.getUuids());
+    if (filter.getCustomerUuid() != null) {
+      query.eq("customerUUID", filter.getCustomerUuid());
     }
-    return alertDefinition;
-  }
-
-  public static AlertDefinition get(UUID customerUUID, UUID universeUUID, String name) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("universe_uuid", universeUUID)
-      .eq("name", name)
-      .findOne();
-  }
-
-  public static AlertDefinition getOrBadRequest(UUID customerUUID, UUID universeUUID, String name) {
-    AlertDefinition alertDefinition = get(customerUUID, universeUUID, name);
-    if (alertDefinition == null) {
-      throw new YWServiceException(BAD_REQUEST, "Could not find Alert Definition");
+    appendInClause(query, "configurationUUID", filter.getConfigurationUuids());
+    if (filter.getConfigWritten() != null) {
+      query.eq("configWritten", filter.getConfigWritten());
     }
-    return alertDefinition;
+    if (filter.getLabel() != null) {
+      query
+          .eq("labels.key.name", filter.getLabel().getName())
+          .eq("labels.value", filter.getLabel().getValue());
+    }
+    return query;
   }
 
-  public static AlertDefinition update(
-    UUID alertDefinitionUUID,
-    String query,
-    boolean isActive
-  ) {
-    AlertDefinition alertDefinition = get(alertDefinitionUUID);
-    alertDefinition.query = query;
-    alertDefinition.isActive = isActive;
-    alertDefinition.save();
-
-    return alertDefinition;
+  public AlertDefinition generateUUID() {
+    this.uuid = UUID.randomUUID();
+    this.labels.forEach(label -> label.setDefinition(this));
+    return this;
   }
 
-  public static Set<AlertDefinition> listActive(UUID customerUUID) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("is_active", true)
-      .findSet();
+  @JsonIgnore
+  public boolean isNew() {
+    return uuid == null;
+  }
+
+  public List<AlertDefinitionLabel> getEffectiveLabels(
+      AlertConfiguration configuration, AlertConfiguration.Severity severity) {
+    List<AlertDefinitionLabel> effectiveLabels = new ArrayList<>();
+    effectiveLabels.add(
+        new AlertDefinitionLabel(
+            this, KnownAlertLabels.CONFIGURATION_UUID, configuration.getUuid().toString()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(
+            this, KnownAlertLabels.CONFIGURATION_TYPE, configuration.getTargetType().name()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_UUID, uuid.toString()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, configuration.getName()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString()));
+    effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.SEVERITY, severity.name()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(
+            this,
+            KnownAlertLabels.THRESHOLD,
+            doubleToString(configuration.getThresholds().get(severity).getThreshold())));
+    effectiveLabels.addAll(labels);
+    return effectiveLabels;
+  }
+
+  public UUID getUniverseUUID() {
+    return Optional.ofNullable(getLabelValue(KnownAlertLabels.UNIVERSE_UUID))
+        .map(UUID::fromString)
+        .orElseThrow(
+            () -> new IllegalStateException("Definition " + uuid + " does not have universe UUID"));
+  }
+
+  public String getLabelValue(KnownAlertLabels knownLabel) {
+    return getLabelValue(knownLabel.labelName());
+  }
+
+  public String getLabelValue(String name) {
+    return getLabels()
+        .stream()
+        .filter(label -> name.equals(label.getName()))
+        .map(AlertDefinitionLabel::getValue)
+        .findFirst()
+        .orElse(null);
+  }
+
+  public AlertDefinition setLabel(KnownAlertLabels label, String value) {
+    return setLabel(label.labelName(), value);
+  }
+
+  public AlertDefinition setLabel(String name, String value) {
+    AlertDefinitionLabel toAdd = new AlertDefinitionLabel(this, name, value);
+    this.labels = setUniqueListValue(labels, toAdd);
+    return this;
+  }
+
+  public AlertDefinition setLabels(List<AlertDefinitionLabel> labels) {
+    this.labels = setUniqueListValues(this.labels, labels);
+    this.labels.forEach(label -> label.setDefinition(this));
+    return this;
+  }
+
+  public List<AlertDefinitionLabel> getLabels() {
+    return labels
+        .stream()
+        .sorted(Comparator.comparing(AlertDefinitionLabel::getName))
+        .collect(Collectors.toList());
   }
 }

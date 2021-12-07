@@ -23,6 +23,8 @@
 #include <string>
 #include "yb/rocksdb/db.h"
 
+#include "yb/util/result.h"
+
 #ifdef _WIN32
 // Windows API macro interference
 #undef DeleteFile
@@ -319,9 +321,9 @@ class StackableDB : public DB {
 
   using DB::SetOptions;
   virtual Status SetOptions(ColumnFamilyHandle* column_family_handle,
-                            const std::unordered_map<std::string, std::string>&
-                                new_options) override {
-    return db_->SetOptions(column_family_handle, new_options);
+                            const std::unordered_map<std::string, std::string>& new_options,
+                            bool dump_options) override {
+    return db_->SetOptions(column_family_handle, new_options, dump_options);
   }
 
   using DB::GetPropertiesOfAllTables;

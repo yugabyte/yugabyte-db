@@ -33,13 +33,17 @@
 #define YB_CONSENSUS_CONSENSUS_META_H_
 
 #include <stdint.h>
+
+#include <atomic>
 #include <string>
 
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/consensus/metadata.pb.h"
-#include "yb/gutil/gscoped_ptr.h"
+
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -95,7 +99,7 @@ class ConsensusMetadata {
   static CHECKED_STATUS DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
 
   // Accessors for current term.
-  const int64_t current_term() const;
+  int64_t current_term() const;
   void set_current_term(int64_t term);
 
   // Accessors for voted_for.
@@ -107,6 +111,11 @@ class ConsensusMetadata {
   // Accessors for committed configuration.
   const RaftConfigPB& committed_config() const;
   void set_committed_config(const RaftConfigPB& config);
+
+  // Accessors for split_parent_tablet_id.
+  bool has_split_parent_tablet_id() const;
+  const TabletId& split_parent_tablet_id() const;
+  void set_split_parent_tablet_id(const TabletId& split_parent_tablet_id);
 
   // Returns whether a pending configuration is set.
   bool has_pending_config() const;

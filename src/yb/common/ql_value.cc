@@ -15,39 +15,28 @@
 
 #include "yb/common/ql_value.h"
 
-#include <cfloat>
-
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_type.h"
+
 #include "yb/gutil/strings/escaping.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
-#include "yb/util/varint.h"
 #include "yb/util/enums.h"
-
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/varint.h"
 
 using yb::operator"" _MB;
 
 // Maximumum value size is 64MB
 DEFINE_int32(yql_max_value_size, 64_MB,
              "Maximum size of a value in the Yugabyte Query Layer");
-
-// The list of unsupported datypes to use in switch statements
-#define QL_UNSUPPORTED_TYPES_IN_SWITCH \
-  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
-  case TUPLE: FALLTHROUGH_INTENDED;     \
-  case TYPEARGS: FALLTHROUGH_INTENDED;  \
-  case UNKNOWN_DATA
-
-#define QL_INVALID_TYPES_IN_SWITCH     \
-  case UINT8:  FALLTHROUGH_INTENDED;    \
-  case UINT16: FALLTHROUGH_INTENDED;    \
-  case UINT32: FALLTHROUGH_INTENDED;    \
-  case UINT64
 
 namespace yb {
 
@@ -117,12 +106,12 @@ int QLValue::CompareTo(const QLValue& other) const {
       return GenericCompare(timeuuid_value(), other.timeuuid_value());
     case InternalType::kDateValue: return GenericCompare(date_value(), other.date_value());
     case InternalType::kTimeValue: return GenericCompare(time_value(), other.time_value());
-    case QLValuePB::kFrozenValue: {
+    case InternalType::kFrozenValue: {
       return Compare(frozen_value(), other.frozen_value());
     }
-    case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
-    case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
-    case QLValuePB::kListValue:
+    case InternalType::kMapValue: FALLTHROUGH_INTENDED;
+    case InternalType::kSetValue: FALLTHROUGH_INTENDED;
+    case InternalType::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
 
@@ -130,12 +119,16 @@ int QLValue::CompareTo(const QLValue& other) const {
       LOG(FATAL) << "Internal error: value should not be null";
       break;
 
-    case QLValuePB::kVirtualValue:
+    case InternalType::kVirtualValue:
       if (IsMax()) {
         return other.IsMax() ? 0 : 1;
       } else {
         return other.IsMin() ? 0 : -1;
       }
+
+    case InternalType::kGinNullValue: {
+      return GenericCompare(gin_null_value(), other.gin_null_value());
+    }
   }
 
   LOG(FATAL) << "Internal error: unsupported type " << type();
@@ -249,6 +242,11 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
                  << ") is not supported in hash key";
     case InternalType::kVirtualValue:
       LOG(FATAL) << "Runtime error: virtual value should not be used to construct hash key";
+    case InternalType::kGinNullValue: {
+      LOG(ERROR) << "Runtime error: gin null value should not be used to construct hash key";
+      YBPartition::AppendIntToKey<uint8, uint8>(value_pb.gin_null_value(), bytes);
+      break;
+    }
   }
 }
 
@@ -466,6 +464,11 @@ void QLValue::Serialize(
   return Serialize(ql_type, client, pb_, buffer);
 }
 
+Status CheckForNull(const QLValue& val) {
+  return val.IsNull() ? STATUS(InvalidArgument, "null is not supported inside collections")
+                      : Status::OK();
+}
+
 Status QLValue::Deserialize(
     const std::shared_ptr<QLType>& ql_type, const QLClient& client, Slice* data) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
@@ -594,9 +597,11 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue key;
         RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
+        RETURN_NOT_OK(CheckForNull(key));
         *add_map_key() = std::move(*key.mutable_value());
         QLValue value;
         RETURN_NOT_OK(value.Deserialize(values_type, client, data));
+        RETURN_NOT_OK(CheckForNull(value));
         *add_map_value() = std::move(*value.mutable_value());
       }
       return Status::OK();
@@ -609,6 +614,7 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue elem;
         RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+        RETURN_NOT_OK(CheckForNull(elem));
         *add_set_elem() = std::move(*elem.mutable_value());
       }
       return Status::OK();
@@ -621,6 +627,7 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue elem;
         RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+        RETURN_NOT_OK(CheckForNull(elem));
         *add_list_elem() = std::move(*elem.mutable_value());
       }
       return Status::OK();
@@ -654,8 +661,10 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue key;
             RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
+            RETURN_NOT_OK(CheckForNull(key));
             QLValue value;
             RETURN_NOT_OK(value.Deserialize(values_type, client, data));
+            RETURN_NOT_OK(CheckForNull(key));
             map_values[key] = value;
           }
 
@@ -675,6 +684,7 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
             RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+            RETURN_NOT_OK(CheckForNull(elem));
             set_values.insert(std::move(elem));
           }
           for (auto &elem : set_values) {
@@ -689,6 +699,7 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
             RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+            RETURN_NOT_OK(CheckForNull(elem));
             *add_frozen_elem() = std::move(*elem.mutable_value());
           }
           return Status::OK();
@@ -724,40 +735,39 @@ Status QLValue::Deserialize(
   return STATUS(InternalError, "unsupported type");
 }
 
-string QLValue::ToString() const {
+string QLValue::ToValueString(const QuotesType quotes_type) const {
   if (IsNull()) {
     return "null";
   }
 
   switch (type()) {
-    case InternalType::kInt8Value: return "int8:" + to_string(int8_value());
-    case InternalType::kInt16Value: return "int16:" + to_string(int16_value());
-    case InternalType::kInt32Value: return "int32:" + to_string(int32_value());
-    case InternalType::kInt64Value: return "int64:" + to_string(int64_value());
-    case InternalType::kUint32Value: return "uint32:" + to_string(uint32_value());
-    case InternalType::kUint64Value: return "uint64:" + to_string(uint64_value());
-    case InternalType::kFloatValue: return "float:" + to_string(float_value());
-    case InternalType::kDoubleValue: return "double:" + to_string(double_value());
+    case InternalType::kInt8Value: return to_string(int8_value());
+    case InternalType::kInt16Value: return to_string(int16_value());
+    case InternalType::kInt32Value: return to_string(int32_value());
+    case InternalType::kInt64Value: return to_string(int64_value());
+    case InternalType::kUint32Value: return to_string(uint32_value());
+    case InternalType::kUint64Value: return to_string(uint64_value());
+    case InternalType::kFloatValue: return to_string(float_value());
+    case InternalType::kDoubleValue: return to_string(double_value());
     case InternalType::kDecimalValue:
-      return "decimal: " + util::DecimalFromComparable(decimal_value()).ToString();
-    case InternalType::kVarintValue:
-      return "varint: " + varint_value().ToString();
-    case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
-    case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
-    case InternalType::kDateValue: return "date:" + to_string(date_value());
-    case InternalType::kTimeValue: return "time:" + to_string(time_value());
-    case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
-    case InternalType::kJsonbValue: return "jsonb:" + FormatBytesAsStr(jsonb_value());
-    case InternalType::kUuidValue: return "uuid:" + uuid_value().ToString();
-    case InternalType::kTimeuuidValue: return "timeuuid:" + timeuuid_value().ToString();
-    case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
-    case InternalType::kBinaryValue: return "binary:0x" + b2a_hex(binary_value());
+      return util::DecimalFromComparable(decimal_value()).ToString();
+    case InternalType::kVarintValue: return varint_value().ToString();
+    case InternalType::kStringValue: return FormatBytesAsStr(string_value(), quotes_type);
+    case InternalType::kTimestampValue: return timestamp_value().ToFormattedString();
+    case InternalType::kDateValue: return to_string(date_value());
+    case InternalType::kTimeValue: return to_string(time_value());
+    case InternalType::kInetaddressValue: return inetaddress_value().ToString();
+    case InternalType::kJsonbValue: return FormatBytesAsStr(jsonb_value(), quotes_type);
+    case InternalType::kUuidValue: return uuid_value().ToString();
+    case InternalType::kTimeuuidValue: return timeuuid_value().ToString();
+    case InternalType::kBoolValue: return (bool_value() ? "true" : "false");
+    case InternalType::kBinaryValue: return "0x" + b2a_hex(binary_value());
 
     case InternalType::kMapValue: {
       std::stringstream ss;
       QLMapValuePB map = map_value();
       DCHECK_EQ(map.keys_size(), map.values_size());
-      ss << "map:{";
+      ss << "{";
       for (int i = 0; i < map.keys_size(); i++) {
         if (i > 0) {
           ss << ", ";
@@ -771,7 +781,7 @@ string QLValue::ToString() const {
     case InternalType::kSetValue: {
       std::stringstream ss;
       QLSeqValuePB set = set_value();
-      ss << "set:{";
+      ss << "{";
       for (int i = 0; i < set.elems_size(); i++) {
         if (i > 0) {
           ss << ", ";
@@ -784,7 +794,7 @@ string QLValue::ToString() const {
     case InternalType::kListValue: {
       std::stringstream ss;
       QLSeqValuePB list = list_value();
-      ss << "list:[";
+      ss << "[";
       for (int i = 0; i < list.elems_size(); i++) {
         if (i > 0) {
           ss << ", ";
@@ -813,6 +823,20 @@ string QLValue::ToString() const {
         return "<MAX_LIMIT>";
       }
       return "<MIN_LIMIT>";
+    case InternalType::kGinNullValue: {
+      switch (gin_null_value()) {
+        // case 0, gin:norm-key, should not exist since the actual data would be used instead.
+        case 1:
+          return "gin:null-key";
+        case 2:
+          return "gin:empty-item";
+        case 3:
+          return "gin:null-item";
+        // case -1, gin:empty-query, should not exist since that's internal to postgres.
+        default:
+          LOG(FATAL) << "Unexpected gin null category: " << gin_null_value();
+      }
+    }
 
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
@@ -822,6 +846,105 @@ string QLValue::ToString() const {
 
   LOG(FATAL) << "Internal error: unknown or unsupported type " << type();
   return "unknown";
+}
+
+string QLValue::ToString() const {
+  if (IsNull()) {
+    return "null";
+  }
+
+  std::string res;
+  switch (type()) {
+    case InternalType::kInt8Value: res = "int8:"; break;
+    case InternalType::kInt16Value: res = "int16:"; break;
+    case InternalType::kInt32Value: res = "int32:"; break;
+    case InternalType::kInt64Value: res = "int64:"; break;
+    case InternalType::kUint32Value: res = "uint32:"; break;
+    case InternalType::kUint64Value: res = "uint64:"; break;
+    case InternalType::kFloatValue: res = "float:"; break;
+    case InternalType::kDoubleValue: res = "double:"; break;
+    case InternalType::kDecimalValue: res = "decimal: "; break;
+    case InternalType::kVarintValue: res = "varint: "; break;
+    case InternalType::kStringValue: res = "string:"; break;
+    case InternalType::kTimestampValue: res = "timestamp:"; break;
+    case InternalType::kDateValue: res = "date:"; break;
+    case InternalType::kTimeValue: res = "time:"; break;
+    case InternalType::kInetaddressValue: res = "inetaddress:"; break;
+    case InternalType::kJsonbValue: res = "jsonb:"; break;
+    case InternalType::kUuidValue: res = "uuid:"; break;
+    case InternalType::kTimeuuidValue: res = "timeuuid:"; break;
+    case InternalType::kBoolValue: res = "bool:"; break;
+    case InternalType::kBinaryValue: res = "binary:0x"; break;
+    case InternalType::kMapValue: res = "map:"; break;
+    case InternalType::kSetValue: res = "set:"; break;
+    case InternalType::kListValue: res = "list:"; break;
+    case InternalType::kFrozenValue: res = "frozen:"; break;
+    case InternalType::kVirtualValue: res = ""; break;
+
+    case InternalType::VALUE_NOT_SET:
+      LOG(FATAL) << "Internal error: value should not be null";
+      return "null";
+    default:
+      LOG(FATAL) << "Internal error: unknown or unsupported type " << type();
+      return "unknown";
+  }
+  return res + ToValueString();
+}
+
+InetAddress QLValue::inetaddress_value(const QLValuePB& pb) {
+  InetAddress addr;
+  CHECK_OK(addr.FromBytes(inetaddress_value_pb(pb)));
+  return addr;
+}
+
+Uuid QLValue::timeuuid_value(const QLValuePB& pb) {
+  Uuid timeuuid;
+  CHECK_OK(timeuuid.FromBytes(timeuuid_value_pb(pb)));
+  CHECK_OK(timeuuid.IsTimeUuid());
+  return timeuuid;
+}
+
+Uuid QLValue::uuid_value(const QLValuePB& pb) {
+  Uuid uuid;
+  CHECK_OK(uuid.FromBytes(uuid_value_pb(pb)));
+  return uuid;
+}
+
+util::VarInt QLValue::varint_value(const QLValuePB& pb) {
+  CHECK(pb.has_varint_value()) << "Value: " << pb.ShortDebugString();
+  util::VarInt varint;
+  size_t num_decoded_bytes;
+  CHECK_OK(varint.DecodeFromComparable(pb.varint_value(), &num_decoded_bytes));
+  return varint;
+}
+
+void QLValue::set_inetaddress_value(const InetAddress& val, QLValuePB* pb) {
+  CHECK_OK(val.ToBytes(pb->mutable_inetaddress_value()));
+}
+
+void QLValue::set_timeuuid_value(const Uuid& val) {
+  CHECK_OK(val.IsTimeUuid());
+  val.ToBytes(pb_.mutable_timeuuid_value());
+}
+
+template<typename num_type, typename data_type>
+CHECKED_STATUS QLValue::CQLDeserializeNum(
+    size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(num_type),
+    Slice* data) {
+  num_type value = 0;
+  RETURN_NOT_OK(CQLDecodeNum(len, converter, data, &value));
+  (this->*setter)(value);
+  return Status::OK();
+}
+
+template<typename float_type, typename data_type>
+CHECKED_STATUS QLValue::CQLDeserializeFloat(
+    size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(float_type),
+    Slice* data) {
+  float_type value = 0.0;
+  RETURN_NOT_OK(CQLDecodeFloat(len, converter, data, &value));
+  (this->*setter)(value);
+  return Status::OK();
 }
 
 //----------------------------------- QLValuePB operators --------------------------------
@@ -936,6 +1059,8 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
                 rhs.virtual_value() == QLVirtualValuePB::LIMIT_MIN) ? 0 : -1;
       }
       break;
+    case QLValuePB::kGinNullValue:
+      return GenericCompare(lhs.gin_null_value(), rhs.gin_null_value());
 
     // default: fall through
   }
@@ -1010,6 +1135,8 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
         return rhs.IsMin() ? 0 : -1;
       }
       break;
+    case QLValuePB::kGinNullValue:
+      return GenericCompare(static_cast<uint8_t>(lhs.gin_null_value()), rhs.gin_null_value());
 
     // default: fall through
   }

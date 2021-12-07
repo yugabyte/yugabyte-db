@@ -32,7 +32,6 @@
 
 #include "yb/rpc/rpc_context.h"
 
-#include <ostream>
 #include <sstream>
 
 #include <boost/core/null_deleter.hpp>
@@ -41,16 +40,16 @@
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/outbound_call.h"
-#include "yb/rpc/service_if.h"
 #include "yb/rpc/reactor.h"
+#include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
 
-#include "yb/util/hdr_histogram.h"
-#include "yb/util/metrics.h"
-#include "yb/util/trace.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 
 using google::protobuf::Message;
 DECLARE_int32(rpc_max_message_size);
@@ -83,7 +82,7 @@ class PbTracer : public debug::ConvertableToTraceFormat {
     out->append(ss.str());
   }
  private:
-  const gscoped_ptr<Message> msg_;
+  const std::unique_ptr<Message> msg_;
 };
 
 scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
@@ -100,13 +99,11 @@ RpcContext::~RpcContext() {
 
 RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
                        std::shared_ptr<google::protobuf::Message> request_pb,
-                       std::shared_ptr<google::protobuf::Message> response_pb,
-                       RpcMethodMetrics metrics)
+                       std::shared_ptr<google::protobuf::Message> response_pb)
     : call_(std::move(call)),
-      request_pb_(request_pb),
-      response_pb_(std::move(response_pb)),
-      metrics_(metrics) {
-  const Status s = call_->ParseParam(request_pb.get());
+      request_pb_(std::move(request_pb)),
+      response_pb_(std::move(response_pb)) {
+  const Status s = call_->ParseParam(const_cast<google::protobuf::Message*>(request_pb_.get()));
   if (PREDICT_FALSE(!s.ok())) {
     RespondRpcFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, s);
     return;
@@ -116,12 +113,10 @@ RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
                            "request", TracePb(*request_pb_));
 }
 
-RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call,
-                       RpcMethodMetrics metrics)
+RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call)
     : call_(call),
       request_pb_(call->request(), boost::null_deleter()),
-      response_pb_(call->response(), boost::null_deleter()),
-      metrics_(metrics) {
+      response_pb_(call->response(), boost::null_deleter()) {
   TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
                            "call", call_->ToString(),
                            "request", TracePb(*request_pb_));
@@ -133,7 +128,7 @@ void RpcContext::RespondSuccess() {
                                  response_pb_->ByteSize(), FLAGS_rpc_max_message_size));
     return;
   }
-  call_->RecordHandlingCompleted(metrics_.handler_latency);
+  call_->RecordHandlingCompleted();
   TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
                          "response", TracePb(*response_pb_),
                          "trace", trace()->DumpToString(true));
@@ -142,7 +137,7 @@ void RpcContext::RespondSuccess() {
 }
 
 void RpcContext::RespondFailure(const Status &status) {
-  call_->RecordHandlingCompleted(metrics_.handler_latency);
+  call_->RecordHandlingCompleted();
   TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
                          "status", status.ToString(),
                          "trace", trace()->DumpToString(true));
@@ -151,7 +146,7 @@ void RpcContext::RespondFailure(const Status &status) {
 }
 
 void RpcContext::RespondRpcFailure(ErrorStatusPB_RpcErrorCodePB err, const Status& status) {
-  call_->RecordHandlingCompleted(metrics_.handler_latency);
+  call_->RecordHandlingCompleted();
   TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
                          "status", status.ToString(),
                          "trace", trace()->DumpToString(true));
@@ -161,7 +156,7 @@ void RpcContext::RespondRpcFailure(ErrorStatusPB_RpcErrorCodePB err, const Statu
 
 void RpcContext::RespondApplicationError(int error_ext_id, const std::string& message,
                                          const Message& app_error_pb) {
-  call_->RecordHandlingCompleted(metrics_.handler_latency);
+  call_->RecordHandlingCompleted();
   TRACE_EVENT_ASYNC_END2("rpc_call", "RPC", this,
                          "response", TracePb(app_error_pb),
                          "trace", trace()->DumpToString(true));

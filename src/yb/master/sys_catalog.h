@@ -36,24 +36,30 @@
 #include <vector>
 #include <unordered_map>
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/metadata.pb.h"
+
+#include "yb/gutil/callback.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/server/metadata.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_memory_manager.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
 class Schema;
 class FsManager;
+class ThreadPool;
 
 namespace tserver {
 class WriteRequestPB;
@@ -103,30 +109,15 @@ class SysCatalogTable {
   // ==================================================================
   // Templated CRUD methods for items in sys.catalog.
   // ==================================================================
-  template <class Item>
-  CHECKED_STATUS AddItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS AddItems(const vector<Item>& items, int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Upsert(int64_t leader_term, Items&&... items);
 
-  template <class Item>
-  CHECKED_STATUS UpdateItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS UpdateItems(const vector<Item>& items, int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Delete(int64_t leader_term, Items&&... items);
 
-  template <class Item>
-  CHECKED_STATUS AddAndUpdateItems(const vector<Item>& added_items,
-                                   const vector<Item>& updated_items,
-                                   int64_t leader_term);
-
-  template <class Item>
-  CHECKED_STATUS DeleteItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS DeleteItems(const vector<Item>& items, int64_t leader_term);
-
-  template <class Item>
-  CHECKED_STATUS MutateItems(const vector<Item>& items,
-                             const QLWriteRequestPB::QLStmtType& op_type,
-                             int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Mutate(
+      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items);
 
   // ==================================================================
   // Static schema related methods.
@@ -139,7 +130,7 @@ class SysCatalogTable {
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
 
-  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
+  std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
     return std::atomic_load(&tablet_peer_);
   }
 
@@ -161,16 +152,23 @@ class SysCatalogTable {
   CHECKED_STATUS Visit(VisitorBase* visitor);
 
   // Read the ysql catalog version info from the pg_yb_catalog_version catalog table.
-  Status ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
-                                uint64_t *catalog_version,
-                                uint64_t *last_breaking_version);
+  CHECKED_STATUS ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
+                                        uint64_t* catalog_version,
+                                        uint64_t* last_breaking_version);
 
   // Read the pg_class catalog table. There is a separate pg_class table in each
   // YSQL database, read the information in the pg_class table for the database
   // 'database_oid' and load this information into 'table_to_tablespace_map'.
-  Status ReadPgClassInfo(
-      const uint32_t database_oid,
-      TableToTablespaceIdMap *table_to_tablespace_map);
+  CHECKED_STATUS ReadPgClassInfo(const uint32_t database_oid,
+                                 TableToTablespaceIdMap* table_to_tablespace_map);
+
+  // Read relnamespace OID from the pg_class catalog table.
+  Result<uint32_t> ReadPgClassRelnamespace(const uint32_t database_oid,
+                                           const uint32_t table_oid);
+
+  // Read nspname string from the pg_namespace catalog table.
+  Result<std::string> ReadPgNamespaceNspname(const uint32_t database_oid,
+                                             const uint32_t relnamespace_oid);
 
   // Read the pg_tablespace catalog table and return a map with all the tablespaces and their
   // respective placement information.
@@ -192,6 +190,8 @@ class SysCatalogTable {
   const Schema& schema();
 
   const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
+
+  CHECKED_STATUS FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries);
 
  private:
   friend class CatalogManager;
@@ -219,9 +219,7 @@ class SysCatalogTable {
   CHECKED_STATUS SetupConfig(const MasterOptions& options,
                              consensus::RaftConfigPB* committed_config);
 
-  std::string tablet_id() const {
-    return tablet_peer()->tablet_id();
-  }
+  std::string tablet_id() const;
 
   // Conventional "T xxx P xxxx..." prefix for logging.
   std::string LogPrefix() const;
@@ -243,22 +241,22 @@ class SysCatalogTable {
   void InitLocalRaftPeerPB();
 
   // Table schema, with IDs, used for the YQL write path.
-  Schema schema_;
+  std::unique_ptr<Schema> schema_;
 
   MetricRegistry* metric_registry_;
 
   scoped_refptr<MetricEntity> metric_entity_;
 
-  gscoped_ptr<ThreadPool> inform_removed_master_pool_;
+  std::unique_ptr<ThreadPool> inform_removed_master_pool_;
 
   // Thread pool for Raft-related operations
-  gscoped_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
 
   // Thread pool for preparing transactions, shared between all tablets.
-  gscoped_ptr<ThreadPool> tablet_prepare_pool_;
+  std::unique_ptr<ThreadPool> tablet_prepare_pool_;
 
   // Thread pool for appender tasks
-  gscoped_ptr<ThreadPool> append_pool_;
+  std::unique_ptr<ThreadPool> append_pool_;
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 

@@ -801,6 +801,10 @@ EventTriggerDDLCommandStart(Node *parsetree)
 	if (!IsUnderPostmaster)
 		return;
 
+	/* Event triggers are also completely disabled in YSQL upgrade mode. */
+	if (IsYsqlUpgrade)
+		return;
+
 	runlist = EventTriggerCommonSetup(parsetree,
 									  EVT_DDLCommandStart,
 									  "ddl_command_start",
@@ -835,6 +839,10 @@ EventTriggerDDLCommandEnd(Node *parsetree)
 	 * triggers are disabled in single user mode.
 	 */
 	if (!IsUnderPostmaster)
+		return;
+
+	/* Event triggers are also completely disabled in YSQL upgrade mode. */
+	if (IsYsqlUpgrade)
 		return;
 
 	/*
@@ -883,6 +891,10 @@ EventTriggerSQLDrop(Node *parsetree)
 	 * triggers are disabled in single user mode.
 	 */
 	if (!IsUnderPostmaster)
+		return;
+
+	/* Event triggers are also completely disabled in YSQL upgrade mode. */
+	if (IsYsqlUpgrade)
 		return;
 
 	/*
@@ -970,6 +982,10 @@ EventTriggerTableRewrite(Node *parsetree, Oid tableOid, int reason)
 	if (!IsUnderPostmaster)
 		return;
 
+	/* Event triggers are also completely disabled in YSQL upgrade mode. */
+	if (IsYsqlUpgrade)
+		return;
+
 	/*
 	 * Also do nothing if our state isn't set up, which it won't be if there
 	 * weren't any relevant event triggers at the start of the current DDL
@@ -1049,9 +1065,9 @@ EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata)
 	/* Call each event trigger. */
 	foreach(lc, fn_oid_list)
 	{
-		LOCAL_FCINFO(fcinfo, 0);
 		Oid			fnoid = lfirst_oid(lc);
 		FmgrInfo	flinfo;
+		FunctionCallInfoData fcinfo;
 		PgStat_FunctionCallUsage fcusage;
 
 		elog(DEBUG1, "EventTriggerInvoke %u", fnoid);
@@ -1071,10 +1087,10 @@ EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata)
 		fmgr_info(fnoid, &flinfo);
 
 		/* Call the function, passing no arguments but setting a context. */
-		InitFunctionCallInfoData(*fcinfo, &flinfo, 0,
+		InitFunctionCallInfoData(fcinfo, &flinfo, 0,
 								 InvalidOid, (Node *) trigdata, NULL);
-		pgstat_init_function_usage(fcinfo, &fcusage);
-		FunctionCallInvoke(fcinfo);
+		pgstat_init_function_usage(&fcinfo, &fcusage);
+		FunctionCallInvoke(&fcinfo);
 		pgstat_end_function_usage(&fcusage, true);
 
 		/* Reclaim memory. */
@@ -1102,7 +1118,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_EVENT_TRIGGER:
 			/* no support for event triggers on event triggers */
 			return false;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			/* no support for event triggers on tablegroups */
 			return false;
 		case OBJECT_ACCESS_METHOD:
@@ -2248,7 +2264,7 @@ stringify_grant_objtype(ObjectType objtype)
 			return "PROCEDURE";
 		case OBJECT_ROUTINE:
 			return "ROUTINE";
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			return "TABLEGROUP";
 		case OBJECT_TABLESPACE:
 			return "TABLESPACE";
@@ -2332,7 +2348,7 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "PROCEDURES";
 		case OBJECT_ROUTINE:
 			return "ROUTINES";
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			return "TABLEGROUPS";
 		case OBJECT_TABLESPACE:
 			return "TABLESPACES";

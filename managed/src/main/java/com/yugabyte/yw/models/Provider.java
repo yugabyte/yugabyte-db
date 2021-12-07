@@ -1,119 +1,188 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
+import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.OneToMany;
+import javax.persistence.Table;
+import javax.persistence.Transient;
+import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
-import play.libs.Json;
 
-import javax.persistence.*;
-import java.util.*;
-
-import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfig;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name", "code"}))
 @Entity
 public class Provider extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Provider.class);
+  private static final String TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST =
+      "Transient property - only present in mutate API request";
 
+  @ApiModelProperty(value = "Provider uuid", accessMode = READ_ONLY)
   @Id
   public UUID uuid;
 
+  // TODO: Use Enum
   @Column(nullable = false)
+  @ApiModelProperty(value = "Provider cloud code", accessMode = READ_WRITE)
+  @Constraints.Required()
   public String code;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Provider name", accessMode = READ_WRITE)
+  @Constraints.Required()
   public String name;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
+  @ApiModelProperty(value = "Provider active status", accessMode = READ_ONLY)
   public Boolean active = true;
-  public Boolean isActive() { return active; }
-  public void setActiveFlag(Boolean active) { this.active = active; }
 
-  @Column(nullable = false)
+  @Column(name = "customer_uuid", nullable = false)
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
-  public static final Set<Common.CloudType> InstanceTagsEnabledProviders = ImmutableSet.of(
-    Common.CloudType.aws, Common.CloudType.azu);
+  public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
+      ImmutableSet.of(Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp);
+  public static final Set<Common.CloudType> InstanceTagsModificationEnabledProviders =
+      ImmutableSet.of(Common.CloudType.aws);
 
+  @JsonIgnore
   public void setCustomerUuid(UUID id) {
     this.customerUUID = id;
   }
 
-  @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
-  private JsonNode config;
+  private Map<String, String> config;
 
-  @OneToMany(cascade=CascadeType.ALL)
-  @JsonBackReference(value="regions")
-  public Set<Region> regions;
+  @OneToMany(cascade = CascadeType.ALL)
+  @JsonManagedReference(value = "provider-regions")
+  public List<Region> regions;
 
   @JsonIgnore
-  @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
+  @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
   public Set<InstanceType> instanceTypes;
 
   @JsonIgnore
-  @OneToMany(mappedBy = "provider", cascade=CascadeType.ALL)
+  @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
   public Set<PriceComponent> priceComponents;
 
+  // Start Transient Properties
+  // TODO: These are all transient fields for now. At present these are stored
+  //  with CloudBootstrap params. We should move them to Provider and persist with
+  //  Provider entity.
+
+  // Custom keypair name to use when spinning up YB nodes.
+  // Default: created and managed by YB.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String keyPairName = null;
+
+  // Custom SSH private key component.
+  // Default: created and managed by YB.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String sshPrivateKeyContent = null;
+
+  // Custom SSH user to login to machines.
+  // Default: created and managed by YB.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String sshUser = null;
+
+  // Whether provider should use airgapped install.
+  // Default: false.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean airGapInstall = false;
+
+  // Port to open for connections on the instance.
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public Integer sshPort = 54422;
+
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String hostVpcId = null;
+
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String hostVpcRegion = null;
+
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public List<String> customHostCidrs = new ArrayList<>();
+  // TODO(bogdan): only used/needed for GCP.
+
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public String destVpcId = null;
+
+  // End Transient Properties
+
+  @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = this.getConfig();
-    for (String key : configMap.keySet()) {
-      currConfig.put(key, configMap.get(key));
-    }
-    this.config = Json.toJson(currConfig);
-    this.save();
+    Map<String, String> newConfigMap = this.getUnmaskedConfig();
+    newConfigMap.putAll(configMap);
+    this.config = newConfigMap;
+  }
+
+  @JsonProperty("config")
+  public Map<String, String> getMaskedConfig() {
+    return maskConfigNew(this.getUnmaskedConfig());
   }
 
   @JsonIgnore
-  public JsonNode getMaskedConfig() {
-    if (this.config == null) {
-      return Json.newObject();
-    } else {
-      return maskConfig(this.config);
-    }
-  }
-
-  @JsonIgnore
-  public Map<String, String> getConfig() {
+  public Map<String, String> getUnmaskedConfig() {
     if (this.config == null) {
       return new HashMap<>();
     } else {
-      return Json.fromJson(this.config, Map.class);
+      return new HashMap<>(this.config);
     }
   }
 
   @JsonIgnore
   public String getYbHome() {
-    String ybHomeDir = this.getConfig().getOrDefault("YB_HOME_DIR", "");
+    String ybHomeDir = this.getUnmaskedConfig().getOrDefault("YB_HOME_DIR", "");
     if (ybHomeDir.isEmpty()) {
       ybHomeDir = DEFAULT_YB_HOME_DIR;
     }
     return ybHomeDir;
   }
 
-  /**
-   * Query Helper for Provider with uuid
-   */
-  public static final Finder<UUID, Provider> find = new Finder<UUID, Provider>(Provider.class){};
+  /** Query Helper for Provider with uuid */
+  public static final Finder<UUID, Provider> find = new Finder<UUID, Provider>(Provider.class) {};
 
   /**
    * Create a new Cloud Provider
+   *
    * @param customerUUID, customer uuid
    * @param code, code of cloud provider
    * @param name, name of cloud provider
@@ -125,18 +194,24 @@ public class Provider extends Model {
 
   /**
    * Create a new Cloud Provider
+   *
    * @param customerUUID, customer uuid
    * @param code, code of cloud provider
    * @param name, name of cloud provider
    * @param config, Map of cloud provider configuration
    * @return instance of cloud provider
    */
-  public static Provider create(UUID customerUUID, Common.CloudType code, String name, Map<String, String> config) {
+  public static Provider create(
+      UUID customerUUID, Common.CloudType code, String name, Map<String, String> config) {
     return create(customerUUID, null, code, name, config);
   }
 
-  public static Provider create(UUID customerUUID, UUID providerUUID,
-                                Common.CloudType code, String name, Map<String, String> config) {
+  public static Provider create(
+      UUID customerUUID,
+      UUID providerUUID,
+      Common.CloudType code,
+      String name,
+      Map<String, String> config) {
     Provider provider = new Provider();
     provider.customerUUID = customerUUID;
     provider.uuid = providerUUID;
@@ -149,6 +224,7 @@ public class Provider extends Model {
 
   /**
    * Query provider based on customer uuid and provider uuid
+   *
    * @param customerUUID, customer uuid
    * @param providerUUID, cloud provider uuid
    * @return instance of cloud provider.
@@ -160,13 +236,14 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
     return provider;
   }
 
   /**
    * Get all the providers for a given customer uuid
+   *
    * @param customerUUID, customer uuid
    * @return list of cloud providers.
    */
@@ -175,15 +252,37 @@ public class Provider extends Model {
   }
 
   /**
-   * Get Provider by code for a given customer uuid. If there is multiple
-   * providers with the same name, it will raise a exception.
+   * Get Provider by code for a given customer uuid. If there is multiple providers with the same
+   * name, it will raise a exception.
+   *
    * @param customerUUID
    * @param code
    * @return
    */
   public static List<Provider> get(UUID customerUUID, Common.CloudType code) {
-    return find.query().where().eq("customer_uuid", customerUUID)
-            .eq("code", code.toString()).findList();
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("code", code.toString())
+        .findList();
+  }
+
+  /**
+   * Get Provider by name, cloud for a given customer uuid. If there is multiple providers with the
+   * same name, cloud will raise a exception.
+   *
+   * @param customerUUID
+   * @param name
+   * @param code
+   * @return
+   */
+  public static Provider get(UUID customerUUID, String name, Common.CloudType code) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("name", name)
+        .eq("code", code.toString())
+        .findOne();
   }
 
   // Use get Or bad request
@@ -195,20 +294,25 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID providerUuid) {
     Provider provider = find.byId(providerUuid);
     if (provider == null)
-      throw new YWServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find provider " + providerUuid);
     return provider;
   }
 
+  @ApiModelProperty(required = false)
   public String getHostedZoneId() {
-    return getConfig().getOrDefault("HOSTED_ZONE_ID", getConfig().get("AWS_HOSTED_ZONE_ID"));
+    return getUnmaskedConfig()
+        .getOrDefault("HOSTED_ZONE_ID", getUnmaskedConfig().get("AWS_HOSTED_ZONE_ID"));
   }
 
+  @ApiModelProperty(required = false)
   public String getHostedZoneName() {
-    return getConfig().getOrDefault("HOSTED_ZONE_NAME", getConfig().get("AWS_HOSTED_ZONE_NAME"));
+    return getUnmaskedConfig()
+        .getOrDefault("HOSTED_ZONE_NAME", getUnmaskedConfig().get("AWS_HOSTED_ZONE_NAME"));
   }
 
   /**
    * Get all Providers by code without customer uuid.
+   *
    * @param code
    * @return
    */
@@ -218,7 +322,7 @@ public class Provider extends Model {
 
   // Update host zone.
   public void updateHostedZone(String hostedZoneId, String hostedZoneName) {
-    Map<String, String> currentProviderConfig = getConfig();
+    Map<String, String> currentProviderConfig = getUnmaskedConfig();
     currentProviderConfig.put("HOSTED_ZONE_ID", hostedZoneId);
     currentProviderConfig.put("HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);
@@ -228,6 +332,7 @@ public class Provider extends Model {
   // Used for GCP providers to pass down region information. Currently maps regions to
   // their subnets. Only user-input fields should be retrieved here (e.g. zones should
   // not be included for GCP because they're generated from devops).
+  @JsonIgnore
   public CloudBootstrap.Params getCloudParams() {
     CloudBootstrap.Params newParams = new CloudBootstrap.Params();
     newParams.perRegionMetadata = new HashMap<>();
@@ -240,7 +345,7 @@ public class Provider extends Model {
       return newParams;
     }
 
-    for (Region r: regions) {
+    for (Region r : regions) {
       List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(r.uuid);
       if (zones == null || zones.isEmpty()) {
         continue;

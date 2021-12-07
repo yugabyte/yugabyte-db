@@ -17,8 +17,9 @@
 #include <vector>
 #include <unordered_set>
 
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include "yb/master/master_fwd.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {
@@ -49,6 +50,11 @@ Status CreateTabletMapping(
     const GetTableLocationsResponsePB& consumer_tablets_resp,
     std::unordered_set<HostPort, HostPortHash>* tserver_addrs,
     cdc::StreamEntryPB* stream_entry);
+
+// After split_tablet_ids.source splits, remove its entry and replace it with its children tablets.
+Status UpdateTableMappingOnTabletSplit(
+    cdc::StreamEntryPB* stream_entry,
+    const SplitTabletIds& split_tablet_ids);
 
 Result<std::vector<CDCConsumerStreamInfo>> TEST_GetConsumerProducerTableMap(
     const std::string& producer_master_addrs,

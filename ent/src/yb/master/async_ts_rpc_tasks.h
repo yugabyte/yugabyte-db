@@ -31,7 +31,7 @@ class RetryingTSRpcTask : public yb::master::RetryingTSRpcTask {
                     ThreadPool* callback_pool,
                     TSPicker* picker,
                     const scoped_refptr<TableInfo>& table)
-      : super(master, callback_pool, gscoped_ptr<TSPicker>(picker), table) {}
+      : super(master, callback_pool, std::unique_ptr<TSPicker>(picker), table) {}
 
  protected:
   Status ResetTSProxy() override;

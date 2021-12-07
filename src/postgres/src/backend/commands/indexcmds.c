@@ -25,6 +25,7 @@
 #include "catalog/indexing.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_opclass.h"
@@ -37,7 +38,6 @@
 #include "commands/event_trigger.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
-#include "commands/tablegroup.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -64,6 +64,9 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
+#include "catalog/pg_database.h"
+#include "commands/tablegroup.h"
 #include "pg_yb_utils.h"
 
 /* non-export function prototypes */
@@ -367,6 +370,9 @@ DefineIndex(Oid relationId,
 	int			i;
 	bool		is_indexed_table_colocated = false;
 
+	Oid			databaseId;
+	bool		relIsShared;
+
 	/*
 	 * count key attributes in index
 	 */
@@ -395,15 +401,24 @@ DefineIndex(Oid relationId,
 						INDEX_MAX_KEYS)));
 
 	/*
+	 * Opening the relation under AccessShareLock first, just to get access to
+	 * its metadata. Stronger lock will be taken later.
+	 */
+	rel = heap_open(relationId, AccessShareLock);
+
+	databaseId = YBCGetDatabaseOid(rel);
+	relIsShared = rel->rd_rel->relisshared;
+
+	/*
 	 * Get whether the indexed table is colocated.  This includes tables that
 	 * are colocated because they are part of a tablegroup with colocation.
 	 */
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YBIsPreparingTemplates() &&
-		IsYBRelationById(relationId))
+		IsYBRelation(rel))
 	{
-		HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
+		HandleYBStatus(YBCPgIsTableColocated(databaseId,
 											 relationId,
 											 &is_indexed_table_colocated));
 	}
@@ -424,7 +439,7 @@ DefineIndex(Oid relationId,
 	 * - indexes in nested DDL
 	 * - indexes whose indexed table is colocated (issue #6215)
 	 * - unique indexes
-	 * - system table indexes (implied by disallowing on bootstrap mode)
+	 * - system table indexes
 	 * TODO(jason): check whether it's even possible to come here with
 	 * concurrent true and
 	 * - bootstrap mode
@@ -432,8 +447,9 @@ DefineIndex(Oid relationId,
 	 * - primary index
 	 */
 	if (stmt->primary ||
-		!IsYBRelationById(relationId) ||
-		IsBootstrapProcessingMode())
+		!IsYBRelation(rel) ||
+		IsBootstrapProcessingMode() ||
+		IsCatalogRelation(rel))
 		stmt->concurrent = false;
 	/*
 	 * Use fast path create index when in nested DDL.  This is desired
@@ -463,7 +479,7 @@ DefineIndex(Oid relationId,
 	 * functions will need to be updated, too.
 	 */
 	lockmode = stmt->concurrent ? ShareUpdateExclusiveLock : ShareLock;
-	rel = heap_open(relationId, lockmode);
+	LockRelationOid(relationId, lockmode);
 
 	/*
 	 * Ensure that system tables don't go through online schema change.  This
@@ -558,6 +574,21 @@ DefineIndex(Oid relationId,
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_SCHEMA,
 						   get_namespace_name(namespaceId));
+
+		/*
+		 * If not superuser, ensure having CREATE privileges over template1 -
+		 * this is where DocDB would actually store the shared index.
+		 */
+		if (!superuser() && relIsShared)
+		{
+			AclResult	aclresult;
+
+			aclresult = pg_database_aclcheck(TemplateDbOid, GetUserId(), ACL_CREATE);
+
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, OBJECT_DATABASE,
+							   get_database_name(TemplateDbOid));
+		}
 	}
 
 	/*
@@ -617,7 +648,7 @@ DefineIndex(Oid relationId,
 	 * If tablegroup specified then perform a lookup unless has_tablegroup is false.
 	 */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 	{
 		if (!stmt->tablegroup)
 		{
@@ -657,7 +688,7 @@ DefineIndex(Oid relationId,
 
 		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, OBJECT_TABLEGROUP,
+			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
 						   get_tablegroup_name(tablegroupId));
 	}
 
@@ -679,7 +710,7 @@ DefineIndex(Oid relationId,
 	 * hack but seems simpler than marking them in the BKI commands.  On the
 	 * other hand, if it's not shared, don't allow it to be placed there.
 	 */
-	if (rel->rd_rel->relisshared)
+	if (relIsShared)
 		tablespaceId = GLOBALTABLESPACE_OID;
 	else if (tablespaceId == GLOBALTABLESPACE_OID)
 		ereport(ERROR,
@@ -727,6 +758,15 @@ DefineIndex(Oid relationId,
 								accessMethodName, DEFAULT_YB_INDEX_TYPE)));
 				accessMethodName = DEFAULT_YB_INDEX_TYPE;
 			}
+			if (strcmp(accessMethodName, "gin") == 0)
+			{
+				char	   *new_name = "ybgin";
+
+				ereport(LOG,
+						(errmsg("substituting access method \"%s\" for \"%s\"",
+								accessMethodName, new_name)));
+				accessMethodName = new_name;
+			}
 		}
 	}
 
@@ -753,15 +793,18 @@ DefineIndex(Oid relationId,
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
 
-	if (IsYBRelation(rel) && accessMethodId != LSM_AM_OID)
+	if (IsYBRelation(rel) && (accessMethodId != LSM_AM_OID &&
+							  accessMethodId != YBGIN_AM_OID))
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
 				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
 						 "Click '+' on the description to raise its priority")));
-	if (!IsYBRelation(rel) && accessMethodId == LSM_AM_OID)
+	if (!IsYBRelation(rel) && (accessMethodId == LSM_AM_OID ||
+							   accessMethodId == YBGIN_AM_OID))
 		ereport(ERROR,
-				(errmsg("access method \"%s\" only supported for indexes"
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("access method \"%s\" only supported for indexes"
 						" using Yugabyte storage",
 						accessMethodName)));
 
@@ -804,8 +847,9 @@ DefineIndex(Oid relationId,
 	/*
 	 * Parse AM-specific options, convert to text array form, validate.
 	 */
-	reloptions = transformRelOptions((Datum) 0, stmt->options,
-									 NULL, NULL, false, false);
+	reloptions = ybTransformRelOptions((Datum) 0, stmt->options,
+										NULL, NULL, false, false,
+										IsYsqlUpgrade);
 
 	(void) index_reloptions(amoptions, reloptions, true);
 
@@ -1001,9 +1045,13 @@ DefineIndex(Oid relationId,
 	 * step also actually builds the index, except if caller requested not to
 	 * or in concurrent mode, in which case it'll be done later, or doing a
 	 * partitioned index (because those don't have storage).
+	 *
+	 * YB NOTE:
+	 * We don't create constraints for system relation indexes during YSQL upgrade,
+	 * to simulate initdb behaviour.
 	 */
 	flags = constr_flags = 0;
-	if (stmt->isconstraint)
+	if (stmt->isconstraint && !(IsYBRelation(rel) && IsYsqlUpgrade && IsCatalogRelation(rel)))
 		flags |= INDEX_CREATE_ADD_CONSTRAINT;
 	if (skip_build || stmt->concurrent || partitioned)
 		flags |= INDEX_CREATE_SKIP_BUILD;
@@ -1313,8 +1361,7 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1).
 	 */
-	YBDecrementDdlNestingLevel(true /* success */,
-	                           true /* is_catalog_version_increment */,
+	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
 
@@ -1336,8 +1383,7 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1).
 	 */
-	YBDecrementDdlNestingLevel(true /* success */,
-	                           true /* is_catalog_version_increment */,
+	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
 
@@ -1350,7 +1396,7 @@ DefineIndex(Oid relationId,
 	/* TODO(jason): handle exclusion constraints, possibly not here. */
 
 	/* Do backfill. */
-	HandleYBStatus(YBCPgBackfillIndex(MyDatabaseId, indexRelationId));
+	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
@@ -1433,6 +1479,46 @@ CheckPredicate(Expr *predicate)
 }
 
 /*
+ * YbCheckCollationRestrictions
+ *		Checks that the given partial-index predicate is valid.
+ * Disallow some built-in operator classes if the column has non-C collation.
+ * We already accept them if the column has C collation so continue to allow that.
+ */
+static void
+YbCheckCollationRestrictions(Oid attcollation, Oid opclassoid)
+{
+	HeapTuple classtup;
+	Form_pg_opclass classform;
+	char *opclassname;
+	HeapTuple collationtup;
+	Form_pg_collation collform;
+	char *collname;
+
+	classtup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassoid));
+	if (!HeapTupleIsValid(classtup))
+		elog(ERROR, "cache lookup failed for operator class %u", opclassoid);
+	classform = (Form_pg_opclass) GETSTRUCT(classtup);
+	opclassname = NameStr(classform->opcname);
+	if (strcasecmp(opclassname, "bpchar_pattern_ops") == 0 ||
+		strcasecmp(opclassname, "text_pattern_ops") == 0 ||
+		strcasecmp(opclassname, "varchar_pattern_ops") == 0)
+	{
+		collationtup = SearchSysCache1(COLLOID, ObjectIdGetDatum(attcollation));
+		if (!HeapTupleIsValid(collationtup))
+			elog(ERROR, "cache lookup failed for collation %u", attcollation);
+		collform = (Form_pg_collation) GETSTRUCT(collationtup);
+		collname = NameStr(collform->collname);
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("could not use operator class \"%s\" with column collation \"%s\"",
+						opclassname, collname),
+				 errhint("Use the COLLATE clause to set \"C\" collation explicitly.")));
+		ReleaseSysCache(collationtup);
+	}
+	ReleaseSysCache(classtup);
+}
+
+/*
  * Compute per-index-column information, including indexed column numbers
  * or index expressions, opclasses, and indoptions. Note, all output vectors
  * should be allocated for all columns, including "including" ones.
@@ -1483,7 +1569,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Relation rel = RelationIdGetRelation(relId);
 		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
 		if (IsYBRelation(rel))
-			HandleYBStatus(YBCPgIsTableColocated(MyDatabaseId,
+			HandleYBStatus(YBCPgIsTableColocated(YBCGetDatabaseOid(rel),
 												 relId,
 												 &colocated));
 		RelationClose(rel);
@@ -1491,7 +1577,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 
 	/* Get whether the index is part of a tablegroup */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists && IsYugaByteEnabled() &&
+	if (YbTablegroupCatalogExists && IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
 		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
 
@@ -1659,7 +1745,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (attribute->ordering != SORTBY_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("including column does not support ASC/DESC options")));
+						 errmsg("including column does not support ASC/DESC/HASH options")));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
@@ -1711,6 +1797,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 										 atttype,
 										 accessMethodName,
 										 accessMethodId);
+
+		/*
+	 	 * In Yugabyte mode, disallow some built-in operator classes if the column has non-C
+	 	 * collation.
+		 */
+		if (IsYugaByteEnabled() &&
+			YBIsCollationValidNonC(attcollation) &&
+			!kTestOnlyUseOSDefaultCollation)
+			YbCheckCollationRestrictions(attcollation, classOidP[attn]);
 
 		/*
 		 * Identify the exclusion operator, if any.
@@ -1816,7 +1911,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (attribute->ordering != SORTBY_DEFAULT)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("access method \"%s\" does not support ASC/DESC options",
+							 errmsg("access method \"%s\" does not support ASC/DESC/HASH options",
 									accessMethodName)));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
 					ereport(ERROR,
@@ -2774,61 +2869,4 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 		/* make our updates visible */
 		CommandCounterIncrement();
 	}
-}
-
-void
-BackfillIndex(BackfillIndexStmt *stmt)
-{
-	IndexInfo  *indexInfo;
-	ListCell   *cell;
-	Oid			heapId;
-	Oid			indexId;
-	Relation	heapRel;
-	Relation	indexRel;
-
-	if (YBCGetDisableIndexBackfill())
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("backfill is not enabled")));
-
-	/*
-	 * Examine oid list.  Currently, we only allow it to be a single oid, but
-	 * later it should handle multiple oids of indexes on the same indexed
-	 * table.
-	 * TODO(jason): fix from here downwards for issue #4785.
-	 */
-	if (list_length(stmt->oid_list) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("only a single oid is allowed in BACKFILL INDEX (see"
-						" issue #4785)")));
-
-	foreach(cell, stmt->oid_list)
-	{
-		indexId = lfirst_oid(cell);
-	}
-
-	heapId = IndexGetRelation(indexId, false);
-	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
-	heapRel = heap_open(heapId, ShareLock);
-	indexRel = index_open(indexId, ShareLock);
-
-	indexInfo = BuildIndexInfo(indexRel);
-	/*
-	 * The index should be ready for writes because it should be on the
-	 * BACKFILLING permission.
-	 */
-	Assert(indexInfo->ii_ReadyForInserts);
-	indexInfo->ii_Concurrent = true;
-	indexInfo->ii_BrokenHotChain = false;
-
-	index_backfill(heapRel,
-				   indexRel,
-				   indexInfo,
-				   false,
-				   &stmt->read_time,
-				   stmt->row_bounds);
-
-	index_close(indexRel, ShareLock);
-	heap_close(heapRel, ShareLock);
 }

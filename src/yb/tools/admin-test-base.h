@@ -14,11 +14,19 @@
 #ifndef YB_TOOLS_ADMIN_TEST_BASE_H
 #define YB_TOOLS_ADMIN_TEST_BASE_H
 
+#include <rapidjson/document.h>
+
 #include "yb/integration-tests/ts_itest-base.h"
 
+#include "yb/util/result.h"
 #include "yb/util/string_util.h"
+#include "yb/util/subprocess.h"
 
 namespace yb {
+
+class CassandraSession;
+class CppCassandraDriver;
+
 namespace tools {
 
 class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
@@ -26,7 +34,7 @@ class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
   // Figure out where the admin tool is.
   std::string GetAdminToolPath() const;
 
-  HostPort GetMasterAddresses() const;
+  std::string GetMasterAddresses() const;
 
   template <class... Args>
   Result<std::string> CallAdmin(Args&&... args) {
@@ -43,7 +51,27 @@ class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
   }
 
   Result<rapidjson::Document> ParseJson(const std::string& raw);
+
+  Result<CassandraSession> CqlConnect(const std::string& db_name = std::string());
+
+ private:
+  std::unique_ptr<CppCassandraDriver> cql_driver_;
 };
+
+Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name);
+Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name);
+
+// Run a yb-admin command and return the output.
+template <class... Args>
+Result<std::string> RunAdminToolCommand(const std::string& master_addresses, Args&&... args) {
+  auto command = ToStringVector(
+      GetToolPath("yb-admin"), "-master_addresses", master_addresses,
+      std::forward<Args>(args)...);
+  std::string result;
+  LOG(INFO) << "Run tool: " << AsString(command);
+  RETURN_NOT_OK(Subprocess::Call(command, &result));
+  return result;
+}
 
 }  // namespace tools
 }  // namespace yb

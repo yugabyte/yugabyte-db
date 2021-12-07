@@ -33,10 +33,8 @@
 #define YB_TSERVER_TABLET_PEER_LOOKUP_H_
 
 #include <memory>
-#include <string>
 
-#include "yb/gutil/ref_counted.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

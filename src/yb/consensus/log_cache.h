@@ -32,33 +32,37 @@
 #ifndef YB_CONSENSUS_LOG_CACHE_H
 #define YB_CONSENSUS_LOG_CACHE_H
 
+#include <pthread.h>
+#include <sys/types.h>
+
+#include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
+#include <glog/logging.h>
+
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
+
 #include "yb/gutil/macros.h"
 
-#include "yb/util/async_util.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
-#include "yb/util/result.h"
+#include "yb/util/status_callback.h"
 
 namespace yb {
 
 class MetricEntity;
 class MemTracker;
-
-namespace log {
-class Log;
-class LogReader;
-} // namespace log
 
 namespace consensus {
 
@@ -79,7 +83,7 @@ struct ReadOpsResult {
 class LogCache {
  public:
   LogCache(const scoped_refptr<MetricEntity>& metric_entity,
-           const scoped_refptr<log::Log>& log,
+           const log::LogPtr& log,
            const std::shared_ptr<MemTracker>& server_tracker,
            const std::string& local_uuid,
            const std::string& tablet_id);
@@ -117,7 +121,8 @@ class LogCache {
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
   Result<ReadOpsResult> ReadOps(int64_t after_op_index,
                                 int64_t to_op_index,
-                                int max_size_bytes);
+                                int max_size_bytes,
+                                CoarseTimePoint deadline = CoarseTimePoint::max());
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.
@@ -141,9 +146,7 @@ class LogCache {
   // Return the number of bytes of memory currently in use by the cache.
   int64_t BytesUsed() const;
 
-  int64_t num_cached_ops() const {
-    return metrics_.num_ops->value();
-  }
+  int64_t num_cached_ops() const;
 
   int64_t earliest_op_index() const;
 
@@ -172,9 +175,12 @@ class LogCache {
 
   CHECKED_STATUS FlushIndex();
 
+  Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
+
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
-  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimit);
+  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimitMB);
+  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimitPercentage);
   FRIEND_TEST(LogCacheTest, TestReplaceMessages);
   friend class LogCacheTest;
 
@@ -216,9 +222,9 @@ class LogCache {
     int64_t last_idx_in_batch = -1;
   };
 
-  Result<PrepareAppendResult> PrepareAppendOperations(const ReplicateMsgs& msgs);
+  PrepareAppendResult PrepareAppendOperations(const ReplicateMsgs& msgs);
 
-  scoped_refptr<log::Log> const log_;
+  log::LogPtr const log_;
 
   // The UUID of the local peer.
   const std::string local_uuid_;

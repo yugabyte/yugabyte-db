@@ -39,10 +39,10 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/locks.h"
-#include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 namespace yb {
@@ -63,7 +63,7 @@ Status TimedFailureDetector::Track(const string& name,
                                    const MonoTime& now,
                                    const FailureDetectedCallback& callback) {
   std::lock_guard<simple_spinlock> lock(lock_);
-  gscoped_ptr<Node> node(new Node);
+  auto node = std::make_unique<Node>();
   node->permanent_name = name;
   node->callback = callback;
   node->last_heard_of = now;
@@ -72,7 +72,7 @@ Status TimedFailureDetector::Track(const string& name,
     return STATUS(AlreadyPresent,
         Substitute("Node with name '$0' is already being monitored", name));
   }
-  ignore_result(node.release());
+  node.release();
   return Status::OK();
 }
 

@@ -14,13 +14,11 @@
 #include "yb/util/encrypted_file_factory.h"
 
 #include "yb/util/cipher_stream.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/encrypted_file.h"
 #include "yb/util/encryption_util.h"
 
 namespace yb {
-namespace enterprise {
 
 // An encrypted file implementation for a writable file.
 class EncryptedWritableFile : public WritableFileWrapper {
@@ -35,7 +33,7 @@ class EncryptedWritableFile : public WritableFileWrapper {
 
   // Default constructor.
   EncryptedWritableFile(std::unique_ptr<WritableFile> file,
-                        std::unique_ptr<yb::enterprise::BlockAccessCipherStream> stream,
+                        std::unique_ptr<yb::BlockAccessCipherStream> stream,
                         uint32_t header_size)
       : WritableFileWrapper(std::move(file)), stream_(std::move(stream)), header_size_(header_size)
   {}
@@ -86,6 +84,10 @@ class EncryptedFileFactory : public FileFactoryWrapper {
     return EncryptedWritableFile::Create(result, header_manager_.get(), std::move(underlying));
   }
 
+  bool IsEncrypted() const override {
+    return true;
+  }
+
  private:
   std::unique_ptr<HeaderManager> header_manager_;
 };
@@ -98,5 +100,4 @@ std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_m
   return encrypted_env;
 }
 
-} // namespace enterprise
 } // namespace yb

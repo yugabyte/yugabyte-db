@@ -16,6 +16,8 @@
 
 #include <memory>
 
+#include "yb/client/client_fwd.h"
+#include "yb/common/common.pb.h"
 #include "yb/docdb/docdb.h"
 
 #include "yb/tablet/apply_intents_task.h"
@@ -57,7 +59,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   MUST_USE_RESULT bool UpdateStatus(
       TransactionStatus transaction_status, HybridTime time_of_status,
-      HybridTime coordinator_safe_time);
+      HybridTime coordinator_safe_time, AbortedSubTransactionSet aborted_subtxn_set);
 
   void UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode);
 
@@ -81,7 +83,11 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return local_commit_time_;
   }
 
-  void SetLocalCommitTime(HybridTime time);
+  const AbortedSubTransactionSet& local_commit_aborted_subtxn_set() const {
+    return local_commit_aborted_subtxn_set_;
+  }
+
+  void SetLocalCommitData(HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set);
   void AddReplicatedBatch(
       size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
   void BatchReplicated(const TransactionalBatchData& value);
@@ -135,6 +141,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Notify provided status waiters.
   void NotifyWaiters(int64_t serial_no, HybridTime time_of_status,
                      TransactionStatus transaction_status,
+                     const AbortedSubTransactionSet& aborted_subtxn_set,
                      const std::vector<StatusRequest>& status_waiters);
 
   static Result<TransactionStatusResult> MakeAbortResult(
@@ -151,6 +158,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   RunningTransactionContext& context_;
   RemoveIntentsTask remove_intents_task_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
+  AbortedSubTransactionSet local_commit_aborted_subtxn_set_;
 
   TransactionStatus last_known_status_ = TransactionStatus::CREATED;
   HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
@@ -161,6 +169,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   TransactionApplyData apply_data_;
   docdb::ApplyTransactionState apply_state_;
+  // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
+  std::atomic<bool> processing_apply_{false};
   ApplyIntentsTask apply_intents_task_;
 
   // Time of the next check whether this transaction has been aborted.

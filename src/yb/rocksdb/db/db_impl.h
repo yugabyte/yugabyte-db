@@ -35,10 +35,12 @@
 #include <utility>
 #include <vector>
 
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/compaction_job.h"
+#include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/flush_job.h"
 #include "yb/rocksdb/db/flush_scheduler.h"
 #include "yb/rocksdb/db/internal_stats.h"
 #include "yb/rocksdb/db/log_writer.h"
@@ -49,15 +51,12 @@
 #include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/db/write_thread.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/transaction_log.h"
-#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/event_logger.h"
-#include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/thread_local.h"
@@ -169,10 +168,12 @@ class DBImpl : public DB {
   using DB::SetOptions;
   Status SetOptions(
       ColumnFamilyHandle* column_family,
-      const std::unordered_map<std::string, std::string>& options_map) override;
+      const std::unordered_map<std::string, std::string>& options_map,
+      bool dump_options = true) override;
 
   // Set whether DB should be flushed on shutdown.
   void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
+  void StartShutdown() override;
 
   using DB::NumberLevels;
   virtual int NumberLevels(ColumnFamilyHandle* column_family) override;
@@ -637,11 +638,6 @@ class DBImpl : public DB {
   // Updates stats_ object with SST files size metrics.
   void SetSSTFileTickers();
 
-  void PrintStatistics();
-
-  // dump rocksdb.stats to LOG
-  void MaybeDumpStats();
-
   // Return the minimum empty level that could hold the total data in the
   // input level. Return the input level, if such level could not be found.
   int FindMinimumEmptyLevelFitting(ColumnFamilyData* cfd,
@@ -684,6 +680,8 @@ class DBImpl : public DB {
   bool HasFilesChangedListener() const;
 
   void FilesChanged();
+
+  bool IsShuttingDown() { return shutting_down_.load(std::memory_order_acquire); }
 
   struct TaskPriorityChange {
     size_t task_serial_no;
@@ -983,7 +981,7 @@ class DBImpl : public DB {
   int64_t last_flush_at_tick_ = 0;
 
   // Whether DB should be flushed on shutdown.
-  bool disable_flush_on_shutdown_ = false;
+  std::atomic<bool> disable_flush_on_shutdown_{false};
 
   mutable std::mutex files_changed_listener_mutex_;
 

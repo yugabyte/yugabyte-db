@@ -16,15 +16,17 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace master {
@@ -165,7 +167,7 @@ Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback) {
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      schema.CopyWithoutColumnIds(), boost::none, ReadHybridTime::Max(), /* table_id= */ "",
+      schema.CopyWithoutColumnIds(), ReadHybridTime::Max(), /* table_id= */ "",
       CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
 
   return EnumerateSysCatalog(
@@ -196,6 +198,8 @@ Status EnumerateSysCatalog(
     SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+    SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption,
+              "System catalog snapshot is corrupted, or is built using different build type");
     RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
   }
 

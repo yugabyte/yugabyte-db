@@ -16,7 +16,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <string.h>
 
 #include <map>
@@ -24,11 +23,10 @@
 #include <vector>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/mutexlock.h"
-
 #include "yb/util/file_system_mem.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

@@ -29,11 +29,11 @@ Status PTDmlUsingClause::Analyze(SemContext* sem_context) {
   return Status::OK();
 }
 
-const PTExpr::SharedPtr& PTDmlUsingClause::ttl_seconds() const {
+const PTExprPtr& PTDmlUsingClause::ttl_seconds() const {
   return ttl_seconds_;
 }
 
-const PTExpr::SharedPtr& PTDmlUsingClause::user_timestamp_usec() const {
+const PTExprPtr& PTDmlUsingClause::user_timestamp_usec() const {
   return user_timestamp_usec_;
 }
 

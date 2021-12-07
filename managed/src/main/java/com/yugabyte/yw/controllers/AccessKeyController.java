@@ -2,184 +2,165 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.AccessKeyFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.Form;
-import play.data.FormFactory;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Result;
-
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.Form;
+import play.libs.Json;
+import play.mvc.Http.MultipartFormData;
+import play.mvc.Http.MultipartFormData.FilePart;
+import play.mvc.Result;
 
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
-
+@Api(
+    value = "Access Keys",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AccessKeyController extends AuthenticatedController {
 
-  @Inject
-  FormFactory formFactory;
+  @Inject AccessManager accessManager;
 
-  @Inject
-  AccessManager accessManager;
-
-  @Inject
-  TemplateManager templateManager;
+  @Inject TemplateManager templateManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
+  @ApiOperation(value = "Get an access key", response = AccessKey.class)
   public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
-    String validationError = validateUUIDs(customerUUID, providerUUID);
-    if (validationError != null) {
-      return ApiResponse.error(BAD_REQUEST, validationError);
-    }
+    Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
 
-    AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
-    if (accessKey == null) {
-      return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
-    }
-    return ApiResponse.success(accessKey);
+    AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
+    return PlatformResults.withData(accessKey);
   }
 
+  @ApiOperation(
+      value = "List access keys for a specific provider",
+      response = AccessKey.class,
+      responseContainer = "List")
   public Result list(UUID customerUUID, UUID providerUUID) {
-    String validationError = validateUUIDs(customerUUID, providerUUID);
-    if (validationError != null) {
-      return ApiResponse.error(BAD_REQUEST, validationError);
-    }
+    Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
 
     List<AccessKey> accessKeys;
-    try {
-      accessKeys = AccessKey.getAll(providerUUID);
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
-    return ApiResponse.success(accessKeys);
+    accessKeys = AccessKey.getAll(providerUUID);
+    return PlatformResults.withData(accessKeys);
   }
 
-  public Result create(UUID customerUUID, UUID providerUUID) {
-    Form<AccessKeyFormData> formData = formFactory.form(AccessKeyFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+  @ApiOperation(
+      nickname = "create_accesskey",
+      value = "Create an access key",
+      response = AccessKey.class)
+  public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
+    Form<AccessKeyFormData> formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class);
 
     UUID regionUUID = formData.get().regionUUID;
-    Region region = Region.get(customerUUID, providerUUID, regionUUID);
-    if (region == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Provider/Region UUID");
-    }
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
     String keyCode = formData.get().keyCode;
     String keyContent = formData.get().keyContent;
     AccessManager.KeyType keyType = formData.get().keyType;
-    String sshUser =  formData.get().sshUser;
-    Integer sshPort =  formData.get().sshPort;
+    String sshUser = formData.get().sshUser;
+    Integer sshPort = formData.get().sshPort;
     boolean airGapInstall = formData.get().airGapInstall;
     boolean skipProvisioning = formData.get().skipProvisioning;
     AccessKey accessKey;
 
     LOG.info(
-      "Creating access key {} for customer {}, provider {}.",
-      keyCode, customerUUID, providerUUID
-    );
+        "Creating access key {} for customer {}, provider {}.",
+        keyCode,
+        customerUUID,
+        providerUUID);
 
     // Check if a public/private key was uploaded as part of the request
-    Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
-    try {
-      if (multiPartBody != null) {
-        Http.MultipartFormData.FilePart filePart = multiPartBody.getFile("keyFile");
-        File uploadedFile = (File) filePart.getFile();
-        if (keyType == null || uploadedFile == null) {
-          return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
-        }
-        accessKey = accessManager.uploadKeyFile(
-            region.uuid, uploadedFile, keyCode, keyType, sshUser, sshPort, airGapInstall,
-            skipProvisioning);
-      } else if (keyContent != null && !keyContent.isEmpty()) {
-        if (keyType == null) {
-          return ApiResponse.error(BAD_REQUEST, "keyType params required.");
-        }
-        // Create temp file and fill with content
-        Path tempFile = Files.createTempFile(keyCode, keyType.getExtension());
-        Files.write(tempFile, keyContent.getBytes());
-
-        // Upload temp file to create the access key and return success/failure
-        accessKey = accessManager.uploadKeyFile(
-            regionUUID, tempFile.toFile(), keyCode, keyType, sshUser, sshPort, airGapInstall,
-            skipProvisioning);
-      } else {
-        accessKey = accessManager.addKey(
-            regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
+    MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
+    if (multiPartBody != null) {
+      FilePart<File> filePart = multiPartBody.getFile("keyFile");
+      File uploadedFile = filePart.getFile();
+      if (keyType == null || uploadedFile == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "keyType and keyFile params required.");
       }
+      accessKey =
+          accessManager.uploadKeyFile(
+              region.uuid,
+              uploadedFile,
+              keyCode,
+              keyType,
+              sshUser,
+              sshPort,
+              airGapInstall,
+              skipProvisioning);
+    } else if (keyContent != null && !keyContent.isEmpty()) {
+      if (keyType == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
+      }
+      // Create temp file and fill with content
+      Path tempFile = Files.createTempFile(keyCode, keyType.getExtension());
+      Files.write(tempFile, keyContent.getBytes());
 
-      // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
-      // and create a preprovision script
-      if (region.provider.code.equals(onprem.name())) {
-        templateManager.createProvisionTemplate(
+      // Upload temp file to create the access key and return success/failure
+      accessKey =
+          accessManager.uploadKeyFile(
+              regionUUID,
+              tempFile.toFile(),
+              keyCode,
+              keyType,
+              sshUser,
+              sshPort,
+              airGapInstall,
+              skipProvisioning);
+    } else {
+      accessKey =
+          accessManager.addKey(regionUUID, keyCode, sshPort, airGapInstall, skipProvisioning);
+    }
+
+    // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
+    // and create a preprovision script
+    if (region.provider.code.equals(onprem.name())) {
+      templateManager.createProvisionTemplate(
           accessKey,
           airGapInstall,
           formData.get().passwordlessSudoAccess,
           formData.get().installNodeExporter,
           formData.get().nodeExporterPort,
-          formData.get().nodeExporterUser
-        );
-      }
-    } catch(RuntimeException | IOException e) {
-      LOG.error(e.getMessage());
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
+          formData.get().nodeExporterUser);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(accessKey);
+    return PlatformResults.withData(accessKey);
   }
 
+  @ApiOperation(
+      nickname = "delete_accesskey",
+      value = "Delete an access key",
+      response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
-    String validationError = validateUUIDs(customerUUID, providerUUID);
-    if (validationError != null) {
-      return ApiResponse.error(BAD_REQUEST, validationError);
-    }
-
-    AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
-    if (accessKey == null) {
-      return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
-    }
-
+    Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
+    AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
     LOG.info(
-      "Deleting access key {} for customer {}, provider {}",
-      keyCode, customerUUID, providerUUID
-    );
+        "Deleting access key {} for customer {}, provider {}", keyCode, customerUUID, providerUUID);
 
-    if (accessKey.delete()) {
-      auditService().createAuditEntry(ctx(), request());
-      return YWResults.YWSuccess.withMessage("Deleted KeyCode: " + keyCode);
-    } else {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete KeyCode: " + keyCode);
-    }
-  }
-
-  private String validateUUIDs(UUID customerUUID, UUID providerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return "Invalid Customer UUID: " + customerUUID;
-    }
-    Provider provider = Provider.find.query().where()
-        .eq("customer_uuid", customerUUID)
-        .idEq(providerUUID).findOne();
-    if (provider == null) {
-      return "Invalid Provider UUID: " + providerUUID;
-    }
-    return null;
+    accessKey.deleteOrThrow();
+    auditService().createAuditEntry(ctx(), request());
+    return withMessage("Deleted KeyCode: " + keyCode);
   }
 }

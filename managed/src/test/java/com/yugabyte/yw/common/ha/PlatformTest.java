@@ -10,6 +10,17 @@
 
 package com.yugabyte.yw.common.ha;
 
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static junit.framework.TestCase.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+import static play.libs.Files.singletonTemporaryFileCreator;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,6 +35,19 @@ import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
 import io.ebean.Ebean;
 import io.ebean.EbeanServer;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -38,29 +62,6 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.net.URL;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static junit.framework.TestCase.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.when;
-import static play.libs.Files.singletonTemporaryFileCreator;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.fakeRequest;
-
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class PlatformTest extends FakeDBApplication {
   Customer customer;
@@ -73,8 +74,7 @@ public class PlatformTest extends FakeDBApplication {
   Path replicationDir;
   UUID localConfigUUID;
 
-  @Rule
-  public TemporaryFolder remoteStorage = new TemporaryFolder();
+  @Rule public TemporaryFolder remoteStorage = new TemporaryFolder();
 
   private static final String LOCAL_ACME_ORG = "http://local.acme.org";
   private static final String REMOTE_ACME_ORG = "http://remote.acme.org";
@@ -89,18 +89,17 @@ public class PlatformTest extends FakeDBApplication {
     fakeApi = new FakeApi(app, localEBeanServer);
     clusterKey = createClusterKey();
     localConfigUUID = createHAConfig(fakeApi, clusterKey);
-    localInstance = createPlatformInstance(
-      localConfigUUID, LOCAL_ACME_ORG, true, true);
-    remoteInstance = createPlatformInstance(
-      localConfigUUID, REMOTE_ACME_ORG, false, false);
-    backupDir = Paths.get(app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
-      PlatformReplicationHelper.BACKUP_DIR);
+    localInstance = createPlatformInstance(localConfigUUID, LOCAL_ACME_ORG, true, true);
+    remoteInstance = createPlatformInstance(localConfigUUID, REMOTE_ACME_ORG, false, false);
+    backupDir =
+        Paths.get(
+            app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
+            PlatformReplicationHelper.BACKUP_DIR);
   }
 
   @After
   public void tearDown() throws IOException {
-    Util.listFiles(backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN)
-      .forEach(File::delete);
+    Util.listFiles(backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN).forEach(File::delete);
     backupDir.toFile().delete();
     stopRemoteApp();
   }
@@ -108,15 +107,20 @@ public class PlatformTest extends FakeDBApplication {
   // call start in test method instead of setup so that we can test cases where remote app
   // is not running
   FakeApi startRemoteApp() {
-    remoteApp = provideApplication(
-      ImmutableMap.of("play.allowGlobalApplication", false,
-        PlatformReplicationHelper.STORAGE_PATH_KEY, remoteStorage.getRoot().getAbsolutePath()));
+    remoteApp =
+        provideApplication(
+            ImmutableMap.of(
+                "play.allowGlobalApplication",
+                false,
+                PlatformReplicationHelper.STORAGE_PATH_KEY,
+                remoteStorage.getRoot().getAbsolutePath()));
     Helpers.start(remoteApp);
     mat = remoteApp.getWrappedApplication().materializer();
     EbeanServer remoteEBenServer = Ebean.getDefaultServer();
     replicationDir =
-      Paths.get(remoteApp.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
-        PlatformReplicationHelper.REPLICATION_DIR);
+        Paths.get(
+            remoteApp.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY),
+            PlatformReplicationHelper.REPLICATION_DIR);
     return new FakeApi(remoteApp, remoteEBenServer);
   }
 
@@ -134,20 +138,21 @@ public class PlatformTest extends FakeDBApplication {
     setupProxyingApiHelper(remoteFakeApi);
     File fakeDump = createFakeDump();
     PlatformReplicationManager replicationManager =
-      app.injector().instanceOf(PlatformReplicationManager.class);
+        app.injector().instanceOf(PlatformReplicationManager.class);
 
     Ebean.register(localEBeanServer, true);
-    assertTrue("sendBackup failed",
-      replicationManager.sendBackup(remoteInstance));
+    assertTrue("sendBackup failed", replicationManager.sendBackup(remoteInstance));
 
     assertTrue(fakeDump.exists());
     assertUploadContents(fakeDump);
 
-    Result listResult = remoteFakeApi
-      .doRequest("GET",
-        "/api/settings/ha/config/"
-          + remoteConfigUUID
-          + "/backup/list?leader=" + localInstance.getAddress());
+    Result listResult =
+        remoteFakeApi.doRequest(
+            "GET",
+            "/api/settings/ha/config/"
+                + remoteConfigUUID
+                + "/backup/list?leader="
+                + localInstance.getAddress());
     JsonNode jsonNode = Json.parse(contentAsString(listResult));
     assertEquals(1, jsonNode.size());
     assertEquals(fakeDump.getName(), jsonNode.get(0).asText());
@@ -155,11 +160,13 @@ public class PlatformTest extends FakeDBApplication {
 
   private void assertUploadContents(File backupFile) throws IOException {
     String storagePath = remoteApp.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
-    File uploadedFile = Paths.get(storagePath,
-      PlatformReplicationHelper.REPLICATION_DIR,
-      new URL(localInstance.getAddress()).getHost(),
-      backupFile.getName()
-    ).toFile();
+    File uploadedFile =
+        Paths.get(
+                storagePath,
+                PlatformReplicationHelper.REPLICATION_DIR,
+                new URL(localInstance.getAddress()).getHost(),
+                backupFile.getName())
+            .toFile();
     assertTrue(uploadedFile.exists());
     String uploadedContents = FileUtils.readFileToString(uploadedFile, Charset.defaultCharset());
     assertTrue(FileUtils.contentEquals(backupFile, uploadedFile));
@@ -178,16 +185,16 @@ public class PlatformTest extends FakeDBApplication {
     return file;
   }
 
-  private PlatformInstance createPlatformInstance(UUID configUUID, String remoteAcmeOrg,
-                                                  boolean isLocal, boolean isLeader) {
+  private PlatformInstance createPlatformInstance(
+      UUID configUUID, String remoteAcmeOrg, boolean isLocal, boolean isLeader) {
     String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString() + "/instance";
-    JsonNode body = Json.newObject()
-      .put("address", remoteAcmeOrg)
-      .put("is_local", isLocal)
-      .put("is_leader", isLeader);
-    Result createResult = fakeApi
-      .doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
+    JsonNode body =
+        Json.newObject()
+            .put("address", remoteAcmeOrg)
+            .put("is_local", isLocal)
+            .put("is_leader", isLeader);
+    Result createResult = fakeApi.doRequestWithAuthTokenAndBody("POST", uri, authToken, body);
     assertOk(createResult);
     JsonNode instanceJson = Json.parse(contentAsString(createResult));
     UUID instanceUUID = UUID.fromString(instanceJson.get("uuid").asText());
@@ -195,8 +202,7 @@ public class PlatformTest extends FakeDBApplication {
   }
 
   private String createClusterKey() {
-    Result createClusterKeyResult = fakeApi
-      .doRequest("GET", "/api/settings/ha/generate_key");
+    Result createClusterKeyResult = fakeApi.doRequest("GET", "/api/settings/ha/generate_key");
     assertOk(createClusterKeyResult);
 
     return Json.parse(contentAsString(createClusterKeyResult)).get("cluster_key").asText();
@@ -213,38 +219,34 @@ public class PlatformTest extends FakeDBApplication {
 
   private void setupProxyingApiHelper(FakeApi remoteFakeApi) {
     when(mockApiHelper.multipartRequest(anyString(), anyMap(), anyList()))
-      .thenAnswer(invocation -> {
-        String url = invocation.getArgument(0);
-        Map<String, String> headers = invocation.getArgument(1);
-        List<Http.MultipartFormData.Part<Source<ByteString, ?>>> parts =
-          invocation.getArgument(2);
-        Result result = sendBackupSyncRequest(remoteFakeApi, url, headers, parts);
-        String strResult = Helpers.contentAsString(result);
-        try {
-          return new ObjectMapper().readTree(strResult);
-        } catch (IOException ioException) {
-          throw new RuntimeException(strResult);
-        }
-      });
+        .thenAnswer(
+            invocation -> {
+              String url = invocation.getArgument(0);
+              Map<String, String> headers = invocation.getArgument(1);
+              List<Http.MultipartFormData.Part<Source<ByteString, ?>>> parts =
+                  invocation.getArgument(2);
+              Result result = sendBackupSyncRequest(remoteFakeApi, url, headers, parts);
+              String strResult = Helpers.contentAsString(result);
+              try {
+                return new ObjectMapper().readTree(strResult);
+              } catch (IOException ioException) {
+                throw new RuntimeException(strResult);
+              }
+            });
   }
 
   private Result sendBackupSyncRequest(
-    FakeApi remoteFakeApi,
-    String uri,
-    Map<String, String> headers,
-    List<Http.MultipartFormData.Part<Source<ByteString, ?>>> parts) {
+      FakeApi remoteFakeApi,
+      String uri,
+      Map<String, String> headers,
+      List<Http.MultipartFormData.Part<Source<ByteString, ?>>> parts) {
     if (!uri.contains(REMOTE_ACME_ORG)) {
       throw new RuntimeException(uri);
     }
     uri = uri.replaceFirst(".*" + REMOTE_ACME_ORG, "");
-    Http.RequestBuilder requestBuilder = fakeRequest()
-      .method("POST")
-      .uri(uri);
+    Http.RequestBuilder requestBuilder = fakeRequest().method("POST").uri(uri);
     headers.forEach(requestBuilder::header);
-    requestBuilder
-      .bodyMultipart(parts,
-        singletonTemporaryFileCreator(),
-        mat);
+    requestBuilder.bodyMultipart(parts, singletonTemporaryFileCreator(), mat);
     return remoteFakeApi.route(requestBuilder);
   }
 }

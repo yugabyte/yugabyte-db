@@ -1,7 +1,7 @@
 ---
 title: Prometheus Integration
 headerTitle: Prometheus Integration
-linkTitle: Prometheus Integration 
+linkTitle: Prometheus Integration
 description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   stable:
@@ -44,32 +44,49 @@ showAsideToc: true
 -->
 </ul>
 
-You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../reference/configuration/default-ports/#prometheus-monitoring).
+You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-This tutorial uses the [yb-docker-ctl](../../../admin/yb-docker-ctl) local cluster management utility.
-
-## Prerequisite
-
-Install a local YugabyteDB universe on Docker using the steps below.
-
-```sh
-mkdir ~/yugabyte && cd ~/yugabyte
-wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/bin/yb-docker-ctl && chmod +x yb-docker-ctl
-docker pull yugabytedb/yugabyte
-```
+This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted) local cluster management utility.
 
 ## 1. Create universe
-
-If you have a previously running local universe, destroy it using the following.
-
-```sh
-$ ./yb-docker-ctl destroy
-```
 
 Start a new local universe with replication factor of `3`.
 
 ```sh
-$ ./yb-docker-ctl create  --rf 3
+$ docker network create -d bridge yb-net
+```
+
+```sh
+$ docker run -d --name yugabyte-node1 \
+  --network yb-net \
+  -p 127.0.0.1:7000:7000 \
+  -p 127.0.0.1:9000:9000 \
+  -p 127.0.0.1:5433:5433 \
+  -p 127.0.0.1:9042:9042 \
+  -p 127.0.0.1:6379:6379 \
+  yugabytedb/yugabyte:latest bin/yugabyted start --daemon=false --listen=yugabyte-node1 --tserver_flags="start_redis_proxy=true"
+```
+
+```sh
+$ docker run -d --name yugabyte-node2 \
+  --network yb-net \
+  -p 127.0.0.2:7000:7000 \
+  -p 127.0.0.2:9000:9000 \
+  -p 127.0.0.2:5433:5433 \
+  -p 127.0.0.2:9042:9042 \
+  -p 127.0.0.2:6379:6379 \
+  yugabytedb/yugabyte:latest bin/yugabyted start --daemon=false --listen=yugabyte-node2 --join=yugabyte-node1 --tserver_flags="start_redis_proxy=true"
+```
+
+```sh
+$ docker run -d --name yugabyte-node3 \
+  --network yb-net \
+  -p 127.0.0.3:7000:7000 \
+  -p 127.0.0.3:9000:9000 \
+  -p 127.0.0.3:5433:5433 \
+  -p 127.0.0.3:9042:9042 \
+  -p 127.0.0.3:6379:6379 \
+  yugabytedb/yugabyte:latest bin/yugabyted start --daemon=false --listen=yugabyte-node3 --join=yugabyte-node1 --tserver_flags="start_redis_proxy=true"
 ```
 
 ## 2. Run the YugabyteDB workload generator
@@ -85,7 +102,7 @@ Run the `CassandraKeyValue` workload application in a separate shell.
 ```sh
 $ docker run --name yb-sample-apps --hostname yb-sample-apps --net yb-net yugabytedb/yb-sample-apps \
     --workload CassandraKeyValue \
-    --nodes yb-tserver-n1:9042 \
+    --nodes yugabyte-node1:9042 \
     --num_threads_write 1 \
     --num_threads_read 4
 ```
@@ -132,23 +149,23 @@ scrape_configs:
         replacement: "rpc_latency$4"
 
     static_configs:
-      - targets: ["yb-master-n1:7000", "yb-master-n2:7000", "yb-master-n3:7000"]
+      - targets: ["yugabyte-node1:7000", "yugabyte-node2:7000", "yugabyte-node3:7000"]
         labels:
           export_type: "master_export"
 
-      - targets: ["yb-tserver-n1:9000", "yb-tserver-n2:9000", "yb-tserver-n3:9000"]
+      - targets: ["yugabyte-node1:9000", "yugabyte-node2:9000", "yugabyte-node3:9000"]
         labels:
           export_type: "tserver_export"
 
-      - targets: ["yb-tserver-n1:12000", "yb-tserver-n2:12000", "yb-tserver-n3:12000"]
+      - targets: ["yugabyte-node1:12000", "yugabyte-node2:12000", "yugabyte-node3:12000"]
         labels:
           export_type: "cql_export"
 
-      - targets: ["yb-tserver-n1:13000", "yb-tserver-n2:13000", "yb-tserver-n3:13000"]
+      - targets: ["yugabyte-node1:13000", "yugabyte-node2:13000", "yugabyte-node3:13000"]
         labels:
           export_type: "ysql_export"
 
-      - targets: ["yb-tserver-n1:11000", "yb-tserver-n2:11000", "yb-tserver-n3:11000"]
+      - targets: ["yugabyte-node1:11000", "yugabyte-node2:11000", "yugabyte-node3:11000"]
         labels:
           export_type: "redis_export"
 ```
@@ -165,7 +182,7 @@ $ docker run \
     prom/prometheus
 ```
 
-Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets page under Status.
+Open the Prometheus UI at <http://localhost:9090> and then navigate to the Targets page under Status.
 
 ![Prometheus Targets](/images/ce/prom-targets-docker.png)
 
@@ -185,7 +202,7 @@ sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
->  Write IOPS
+> Write IOPS
 
 ```sh
 sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
@@ -218,8 +235,11 @@ avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
-$ ./yb-docker-ctl destroy
+$ docker stop yugabyte-node1 yugabyte-node2 yugabyte-node3
+$ docker rm yugabyte-node1 yugabyte-node2 yugabyte-node3
+$ docker network remove yb-net
 ```
 
 ## What's next?
+
 You can [setup Grafana](https://prometheus.io/docs/visualization/grafana/) and import the [YugabyteDB dashboard](https://grafana.com/grafana/dashboards/12620 "YugabyteDB dashboard on grafana.com") for better visualization of the metrics being collected by Prometheus.

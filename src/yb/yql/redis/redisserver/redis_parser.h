@@ -18,15 +18,13 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include "yb/client/async_rpc.h"
-#include "yb/client/callbacks.h"
-#include "yb/client/client_builder-internal.h"
+#include "yb/client/client_fwd.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/size_literals.h"
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
-
-#include "yb/util/slice.h"
-#include "yb/util/status.h"
-#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace redisserver {
@@ -48,10 +46,7 @@ class RedisParser {
       : source_(source), full_size_(IoVecsFullSize(source)) {
   }
 
-  void SetArgs(boost::container::small_vector_base<Slice>* args) {
-    DCHECK_EQ(source_.size(), 1);
-    args_ = args;
-  }
+  void SetArgs(boost::container::small_vector_base<Slice>* args);
 
   // Begin of input is going to be consumed, so we should adjust our pointers.
   // Since the beginning of input is being consumed by shifting the remaining bytes to the

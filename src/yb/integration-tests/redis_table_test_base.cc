@@ -20,10 +20,13 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/redis_protocol.pb.h"
+
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/util/monotime.h"
+
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
 using std::string;
@@ -80,7 +83,7 @@ void RedisTableTestBase::PutKeyValueWithTtlNoFlush(string key, string value, int
   auto set_op = std::make_shared<YBRedisWriteOp>(table_->shared_from_this());
   ASSERT_OK(ParseSet(set_op.get(),
       SlicesFromString({"set", key, value, "PX", std::to_string(ttl_msec)})));
-  ASSERT_OK(session_->Apply(set_op));
+  session_->Apply(set_op);
 }
 
 void RedisTableTestBase::GetKeyValue(

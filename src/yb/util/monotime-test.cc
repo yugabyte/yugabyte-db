@@ -30,13 +30,8 @@
 // under the License.
 //
 
-#include "yb/util/monotime.h"
-
-#include <sys/time.h>
-#include <unistd.h>
-
 #include <condition_variable>
-#include <thread>
+#include <mutex>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>

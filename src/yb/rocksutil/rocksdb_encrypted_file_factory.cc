@@ -14,13 +14,11 @@
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/util/cipher_stream.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/encrypted_file.h"
 #include "yb/util/encryption_util.h"
 
 namespace yb {
-namespace enterprise {
 
 // An encrypted file implementation for sequential reads.
 class EncryptedSequentialFile : public SequentialFileWrapper {
@@ -33,9 +31,8 @@ class EncryptedSequentialFile : public SequentialFileWrapper {
     std::unique_ptr<BlockAccessCipherStream> stream;
     uint32_t header_size;
 
-    auto res = GetEncryptionInfoFromFile<uint8_t>(
-        header_manager, underlying_ra.get(), &stream, &header_size);
-    bool file_encrypted = VERIFY_RESULT(res);
+    const auto file_encrypted = VERIFY_RESULT(GetEncryptionInfoFromFile<uint8_t>(
+        header_manager, underlying_ra.get(), &stream, &header_size));
     if (!file_encrypted) {
       *result = std::move(underlying_seq);
       return Status::OK();
@@ -106,7 +103,7 @@ class RocksDBEncryptedWritableFile : public rocksdb::WritableFileWrapper {
   }
 
  private:
-  std::unique_ptr<yb::enterprise::BlockAccessCipherStream> stream_;
+  std::unique_ptr<yb::BlockAccessCipherStream> stream_;
   uint32_t header_size_;
 };
 
@@ -182,6 +179,4 @@ std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(
   return encrypted_env;
 }
 
-
-} // namespace enterprise
 } // namespace yb

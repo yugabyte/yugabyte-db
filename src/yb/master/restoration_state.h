@@ -14,6 +14,7 @@
 #ifndef YB_MASTER_RESTORATION_STATE_H
 #define YB_MASTER_RESTORATION_STATE_H
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/master/state_with_tablets.h"
@@ -35,6 +36,14 @@ class RestorationState : public StateWithTablets {
     return snapshot_id_;
   }
 
+  HybridTime complete_time() const {
+    return complete_time_;
+  }
+
+  void set_complete_time(HybridTime value) {
+    complete_time_ = value;
+  }
+
   CHECKED_STATUS ToPB(RestorationInfoPB* out);
 
   TabletInfos PrepareOperations();
@@ -42,8 +51,9 @@ class RestorationState : public StateWithTablets {
  private:
   bool IsTerminalFailure(const Status& status) override;
 
-  TxnSnapshotRestorationId restoration_id_;
-  TxnSnapshotId snapshot_id_;
+  const TxnSnapshotRestorationId restoration_id_;
+  const TxnSnapshotId snapshot_id_;
+  HybridTime complete_time_;
 };
 
 } // namespace master

@@ -14,12 +14,23 @@
 #ifndef YB_RPC_OUTBOUND_DATA_H
 #define YB_RPC_OUTBOUND_DATA_H
 
+#include <float.h>
+#include <stdint.h>
+
+#include <chrono>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <type_traits>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/mpl/and.hpp>
 
+#include "yb/util/format.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/tostring.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 
@@ -86,6 +97,42 @@ class StringOutboundData : public OutboundData {
  private:
   RefCntBuffer buffer_;
   std::string name_;
+};
+
+// OutboundData wrapper, that is used for altered streams, where we modify the data that should be
+// sent. Examples could be that we encrypt or compress it.
+// This wrapper would contain modified data and reference to original data, that will be used
+// for notifications.
+class SingleBufferOutboundData : public OutboundData {
+ public:
+  SingleBufferOutboundData(RefCntBuffer buffer, OutboundDataPtr lower_data)
+      : buffer_(std::move(buffer)), lower_data_(std::move(lower_data)) {}
+
+  void Transferred(const Status& status, Connection* conn) override {
+    if (lower_data_) {
+      lower_data_->Transferred(status, conn);
+    }
+  }
+
+  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override {
+    return false;
+  }
+
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override {
+    output->push_back(std::move(buffer_));
+  }
+
+  std::string ToString() const override {
+    return Format("SingleBuffer[$0]", lower_data_);
+  }
+
+  size_t ObjectSize() const override { return sizeof(*this); }
+
+  size_t DynamicMemoryUsage() const override { return DynamicMemoryUsageOf(buffer_, lower_data_); }
+
+ private:
+  RefCntBuffer buffer_;
+  OutboundDataPtr lower_data_;
 };
 
 }  // namespace rpc

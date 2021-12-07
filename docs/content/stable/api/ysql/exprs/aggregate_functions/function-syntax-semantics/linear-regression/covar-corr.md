@@ -20,7 +20,7 @@ Make sure that you have read the [Functions for linear regression analysis](../.
 
 ## covar_pop(), covar_samp()
 
-**Purpose:** Returns the so-called covariance, either taking the available values to be the _entire population_ or taking them to be a _sample_ of the population. This distinction is explained in the section [`variance()`, `var_pop()`, `var_samp()`, `stddev()`, `stddev_pop()`, `stddev_samp()`](../variance-stddev/).
+**Purpose:** Returns the so-called covariance, either taking the available values to be the _entire population_ or taking them to be a _sample_ of the population. This distinction is explained in the section [`variance()`, `var_pop()`, `var_samp()`, `stddev()`, `stddev_pop()`, `stddev_samp()`](../../variance-stddev/).
 
 These measures are explained in the Wikipedia article [Covariance](https://en.wikipedia.org/wiki/Covariance#Definition). It says this (bolding added in the present documentation):
 

@@ -10,8 +10,14 @@
 
 package com.yugabyte.yw.common.config.impl;
 
-import com.typesafe.config.*;
-
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigList;
+import com.typesafe.config.ConfigMemorySize;
+import com.typesafe.config.ConfigMergeable;
+import com.typesafe.config.ConfigObject;
+import com.typesafe.config.ConfigOrigin;
+import com.typesafe.config.ConfigResolveOptions;
+import com.typesafe.config.ConfigValue;
 import java.time.Duration;
 import java.time.Period;
 import java.time.temporal.TemporalAmount;
@@ -22,28 +28,27 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * DelegatingConfig that delegates to another config instance for some methods and
- * throws UnsupportedOperationException on other methods.
- * <p>
- * We are having to resort to laborious delegation as all of typesafe config implementation
- * classes are `final` and package private.
- * Ideally we would get away with overriding just couple of core methods in `SimpleConfig`
- * <p>
- * Interface implementations are also discouraged. But if the Config interface changes we
- * will already have work to be done. Also it seems highly unlikely that it will change in
- * major way. Finally, what we are doing here is dumb delegation and will be easy to change for
- * any new changes to the Config interface.
- * <p>
- * We only want to expose ability to use `get*(path)` methods that do not expose underlying
- * ConfigObject or its components.
- * Probably many of these operations can be made to work fine but we do not want to incur
- * testing overhead. Also we do not want to expose methods where config is mutated (with copy)
- * through `with*` methods or expose config components that can be mutated similarly.
- * This is because we will be providing separate mutate method that will also persist the
+ * DelegatingConfig that delegates to another config instance for some methods and throws
+ * UnsupportedOperationException on other methods.
+ *
+ * <p>We are having to resort to laborious delegation as all of typesafe config implementation
+ * classes are `final` and package private. Ideally we would get away with overriding just couple of
+ * core methods in `SimpleConfig`
+ *
+ * <p>Interface implementations are also discouraged. But if the Config interface changes we will
+ * already have work to be done. Also it seems highly unlikely that it will change in major way.
+ * Finally, what we are doing here is dumb delegation and will be easy to change for any new changes
+ * to the Config interface.
+ *
+ * <p>We only want to expose ability to use `get*(path)` methods that do not expose underlying
+ * ConfigObject or its components. Probably many of these operations can be made to work fine but we
+ * do not want to incur testing overhead. Also we do not want to expose methods where config is
+ * mutated (with copy) through `with*` methods or expose config components that can be mutated
+ * similarly. This is because we will be providing separate mutate method that will also persist the
  * config change so do not want any other mutation-with-copy mechanism's exposed.
- * <p>
- * Unsupported methods are also marked @Deprecated so that IDE finds it easy to tell
- * whats supported and whats not.
+ *
+ * <p>Unsupported methods are also marked @Deprecated so that IDE finds it easy to tell whats
+ * supported and whats not.
  */
 public class DelegatingConfig implements Config {
   final AtomicReference<Config> delegate;
@@ -105,7 +110,6 @@ public class DelegatingConfig implements Config {
   public Config resolveWith(Config source, ConfigResolveOptions options) {
     throw new UnsupportedOperationException();
   }
-
 
   @Deprecated
   @Override

@@ -7,7 +7,9 @@ import {
   fetchUniverseInfoResponse,
   resetUniverseInfo,
   getHealthCheck,
-  getHealthCheckResponse
+  getHealthCheckResponse,
+  updateBackupState,
+  updateBackupStateResponse
 } from '../../../actions/universe';
 import {
   fetchCustomerTasks,
@@ -27,6 +29,7 @@ import {
 } from '../../../actions/tables';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -78,6 +81,26 @@ const mapDispatchToProps = (dispatch) => {
     },
     showRollingRestartModal: () => {
       dispatch(openDialog('rollingRestart'));
+    },
+    showUpgradeSystemdModal: () => {
+      dispatch(openDialog('systemdUpgrade'));
+    },
+    showToggleBackupModal: () => {
+      dispatch(openDialog('toggleBackupModalForm'));
+    },
+    updateBackupState: (universeUUID, flag) => {
+      dispatch(updateBackupState(universeUUID, flag)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully Enabled the backups.');
+        }
+        dispatch(updateBackupStateResponse(response.payload));
+        dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+          dispatch(fetchUniverseInfoResponse(response.payload));
+        });
+      });
     },
     closeModal: () => {
       dispatch(closeDialog());
@@ -168,7 +191,8 @@ function mapStateToProps(state, ownProps) {
     modal: state.modal,
     providers: state.cloud.providers,
     updateAvailable: isUpdateAvailable(state),
-    featureFlags: state.featureFlags
+    featureFlags: state.featureFlags,
+    accessKeys: state.cloud.accessKeys
   };
 }
 

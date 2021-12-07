@@ -14,6 +14,9 @@
 #ifndef YB_TABLET_CLEANUP_ABORTS_TASK_H
 #define YB_TABLET_CLEANUP_ABORTS_TASK_H
 
+#include <condition_variable>
+#include <mutex>
+
 #include "yb/rpc/strand.h"
 
 #include "yb/common/transaction.h"

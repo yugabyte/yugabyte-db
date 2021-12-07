@@ -8,35 +8,29 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-
 package com.yugabyte.yw.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
+import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.PriceComponent.PriceDetails;
-import play.libs.Json;
-import play.mvc.Result;
-
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import play.libs.Json;
 
 @Singleton
 public class AZUInitializer extends AbstractInitializer {
 
-  private void storeInstancePriceComponents(InitializationContext context,
-                                            String instanceTypeCode,
-                                            JsonNode instanceTypeToDetailsMap) {
+  private void storeInstancePriceComponents(
+      InitializationContext context, String instanceTypeCode, JsonNode instanceTypeToDetailsMap) {
     JsonNode regionToPriceMap = instanceTypeToDetailsMap.get("prices");
     String now = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
 
@@ -56,58 +50,42 @@ public class AZUInitializer extends AbstractInitializer {
     }
   }
 
-   /**
+  /**
    * Entry point to initialize AZU. This will create the various InstanceTypes and their
    * corresponding PriceComponents per Region for AZU.
    *
    * @param customerUUID UUID of the Customer.
    * @param providerUUID UUID of the Customer's configured AZU.
-   * @return A response result that can be returned to the user to indicate success/failure.
    */
   @Override
-  public Result initialize(UUID customerUUID, UUID providerUUID) {
-    try {
-      // Validate input
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-      }
-      Provider provider = Provider.get(customerUUID, providerUUID);
-      if (provider == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-      }
-      InitializationContext context = new InitializationContext(provider);
+  public void initialize(UUID customerUUID, UUID providerUUID) {
+    // Validate input
+    Customer.getOrBadRequest(customerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    InitializationContext context = new InitializationContext(provider);
 
-      List<Region> regionList = Region.fetchValidRegions(customerUUID, providerUUID, 0);
-      Common.CloudType cloudType = Common.CloudType.valueOf(provider.code);
+    List<Region> regionList = Region.fetchValidRegions(customerUUID, providerUUID, 0);
 
-      JsonNode instanceTypes = cloudQueryHelper.getInstanceTypes(
-        regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
+    JsonNode instanceTypes =
+        cloudQueryHelper.getInstanceTypes(
+            regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
 
-      Iterator<String> itr = instanceTypes.fieldNames();
+    Iterator<String> itr = instanceTypes.fieldNames();
 
-      while(itr.hasNext()) {
+    while (itr.hasNext()) {
 
-        String instanceTypeCode = itr.next();
-        JsonNode instanceTypeToDetailsMap = instanceTypes.get(instanceTypeCode);
+      String instanceTypeCode = itr.next();
+      JsonNode instanceTypeToDetailsMap = instanceTypes.get(instanceTypeCode);
 
-        InstanceTypeDetails instanceTypeDetails = InstanceTypeDetails.createAZUDefault();
+      InstanceTypeDetails instanceTypeDetails = InstanceTypeDetails.createAZUDefault();
 
-        InstanceType.upsert(provider.uuid,
-                            instanceTypeCode,
-                            instanceTypeToDetailsMap.get("numCores").asInt(),
-                            instanceTypeToDetailsMap.get("memSizeGb").asDouble(),
-                            instanceTypeDetails
-        );
-        storeInstancePriceComponents(context, instanceTypeCode, instanceTypeToDetailsMap);
-      }
+      InstanceType.upsert(
+          provider.uuid,
+          instanceTypeCode,
+          instanceTypeToDetailsMap.get("numCores").asInt(),
+          instanceTypeToDetailsMap.get("memSizeGb").asDouble(),
+          instanceTypeDetails);
+      storeInstancePriceComponents(context, instanceTypeCode, instanceTypeToDetailsMap);
     }
-    catch (Exception e) {
-      LOG.error("Azure Initialize failed", e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
-
-    return YWResults.YWSuccess.withMessage("Azure Initialized");
-
   }
 }

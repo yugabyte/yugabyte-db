@@ -15,11 +15,16 @@
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
+
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
 namespace yb {
 namespace master {
@@ -35,15 +40,22 @@ SnapshotScheduleState::SnapshotScheduleState(
     : context_(*context), id_(id), options_(options) {
 }
 
-Status SnapshotScheduleState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
-  auto encoded_key = VERIFY_RESULT(EncodedKey(
-      SysRowEntry::SNAPSHOT_SCHEDULE, id_.AsSlice(), &context_));
+Result<docdb::KeyBytes> SnapshotScheduleState::EncodedKey(
+    const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context) {
+  return master::EncodedKey(SysRowEntryType::SNAPSHOT_SCHEDULE, schedule_id.AsSlice(), context);
+}
+
+Result<docdb::KeyBytes> SnapshotScheduleState::EncodedKey() const {
+  return EncodedKey(id_, &context_);
+}
+
+Status SnapshotScheduleState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) const {
+  auto encoded_key = VERIFY_RESULT(EncodedKey());
   auto pair = out->add_write_pairs();
   pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
-  faststring value;
-  value.push_back(docdb::ValueTypeAsChar::kString);
-  pb_util::AppendToString(options_, &value);
-  pair->set_value(value.data(), value.size());
+  auto* value = pair->mutable_value();
+  value->push_back(docdb::ValueTypeAsChar::kString);
+  pb_util::AppendPartialToString(options_, value);
   return Status::OK();
 }
 
@@ -57,10 +69,34 @@ std::string SnapshotScheduleState::ToString() const {
   return YB_CLASS_TO_STRING(id, options);
 }
 
+bool SnapshotScheduleState::deleted() const {
+  return HybridTime::FromPB(options_.delete_time()).is_valid();
+}
+
 void SnapshotScheduleState::PrepareOperations(
     HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations) {
-  if (creating_snapshot_id_ ||
-      (last_snapshot_time && last_snapshot_time.AddSeconds(options_.interval_sec()) > now)) {
+  if (creating_snapshot_id_) {
+    return;
+  }
+  auto delete_time = HybridTime::FromPB(options_.delete_time());
+  if (delete_time) {
+    // Check whether we are ready to cleanup deleted schedule.
+    if (now > delete_time.AddMilliseconds(FLAGS_snapshot_coordinator_cleanup_delay_ms) &&
+        !CleanupTracker().Started()) {
+      LOG_WITH_PREFIX(INFO) << "Snapshot Schedule " << id() << " cleanup started.";
+      if (!CleanupTracker().Start().ok()) {
+        LOG(DFATAL) << "Snapshot Schedule " << id() << " cleanup was already started previously.";
+      }
+      operations->push_back(SnapshotScheduleOperation {
+        .type = SnapshotScheduleOperationType::kCleanup,
+        .schedule_id = id_,
+        .snapshot_id = TxnSnapshotId::Nil(),
+      });
+    }
+    return;
+  }
+  if (last_snapshot_time && last_snapshot_time.AddSeconds(options_.interval_sec()) > now) {
+    // Time from the last snapshot did not passed yet.
     return;
   }
   operations->push_back(MakeCreateSnapshotOperation(last_snapshot_time));
@@ -69,10 +105,12 @@ void SnapshotScheduleState::PrepareOperations(
 SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
     HybridTime last_snapshot_time) {
   creating_snapshot_id_ = TxnSnapshotId::GenerateRandom();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << creating_snapshot_id_;
   return SnapshotScheduleOperation {
+    .type = SnapshotScheduleOperationType::kCreateSnapshot,
     .schedule_id = id_,
-    .filter = options_.filter(),
     .snapshot_id = creating_snapshot_id_,
+    .filter = options_.filter(),
     .previous_snapshot_hybrid_time = last_snapshot_time,
   };
 }
@@ -93,6 +131,10 @@ void SnapshotScheduleState::SnapshotFinished(
     return;
   }
   creating_snapshot_id_ = TxnSnapshotId::Nil();
+}
+
+std::string SnapshotScheduleState::LogPrefix() const {
+  return Format("$0: ", id_);
 }
 
 } // namespace master

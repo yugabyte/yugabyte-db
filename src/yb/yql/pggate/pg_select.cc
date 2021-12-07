@@ -14,9 +14,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_select.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
+
 #include "yb/client/yb_op.h"
-#include "yb/docdb/primitive_value.h"
+
+#include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb {
 namespace pggate {
@@ -37,10 +39,10 @@ PgSelect::~PgSelect() {
 Status PgSelect::Prepare() {
   // Prepare target and bind descriptors.
   if (!prepare_params_.use_secondary_index) {
-    target_desc_ = bind_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
+    target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
   } else {
-    target_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
-    bind_desc_ = nullptr;
+    target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
+    bind_ = PgTable(nullptr);
 
     // Create secondary index query.
     secondary_index_query_ =
@@ -48,9 +50,9 @@ Status PgSelect::Prepare() {
   }
 
   // Allocate READ requests to send to DocDB.
-  auto read_op = target_desc_->NewPgsqlSelect();
+  auto read_op = target_->NewPgsqlSelect();
   read_req_ = read_op->mutable_request();
-  auto doc_op = make_shared<PgDocReadOp>(pg_session_, target_desc_, std::move(read_op));
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
   // Prepare the index selection if this operation is using the index.
   RETURN_NOT_OK(PrepareSecondaryIndex());

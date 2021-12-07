@@ -15,7 +15,12 @@
 
 #include "yb/yql/cql/ql/statement.h"
 
+#include "yb/util/result.h"
+
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
@@ -85,9 +90,8 @@ Result<const ParseTree&> Statement::GetParseTree() const {
 
 Status Statement::ExecuteAsync(QLProcessor* processor, const StatementParameters& params,
                                StatementExecutedCallback cb) const {
-  const Result<const ParseTree&> parse_tree = GetParseTree();
-  RETURN_NOT_OK(parse_tree);
-  processor->ExecuteAsync(*parse_tree, params, std::move(cb));
+  const ParseTree& parse_tree = VERIFY_RESULT(GetParseTree());
+  processor->ExecuteAsync(parse_tree, params, std::move(cb));
   return Status::OK();
 }
 

@@ -19,28 +19,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/install/macos" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/install/linux" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/install/docker" class="nav-link">
+    <a href="../docker/" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/install/kubernetes" class="nav-link active">
+    <a href="../kubernetes/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -52,13 +52,13 @@ showAsideToc: true
 
 - [Minikube](https://github.com/kubernetes/minikube) is installed on your localhost machine.
 
-    The Kubernetes version used by Minikube should be v1.13.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
+    The Kubernetes version used by Minikube should be v1.18.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
 
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/) is installed.
 
     To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
 
-- [Helm 3+](https://helm.sh/) is installed. If you have Helm 2 then make sure you have Tiller installed on the Kubernetes cluster and thereafter change the helm commands accordingly.
+- [Helm 3.4 or later](https://helm.sh/) is installed.
 
     To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
 
@@ -70,7 +70,7 @@ showAsideToc: true
     $ minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
     ```
 
-    ```
+    ```output
     ...
     Configuring environment for Kubernetes v1.14.2 on Docker 18.09.6
     ...
@@ -88,18 +88,18 @@ showAsideToc: true
     $ kubectl version
     ```
 
-    ```
+    ```output
     Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.14.10-dispatcher", ...}
     Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
     ```
 
-- Confirm that your Helm 3 is configured correctly by running the following command.
+- Confirm that your Helm is configured correctly by running the following command.
 
     ```sh
     $ helm version
     ```
 
-    ```
+    ```output
     version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
     ```
 
@@ -127,9 +127,9 @@ $ helm repo update
 $ helm search repo yugabytedb/yugabyte
 ```
 
-```
-NAME                 CHART VERSION   APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  2.5.3           2.5.3.1-b10  YugabyteDB is the high-performance distributed ...
+```output
+NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  2.11.0          2.11.0.1-b1  YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.

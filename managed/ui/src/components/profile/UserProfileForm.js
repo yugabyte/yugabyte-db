@@ -3,15 +3,19 @@
 import React, { Component } from 'react';
 import Cookies from 'js-cookie';
 import { isEqual } from 'lodash';
-import { Row, Col } from 'react-bootstrap';
-import { YBFormInput, YBButton } from '../common/forms/fields';
-import { Formik, Form, Field } from 'formik';
-import { showOrRedirect, isDisabled } from '../../utils/LayoutUtils';
+import { Col, Row } from 'react-bootstrap';
+import { YBButton, YBFormInput, YBFormSelect } from '../common/forms/fields';
+import { Field, Form, Formik } from 'formik';
+import { showOrRedirect } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
+
+import moment from 'moment';
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export default class UserProfileForm extends Component {
   constructor(props) {
@@ -19,6 +23,11 @@ export default class UserProfileForm extends Component {
     this.state = {
       statusUpdated: false
     };
+  }
+
+  componentDidMount() {
+    const { validateRegistration } = this.props;
+    validateRegistration();
   }
 
   handleRefreshApiToken = (e) => {
@@ -41,14 +50,22 @@ export default class UserProfileForm extends Component {
     }
   }
 
+  formatTimezoneLabel = (timezone) => {
+    const formattedTimezone = timezone.replace('_', ' ');
+    return formattedTimezone + ' UTC' + moment.tz(timezone).format('ZZ');
+  };
+
   render() {
     const {
       customer = {},
       users = [],
       apiToken,
       updateCustomerDetails,
-      changeUserPassword
+      updateUserProfile,
+      passwordValidationInfo,
+      currentUser
     } = this.props;
+    const minPasswordLength = passwordValidationInfo?.minLength || MIN_PASSWORD_LENGTH;
 
     showOrRedirect(customer.data.features, 'main.profile');
 
@@ -69,9 +86,17 @@ export default class UserProfileForm extends Component {
 
       password: Yup.string()
         .notRequired()
-        .min(8, 'Password is too short - must be 8 characters minimum.')
-        .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
-          'Password must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.')
+        .min(
+          minPasswordLength,
+          `Password is too short - must be ${minPasswordLength} characters minimum.`
+        )
+        .matches(
+          /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
+          `Password must contain at least ${passwordValidationInfo?.minDigits} digit
+          , ${passwordValidationInfo?.minUppercase} capital
+          , ${passwordValidationInfo?.minLowercase} lowercase
+          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`
+        )
         .oneOf([Yup.ref('confirmPassword')], "Passwords don't match"),
 
       confirmPassword: Yup.string()
@@ -84,13 +109,29 @@ export default class UserProfileForm extends Component {
     const getCurrentUser = isNonEmptyArray(users)
       ? users.filter((u) => u.uuid === loginUserId)
       : [];
+
+    const defaultTimezoneOption = { value: '', label: 'Default' };
     const initialValues = {
       name: customer.data.name || '',
       email: (getCurrentUser.length && getCurrentUser[0].email) || '',
       code: customer.data.code || '',
+      customerId: customer.data.uuid,
       password: '',
-      confirmPassword: ''
+      confirmPassword: '',
+      timezone: currentUser.data.timezone
+        ? {
+            value: currentUser.data.timezone,
+            label: this.formatTimezoneLabel(currentUser.data.timezone)
+          }
+        : defaultTimezoneOption
     };
+    const timezoneOptions = [defaultTimezoneOption];
+    moment.tz.names().forEach((timezone) => {
+      timezoneOptions.push({
+        value: timezone,
+        label: this.formatTimezoneLabel(timezone)
+      });
+    });
 
     return (
       <div className="bottom-bar-padding">
@@ -99,36 +140,34 @@ export default class UserProfileForm extends Component {
           initialValues={initialValues}
           enableReinitialize
           onSubmit={(values, { setSubmitting }) => {
+            const payload = {
+              ...values,
+              timezone: values.timezone.value
+            };
+            const initialPayload = {
+              ...initialValues,
+              timezone: initialValues.timezone.value
+            };
             // Compare values to initial values to see if changes were made
-            let hasPasswordChanged = false,
-              hasProfileInfoChanged = false;
-            Object.entries(values).forEach(([key, value]) => {
-              if (key in initialValues) {
-                if (typeof value !== 'object' && value !== initialValues[key]) {
-                  if (['password', 'confirmPassword'].includes(key)) {
-                    hasPasswordChanged = true;
-                  } else {
-                    hasProfileInfoChanged = true;
-                  }
-                } else if (typeof value === 'object' && !isEqual(value, initialValues[key])) {
-                  // Value is an array or object
-                  hasProfileInfoChanged = true;
+            let hasNameChanged = false;
+            let hasUserProfileChanged = false;
+            Object.entries(payload).forEach(([key, value]) => {
+              if (!isEqual(value, initialPayload[key])) {
+                if (key === 'name') {
+                  hasNameChanged = true;
+                } else {
+                  hasUserProfileChanged = true;
                 }
-              } else {
-                // In the event that Formik field was not added to initialValues,
-                // we still want to update the profile
-                hasProfileInfoChanged = true;
               }
             });
-
-            if (hasPasswordChanged) {
-              changeUserPassword(getCurrentUser[0], values);
+            if (hasNameChanged) {
+              updateCustomerDetails(payload);
             }
-            if (hasProfileInfoChanged) {
-              updateCustomerDetails(values);
+            if (hasUserProfileChanged) {
+              updateUserProfile(getCurrentUser[0], payload);
             }
             setSubmitting(false);
-            this.setState({ statusUpdated: true });
+            this.setState({ statusUpdated: hasNameChanged || hasUserProfileChanged });
           }}
         >
           {({ handleSubmit, isSubmitting }) => (
@@ -160,6 +199,13 @@ export default class UserProfileForm extends Component {
                         label="Environment"
                         component={YBFormInput}
                         placeholder="Customer Code"
+                      />
+                      <Field
+                        name="timezone"
+                        label="Preferred Timezone"
+                        component={YBFormSelect}
+                        options={timezoneOptions}
+                        placeholder="User Timezone"
                       />
                     </Col>
                   </Row>
@@ -210,6 +256,14 @@ export default class UserProfileForm extends Component {
                       />
                     </FlexShrink>
                   </FlexContainer>
+                  <Field
+                    name="customerId"
+                    readOnly={true}
+                    type="text"
+                    label="Customer ID"
+                    component={YBFormInput}
+                    placeholder="Customer ID"
+                  />
                 </Col>
               </Row>
               <div className="form-action-button-container">
@@ -217,7 +271,7 @@ export default class UserProfileForm extends Component {
                   <YBButton
                     btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting || isDisabled(customer.data.features, 'universe.create')}
+                    disabled={isSubmitting}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>

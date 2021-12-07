@@ -12,7 +12,7 @@ def msg_exit(msg):
 
 
 def run_psql(psql_cmd):
-    psql_path = "docker exec postgres psql".split(" ") if docker_based else ["psql"]
+    psql_path = "sudo docker exec postgres psql".split(" ") if docker_based else ["psql"]
     return str(subprocess.check_output(
         psql_path +
         ['-U', 'postgres', '-d', 'yugaware', '-h', 'localhost', '-t', '-c', psql_cmd]).decode('utf-8'))
@@ -22,10 +22,10 @@ if os.path.exists("/.dockerenv"):
     msg_exit("It appears that this script is being run from within the yugaware docker container." +
              " Please copy it to the docker host and run it from the docker host.")
 
-docker_based = (0 == os.system("docker ps -a | grep yugaware > /dev/null"))
-
 if len(sys.argv) != 2:
-    msg_exit("Usage: {} <uuid>".format(sys.argv[0]))
+    msg_exit("Usage: {} <universe_uuid>".format(sys.argv[0]))
+
+docker_based = (0 == os.system("sudo docker ps -a | grep yugaware > /dev/null"))
 
 univ_uuid = sys.argv[1]
 json_text = run_psql("select universe_details_json from universe " +

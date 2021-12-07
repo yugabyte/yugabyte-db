@@ -244,7 +244,7 @@ class LDBCommand {
   /** List of command-line options valid for this command */
   const vector<string> valid_cmd_line_options_;
 
-  std::unique_ptr<yb::enterprise::UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<yb::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> env_;
 
   bool ParseKeyValue(const string& line, string* key, string* value,
@@ -281,13 +281,13 @@ class LDBCommand {
       if(!s.ok()) {
         LOG(FATAL) << yb::Format("Could not read file at path $0: $1", key_path, s.ToString());
       }
-      auto res = yb::enterprise::UniverseKeyManager::FromKey(key_id, yb::Slice(key_data));
+      auto res = yb::UniverseKeyManager::FromKey(key_id, yb::Slice(key_data));
       if (!res.ok()) {
         LOG(FATAL) << "Could not create universe key manager: " << res.status().ToString();
       }
       universe_key_manager_ = std::move(*res);
-      env_ = yb::enterprise::NewRocksDBEncryptedEnv(
-          yb::enterprise::DefaultHeaderManager(universe_key_manager_.get()));
+      env_ = yb::NewRocksDBEncryptedEnv(
+          yb::DefaultHeaderManager(universe_key_manager_.get()));
     }
 
     itr = options.find(ARG_CF_NAME);

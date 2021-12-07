@@ -11,20 +11,21 @@
 // under the License.
 //
 
-#include <iostream>
-
-#include "yb/rocksdb/util/statistics.h"
+#include "yb/docdb/docdb_util.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/docdb_util.h"
 
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/env.h"
-#include "yb/util/path_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"
 
 using std::string;
@@ -184,7 +185,7 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   return Status::OK();
 }
 
-Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
+Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForTests() {
   // TODO(bojanserafimov): create MemoryMonitor?
   const size_t cache_size = block_cache_size();
   if (cache_size > 0) {
@@ -193,6 +194,21 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
 
   regular_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ false);
   intents_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ true);
+  RETURN_NOT_OK(ReinitDBOptions());
+  InitRocksDBWriteOptions(&write_options_);
+  return Status::OK();
+}
+
+Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForBulkLoad() {
+  const size_t cache_size = block_cache_size();
+  if (cache_size > 0) {
+    block_cache_ = rocksdb::NewLRUCache(cache_size);
+  }
+
+  // Don't care about statistics/metrics as we don't keep metric registries during
+  // bulk load.
+  regular_db_options_.statistics = nullptr;
+  intents_db_options_.statistics = nullptr;
   RETURN_NOT_OK(ReinitDBOptions());
   InitRocksDBWriteOptions(&write_options_);
   return Status::OK();
@@ -272,7 +288,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     void Apply(rocksdb::WriteBatch* batch) {
       KeyValuePairPB kv_pair;
       kv_pair.set_key(key_.ToStringBuffer());
-      kv_pair.set_value(value_.ToString());
+      kv_pair.set_value(value_.ToStringBuffer());
       ExternalTxnApplyState external_txn_apply_state;
       AddPairToWriteBatch(kv_pair, hybrid_time_, 0, &external_txn_apply_state, nullptr, batch);
     }
@@ -402,6 +418,10 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
   regular_db_options_.compaction_filter_factory =
       std::make_shared<docdb::DocDBCompactionFilterFactory>(
           retention_policy_, &KeyBounds::kNoBounds);
+  regular_db_options_.compaction_file_filter_factory =
+      compaction_file_filter_factory_;
+  regular_db_options_.max_file_size_for_compaction =
+      max_file_size_for_compaction_;
   if (!regular_db_) {
     return Status::OK();
   }

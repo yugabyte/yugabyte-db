@@ -685,12 +685,12 @@ dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS)
 static void
 init_args_3(FunctionCallInfo info, Datum arg0, Datum arg1, Datum arg2)
 {
-	info->args[0].value = arg0;
-	info->args[1].value = arg1;
-	info->args[2].value = arg2;
-	info->args[0].isnull = false;
-	info->args[1].isnull = false;
-	info->args[2].isnull = false;
+	info->arg[0] = arg0;
+	info->arg[1] = arg1;
+	info->arg[2] = arg2;
+	info->argnull[0] = false;
+	info->argnull[1] = false;
+	info->argnull[2] = false;
 }
 
 
@@ -705,7 +705,8 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	Oid tupType;
 	bytea *data;
 
-	LOCAL_FCINFO(info, 3);
+	FunctionCallInfoData fcinfo_data;
+	FunctionCallInfo info = &fcinfo_data;
 
 	tupType = HeapTupleHeaderGetTypeId(rec);
 
@@ -769,7 +770,8 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 			break;
 		case IT_RECORD:
 		{
-			LOCAL_FCINFO(info, 3);
+			FunctionCallInfoData fcinfo_data;
+			FunctionCallInfo info = &fcinfo_data;
 
 			StringInfoData	buf;
 			text		   *data = cstring_to_text_with_len(ptr, size);

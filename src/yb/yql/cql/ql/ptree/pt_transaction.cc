@@ -15,18 +15,16 @@
 // Treenode implementation for TRANSACTION statements.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
-#include "yb/yql/cql/ql/ptree/pt_insert.h"
-#include "yb/yql/cql/ql/ptree/pt_update.h"
-#include "yb/yql/cql/ql/ptree/pt_delete.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
 namespace ql {
 
 //--------------------------------------------------------------------------------------------------
 
-PTStartTransaction::PTStartTransaction(MemoryContext *memctx, YBLocation::SharedPtr loc)
+PTStartTransaction::PTStartTransaction(MemoryContext *memctx, YBLocationPtr loc)
     : TreeNode(memctx, loc) {
 }
 
@@ -39,7 +37,7 @@ Status PTStartTransaction::Analyze(SemContext *sem_context) {
 
 //--------------------------------------------------------------------------------------------------
 
-PTCommit::PTCommit(MemoryContext *memctx, YBLocation::SharedPtr loc)
+PTCommit::PTCommit(MemoryContext *memctx, YBLocationPtr loc)
     : TreeNode(memctx, loc) {
 }
 

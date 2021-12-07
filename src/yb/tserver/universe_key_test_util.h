@@ -18,7 +18,7 @@
 namespace yb {
 namespace tserver {
 
-std::unique_ptr<yb::enterprise::UniverseKeyManager> GenerateTestUniverseKeyManager();
+std::unique_ptr<UniverseKeyManager> GenerateTestUniverseKeyManager();
 
 }  // tserver
 }  // yb

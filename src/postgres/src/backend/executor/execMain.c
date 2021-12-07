@@ -158,9 +158,6 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
-	if (IsYugaByteEnabled())
-		YBBeginOperationsBuffering();
-
 	/*
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.  EXPLAIN is considered read-only.
@@ -327,6 +324,9 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 
 	Assert(estate != NULL);
 	Assert(!(estate->es_top_eflags & EXEC_FLAG_EXPLAIN_ONLY));
+
+	if (IsYugaByteEnabled())
+		YBBeginOperationsBuffering();
 
 	/*
 	 * Switch into per-query memory context

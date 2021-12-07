@@ -14,19 +14,19 @@
 #ifndef YB_TSERVER_TABLET_SERVER_INTERFACE_H
 #define YB_TSERVER_TABLET_SERVER_INTERFACE_H
 
+#include <future>
+
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/master/master_fwd.h"
 #include "yb/server/clock.h"
+
+#include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
-#include "yb/util/metrics.h"
 
 namespace yb {
 
-namespace master {
-
-class TSInformationPB;
-
-}
+class MemTracker;
 
 namespace tserver {
 
@@ -47,7 +47,20 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual client::TransactionPool* TransactionPool() = 0;
 
-  virtual client::YBClient* client() = 0;
+  virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
+
+  virtual tserver::TServerSharedData& SharedObject() = 0;
+
+  virtual CHECKED_STATUS GetLiveTServers(
+      std::vector<master::TSInformationPB> *live_tservers) const = 0;
+
+  virtual const std::shared_ptr<MemTracker>& mem_tracker() const = 0;
+
+  virtual void SetPublisher(rpc::Publisher service) = 0;
+
+  client::YBClient* client() const {
+    return client_future().get();
+  }
 };
 
 } // namespace tserver

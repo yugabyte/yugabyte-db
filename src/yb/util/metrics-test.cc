@@ -30,21 +30,24 @@
 // under the License.
 //
 
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
-#include <boost/assign/list_of.hpp>
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 using std::string;
@@ -56,6 +59,8 @@ DECLARE_int32(metrics_retirement_age_ms);
 namespace yb {
 
 METRIC_DEFINE_entity(test_entity);
+
+static const string kTableId = "table_id";
 
 class MetricsTest : public YBTest {
  public:
@@ -86,6 +91,24 @@ class MetricsTest : public YBTest {
     // metric can correctly deal with this case.
     lag->UpdateTimestampInMilliseconds(now_ms * 2);
     ASSERT_EQ(0, lag->lag_ms());
+  }
+
+  template <class Gauge>
+  void DoAggregationTest(const vector<int>& values,
+                         const scoped_refptr<Gauge>& gauge,
+                         const string& name,
+                         int expected_aggregation) {
+
+    // Test SUM aggregation
+    MetricEntity::AttributeMap attrs;
+    attrs["table_id"] = kTableId;
+    std::stringstream output;
+    PrometheusWriter writer(&output);
+    for (const auto& value : values) {
+      gauge->set_value(value);
+      ASSERT_OK(gauge->WriteForPrometheus(&writer, attrs, MetricPrometheusOptions()));
+    }
+    ASSERT_EQ(writer.per_table_values_[kTableId][name], expected_aggregation);
   }
 
   MetricRegistry registry_;
@@ -166,7 +189,7 @@ TEST_F(MetricsTest, AutoDetachToLastValue) {
   ASSERT_EQ(1000, gauge->value());
   ASSERT_EQ(1001, gauge->value());
   {
-    FunctionGaugeDetacher detacher;
+    std::shared_ptr<void> detacher;
     gauge->AutoDetachToLastValue(&detacher);
     ASSERT_EQ(1002, gauge->value());
     ASSERT_EQ(1003, gauge->value());
@@ -185,7 +208,7 @@ TEST_F(MetricsTest, AutoDetachToConstant) {
   ASSERT_EQ(1000, gauge->value());
   ASSERT_EQ(1001, gauge->value());
   {
-    FunctionGaugeDetacher detacher;
+    std::shared_ptr<void> detacher;
     gauge->AutoDetach(&detacher, 12345);
     ASSERT_EQ(1002, gauge->value());
     ASSERT_EQ(1003, gauge->value());
@@ -201,8 +224,25 @@ TEST_F(MetricsTest, TEstExposeGaugeAsCounter) {
   ASSERT_EQ(MetricType::kCounter, METRIC_counter_as_gauge.type());
 }
 
-METRIC_DEFINE_histogram(test_entity, test_hist, "Test Histogram",
-                        MetricUnit::kMilliseconds, "foo", 1000000, 3);
+METRIC_DEFINE_histogram_with_percentiles(test_entity, test_hist, "Test Histogram",
+                        MetricUnit::kMilliseconds, "A default histogram.", 100000000L, 2);
+
+METRIC_DEFINE_gauge_int32(test_entity, test_sum_gauge, "Test Sum Gauge", MetricUnit::kMilliseconds,
+                          "Test Gauge with SUM aggregation.");
+METRIC_DEFINE_gauge_int32(test_entity, test_max_gauge, "Test Max", MetricUnit::kMilliseconds,
+                          "Test Gauge with MAX aggregation.",
+                          {0, yb::AggregationFunction::kMax} /* optional_args */);
+
+TEST_F(MetricsTest, AggregationTest) {
+  // Test SUM aggregation
+  auto sum_gauge = METRIC_test_sum_gauge.Instantiate(entity_,
+                                                     0 /* initial_value */);
+  ASSERT_NO_FATALS(DoAggregationTest({1, 2, 3, 4}, sum_gauge, "test_sum_gauge", 10));
+  // Test MAX aggregation
+  auto max_gauge = METRIC_test_max_gauge.Instantiate(entity_,
+                                                     0 /* initial_value */);
+  ASSERT_NO_FATALS(DoAggregationTest({1, 2, 3, 4}, max_gauge, "test_max_gauge", 4));
+}
 
 TEST_F(MetricsTest, SimpleHistogramTest) {
   scoped_refptr<Histogram> hist = METRIC_test_hist.Instantiate(entity_);
@@ -367,7 +407,7 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
   // Dump the prototype info.
   std::stringstream out;
   JsonWriter w(&out, JsonWriter::PRETTY);
-  MetricPrototypeRegistry::get()->WriteAsJson(&w);
+  WriteRegistryAsJson(&w);
   string json = out.str();
 
   // Quick sanity check for one of our metrics defined in this file.

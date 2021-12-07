@@ -7,6 +7,7 @@ import * as Yup from 'yup';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { YBModal, YBFormSelect, YBFormInput } from '../../common/forms/fields';
 
+const MIN_PASSWORD_LENGTH = 8;
 export const userRoles = [
   { value: 'Admin', label: 'Admin' },
   { value: 'BackupAdmin', label: 'BackupAdmin' },
@@ -17,7 +18,13 @@ export class AddUserModal extends Component {
   submitForm = async (values) => {
     values.role = values.role.value;
     try {
+      const config = {
+        type: 'PASSWORD_POLICY',
+        name: 'password policy',
+        data: this.props.passwordValidationInfo,
+      };
       await this.props.createUser(values);
+      await this.props.addCustomerConfig(config);
     } catch (error) {
       console.error('Failed to create user', error);
     } finally {
@@ -27,8 +34,8 @@ export class AddUserModal extends Component {
   };
 
   render() {
-    const { modalVisible, onHide } = this.props;
-
+    const { modalVisible, onHide, passwordValidationInfo } = this.props;
+    const minPasswordLength = passwordValidationInfo?.minLength || MIN_PASSWORD_LENGTH;
     const initialValues = {
       email: '',
       password: '',
@@ -40,9 +47,12 @@ export class AddUserModal extends Component {
       email: Yup.string().required('Email is required').email('Enter a valid email'),
       password: Yup.string()
         .required('Password is required')
-        .min(8, 'Password is too short - must be 8 characters minimum.')
+        .min(8, `Password is too short - must be ${minPasswordLength} characters minimum.`)
         .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
-          'Password must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.'),
+          `Password must contain at least ${passwordValidationInfo?.minDigits} digit,
+          ${passwordValidationInfo?.minUppercase} capital,
+          ${passwordValidationInfo?.minLowercase} lowercase
+          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`),
       confirmPassword: Yup.string().oneOf([Yup.ref('password')], 'Passwords must match'),
       role: Yup.object().required('Role is required')
     });

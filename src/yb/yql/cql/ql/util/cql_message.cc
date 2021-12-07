@@ -16,19 +16,18 @@
 #include <lz4.h>
 #include <snappy.h>
 
-#include <regex>
-
-#include "yb/client/client.h"
-
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
-
-#include "yb/yql/cql/cqlserver/cql_processor.h"
+#include "yb/common/schema.h"
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace ql {
@@ -40,13 +39,12 @@ using std::set;
 using std::vector;
 using std::unordered_map;
 using strings::Substitute;
-using util::to_char_ptr;
-using util::to_uchar_ptr;
 using snappy::GetUncompressedLength;
 using snappy::MaxCompressedLength;
 using snappy::RawUncompress;
 using snappy::RawCompress;
 
+#undef RETURN_NOT_ENOUGH
 #define RETURN_NOT_ENOUGH(sz)                               \
   do {                                                      \
     if (body_.size() < (sz)) {                              \
@@ -65,24 +63,39 @@ constexpr char CQLMessage::kTopologyChangeEvent[];
 constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
-Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
-                                                    const int64_t pos,
-                                                    const shared_ptr<QLType>& type,
-                                                    QLValue* value) const {
-  const Value* v = nullptr;
+CHECKED_STATUS CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
+                                                                 const int64_t pos,
+                                                                 const Value** value) const {
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
     if (itr == value_map.end()) {
       return STATUS_SUBSTITUTE(RuntimeError, "Bind variable \"$0\" not found", name);
     }
-    v = &values.at(itr->second);
+    *value = &values.at(itr->second);
   } else {
     if (pos < 0 || pos >= values.size()) {
       // Return error with 1-based position.
       return STATUS_SUBSTITUTE(RuntimeError, "Bind variable at position $0 not found", pos + 1);
     }
-    v = &values.at(pos);
+    *value = &values.at(pos);
   }
+
+  return Status::OK();
+}
+
+Result<bool> CQLMessage::QueryParameters::IsBindVariableUnset(const std::string& name,
+                                                              const int64_t pos) const {
+  const Value* value = nullptr;
+  RETURN_NOT_OK(GetBindVariableValue(name, pos, &value));
+  return (value->kind == Value::Kind::NOT_SET);
+}
+
+Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
+                                                    const int64_t pos,
+                                                    const shared_ptr<QLType>& type,
+                                                    QLValue* value) const {
+  const Value* v = nullptr;
+  RETURN_NOT_OK(GetBindVariableValue(name, pos, &v));
   switch (v->kind) {
     case Value::Kind::NOT_NULL: {
       if (v->value.empty()) {
@@ -120,10 +133,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
           case DataType::FROZEN: FALLTHROUGH_INTENDED;
           case DataType::DATE: FALLTHROUGH_INTENDED;
           case DataType::TIME: FALLTHROUGH_INTENDED;
-          case DataType::UINT8: FALLTHROUGH_INTENDED;
-          case DataType::UINT16: FALLTHROUGH_INTENDED;
-          case DataType::UINT32: FALLTHROUGH_INTENDED;
-          case DataType::UINT64:
+          QL_INVALID_TYPES_IN_SWITCH:
             break;
         }
         return STATUS_SUBSTITUTE(
@@ -136,16 +146,14 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
       value->SetNull();
       return Status::OK();
     case Value::Kind::NOT_SET:
-      // The RuntimeError status code will be mapped later into the non-retryable INVALID_REQUEST
-      // error code (non-retryable due to not mapping into STALE_METADATA code later).
-      return STATUS(RuntimeError, "Bind variable was not set");
+      return Status::OK();
   }
   return STATUS_SUBSTITUTE(
       RuntimeError, "Invalid bind variable kind $0", static_cast<int>(v->kind));
 }
 
 Status CQLMessage::QueryParameters::ValidateConsistency() {
-  switch(consistency) {
+  switch (consistency) {
     case Consistency::LOCAL_ONE: FALLTHROUGH_INTENDED;
     case Consistency::QUORUM: {
       // We are repurposing cassandra's "QUORUM" consistency level to indicate "STRONG"
@@ -551,6 +559,47 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
     RETURN_NOT_OK(ParseLong(&params->default_timestamp));
   }
   return Status::OK();
+}
+
+CHECKED_STATUS CQLRequest::ParseByte(uint8_t* value) {
+  static_assert(sizeof(*value) == kByteSize, "inconsistent byte size");
+  return ParseNum("CQL byte", Load8, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseShort(uint16_t* value) {
+  static_assert(sizeof(*value) == kShortSize, "inconsistent short size");
+  return ParseNum("CQL byte", NetworkByteOrder::Load16, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseInt(int32_t* value) {
+  static_assert(sizeof(*value) == kIntSize, "inconsistent int size");
+  return ParseNum("CQL int", NetworkByteOrder::Load32, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseLong(int64_t* value) {
+  static_assert(sizeof(*value) == kLongSize, "inconsistent long size");
+  return ParseNum("CQL long", NetworkByteOrder::Load64, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseString(std::string* value)  {
+  return ParseBytes("CQL string", &CQLRequest::ParseShort, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseLongString(std::string* value)  {
+  return ParseBytes("CQL long string", &CQLRequest::ParseInt, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseShortBytes(std::string* value) {
+  return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseBytes(std::string* value) {
+  return ParseBytes("CQL bytes", &CQLRequest::ParseInt, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseConsistency(Consistency* consistency) {
+  static_assert(sizeof(*consistency) == kConsistencySize, "inconsistent consistency size");
+  return ParseNum("CQL consistency", NetworkByteOrder::Load16, consistency);
 }
 
 // ------------------------------ Individual CQL requests -----------------------------------
@@ -1312,15 +1361,8 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
       return;
     }
     case DataType::FROZEN: FALLTHROUGH_INTENDED;
-    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case DataType::TUPLE: FALLTHROUGH_INTENDED;
-    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
-
-    case DataType::UINT8:  FALLTHROUGH_INTENDED;
-    case DataType::UINT16: FALLTHROUGH_INTENDED;
-    case DataType::UINT32: FALLTHROUGH_INTENDED;
-    case DataType::UINT64: FALLTHROUGH_INTENDED;
-    case DataType::UNKNOWN_DATA:
+    QL_UNSUPPORTED_TYPES_IN_SWITCH: FALLTHROUGH_INTENDED;
+    QL_INVALID_TYPES_IN_SWITCH:
       break;
 
     // default: fall through

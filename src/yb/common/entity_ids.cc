@@ -17,6 +17,7 @@
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
+#include "yb/util/result.h"
 
 using boost::uuids::uuid;
 
@@ -39,6 +40,8 @@ const TableId kPgYbCatalogVersionTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgYbCatalogVersionTableOid);
 const TableId kPgTablespaceTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgTablespaceTableOid);
+const string kPgSequencesDataNamespaceId =
+  GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
 
 
@@ -79,7 +82,7 @@ std::string UuidToString(uuid* id) {
   id->data[6] &= 0x0F;
   id->data[6] |= (kUuidVersion << 4);
 
-  return b2a_hex(util::to_char_ptr(id->data), sizeof(id->data));
+  return b2a_hex(to_char_ptr(id->data), sizeof(id->data));
 }
 
 } // namespace

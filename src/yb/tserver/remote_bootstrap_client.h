@@ -41,13 +41,12 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap_file_downloader.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -79,7 +78,7 @@ class TSTabletManager;
 
 class RemoteBootstrapComponent {
  public:
-  virtual CHECKED_STATUS CreateDirectories(const string& db_dir, FsManager* fs) = 0;
+  virtual CHECKED_STATUS CreateDirectories(const std::string& db_dir, FsManager* fs) = 0;
   virtual CHECKED_STATUS Download() = 0;
 
   virtual ~RemoteBootstrapComponent() = default;
@@ -168,7 +167,7 @@ class RemoteBootstrapClient {
   // downloaded as part of initiating the remote bootstrap session.
   CHECKED_STATUS WriteConsensusMetadata();
 
-  CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
+  CHECKED_STATUS CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
   CHECKED_STATUS DownloadRocksDBFiles();
 
@@ -217,9 +216,9 @@ class RemoteBootstrapClient {
 
   tablet::TabletStatusListener* status_listener_ = nullptr;
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
-  gscoped_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
+  std::unique_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
   tablet::RaftGroupReplicaSuperBlockPB new_superblock_;
-  gscoped_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
+  std::unique_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
   tablet::TabletDataState remote_tablet_data_state_;
 
   std::vector<uint64_t> wal_seqnos_;

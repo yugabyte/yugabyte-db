@@ -15,28 +15,22 @@
 
 #include "yb/tablet/transaction_coordinator.h"
 
-#include <condition_variable>
-
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index/tag.hpp>
-
-#include <boost/uuid/uuid_io.hpp>
+#include <boost/multi_index_container.hpp>
 
 #include "yb/client/client.h"
-#include "yb/client/transaction_cleanup.h"
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-#include "yb/common/pgsql_error.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_util.h"
-#include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/transaction_dump.h"
 
@@ -46,19 +40,23 @@
 
 #include "yb/server/clock.h"
 
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/tserver/service_util.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/atomic.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -79,6 +77,11 @@ DEFINE_int64(avoid_abort_after_sealing_ms, 20,
 
 DEFINE_test_flag(uint64, inject_txn_get_status_delay_ms, 0,
                  "Inject specified delay to transaction get status requests.");
+DEFINE_test_flag(int64, inject_random_delay_on_txn_status_response_ms, 0,
+                 "Inject a random amount of delay to the thread processing a "
+                 "GetTransactionStatusRequest after it has populated it's response. This could "
+                 "help simulate e.g. out-of-order responses where PENDING is received by client "
+                 "after a COMMITTED response.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -100,6 +103,7 @@ namespace {
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
+  const AbortedSubTransactionSetPB& aborted;
   HybridTime commit_time;
   bool sealed;
 
@@ -130,12 +134,12 @@ class TransactionStateContext {
 
   // Submits update transaction to the RAFT log. Returns false if was not able to submit.
   virtual MUST_USE_RESULT bool SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state) = 0;
+      std::unique_ptr<UpdateTxnOperation> operation) = 0;
 
   virtual void CompleteWithStatus(
-      std::unique_ptr<UpdateTxnOperationState> request, Status status) = 0;
+      std::unique_ptr<UpdateTxnOperation> request, Status status) = 0;
 
-  virtual void CompleteWithStatus(UpdateTxnOperationState* request, Status status) = 0;
+  virtual void CompleteWithStatus(UpdateTxnOperation* request, Status status) = 0;
 
   virtual bool leader() const = 0;
 
@@ -222,8 +226,8 @@ class TransactionState {
 
     if (replicating_ != nullptr) {
       auto replicating_op_id = replicating_->consensus_round()->id();
-      if (replicating_op_id.IsInitialized()) {
-        if (OpId::FromPB(replicating_op_id) != data.op_id) {
+      if (!replicating_op_id.empty()) {
+        if (replicating_op_id != data.op_id) {
           LOG_WITH_PREFIX(DFATAL)
               << "Replicated unexpected operation, replicating: " << AsString(replicating_)
               << ", replicated: " << AsString(data);
@@ -319,6 +323,8 @@ class TransactionState {
     }
   }
 
+  const AbortedSubTransactionSetPB& GetAbortedSubTransactionSetPB() const { return aborted_; }
+
   Result<TransactionStatusResult> GetStatus(
       std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
     switch (status_) {
@@ -334,7 +340,7 @@ class TransactionState {
       case TransactionStatus::ABORTED:
         return TransactionStatusResult{TransactionStatus::ABORTED, HybridTime::kMax};
       case TransactionStatus::PENDING: {
-        HybridTime status_ht = context_.coordinator_context().clock().Now();
+        HybridTime status_ht;
         if (replicating_) {
           auto replicating_status = replicating_->request()->status();
           if (replicating_status == TransactionStatus::COMMITTED ||
@@ -342,8 +348,15 @@ class TransactionState {
             auto replicating_ht = replicating_->hybrid_time_even_if_unset();
             if (replicating_ht.is_valid()) {
               status_ht = replicating_ht;
+            } else {
+              // Hybrid time now yet assigned to replicating, so assign more conservative time,
+              // that is guaranteed to be less then replicating time. See GH #9981.
+              status_ht = replicating_submit_time_;
             }
           }
+        }
+        if (!status_ht) {
+          status_ht = context_.coordinator_context().clock().Now();
         }
         status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
         return TransactionStatusResult{TransactionStatus::PENDING, status_ht.Decremented()};
@@ -381,7 +394,7 @@ class TransactionState {
     }
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request) {
     auto& state = *request->request();
     VLOG_WITH_PREFIX(1) << "Handle: " << state.ShortDebugString();
     if (state.status() == TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
@@ -435,6 +448,7 @@ class TransactionState {
             context_.NotifyApplying({
                 .tablet = tablet.first,
                 .transaction = id_,
+                .aborted = aborted_,
                 .commit_time = commit_time_,
                 .sealed = status_ == TransactionStatus::SEALED });
           }
@@ -565,7 +579,7 @@ class TransactionState {
     FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
   }
 
-  void DoHandle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
+  void DoHandle(std::unique_ptr<tablet::UpdateTxnOperation> request) {
     const auto& state = *request->request();
 
     Status status;
@@ -590,8 +604,7 @@ class TransactionState {
     }
 
     VLOG_WITH_PREFIX(4) << Format("DoHandle, replicating = $0", replicating_);
-    replicating_ = request.get();
-    auto submitted = context_.SubmitUpdateTransaction(std::move(request));
+    auto submitted = SubmitRequest(std::move(request));
     // Should always succeed, since we execute this code only on the leader.
     CHECK(submitted) << "Status: " << TransactionStatus_Name(txn_status);
   }
@@ -620,18 +633,26 @@ class TransactionState {
     state.set_transaction_id(id_.data(), id_.size());
     state.set_status(status);
 
-    auto request = context_.coordinator_context().CreateUpdateTransactionState(&state);
+    auto request = context_.coordinator_context().CreateUpdateTransaction(&state);
     if (replicating_) {
       request_queue_.push_back(std::move(request));
     } else {
-      replicating_ = request.get();
-      VLOG_WITH_PREFIX(4) << Format("SubmitUpdateStatus, replicating = $0", replicating_);
-      if (!context_.SubmitUpdateTransaction(std::move(request))) {
-        // Was not able to submit update transaction, for instance we are not leader.
-        // So we are not replicating.
-        replicating_ = nullptr;
-      }
+      SubmitRequest(std::move(request));
     }
+  }
+
+  bool SubmitRequest(std::unique_ptr<tablet::UpdateTxnOperation> request) {
+    replicating_ = request.get();
+    replicating_submit_time_ = context_.coordinator_context().clock().Now();
+    VLOG_WITH_PREFIX(4) << Format("SubmitUpdateStatus, replicating = $0", replicating_);
+    if (!context_.SubmitUpdateTransaction(std::move(request))) {
+      // Was not able to submit update transaction, for instance we are not leader.
+      // So we are not replicating.
+      replicating_ = nullptr;
+      return false;
+    }
+
+    return true;
   }
 
   void ProcessQueue() {
@@ -670,6 +691,8 @@ class TransactionState {
     commit_time_ = data.hybrid_time;
     // TODO(dtxn) Not yet implemented
     next_abort_after_sealing_ = CoarseMonoClock::now() + FLAGS_avoid_abort_after_sealing_ms * 1ms;
+    // TODO(savepoints) Savepoints with sealed transactions is not yet tested
+    aborted_ = data.state.aborted();
     VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
     status_ = TransactionStatus::SEALED;
 
@@ -706,6 +729,8 @@ class TransactionState {
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
+    aborted_ = data.state.aborted();
+
     involved_tablets_.reserve(data.state.tablets().size());
     for (const auto& tablet : data.state.tablets()) {
       InvolvedTabletState state = {
@@ -777,6 +802,7 @@ class TransactionState {
         context_.NotifyApplying({
             .tablet = tablet.first,
             .transaction = id_,
+            .aborted = aborted_,
             .commit_time = commit_time_,
             .sealed = status_ == TransactionStatus::SEALED});
       }
@@ -838,17 +864,23 @@ class TransactionState {
   MonoTime resend_applying_time_;
   int64_t first_entry_raft_index_ = std::numeric_limits<int64_t>::max();
 
+  // Metadata tracking aborted subtransaction IDs in this transaction.
+  AbortedSubTransactionSetPB aborted_;
+
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
-  tablet::UpdateTxnOperationState* replicating_ = nullptr;
-  std::deque<std::unique_ptr<tablet::UpdateTxnOperationState>> request_queue_;
+  tablet::UpdateTxnOperation* replicating_ = nullptr;
+  // Hybrid time before submitting replicating operation.
+  // It is guaranteed to be less then actual operation hybrid time.
+  HybridTime replicating_submit_time_;
+  std::deque<std::unique_ptr<tablet::UpdateTxnOperation>> request_queue_;
 
   std::vector<TransactionAbortCallback> abort_waiters_;
 };
 
 struct CompleteWithStatusEntry {
-  std::unique_ptr<UpdateTxnOperationState> holder;
-  UpdateTxnOperationState* request;
+  std::unique_ptr<UpdateTxnOperation> holder;
+  UpdateTxnOperation* request;
   Status status;
 };
 
@@ -859,7 +891,7 @@ struct PostponedLeaderActions {
   // is applying.
   std::vector<NotifyApplyingData> notify_applying;
   // List of update transaction records, that should be replicated via RAFT.
-  std::vector<std::unique_ptr<UpdateTxnOperationState>> updates;
+  std::vector<std::unique_ptr<UpdateTxnOperation>> updates;
 
   std::vector<CompleteWithStatusEntry> complete_with_status;
 
@@ -942,11 +974,22 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         }
         response->add_status(txn_status_with_ht.status);
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
+
+        auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
+        if (txn_status_with_ht.status == TransactionStatus::COMMITTED &&
+            it != managed_transactions_.end()) {
+          *mutable_aborted_set_pb = it->GetAbortedSubTransactionSetPB();
+        }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
     }
 
     ExecutePostponedLeaderActions(&postponed_leader_actions);
+    if (GetAtomicFlag(&FLAGS_TEST_inject_random_delay_on_txn_status_response_ms)) {
+      if (response->status().size() > 0 && response->status(0) == TransactionStatus::PENDING) {
+        AtomicFlagRandomSleepMs(&FLAGS_TEST_inject_random_delay_on_txn_status_response_ms);
+      }
+    }
     return Status::OK();
   }
 
@@ -1155,7 +1198,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         std::chrono::microseconds(kTimeMultiplier * FLAGS_transaction_check_interval_usec));
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
     auto& state = *request->request();
     auto id = FullyDecodeTransactionId(state.transaction_id());
     if (!id.ok()) {
@@ -1263,6 +1306,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     state.add_tablets(context_.tablet_id());
     state.set_commit_hybrid_time(action.commit_time.ToUint64());
     state.set_sealed(action.sealed);
+    *state.mutable_aborted() = action.aborted;
 
     auto handle = rpcs_.Prepare();
     if (handle != rpcs_.InvalidHandle()) {
@@ -1372,26 +1416,26 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   MUST_USE_RESULT bool SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state) override {
+      std::unique_ptr<UpdateTxnOperation> operation) override {
     if (!postponed_leader_actions_.leader()) {
       auto status = STATUS(IllegalState, "Submit update transaction on non leader");
       VLOG_WITH_PREFIX(1) << status;
-      state->CompleteWithStatus(status);
+      operation->CompleteWithStatus(status);
       return false;
     }
 
-    postponed_leader_actions_.updates.push_back(std::move(state));
+    postponed_leader_actions_.updates.push_back(std::move(operation));
     return true;
   }
 
   void CompleteWithStatus(
-      std::unique_ptr<UpdateTxnOperationState> request, Status status) override {
+      std::unique_ptr<UpdateTxnOperation> request, Status status) override {
     auto ptr = request.get();
     postponed_leader_actions_.complete_with_status.push_back({
         std::move(request), ptr, std::move(status)});
   }
 
-  void CompleteWithStatus(UpdateTxnOperationState* request, Status status) override {
+  void CompleteWithStatus(UpdateTxnOperation* request, Status status) override {
     postponed_leader_actions_.complete_with_status.push_back({
         nullptr /* holder */, request, std::move(status)});
   }
@@ -1488,7 +1532,7 @@ size_t TransactionCoordinator::test_count_transactions() const {
 }
 
 void TransactionCoordinator::Handle(
-    std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
+    std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
   impl_->Handle(std::move(request), term);
 }
 

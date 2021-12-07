@@ -10,22 +10,36 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <signal.h>
+
+#include <fstream>
 #include <thread>
 
+#include "yb/client/client_fwd.h"
+#include "yb/client/table_info.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/common.pb.h"
+#include "yb/common/pgsql_error.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/master_defaults.h"
+
+#include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-
-#include "yb/client/client_fwd.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/pgsql_error.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/tserver/tserver.pb.h"
 
 using namespace std::literals;
 
@@ -246,9 +260,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
     SCOPED_TRACE(iteration_title);
     LOG(INFO) << iteration_title;
 
-    auto status = conn.Execute("DELETE FROM t");
-    if (!status.ok()) {
-      ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
+    auto s = conn.Execute("DELETE FROM t");
+    if (!s.ok()) {
+      ASSERT_STR_CONTAINS(s.ToString(), kTryAgain);
       continue;
     }
     for (int k = 0; k != kKeys; ++k) {
@@ -261,12 +275,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
     for (int i = 0; i != kColors; ++i) {
       int32_t color = i;
       threads.emplace_back([this, color, kKeys, &complete] {
-        auto conn = ASSERT_RESULT(Connect());
+        auto connection = ASSERT_RESULT(Connect());
 
-        ASSERT_OK(conn.Execute("BEGIN"));
-        ASSERT_OK(conn.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+        ASSERT_OK(connection.Execute("BEGIN"));
+        ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
 
-        auto res = conn.Fetch("SELECT * FROM t");
+        auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
           auto msg = res.status().message().ToBuffer();
           ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
@@ -277,23 +291,24 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
         auto lines = PQntuples(res->get());
         ASSERT_EQ(kKeys, lines);
-        for (int i = 0; i != lines; ++i) {
-          if (ASSERT_RESULT(GetInt32(res->get(), i, 1)) == color) {
+        for (int j = 0; j != lines; ++j) {
+          if (ASSERT_RESULT(GetInt32(res->get(), j, 1)) == color) {
             continue;
           }
 
-          auto key = ASSERT_RESULT(GetInt32(res->get(), i, 0));
-          auto status = conn.ExecuteFormat("UPDATE t SET color = $1 WHERE key = $0", key, color);
+          auto key = ASSERT_RESULT(GetInt32(res->get(), j, 0));
+          auto status = connection.ExecuteFormat(
+              "UPDATE t SET color = $1 WHERE key = $0", key, color);
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
             // Missing metadata means that transaction was aborted and cleaned.
-            ASSERT_TRUE(msg.find("Try again.") != std::string::npos ||
+            ASSERT_TRUE(msg.find("Try again") != std::string::npos ||
                         msg.find("Missing metadata") != std::string::npos) << status;
             break;
           }
         }
 
-        auto status = conn.Execute("COMMIT");
+        auto status = connection.Execute("COMMIT");
         if (!status.ok()) {
           auto msg = status.message().ToBuffer();
           ASSERT_TRUE(msg.find("Operation expired") != std::string::npos) << status;
@@ -645,15 +660,16 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   thread_holder.AddThreadFunctor(
       [this, &counter, &reads, &writes, isolation, &stop_flag = thread_holder.stop_flag()]() {
     SetFlagOnExit set_flag_on_exit(&stop_flag);
-    auto conn = ASSERT_RESULT(Connect());
+    auto connection = ASSERT_RESULT(Connect());
     auto failures_in_row = 0;
     while (!stop_flag.load(std::memory_order_acquire)) {
       if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
         auto lower_bound = reads.load() * kRequiredWrites < writes.load() * kRequiredReads
             ? 1.0 - 1.0 / (1ULL << failures_in_row) : 0.0;
-        ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0", lower_bound));
+        ASSERT_OK(connection.ExecuteFormat(
+            "SET yb_transaction_priority_lower_bound = $0", lower_bound));
       }
-      auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
+      auto sum = ReadSumBalance(&connection, kAccounts, isolation, &counter);
       if (!sum.ok()) {
         // Do not overflow long when doing bitshift above.
         failures_in_row = std::min(failures_in_row + 1, 63);
@@ -840,14 +856,14 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
 
   for (int i = 0; i != kThreads; ++i) {
     holder.AddThread([this, i, &stop = holder.stop_flag(), &written] {
-      auto conn = ASSERT_RESULT(Connect());
+      auto connection = ASSERT_RESULT(Connect());
       int key = 0;
 
       while (!stop.load(std::memory_order_acquire)) {
         if (RandomUniformBool()) {
           int a = i * 1000000 + key;
           int b = key;
-          ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (a, b) VALUES ($0, $1)", a, b));
+          ASSERT_OK(connection.ExecuteFormat("INSERT INTO t (a, b) VALUES ($0, $1)", a, b));
           written[i].store(++key, std::memory_order_release);
         } else {
           int writer_index = RandomUniformInt(0, kThreads - 1);
@@ -857,7 +873,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
           }
           int read_key = num_written - 1;
           int b = read_key;
-          int read_a = ASSERT_RESULT(conn.FetchValue<int32_t>(
+          int read_a = ASSERT_RESULT(connection.FetchValue<int32_t>(
               Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
           ASSERT_EQ(read_a % 1000000, read_key);
         }
@@ -1194,6 +1210,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
+              master::IncludeInactive::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1227,6 +1244,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
         client->LookupTabletById(
             colocated_tablet_id,
             colocated_table,
+              master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               tablet_found = result.ok();
@@ -1356,7 +1374,7 @@ Result<TableGroupInfo> SelectTableGroup(
       conn->FetchFormat("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name));
   const int database_oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
   res = VERIFY_RESULT(
-      conn->FetchFormat("SELECT oid FROM pg_tablegroup WHERE grpname=\'$0\'", group_name));
+      conn->FetchFormat("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name));
   group_info.oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
 
   group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);
@@ -1479,6 +1497,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
+              master::IncludeInactive::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1507,6 +1526,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               alt_tablet_found = result.ok();
@@ -1550,6 +1570,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup.tablet_id,
             tablegroup.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               orig_tablet_found = result.ok();
@@ -1568,6 +1589,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               second_tablet_found = result.ok();
@@ -1638,7 +1660,7 @@ class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
     options->extra_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
-    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=8");
   }
 };
 
@@ -1652,6 +1674,7 @@ TEST_F_EX(PgLibPqTest,
   const int starting_num_tablet_servers = cluster_->num_tablet_servers();
   ExternalMiniClusterOptions opts;
   std::map<std::string, int> ts_loads;
+  static const int tserver_unresponsive_timeout_ms = 8000;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -1702,24 +1725,18 @@ TEST_F_EX(PgLibPqTest,
   // Remove a tablet server.
   cluster_->tablet_server(0)->Shutdown();
 
-  // Wait for load balancing.  This should move the remaining tablet-peers off the dead tserver.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
-        return !is_idle;
-      },
-      kTimeout,
-      "wait for load balancer to be active"));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        return client->IsLoadBalancerIdle();
-      },
-      kTimeout,
-      "wait for load balancer to be idle"));
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return cluster_->is_ts_stale(0);
+  },
+  MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
+  "Is TS dead",
+  MonoDelta::FromSeconds(1)));
 
-  // Collect colocation tablet replica locations.
-  {
-    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+  // Collect colocation tablet replica locations and verify that load has been moved off
+  // from the dead TS.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    master::TabletLocationsPB tablet_locations = VERIFY_RESULT(GetColocatedTabletLocations(
         client.get(),
         kDatabaseName,
         kTimeout));
@@ -1727,18 +1744,21 @@ TEST_F_EX(PgLibPqTest,
     for (const auto& replica : tablet_locations.replicas()) {
       ts_loads[replica.ts_info().permanent_uuid()]++;
     }
-  }
-
-  // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
-  // which is shut down.
-  ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
-  for (const auto& entry : ts_loads) {
-    ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
-    ASSERT_NOTNULL(ts);
-    ASSERT_NE(ts, cluster_->tablet_server(0));
-    ASSERT_EQ(entry.second, 1);
-    LOG(INFO) << "found ts " << entry.first << " has " << entry.second << " replicas";
-  }
+    // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
+    // which is shut down.
+    if (ts_loads.size() != starting_num_tablet_servers) {
+      return false;
+    }
+    for (const auto& entry : ts_loads) {
+      ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
+      if (ts == nullptr || ts == cluster_->tablet_server(0) || entry.second != 1) {
+        return false;
+      }
+    }
+    return true;
+  },
+  kTimeout,
+  "Wait for load to be moved off from tserver 0"));
 }
 
 // Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.
@@ -2094,6 +2114,142 @@ TEST_F(PgLibPqIndexTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableTimeo
   }, MonoDelta::FromSeconds(40), "Verify Index Table was removed by Transaction GC"));
 }
 
+class PgLibPqTestEnumType: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_do_not_add_enum_sort_order=true");
+  }
+};
+
+// Make sure that enum type backfill works.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(EnumType),
+          PgLibPqTestEnumType) {
+  const string kDatabaseName ="yugabyte";
+  const string kTableName ="enum_table";
+  const string kEnumTypeName ="enum_type";
+  auto conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+  ASSERT_OK(conn->ExecuteFormat(
+    "CREATE TYPE $0 as enum('b', 'e', 'f', 'c', 'a', 'd')", kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat(
+    "CREATE TABLE $0 (id $1)",
+    kTableName,
+    kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('a')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('b')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('c')", kTableName));
+
+  // Do table scan to verify contents the table with an ORDER BY clause. This
+  // ensures that old enum values which did not have sort order can be read back,
+  // sorted and displayed correctly.
+  const std::string query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  PGResultPtr res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<string> values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "c");
+  ASSERT_EQ(values[2], "a");
+
+  // Now alter the gflag so any new values will have sort order added.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+              "TEST_do_not_add_enum_sort_order", "false"));
+
+  // Disconnect from the database so we don't have a case where the
+  // postmaster dies while clients are still connected.
+  conn = nullptr;
+
+  // For each tablet server, kill the corresponding PostgreSQL process.
+  // A new PostgreSQL process will be respawned by the tablet server and
+  // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
+  // server.
+  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ExternalTabletServer* ts = cluster_->tablet_server(i);
+    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
+                                                "postmaster.pid");
+
+    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
+    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
+    std::ifstream pg_pid_in;
+    pg_pid_in.open(pg_pid_file, std::ios_base::in);
+    ASSERT_FALSE(pg_pid_in.eof());
+    pid_t pg_pid = 0;
+    pg_pid_in >> pg_pid;
+    ASSERT_GT(pg_pid, 0);
+    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
+    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
+  }
+
+  // Reconnect to the database after the new PostgreSQL starts.
+  conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+
+  // Insert three more rows with --TEST_do_not_add_enum_sort_order=false.
+  // The new enum values will have sort order added.
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('d')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('e')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('f')", kTableName));
+
+  // Do table scan again to verify contents the table with an ORDER BY clause.
+  // This ensures that old enum values which did not have sort order, mixed
+  // with new enum values which have sort order, can be read back, sorted and
+  // displayed correctly.
+  ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 6);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+    ASSERT_RESULT(GetString(res.get(), 3, 0)),
+    ASSERT_RESULT(GetString(res.get(), 4, 0)),
+    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "e");
+  ASSERT_EQ(values[2], "f");
+  ASSERT_EQ(values[3], "c");
+  ASSERT_EQ(values[4], "a");
+  ASSERT_EQ(values[5], "d");
+
+  // Create an index on the enum table column.
+  ASSERT_OK(conn->ExecuteFormat("CREATE INDEX ON $0 (id ASC)", kTableName));
+
+  // Index only scan to verify contents of index table.
+  ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 6);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+    ASSERT_RESULT(GetString(res.get(), 3, 0)),
+    ASSERT_RESULT(GetString(res.get(), 4, 0)),
+    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "e");
+  ASSERT_EQ(values[2], "f");
+  ASSERT_EQ(values[3], "c");
+  ASSERT_EQ(values[4], "a");
+  ASSERT_EQ(values[5], "d");
+
+  // Test where clause.
+  const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
+  res = ASSERT_RESULT(conn->Fetch(query2));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  const string value = ASSERT_RESULT(GetString(res.get(), 0, 0));
+  ASSERT_EQ(value, "b");
+}
+
 namespace {
 
 class CoordinatedRunner {
@@ -2177,6 +2333,37 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
   std::this_thread::sleep_for(10s);
   runner.Stop();
   ASSERT_FALSE(runner.HasError());
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CollationRangePresplit)) {
+  const string kDatabaseName ="yugabyte";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute("CREATE TABLE collrange(a text COLLATE \"en-US-x-icu\", "
+                         "PRIMARY KEY(a ASC)) SPLIT AT VALUES (('100'), ('200'))"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "collrange"));
+
+  // Validate that number of tablets created is 3.
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+  // Partition key length of plain encoded '100' or '200'.
+  const size_t partition_key_length = 7;
+  // When a text value is collation encoded, we need at least 3 extra bytes.
+  const size_t min_collation_extra_bytes = 3;
+  for (const auto& tablet : tablets) {
+    ASSERT_TRUE(tablet.has_partition());
+    auto partition_start = tablet.partition().partition_key_start();
+    auto partition_end = tablet.partition().partition_key_end();
+    LOG(INFO) << "partition_start: " << b2a_hex(partition_start)
+              << ", partition_end: " << b2a_hex(partition_end);
+    ASSERT_TRUE(partition_start.empty() ||
+                partition_start.size() >= partition_key_length + min_collation_extra_bytes);
+    ASSERT_TRUE(partition_end.empty() ||
+                partition_end.size() >= partition_key_length + min_collation_extra_bytes);
+  }
 }
 
 } // namespace pgwrapper

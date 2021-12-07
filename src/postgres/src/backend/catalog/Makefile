@@ -13,13 +13,15 @@ subdir = src/backend/catalog
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+SUBDIRS = yb_catalog
+
 OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
        objectaccess.o objectaddress.o partition.o pg_aggregate.o pg_collation.o \
        pg_constraint.o pg_conversion.o \
        pg_depend.o pg_enum.o pg_inherits.o pg_largeobject.o pg_namespace.o \
        pg_operator.o pg_proc.o pg_publication.o pg_range.o \
-       pg_db_role_setting.o pg_shdepend.o pg_subscription.o pg_type.o ybctype.o \
-       storage.o toasting.o ybc_catalog_version.o
+       pg_db_role_setting.o pg_shdepend.o pg_subscription.o pg_type.o \
+       storage.o toasting.o
 
 BKIFILES = postgres.bki yb_postgres.bki postgres.description postgres.shdescription
 
@@ -39,14 +41,15 @@ CATALOG_HEADERS := \
 	pg_cast.h pg_enum.h pg_namespace.h pg_conversion.h pg_depend.h \
 	pg_database.h pg_db_role_setting.h pg_tablespace.h pg_pltemplate.h \
 	pg_authid.h pg_auth_members.h pg_shdepend.h pg_shdescription.h \
-	pg_ts_config.h pg_ts_config_map.h pg_ts_dict.h pg_tablegroup.h \
+	pg_ts_config.h pg_ts_config_map.h pg_ts_dict.h \
 	pg_ts_parser.h pg_ts_template.h pg_extension.h \
 	pg_foreign_data_wrapper.h pg_foreign_server.h pg_user_mapping.h \
 	pg_foreign_table.h pg_policy.h pg_replication_origin.h \
 	pg_default_acl.h pg_init_privs.h pg_seclabel.h pg_shseclabel.h \
 	pg_collation.h pg_partitioned_table.h pg_range.h pg_transform.h \
 	pg_sequence.h pg_publication.h pg_publication_rel.h pg_subscription.h \
-	pg_subscription_rel.h pg_yb_catalog_version.h
+	pg_subscription_rel.h pg_yb_catalog_version.h pg_yb_migration.h \
+	pg_yb_tablegroup.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h) schemapg.h
 
@@ -65,7 +68,7 @@ POSTGRES_BKI_DATA = $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_namespace.dat pg_opclass.dat pg_operator.dat pg_opfamily.dat \
 	pg_pltemplate.dat pg_proc.dat pg_range.dat pg_tablespace.dat \
 	pg_ts_config.dat pg_ts_config_map.dat pg_ts_dict.dat pg_ts_parser.dat \
-	pg_ts_template.dat pg_type.dat pg_yb_catalog_version.dat \
+	pg_ts_template.dat pg_type.dat pg_yb_catalog_version.dat pg_yb_migration.dat \
 	)
 
 # location of Catalog.pm

@@ -68,12 +68,14 @@ In order to access Yugabyte Platform from outside the AWS environment, you would
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
 - View the Yugabyte Platform console (port `tcp:80`)
 
+If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+
 To create a security group that enables these, go to **EC2 > Security Groups**, click **Create Security Group** and then add the following values:
 
 - For the name, enter `yugaware-sg` (you can change the name if you want).
 - Add a description (for example, `Security group for Yugabyte Platform access`).
 - Add the appropriate IP addresses to the **Source IP ranges** field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
-- Add the ports `22`, `8800`, and `80` to the **Port Range** field. The **Protocol** selected must be `TCP`.
+- Add the ports `22`, `8800`, and `80` to the **Port Range** field. The **Protocol** selected must be `TCP`. For a self-managed configuration, also add the 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 TCP ports.
 
 You should see something like the screenshot below. Click **Create** next.
 
@@ -85,7 +87,7 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
 
 ```sh
 {
-    "Version": "2020-01-17",
+    "Version": "2020-10-17",
     "Statement": [
         {
             "Sid": "VisualEditor0",
@@ -127,7 +129,10 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
                 "ec2:DescribeVpcs",
                 "ec2:DeleteSecurityGroup",
                 "ec2:DescribeSubnets",
-                "ec2:DeleteKeyPair"
+                "ec2:DeleteKeyPair",
+                "ec2:DescribeVpcPeeringConnections",
+                "ec2:DescribeRouteTables",
+                "ec2:DescribeInternetGateways"
             ],
             "Resource": "*"
         }

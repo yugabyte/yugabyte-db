@@ -1,0 +1,54 @@
+package com.yugabyte.yw.commissioner.tasks.subtasks;
+
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import javax.inject.Inject;
+
+public class UpdateNodeDetails extends NodeTaskBase {
+
+  @Inject
+  protected UpdateNodeDetails(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
+
+  public static class Params extends NodeTaskParams {
+    public NodeDetails details;
+  }
+
+  protected Params taskParams() {
+    return (Params) taskParams;
+  }
+
+  @Override
+  public String toString() {
+    return super.getName() + "(" + taskParams().details + ")";
+  }
+
+  @Override
+  public void run() {
+    try {
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            public void run(Universe universe) {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              // FIXME: this is ugly - no equals/hashCode contract in NodeDetails
+              NodeDetails old = universe.getNode(taskParams().nodeName);
+              if (old == null) {
+                return;
+              }
+              universeDetails.nodeDetailsSet.remove(old);
+              universeDetails.nodeDetailsSet.add(taskParams().details);
+              universe.setUniverseDetails(universeDetails);
+            }
+          };
+      saveUniverseDetails(updater);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+}

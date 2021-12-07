@@ -1,20 +1,21 @@
 package com.yugabyte.yw.commissioner;
 
 import com.yugabyte.yw.models.TaskInfo;
+import java.util.ArrayList;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-
-/**
- * Class that encapsulates the user task details.
- */
+/** Class that encapsulates the user task details. */
 public class UserTaskDetails {
   public static final Logger LOG = LoggerFactory.getLogger(UserTaskDetails.class);
 
   // The various groupings of user facing subtasks.
   public enum SubTaskGroupType {
+    // Used for parent tasks which could have own details/errors. Only for UI/API
+    // purposes, not stored in DB.
+    Preparation,
+
     // Ignore this subtask and do not display it to the user.
     Invalid,
 
@@ -38,6 +39,12 @@ public class UserTaskDetails {
     // Start the masters to create a new universe configuration, wait for leader elections, set
     // placement info, wait for the tservers to start up, etc.
     ConfigureUniverse,
+
+    // Increasing disk size
+    ResizingDisk,
+
+    // Change instance type
+    ChangeInstanceType,
 
     // Migrating data from one set of nodes to another.
     WaitForDataMigration,
@@ -157,7 +164,13 @@ public class UserTaskDetails {
     StartingMasterProcess,
 
     // Rotate Node Certs.
-    RotatingCert;
+    RotatingCert,
+
+    // Upgrade to Systemd.
+    SystemdUpgrade,
+
+    // Add certificates and toggle TLS gflags
+    ToggleTls;
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -167,15 +180,21 @@ public class UserTaskDetails {
     String title;
     String description;
     switch (subTaskGroupType) {
+      case Preparation:
+        title = "Action preparation";
+        description = "Preparing to execute a selected action.";
+        break;
       case PreflightChecks:
         title = "Preflight Checks";
-        description = "Perform preflight checks to determine if node is ready" +
-          " to be provisioned/configured.";
-          break;
+        description =
+            "Perform preflight checks to determine if node is ready"
+                + " to be provisioned/configured.";
+        break;
       case Provisioning:
         title = "Provisioning";
-        description = "Deploying machines of the required config into the desired cloud and" +
-          " fetching information about them.";
+        description =
+            "Deploying machines of the required config into the desired cloud and"
+                + " fetching information about them.";
         break;
       case UpgradingSoftware:
         title = "Upgrading software";
@@ -183,23 +202,39 @@ public class UserTaskDetails {
         break;
       case InstallingSoftware:
         title = "Installing software";
-        description = "Configuring mount points, setting up the various directories and installing" +
-          " the YugaByte software on the newly provisioned nodes.";
+        description =
+            "Configuring mount points, setting up the various directories and installing"
+                + " the YugaByte software on the newly provisioned nodes.";
         break;
       case ConfigureUniverse:
         title = "Configuring the universe";
-        description = "Creating and populating the universe config, waiting for the various" +
-          " machines to discover one another.";
+        description =
+            "Creating and populating the universe config, waiting for the various"
+                + " machines to discover one another.";
+        break;
+      case ResizingDisk:
+        title = "Increasing disk size";
+        description = "Increasing disk size on live nodes to the size intended by the user";
+        break;
+      case SystemdUpgrade:
+        title = "Upgrading to Systemd";
+        description = "Upgrading Cron Job to Systemd for all nodes in the universe.";
+        break;
+      case ChangeInstanceType:
+        title = "Changing instance type";
+        description = "Change the instance type of all the nodes in the universe";
         break;
       case WaitForDataMigration:
         title = "Waiting for data migration";
-        description = "Waiting for the data to get copied into the new set of machines to achieve" +
-          " the desired configuration.";
+        description =
+            "Waiting for the data to get copied into the new set of machines to achieve"
+                + " the desired configuration.";
         break;
       case RemovingUnusedServers:
         title = "Removing servers no longer used";
-        description = "Removing servers that are no longer needed once the configuration change has" +
-          " been successfully completed";
+        description =
+            "Removing servers that are no longer needed once the configuration change has"
+                + " been successfully completed";
         break;
       case DownloadingSoftware:
         title = "Downloading software";
@@ -253,15 +288,15 @@ public class UserTaskDetails {
         title = "Starting Node processes";
         description = "Waiting for node to start either tserver or master process.";
         break;
-     case AddingNode:
+      case AddingNode:
         title = "Adding a node";
         description = "Add a node to universe and start tserver (and master, if required).";
         break;
-     case RemovingNode:
+      case RemovingNode:
         title = "Removing a node";
         description = "Remove a node from universe.";
         break;
-     case ReleasingInstance:
+      case ReleasingInstance:
         title = "Releasing the instance back to the IaaS.";
         description = "Releasing the instance from universe.";
         break;
@@ -350,13 +385,17 @@ public class UserTaskDetails {
         description = "Update number of nodes.";
         break;
       case PauseUniverse:
-          title = "Pause Universe";
-          description = "Pause the universe.";
-          break;
+        title = "Pause Universe";
+        description = "Pause the universe.";
+        break;
       case ResumeUniverse:
-          title = "Resume Universe";
-          description = "Resume the universe.";
-          break;
+        title = "Resume Universe";
+        description = "Resume the universe.";
+        break;
+      case ToggleTls:
+        title = "Toggle TLS";
+        description = "Add certificates and toggle TLS gflags";
+        break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
         return null;

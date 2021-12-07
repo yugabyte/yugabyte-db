@@ -22,9 +22,9 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/async_initializer.h"
 #include "yb/common/clock.h"
+#include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tserver/tserver_util_fwd.h"
-#include "yb/util/result.h"
 #include "yb/util/enums.h"
 #include "yb/yql/pggate/pg_callbacks.h"
 
@@ -47,6 +47,10 @@ YB_DEFINE_ENUM(
   ((SERIALIZABLE, 3))
 );
 
+std::shared_ptr<yb::client::YBSession> BuildSession(
+    yb::client::YBClient* client,
+    const scoped_refptr<ClockBase>& clock = nullptr);
+
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(client::AsyncClientInitialiser* async_client_init,
@@ -59,13 +63,16 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   CHECKED_STATUS BeginTransaction();
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
+  CHECKED_STATUS MaybeResetTransactionReadPoint();
   CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS AbortTransaction();
+  void AbortTransaction();
   CHECKED_STATUS SetIsolationLevel(int isolation);
   CHECKED_STATUS SetReadOnly(bool read_only);
+  CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
   CHECKED_STATUS SetDeferrable(bool deferrable);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
-  CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
+  CHECKED_STATUS ExitSeparateDdlTxnMode();
+  void ClearSeparateDdlTxnMode();
 
   // Returns the transactional session, starting a new transaction if necessary.
   yb::Result<client::YBSession*> GetTransactionalSession();
@@ -75,10 +82,15 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op,
                                                   bool needs_pessimistic_locking = false);
 
+  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
 
   bool IsDdlMode() const { return ddl_session_.get() != nullptr; }
   bool IsTxnInProgress() const { return txn_in_progress_; }
+  bool ShouldUseFollowerReads() const { return updated_read_time_for_follower_reads_; }
 
  private:
   YB_STRONGLY_TYPED_BOOL(NeedsPessimisticLocking);
@@ -87,6 +99,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   client::TransactionManager* GetOrCreateTransactionManager();
   void ResetTxnAndSession();
   void StartNewSession();
+  Status UpdateReadTimeForFollowerReadsIfRequired();
   Status RecreateTransaction(SavePriority save_priority);
 
   uint64_t GetPriority(NeedsPessimisticLocking needs_pessimistic_locking);
@@ -110,6 +123,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // Postgres transaction characteristics.
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
   bool read_only_ = false;
+  bool enable_follower_reads_ = false;
+  int32_t follower_read_staleness_ms_ = 0;
+  bool updated_read_time_for_follower_reads_ = false;
   bool deferrable_ = false;
 
   client::YBTransactionPtr ddl_txn_;
@@ -126,6 +142,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::unique_ptr<tserver::TabletServerServiceProxy> tablet_server_proxy_;
 
   PgCallbacks pg_callbacks_;
+
+  // The SubTransactionMetadata tracking the current state of savepoint related data. A pointer to
+  // this is passed to every newly created YBTransaction and its state is snapshotted at the time of
+  // flushing RPCs from the batcher to be sent with those RPCs to the tserver. Before modifying this
+  // state, we should take care to flush all pending operations since pending operations would have
+  // been sent with the active state before a user issued any SubTransactionMetadata modifying
+  // commands.
+  SubTransactionMetadata sub_txn_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };

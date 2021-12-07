@@ -14,9 +14,12 @@
 #ifndef YB_RPC_SERVER_EVENT_H
 #define YB_RPC_SERVER_EVENT_H
 
+#include <stdint.h>
+
 #include <vector>
 
 #include "yb/rpc/rpc_call.h"
+
 #include "yb/util/slice.h"
 
 namespace yb {

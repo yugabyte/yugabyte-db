@@ -419,7 +419,8 @@ public class TestSystemTables extends BaseCQLTest {
   @Test
   public void testSystemColumnsTable() throws Exception {
     session.execute("CREATE TABLE many_columns (c1 int, c2 text, c3 int, c4 text, c5 int, c6 int," +
-      " c7 map <text, text>, c8 list<text>, c9 set<int>, PRIMARY KEY((c1, c2, c3), c4, c5, c6)) " +
+      " c7 map <text, text>, c8 list<text>, c9 set<int> static," +
+      " PRIMARY KEY((c1, c2, c3), c4, c5, c6)) " +
       "WITH CLUSTERING ORDER BY (c4 DESC);");
     List<Row> results = session.execute(String.format("SELECT * FROM system_schema.columns WHERE " +
       "keyspace_name = '%s' AND table_name = 'many_columns'", DEFAULT_TEST_KEYSPACE)).all();
@@ -433,7 +434,7 @@ public class TestSystemTables extends BaseCQLTest {
     verifyColumnSchema(results.get(6), "many_columns", "c7", "regular", -1, "map<text, text>",
       "none");
     verifyColumnSchema(results.get(7), "many_columns", "c8", "regular", -1, "list<text>", "none");
-    verifyColumnSchema(results.get(8), "many_columns", "c9", "regular", -1, "set<int>", "none");
+    verifyColumnSchema(results.get(8), "many_columns", "c9", "static", -1, "set<int>", "none");
 
     // Verify SELECT * works.
     results = session.execute("SELECT * FROM system_schema.columns").all();

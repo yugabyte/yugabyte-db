@@ -34,6 +34,7 @@
 
 #include <stdint.h>
 
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
@@ -44,49 +45,42 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
-#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
 #include "yb/common/clock.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
 #include "yb/client/stubs.h"
 #endif
-#include "yb/client/permissions.h"
-#include "yb/client/yb_table_name.h"
-#include "yb/client/namespace_alterer.h"
 
 #include "yb/common/partition.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/roles_permissions.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
 template<class T> class scoped_refptr;
 
-YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
-YB_STRONGLY_TYPED_BOOL(RequireTabletsRunning);
-
 namespace yb {
 
 class CloudInfoPB;
+class MemTracker;
 class MetricEntity;
 
 namespace master {
@@ -97,13 +91,16 @@ class TabletLocationsPB;
 namespace tserver {
 class LocalTabletServer;
 class TabletServerServiceProxy;
+class TabletServerForwardServiceProxy;
 }
 
 namespace client {
 namespace internal {
-template <class Req, class Resp>
-class ClientMasterRpc;
+class ClientMasterRpcBase;
 }
+
+using GetTableLocationsCallback =
+    std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
 
 // This needs to be called by a client app before performing any operations that could result in
 // logging.
@@ -160,11 +157,6 @@ class YBClientBuilder {
 
   // Add RPC addresses of multiple masters.
   YBClientBuilder& master_server_addrs(const std::vector<std::string>& addrs);
-
-  // Add a REST endpoint from which the address of the masters can be queried initially, and
-  // refreshed in case of retries. Note that the endpoint mechanism overrides
-  // both 'add_master_server_addr_file' and 'add_master_server_addr'.
-  YBClientBuilder& add_master_server_endpoint(const std::string& endpoint);
 
   // Add an RPC address of a master. At least one master is required.
   YBClientBuilder& add_master_server_addr(const std::string& addr);
@@ -286,15 +278,14 @@ class YBClient {
   CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
   CHECKED_STATUS TruncateTables(const std::vector<std::string>& table_ids, bool wait = true);
 
-  Result<master::AnalyzeTableResponsePB> AnalyzeTable(const std::string& table_id);
-
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   CHECKED_STATUS BackfillIndex(const TableId& table_id, bool wait = true);
 
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = true);
-  CHECKED_STATUS DeleteTable(const std::string& table_id, bool wait = true);
+  CHECKED_STATUS DeleteTable(
+      const std::string& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete the specified index table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
@@ -304,7 +295,8 @@ class YBClient {
 
   CHECKED_STATUS DeleteIndexTable(const std::string& table_id,
                                   YBTableName* indexed_table_name = nullptr,
-                                  bool wait = true);
+                                  bool wait = true,
+                                  CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
   CHECKED_STATUS FlushTables(const std::vector<TableId>& table_ids,
@@ -365,9 +357,6 @@ class YBClient {
       const CoarseTimePoint deadline,
       const CoarseDuration max_wait = std::chrono::seconds(2));
 
-  // Trigger an async index permissions update after new YSQL index permissions are committed.
-  Status AsyncUpdateIndexPermissions(const TableId& indexed_table_id);
-
   // Namespace related methods.
 
   // Create a new namespace with the given name.
@@ -379,8 +368,9 @@ class YBClient {
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
                                  const boost::optional<uint32_t>& next_pg_oid = boost::none,
-                                 const boost::optional<TransactionMetadata>& txn = boost::none,
-                                 const bool colocated = false);
+                                 const TransactionMetadata* txn = nullptr,
+                                 const bool colocated = false,
+                                 CoarseTimePoint deadline = CoarseTimePoint());
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -405,7 +395,8 @@ class YBClient {
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type = boost::none,
-                                 const std::string& namespace_id = "");
+                                 const std::string& namespace_id = "",
+                                 CoarseTimePoint deadline = CoarseTimePoint());
 
   // Set 'delete_in_progress' to true if a DeleteNamespace operation is in-progress.
   CHECKED_STATUS IsDeleteNamespaceInProgress(const std::string& namespace_name,
@@ -433,10 +424,7 @@ class YBClient {
                                        const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces() {
-    return ListNamespaces(boost::none);
-  }
-
+  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces();
   Result<vector<master::NamespaceIdentifierPB>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
@@ -521,15 +509,19 @@ class YBClient {
   // CDC Stream related methods.
 
   // Create a new CDC stream.
-  Result<CDCStreamId> CreateCDCStream(const TableId& table_id,
-                                      const std::unordered_map<std::string, std::string>& options);
+  Result<CDCStreamId> CreateCDCStream(
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      bool active = true);
 
   void CreateCDCStream(const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
                        CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
-  CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams);
+  CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams,
+                                 bool force = false,
+                                 master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
   CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
@@ -546,7 +538,15 @@ class YBClient {
                     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                     StdStatusCallback callback);
 
-  void DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback);
+  void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
+
+  // Update a CDC stream's options.
+  CHECKED_STATUS UpdateCDCStream(const CDCStreamId& stream_id,
+                                 const master::SysCDCStreamEntryPB& new_entry);
+
+  void GetTableLocations(
+      const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
+      GetTableLocationsCallback callback);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
@@ -555,12 +555,30 @@ class YBClient {
   CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
       bool use_cache = false);
 
-  CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
+  Result<std::vector<YBTabletServer>> ListTabletServers();
+
+  Result<TabletServersInfo> ListLiveTabletServers(bool primary_only = false);
 
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                             const tserver::LocalTabletServer* local_tserver);
+
+  internal::RemoteTabletServer* GetLocalTabletServer();
+
+  // Sets the node local forward service proxy. This proxy is used to forward the rpcs to the
+  // appropriate tablet server.
+  void SetNodeLocalForwardProxy(
+      const std::shared_ptr<tserver::TabletServerForwardServiceProxy>& proxy);
+
+  // Returns the node local forward service proxy.
+  std::shared_ptr<tserver::TabletServerForwardServiceProxy>& GetNodeLocalForwardProxy();
+
+  // Sets the host port of the node local tserver.
+  void SetNodeLocalTServerHostPort(const ::yb::HostPort& hostport);
+
+  // Returns the host port of the node local tserver.
+  const ::yb::HostPort& GetNodeLocalTServerHostPort();
 
   // List only those tables whose names pass a substring match on 'filter'.
   //
@@ -577,7 +595,8 @@ class YBClient {
       std::vector<TabletId>* tablet_uuids,
       std::vector<std::string>* ranges,
       std::vector<master::TabletLocationsPB>* locations = nullptr,
-      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse);
+      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   CHECKED_STATUS GetTabletsAndUpdateCache(
       const YBTableName& table_name,
@@ -596,7 +615,8 @@ class YBClient {
       const int32_t max_tablets,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
       PartitionListVersion* partition_list_version,
-      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse);
+      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
                                    master::TabletLocationsPB* tablet_location);
@@ -613,25 +633,25 @@ class YBClient {
   Result<bool> IsLoadBalanced(uint32_t num_servers);
   Result<bool> IsLoadBalancerIdle();
 
+  CHECKED_STATUS ModifyTablePlacementInfo(
+      const YBTableName& table_name,
+      master::PlacementInfoPB* replicas);
+
+  // Creates a transaction status table. 'table_name' is required to start with
+  // kTransactionTablePrefix.
+  CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
+
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
   //
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   CHECKED_STATUS OpenTable(const YBTableName& table_name, std::shared_ptr<YBTable>* table);
-  CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table);
+  CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table,
+                           master::GetTableSchemaResponsePB* resp = nullptr);
 
-  Result<YBTablePtr> OpenTable(const TableId& table_id) {
-    YBTablePtr result;
-    RETURN_NOT_OK(OpenTable(table_id, &result));
-    return result;
-  }
-
-  Result<YBTablePtr> OpenTable(const YBTableName& name) {
-    YBTablePtr result;
-    RETURN_NOT_OK(OpenTable(name, &result));
-    return result;
-  }
+  Result<YBTablePtr> OpenTable(const TableId& table_id);
+  Result<YBTablePtr> OpenTable(const YBTableName& name);
 
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
@@ -644,6 +664,9 @@ class YBClient {
   // Caller knows that the existing leader might have died or stepped down, so it can use this API
   // to reset the client state to point to new master leader.
   Result<HostPort> RefreshMasterLeaderAddress();
+
+  // Refreshes master leader address asynchronously.
+  void RefreshMasterLeaderAddressAsync();
 
   // Once a config change is completed to add/remove a master, update the client to add/remove it
   // from its own master address list.
@@ -699,13 +722,14 @@ class YBClient {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
-  void LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
+  void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,
                          CoarseTimePoint deadline,
                          LookupTabletCallback callback);
 
   void LookupTabletById(const std::string& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
+                        master::IncludeInactive include_inactive,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);
@@ -715,7 +739,7 @@ class YBClient {
                         LookupTabletRangeCallback callback);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
-      const std::shared_ptr<const YBTable>& table,
+      const std::shared_ptr<YBTable>& table,
       const std::string& partition_key,
       CoarseTimePoint deadline);
 
@@ -763,8 +787,7 @@ class YBClient {
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
   friend class internal::TabletInvoker;
-  template <class Req, class Resp>
-  friend class internal::ClientMasterRpc;
+  friend class internal::ClientMasterRpcBase;
   friend class PlacementInfoTest;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
@@ -777,8 +800,12 @@ class YBClient {
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
   FRIEND_TEST(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued);
 
+  Result<YBTablePtr> CompleteTable(const YBTableInfo& info);
+
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
-      const std::shared_ptr<const YBTable>& table);
+      YBClient* client, const YBTablePtr& table);
+
+  CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
 
   YBClient();
 

@@ -16,14 +16,18 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent.h"
 
 #include "yb/tablet/transaction_status_resolver.h"
 
 #include "yb/util/bitmap.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
@@ -128,6 +132,23 @@ class TransactionLoader::Executor {
     context().CompleteLoad([this] {
       loader_.all_loaded_.store(true, std::memory_order_release);
     });
+    {
+      // We need to lock and unlock the mutex here to avoid missing a notification in WaitLoaded
+      // and WaitAllLoaded. The waiting loop in those functions is equivalent to the following,
+      // after locking the mutex (and of course wait(...) releases the mutex while waiting):
+      //
+      // 1 while (!all_loaded_.load(std::memory_order_acquire)) {
+      // 2   load_cond_.wait(lock);
+      // 3 }
+      //
+      // If we did not have the lock/unlock here, it would be possible that all_loaded_ would be set
+      // to true and notify_all() would be called between lines 1 and 2, and we would miss the
+      // notification and wait indefinitely at line 2. With lock/unlock this is no longer possible
+      // because if we set all_loaded_ to true between lines 1 and 2, the only time we would be able
+      // to send a notification at line 2 as wait(...) releases the mutex, but then we would check
+      // all_loaded_ and exit the loop at line 1.
+      std::lock_guard<std::mutex> lock(loader_.mutex_);
+    }
     loader_.load_cond_.notify_all();
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
   }
@@ -153,14 +174,22 @@ class TransactionLoader::Executor {
       if (value.TryConsumeByte(docdb::ValueTypeAsChar::kString)) {
         auto pb = pb_util::ParseFromSlice<docdb::ApplyTransactionStatePB>(value);
         if (!pb.ok()) {
-          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state " << key.ToDebugString() << ": "
-                                  << pb.status();
+          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state pb from RocksDB"
+                                  << key.ToDebugString() << ": " << pb.status();
+          regular_iterator_.Next();
+          continue;
+        }
+
+        auto state = docdb::ApplyTransactionState::FromPB(*pb);
+        if (!state.ok()) {
+          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state from stored pb "
+              << state.status();
           regular_iterator_.Next();
           continue;
         }
 
         auto it = pending_applies_.emplace(*txn_id, ApplyStateWithCommitHt {
-          .state = docdb::ApplyTransactionState::FromPB(*pb),
+          .state = state.get(),
           .commit_ht = HybridTime(pb->commit_ht())
         }).first;
 
@@ -270,13 +299,16 @@ class TransactionLoader::Executor {
               << "Found latest record for " << id
               << ": " << docdb::SubDocKey::DebugSliceToString(intents_iterator_.key())
               << " => " << intents_iterator_.value().ToDebugHexString();
-          auto status = docdb::DecodeIntentValue(
-              intents_iterator_.value(), id.AsSlice(), &last_batch_data->next_write_id,
-              nullptr /* body */);
-          LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
-              << "Failed to decode intent value: " << status << ", "
+          auto txn_id_slice = id.AsSlice();
+          auto decoded_value_or_status = docdb::DecodeIntentValue(
+              intents_iterator_.value(), &txn_id_slice);
+          LOG_IF_WITH_PREFIX(DFATAL, !decoded_value_or_status.ok())
+              << "Failed to decode intent value: " << decoded_value_or_status.status() << ", "
               << docdb::SubDocKey::DebugSliceToString(intents_iterator_.key()) << " => "
               << intents_iterator_.value().ToDebugHexString();
+          if (decoded_value_or_status.ok()) {
+            last_batch_data->next_write_id = decoded_value_or_status->write_id;
+          }
           ++last_batch_data->next_write_id;
         }
         break;
@@ -323,16 +355,25 @@ void TransactionLoader::Start(RWOperationCounter* pending_op_counter, const docd
   }
 }
 
+namespace {
+
+// Waiting threads will only wake up on a timeout if there is still an uncaught race condition that
+// causes us to miss a notification on the condition variable.
+constexpr auto kWaitLoadedWakeUpInterval = 10s;
+
+}  // namespace
+
 void TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANALYSIS {
   if (all_loaded_.load(std::memory_order_acquire)) {
     return;
   }
   std::unique_lock<std::mutex> lock(mutex_);
+  // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
   while (!all_loaded_.load(std::memory_order_acquire)) {
     if (last_loaded_ >= id) {
       break;
     }
-    load_cond_.wait(lock);
+    load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
   }
 }
 
@@ -341,10 +382,11 @@ void TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
   if (all_loaded_.load(std::memory_order_acquire)) {
     return;
   }
+  // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
   std::unique_lock<std::mutex> lock(mutex_);
-  load_cond_.wait(lock, [this] {
-    return all_loaded_.load(std::memory_order_acquire);
-  });
+  while (!all_loaded_.load(std::memory_order_acquire)) {
+    load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
+  }
 }
 
 void TransactionLoader::Shutdown() {

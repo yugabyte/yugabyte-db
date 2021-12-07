@@ -17,11 +17,13 @@
 #include <libpq-fe.h>
 
 #include <memory>
+#include <string>
 
 #include "yb/common/common.pb.h"
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -107,7 +109,7 @@ class PGConn {
       CoarseTimePoint deadline,
       bool simple_query_protocol = false);
 
-  CHECKED_STATUS Execute(const std::string& command);
+  CHECKED_STATUS Execute(const std::string& command, bool show_query_in_error = true);
 
   template <class... Args>
   CHECKED_STATUS ExecuteFormat(const std::string& format, Args&&... args) {

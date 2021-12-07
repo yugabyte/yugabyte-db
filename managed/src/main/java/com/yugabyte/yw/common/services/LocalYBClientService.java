@@ -3,11 +3,10 @@
 package com.yugabyte.yw.common.services;
 
 import javax.inject.Singleton;
-
-import org.yb.client.YBClient;
-
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.YBClient;
 
 @Singleton
 public class LocalYBClientService implements YBClientService {
@@ -41,9 +40,18 @@ public class LocalYBClientService implements YBClientService {
   }
 
   private YBClient getNewClient(String masterHPs, String certFile) {
-    return new YBClient.YBClientBuilder(masterHPs)
-                       .defaultAdminOperationTimeoutMs(120000)
-                       .sslCertFile(certFile)
-                       .build();
+    YBClientService.Config config = new YBClientService.Config(masterHPs, certFile);
+    return getClientWithConfig(config);
+  }
+
+  @Override
+  public YBClient getClientWithConfig(Config config) {
+    if (config == null || StringUtils.isBlank(config.getMasterHostPorts())) {
+      return null;
+    }
+    return new YBClient.YBClientBuilder(config.getMasterHostPorts())
+        .defaultAdminOperationTimeoutMs(config.getAdminOperationTimeout().toMillis())
+        .sslCertFile(config.getCertFile())
+        .build();
   }
 }

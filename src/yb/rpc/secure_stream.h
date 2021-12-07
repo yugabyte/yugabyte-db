@@ -14,23 +14,20 @@
 #ifndef YB_RPC_SECURE_STREAM_H
 #define YB_RPC_SECURE_STREAM_H
 
-#include "yb/rpc/stream.h"
+#include <boost/version.hpp>
 
-#include "yb/rpc/circular_read_buffer.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/mem_tracker.h"
 
-typedef struct bio_st BIO;
 typedef struct evp_pkey_st EVP_PKEY;
 typedef struct ssl_st SSL;
 typedef struct ssl_ctx_st SSL_CTX;
 typedef struct x509_st X509;
-typedef struct x509_store_ctx_st X509_STORE_CTX;
 
 namespace yb {
 namespace rpc {
-
-YB_DEFINE_ENUM(SecureState, (kInitial)(kHandshake)(kEnabled)(kDisabled));
 
 #define YB_RPC_SSL_TYPE_DECLARE(name) \
   struct BOOST_PP_CAT(name, Free) { \
@@ -42,7 +39,6 @@ YB_DEFINE_ENUM(SecureState, (kInitial)(kHandshake)(kEnabled)(kDisabled));
 
 namespace detail {
 
-YB_RPC_SSL_TYPE_DECLARE(BIO);
 YB_RPC_SSL_TYPE_DECLARE(EVP_PKEY);
 YB_RPC_SSL_TYPE_DECLARE(SSL);
 YB_RPC_SSL_TYPE_DECLARE(SSL_CTX);

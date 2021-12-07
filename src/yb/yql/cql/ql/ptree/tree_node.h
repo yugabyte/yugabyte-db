@@ -21,16 +21,17 @@
 #ifndef YB_YQL_CQL_QL_PTREE_TREE_NODE_H_
 #define YB_YQL_CQL_QL_PTREE_TREE_NODE_H_
 
-#include "yb/yql/cql/ql/ptree/yb_location.h"
-#include "yb/yql/cql/ql/ptree/pt_option.h"
-#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/util/enums.h"
-#include "yb/util/status.h"
+
 #include "yb/util/memory/mc_types.h"
-#include "yb/common/ql_name.h"
+
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace ql {
+
 class SemContext;
 
 YB_DEFINE_ENUM(TreeNodeOpcode,
@@ -91,7 +92,7 @@ class TreeNode : public MCBase {
 
   //------------------------------------------------------------------------------------------------
   // Public functions.
-  explicit TreeNode(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr);
+  explicit TreeNode(MemoryContext *memctx = nullptr, YBLocationPtr loc = nullptr);
   virtual ~TreeNode();
 
   // Node type.
@@ -123,7 +124,7 @@ class TreeNode : public MCBase {
   void set_loc(const TreeNode& other) {
     loc_ = other.loc_;
   }
-  const YBLocation::SharedPtr& loc_ptr() const {
+  const YBLocationPtr& loc_ptr() const {
     return loc_;
   }
 
@@ -132,7 +133,7 @@ class TreeNode : public MCBase {
   }
 
  protected:
-  YBLocation::SharedPtr loc_;
+  YBLocationPtr loc_;
 
   bool internal_ = false;
 };

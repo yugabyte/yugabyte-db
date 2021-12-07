@@ -11,11 +11,20 @@
 // under the License.
 //
 
-#include "yb/common/redis_constants_common.h"
-#include "yb/common/ql_value.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/yql_keyspaces_vtable.h"
+
+#include <stdint.h>
+
+#include <glog/logging.h>
+
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+
+#include "yb/util/status_log.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace master {
@@ -28,12 +37,12 @@ YQLKeyspacesVTable::YQLKeyspacesVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> YQLKeyspacesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
-  master_->catalog_manager()->GetAllNamespaces(&namespaces, true);
+  catalog_manager().GetAllNamespaces(&namespaces, true);
   for (scoped_refptr<NamespaceInfo> ns : namespaces) {
     // Skip non-YQL namespace.
-    if (!CatalogManager::IsYcqlNamespace(*ns)) {
+    if (!IsYcqlNamespace(*ns)) {
       continue;
     }
 
@@ -42,7 +51,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLKeyspacesVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kDurableWrites, true, &row));
 
     int repl_factor;
-    RETURN_NOT_OK(master_->catalog_manager()->GetReplicationFactor(ns->name(), &repl_factor));
+    RETURN_NOT_OK(catalog_manager().GetReplicationFactor(ns->name(), &repl_factor));
     RETURN_NOT_OK(SetColumnValue(kReplication, util::GetReplicationValue(repl_factor), &row));
   }
 

@@ -16,7 +16,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
@@ -37,14 +37,21 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
+<li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      OpenShift
+    </a>
+ </li>
+
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
@@ -93,6 +100,8 @@ In order to access the Yugabyte Platform from outside the GCP environment, you w
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
 - View the Yugabyte Platform console (port `tcp:80`)
 
+If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+
 Create a firewall entry enabling these by going to **VPC network > Firewall rules**:
 
 ![Firewall -- service entry](/images/ee/gcp-setup/firewall-tab.png)
@@ -107,7 +116,7 @@ Click **CREATE FIREWALL RULE** and fill in the following.
 - Add a description (for example, `Firewall setup for Yugabyte Platform console`).
 - Add a tag `yugaware-server` to the **Target tags** field. This will be used later when creating instances.
 - Add the appropriate ip addresses to the **Source IP ranges** field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
-- Add the ports `tcp:22,8800,80` to the **Protocol and ports** field.
+- Add the ports `tcp:22,8800,80` to the **Protocol and ports** field. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 to the tcp ports list.
 
 You should see something like the screenshot below, click **Create** next.
 

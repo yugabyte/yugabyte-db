@@ -33,8 +33,6 @@
 #include <limits>
 #include <unordered_set>
 
-#include <glog/stl_logging.h>
-
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
 

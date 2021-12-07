@@ -27,12 +27,11 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/event_logger.h"
-#include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/slice.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/status_format.h"
 
 DEFINE_bool(use_per_file_metadata_for_flushed_frontier, false,
             "Allows taking per-file metadata in version edits into account when computing the "
@@ -108,6 +107,12 @@ void FileMetaData::UpdateBoundariesExceptKey(const FileBoundaryValuesBase& sourc
 
 Slice FileMetaData::UserFilter() const {
   return largest.user_frontier ? largest.user_frontier->Filter() : Slice();
+}
+
+std::string FileMetaData::FrontiersToString() const {
+  return yb::Format("frontiers: { smallest: $0 largest: $1 }",
+      smallest.user_frontier ? smallest.user_frontier->ToString() : "none",
+      largest.user_frontier ? largest.user_frontier->ToString() : "none");
 }
 
 std::string FileMetaData::ToString() const {

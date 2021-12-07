@@ -63,6 +63,7 @@ export default class EditProviderForm extends Component {
     const { providersInUse } = this.state;
     let isHostedZoneIdValid = true;
     let verifyEditConditions = true;
+    
     if (!isNonEmptyString(hostedZoneId)) {
       isHostedZoneIdValid = false;
       verifyEditConditions = false;

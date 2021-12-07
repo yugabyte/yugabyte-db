@@ -30,45 +30,27 @@
 // under the License.
 //
 
-#include <glog/logging.h>
-
-#include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/remote_method.h"
+
 #include "yb/rpc/rpc_header.pb.h"
+
+#include "yb/util/format.h"
+#include "yb/util/scope_exit.h"
 
 namespace yb {
 namespace rpc {
 
-using strings::Substitute;
-
 RemoteMethod::RemoteMethod(std::string service_name,
                            std::string method_name)
-    : service_name_(std::move(service_name)), method_name_(std::move(method_name)) {}
-
-RemoteMethod::RemoteMethod(const RemoteMethod& rhs)
-    : service_name_(rhs.service_name_), method_name_(rhs.method_name_) {
-}
-
-RemoteMethod::RemoteMethod(RemoteMethod&& rhs)
-    : service_name_(std::move(rhs.service_name_)), method_name_(std::move(rhs.method_name_)) {
-}
-
-RemoteMethod& RemoteMethod::operator=(const RemoteMethod& rhs) {
-  service_name_ = rhs.service_name_;
-  method_name_ = rhs.method_name_;
-  return *this;
-}
-
-RemoteMethod& RemoteMethod::operator=(RemoteMethod&& rhs) {
-  service_name_ = std::move(rhs.service_name_);
-  method_name_ = std::move(rhs.method_name_);
-  return *this;
-}
-
-void RemoteMethod::FromPB(const RemoteMethodPB& pb) {
-  DCHECK(pb.IsInitialized()) << "PB is uninitialized: " << pb.InitializationErrorString();
-  service_name_ = pb.service_name();
-  method_name_ = pb.method_name();
+    : service_name_(std::move(service_name)), method_name_(std::move(method_name)) {
+  RequestHeader pb;
+  pb.mutable_remote_method()->set_allocated_service_name(&service_name_);
+  pb.mutable_remote_method()->set_allocated_method_name(&method_name_);
+  auto se = ScopeExit([&pb] {
+    pb.mutable_remote_method()->release_method_name();
+    pb.mutable_remote_method()->release_service_name();
+  });
+  serialized_ = pb.SerializeAsString();
 }
 
 void RemoteMethod::ToPB(RemoteMethodPB* pb) const {
@@ -76,8 +58,12 @@ void RemoteMethod::ToPB(RemoteMethodPB* pb) const {
   pb->set_method_name(method_name_);
 }
 
+size_t RemoteMethod::DynamicMemoryUsage() const {
+  return service_name_.size() + method_name_.size() + serialized_.size();
+}
+
 string RemoteMethod::ToString() const {
-  return Substitute("$0.$1", service_name_, method_name_);
+  return Format("$0.$1", service_name(), method_name());
 }
 
 } // namespace rpc

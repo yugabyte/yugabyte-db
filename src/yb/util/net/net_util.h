@@ -39,12 +39,15 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
 
-#include "yb/util/env.h"
-#include "yb/util/status.h"
+#include <gflags/gflags_declare.h>
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"
 
 DECLARE_string(net_address_filter);
 namespace yb {
+
+class FileLock;
 
 // A container for a host:port pair.
 class HostPort {
@@ -59,11 +62,7 @@ class HostPort {
   // If there is no port specified in the string, then 'default_port' is used.
   CHECKED_STATUS ParseString(const std::string& str, uint16_t default_port);
 
-  static Result<HostPort> FromString(const std::string& str, uint16_t default_port) {
-    HostPort result;
-    RETURN_NOT_OK(result.ParseString(str, default_port));
-    return std::move(result);
-  }
+  static Result<HostPort> FromString(const std::string& str, uint16_t default_port);
 
   // Resolve any addresses corresponding to this host:port pair.
   // Note that a host may resolve to more than one IP address.
@@ -92,11 +91,7 @@ class HostPort {
 
   static Result<std::vector<HostPort>> ParseStrings(
       const std::string& comma_sep_addrs, uint16_t default_port,
-      const char* separator = ",") {
-    std::vector<HostPort> result;
-    RETURN_NOT_OK(ParseStrings(comma_sep_addrs, default_port, &result, separator));
-    return std::move(result);
-  }
+      const char* separator = ",");
 
   template <class PB>
   static HostPort FromPB(const PB& pb) {
@@ -138,9 +133,7 @@ inline std::ostream& operator<<(std::ostream& out, const HostPort& value) {
 }
 
 struct HostPortHash {
-  size_t operator()(const HostPort& hostPort) const {
-    return hash<std::string>()(std::to_string(hostPort.port()) + hostPort.host());
-  }
+  size_t operator()(const HostPort& hostPort) const;
 };
 
 // Parse and resolve the given comma-separated list of addresses.
@@ -199,7 +192,7 @@ Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter);
 
 // Get local addresses, filtered and ordered by the filter_spec specified
 // For details of the filter_spec, see inetaddress.h
-Status GetLocalAddresses(const string &filter_spec,
+Status GetLocalAddresses(const std::string &filter_spec,
                          std::vector<IpAddress> *result);
 
 // Convert the given host/port pair to a string of the host:port format.

@@ -41,10 +41,10 @@ class RefCntBuffer {
   RefCntBuffer(const uint8_t *data, size_t size)
       : RefCntBuffer(static_cast<const char*>(static_cast<const void*>(data)), size) {}
 
-  explicit RefCntBuffer(const std::string& string) :
-      RefCntBuffer(string.c_str(), string.length()) {}
+  explicit RefCntBuffer(const std::string& str) :
+      RefCntBuffer(str.c_str(), str.length()) {}
 
-  explicit RefCntBuffer(const faststring& string);
+  explicit RefCntBuffer(const faststring& str);
 
   explicit RefCntBuffer(const Slice& slice) :
       RefCntBuffer(slice.data(), slice.size()) {}
@@ -146,8 +146,8 @@ class RefCntPrefix {
  public:
   RefCntPrefix() : size_(0) {}
 
-  explicit RefCntPrefix(const std::string& string)
-      : bytes_(RefCntBuffer(string)), size_(bytes_.size()) {}
+  explicit RefCntPrefix(const std::string& str)
+      : bytes_(RefCntBuffer(str)), size_(bytes_.size()) {}
 
   explicit RefCntPrefix(const Slice& slice)
       : bytes_(RefCntBuffer(slice)), size_(bytes_.size()) {}
@@ -165,10 +165,7 @@ class RefCntPrefix {
     return static_cast<bool>(bytes_);
   }
 
-  void Resize(size_t value) {
-    DCHECK_LE(value, bytes_.size());
-    size_ = value;
-  }
+  void Resize(size_t value);
 
   Slice as_slice() const {
     return Slice(bytes_.data(), size_);

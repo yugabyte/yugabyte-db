@@ -18,16 +18,17 @@
 // under the License.
 //
 
-#include "yb/rocksdb/db/compaction.h"
-#include "yb/rocksdb/db/compaction_picker.h"
 #include <limits>
 #include <string>
 #include <utility>
 
-#include "yb/rocksdb/util/logging.h"
+#include <gtest/gtest.h>
+
+#include "yb/rocksdb/db/compaction_picker.h"
+#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/env.h"
+
 #include "yb/util/string_util.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 

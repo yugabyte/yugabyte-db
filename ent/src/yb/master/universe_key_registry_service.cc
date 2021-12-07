@@ -27,9 +27,9 @@ namespace enterprise {
 Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& universe_key) {
   string output;
   output.resize(s.size());
-  auto encryption_params = VERIFY_RESULT(yb::enterprise::EncryptionParams::FromSlice(universe_key));
+  auto encryption_params = VERIFY_RESULT(yb::EncryptionParams::FromSlice(universe_key));
   auto stream = VERIFY_RESULT(
-      yb::enterprise::BlockAccessCipherStream::FromEncryptionParams(std::move(encryption_params)));
+      yb::BlockAccessCipherStream::FromEncryptionParams(std::move(encryption_params)));
   RETURN_NOT_OK(stream->Decrypt(0, s, &output[0]));
   return output;
 }
@@ -40,7 +40,7 @@ Result<std::string> EncryptUniverseKeyRegistry(const Slice& s, const Slice& univ
 
 CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
                                  const Slice& new_universe_key,
-                                 const yb::enterprise::UniverseKeyId& new_key_version_id,
+                                 const yb::UniverseKeyId& new_key_version_id,
                                  bool enable,
                                  EncryptionInfoPB* encryption_info) {
   bool prev_enabled = encryption_info->encryption_enabled();
@@ -75,7 +75,7 @@ CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
     registry_for_flush = Slice(encoded);
   } else {
     LOG_IF(DFATAL, new_universe_key.empty());
-    auto params = VERIFY_RESULT(yb::enterprise::EncryptionParams::FromSlice(new_universe_key));
+    auto params = VERIFY_RESULT(yb::EncryptionParams::FromSlice(new_universe_key));
     EncryptionParamsPB params_pb;
     params->ToEncryptionParamsPB(&params_pb);
     (*universe_key_registry.mutable_universe_keys())[new_key_version_id] = params_pb;

@@ -32,9 +32,15 @@
 #ifndef YB_UTIL_RWC_LOCK_H
 #define YB_UTIL_RWC_LOCK_H
 
+#ifndef NDEBUG
+#include <unordered_map>
+#endif // NDEBUG
+
 #include "yb/gutil/macros.h"
+
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
+#include "yb/util/stack_trace.h"
 
 namespace yb {
 
@@ -138,10 +144,16 @@ class RWCLock {
   bool write_locked_;
 
 #ifndef NDEBUG
-  static const int kBacktraceBufSize = 1024;
   int64_t last_writer_tid_;
   int64_t last_writelock_acquire_time_;
-  char last_writer_backtrace_[kBacktraceBufSize];
+  StackTrace last_writer_stacktrace_;
+
+  // thread id --> (thread's reader count, stack trace of first reader).
+  struct CountStack {
+    int count; // reader count
+    StackTrace stack; // stack trace of first reader
+  };
+  std::unordered_map<int64_t, CountStack> reader_stacks_;
 #endif // NDEBUG
 
   DISALLOW_COPY_AND_ASSIGN(RWCLock);

@@ -16,7 +16,14 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
+
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -27,9 +34,9 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
                            PTExprListNode::SharedPtr target,
                            PTTableRef::SharedPtr relation,
-                           PTDmlUsingClause::SharedPtr using_clause,
-                           PTExpr::SharedPtr where_clause,
-                           PTExpr::SharedPtr if_clause,
+                           PTDmlUsingClausePtr using_clause,
+                           PTExprPtr where_clause,
+                           PTExprPtr if_clause,
                            const bool else_error,
                            const bool returns_status)
     : PTDmlStmt(memctx, loc, where_clause, if_clause, else_error, using_clause, returns_status),
@@ -50,11 +57,11 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(LookupTable(sem_context));
 
   // Analyze the target columns.
-  column_args_->resize(num_columns());
   if (target_) {
+    column_args_->resize(num_columns());
     TreeNodePtrOperator<SemContext> analyze =
         std::bind(&PTDeleteStmt::AnalyzeTarget, this, std::placeholders::_1, std::placeholders::_2);
-        RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
+    RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
   }
 
   // Analyze column args to set if primary and/or static row is modified.
@@ -156,11 +163,10 @@ ExplainPlanPB PTDeleteStmt::AnalysisResultToPB() {
   } else {
     delete_plan->set_scan_type("  ->  Primary Key Lookup on " + table_name().ToString());
   }
-  string key_conditions = "        Key Conditions: " +
-      conditionsToString<MCVector<ColumnOp>>(key_where_ops());
+  std::string key_conditions = "        Key Conditions: " + ConditionsToString(key_where_ops());
   delete_plan->set_key_conditions(key_conditions);
   if (!where_ops().empty()) {
-    string filter = "        Filter: " + conditionsToString < MCList < ColumnOp >> (where_ops());
+    std::string filter = "        Filter: " + ConditionsToString(where_ops());
     delete_plan->set_filter(filter);
   }
   delete_plan->set_output_width(max({

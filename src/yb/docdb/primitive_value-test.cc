@@ -11,18 +11,22 @@
 // under the License.
 //
 
+#include <limits>
+#include <string>
+
+#include <gtest/gtest.h>
+
+#include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
 
-#include <limits>
-#include <map>
+#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
-#include "yb/util/bytes_formatter.h"
-#include "yb/gutil/strings/substitute.h"
 
 using std::map;
 using std::string;

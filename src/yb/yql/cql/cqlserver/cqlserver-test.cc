@@ -15,18 +15,23 @@
 #include <string>
 #include <vector>
 
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/tserver/heartbeater.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 
-#include "yb/yql/cql/cqlserver/cql_server.h"
-#include "yb/yql/cql/ql/util/cql_message.h"
-
-#include "yb/gutil/strings/join.h"
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+
+#include "yb/yql/cql/cqlserver/cql_server.h"
 
 DECLARE_bool(cql_server_always_send_events);
 DECLARE_bool(use_cassandra_authentication);
@@ -118,7 +123,7 @@ Status TestCQLService::SendRequestAndGetResponse(
   LOG(INFO) << "Send CQL: {" << FormatBytesAsStr(cmd) << "}";
   // Send the request.
   int32_t bytes_written = 0;
-  EXPECT_OK(client_sock_.Write(util::to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
+  EXPECT_OK(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
 
   EXPECT_EQ(cmd.length(), bytes_written);
 
@@ -501,18 +506,18 @@ TEST_F(TestCQLServiceWithCassAuth, TestReadSystemTableAuthenticated) {
                     "\x00\x00\x00\x17"     // body size
                     "\x00\x00\x00\x13" "\x00" "acssandra" "\x00" "password"),
       BINARY_STRING("\x84\x00\x00\x00\x00" // 0x00 = ERROR
-                    "\x00\x00\x00\x3f"     // body size
+                    "\x00\x00\x00\x41"     // body size
                     "\x00\x00\x01\x00"     // error code
-                    "\x00\x39" "Provided username acssandra and/or password are incorrect"));
+                    "\x00\x3b" "Provided username 'acssandra' and/or password are incorrect"));
   // Invalid authorization: send wrong password.
   SendRequestAndExpectResponse(
       BINARY_STRING("\x04\x00\x00\x00\x0f" // 0x0F = AUTH_RESPONSE
                     "\x00\x00\x00\x17"     // body size
                     "\x00\x00\x00\x13" "\x00" "cassandra" "\x00" "password"),
       BINARY_STRING("\x84\x00\x00\x00\x00" // 0x00 = ERROR
-                    "\x00\x00\x00\x3f"     // body size
+                    "\x00\x00\x00\x41"     // body size
                     "\x00\x00\x01\x00"     // error code
-                    "\x00\x39" "Provided username cassandra and/or password are incorrect"));
+                    "\x00\x3b" "Provided username 'cassandra' and/or password are incorrect"));
   // Invalid authorization: send null token.
   SendRequestAndExpectResponse(
       BINARY_STRING("\x04\x00\x00\x00\x0f" // 0x0F = AUTH_RESPONSE

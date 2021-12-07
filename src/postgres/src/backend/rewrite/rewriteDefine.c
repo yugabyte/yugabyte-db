@@ -475,6 +475,12 @@ DefineQueryRewrite(const char *rulename,
 						 errmsg("could not convert table \"%s\" to a view because it has row security policies",
 								RelationGetRelationName(event_relation))));
 
+			if (IsSystemNamespace(event_relation->rd_rel->relnamespace))
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("could not convert table \"%s\" to a view because it's a system table",
+								RelationGetRelationName(event_relation))));
+
 			RelisBecomingView = true;
 		}
 	}

@@ -84,8 +84,40 @@ extern int YBUnsupportedFeatureSignalLevel();
 extern bool YBIsNonTxnCopyEnabled();
 
 /**
- * Returns whether running the ANALYZE command is enabled.
+ * Returns a null-terminated string representing the name of the
+ * cloud this process is running on.
  */
-extern bool YBIsAnalyzeCmdEnabled();
+extern const char *YBGetCurrentCloud();
+
+/**
+ * Returns a null-terminated string representing the region this
+ * process is running on.
+ */
+extern const char *YBGetCurrentRegion();
+
+/**
+ * Returns a null-terminated string representing the zone this
+ * process is running on.
+ */
+extern const char *YBGetCurrentZone();
+
+/**
+ * Returns whether COLLATION support is enabled.
+ */
+extern bool YBIsCollationEnabled();
+
+/**
+ * Returns the value of the configration variable `max_clock_sec_usec`
+ * returns -1 if the configuration was not found.
+ */
+extern int YBGetMaxClockSkewUsec();
+
+/**
+ * Test only constant. When set to true initdb imports default collation
+ * from the OS environment. As a result the default collation will be
+ * en_US.UTF-8. All the initial databases will have en_US.UTF-8 collation.
+ * The text columns of all system tables will have en_US.UTF-8 collation.
+ */
+extern const bool kTestOnlyUseOSDefaultCollation;
 
 #endif /* PG_YB_COMMON_H */

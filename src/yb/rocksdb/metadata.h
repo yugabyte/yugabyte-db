@@ -29,15 +29,20 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include <google/protobuf/any.pb.h>
-
 #include "yb/common/hybrid_time.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/clone_ptr.h"
 #include "yb/util/slice.h"
 #include "yb/util/enums.h"
 
 #include "yb/rocksdb/types.h"
+
+namespace google { namespace protobuf {
+class Any;
+}
+}
 
 namespace yb {
 class OpIdPB;
@@ -151,7 +156,7 @@ inline std::ostream& operator<<(std::ostream& out, const UserFrontier& frontier)
 class UserFrontiers {
  public:
   virtual std::unique_ptr<UserFrontiers> Clone() const = 0;
-  virtual std::string ToString() const = 0;
+  std::string ToString() const;
   virtual const UserFrontier& Smallest() const = 0;
   virtual const UserFrontier& Largest() const = 0;
 
@@ -163,10 +168,6 @@ class UserFrontiers {
 template<class Frontier>
 class UserFrontiersBase : public rocksdb::UserFrontiers {
  public:
-  std::string ToString() const override {
-    return yb::Format("{ smallest: $0 largest: $1 }", smallest_, largest_);
-  }
-
   const rocksdb::UserFrontier& Smallest() const override { return smallest_; }
   const rocksdb::UserFrontier& Largest() const override { return largest_; }
 
@@ -290,14 +291,7 @@ struct LiveFileMetaData : SstFileMetaData {
   std::string column_family_name;  // Name of the column family
   int level;                       // Level at which this file resides.
 
-  std::string ToString() const {
-    return yb::Format("{ total_size: $0 base_size: $1 uncompressed_size: $2 name: \"$3\" "
-                      "db_path: \"$4\" imported: $5 being_compacted: $6 column_family_name: $7 "
-                      "level: $8 ",
-                      total_size, base_size, uncompressed_size, name, db_path, imported,
-                      being_compacted, column_family_name, level) +
-           yb::Format("smallest: $0 largest: $1 }", smallest, largest);
-  }
+  std::string ToString() const;
 };
 
 }  // namespace rocksdb

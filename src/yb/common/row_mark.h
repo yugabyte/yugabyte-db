@@ -20,9 +20,6 @@
 
 namespace yb {
 
-// Determine whether two row mark types conflict.
-bool AreConflictingRowMarkTypes(RowMarkType row_mark_type_a, RowMarkType row_mark_type_b);
-
 template <typename PB>
 RowMarkType GetRowMarkTypeFromPB(const PB& pb) {
   if (pb.has_row_mark_type()) {
@@ -48,9 +45,6 @@ bool IsValidRowMarkType(RowMarkType row_mark_type);
  * this is a new txn (first operation within a transaction).
  */
 bool RowMarkNeedsPessimisticLock(RowMarkType row_mark_type);
-
-// Convert a row mark type to a string to use in a PostgreSQL query.
-std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type);
 
 } // namespace yb
 

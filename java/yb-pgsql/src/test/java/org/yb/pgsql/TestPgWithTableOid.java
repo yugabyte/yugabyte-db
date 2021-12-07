@@ -67,7 +67,7 @@ public class TestPgWithTableOid extends BasePgSQLTest {
             "CONSTRAINT tt_id_pkey2 PRIMARY KEY(id)," +
             "CONSTRAINT tt_val_unq2 UNIQUE(val))" +
             "WITH (table_oid = " + table_oid + ")",
-          "Oid " + table_oid + " is in use.");
+          "table oid " + table_oid + " is in use");
 
       // Try creating new tables with the oids of the constraints.
       statement.execute("CREATE TABLE test_table2(id int, val int," +

@@ -14,7 +14,7 @@
 #ifndef YB_MASTER_YQL_INDEXES_VTABLE_H
 #define YB_MASTER_YQL_INDEXES_VTABLE_H
 
-#include "yb/master/yql_empty_vtable.h"
+#include "yb/master/yql_virtual_table.h"
 
 namespace yb {
 namespace master {
@@ -39,6 +39,7 @@ class YQLIndexesVTable : public YQLVirtualTable {
   static constexpr const char* const kIndexId = "index_id";
   static constexpr const char* const kTransactions = "transactions";
   static constexpr const char* const kIsUnique = "is_unique";
+  static constexpr const char* const kNumTablets = "tablets";
 };
 
 }  // namespace master

@@ -16,22 +16,25 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
+
 namespace tablet {
 
 // Interface for snapshot coordinator.
 class SnapshotCoordinator {
  public:
   virtual CHECKED_STATUS CreateReplicated(
-      int64_t leader_term, const SnapshotOperationState& state) = 0;
+      int64_t leader_term, const SnapshotOperation& operation) = 0;
 
   virtual CHECKED_STATUS DeleteReplicated(
-      int64_t leader_term, const SnapshotOperationState& state) = 0;
+      int64_t leader_term, const SnapshotOperation& operation) = 0;
 
   virtual CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const SnapshotOperationState& state) = 0;
+      int64_t leader_term, const SnapshotOperation& operation, Status* complete_status) = 0;
 
   virtual CHECKED_STATUS Load(Tablet* tablet) = 0;
 

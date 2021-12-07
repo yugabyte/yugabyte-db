@@ -16,16 +16,19 @@
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 
@@ -37,13 +40,27 @@ namespace master {
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context) {
-  return EncodedKey(SysRowEntry::SNAPSHOT, id.AsSlice(), context);
+  return EncodedKey(SysRowEntryType::SNAPSHOT, id.AsSlice(), context);
 }
+
+namespace {
+
+std::string MakeSnapshotStateLogPrefix(
+    const TxnSnapshotId& id, const std::string& schedule_id_str) {
+  auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+  if (schedule_id) {
+    return Format("Snapshot[$0/$1]: ", id, schedule_id);
+  }
+  return Format("Snapshot[$0]: ", id);
+}
+
+} // namespace
 
 SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
     const tserver::TabletSnapshotOpRequestPB& request)
-    : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
+    : StateWithTablets(context, SysSnapshotEntryPB::CREATING,
+                       MakeSnapshotStateLogPrefix(id, request.schedule_id())),
       id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()),
       previous_snapshot_hybrid_time_(HybridTime::FromPB(request.previous_snapshot_hybrid_time())),
       schedule_id_(TryFullyDecodeSnapshotScheduleId(request.schedule_id())), version_(1) {
@@ -55,7 +72,8 @@ SnapshotState::SnapshotState(
 SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
     const SysSnapshotEntryPB& entry)
-    : StateWithTablets(context, entry.state()),
+    : StateWithTablets(context, entry.state(),
+                       MakeSnapshotStateLogPrefix(id, entry.schedule_id())),
       id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()),
       previous_snapshot_hybrid_time_(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
       schedule_id_(TryFullyDecodeSnapshotScheduleId(entry.schedule_id())),
@@ -147,7 +165,9 @@ void SnapshotState::SetVersion(int value) {
 
 bool SnapshotState::NeedCleanup() const {
   return initial_state() == SysSnapshotEntryPB::DELETING &&
-         PassedSinceCompletion(GetAtomicFlag(&FLAGS_snapshot_coordinator_cleanup_delay_ms) * 1ms);
+         PassedSinceCompletion(
+            GetAtomicFlag(&FLAGS_snapshot_coordinator_cleanup_delay_ms) * 1ms) &&
+         !cleanup_tracker_.Started();
 }
 
 bool SnapshotState::IsTerminalFailure(const Status& status) {
@@ -171,7 +191,7 @@ bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
 }
 
 Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
-    const tablet::SnapshotOperationState& state) const {
+    const tablet::SnapshotOperation& operation) const {
   if (!schedule_id_) {
     static Status result(STATUS(Uninitialized, ""));
     return result;
@@ -179,11 +199,22 @@ Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
 
   return tablet::CreateSnapshotData {
     .snapshot_hybrid_time = snapshot_hybrid_time_,
-    .hybrid_time = state.hybrid_time(),
-    .op_id = state.op_id(),
-    .snapshot_dir = VERIFY_RESULT(state.GetSnapshotDir()),
+    .hybrid_time = operation.hybrid_time(),
+    .op_id = operation.op_id(),
+    .snapshot_dir = VERIFY_RESULT(operation.GetSnapshotDir()),
     .schedule_id = schedule_id_,
   };
+}
+
+Status SnapshotState::CheckDoneStatus(const Status& status) {
+  if (initial_state() != SysSnapshotEntryPB::DELETING) {
+    return status;
+  }
+  MasterError error(status);
+  if (error == MasterErrorPB::TABLET_NOT_RUNNING || error == MasterErrorPB::TABLE_NOT_RUNNING) {
+    return Status::OK();
+  }
+  return status;
 }
 
 } // namespace master

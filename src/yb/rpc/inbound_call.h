@@ -37,14 +37,12 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -56,9 +54,10 @@
 #include "yb/util/lockfree.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace google {
 namespace protobuf {
@@ -72,11 +71,6 @@ class Histogram;
 class Trace;
 
 namespace rpc {
-
-class DumpRunningRpcsRequestPB;
-class RpcCallInProgressPB;
-class RpcCallDetailsPB;
-class CQLCallDetailsPB;
 
 struct InboundCallTiming {
   MonoTime time_received;   // Time the call was first accepted.
@@ -107,9 +101,19 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
               CallProcessedListener call_processed_listener);
   virtual ~InboundCall();
 
+  void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
+
   // Return the serialized request parameter protobuf.
   const Slice &serialized_request() const {
     return serialized_request_;
+  }
+
+  void set_method_index(size_t value) {
+    method_index_ = value;
+  }
+
+  size_t method_index() const {
+    return method_index_;
   }
 
   virtual const Endpoint& remote_address() const;
@@ -135,7 +139,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // Updates the Histogram with time elapsed since the call was started,
   // and should only be called once on a given instance.
   // Not thread-safe. Should only be called by the current "owner" thread.
-  void RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_time);
+  void RecordHandlingCompleted();
 
   // Return true if the deadline set by the client has already elapsed.
   // In this case, the server may stop processing the call, since the
@@ -147,26 +151,22 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // If the client did not specify a deadline, returns MonoTime::Max().
   virtual CoarseTimePoint GetClientDeadline() const = 0;
 
+  virtual void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) = 0;
+
   // Returns the time spent in the service queue -- from the time the call was received, until
   // it gets handled.
   MonoDelta GetTimeInQueue() const;
 
-  ThreadPoolTask* BindTask(InboundCallHandler* handler) {
-    auto shared_this = shared_from(this);
-    if (!handler->CallQueued()) {
-      return nullptr;
-    }
-    tracker_ = handler;
-    task_.Bind(handler, shared_this);
-    return &task_;
-  }
+  ThreadPoolTask* BindTask(InboundCallHandler* handler);
 
   void ResetCallProcessedListener() {
     call_processed_listener_ = decltype(call_processed_listener_)();
   }
 
-  virtual const std::string& method_name() const = 0;
-  virtual const std::string& service_name() const = 0;
+  virtual Slice serialized_remote_method() const = 0;
+  virtual Slice method_name() const = 0;
+
+//  virtual const std::string& service_name() const = 0;
   virtual void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) = 0;
 
   // Do appropriate actions when call is timed out.
@@ -198,6 +198,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   size_t DynamicMemoryUsage() const override;
 
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override final;
+
   const CallData& request_data() const { return request_data_; }
 
  protected:
@@ -219,6 +221,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   // Data source of this call.
   CallData request_data_;
+  std::atomic<size_t> request_data_memory_usage_{0};
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;
@@ -229,6 +232,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   std::atomic<bool> processing_started_{false};
 
   std::atomic<bool> responded_{false};
+
+  const RpcMethodMetrics* rpc_method_metrics_ = nullptr;
 
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
@@ -256,6 +261,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   InboundCallTask task_;
   InboundCallHandler* tracker_ = nullptr;
+
+  size_t method_index_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };

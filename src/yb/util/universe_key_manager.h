@@ -14,12 +14,12 @@
 #ifndef YB_UTIL_UNIVERSE_KEY_MANAGER_H
 #define YB_UTIL_UNIVERSE_KEY_MANAGER_H
 
+#include <shared_mutex>
+
 #include "yb/util/encryption.pb.h"
 #include "yb/util/encryption_util.h"
-#include "yb/util/result.h"
 
 namespace yb {
-namespace enterprise {
 
 // Class is responsible for saving the universe key registry from master on heartbeat for use
 // in creating new files and reading exising files.
@@ -28,16 +28,18 @@ class UniverseKeyManager {
   static Result<std::unique_ptr<UniverseKeyManager>> FromKey(
       const std::string& key_id, const Slice& key_data);
   void SetUniverseKeyRegistry(const yb::UniverseKeyRegistryPB& universe_key_registry);
+  void SetUniverseKeys(const UniverseKeysPB& universe_keys);
   // From an existing version id, generate encryption params. Used when creating readable files.
   Result<EncryptionParamsPtr> GetUniverseParamsWithVersion(
       const UniverseKeyId& version_id);
   // Get the latest universe key in the registry. Used when creating writable files.
   Result<UniverseKeyParams> GetLatestUniverseParams();
   bool IsEncryptionEnabled();
+  bool ReceivedUniverseKeys();
 
-  // Returns once the master has heartbeated with its registry. Blocks calls to
-  // GetUniverseParamsWithVersion() and GetLatestUniverseParams()
-  MUST_USE_RESULT std::unique_lock<std::mutex> EnsureRegistryReceived();
+  void SetGetUniverseKeysCallback(std::function<void()> get_universe_keys_callback) {
+    get_universe_keys_callback_ = get_universe_keys_callback;
+  }
 
  private:
   // Registry from master.
@@ -47,10 +49,11 @@ class UniverseKeyManager {
   std::condition_variable cond_;
 
   // Set to true once the registry has been received from master.
-  bool received_registry_ = false;
+  bool received_universe_keys_ = false;
+
+  std::function<void()> get_universe_keys_callback_;
 };
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_UNIVERSE_KEY_MANAGER_H

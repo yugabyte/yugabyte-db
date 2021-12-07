@@ -13,21 +13,27 @@
 //
 //
 
-#include "yb/client/txn-test-base.h"
-
+#include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_rpc.h"
+#include "yb/client/txn-test-base.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/log.h"
 
-#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/db.h"
 
 #include "yb/rpc/rpc.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
 
@@ -40,6 +46,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -687,7 +695,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
       const auto val = ++value;
       table_.AddInt32ColumnValue(req, kValueColumn, val);
       LOG(INFO) << "TXN: " << active_txn.ToString() << " write " << key << " = " << val;
-      ASSERT_OK(active_txn.session->Apply(op));
+      active_txn.session->Apply(op);
       active_txn.flush_future = active_txn.session->FlushFuture();
 
       ++tries;
@@ -1228,7 +1236,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         if (!IsReady(state.metadata_future)) {
           continue;
         }
-        state.metadata = ASSERT_RESULT(state.metadata_future.get());
+        state.metadata = ASSERT_RESULT(Copy(state.metadata_future.get()));
       }
       tserver::GetTransactionStatusRequestPB req;
       req.set_tablet_id(state.metadata.status_tablet);
@@ -1431,8 +1439,7 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
   auto test_finish = std::chrono::steady_clock::now() + kTestTime;
   while (std::chrono::steady_clock::now() < test_finish) {
     for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      std::vector<tablet::TabletPeerPtr> peers;
-      cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
         if (peer->consensus() &&
             peer->consensus()->GetLeaderStatus() !=

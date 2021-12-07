@@ -33,31 +33,40 @@
 #ifndef YB_CONSENSUS_LOG_H_
 #define YB_CONSENSUS_LOG_H_
 
+#include <pthread.h>
+#include <sys/types.h>
+
 #include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include <boost/atomic.hpp>
-#include <boost/thread/shared_mutex.hpp>
+#include <glog/logging.h>
 
-#include "yb/common/schema.h"
+#include "yb/common/common_fwd.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/opid_util.h"
+
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
-#include "yb/util/async_util.h"
-#include "yb/util/blocking_queue.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/promise.h"
-#include "yb/util/status.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
 
@@ -71,12 +80,13 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 
 namespace log {
 
-struct LogMetrics;
-class LogEntryBatch;
-class LogIndex;
-class LogReader;
-
 YB_STRONGLY_TYPED_BOOL(CreateNewSegment);
+YB_DEFINE_ENUM(
+    SegmentAllocationState,
+    (kAllocationNotStarted)  // No segment allocation requested
+    (kAllocationInProgress)  // Next segment allocation started
+    (kAllocationFinished)    // Next segment ready
+);
 
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
@@ -130,9 +140,7 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // WARNING: the caller _must_ call AsyncAppend() or else the log will "stall" and will never be
   // able to make forward progress.
-  CHECKED_STATUS Reserve(LogEntryTypePB type,
-                         LogEntryBatchPB* entry_batch,
-                         LogEntryBatch** reserved_entry);
+  void Reserve(LogEntryTypePB type, LogEntryBatchPB* entry_batch, LogEntryBatch** reserved_entry);
 
   // Asynchronously appends 'entry' to the log. Once the append completes and is synced, 'callback'
   // will be invoked.
@@ -233,9 +241,9 @@ class Log : public RefCountedThreadSafe<Log> {
     return active_segment_.get();
   }
 
-  // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
-  // entries appended up to this point are available in closed, readable segments. Note that this
-  // assumes there is already a valid active_segment_.
+  // If active segment is not empty, forces the Log to allocate a new segment and roll over.
+  // This can be used to make sure all entries appended up to this point are available in closed,
+  // readable segments. Note that this assumes there is already a valid active_segment_.
   CHECKED_STATUS AllocateSegmentAndRollOver();
 
   // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
@@ -278,7 +286,7 @@ class Log : public RefCountedThreadSafe<Log> {
   CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
   // Returns the number of segments.
-  const int num_segments() const;
+  int num_segments() const;
 
   const std::string& LogPrefix() const {
     return log_prefix_;
@@ -327,13 +335,6 @@ class Log : public RefCountedThreadSafe<Log> {
     kLogClosed
   };
 
-  // State of segment (pre-) allocation.
-  enum SegmentAllocationState {
-    kAllocationNotStarted, // No segment allocation requested
-    kAllocationInProgress, // Next segment allocation started
-    kAllocationFinished // Next segment ready
-  };
-
   Log(LogOptions options,
       std::string wal_dir,
       std::string tablet_id,
@@ -369,7 +370,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Creates a new WAL segment on disk, writes the next_segment_header_ to disk as the header, and
   // sets active_segment_ to point to this new segment.
-  CHECKED_STATUS SwitchToAllocatedSegment() EXCLUDES(allocation_mutex_);
+  CHECKED_STATUS SwitchToAllocatedSegment();
 
   // Preallocates the space for a new segment.
   CHECKED_STATUS PreAllocateNewSegment();
@@ -405,14 +406,13 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Kick off an asynchronous task that pre-allocates a new log-segment, setting
   // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
-  CHECKED_STATUS AsyncAllocateSegment() REQUIRES(allocation_mutex_);
+  CHECKED_STATUS AsyncAllocateSegment();
 
-  SegmentAllocationState allocation_state() EXCLUDES(allocation_mutex_) {
+  SegmentAllocationState allocation_state() {
     return allocation_state_.load(std::memory_order_acquire);
   }
 
-  bool NeedNewSegment(uint32_t entry_batch_bytes);
-  CHECKED_STATUS RollOverIfNecessary(uint32_t entry_batch_bytes) EXCLUDES(allocation_mutex_);
+  LogEntryBatch* ReserveMarker(LogEntryTypePB type);
 
   LogOptions options_;
 
@@ -429,13 +429,13 @@ class Log : public RefCountedThreadSafe<Log> {
   mutable rw_spinlock schema_lock_;
 
   // The current schema of the tablet this log is dedicated to.
-  Schema schema_;
+  std::unique_ptr<Schema> schema_;
 
   // The schema version
   uint32_t schema_version_;
 
   // The currently active segment being written.
-  gscoped_ptr<WritableLogSegment> active_segment_;
+  std::unique_ptr<WritableLogSegment> active_segment_;
 
   // The current (active) segment sequence number. Initialized in the Log constructor based on
   // LogOptions.
@@ -514,15 +514,11 @@ class Log : public RefCountedThreadSafe<Log> {
   // The status of the most recent log-allocation action.
   Promise<Status> allocation_status_;
 
-  // Read-write lock to protect 'allocation_state_'.
-  mutable std::mutex allocation_mutex_;
-  std::condition_variable allocation_cond_;
   std::atomic<SegmentAllocationState> allocation_state_;
-  bool allocation_requested_ GUARDED_BY(allocation_mutex_) = false;
 
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
-  gscoped_ptr<LogMetrics> metrics_;
+  std::unique_ptr<LogMetrics> metrics_;
 
   // The cached on-disk size of the log, used to track its size even if it has been closed.
   std::atomic<uint64_t> on_disk_size_;
@@ -545,6 +541,11 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
+
+  std::mutex log_copy_mutex_;
+
+  // Used by GetSegmentsToGCUnlocked() as an anchor.
+  int64_t log_copy_min_index_ GUARDED_BY(state_lock_) = std::numeric_limits<int64_t>::max();
 
   CreateNewSegment create_new_segment_at_start_;
 

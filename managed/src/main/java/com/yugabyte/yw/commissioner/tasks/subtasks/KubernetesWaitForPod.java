@@ -11,33 +11,20 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import play.Application;
-import play.api.Play;
-import play.libs.Json;
-import org.yaml.snakeyaml.Yaml;
-
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import play.libs.Json;
 
 public class KubernetesWaitForPod extends AbstractTaskBase {
   public enum CommandType {
@@ -52,24 +39,20 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     }
   }
 
-  @Inject
-  KubernetesManager kubernetesManager;
+  private final KubernetesManager kubernetesManager;
 
   @Inject
-  Application application;
+  protected KubernetesWaitForPod(
+      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
+    super(baseTaskDependencies);
+    this.kubernetesManager = kubernetesManager;
+  }
 
   // Number of iterations to wait for the pod to come up.
   private static final int MAX_ITERS = 10;
 
   // Time to sleep on each iteration of the pod to come up.
   private static final int SLEEP_TIME = 10;
-
-  @Override
-  public void initialize(ITaskParams params) {
-    this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
-    this.application = Play.current().injector().instanceOf(Application.class);
-    super.initialize(params);
-  }
 
   public static class Params extends AbstractTaskParams {
     public UUID providerUUID;
@@ -88,7 +71,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   }
 
   protected KubernetesWaitForPod.Params taskParams() {
-    return (KubernetesWaitForPod.Params)taskParams;
+    return (KubernetesWaitForPod.Params) taskParams;
   }
 
   @Override
@@ -105,7 +88,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
             break;
           }
           try {
-            TimeUnit.SECONDS.sleep(SLEEP_TIME);
+            TimeUnit.SECONDS.sleep(getSleepMultiplier() * SLEEP_TIME);
           } catch (InterruptedException ex) {
             // Do nothing
           }
@@ -121,10 +104,10 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   private String waitForPod() {
     Map<String, String> config = taskParams().config;
     if (taskParams().config == null) {
-      config = Provider.get(taskParams().providerUUID).getConfig();
+      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
-    ShellResponse podResponse = kubernetesManager.getPodStatus(config, taskParams().namespace,
-        taskParams().podName);
+    ShellResponse podResponse =
+        kubernetesManager.getPodStatus(config, taskParams().namespace, taskParams().podName);
     JsonNode podInfo = parseShellResponseAsJson(podResponse);
     JsonNode statusNode = podInfo.path("status");
     String status = statusNode.get("phase").asText();

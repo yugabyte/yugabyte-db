@@ -15,15 +15,10 @@
 // Convert internal error code into readable texts. This text doesn't have to be English, and this
 // file can be translated into any languages that YugaByte supports.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/util/errcodes.h"
 
-#include <unordered_map>
-
 #include "yb/common/ql_protocol.pb.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace ql {
@@ -92,6 +87,9 @@ const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   { ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA, "Incompatible Copartition Schema" },
   { ErrorCode::INVALID_ROLE_DEFINITION, "Invalid Role Definition" },
   { ErrorCode::DUPLICATE_ROLE, "Duplicate Role"},
+  { ErrorCode::NULL_IN_COLLECTIONS, "null is not supported inside collections"},
+  { ErrorCode::INVALID_UPDATE_PROPERTY, "Invalid Update Property" },
+  { ErrorCode::DUPLICATE_UPDATE_PROPERTY, "Duplicate Update Property" },
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

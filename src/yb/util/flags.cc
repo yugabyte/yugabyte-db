@@ -32,7 +32,6 @@
 
 #include "yb/util/flags.h"
 
-#include <iostream>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -46,7 +45,6 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 
@@ -283,7 +281,11 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   if (FLAGS_helpxml) {
     DumpFlagsXML();
   } else if (FLAGS_dump_metrics_json) {
-    MetricPrototypeRegistry::get()->WriteAsJsonAndExit();
+    std::stringstream s;
+    JsonWriter w(&s, JsonWriter::PRETTY);
+    WriteRegistryAsJson(&w);
+    std::cout << s.str() << std::endl;
+    exit(0);
   } else if (FLAGS_version) {
     ShowVersionAndExit();
   } else {

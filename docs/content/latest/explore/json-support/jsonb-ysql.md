@@ -1,16 +1,16 @@
 ---
 title: JSON Support
 headerTitle: JSON Support
-linkTitle: JSON Support
+linkTitle: JSON support
 description: JSON Support in YugabyteDB.
 headcontent: JSON Support in YugabyteDB.
 image: <div class="icon"><i class="fas fa-file-invoice"></i></div>
 menu:
   latest:
-    name: JSON Support
+    name: JSON support
     identifier: explore-json-support-1-ysql
     parent: explore
-    weight: 232
+    weight: 260
 isTocNested: true
 showAsideToc: true
 ---
@@ -64,7 +64,7 @@ This section will focus on only the `jsonb` type.
 You need a YugabyteDB cluster to run through the steps below. If do not have a YugabyteDB cluster, you can create one on your local machine as shown below.
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yugabyted start
 ```
 
 Connect to the cluster using `ysqlsh` to run through the examples below.
@@ -443,7 +443,7 @@ If you want to support range queries that reference the value for the *year* att
 
 ```plpgsql
 CREATE INDEX books_year 
-    ON books ((doc->>'year') ASC)
+    ON books (((doc->>'year')::int) ASC)
     WHERE doc->>'year' is not null;
 ```
 
@@ -451,11 +451,12 @@ This will make the following query efficient:
 
 ```plpgsql
 select
-  (doc->>'ISBN')::bigint as year,
+  (doc->>'ISBN')::bigint as isbn,
   doc->>'title'          as title,
   (doc->>'year')::int    as year
 from books
 where (doc->>'year')::int > 1850
+and doc->>'year' IS NOT NULL
 order by 3;
 ```
 
@@ -491,8 +492,8 @@ ERROR:  23505: duplicate key value violates unique constraint "books_isbn_unq"
 
 ## 7. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
-$ ./bin/yb-ctl destroy
+$ ./bin/yugabyted destroy
 ```

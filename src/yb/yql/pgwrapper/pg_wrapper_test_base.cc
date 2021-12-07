@@ -12,11 +12,14 @@
 //
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
+
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::unique_ptr;
 

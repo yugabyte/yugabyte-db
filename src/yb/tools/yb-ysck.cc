@@ -33,15 +33,16 @@
 // on the default RPC port. It verifies that all the reported Tablet Servers are running and that
 // the tablets are in a consistent state.
 
-#include <iostream>
-
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/messenger.h"
+
+#include "yb/master/master_defaults.h"
+
 #include "yb/tools/ysck_remote.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 

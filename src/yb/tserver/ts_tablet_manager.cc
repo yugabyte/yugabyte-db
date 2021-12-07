@@ -40,13 +40,14 @@
 #include <thread>
 #include <vector>
 
+#include <boost/container/static_vector.hpp>
 #include <boost/optional/optional.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
@@ -54,60 +55,54 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/raft_consensus.h"
-
-#include "yb/docdb/consensus_frontier.h"
+#include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
+
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/human_readable.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog.h"
 
-#include "yb/rocksdb/memory_monitor.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_options.h"
-#include "yb/tablet/operations/split_operation.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/heartbeater.h"
-#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
-#include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
-#include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
-#include "yb/util/tsan_util.h"
-#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -151,6 +146,10 @@ DEFINE_test_flag(double, fault_crash_in_split_after_log_copied, 0.0,
                  "Log::CopyTo from parent to child tablet, but before marking the child tablet as "
                  "TABLET_DATA_READY.");
 
+DEFINE_test_flag(bool, simulate_already_present_in_remote_bootstrap, false,
+                 "If true, return an AlreadyPresent error in remote bootstrap after starting the "
+                 "remote bootstrap client.");
+
 DEFINE_test_flag(double, fault_crash_in_split_before_log_flushed, 0.0,
                  "Fraction of the time when the tablet will crash immediately before flushing a "
                  "parent tablet's kSplit operation.");
@@ -174,6 +173,9 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
+
+DEFINE_test_flag(bool, skip_post_split_compaction, false,
+                 "Skip processing post split compaction.");
 
 DEFINE_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
@@ -204,7 +206,7 @@ DEFINE_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
 
-constexpr int kTServerYbClientDefaultTimeoutMs = yb::RegularBuildVsSanitizers(5, 60) * 1000;
+constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
 
 DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
@@ -216,52 +218,45 @@ DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
 namespace yb {
 namespace tserver {
 
-METRIC_DEFINE_histogram(server, op_apply_queue_length, "Operation Apply Queue Length",
+METRIC_DEFINE_coarse_histogram(server, op_apply_queue_length, "Operation Apply Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be applied to the tablet. "
                         "High queue lengths indicate that the server is unable to process "
-                        "operations as fast as they are being written to the WAL.",
-                        10000, 2);
+                        "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(server, op_apply_queue_time, "Operation Apply Queue Time",
+METRIC_DEFINE_coarse_histogram(server, op_apply_queue_time, "Operation Apply Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the apply queue before being "
                         "processed. High queue times indicate that the server is unable to "
-                        "process operations as fast as they are being written to the WAL.",
-                        10000000, 2);
+                        "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(server, op_apply_run_time, "Operation Apply Run Time",
+METRIC_DEFINE_coarse_histogram(server, op_apply_run_time, "Operation Apply Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being applied to the tablet. "
                         "High values may indicate that the server is under-provisioned or "
-                        "that operations consist of very large batches.",
-                        10000000, 2);
+                        "that operations consist of very large batches.");
 
-METRIC_DEFINE_histogram(server, op_read_queue_length, "Operation Read op Queue Length",
+METRIC_DEFINE_coarse_histogram(server, op_read_queue_length, "Operation Read op Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be applied to the tablet. "
                             "High queue lengths indicate that the server is unable to process "
-                            "operations as fast as they are being written to the WAL.",
-                        10000, 2);
+                            "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(server, op_read_queue_time, "Operation Read op Queue Time",
+METRIC_DEFINE_coarse_histogram(server, op_read_queue_time, "Operation Read op Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the read queue before being "
                             "processed. High queue times indicate that the server is unable to "
-                            "process operations as fast as they are being written to the WAL.",
-                        10000000, 2);
+                            "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(server, op_read_run_time, "Operation Read op Run Time",
+METRIC_DEFINE_coarse_histogram(server, op_read_run_time, "Operation Read op Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being applied to the tablet. "
                             "High values may indicate that the server is under-provisioned or "
-                            "that operations consist of very large batches.",
-                        10000000, 2);
+                            "that operations consist of very large batches.");
 
-METRIC_DEFINE_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
+METRIC_DEFINE_coarse_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
                         MetricUnit::kMicroseconds,
-                        "Time that the tablet server takes to bootstrap all of its tablets.",
-                        10000000, 2);
+                        "Time that the tablet server takes to bootstrap all of its tablets.");
 
 THREAD_POOL_METRICS_DEFINE(
     server, post_split_trigger_compaction_pool, "Thread pool for tablet compaction jobs.");
@@ -519,7 +514,7 @@ void TSTabletManager::CleanupCheckpoints() {
       auto tablets = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
       if (!tablets.ok()) {
         LOG_WITH_PREFIX(WARNING)
-            << "Failed to get tablets in " << table_dir << ": " << tables.status();
+            << "Failed to get tablets in " << table_dir << ": " << tablets.status();
         continue;
       }
       for (const auto& tablet : *tablets) {
@@ -567,9 +562,10 @@ void TSTabletManager::CleanupSplitTablets() {
         LOG_WITH_PREFIX(INFO) << Format("Skipped triggering delete of tablet $0", tablet_id);
       } else {
         LOG_WITH_PREFIX(INFO) << Format("Triggering delete of tablet $0", tablet_id);
-        client().DeleteTablet(tablet_peer->tablet_id(), [tablet_id] (const Status& status) {
-          LOG(INFO) << Format("Tablet $0 deletion result: $1", tablet_id, status);
-        });
+        client().DeleteNotServingTablet(
+            tablet_peer->tablet_id(), [tablet_id](const Status& status) {
+              LOG(INFO) << Format("Tablet $0 deletion result: $1", tablet_id, status);
+            });
       }
     }
   }
@@ -740,7 +736,7 @@ Status TSTabletManager::StartSubtabletsSplit(
 
     // Try to load metadata from previous not completed split.
     auto load_result = RaftGroupMetadata::Load(fs_manager_, subtablet_id);
-    if (load_result.ok() && CanServeTabletData(iter->raft_group_metadata->tablet_data_state())) {
+    if (load_result.ok() && CanServeTabletData((*load_result)->tablet_data_state())) {
       // Sub tablet has been already created and ready during previous split attempt at this node or
       // as a result of remote bootstrap from another node, no need to re-create.
       iter = tcmetas->erase(iter);
@@ -788,8 +784,7 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   }
 }
 
-Status TSTabletManager::ApplyTabletSplit(
-    tablet::SplitOperationState* op_state, log::Log* raft_log) {
+Status TSTabletManager::ApplyTabletSplit(tablet::SplitOperation* operation, log::Log* raft_log) {
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_apply_tablet_split_op)) {
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_apply_tablet_split_op";
   }
@@ -798,20 +793,20 @@ Status TSTabletManager::ApplyTabletSplit(
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
 
-  auto* tablet = CHECK_NOTNULL(op_state->tablet());
+  auto* tablet = CHECK_NOTNULL(operation->tablet());
   const auto tablet_id = tablet->tablet_id();
-  const auto* request = op_state->request();
+  const auto* request = operation->request();
   SCHECK_EQ(
       request->tablet_id(), tablet_id, IllegalState,
       Format(
           "Unexpected SPLIT_OP $0 designated for tablet $1 to be applied to tablet $2",
-          op_state->op_id(), request->tablet_id(), tablet_id));
+          operation->op_id(), request->tablet_id(), tablet_id));
   SCHECK(
       tablet_id != request->new_tablet1_id() && tablet_id != request->new_tablet2_id(),
       IllegalState,
       Format(
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
-          op_state->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
+          operation->op_id(), request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation apply started";
 
@@ -836,7 +831,8 @@ Status TSTabletManager::ApplyTabletSplit(
 
   if (FLAGS_TEST_apply_tablet_split_inject_delay_ms > 0) {
     LOG(INFO) << "TEST: ApplyTabletSplit: injecting delay of "
-              << FLAGS_TEST_apply_tablet_split_inject_delay_ms << " ms for " << AsString(*op_state);
+              << FLAGS_TEST_apply_tablet_split_inject_delay_ms << " ms for "
+              << AsString(*operation);
     std::this_thread::sleep_for(FLAGS_TEST_apply_tablet_split_inject_delay_ms * 1ms);
     LOG(INFO) << "TEST: ApplyTabletSplit: delay finished";
   }
@@ -866,8 +862,8 @@ Status TSTabletManager::ApplyTabletSplit(
 
     // Copy raft group metadata.
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
-        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, op_state->op_id(),
-        op_state->hybrid_time()));
+        new_tablet_id, tcmeta.partition, tcmeta.key_bounds, operation->op_id(),
+        operation->hybrid_time()));
     LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
                           << " tablet: " << new_tablet_id;
 
@@ -876,6 +872,7 @@ Status TSTabletManager::ApplyTabletSplit(
     // 1) Their consensus metadata only differ by tablet id.
     // 2) Flush() will save it into a new path corresponding to tablet id we set before flushing.
     cmeta->set_tablet_id(new_tablet_id);
+    cmeta->set_split_parent_tablet_id(tablet_id);
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
@@ -887,8 +884,10 @@ Status TSTabletManager::ApplyTabletSplit(
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
   }
 
-  meta.set_tablet_data_state(tablet::TABLET_DATA_SPLIT_COMPLETED);
+  meta.SetSplitDone(operation->op_id(), request->new_tablet1_id(), request->new_tablet2_id());
   RETURN_NOT_OK(meta.Flush());
+
+  tablet->SplitDone();
 
   for (auto& tcmeta : tcmetas) {
     // Call CreatePeerAndOpenTablet asynchronously to avoid write-locking TSTabletManager::mutex_
@@ -1058,9 +1057,15 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // state, and we need to tombstone the tablet if additional steps prior to
   // getting to a TABLET_DATA_READY state fail.
 
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_already_present_in_remote_bootstrap)) {
+    LOG_WITH_PREFIX(INFO)
+        << "Simulating AlreadyPresent error in TSTabletManager::StartRemoteBootstrap.";
+    return STATUS(AlreadyPresent, "failed");
+  }
+
   // Registering a non-initialized TabletPeer offers visibility through the Web UI.
-  RegisterTabletPeerMode mode = replacing_tablet ? REPLACEMENT_PEER : NEW_PEER;
-  TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, mode));
+  TabletPeerPtr tablet_peer = VERIFY_RESULT(
+        CreateAndRegisterTabletPeer(meta, replacing_tablet ? REPLACEMENT_PEER : NEW_PEER));
   MarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id(),
       tablet_peer->tablet_metadata()->table_id());
 
@@ -1209,7 +1214,8 @@ Status TSTabletManager::DeleteTablet(
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
   if (hide_only) {
-    return meta->SetHiddenAndFlush(true);
+    meta->SetHidden(true);
+    return meta->Flush();
   }
   // No matter if the tablet was deleted (drop table), or tombstoned (potentially moved to a
   // different TS), we do not need to flush rocksdb anymore, as this data is irrelevant.
@@ -1387,8 +1393,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
         tablet_prepare_pool(),
-        &retryable_requests,
-        bootstrap_info.split_op_info);
+        &retryable_requests);
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -1418,11 +1423,16 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  WARN_NOT_OK(
-      tablet->TriggerPostSplitCompactionIfNeeded([&]() {
-        return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
-      }),
-      "Failed to submit compaction for post-split tablet.");
+  if (PREDICT_TRUE(!FLAGS_TEST_skip_post_split_compaction)) {
+    WARN_NOT_OK(
+    tablet->TriggerPostSplitCompactionIfNeeded([&]() {
+      return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+    }),
+    "Failed to submit compaction for post-split tablet.");
+  } else {
+    LOG(INFO) << "Skipping post split compaction " << meta->raft_group_id();
+  }
+
   if (tablet->ShouldDisableLbMove()) {
     std::lock_guard<RWMutex> lock(mutex_);
     tablets_blocked_from_lb_.insert(tablet->tablet_id());
@@ -1646,11 +1656,12 @@ Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
   return server_->GetRegistration(reg, server::RpcOnly::kTrue);
 }
 
-void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tablet_ptrs) const {
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(TabletPtrs* tablet_ptrs) const {
   SharedLock<RWMutex> shared_lock(mutex_);
-  GetTabletPeersUnlocked(tablet_peers);
+  TabletPeers peers;
+  GetTabletPeersUnlocked(&peers);
   if (tablet_ptrs) {
-    for (const auto& peer : *tablet_peers) {
+    for (const auto& peer : peers) {
       if (!peer) continue;
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
@@ -1658,6 +1669,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
       }
     }
   }
+  return peers;
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
@@ -1685,12 +1697,6 @@ void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const TabletId*>* tab
   };
   tablet_ids->erase(std::remove_if(tablet_ids->begin(), tablet_ids->end(), filter),
                     tablet_ids->end());
-}
-
-TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers() const {
-  TabletPeers peers;
-  GetTabletPeers(&peers);
-  return peers;
 }
 
 void TSTabletManager::ApplyChange(const string& tablet_id,
@@ -1833,6 +1839,7 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
       reported_tablet->set_should_disable_lb_move(tablet_ptr->ShouldDisableLbMove());
     }
   }
+  reported_tablet->set_fs_data_dir(tablet_peer->tablet_metadata()->data_root_dir());
 
   // We cannot get consensus state information unless the TabletPeer is running.
   shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
@@ -1840,6 +1847,9 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
     *reported_tablet->mutable_committed_consensus_state() =
         consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
   }
+
+  // Set the hide status of the tablet.
+  reported_tablet->set_is_hidden(tablet_peer->tablet_metadata()->hidden());
 }
 
 void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_bootstrap) {
@@ -2244,6 +2254,10 @@ client::YBClient& TSTabletManager::client() {
   return *async_client_init_->client();
 }
 
+const std::shared_future<client::YBClient*>& TSTabletManager::client_future() {
+  return async_client_init_->get_client_future();
+}
+
 void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
   // First check that the global RBS limits are respected if the flag is non-zero.
   if (PREDICT_FALSE(FLAGS_TEST_crash_if_remote_bootstrap_sessions_greater_than > 0) &&
@@ -2306,34 +2320,93 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
   }
 }
 
-Status TSTabletManager::UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info) {
-  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
-  snapshot_schedule_allowed_history_cutoff_.clear();
-  for (const auto& schedule : info.schedules()) {
-    snapshot_schedule_allowed_history_cutoff_.emplace(
-        VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())),
-        HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info) {
+  bool restorations_updated;
+  tablet::RestorationCompleteTimeMap restoration_complete_time;
+  {
+    std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    ++snapshot_schedules_version_;
+    snapshot_schedule_allowed_history_cutoff_.clear();
+    for (const auto& schedule : info.schedules()) {
+      auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
+      snapshot_schedule_allowed_history_cutoff_.emplace(
+          schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+      missing_snapshot_schedules_.erase(schedule_id);
+    }
+    HybridTime restorations_update_ht(info.last_restorations_update_ht());
+    restorations_updated = restorations_update_ht != last_restorations_update_ht_;
+    if (restorations_updated) {
+      last_restorations_update_ht_ = restorations_update_ht;
+      for (const auto& entry : info.restorations()) {
+        auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(entry.id()));
+        auto complete_time = HybridTime::FromPB(entry.complete_time_ht());
+        restoration_complete_time.emplace(id, complete_time);
+      }
+    }
+  }
+  if (!restorations_updated) {
+    return Status::OK();
+  }
+  std::vector<tablet::TabletPtr> tablets;
+  {
+    SharedLock<RWMutex> shared_lock(mutex_);
+    tablets.reserve(tablet_map_.size());
+    for (const auto& entry : tablet_map_) {
+      auto tablet = entry.second->shared_tablet();
+      if (tablet) {
+        tablets.push_back(tablet);
+      }
+    }
+  }
+  for (const auto& tablet : tablets) {
+    RETURN_NOT_OK(tablet->CheckRestorations(restoration_complete_time));
   }
   return Status::OK();
 }
 
-HybridTime TSTabletManager::AllowedHistoryCutoff(const tablet::RaftGroupMetadata& metadata) {
-  auto schedules = metadata.SnapshotSchedules();
+HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
+  auto schedules = metadata->SnapshotSchedules();
   if (schedules.empty()) {
     return HybridTime::kMax;
   }
+  std::vector<SnapshotScheduleId> schedules_to_remove;
+  auto se = ScopeExit([&schedules_to_remove, metadata]() {
+    if (schedules_to_remove.empty()) {
+      return;
+    }
+    bool any_removed = false;
+    for (const auto& schedule_id : schedules_to_remove) {
+      any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
+    }
+    if (any_removed) {
+      WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
+    }
+  });
   std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
   HybridTime result = HybridTime::kMax;
   for (const auto& schedule_id : schedules) {
     auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
-    // it == snapshot_schedule_allowed_history_cutoff_.end() - we don't know this schedule.
-    // !it->second - schedules does not have snapshots yet.
-    if (it == snapshot_schedule_allowed_history_cutoff_.end() || !it->second) {
-      // TODO handle schedule deletion
+    if (it == snapshot_schedule_allowed_history_cutoff_.end()) {
+      // We don't know this schedule.
+      auto emplace_result = missing_snapshot_schedules_.emplace(
+          schedule_id, snapshot_schedules_version_);
+      if (!emplace_result.second &&
+          emplace_result.first->second + 2 <= snapshot_schedules_version_) {
+        // We don't know this schedule, and there are already 2 rounds of heartbeat passed
+        // after we first time found that we don't know this schedule.
+        // So it means that schedule was deleted.
+        // One round is not enough, because schedule could be added after heartbeat processed on
+        // master, but response not yet received on TServer.
+        schedules_to_remove.push_back(schedule_id);
+        continue;
+      }
       return HybridTime::kMin;
-    } else {
-      result = std::min(result, it->second);
     }
+    if (!it->second) {
+      // Schedules does not have snapshots yet.
+      return HybridTime::kMin;
+    }
+    result = std::min(result, it->second);
   }
   return result;
 }

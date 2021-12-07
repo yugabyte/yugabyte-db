@@ -30,47 +30,54 @@
 // under the License.
 //
 
-#include <signal.h>
 #include <cmath>
 #include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/client/callbacks.h"
-#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-#include "yb/gutil/gscoped_ptr.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/mini_master.h"
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
-#include "yb/util/stopwatch.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
-#include "yb/util/status.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/thread.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/stopwatch.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
@@ -159,7 +166,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void InitCluster() {
     // Start mini-cluster with 1 tserver, config client options
-    cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+    cluster_.reset(new MiniCluster(MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
     YBClientBuilder builder;
     builder.add_master_server_addr(
@@ -204,23 +211,23 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
 namespace {
 
-gscoped_ptr<Subprocess> MakePerfStat() {
-  if (!FLAGS_perf_stat_scan) return gscoped_ptr<Subprocess>();
+std::unique_ptr<Subprocess> MakePerfStat() {
+  if (!FLAGS_perf_stat_scan) return std::unique_ptr<Subprocess>();
   // No output flag for perf-stat 2.x, just print to output
   string cmd = Substitute("perf stat --pid=$0", getpid());
   LOG(INFO) << "Calling: \"" << cmd << "\"";
-  return gscoped_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
+  return std::unique_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
 }
 
-gscoped_ptr<Subprocess> MakePerfRecord() {
-  if (!FLAGS_perf_record_scan) return gscoped_ptr<Subprocess>();
+std::unique_ptr<Subprocess> MakePerfRecord() {
+  if (!FLAGS_perf_record_scan) return std::unique_ptr<Subprocess>();
   string cmd = Substitute("perf record --pid=$0 --call-graph", getpid());
   if (FLAGS_perf_fp_flag) cmd += " fp";
   LOG(INFO) << "Calling: \"" << cmd << "\"";
-  return gscoped_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
+  return std::unique_ptr<Subprocess>(new Subprocess("perf", Split(cmd, " ")));
 }
 
-void InterruptNotNull(gscoped_ptr<Subprocess> sub) {
+void InterruptNotNull(std::unique_ptr<Subprocess> sub) {
   if (!sub) return;
   ASSERT_OK(sub->Kill(SIGINT));
   int exit_status = 0;
@@ -364,8 +371,8 @@ void FullStackInsertScanTest::CreateTable() {
 void FullStackInsertScanTest::DoTestScans() {
   LOG(INFO) << "Doing test scans on table of " << kNumRows << " rows.";
 
-  gscoped_ptr<Subprocess> stat = MakePerfStat();
-  gscoped_ptr<Subprocess> record = MakePerfRecord();
+  auto stat = MakePerfStat();
+  auto record = MakePerfRecord();
   if (stat) {
     CHECK_OK(stat->Start());
   }
@@ -379,17 +386,15 @@ void FullStackInsertScanTest::DoTestScans() {
   ASSERT_NO_FATALS(ScanProjection(Int32ColumnNames(), "Int32 projection, 4 col"));
   ASSERT_NO_FATALS(ScanProjection(Int64ColumnNames(), "Int64 projection, 4 col"));
 
-  ASSERT_NO_FATALS(InterruptNotNull(record.Pass()));
-  ASSERT_NO_FATALS(InterruptNotNull(stat.Pass()));
+  ASSERT_NO_FATALS(InterruptNotNull(std::move(record)));
+  ASSERT_NO_FATALS(InterruptNotNull(std::move(stat)));
 }
 
 void FullStackInsertScanTest::FlushToDisk() {
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
     tserver::TabletServer* ts = cluster_->mini_tablet_server(i)->server();
     ts->maintenance_manager()->Shutdown();
-    tserver::TSTabletManager* tm = ts->tablet_manager();
-    vector<std::shared_ptr<TabletPeer> > peers;
-    tm->GetTabletPeers(&peers);
+    auto peers = ts->tablet_manager()->GetTabletPeers();
     for (const std::shared_ptr<TabletPeer>& peer : peers) {
       Tablet* tablet = peer->tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
@@ -420,7 +425,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   for (int64_t key = start; key < end; ++key) {
     auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     RandomRow(&rng, op->mutable_request(), randstr, key, id, table);
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
 
     // Report updates or flush every so often, using the synchronizer to always
     // start filling up the next batch while previous one is sent out.

@@ -31,9 +31,7 @@
 //
 #include "yb/tablet/tablet_metrics.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/metrics.h"
-#include "yb/util/trace.h"
 
 // Tablet-specific metrics.
 METRIC_DEFINE_counter(tablet, rows_inserted, "Rows Inserted",
@@ -50,29 +48,27 @@ METRIC_DEFINE_counter(tablet, insertions_failed_dup_key, "Duplicate Key Inserts"
                       yb::MetricUnit::kRows,
                       "Number of inserts which failed because the key already existed");
 
-METRIC_DEFINE_histogram(table, write_op_duration_client_propagated_consistency,
+METRIC_DEFINE_coarse_histogram(table, write_op_duration_client_propagated_consistency,
   "Write Op Duration with Propagated Consistency",
   yb::MetricUnit::kMicroseconds,
-  "Duration of writes to this tablet with external consistency set to CLIENT_PROPAGATED.",
-  60000000LU, 2);
+  "Duration of writes to this tablet with external consistency set to CLIENT_PROPAGATED.");
 
-METRIC_DEFINE_histogram(table, snapshot_read_inflight_wait_duration,
+METRIC_DEFINE_coarse_histogram(table, snapshot_read_inflight_wait_duration,
   "Time Waiting For Snapshot Reads",
   yb::MetricUnit::kMicroseconds,
-  "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.",
-  60000000LU, 2);
+  "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.");
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
     table, redis_read_latency, "HandleRedisReadRequest latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to handle a RedisReadRequest", 60000000LU, 2);
+    "Time taken to handle a RedisReadRequest");
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
     table, ql_read_latency, "HandleQLReadRequest latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to handle a QLReadRequest", 60000000LU, 2);
+    "Time taken to handle a QLReadRequest");
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
     table, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to acquire key locks for a write operation", 60000000LU, 2);
+    "Time taken to acquire key locks for a write operation");
 
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",

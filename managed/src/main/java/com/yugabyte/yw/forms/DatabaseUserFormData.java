@@ -2,12 +2,12 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class DatabaseUserFormData {
 
@@ -18,21 +18,18 @@ public class DatabaseUserFormData {
   public String ysqlAdminPassword;
   public String dbName;
 
-  @Constraints.Required()
-  public String username;
+  @Constraints.Required() public String username;
 
-  @Constraints.Required()
-  public String password;
+  @Constraints.Required() public String password;
 
   // TODO(Shashank): Move this to use Validatable
   public void validation() {
     if (username == null || password == null) {
-      throw new YWServiceException(BAD_REQUEST, "Need to provide username and password.");
+      throw new PlatformServiceException(BAD_REQUEST, "Need to provide username and password.");
     }
 
-    if (StringUtils.isEmpty(ysqlAdminUsername)
-      && StringUtils.isEmpty(ycqlAdminUsername)) {
-      throw new YWServiceException(BAD_REQUEST, "Need to provide YSQL and/or YCQL username.");
+    if (StringUtils.isEmpty(ysqlAdminUsername) && StringUtils.isEmpty(ycqlAdminUsername)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Need to provide YSQL and/or YCQL username.");
     }
 
     username = Util.removeEnclosingDoubleQuotes(username);
@@ -43,14 +40,13 @@ public class DatabaseUserFormData {
 
     if (!StringUtils.isEmpty(ysqlAdminUsername)) {
       if (dbName == null) {
-        throw new YWServiceException(BAD_REQUEST,
-          "DB needs to be specified for YSQL user creation.");
+        throw new PlatformServiceException(
+            BAD_REQUEST, "DB needs to be specified for YSQL user creation.");
       }
 
       if (username.contains("\"")) {
-        throw new YWServiceException(BAD_REQUEST, "Invalid username.");
+        throw new PlatformServiceException(BAD_REQUEST, "Invalid username.");
       }
     }
   }
-
 }

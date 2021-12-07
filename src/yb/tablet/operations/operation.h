@@ -39,30 +39,36 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/opid_util.h"
-#include "yb/util/auto_release_pool.h"
+#include "yb/consensus/consensus_round.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/status.h"
-#include "yb/util/memory/arena.h"
+#include "yb/util/opid.h"
 
 namespace yb {
 
-struct OpId;
+class Synchronizer;
 
 namespace tablet {
 
-class Tablet;
-class OperationCompletionCallback;
-class OperationState;
+using OperationCompletionCallback = std::function<void(const Status&)>;
 
 YB_DEFINE_ENUM(
     OperationType,
-    (kWrite)(kChangeMetadata)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty)(kHistoryCutoff)
-    (kSplit));
+    ((kWrite, consensus::WRITE_OP))
+    ((kChangeMetadata, consensus::CHANGE_METADATA_OP))
+    ((kUpdateTransaction, consensus::UPDATE_TRANSACTION_OP))
+    ((kSnapshot, consensus::SNAPSHOT_OP))
+    ((kTruncate, consensus::TRUNCATE_OP))
+    ((kEmpty, consensus::UNKNOWN_OP))
+    ((kHistoryCutoff, consensus::HISTORY_CUTOFF_OP))
+    ((kSplit, consensus::SPLIT_OP)));
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
@@ -74,12 +80,7 @@ class Operation {
     TRACE_TXNS = 1
   };
 
-  Operation(std::unique_ptr<OperationState> state,
-            OperationType operation_type);
-
-  // Returns the OperationState for this transaction.
-  virtual OperationState* state() { return state_.get(); }
-  virtual const OperationState* state() const { return state_.get(); }
+  explicit Operation(OperationType operation_type, Tablet* tablet);
 
   // Returns this transaction's type.
   OperationType operation_type() const { return operation_type_; }
@@ -98,36 +99,14 @@ class Operation {
   CHECKED_STATUS Replicated(int64_t leader_term);
 
   // Abort operation. Release resources and notify callbacks.
-  void Aborted(const Status& status);
+  void Aborted(const Status& status, bool was_pending);
 
   // Each implementation should have its own ToString() method.
-  virtual std::string ToString() const = 0;
+  virtual std::string ToString() const;
 
   std::string LogPrefix() const;
 
   virtual void SubmittedToPreparer() {}
-
-  virtual ~Operation() {}
-
- private:
-  // Actual implementation of Replicated.
-  // complete_status could be used to change completion status, i.e. callback will be invoked
-  // with this status.
-  virtual CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) = 0;
-
-  // Actual implementation of Aborted, should return status that should be passed to callback.
-  virtual CHECKED_STATUS DoAborted(const Status& status) = 0;
-
-  // A private version of this transaction's transaction state so that we can use base
-  // OperationState methods on destructors.
-  std::unique_ptr<OperationState> state_;
-  const OperationType operation_type_;
-};
-
-class OperationState {
- public:
-  OperationState(const OperationState&) = delete;
-  void operator=(const OperationState&) = delete;
 
   // Returns the request PB associated with this transaction. May be NULL if the transaction's state
   // has been reset.
@@ -151,8 +130,6 @@ class OperationState {
     return consensus_round_.get();
   }
 
-  std::string ConsensusRoundAsString() const;
-
   Tablet* tablet() const {
     return tablet_;
   }
@@ -163,32 +140,18 @@ class OperationState {
     tablet_ = tablet;
   }
 
-  void set_completion_callback(std::unique_ptr<OperationCompletionCallback> completion_clbk) {
+  template <class F>
+  void set_completion_callback(const F& completion_clbk) {
+    completion_clbk_ = completion_clbk;
+  }
+
+  template <class F>
+  void set_completion_callback(F&& completion_clbk) {
     completion_clbk_ = std::move(completion_clbk);
   }
 
-  // Sets a heap object to be managed by this transaction's AutoReleasePool.
-  template<class T>
-  T* AddToAutoReleasePool(T* t) {
-    return pool_.Add(t);
-  }
-
-  // Sets an array heap object to be managed by this transaction's AutoReleasePool.
-  template<class T>
-  T* AddArrayToAutoReleasePool(T* t) {
-    return pool_.AddArray(t);
-  }
-
-  // Each implementation should have its own ToString() method.
-  virtual std::string ToString() const = 0;
-
-  std::string LogPrefix() const;
-
   // Sets the hybrid_time for the transaction
   void set_hybrid_time(const HybridTime& hybrid_time);
-
-  // If this operation does not have hybrid time yet, then it will be inited from clock.
-  void TrySetHybridTimeFromClock();
 
   HybridTime hybrid_time() const {
     std::lock_guard<simple_spinlock> l(mutex_);
@@ -211,6 +174,7 @@ class OperationState {
   virtual HybridTime WriteHybridTime() const;
 
   void set_op_id(const OpId& op_id) {
+    std::lock_guard<simple_spinlock> l(mutex_);
     op_id_ = op_id;
   }
 
@@ -223,54 +187,72 @@ class OperationState {
   }
 
   void CompleteWithStatus(const Status& status) const;
-  void SetError(const Status& status, tserver::TabletServerErrorPB::Code code) const;
-
-  // Initialize operation at leader side.
-  // op_id - operation id.
-  // committed_op_id - current committed operation id.
-  void LeaderInit(const OpId& op_id, const OpId& committed_op_id);
 
   // Whether we should use MVCC Manager to track this operation.
   virtual bool use_mvcc() const {
     return false;
   }
 
-  virtual ~OperationState();
+  // Initialize operation at leader side.
+  // op_id - operation id.
+  // committed_op_id - current committed operation id.
+  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+  void AddedToFollower();
 
- protected:
-  explicit OperationState(Tablet* tablet);
+  void Aborted(bool was_pending);
+  void Replicated();
+
+  virtual ~Operation();
+
+ private:
+  // Actual implementation of Replicated.
+  // complete_status could be used to change completion status, i.e. callback will be invoked
+  // with this status.
+  virtual CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) = 0;
+
+  // Actual implementation of Aborted, should return status that should be passed to callback.
+  virtual CHECKED_STATUS DoAborted(const Status& status) = 0;
+
+  // A private version of this transaction's transaction state so that we can use base
+  // Operation methods on destructors.
+  const OperationType operation_type_;
+
+  virtual void AddedAsPending() {}
+  virtual void RemovedFromPending() {}
 
   // The tablet peer that is coordinating this transaction.
   Tablet* tablet_;
 
   // Optional callback to be called once the transaction completes.
-  std::unique_ptr<OperationCompletionCallback> completion_clbk_;
+  OperationCompletionCallback completion_clbk_;
 
-  AutoReleasePool pool_;
+  mutable std::atomic<bool> complete_{false};
+
+  mutable simple_spinlock mutex_;
 
   // This transaction's hybrid_time. Protected by mutex_.
-  HybridTime hybrid_time_;
-
-  // The clock error when hybrid_time_ was read.
-  uint64_t hybrid_time_error_ = 0;
+  HybridTime hybrid_time_ GUARDED_BY(mutex_);
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
-  OpId op_id_;
+  OpId op_id_ GUARDED_BY(mutex_);
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_;
-
-  // Lock that protects access to operation state.
-  mutable simple_spinlock mutex_;
 };
 
-template <class Request, class BaseState = OperationState>
-class OperationStateBase : public BaseState {
- public:
-  OperationStateBase(Tablet* tablet, const Request* request)
-      : BaseState(tablet), request_(request) {}
+template <class Request>
+struct RequestTraits {
+  static void SetAllocatedRequest(
+      consensus::ReplicateMsg* replicate, Request* request);
 
-  explicit OperationStateBase(Tablet* tablet)
-      : OperationStateBase(tablet, nullptr) {}
+  static Request* MutableRequest(consensus::ReplicateMsg* replicate);
+};
+
+
+template <OperationType op_type, class Request, class Base = Operation>
+class OperationBase : public Base {
+ public:
+  explicit OperationBase(Tablet* tablet, const Request* request = nullptr)
+      : Base(op_type, tablet), request_(request) {}
 
   const Request* request() const override {
     return request_.load(std::memory_order_acquire);
@@ -282,7 +264,11 @@ class OperationStateBase : public BaseState {
     return request_holder_.get();
   }
 
-  tserver::TabletSnapshotOpRequestPB* ReleaseRequest() {
+  Request* mutable_request() {
+    return request_holder_.get();
+  }
+
+  Request* ReleaseRequest() {
     return request_holder_.release();
   }
 
@@ -292,9 +278,21 @@ class OperationStateBase : public BaseState {
     request_holder_->Swap(request);
   }
 
-  std::string ToString() const override {
-    return Format("{ request: $0 consensus_round: $1 }",
-                  request_.load(std::memory_order_acquire), BaseState::ConsensusRoundAsString());
+  consensus::ReplicateMsgPtr NewReplicateMsg() override {
+    auto result = std::make_shared<consensus::ReplicateMsg>();
+    result->set_op_type(static_cast<consensus::OperationType>(op_type));
+    auto* request = request_holder_.release();
+    if (request) {
+      RequestTraits<Request>::SetAllocatedRequest(result.get(), request);
+    } else {
+      *RequestTraits<Request>::MutableRequest(result.get()) = *request_;
+    }
+    return result;
+  }
+
+  void UpdateRequestFromConsensusRound() override {
+    UseRequest(RequestTraits<Request>::MutableRequest(
+        Base::consensus_round()->replicate_msg().get()));
   }
 
  protected:
@@ -307,11 +305,11 @@ class OperationStateBase : public BaseState {
   std::atomic<const Request*> request_;
 };
 
-class ExclusiveSchemaOperationStateBase : public OperationState {
+class ExclusiveSchemaOperationBase : public Operation {
  public:
   template <class... Args>
-  explicit ExclusiveSchemaOperationStateBase(Args&&... args)
-      : OperationState(std::forward<Args>(args)...) {}
+  explicit ExclusiveSchemaOperationBase(Args&&... args)
+      : Operation(std::forward<Args>(args)...) {}
 
   // Release the acquired schema lock.
   void ReleasePermitToken();
@@ -325,144 +323,36 @@ class ExclusiveSchemaOperationStateBase : public OperationState {
   ScopedRWOperationPause permit_token_;
 };
 
-template <class Request>
-class ExclusiveSchemaOperationState :
-    public OperationStateBase<Request, ExclusiveSchemaOperationStateBase> {
+template <OperationType operation_type, class Request>
+class ExclusiveSchemaOperation
+    : public OperationBase<operation_type, Request, ExclusiveSchemaOperationBase> {
  public:
   template <class... Args>
-  explicit ExclusiveSchemaOperationState(Args&&... args)
-      : OperationStateBase<Request, ExclusiveSchemaOperationStateBase>(
+  explicit ExclusiveSchemaOperation(Args&&... args)
+      : OperationBase<operation_type, Request, ExclusiveSchemaOperationBase>(
             std::forward<Args>(args)...) {}
 
-  void Finish() {
-    ExclusiveSchemaOperationStateBase::ReleasePermitToken();
+  void Release() override {
+    ExclusiveSchemaOperationBase::ReleasePermitToken();
 
     // Make the request NULL since after this operation commits
     // the request may be deleted at any moment.
-    OperationStateBase<Request, ExclusiveSchemaOperationStateBase>::UseRequest(nullptr);
+    OperationBase<operation_type, Request, ExclusiveSchemaOperationBase>::UseRequest(nullptr);
   }
-};
-
-// A parent class for the callback that gets called when transactions complete.
-//
-// This must be set in the OperationState if the transaction initiator is to be notified of when a
-// transaction completes. The callback belongs to the transaction context and is deleted along with
-// it.
-//
-// NOTE: this is a concrete class so that we can use it as a default implementation which avoids
-// callers having to keep checking for NULL.
-class OperationCompletionCallback {
- public:
-
-  OperationCompletionCallback();
-
-  // Allows to set an error for this transaction and a mapping to a server level code.  Calling this
-  // method does not mean the transaction is completed.
-  void set_error(const Status& status, tserver::TabletServerErrorPB::Code code);
-
-  void set_error(const Status& status);
-
-  bool has_error() const;
-
-  const Status& status() const;
-
-  const tserver::TabletServerErrorPB::Code error_code() const;
-
-  // Subclasses should override this.
-  virtual void OperationCompleted() = 0;
-
-  void CompleteWithStatus(const Status& status) {
-    set_error(status);
-    OperationCompleted();
-  }
-
-  virtual ~OperationCompletionCallback();
-
- protected:
-  Status status_;
-  tserver::TabletServerErrorPB::Code code_;
-};
-
-// OperationCompletionCallback implementation that can be waited on.  Helper to make async
-// transactions, sync.  This is templated to accept any response PB that has a TabletServerError
-// 'error' field and to set the error before performing the latch countdown.  The callback does
-// *not* take ownership of either latch or response.
-template<class LatchPtr, class ResponsePBPtr>
-class LatchOperationCompletionCallback : public OperationCompletionCallback {
- public:
-  explicit LatchOperationCompletionCallback(LatchPtr latch,
-                                            ResponsePBPtr response)
-    : latch_(std::move(latch)),
-      response_(std::move(response)) {
-  }
-
-  virtual void OperationCompleted() override {
-    if (!status_.ok()) {
-      StatusToPB(status_, response_->mutable_error()->mutable_status());
-    }
-    latch_->CountDown();
-  }
-
- private:
-  LatchPtr latch_;
-  ResponsePBPtr response_;
 };
 
 template<class LatchPtr, class ResponsePBPtr>
-std::unique_ptr<LatchOperationCompletionCallback<LatchPtr, ResponsePBPtr>>
-    MakeLatchOperationCompletionCallback(
-        LatchPtr latch, ResponsePBPtr response) {
-  return std::make_unique<LatchOperationCompletionCallback<LatchPtr, ResponsePBPtr>>(
-      std::move(latch), std::move(response));
-}
-
-class SynchronizerOperationCompletionCallback : public OperationCompletionCallback {
- public:
-  explicit SynchronizerOperationCompletionCallback(Synchronizer* synchronizer)
-    : synchronizer_(DCHECK_NOTNULL(synchronizer)) {}
-
-  void OperationCompleted() override {
-    synchronizer_->StatusCB(status());
-  }
-
- private:
-  Synchronizer* synchronizer_;
-};
-
-class WeakSynchronizerOperationCompletionCallback : public OperationCompletionCallback {
- public:
-  explicit WeakSynchronizerOperationCompletionCallback(std::weak_ptr<Synchronizer> synchronizer)
-      : synchronizer_(std::move(synchronizer)) {}
-
-  void OperationCompleted() override {
-    auto synchronizer = synchronizer_.lock();
-    if (synchronizer) {
-      synchronizer->StatusCB(status());
+auto MakeLatchOperationCompletionCallback(LatchPtr latch, ResponsePBPtr response) {
+  return [latch, response](const Status& status) {
+    if (!status.ok()) {
+      StatusToPB(status, response->mutable_error()->mutable_status());
     }
-  }
-
- private:
-  std::weak_ptr<Synchronizer> synchronizer_;
-};
-
-template <class Functor>
-class FunctorOperationCompletionCallback : public OperationCompletionCallback {
- public:
-  explicit FunctorOperationCompletionCallback(Functor&& functor)
-      : functor_(std::move(functor)) {}
-
-  void OperationCompleted() override {
-    functor_(status());
-  }
-
- private:
-  Functor functor_;
-};
-
-template <class Functor>
-auto MakeFunctorOperationCompletionCallback(Functor&& functor) {
-  return std::make_unique<FunctorOperationCompletionCallback<Functor>>(std::move(functor));
+    latch->CountDown();
+  };
 }
+
+OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
+    std::weak_ptr<Synchronizer> synchronizer);
 
 }  // namespace tablet
 }  // namespace yb

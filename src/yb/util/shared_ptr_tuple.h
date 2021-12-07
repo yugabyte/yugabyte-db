@@ -16,8 +16,6 @@
 #ifndef YB_UTIL_SHARED_PTR_TUPLE_H
 #define YB_UTIL_SHARED_PTR_TUPLE_H
 
-#include <type_traits>
-#include <tuple>
 #include <memory>
 
 namespace yb {

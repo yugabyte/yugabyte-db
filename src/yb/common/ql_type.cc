@@ -13,6 +13,12 @@
 
 #include "yb/common/ql_type.h"
 
+#include "yb/common/types.h"
+
+#include "yb/gutil/macros.h"
+
+#include "yb/util/result.h"
+
 namespace yb {
 
 using std::shared_ptr;
@@ -20,7 +26,8 @@ using std::shared_ptr;
 //--------------------------------------------------------------------------------------------------
 // The following functions are to construct QLType objects.
 
-shared_ptr<QLType> QLType::Create(DataType data_type, const vector<shared_ptr<QLType>>& params) {
+shared_ptr<QLType> QLType::Create(
+    DataType data_type, const std::vector<shared_ptr<QLType>>& params) {
   switch (data_type) {
     case DataType::LIST:
       DCHECK_EQ(params.size(), 1);
@@ -120,10 +127,11 @@ shared_ptr<QLType> QLType::Create(DataType data_type) {
       LOG(FATAL) << "Unsupported constructor for user-defined type";
       return nullptr;
 
-    default:
-      LOG(FATAL) << "Not supported datatype " << ToCQLString(data_type);
-      return nullptr;
+    case DataType::GIN_NULL:
+      return CreatePrimitiveType<DataType::GIN_NULL>();
   }
+  LOG(FATAL) << "Not supported datatype " << ToCQLString(data_type);
+  return nullptr;
 }
 
 bool QLType::IsValidPrimaryType(DataType type) {
@@ -145,7 +153,7 @@ bool QLType::IsValidPrimaryType(DataType type) {
 
 shared_ptr<QLType> QLType::CreateTypeMap(std::shared_ptr<QLType> key_type,
                                            std::shared_ptr<QLType> value_type) {
-  vector<shared_ptr<QLType>> params = {key_type, value_type};
+  std::vector<shared_ptr<QLType>> params = {key_type, value_type};
   return CreateCollectionType<DataType::MAP>(params);
 }
 
@@ -154,7 +162,7 @@ std::shared_ptr<QLType>  QLType::CreateTypeMap(DataType key_type, DataType value
 }
 
 shared_ptr<QLType> QLType::CreateTypeList(std::shared_ptr<QLType> value_type) {
-  vector<shared_ptr<QLType>> params(1, value_type);
+  std::vector<shared_ptr<QLType>> params(1, value_type);
   return CreateCollectionType<DataType::LIST>(params);
 }
 
@@ -163,7 +171,7 @@ std::shared_ptr<QLType>  QLType::CreateTypeList(DataType value_type) {
 }
 
 shared_ptr<QLType> QLType::CreateTypeSet(std::shared_ptr<QLType> value_type) {
-  vector<shared_ptr<QLType>> params(1, value_type);
+  std::vector<shared_ptr<QLType>> params(1, value_type);
   return CreateCollectionType<DataType::SET>(params);
 }
 
@@ -172,7 +180,7 @@ std::shared_ptr<QLType>  QLType::CreateTypeSet(DataType value_type) {
 }
 
 shared_ptr<QLType> QLType::CreateTypeFrozen(shared_ptr<QLType> value_type) {
-  vector<shared_ptr<QLType>> params(1, value_type);
+  std::vector<shared_ptr<QLType>> params(1, value_type);
   return CreateCollectionType<DataType::FROZEN>(params);
 }
 
@@ -201,7 +209,7 @@ shared_ptr<QLType> QLType::FromQLTypePB(const QLTypePB& pb_type) {
   if (pb_type.main() == USER_DEFINED_TYPE) {
     auto ql_type = std::make_shared<QLType>(pb_type.udtype_info().keyspace_name(),
                                               pb_type.udtype_info().name());
-    std::vector<string> field_names;
+    std::vector<std::string> field_names;
     for (const auto& field_name : pb_type.udtype_info().field_names()) {
       field_names.push_back(field_name);
     }
@@ -219,16 +227,57 @@ shared_ptr<QLType> QLType::FromQLTypePB(const QLTypePB& pb_type) {
     return Create(pb_type.main());
   }
 
-  vector<shared_ptr<QLType>> params;
+  std::vector<shared_ptr<QLType>> params;
   for (auto &param : pb_type.params()) {
     params.push_back(FromQLTypePB(param));
   }
   return Create(pb_type.main(), params);
 }
 
+std::shared_ptr<QLType> QLType::keys_type() const {
+  switch (id_) {
+    case MAP:
+      return params_[0];
+    case LIST:
+      return QLType::Create(INT32);
+    case SET:
+      // set has no keys, only values
+      return nullptr;
+    case TUPLE:
+      // https://github.com/YugaByte/yugabyte-db/issues/936
+      LOG(FATAL) << "Tuple type not implemented yet";
+
+    default:
+      // elementary types have no keys or values
+      return nullptr;
+  }
+}
+
+std::shared_ptr<QLType> QLType::values_type() const {
+  switch (id_) {
+    case MAP:
+      return params_[1];
+    case LIST:
+      return params_[0];
+    case SET:
+      return params_[0];
+    case TUPLE:
+      LOG(FATAL) << "Tuple type not implemented yet";
+
+    default:
+      // other types have no keys or values
+      return nullptr;
+  }
+}
+
+const QLType::SharedPtr& QLType::param_type(int member_index) const {
+  DCHECK_LT(member_index, params_.size());
+  return params_[member_index];
+}
+
 //--------------------------------------------------------------------------------------------------
 // Logging routines.
-const string QLType::ToCQLString(const DataType& datatype) {
+const std::string QLType::ToCQLString(const DataType& datatype) {
   switch (datatype) {
     case DataType::UNKNOWN_DATA: return "unknown";
     case DataType::NULL_VALUE_TYPE: return "anytype";
@@ -261,12 +310,13 @@ const string QLType::ToCQLString(const DataType& datatype) {
     case DataType::UINT16: return "uint16";
     case DataType::UINT32: return "uint32";
     case DataType::UINT64: return "uint64";
+    case DataType::GIN_NULL: return "gin_null";
   }
-  LOG (FATAL) << "Invalid datatype: " << datatype;
+  LOG(FATAL) << "Invalid datatype: " << datatype;
   return "Undefined Type";
 }
 
-const string QLType::ToString() const {
+std::string QLType::ToString() const {
   std::stringstream ss;
   ToString(ss);
   return ss.str();
@@ -289,6 +339,136 @@ void QLType::ToString(std::stringstream& os) const {
       os << ">";
     }
   }
+}
+
+Result<QLType::SharedPtr> QLType::GetUDTFieldTypeByName(const std::string& field_name) const {
+  SCHECK(IsUserDefined(), InternalError, "Can only be called on UDT");
+  const int idx = GetUDTypeFieldIdxByName(field_name);
+  if (idx == -1) {
+    return nullptr;
+  }
+  return param_type(idx);
+}
+
+const TypeInfo* QLType::type_info() const {
+  return GetTypeInfo(id_);
+}
+
+bool QLType::IsImplicitlyConvertible(const std::shared_ptr<QLType>& lhs_type,
+                                            const std::shared_ptr<QLType>& rhs_type) {
+  switch (QLType::GetConversionMode(lhs_type->main(), rhs_type->main())) {
+    case QLType::ConversionMode::kIdentical: FALLTHROUGH_INTENDED;
+    case QLType::ConversionMode::kSimilar: FALLTHROUGH_INTENDED;
+    case QLType::ConversionMode::kImplicit:
+      return true;
+
+    case QLType::ConversionMode::kFurtherCheck:
+      // checking params convertibility
+      if (lhs_type->params().size() != rhs_type->params().size()) {
+        return false;
+      }
+      for (size_t i = 0; i < lhs_type->params().size(); i++) {
+        if (!IsImplicitlyConvertible(lhs_type->params().at(i), rhs_type->params().at(i))) {
+          return false;
+        }
+      }
+      return true;
+
+    case QLType::ConversionMode::kExplicit: FALLTHROUGH_INTENDED;
+    case QLType::ConversionMode::kNotAllowed:
+      return false;
+  }
+
+  LOG(FATAL) << "Unsupported conversion mode in switch statement";
+  return false;
+}
+
+QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) {
+  DCHECK(IsValid(left) && IsValid(right)) << left << ", " << right;
+
+  static const ConversionMode kID = ConversionMode::kIdentical;
+  static const ConversionMode kSI = ConversionMode::kSimilar;
+  static const ConversionMode kIM = ConversionMode::kImplicit;
+  static const ConversionMode kFC = ConversionMode::kFurtherCheck;
+  static const ConversionMode kEX = ConversionMode::kExplicit;
+  static const ConversionMode kNA = ConversionMode::kNotAllowed;
+  static const ConversionMode kConversionMode[kMaxTypeIndex][kMaxTypeIndex] = {
+      // LHS :=  RHS (source)
+      //         nul | i8  | i16 | i32 | i64 | str | bln | flt | dbl | bin | tst | dec | vit | ine | lst | map | set | uid | tui | tup | arg | udt | frz | dat | tim | jso
+      /* nul */{ kID,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM },
+      /* i8 */ { kIM,  kID,  kSI,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* i16 */{ kIM,  kSI,  kID,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* i32 */{ kIM,  kSI,  kSI,  kID,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* i64 */{ kIM,  kSI,  kSI,  kSI,  kID,  kNA,  kNA,  kEX,  kEX,  kNA,  kEX,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA },
+      /* str */{ kIM,  kEX,  kEX,  kEX,  kEX,  kID,  kEX,  kEX,  kEX,  kEX,  kEX,  kEX,  kNA,  kEX,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kEX },
+      /* bln */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* flt */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kID,  kSI,  kNA,  kNA,  kSI,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* dbl */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kSI,  kID,  kNA,  kNA,  kSI,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* bin */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* tst */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kNA,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA },
+      /* dec */{ kIM,  kIM,  kIM,  kIM,  kIM,  kEX,  kNA,  kSI,  kSI,  kNA,  kEX,  kID,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* vit */{ kIM,  kSI,  kSI,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kEX,  kEX,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA },
+      /* ine */{ kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* lst */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* map */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* set */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* uid */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* tui */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kIM,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* tup */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* arg */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA },
+      /* udt */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA },
+      /* frz */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kFC,  kFC,  kNA,  kNA,  kFC,  kNA,  kFC,  kFC,  kNA,  kNA,  kNA },
+      /* dat */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA },
+      /* tim */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA },
+      /* jso */{ kNA,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID },
+  };
+  return kConversionMode[left][right];
+}
+
+bool QLType::IsComparable(DataType left, DataType right) {
+  DCHECK(IsValid(left) && IsValid(right)) << left << ", " << right;
+
+  static const bool kYS = true;
+  static const bool kNO = false;
+  static const bool kCompareMode[kMaxTypeIndex][kMaxTypeIndex] = {
+      // LHS ==  RHS (source)
+      //         nul | i8  | i16 | i32 | i64 | str | bln | flt | dbl | bin | tst | dec | vit | ine | lst | map | set | uid | tui | tup | arg | udt | frz | dat | tim | jso
+      /* nul */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* i8  */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* i16 */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* i32 */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* i64 */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* str */{ kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* bln */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* flt */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* dbl */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* bin */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* tst */{ kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO },
+      /* dec */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* vit */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* ine */{ kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* lst */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* map */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* set */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* uid */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* tui */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* tup */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* arg */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* udt */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
+      /* frz */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO },
+      /* dat */{ kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO },
+      /* tim */{ kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO },
+      /* jso */{ kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS },
+  };
+  return kCompareMode[left][right];
+}
+
+bool QLType::IsPotentiallyConvertible(DataType left, DataType right) {
+  return GetConversionMode(left, right) <= ConversionMode::kFurtherCheck;
+}
+
+bool QLType::IsSimilar(DataType left, DataType right) {
+  return GetConversionMode(left, right) <= ConversionMode::kSimilar;
 }
 
 }  // namespace yb

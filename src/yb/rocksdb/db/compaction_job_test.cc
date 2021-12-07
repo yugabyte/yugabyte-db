@@ -28,6 +28,7 @@
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/cache.h"
@@ -38,7 +39,9 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
 #include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
@@ -270,18 +273,17 @@ class CompactionJobTest : public testing::Test {
       num_input_files += level_files.size();
     }
 
-    Compaction compaction(cfd->current()->storage_info(),
-                          *cfd->GetLatestMutableCFOptions(),
-                          compaction_input_files, 1, 1024 * 1024, 10, 0,
-                          kNoCompression, {}, true);
-    compaction.SetInputVersion(cfd->current());
+    auto compaction = Compaction::Create(
+        cfd->current()->storage_info(), *cfd->GetLatestMutableCFOptions(), compaction_input_files,
+        1, 1024 * 1024, 10, 0, kNoCompression, {}, db_options_.info_log.get(), true);
+    compaction->SetInputVersion(cfd->current());
 
     LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
     mutex_.Lock();
     EventLogger event_logger(db_options_.info_log.get());
     FileNumbersProvider file_numbers_provider(versions_.get());
     CompactionJob compaction_job(
-        0, &compaction, db_options_, env_options_, versions_.get(),
+        0, compaction.get(), db_options_, env_options_, versions_.get(),
         &shutting_down_, &log_buffer, nullptr, nullptr, nullptr, &mutex_,
         &bg_error_, snapshots, earliest_write_conflict_snapshot, &file_numbers_provider,
         table_cache_, &event_logger, false, false, dbname_, &compaction_job_stats_);

@@ -33,19 +33,17 @@
 #define YB_MASTER_CATALOG_MANAGER_INTERNAL_H
 
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/basictypes.h"
-#include "yb/master/catalog_manager.h"
+
+
 #include "yb/master/master_error.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
-#include "yb/rpc/rpc_context.h"
+
+#include "yb/tserver/tserver.pb.h"
 
 namespace yb {
 
 using tserver::TabletServerErrorPB;
 
 namespace master {
-
-// Non-template helpers.
 
 inline CHECKED_STATUS SetupError(MasterErrorPB* error,
                                  MasterErrorPB::Code code,
@@ -54,17 +52,6 @@ inline CHECKED_STATUS SetupError(MasterErrorPB* error,
   error->set_code(code);
   return s;
 }
-
-inline CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s) {
-  StatusToPB(s, error->mutable_status());
-  MasterError master_error(s);
-  if (master_error.value() != MasterErrorPB::Code()) {
-    error->set_code(master_error.value());
-  }
-  return s;
-}
-
-// Template helpers.
 
 inline CHECKED_STATUS CheckIfNoLongerLeader(const Status& s) {
   // TODO (KUDU-591): This is a bit of a hack, as right now
@@ -96,26 +83,7 @@ CHECKED_STATUS CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* re
   return s;
 }
 
-inline Status CheckStatus(const Status& status, const char* action) {
-  if (status.ok()) {
-    return status;
-  }
-
-  const Status s = status.CloneAndPrepend(std::string("An error occurred while ") + action);
-  LOG(WARNING) << s;
-  return s;
-}
-
-inline CHECKED_STATUS CheckLeaderStatus(const Status& status, const char* action) {
-  return CheckIfNoLongerLeader(CheckStatus(status, action));
-}
-
-template<class RespClass>
-CHECKED_STATUS CheckLeaderStatusAndSetupError(
-    const Status& status, const char* action, RespClass* resp) {
-  return CheckIfNoLongerLeaderAndSetupError(CheckStatus(status, action), resp);
-}
-
 }  // namespace master
 }  // namespace yb
+
 #endif // YB_MASTER_CATALOG_MANAGER_INTERNAL_H

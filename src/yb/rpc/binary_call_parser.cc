@@ -16,10 +16,13 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/rpc/connection.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/stream.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using yb::operator"" _MB;
 
@@ -57,7 +60,7 @@ BinaryCallParser::BinaryCallParser(
   buffer_tracker_ = MemTracker::FindOrCreateTracker("Reading", parent_tracker);
 }
 
-Result<ProcessDataResult> BinaryCallParser::Parse(
+Result<ProcessCallsResult> BinaryCallParser::Parse(
     const rpc::ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full,
     const MemTrackerPtr* tracker_for_throttle) {
   if (call_data_.should_reject()) {
@@ -107,7 +110,11 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
                 << (*tracker_for_throttle)->LogUsage("");
         if (ShouldThrottleRpc(*tracker_for_throttle, call_data_size, "Ignoring RPC call: ")) {
           call_data_ = CallData(call_data_size, ShouldReject::kTrue);
-          return ProcessDataResult{ full_input_size, Slice(), call_data_size - call_received_size };
+          return ProcessCallsResult{
+              .consumed = full_input_size,
+              .buffer = Slice(),
+              .bytes_to_skip = call_data_size - call_received_size
+          };
         }
       }
 
@@ -121,7 +128,10 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
         VLOG(4) << "BinaryCallParser::Parse, consumed: " << consumed
                 << " returning: { full_input_size: " << full_input_size
                 << " buffer.size(): " << buffer.size() << " }";
-        return ProcessDataResult{full_input_size, buffer};
+        return ProcessCallsResult{
+          .consumed = full_input_size,
+          .buffer = buffer,
+        };
       } else if (read_buffer_full && consumed == 0) {
         auto consumption = blocking_mem_tracker ? blocking_mem_tracker->consumption() : -1;
         auto limit = blocking_mem_tracker ? blocking_mem_tracker->limit() : -1;
@@ -132,7 +142,11 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
               << ", consumption: " << consumption << " of " << limit << ". Call will be ignored.\n"
               << DumpMemoryUsage();
           call_data_ = CallData(call_data_size, ShouldReject::kTrue);
-          return ProcessDataResult{full_input_size, Slice(), call_data_size - call_received_size};
+          return ProcessCallsResult{
+            .consumed = full_input_size,
+            .buffer = Slice(),
+            .bytes_to_skip = call_data_size - call_received_size
+          };
         } else {
           // For backward compatibility in behavior until we fix
           // https://github.com/yugabyte/yugabyte-db/issues/2563.
@@ -157,7 +171,10 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
     consumed += total_length;
   }
   VLOG(4) << "BinaryCallParser::Parse, returning: { consumed: " << consumed << " buffer: empty }";
-  return ProcessDataResult{ consumed, Slice() };
+  return ProcessCallsResult {
+    .consumed = consumed,
+    .buffer = Slice(),
+  };
 }
 
 } // namespace rpc

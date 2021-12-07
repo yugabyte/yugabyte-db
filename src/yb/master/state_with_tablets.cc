@@ -14,7 +14,13 @@
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+
+DEFINE_test_flag(bool, mark_snasphot_as_failed, false,
+                 "Whether we should skip sending RESTORE_FINISHED to tablets.");
 
 namespace yb {
 namespace master {
@@ -31,6 +37,11 @@ const std::initializer_list<std::pair<SysSnapshotEntryPB::State, SysSnapshotEntr
 SysSnapshotEntryPB::State InitialStateToTerminalState(SysSnapshotEntryPB::State state) {
   for (const auto& initial_and_terminal_states : kStateTransitions) {
     if (state == initial_and_terminal_states.first) {
+      if (PREDICT_FALSE(FLAGS_TEST_mark_snasphot_as_failed)
+          && state == SysSnapshotEntryPB::RESTORING) {
+        LOG(INFO) << "TEST: Mark COMPETE snapshot as FAILED";
+        return SysSnapshotEntryPB::FAILED;
+      }
       return initial_and_terminal_states.second;
     }
   }
@@ -41,8 +52,9 @@ SysSnapshotEntryPB::State InitialStateToTerminalState(SysSnapshotEntryPB::State 
 } // namespace
 
 StateWithTablets::StateWithTablets(
-    SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state)
-    : context_(*context), initial_state_(initial_state) {
+    SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state,
+    std::string log_prefix)
+    : context_(*context), initial_state_(initial_state), log_prefix_(std::move(log_prefix)) {
 }
 
 void StateWithTablets::InitTablets(
@@ -102,7 +114,8 @@ bool StateWithTablets::PassedSinceCompletion(const MonoDelta& duration) const {
   }
 
   if (complete_at_ == CoarseTimePoint()) {
-    YB_LOG_EVERY_N_SECS(DFATAL, 30) << "All tablets done but complete done was not set";
+    YB_LOG_EVERY_N_SECS(DFATAL, 30)
+        << LogPrefix() << "All tablets done but complete done was not set";
     return false;
   }
 
@@ -120,34 +133,37 @@ std::vector<TabletId> StateWithTablets::TabletIdsInState(SysSnapshotEntryPB::Sta
   return result;
 }
 
-void StateWithTablets::Done(const TabletId& tablet_id, const Status& status) {
-  VLOG(4) << __func__ << "(" << tablet_id << ", " << status << ")";
+void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << tablet_id << ", " << status;
 
   auto it = tablets_.find(tablet_id);
   if (it == tablets_.end()) {
-    LOG(DFATAL) << "Finished " << InitialStateName() <<  " snapshot at unknown tablet "
-                << tablet_id << ": " << status;
+    LOG_WITH_PREFIX(DFATAL)
+        << "Finished " << InitialStateName() <<  " at unknown tablet "
+        << tablet_id << ": " << status;
     return;
   }
   if (!it->running) {
-    LOG(DFATAL) << "Finished " << InitialStateName() <<  " snapshot at " << tablet_id
-                << " that is not running and in state "
-                << SysSnapshotEntryPB::State_Name(it->state) << ": " << status;
+    LOG_WITH_PREFIX(DFATAL)
+        << "Finished " << InitialStateName() <<  " at " << tablet_id
+        << " that is not running and in state " << SysSnapshotEntryPB::State_Name(it->state)
+        << ": " << status;
     return;
   }
   tablets_.modify(it, [](TabletData& data) { data.running = false; });
   const auto& state = it->state;
   if (state == initial_state_) {
+    status = CheckDoneStatus(status);
     if (status.ok()) {
       tablets_.modify(
           it, [terminal_state = InitialStateToTerminalState(initial_state_)](TabletData& data) {
         data.state = terminal_state;
       });
-      LOG(INFO) << "Finished " << InitialStateName() << " snapshot at " << tablet_id;
+      LOG_WITH_PREFIX(INFO) << "Finished " << InitialStateName() << " at " << tablet_id << ", "
+                            << num_tablets_in_initial_state_ << " was running";
     } else {
       auto full_status = status.CloneAndPrepend(
           Format("Failed to $0 snapshot at $1", InitialStateName(), tablet_id));
-      LOG(WARNING) << full_status;
       bool terminal = IsTerminalFailure(status);
       tablets_.modify(it, [&full_status, terminal](TabletData& data) {
         if (terminal) {
@@ -155,6 +171,9 @@ void StateWithTablets::Done(const TabletId& tablet_id, const Status& status) {
         }
         data.last_error = full_status;
       });
+      LOG_WITH_PREFIX(WARNING)
+          << full_status << ", terminal: " << terminal << ", " << num_tablets_in_initial_state_
+          << " was running";
       if (!terminal) {
         return;
       }
@@ -162,8 +181,9 @@ void StateWithTablets::Done(const TabletId& tablet_id, const Status& status) {
     --num_tablets_in_initial_state_;
     CheckCompleteness();
   } else {
-    LOG(DFATAL) << "Finished " << InitialStateName() << " snapshot at tablet " << tablet_id
-                << " in a wrong state " << state << ": " << status;
+    LOG_WITH_PREFIX(DFATAL)
+        << "Finished " << InitialStateName() << " at tablet " << tablet_id << " in a wrong state "
+        << state << ": " << status;
   }
 }
 
@@ -211,6 +231,10 @@ void StateWithTablets::RemoveTablets(const std::vector<std::string>& tablet_ids)
   for (const auto& id : tablet_ids) {
     tablets_.erase(id);
   }
+}
+
+const std::string& StateWithTablets::LogPrefix() const {
+  return log_prefix_;
 }
 
 } // namespace master

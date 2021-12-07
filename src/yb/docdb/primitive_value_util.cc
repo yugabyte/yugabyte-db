@@ -10,12 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <iostream>
+#include "yb/docdb/primitive_value_util.h"
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
-#include "yb/docdb/primitive_value_util.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/schema.h"
+
+#include "yb/docdb/primitive_value.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using std::vector;
 

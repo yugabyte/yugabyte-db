@@ -10,6 +10,7 @@
  *
  *-------------------------------------------------------------------------
  */
+#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include "access/genam.h"
@@ -682,8 +683,10 @@ AlterRole(AlterRoleStmt *stmt)
 	roleid = HeapTupleGetOid(tuple);
 
 	/*
-	 * To mess with a superuser you gotta be superuser; else you need
-	 * createrole, or just want to change your own password
+	 * To mess with a superuser or replication role in any way you gotta be
+	 * superuser.  We also insist on superuser to change the BYPASSRLS
+	 * property.  Otherwise, if you don't have createrole, you're only allowed
+	 * to change your own password.
 	 */
 	if (authform->rolsuper || issuper >= 0)
 	{
@@ -699,7 +702,7 @@ AlterRole(AlterRoleStmt *stmt)
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser to alter replication users")));
 	}
-	else if (authform->rolbypassrls || bypassrls >= 0)
+	else if (bypassrls >= 0)
 	{
 		if (!superuser())
 			ereport(ERROR,
@@ -708,11 +711,11 @@ AlterRole(AlterRoleStmt *stmt)
 	}
 	else if (!have_createrole_privilege())
 	{
+		/* We already checked issuper, isreplication, and bypassrls */
 		if (!(inherit < 0 &&
 			  createrole < 0 &&
 			  createdb < 0 &&
 			  canlogin < 0 &&
-			  isreplication < 0 &&
 			  !dconnlimit &&
 			  !rolemembers &&
 			  !validUntil &&
@@ -1062,12 +1065,18 @@ DropRole(DropRoleStmt *stmt)
 		/* Check for pg_shdepend entries depending on this role */
 		if (checkSharedDependencies(AuthIdRelationId, roleid,
 									&detail, &detail_log))
+		{
+			if (IsYugaByteEnabled() && detail != NULL)
+			{
+				detail = YBDetailSorted(detail);
+			}
 			ereport(ERROR,
 					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 					 errmsg("role \"%s\" cannot be dropped because some objects depend on it",
 							role),
 					 errdetail_internal("%s", detail),
 					 errdetail_log("%s", detail_log)));
+		}
 
 		/*
 		 * Remove the role from the pg_authid table

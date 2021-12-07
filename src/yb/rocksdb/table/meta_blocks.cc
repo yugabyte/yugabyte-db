@@ -17,6 +17,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rocksdb/table/meta_blocks.h"
 
 #include <map>
@@ -24,8 +25,8 @@
 
 #include "yb/rocksdb/db/table_properties_collector.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/block.h"
+#include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_properties_internal.h"
@@ -38,6 +39,15 @@ DEFINE_bool(verify_encrypted_meta_block_checksums, true,
 namespace rocksdb {
 
 namespace {
+
+constexpr auto kMetaIndexBlockRestartInterval = 1;
+
+// We use kKeyDeltaEncodingSharedPrefix format for property blocks, but since
+// kPropertyBlockRestartInterval == 1 every key in these blocks will still have zero shared prefix
+// length and will be stored fully.
+constexpr auto kPropertyBlockKeyValueEncodingFormat =
+    KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
+constexpr auto kPropertyBlockRestartInterval = 1;
 
 ReadOptions CreateMetaBlockReadOptions(RandomAccessFileReader* file) {
   ReadOptions read_options;
@@ -54,7 +64,8 @@ ReadOptions CreateMetaBlockReadOptions(RandomAccessFileReader* file) {
 }  // namespace
 
 MetaIndexBuilder::MetaIndexBuilder()
-    : meta_index_block_(new BlockBuilder(1 /* restart interval */)) {}
+    : meta_index_block_(new BlockBuilder(
+          kMetaIndexBlockRestartInterval, kMetaIndexBlockKeyValueEncodingFormat)) {}
 
 void MetaIndexBuilder::Add(const std::string& key,
                            const BlockHandle& handle) {
@@ -71,7 +82,8 @@ Slice MetaIndexBuilder::Finish() {
 }
 
 PropertyBlockBuilder::PropertyBlockBuilder()
-    : properties_block_(new BlockBuilder(1 /* restart interval */)) {}
+    : properties_block_(
+          new BlockBuilder(kPropertyBlockRestartInterval, kPropertyBlockKeyValueEncodingFormat)) {}
 
 void PropertyBlockBuilder::Add(const std::string& name,
                                const std::string& val) {
@@ -189,8 +201,8 @@ Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
   }
 
   Block properties_block(std::move(block_contents));
-  std::unique_ptr<InternalIterator> iter(
-      properties_block.NewIterator(BytewiseComparator()));
+  std::unique_ptr<InternalIterator> iter(properties_block.NewIterator(
+      BytewiseComparator(), kPropertyBlockKeyValueEncodingFormat));
 
   auto new_table_properties = new TableProperties();
   // All pre-defined properties of type uint64_t
@@ -272,8 +284,8 @@ Status ReadTableProperties(RandomAccessFileReader* file, uint64_t file_size,
     return s;
   }
   Block metaindex_block(std::move(metaindex_contents));
-  std::unique_ptr<InternalIterator> meta_iter(
-      metaindex_block.NewIterator(BytewiseComparator()));
+  std::unique_ptr<InternalIterator> meta_iter(metaindex_block.NewIterator(
+      BytewiseComparator(), kMetaIndexBlockKeyValueEncodingFormat));
 
   // -- Read property block
   bool found_properties_block = true;
@@ -328,7 +340,8 @@ Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   Block metaindex_block(std::move(metaindex_contents));
 
   std::unique_ptr<InternalIterator> meta_iter;
-  meta_iter.reset(metaindex_block.NewIterator(BytewiseComparator()));
+  meta_iter.reset(
+      metaindex_block.NewIterator(BytewiseComparator(), kMetaIndexBlockKeyValueEncodingFormat));
 
   return FindMetaBlock(meta_iter.get(), meta_block_name, block_handle);
 }
@@ -359,7 +372,8 @@ Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
   Block metaindex_block(std::move(metaindex_contents));
 
   std::unique_ptr<InternalIterator> meta_iter;
-  meta_iter.reset(metaindex_block.NewIterator(BytewiseComparator()));
+  meta_iter.reset(
+      metaindex_block.NewIterator(BytewiseComparator(), kMetaIndexBlockKeyValueEncodingFormat));
 
   BlockHandle block_handle;
   status = FindMetaBlock(meta_iter.get(), meta_block_name, &block_handle);

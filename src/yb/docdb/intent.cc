@@ -19,7 +19,13 @@
 
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/value_type.h"
+
+#include "yb/gutil/endian.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace docdb {
@@ -31,13 +37,18 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
 
   int doc_ht_size = 0;
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(intent_prefix, &doc_ht_size));
-  if (intent_prefix.size() < doc_ht_size + 3) {
+  // There should always be 3 bytes present before teh start of the doc_ht:
+  // 1. ValueType::kIntentTypeSet
+  // 2. the corresponding value for ValueType::kIntentTypeSet
+  // 3. ValueType::kHybridTime
+  constexpr int kBytesBeforeDocHt = 3;
+  if (intent_prefix.size() < doc_ht_size + kBytesBeforeDocHt) {
     return STATUS_FORMAT(
         Corruption, "Intent key is too short: $0 bytes", encoded_intent_key.size());
   }
-  intent_prefix.remove_suffix(doc_ht_size + 3);
+  intent_prefix.remove_suffix(doc_ht_size + kBytesBeforeDocHt);
   RETURN_NOT_OK(result.doc_ht.FullyDecodeFrom(
-      Slice(intent_prefix.data() + intent_prefix.size() + 3, doc_ht_size)));
+      Slice(intent_prefix.data() + intent_prefix.size() + kBytesBeforeDocHt, doc_ht_size)));
   auto* prefix_end = intent_prefix.end();
 
   if (prefix_end[2] != ValueTypeAsChar::kHybridTime)
@@ -86,16 +97,30 @@ IntentTypeSet GetStrongIntentTypeSet(
     OperationKind operation_kind,
     RowMarkType row_mark) {
   if (IsValidRowMarkType(row_mark)) {
-    // TODO: possibly adjust this when issue #2922 is fixed.
+    // Mapping of postgres locking levels to DocDB intent types is described in details by the
+    // following comment https://github.com/yugabyte/yugabyte-db/issues/1199#issuecomment-501041018
     switch (row_mark) {
-      case RowMarkType::ROW_MARK_EXCLUSIVE: FALLTHROUGH_INTENDED;
-      case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
+      case RowMarkType::ROW_MARK_EXCLUSIVE:
+        // FOR UPDATE: strong read + strong write lock on the DocKey,
+        //             as if we're replacing or deleting the entire row in DocDB.
         return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
-        break;
-      case RowMarkType::ROW_MARK_SHARE: FALLTHROUGH_INTENDED;
-      case RowMarkType::ROW_MARK_KEYSHARE:
+      case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
+        // FOR NO KEY UPDATE: strong read + weak write lock on the DocKey, as if we're reading
+        //                    the entire row and then writing only a subset of columns in DocDB.
+        return IntentTypeSet({IntentType::kStrongRead, IntentType::kWeakWrite});
+      case RowMarkType::ROW_MARK_SHARE:
+        // FOR SHARE: strong read on the DocKey, as if we're reading the entire row in DocDB.
         return IntentTypeSet({IntentType::kStrongRead});
-        break;
+      case RowMarkType::ROW_MARK_KEYSHARE:
+        // FOR KEY SHARE: weak read lock on the DocKey, preventing the entire row from being
+        //               replaced / deleted, as if we're simply reading some of the column.
+        //               This is the type of locking that is used by foreign keys, so this will
+        //               prevent the referenced row from disappearing. The reason it does not
+        //               conflict with the FOR NO KEY UPDATE above is conceptually the following:
+        //               an operation that reads the entire row and then writes a subset of columns
+        //               (FOR NO KEY UPDATE) does not have to conflict with an operation that could
+        //               be reading a different subset of columns (FOR KEY SHARE).
+        return IntentTypeSet({IntentType::kWeakRead});
       default:
         // We shouldn't get here because other row lock types are disabled at the postgres level.
         LOG(DFATAL) << "Unsupported row lock of type " << RowMarkType_Name(row_mark);
@@ -134,27 +159,38 @@ bool HasStrong(IntentTypeSet inp) {
                                    encoded_intent_value.ToDebugHexString(), \
                                    transaction_id_slice.ToDebugHexString()))
 
-CHECKED_STATUS DecodeIntentValue(
-    const Slice& encoded_intent_value, const Slice& transaction_id_slice, IntraTxnWriteId* write_id,
-    Slice* body) {
-  Slice intent_value = encoded_intent_value;
-  RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kTransactionId));
-  INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
-      "wrong transaction id");
-  intent_value.remove_prefix(TransactionId::StaticSize());
+Result<DecodedIntentValue> DecodeIntentValue(
+    const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice) {
+  DecodedIntentValue decoded_value;
+  auto intent_value = encoded_intent_value;
+  auto transaction_id_slice = Slice();
+
+  if (verify_transaction_id_slice) {
+    transaction_id_slice = *verify_transaction_id_slice;
+    RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kTransactionId));
+    INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
+        "wrong transaction id");
+    intent_value.remove_prefix(TransactionId::StaticSize());
+  } else {
+    decoded_value.transaction_id = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&intent_value));
+    transaction_id_slice = decoded_value.transaction_id.AsSlice();
+  }
+
+  if (intent_value.TryConsumeByte(ValueTypeAsChar::kSubTransactionId)) {
+    decoded_value.subtransaction_id = Load<SubTransactionId, BigEndian>(intent_value.data());
+    intent_value.remove_prefix(sizeof(SubTransactionId));
+  } else {
+    decoded_value.subtransaction_id = kMinSubTransactionId;
+  }
 
   RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
   INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
-  if (write_id) {
-    *write_id = BigEndian::Load32(intent_value.data());
-  }
+  decoded_value.write_id = BigEndian::Load32(intent_value.data());
   intent_value.remove_prefix(sizeof(IntraTxnWriteId));
 
-  if (body) {
-    *body = intent_value;
-  }
+  decoded_value.body = intent_value;
 
-  return Status::OK();
+  return decoded_value;
 }
 
 IntentTypeSet ObsoleteIntentTypeToSet(uint8_t obsolete_intent_type) {

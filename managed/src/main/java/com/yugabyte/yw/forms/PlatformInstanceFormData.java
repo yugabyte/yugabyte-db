@@ -14,14 +14,13 @@ import play.data.validation.Constraints;
 
 public class PlatformInstanceFormData {
   @Constraints.Required()
-  @Constraints.Pattern(message="Must be prefixed with http:// or https://",
-    value="\\b(?:http://|https://).+\\b")
+  @Constraints.Pattern(
+      message = "Must be prefixed with http:// or https://",
+      value = "\\b(?:http://|https://).+\\b")
   @YugabyteConstraints.ValidURL()
   public String address;
 
-  @Constraints.Required()
-  public boolean is_leader;
+  @Constraints.Required() public boolean is_leader;
 
-  @Constraints.Required()
-  public boolean is_local;
+  @Constraints.Required() public boolean is_local;
 }

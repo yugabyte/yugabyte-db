@@ -10,29 +10,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/doc_write_batch.h"
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_reader.h"
-#include "yb/docdb/deadline_info.h"
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rocksutil/write_batch_formatter.h"
-
-#include "yb/server/hybrid_clock.h"
-
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/value_type.h"
 #include "yb/docdb/kv_debug.h"
+#include "yb/docdb/subdocument.h"
+#include "yb/docdb/value_type.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/rocksutil/write_batch_formatter.h"
+#include "yb/server/hybrid_clock.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using yb::BinaryOutputFormat;
 
@@ -376,7 +375,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
           BloomFilterMode::USE_BLOOM_FILTER,
           doc_path.encoded_doc_key().AsSlice(),
           query_id,
-          /*txn_op_context*/ boost::none,
+          TransactionOperationContext(),
           deadline,
           read_ht);
     };
@@ -416,6 +415,7 @@ Status DocWriteBatch::ExtendSubDocument(
     RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl, user_timestamp),
                                read_ht, deadline, query_id));
   }
+  UpdateMaxValueTtl(ttl);
   return Status::OK();
 }
 
@@ -503,7 +503,7 @@ Status DocWriteBatch::ReplaceRedisInList(
       BloomFilterMode::USE_BLOOM_FILTER,
       key_prefix_.AsSlice(),
       query_id,
-      /*txn_op_context*/ boost::none,
+      TransactionOperationContext(),
       deadline,
       read_ht);
 
@@ -588,6 +588,17 @@ Status DocWriteBatch::ReplaceRedisInList(
   }
 }
 
+void DocWriteBatch::UpdateMaxValueTtl(const MonoDelta& ttl) {
+  // Don't update the max value TTL if the value is uninitialized or if it is set to
+  // kMaxTtl (i.e. use table TTL).
+  if (!ttl.Initialized() || ttl.Equals(Value::kMaxTtl)) {
+    return;
+  }
+  if (!ttl_.Initialized() || ttl > ttl_) {
+    ttl_ = ttl;
+  }
+}
+
 Status DocWriteBatch::ReplaceCqlInList(
     const DocPath& doc_path,
     const int target_cql_index,
@@ -606,7 +617,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       BloomFilterMode::USE_BLOOM_FILTER,
       key_prefix_.AsSlice(),
       query_id,
-      /*txn_op_context*/ boost::none,
+      TransactionOperationContext(),
       deadline,
       read_ht);
 
@@ -697,6 +708,9 @@ void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
     kv_pair->mutable_key()->swap(entry.first);
     kv_pair->mutable_value()->swap(entry.second);
   }
+  if (has_ttl()) {
+    kv_pb->set_ttl(ttl_ns());
+  }
 }
 
 void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
@@ -705,6 +719,9 @@ void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
     KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
     kv_pair->mutable_key()->assign(entry.first);
     kv_pair->mutable_value()->assign(entry.second);
+  }
+  if (has_ttl()) {
+    kv_pb->set_ttl(ttl_ns());
   }
 }
 

@@ -20,8 +20,8 @@
 // be included directly.  Clients should instead include
 // "base/atomicops.h".
 
-#ifndef BASE_AUXILIARY_ATOMICOPS_INTERNALS_MACOSX_H_
-#define BASE_AUXILIARY_ATOMICOPS_INTERNALS_MACOSX_H_
+#ifndef YB_GUTIL_ATOMICOPS_INTERNALS_MACOSX_H
+#define YB_GUTIL_ATOMICOPS_INTERNALS_MACOSX_H
 
 typedef int32_t Atomic32;
 typedef int64_t Atomic64;
@@ -282,7 +282,13 @@ inline void NoBarrier_Store(volatile Atomic64* ptr, Atomic64 value) {
 // are in a spinlock wait loop and should allow other hyperthreads
 // to run, not speculate memory access, etc.
 inline void PauseCPU() {
+#ifdef __x86_64__
   __asm__ __volatile__("pause" : : : "memory");
+#elif defined(__arm64__)
+  __asm__ __volatile__("yield" : : : "memory");
+#else
+  #error "PauseCPU is only supported for x86_64 and arm64 on macOS"
+#endif
 }
 
 inline void Acquire_Store(volatile Atomic64 *ptr, Atomic64 value) {
@@ -317,14 +323,14 @@ inline Atomic64 Release_Load(volatile const Atomic64 *ptr) {
 #if defined(__ppc__)
 
 inline void NoBarrier_Store(volatile Atomic64* ptr, Atomic64 value) {
-   __asm__ __volatile__(
-       "_NoBarrier_Store_not_supported_for_32_bit_ppc\n\t");
+  __asm__ __volatile__(
+      "_NoBarrier_Store_not_supported_for_32_bit_ppc\n\t");
 }
 
 inline Atomic64 NoBarrier_Load(volatile const Atomic64* ptr) {
-   __asm__ __volatile__(
-       "_NoBarrier_Load_not_supported_for_32_bit_ppc\n\t");
-   return 0;
+  __asm__ __volatile__(
+      "_NoBarrier_Load_not_supported_for_32_bit_ppc\n\t");
+  return 0;
 }
 
 #elif defined(__i386__)
@@ -409,7 +415,7 @@ inline Atomic64 Release_Load(volatile const Atomic64 *ptr) {
 }
 #endif  // __LP64__
 
-}   // namespace base::subtle
+}   // namespace subtle
 }   // namespace base
 
 // NOTE(user): The following is also deprecated.  New callers should use
@@ -417,4 +423,5 @@ inline Atomic64 Release_Load(volatile const Atomic64 *ptr) {
 inline void MemoryBarrier() {
   base::subtle::MemoryBarrier();
 }
-#endif  // BASE_AUXILIARY_ATOMICOPS_INTERNALS_MACOSX_H_
+
+#endif  // YB_GUTIL_ATOMICOPS_INTERNALS_MACOSX_H

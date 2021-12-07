@@ -34,12 +34,9 @@
 #define YB_UTIL_RANDOM_UTIL_H
 
 #include <algorithm>
-#include <cstdint>
-#include <cstdlib>
 #include <random>
-#include <string>
 
-#include <glog/logging.h>
+#include <glog/logging.h> // For CHECK
 
 namespace yb {
 
@@ -55,6 +52,7 @@ void RandomString(void* dest, size_t n, Random* rng);
 uint32_t GetRandomSeed32();
 
 std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng = nullptr);
+std::string RandomString(size_t len, std::mt19937_64* rng = nullptr);
 
 std::string RandomHumanReadableString(int len, Random* rnd);
 

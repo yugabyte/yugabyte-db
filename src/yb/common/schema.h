@@ -40,19 +40,23 @@
 #include <utility>
 #include <vector>
 
+#include <boost/optional/optional.hpp>
+
 #include <glog/logging.h>
 
-#include "yb/common/ql_type.h"
-#include "yb/common/id_mapping.h"
-#include "yb/common/key_encoder.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/common/transaction.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/column_id.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/id_mapping.h"
+#include "yb/common/types.h"
+
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/enums.h"
+
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
+#include "yb/util/uuid.h"
 
 // Check that two schemas are equal, yielding a useful error message in the case that
 // they are not.
@@ -73,93 +77,6 @@ namespace yb {
 
 class DeletedColumnPB;
 
-using std::vector;
-using std::unordered_map;
-using std::unordered_set;
-
-template<char digit1, char... digits>
-struct ColumnIdHelper {
-  typedef ColumnIdHelper<digit1> Current;
-  typedef ColumnIdHelper<digits...> Next;
-  static constexpr int mul = Next::mul * 10;
-  static constexpr int value = Current::value * mul + Next::value;
-  static_assert(value <= std::numeric_limits<int32_t>::max(), "Too big constant");
-};
-
-template<char digit>
-struct ColumnIdHelper<digit> {
-  static_assert(digit >= '0' && digit <= '9', "Only digits is allowed");
-  static constexpr int value = digit - '0';
-  static constexpr int mul = 1;
-};
-
-// The ID of a column. Each column in a table has a unique ID.
-typedef int32_t ColumnIdRep;
-struct ColumnId {
-  explicit ColumnId(ColumnIdRep t_) : t(t_) {
-    DCHECK_GE(t_, 0);
-  }
-  template<char... digits>
-  constexpr explicit ColumnId(ColumnIdHelper<digits...>) : t(ColumnIdHelper<digits...>::value) {}
-
-  ColumnId() : t() {}
-  constexpr ColumnId(const ColumnId& t_) : t(t_.t) {}
-  ColumnId& operator=(const ColumnId& rhs) { t = rhs.t; return *this; }
-  ColumnId& operator=(const ColumnIdRep& rhs) { DCHECK_GE(rhs, 0); t = rhs; return *this; }
-  operator const ColumnIdRep() const { return t; }
-  operator const strings::internal::SubstituteArg() const { return t; }
-  operator const AlphaNum() const { return t; }
-  ColumnIdRep rep() const { return t; }
-
-  bool operator==(const ColumnId& rhs) const { return t == rhs.t; }
-  bool operator!=(const ColumnId& rhs) const { return t != rhs.t; }
-  bool operator<(const ColumnId& rhs) const { return t < rhs.t; }
-  bool operator>(const ColumnId& rhs) const { return t > rhs.t; }
-
-  friend std::ostream& operator<<(std::ostream& os, ColumnId column_id) {
-    return os << column_id.t;
-  }
-
-  std::string ToString() const {
-    return std::to_string(t);
-  }
-
-  uint64_t ToUint64() const {
-    DCHECK_GE(t, 0);
-    return static_cast<uint64_t>(t);
-  }
-
-  static CHECKED_STATUS FromInt64(int64_t value, ColumnId *column_id) {
-    if (value > std::numeric_limits<ColumnIdRep>::max() || value < 0) {
-      return STATUS(Corruption, strings::Substitute("$0 not valid for column id representation",
-                                                    value));
-    }
-    column_id->t = static_cast<ColumnIdRep>(value);
-    return Status::OK();
-  }
-
- private:
-  ColumnIdRep t;
-};
-static const ColumnId kInvalidColumnId = ColumnId(std::numeric_limits<ColumnIdRep>::max());
-// In a new schema, we typically would start assigning column IDs at 0. However, this
-// makes it likely that in many test cases, the column IDs and the column indexes are
-// equal to each other, and it's easy to accidentally pass an index where we meant to pass
-// an ID, without having any issues. So, in DEBUG builds, we start assigning columns at ID
-// 10, ensuring that if we accidentally mix up IDs and indexes, we're likely to fire an
-// assertion or bad memory access.
-#ifdef NDEBUG
-constexpr ColumnIdRep kFirstColumnIdRep = 0;
-#else
-constexpr ColumnIdRep kFirstColumnIdRep = 10;
-#endif
-const ColumnId kFirstColumnId(kFirstColumnIdRep);
-
-template<char... digits>
-ColumnId operator"" _ColId() {
-  return ColumnId(ColumnIdHelper<digits...>());
-}
-
 // Struct for storing information about deleted columns for cleanup.
 struct DeletedColumn {
   ColumnId id;
@@ -167,14 +84,11 @@ struct DeletedColumn {
 
   DeletedColumn() { }
 
-  DeletedColumn(ColumnId id, const HybridTime& ht) : id(id), ht(ht) { }
+  DeletedColumn(ColumnId id_, HybridTime ht_) : id(id_), ht(ht_) {}
 
   static CHECKED_STATUS FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
   void CopyToPB(DeletedColumnPB* pb) const;
 };
-
-typedef std::unordered_set<ColumnId> ColumnIds;
-typedef std::shared_ptr<ColumnIds> ColumnIdsPtr;
 
 // The schema for a given column.
 //
@@ -199,9 +113,7 @@ class ColumnSchema {
     return a.sorting_type_ == b.sorting_type_;
   }
 
-  static bool CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b) {
-    return a.type_info()->type() == b.type_info()->type();
-  }
+  static bool CompTypeInfo(const ColumnSchema &a, const ColumnSchema &b);
 
   static bool CompOrder(const ColumnSchema &a, const ColumnSchema &b) {
     return a.order_ == b.order_;
@@ -217,14 +129,6 @@ class ColumnSchema {
     return CompareType(a, b) && CompName(a, b);
   }
 
-  enum SortingType : uint8_t {
-    kNotSpecified = 0,
-    kAscending,          // ASC, NULLS FIRST
-    kDescending,         // DESC, NULLS FIRST
-    kAscendingNullsLast, // ASC, NULLS LAST
-    kDescendingNullsLast // DESC, NULLS LAST
-  };
-
   // name: column name
   // type: column type (e.g. UINT8, INT32, STRING, MAP<INT32, STRING> ...)
   // is_nullable: true if a row value can be null
@@ -237,7 +141,7 @@ class ColumnSchema {
   //   ColumnSchema col_c("c", INT32, false, &default_i32);
   //   Slice default_str("Hello");
   //   ColumnSchema col_d("d", STRING, false, &default_str);
-  ColumnSchema(string name,
+  ColumnSchema(std::string name,
                const std::shared_ptr<QLType>& type,
                bool is_nullable = false,
                bool is_hash_key = false,
@@ -256,17 +160,14 @@ class ColumnSchema {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
-  ColumnSchema(string name,
+  ColumnSchema(std::string name,
                DataType type,
                bool is_nullable = false,
                bool is_hash_key = false,
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified)
-      : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     order, sorting_type) {
-  }
+               SortingType sorting_type = SortingType::kNotSpecified);
 
   const std::shared_ptr<QLType>& type() const {
     return type_;
@@ -276,9 +177,7 @@ class ColumnSchema {
     type_ = type;
   }
 
-  const TypeInfo* type_info() const {
-    return type_->type_info();
-  }
+  const TypeInfo* type_info() const;
 
   bool is_nullable() const {
     return is_nullable_;
@@ -349,31 +248,17 @@ class ColumnSchema {
     return Equals(other, CompareByDefault);
   }
 
-  int Compare(const void *lhs, const void *rhs) const {
-    return type_info()->Compare(lhs, rhs);
-  }
+  int Compare(const void *lhs, const void *rhs) const;
 
   // Stringify the given cell. This just stringifies the cell contents,
   // and doesn't include the column name or type.
-  std::string Stringify(const void *cell) const {
-    std::string ret;
-    type_info()->AppendDebugStringForValue(cell, &ret);
-    return ret;
-  }
+  std::string Stringify(const void *cell) const;
 
   // Append a debug string for this cell. This differs from Stringify above
   // in that it also includes the column info, for example 'STRING foo=bar'.
   template<class CellType>
   void DebugCellAppend(const CellType& cell, std::string* ret) const {
-    ret->append(type_info()->name());
-    ret->append(" ");
-    ret->append(name_);
-    ret->append("=");
-    if (is_nullable_ && cell.is_null()) {
-      ret->append("NULL");
-    } else {
-      type_info()->AppendDebugStringForValue(cell.ptr(), ret);
-    }
+    DoDebugCellAppend((is_nullable_ && cell.is_null()) ? nullptr : cell.ptr(), ret);
   }
 
   // Returns the memory usage of this object without the object itself. Should
@@ -390,6 +275,8 @@ class ColumnSchema {
   void set_name(const std::string& name) {
     name_ = name;
   }
+
+  void DoDebugCellAppend(const void* cell, std::string* ret) const;
 
   std::string name_;
   std::shared_ptr<QLType> type_;
@@ -566,8 +453,6 @@ class TableProperties {
   bool is_ysql_catalog_table_ = false;
 };
 
-typedef uint32_t PgTableOid;
-
 // The schema for a set of rows.
 //
 // A Schema is simply a set of columns, along with information about
@@ -586,14 +471,13 @@ class Schema {
   Schema()
     : num_key_columns_(0),
       num_hash_key_columns_(0),
-      name_to_index_bytes_(0),
       // TODO: C++11 provides a single-arg constructor
       name_to_index_(10,
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
       has_nullables_(false),
-      cotable_id_(boost::uuids::nil_uuid()),
+      cotable_id_(Uuid::Nil()),
       pgtable_id_(0) {
   }
 
@@ -613,16 +497,8 @@ class Schema {
   Schema(const vector<ColumnSchema>& cols,
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
-         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
-         const PgTableOid pgtable_id = 0)
-    : name_to_index_bytes_(0),
-      // TODO: C++11 provides a single-arg constructor
-      name_to_index_(10,
-                     NameToIndexMap::hasher(),
-                     NameToIndexMap::key_equal(),
-                     NameToIndexMapAllocator(&name_to_index_bytes_)) {
-    CHECK_OK(Reset(cols, key_columns, table_properties, cotable_id, pgtable_id));
-  }
+         const Uuid& cotable_id = Uuid::Nil(),
+         const PgTableOid pgtable_id = 0);
 
   // Construct a schema with the given information.
   //
@@ -634,27 +510,16 @@ class Schema {
          const vector<ColumnId>& ids,
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
-         const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
-         const PgTableOid pgtable_id = 0)
-    : name_to_index_bytes_(0),
-      // TODO: C++11 provides a single-arg constructor
-      name_to_index_(10,
-                     NameToIndexMap::hasher(),
-                     NameToIndexMap::key_equal(),
-                     NameToIndexMapAllocator(&name_to_index_bytes_)) {
-    CHECK_OK(Reset(cols, ids, key_columns, table_properties, cotable_id, pgtable_id));
-  }
+         const Uuid& cotable_id = Uuid::Nil(),
+         const PgTableOid pgtable_id = 0);
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
-                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
-                       const PgTableOid pgtable_id = 0) {
-    std::vector<ColumnId> ids;
-    return Reset(cols, ids, key_columns, table_properties, cotable_id, pgtable_id);
-  }
+                       const Uuid& cotable_id = Uuid::Nil(),
+                       const PgTableOid pgtable_id = 0);
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
@@ -663,7 +528,7 @@ class Schema {
                        const vector<ColumnId>& ids,
                        size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
-                       const Uuid& cotable_id = Uuid(boost::uuids::nil_uuid()),
+                       const Uuid& cotable_id = Uuid::Nil(),
                        const PgTableOid pgtable_id = 0);
 
   // Return the number of bytes needed to represent a single row of this schema.
@@ -713,13 +578,7 @@ class Schema {
   }
 
   // Return the ColumnSchema corresponding to the given column ID.
-  inline Result<const ColumnSchema&> column_by_id(ColumnId id) const {
-    int idx = find_column_by_id(id);
-    if (idx < 0) {
-      return STATUS_FORMAT(InvalidArgument, "Column id $0 not found", id.ToString());
-    }
-    return cols_[idx];
-  }
+  Result<const ColumnSchema&> column_by_id(ColumnId id) const;
 
   // Return the column ID corresponding to the given column index
   ColumnId column_id(size_t idx) const {
@@ -742,8 +601,8 @@ class Schema {
     return col_ids_;
   }
 
-  const std::vector<string> column_names() const {
-    vector<string> column_names;
+  const std::vector<std::string> column_names() const {
+    std::vector<std::string> column_names;
     for (const auto& col : cols_) {
       column_names.push_back(col.name());
     }
@@ -872,7 +731,7 @@ class Schema {
 
   // Gets and sets the PG table OID of the non-primary table this schema belongs to in a tablet
   // with colocated tables.
-  const PgTableOid pgtable_id() const {
+  PgTableOid pgtable_id() const {
     return pgtable_id_;
   }
 
@@ -935,8 +794,7 @@ class Schema {
   //
   // 'arena' is used for allocating indirect strings, but is unused
   // for other datatypes.
-  CHECKED_STATUS DecodeRowKey(Slice encoded_key, uint8_t* buffer,
-                      Arena* arena) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS DecodeRowKey(Slice encoded_key, uint8_t* buffer, Arena* arena) const;
 
   // Decode and stringify the given contiguous encoded row key in
   // order to, e.g., provide print human-readable information about a
@@ -1008,27 +866,6 @@ class Schema {
   CHECKED_STATUS CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
                                                     Schema* out) const;
 
-  // Encode the key portion of the given row into a buffer
-  // such that the buffer's lexicographic comparison represents
-  // the proper comparison order of the underlying types.
-  //
-  // The key is encoded into the given buffer, replacing its current
-  // contents.
-  // Returns the encoded key.
-  template <class RowType>
-  Slice EncodeComparableKey(const RowType& row, faststring *dst) const {
-    DCHECK_KEY_PROJECTION_SCHEMA_EQ(*this, *row.schema());
-
-    dst->clear();
-    for (size_t i = 0; i < num_key_columns_; i++) {
-      DCHECK(!cols_[i].is_nullable());
-      const TypeInfo* ti = cols_[i].type_info();
-      bool is_last = i == num_key_columns_ - 1;
-      GetKeyEncoder<faststring>(ti).Encode(row.cell_ptr(i), is_last, dst);
-    }
-    return Slice(*dst);
-  }
-
   // Stringify this Schema. This is not particularly efficient,
   // so should only be used when necessary for output.
   std::string ToString() const;
@@ -1065,6 +902,7 @@ class Schema {
 
     for (size_t i = 0; i < other.cols_.size(); i++) {
       if (!this->cols_[i].Equals(other.cols_[i])) return false;
+      if (this->column_id(i) != other.column_id(i)) return false;
     }
 
     return true;
@@ -1117,7 +955,7 @@ class Schema {
     const bool use_column_ids = base_schema.has_column_ids() && has_column_ids();
 
     int proj_idx = 0;
-    for (int i = 0; i < cols_.size(); ++i) {
+    for (size_t i = 0; i < cols_.size(); ++i) {
       const ColumnSchema& col_schema = cols_[i];
 
       // try to lookup the column by ID if present or just by name.
@@ -1211,9 +1049,9 @@ class Schema {
   //
   // The map is instrumented with a counting allocator so that we can accurately
   // measure its memory footprint.
-  int64_t name_to_index_bytes_;
+  int64_t name_to_index_bytes_ = 0;
   typedef STLCountingAllocator<std::pair<const GStringPiece, size_t> > NameToIndexMapAllocator;
-  typedef unordered_map<
+  typedef std::unordered_map<
       GStringPiece,
       size_t,
       std::hash<GStringPiece>,
@@ -1315,23 +1153,19 @@ class SchemaBuilder {
 
   CHECKED_STATUS AddColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, false, false, false, false, 0,
-                     ColumnSchema::SortingType::kNotSpecified);
+                     SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddColumn(const std::string& name, DataType type) {
-    return AddColumn(name, QLType::Create(type));
-  }
+  CHECKED_STATUS AddColumn(const std::string& name, DataType type);
 
   CHECKED_STATUS AddNullableColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, true, false, false, false, 0,
-                     ColumnSchema::SortingType::kNotSpecified);
+                     SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddNullableColumn(const std::string& name, DataType type) {
-    return AddNullableColumn(name, QLType::Create(type));
-  }
+  CHECKED_STATUS AddNullableColumn(const std::string& name, DataType type);
 
   CHECKED_STATUS AddColumn(const std::string& name,
                            const std::shared_ptr<QLType>& type,
@@ -1340,7 +1174,7 @@ class SchemaBuilder {
                            bool is_static,
                            bool is_counter,
                            int32_t order,
-                           yb::ColumnSchema::SortingType sorting_type);
+                           yb::SortingType sorting_type);
 
   // convenience function for adding columns with simple (non-parametric) data types
   CHECKED_STATUS AddColumn(const std::string& name,
@@ -1350,25 +1184,21 @@ class SchemaBuilder {
                            bool is_static,
                            bool is_counter,
                            int32_t order,
-                           yb::ColumnSchema::SortingType sorting_type) {
-    return AddColumn(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     order, sorting_type);
-  }
+                           yb::SortingType sorting_type);
 
   CHECKED_STATUS RemoveColumn(const std::string& name);
   CHECKED_STATUS RenameColumn(const std::string& old_name, const std::string& new_name);
   CHECKED_STATUS AlterProperties(const TablePropertiesPB& pb);
 
  private:
-
   ColumnId next_id_;
   vector<ColumnId> col_ids_;
   vector<ColumnSchema> cols_;
-  unordered_set<string> col_names_;
+  std::unordered_set<string> col_names_;
   size_t num_key_columns_;
   TableProperties table_properties_;
   PgTableOid pgtable_id_ = 0;
-  Uuid cotable_id_ = Uuid(boost::uuids::nil_uuid());
+  Uuid cotable_id_ = Uuid::Nil();
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);
 };

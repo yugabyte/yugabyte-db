@@ -55,14 +55,14 @@ end;
 $body$;
 ```
 
-If each side is an _object_, then the results is an _object_ with all the key-value pairs present:
+If each side is an _object_, and no key-value pair in the RHS _object_ has the same key as any key-value pair in the LHS  _object_ then the result is an _object_ with all of the key-value pairs present:
 
 ```plpgsql
 do $body$
 declare
   j_left constant jsonb := '{"a": 1, "b": 2}';
-  j_right constant jsonb := '{"p":17, "a": 19}';
-  j_expected constant jsonb := '{"a": 19, "b": 2, "p": 17}';
+  j_right constant jsonb := '{"p":17, "q": 19}';
+  j_expected constant jsonb := '{"a": 1, "b": 2, "p": 17, "q": 19}';
 begin
   assert
     j_left || j_right = j_expected,
@@ -71,7 +71,7 @@ end;
 $body$;
 ```
 
-If the keys of key-value pairs collide, then the last-mentioned one wins, just as when the keys of such pairs collide in a single _object_:
+If the key of any key-value pair in the RHS _object_ collides with a key of a key-value pair in the LHS _object_, then the key-value pair from the RHS _object_ wins, just as when the keys of such pairs collide in a single _object_:
 
 ```plpgsql
 do $body$

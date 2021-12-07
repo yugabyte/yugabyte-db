@@ -15,34 +15,42 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.ObjectCodec;
-import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import io.ebean.Finder;
 import io.ebean.Model;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.validation.Constraints;
-
-import javax.persistence.*;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.ManyToOne;
+import javax.persistence.Temporal;
+import javax.persistence.TemporalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
 
 @Entity
-@JsonPropertyOrder({ "uuid", "config_uuid", "address", "is_leader", "is_local", "last_backup" })
-@JsonDeserialize(using= PlatformInstance.PlatformInstanceDeserializer.class)
+@JsonPropertyOrder({"uuid", "config_uuid", "address", "is_leader", "is_local", "last_backup"})
+@JsonDeserialize(using = PlatformInstance.PlatformInstanceDeserializer.class)
 public class PlatformInstance extends Model {
 
   private static final Finder<UUID, PlatformInstance> find =
-    new Finder<UUID, PlatformInstance>(PlatformInstance.class){};
+      new Finder<UUID, PlatformInstance>(PlatformInstance.class) {};
 
   private static final Logger LOG = LoggerFactory.getLogger(PlatformInstance.class);
 
   private static final SimpleDateFormat TIMESTAMP_FORMAT =
-    new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy");
+      new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy");
 
   @Id
   @Constraints.Required
@@ -53,8 +61,7 @@ public class PlatformInstance extends Model {
   @Column(nullable = false, unique = true)
   private String address;
 
-  @ManyToOne
-  private HighAvailabilityConfig config;
+  @ManyToOne private HighAvailabilityConfig config;
 
   @Constraints.Required
   @Temporal(TemporalType.TIMESTAMP)
@@ -152,11 +159,7 @@ public class PlatformInstance extends Model {
   }
 
   public static PlatformInstance create(
-    HighAvailabilityConfig config,
-    String address,
-    boolean isLeader,
-    boolean isLocal
-  ) {
+      HighAvailabilityConfig config, String address, boolean isLeader, boolean isLocal) {
     PlatformInstance model = new PlatformInstance();
     model.uuid = UUID.randomUUID();
     model.config = config;
@@ -169,11 +172,7 @@ public class PlatformInstance extends Model {
   }
 
   public static void update(
-    PlatformInstance instance,
-    String address,
-    boolean isLeader,
-    boolean isLocal
-  ) {
+      PlatformInstance instance, String address, boolean isLeader, boolean isLocal) {
     instance.setAddress(address);
     instance.setIsLeader(isLeader);
     instance.setIsLocal(isLocal);
@@ -185,9 +184,7 @@ public class PlatformInstance extends Model {
   }
 
   public static Optional<PlatformInstance> getByAddress(String address) {
-    return find.query().where()
-      .eq("address", address)
-      .findOneOrEmpty();
+    return find.query().where().eq("address", address).findOneOrEmpty();
   }
 
   public static void delete(UUID uuid) {
@@ -197,10 +194,8 @@ public class PlatformInstance extends Model {
   private static class HAConfigToUUIDSerializer extends JsonSerializer<HighAvailabilityConfig> {
     @Override
     public void serialize(
-      HighAvailabilityConfig value,
-      JsonGenerator gen,
-      SerializerProvider provider
-    ) throws IOException {
+        HighAvailabilityConfig value, JsonGenerator gen, SerializerProvider provider)
+        throws IOException {
       gen.writeString(value.getUUID().toString());
     }
   }
@@ -208,13 +203,15 @@ public class PlatformInstance extends Model {
   static class PlatformInstanceDeserializer extends JsonDeserializer<PlatformInstance> {
     @Override
     public PlatformInstance deserialize(JsonParser jp, DeserializationContext ctxt)
-      throws IOException {
+        throws IOException {
       ObjectCodec codec = jp.getCodec();
       JsonNode json = codec.readTree(jp);
       try {
-        if (json.has("uuid") && json.has("config_uuid") &&
-          json.has("address") && json.has("is_leader") &&
-          json.has("is_local") && json.has("last_backup")) {
+        if (json.has("uuid")
+            && json.has("config_uuid")
+            && json.has("address")
+            && json.has("is_leader")
+            && json.has("is_local")) {
           PlatformInstance instance = new PlatformInstance();
           instance.uuid = UUID.fromString(json.get("uuid").asText());
           UUID configUUID = UUID.fromString(json.get("config_uuid").asText());
@@ -224,15 +221,16 @@ public class PlatformInstance extends Model {
           instance.setIsLocal(json.get("is_local").asBoolean());
           JsonNode lastBackup = json.get("last_backup");
           instance.lastBackup =
-            lastBackup.asText().equals("null") ? null : new Date(lastBackup.asLong());
+              (lastBackup == null || lastBackup.asText().equals("null"))
+                  ? null
+                  : new Date(lastBackup.asLong());
 
           return instance;
         } else {
           LOG.error(
-            "Could not deserialize {} to platform instance model. " +
-              "At least one expected field is missing",
-            json
-          );
+              "Could not deserialize {} to platform instance model. "
+                  + "At least one expected field is missing",
+              json);
         }
       } catch (Exception e) {
         LOG.error("Error importing platform instance: {}", json, e);

@@ -16,10 +16,27 @@
 #ifndef YB_CLIENT_TXN_TEST_BASE_H
 #define YB_CLIENT_TXN_TEST_BASE_H
 
+#include <stdint.h>
+
+#include <functional>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/transaction_manager.h"
+
+#include "yb/common/entity_ids.h"
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/skewed_clock.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 
 namespace yb {
 namespace client {

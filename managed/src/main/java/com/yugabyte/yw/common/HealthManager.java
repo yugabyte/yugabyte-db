@@ -2,18 +2,14 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.models.Provider;
-
 import com.google.inject.Singleton;
-
+import com.yugabyte.yw.models.Provider;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.List;
-
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
 
 @Singleton
@@ -34,21 +30,28 @@ public class HealthManager extends DevopsBase {
     public Map<String, String> masterNodes = new HashMap<>();
     public Map<String, String> tserverNodes = new HashMap<>();
     public String ybSoftwareVersion = null;
+    public boolean enableTls = false;
     public boolean enableTlsClient = false;
+    public boolean rootAndClientRootCASame = true;
     public String sslProtocol = "";
     public boolean enableYSQL = false;
+    public boolean enableYCQL = false;
+    public boolean enableYSQLAuth = false;
     public int ysqlPort = 5433;
     public int ycqlPort = 9042;
     public boolean enableYEDIS = false;
     public int redisPort = 6379;
-    public boolean enableYSQLAuth = false;
+    public int masterHttpPort = 7000;
+    public int tserverHttpPort = 9000;
+    public int ysqlServerHttpPort = 13000;
+    public String collectMetricsScript;
   }
 
   public ShellResponse runCommand(
-    Provider provider,
-    List<ClusterInfo> clusters,
-    Long potentialStartTimeMs
-  ) {
+      Provider provider,
+      List<ClusterInfo> clusters,
+      long potentialStartTimeMs,
+      boolean shouldLogOutput) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -61,20 +64,22 @@ public class HealthManager extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(clusters)));
     }
 
-    if (potentialStartTimeMs > 0) {
+    if (potentialStartTimeMs > 0L) {
       commandArgs.add("--start_time_ms");
       commandArgs.add(String.valueOf(potentialStartTimeMs));
     }
 
-    if (!provider.code.equals("onprem") && !provider.code.equals("kubernetes")) {
+    if (provider != null
+        && !provider.code.equals("onprem")
+        && !provider.code.equals("kubernetes")) {
       commandArgs.add("--check_clock");
     }
 
     // Start with a copy of the cloud config env vars.
-    HashMap<String, String> extraEnvVars = provider == null ?
-      new HashMap<>() : new HashMap<>(provider.getConfig());
+    HashMap<String, String> extraEnvVars =
+        provider == null ? new HashMap<>() : new HashMap<>(provider.getUnmaskedConfig());
 
-    return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/, description);
+    return shellProcessHandler.run(commandArgs, extraEnvVars, shouldLogOutput, description);
   }
 
   @Override

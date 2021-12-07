@@ -23,17 +23,19 @@
 #include <string.h>
 
 #include <limits>
-using std::numeric_limits;
+#include <memory>
 #include <vector>
-using std::vector;
 
+#include "yb/gutil/charmap.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/port.h"
-#include "yb/gutil/gscoped_ptr.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/utf/utf.h"  // for runetochar
-#include "yb/gutil/charmap.h"
-#include "yb/gutil/stl_util.h"
+
+using std::numeric_limits;
+using std::vector;
+
 
 namespace strings {
 
@@ -244,7 +246,7 @@ int UnescapeCEscapeString(const string& src, string* dest,
 }
 
 string UnescapeCEscapeString(const string& src) {
-  gscoped_array<char> unescaped(new char[src.size() + 1]);
+  std::unique_ptr<char[]> unescaped(new char[src.size() + 1]);
   int len = UnescapeCEscapeSequences(src.c_str(), unescaped.get(), nullptr);
   return string(unescaped.get(), len);
 }
@@ -545,7 +547,7 @@ int CEscapeInternal(const char* src, int src_len, char* dest,
              (last_hex_escape && ascii_isxdigit(*src)))) {
           if (dest_len - used < 4)  // need space for 4 letter escape
             return -1;
-          sprintf(dest + used, (use_hex ? "\\x%02x" : "\\%03o"), *src);
+          snprintf(dest + used, dest_len - used, (use_hex ? "\\x%02x" : "\\%03o"), *src);
           is_hex_escape = use_hex;
           used += 4;
         } else {
@@ -596,7 +598,7 @@ int Utf8SafeCHexEscapeString(const char* src, int src_len, char* dest,
 // ----------------------------------------------------------------------
 string CEscape(const GStringPiece& src) {
   const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
-  gscoped_array<char> dest(new char[dest_length]);
+  std::unique_ptr<char[]> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
                                   dest.get(), dest_length, false, false);
   DCHECK_GE(len, 0);
@@ -605,7 +607,7 @@ string CEscape(const GStringPiece& src) {
 
 string CHexEscape(const GStringPiece& src) {
   const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
-  gscoped_array<char> dest(new char[dest_length]);
+  std::unique_ptr<char[]> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
                                   dest.get(), dest_length, true, false);
   DCHECK_GE(len, 0);
@@ -614,7 +616,7 @@ string CHexEscape(const GStringPiece& src) {
 
 string Utf8SafeCEscape(const GStringPiece& src) {
   const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
-  gscoped_array<char> dest(new char[dest_length]);
+  std::unique_ptr<char[]> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
                                   dest.get(), dest_length, false, true);
   DCHECK_GE(len, 0);
@@ -623,7 +625,7 @@ string Utf8SafeCEscape(const GStringPiece& src) {
 
 string Utf8SafeCHexEscape(const GStringPiece& src) {
   const int dest_length = src.size() * 4 + 1;  // Maximum possible expansion
-  gscoped_array<char> dest(new char[dest_length]);
+  std::unique_ptr<char[]> dest(new char[dest_length]);
   const int len = CEscapeInternal(src.data(), src.size(),
                                   dest.get(), dest_length, true, true);
   DCHECK_GE(len, 0);
@@ -1835,7 +1837,7 @@ string ShellEscape(GStringPiece src) {
         case '"':
         case '`':
           result.push_back('\\');
-      };
+      }
       result.push_back(c);
     }
     result.push_back('"');
@@ -1867,7 +1869,7 @@ static const char kHexTable[513]=
 //  ascii_string in downcased hex.
 //------------------------------------------------------------------------
 void ByteStringToAscii(string const &binary_string, int bytes_to_read,
-                       string * ascii_string ) {
+                       string* ascii_string) {
   if (binary_string.size() < bytes_to_read) {
     bytes_to_read = binary_string.size();
   }
@@ -1893,7 +1895,7 @@ void ByteStringToAscii(string const &binary_string, int bytes_to_read,
 //  Returns false and may modify output if it is
 //  unable to parse the hex string.
 //------------------------------------------------------------------------
-bool ByteStringFromAscii(string const & hex_string, string * binary_string) {
+bool ByteStringFromAscii(string const& hex_string, string* binary_string) {
   binary_string->clear();
 
   if ((hex_string.size()%2) != 0) {

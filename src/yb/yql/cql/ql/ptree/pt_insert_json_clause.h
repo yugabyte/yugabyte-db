@@ -18,14 +18,13 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_INSERT_JSON_CLAUSE_H_
 #define YB_YQL_CQL_QL_PTREE_PT_INSERT_JSON_CLAUSE_H_
 
-#include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/yql/cql/ql/ptree/pt_dml.h"
-#include "yb/yql/cql/ql/ptree/pt_name.h"
-
 #include <boost/optional.hpp>
 #include <rapidjson/document.h>
+
+#include "yb/util/status.h"
+
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
 namespace ql {
@@ -38,8 +37,8 @@ class PTInsertJsonClause: public PTCollection {
 
   // Constructor and destructor.
   PTInsertJsonClause(MemoryContext* memctx,
-                     const YBLocation::SharedPtr& loc,
-                     const PTExpr::SharedPtr& json_expr,
+                     const YBLocationPtr& loc,
+                     const PTExprPtr& json_expr,
                      bool default_null);
   virtual ~PTInsertJsonClause();
 
@@ -73,7 +72,7 @@ class PTInsertJsonClause: public PTCollection {
     return default_null_;
   }
 
-  const PTExpr::SharedPtr& Expr() const {
+  const PTExprPtr& Expr() const {
     return json_expr_;
   }
 
@@ -92,7 +91,7 @@ class PTInsertJsonClause: public PTCollection {
   bool                                 default_null_;
 
   // Expression representing raw JSON string, either a string constant or a bind variable.
-  const PTExpr::SharedPtr              json_expr_;
+  const PTExprPtr              json_expr_;
 
   // Raw JSON string, only available after being set via PreExecInit.
   std::string                          json_string_;

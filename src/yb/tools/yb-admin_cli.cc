@@ -29,21 +29,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/yb-admin_cli.h"
 
-#include <iostream>
 #include <memory>
 #include <utility>
 
 #include <boost/lexical_cast.hpp>
-#include <boost/range.hpp>
 
 #include "yb/common/json_util.h"
-#include "yb/rpc/messenger.h"
-#include "yb/tools/yb-admin_client.h"
-#include "yb/util/flags.h"
-#include "yb/util/stol_utils.h"
+
 #include "yb/master/master_defaults.h"
+
+#include "yb/tools/yb-admin_client.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 
 DEFINE_string(master_addresses, "localhost:7100",
@@ -132,31 +135,50 @@ bool IsEqCaseInsensitive(const string& check, const string& expected) {
   return upper_check == upper_expected;
 }
 
+template <class Enum>
+Result<std::pair<int, EnumBitSet<Enum>>> GetValueAndFlags(
+    const CLIArgumentsIterator& begin,
+    const CLIArgumentsIterator& end,
+    const std::initializer_list<Enum>& flags_list) {
+  std::pair<int, EnumBitSet<Enum>> result;
+  bool seen_value = false;
+  for (auto iter = begin; iter != end; iter = ++iter) {
+    bool found_flag = false;
+    for (auto flag : flags_list) {
+      if (IsEqCaseInsensitive(*iter, ToString(flag))) {
+        if (result.second.Test(flag)) {
+          return STATUS_FORMAT(InvalidArgument, "Duplicate flag: $0", flag);
+        }
+        result.second.Set(flag);
+        found_flag = true;
+        break;
+      }
+    }
+    if (found_flag) {
+      continue;
+    }
+
+    if (seen_value) {
+      return STATUS_FORMAT(InvalidArgument, "Multiple values: $0 and $1", result.first, *iter);
+    }
+
+    result.first = VERIFY_RESULT(CheckedStoi(*iter));
+    seen_value = true;
+  }
+
+  return result;
+}
+
+YB_DEFINE_ENUM(AddIndexes, (ADD_INDEXES));
+
 Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
     CLIArgumentsIterator begin,
     const CLIArgumentsIterator& end) {
-  bool add_indexes = false;
-  int timeout_secs = 20;
-  bool seen_timeout_secs = false;
-  for (auto iter = begin; iter != end; iter = next(iter)) {
-    if (IsEqCaseInsensitive(*iter, "ADD_INDEXES")) {
-      if (add_indexes) {
-        return ClusterAdminCli::kInvalidArguments;
-      }
-      add_indexes = true;
-    } else if (!seen_timeout_secs) {
-      auto maybe_timeout_secs = CheckedStoi(*iter);
-      if (!maybe_timeout_secs.ok()) {
-        return ClusterAdminCli::kInvalidArguments;
-      }
-      timeout_secs = maybe_timeout_secs.get();
-      seen_timeout_secs = true;
-    } else {
-      return ClusterAdminCli::kInvalidArguments;
-    }
-  }
-  return make_pair(timeout_secs, add_indexes);
+  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, kAddIndexesList));
+  return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
+
+YB_DEFINE_ENUM(ListTabletsFlags, (JSON));
 
 } // namespace
 
@@ -259,6 +281,12 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
   google::SetUsageMessage(str.str());
 }
 
+Result<rapidjson::Document> DdlLog(
+    ClusterAdminClientClass* client, const ClusterAdminCli::CLIArguments& args) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  return client->DdlLog();
+}
+
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   DCHECK_ONLY_NOTNULL(client);
 
@@ -347,21 +375,19 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <table> [max_tablets] (default 10, set 0 for max)",
+      " <table> [max_tablets] (default 10, set 0 for max) [JSON]",
       [client](const CLIArguments& args) -> Status {
-        int max = -1;
+        std::pair<int, EnumBitSet<ListTabletsFlags>> arguments;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin(), args.end(),
-            [&max](auto i, const auto& end) -> Status {
-              if (std::next(i) == end) {
-                max = VERIFY_RESULT(CheckedStoi(*i));
-                return Status::OK();
-              }
-              return ClusterAdminCli::kInvalidArguments;
+            [&arguments](auto i, const auto& end) -> Status {
+              arguments = VERIFY_RESULT(GetValueAndFlags(i, end, kListTabletsFlagsList));
+              return Status::OK();
             }));
         RETURN_NOT_OK_PREPEND(
-            client->ListTablets(table_name, max),
-            Substitute("Unable to list tablets of table $0", table_name.ToString()));
+            client->ListTablets(
+                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON)),
+            Format("Unable to list tablets of table $0", table_name));
         return Status::OK();
       });
 
@@ -807,13 +833,35 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "create_transaction_table", " <table_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string table_name = args[0];
+        RETURN_NOT_OK_PREPEND(client->CreateTransactionsStatusTable(table_name),
+                              Format("Unable to create transaction table named $0", table_name));
+        return Status::OK();
+      });
+
+  Register(
       "ysql_catalog_version", "",
       [client](const CLIArguments&) -> Status {
         RETURN_NOT_OK_PREPEND(client->GetYsqlCatalogVersion(),
                               "Unable to get catalog version");
         return Status::OK();
       });
-}
+
+  RegisterJson("ddl_log", "", std::bind(&DdlLog, client, _1));
+
+  Register(
+      "upgrade_ysql", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->UpgradeYsql(),
+                              "Unable to upgrade YSQL cluster");
+        return Status::OK();
+      });
+} // NOLINT, prevents long function message
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(
     ClusterAdminClientClass* client,
@@ -871,6 +919,20 @@ Result<client::YBTableName> ResolveSingleTableName(ClusterAdminClientClass* clie
     return STATUS_FORMAT(InvalidArgument, "Single table expected, $0 found", tables.size());
   }
   return std::move(tables.front());
+}
+
+Status CheckArgumentsCount(int count, int min, int max) {
+  if (count < min) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Too few arguments $0, should be in range [$1, $2]", count, min, max);
+  }
+
+  if (count > max) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Too many arguments $0, should be in range [$1, $2]", count, min, max);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace tools

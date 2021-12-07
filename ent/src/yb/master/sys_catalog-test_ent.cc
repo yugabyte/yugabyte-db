@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/sys_catalog-internal.h"
 #include "yb/master/sys_catalog-test_base.h"
 
 namespace yb {
@@ -71,7 +73,7 @@ class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicati
 
 // Test the sys-catalog CDC stream basic operations (add, delete, visit).
 TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
-  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+  SysCatalogTable* const sys_catalog = &master_->sys_catalog();
 
   auto loader = std::make_unique<TestCDCStreamLoader>();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
@@ -82,7 +84,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
     auto l = stream->LockForWrite();
     l.mutable_data()->pb.set_table_id("test_table");
     // Add the CDC stream.
-    ASSERT_OK(sys_catalog->AddItem(stream.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, stream));
     l.Commit();
   }
 
@@ -93,7 +95,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   ASSERT_METADATA_EQ(stream.get(), loader->streams[0]);
 
   // 2. CHECK DELETE_CDCSTREAM.
-  ASSERT_OK(sys_catalog->DeleteItem(stream.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, stream));
 
   // Verify the result.
   loader->Reset();
@@ -103,7 +105,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
 
 // Test the sys-catalog universe replication basic operations (add, delete, visit).
 TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
-  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+  SysCatalogTable* const sys_catalog = &master_->sys_catalog();
 
   auto loader = std::make_unique<TestUniverseReplicationLoader>();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
@@ -114,7 +116,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
     auto l = universe->LockForWrite();
     l.mutable_data()->pb.add_tables("producer_table_id");
     // Add the universe replication info.
-    ASSERT_OK(sys_catalog->AddItem(universe.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, universe));
     l.Commit();
   }
 
@@ -125,7 +127,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
   ASSERT_METADATA_EQ(universe.get(), loader->universes[0]);
 
   // 2. CHECK DELETE_UNIVERSE_REPLICATION.
-  ASSERT_OK(sys_catalog->DeleteItem(universe.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, universe));
 
   // Verify the result.
   loader->Reset();

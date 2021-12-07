@@ -17,13 +17,15 @@
 
 #include <fstream>
 #include <chrono>
+#include <thread>
 
 #include "yb/server/total_mem_watcher.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>

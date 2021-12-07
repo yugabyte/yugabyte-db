@@ -6,11 +6,59 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+- name: "Install python3 on CentOS 8 machines"
+  hosts: "{{ yb_ansible_host }}"
+  strategy: linear
+  gather_facts: no
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: "install python36"
+      raw: >
+        (test -e /usr/bin/dnf && ! test -e /usr/bin/python) &&
+        (dnf install -y python36 && alternatives --set python /usr/bin/python3) ||
+        (echo "Python already installed or not CentOS 8")
+      when: install_python is defined
+
 - name: "Pre-provisioning tasks"
   hosts: "{{ yb_ansible_host }}"
   become: yes
   become_method: sudo
   tasks:
+    # Disable unattended-upgrades so we can acquire locks to install packages on Ubuntu 18.
+    - block:
+      - name: Disable timers for unattended upgrade, so none will be triggered by `date -s` call.
+        raw: systemctl disable --now {{item}}
+        with_items:
+          - 'apt-daily.timer'
+          - 'apt-daily-upgrade.timer'
+
+      - name: Reload systemctl daemon to apply the new changes
+        raw: systemctl daemon-reload
+
+      - name: Wait for any possibly running unattended upgrade to finish
+        raw: >
+          systemd-run --property="After=apt-daily.service apt-daily-upgrade.service"
+          --wait /bin/true
+
+      - name: Check if /etc/apt/apt.conf.d/20auto-upgrades exists
+        stat:
+          path: /etc/apt/apt.conf.d/20auto-upgrades
+        register: autoupgrade_file
+
+      - name: Disable unattended upgrades
+        raw: 'sed -i /Unattended-Upgrade/s/"1"/"0"/ /etc/apt/apt.conf.d/20auto-upgrades'
+        when: autoupgrade_file.stat.exists
+
+      - name: Update apt cache
+        raw: apt-get -y update
+
+      # Needed for /usr/bin/python as Python 2.7
+      - name: Install python-minimal
+        apt:
+          name: python-minimal
+          state: present
+      when: ansible_distribution == "Ubuntu"
     # have to save this in another var since it won't play well with overriding
     # ansible_ssh_pipelining in the task below
     - set_fact:
@@ -22,7 +70,7 @@
         create: yes
         mode: 0440
         line: "{{ [ssh_user, yb_server_ssh_user, user_name] |
-          select('defined') | unique | map('regex_replace', '(.*)', 'Defaults:\\1 !requiretty') |
+          select('defined') | unique | map('regex_replace', '^(.*)$', 'Defaults:\\1 !requiretty') |
           join('\n') }}"
       vars:
         ansible_ssh_pipelining: no
@@ -34,12 +82,28 @@
         regexp: 'repo_gpgcheck=1'
         replace: 'repo_gpgcheck=0'
       when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
-    # Ensure Python 2.x is installed.
-    # http://stackoverflow.com/questions/32429259/ansible-fails-with-bin-sh-1-usr-bin-python-not-found
-    - name: 'install python 2.x'
-      raw: if grep Ubuntu /etc/issue >/dev/null; then sudo apt-get -y install python; fi
-    - name: Install policycoreutils-python
+    - name: Gather package facts
+      package_facts:
+    # Needed to register custom SSH port with SELinux
+    - name: Install policycoreutils-python on CentOS 7
+      module_defaults:
+        yum:
+          lock_timeout: 600
       package:
         name: policycoreutils-python
         state: present
-      when: machine_image is match(".*centos-7-v20210217")
+      when: >
+        'policycoreutils-python' not in ansible_facts.packages and
+        ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+    - name: Accept target in firewalld on Oracle Linux
+      raw: sudo firewall-cmd --set-target=ACCEPT --permanent && sudo systemctl restart firewalld
+      when: ansible_distribution == 'OracleLinux'
+    # Registering custom SSH port with SELinux sometimes fails without this
+    - name: clean dnf
+      shell:
+        cmd: sudo dnf clean all
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+    - name: install latest version of selinux-policy
+      shell:
+        cmd: sudo dnf reinstall --refresh -y selinux-policy
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'

@@ -14,12 +14,26 @@
 #ifndef YB_TOOLS_YB_GENERATE_PARTITIONS_H
 #define YB_TOOLS_YB_GENERATE_PARTITIONS_H
 
-#include "yb/client/client.h"
+#include <functional>
+#include <locale>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+
+#include <boost/range/iterator_range.hpp>
+
+#include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/partition.h"
-#include "yb/common/schema.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/master/master_fwd.h"
+
 #include "yb/tools/bulk_load_utils.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
 namespace tools {
@@ -34,6 +48,8 @@ class YBPartitionGenerator {
  public:
   explicit YBPartitionGenerator(const client::YBTableName& table_name,
                                 const vector<std::string>& master_addresses);
+  ~YBPartitionGenerator();
+
   CHECKED_STATUS Init();
   // Retrieves the partition_key and tablet_id for a given row, which is a string of comma
   // separated values. The format of the comma separated values should be similar to the Schema

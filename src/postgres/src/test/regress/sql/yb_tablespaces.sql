@@ -38,6 +38,13 @@ CREATE TABLESPACE z WITH (replica_placement='{"num_replicas":3, "placement_block
 -- describe command
 \db
 
+CREATE TABLEGROUP grp TABLESPACE x;
+-- Fail, not empty
+\set VERBOSITY terse \\ -- suppress dependency details.
+DROP TABLESPACE x;
+\set VERBOSITY default
+DROP TABLEGROUP grp;
+-- Should succeed, empty now
 DROP TABLESPACE x;
 DROP TABLESPACE y;
 
@@ -99,10 +106,47 @@ CREATE TABLE testschema.foo_pk_default_tblspc (i int, PRIMARY KEY(i));
 \d testschema.foo_pk_default_tblspc;
 SET default_tablespace TO '';
 
+-- Verify that USING INDEX TABLESPACE is not supported for primary keys.
+CREATE TABLE testschema.using_index1 (a int PRIMARY KEY USING INDEX TABLESPACE regress_tblspace);
+CREATE TABLE testschema.using_index1 (a int, PRIMARY KEY(a) USING INDEX TABLESPACE regress_tblspace);
+
+-- Verify that USING INDEX TABLESPACE is supported for other constraints.
+CREATE TABLE testschema.using_index2 (a int UNIQUE USING INDEX TABLESPACE regress_tblspace);
+CREATE TABLE testschema.using_index3 (a int, UNIQUE(a) USING INDEX TABLESPACE regress_tblspace);
+\d testschema.using_index2;
+\d testschema.using_index3;
+
 -- index
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'foo_idx';
+
+-- partitioned table
+CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
+CREATE TABLE testschema.part12 PARTITION OF testschema.part FOR VALUES IN(1,2) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
+CREATE TABLE testschema.part12_1 PARTITION OF testschema.part12 FOR VALUES IN (1);
+ALTER TABLE testschema.part12 SET TABLESPACE pg_default;
+CREATE TABLE testschema.part12_2 PARTITION OF testschema.part12 FOR VALUES IN (2);
+-- Ensure part12_1 defaulted to regress_tblspace and part12_2 defaulted to pg_default.
+SELECT relname, spcname FROM pg_catalog.pg_class c
+    LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+    where c.relname LIKE 'part%' order by relname;
+DROP TABLE testschema.part;
+
+-- temporary table
+-- Fail, cannot set tablespaces for temp tables
+CREATE TEMPORARY TABLE temptest (a INT) TABLESPACE regress_tblspace;
+CREATE TEMPORARY TABLE temptest (a INT);
+-- Fail, cannot set tablespaces for temp tables
+ALTER TABLE temptest SET TABLESPACE regress_tblspace;
+DROP TABLE temptest;
+
+-- Fail, cannot set tablespaces for temp tables
+CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
+CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a);
+-- Fail, cannot set tablespaces for temp tables
+ALTER TABLE tempparttest SET TABLESPACE regress_tblspace;
+DROP TABLE tempparttest;
 
 -- partitioned index
 CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
@@ -211,3 +255,59 @@ DROP ROLE regress_tablespace_user1;
 DROP TABLESPACE regress_tblspace;
 DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;
+
+-- Colocated Tests
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+CREATE DATABASE colocation_test colocated = true;
+\c colocation_test
+-- Should fail to set tablespace on a table in a colocated database
+CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
+-- Should succeed in setting tablespace on a table in a colocated database when opted out
+CREATE TABLE tab_nonkey (a INT) WITH (COLOCATED = false) TABLESPACE x;
+-- cleanup
+DROP TABLE tab_nonkey;
+\c yugabyte
+DROP DATABASE colocation_test;
+
+-- Verify that tablespaces cannot be set on partitioned tables.
+CREATE TABLE list_partitioned (partkey char) PARTITION BY LIST(partkey) TABLESPACE x;
+-- Cleanup.
+DROP TABLE list_partitioned;
+DROP TABLESPACE x;
+
+/*
+Testing to make sure that an index on a "near" tablespace whose placements are
+all on the current cloud/region/zone is preferred over "far" indexes.
+*/
+CREATE TABLESPACE near WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+CREATE TABLESPACE far WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud2","region":"region2", "zone":"zone2", "min_num_replicas":1}]}');
+CREATE TABLESPACE regionlocal WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1}]}');
+CREATE TABLESPACE cloudlocal WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1}]}');
+CREATE TABLE foo(x int, y int);
+CREATE UNIQUE INDEX good ON foo(x) INCLUDE (y) TABLESPACE near;
+CREATE UNIQUE INDEX regionlocal_ind ON foo(x) INCLUDE (y) TABLESPACE regionlocal;
+CREATE UNIQUE INDEX cloudlocal_ind ON foo(x) INCLUDE (y) TABLESPACE cloudlocal;
+CREATE UNIQUE INDEX bad ON foo(x) INCLUDE (y) TABLESPACE far;
+
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+SET yb_enable_geolocation_costing = off;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+SET yb_enable_geolocation_costing = on;
+DROP INDEX good;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+DROP INDEX regionlocal_ind;
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
+
+DROP TABLE foo;
+
+CREATE TABLE foo(id int primary key, val int);
+CREATE UNIQUE INDEX bad ON foo(id) INCLUDE (val) TABLESPACE far;
+CREATE UNIQUE INDEX good ON foo(id) INCLUDE (val) TABLESPACE near;
+
+EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE id = 5;
+
+DROP TABLE foo;
+DROP TABLESPACE far;
+DROP TABLESPACE near;
+DROP TABLESPACE regionlocal;
+DROP TABLESPACE cloudlocal;

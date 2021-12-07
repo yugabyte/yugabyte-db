@@ -2,10 +2,6 @@
 headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
-aliases:
-  - /latest/manage/enterprise-edition/backup-restore
-  - /latest/manage/enterprise-edition/back-up-restore-data
-  - /latest/yugabyte-platform/manage/backup-restore-data
 menu:
   latest:
     parent: back-up-restore-universes
@@ -106,8 +102,8 @@ You can configure Azure as your backup target as follows:
 
     <br/>
 
-    * Navigate to **Container > Shared access signature**, as shown in the following illustration.
-    * Select **Allowed Resource Types > Object**.
+    * Navigate to **Storage account > Shared access signature**, as shown in the following illustration.
+    * Under **Allowed resource types**, select **Container** and **Object**.
     * Click **Generate SAS and connection string** and copy the SAS token. Note that the token should start with `?sv=`.
 
     <br/>

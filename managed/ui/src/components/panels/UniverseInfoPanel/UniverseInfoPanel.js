@@ -63,7 +63,9 @@ export default class UniverseInfoPanel extends Component {
           <span>
             {userIntent.enableYSQL && this.renderEndpointUrl(ysqlServiceUrl, 'YSQL')}{' '}
             {userIntent.enableYSQL && '\u00A0/\u00A0'}{' '}
-            {this.renderEndpointUrl(ycqlServiceUrl, 'YCQL')} &nbsp;/&nbsp;{' '}
+            {userIntent.enableYCQL && this.renderEndpointUrl(ycqlServiceUrl, 'YCQL')}{' '}
+            {userIntent.enableYCQL && '\u00A0/\u00A0'}{' '}
+            {/* {this.renderEndpointUrl(ycqlServiceUrl, 'YCQL')} &nbsp;/&nbsp;{' '} */}
             {userIntent.enableYEDIS && this.renderEndpointUrl(yedisServiceUrl, 'YEDIS')}
           </span>
         )

@@ -36,17 +36,30 @@
 #include <pthread.h>
 #include <stdint.h>
 
+#include <atomic>
+#include <list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <gtest/gtest_prod.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/messenger.h"
+
+#include "yb/rpc/reactor.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/net/socket.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using google::protobuf::Message;
@@ -154,8 +167,8 @@ void Acceptor::IoHandler(ev::io& io, int events) {
       VLOG(2) << "calling accept() on socket " << socket.GetFd();
       Status s = socket.Accept(&new_sock, &remote, Socket::FLAG_NONBLOCKING);
       if (!s.ok()) {
-        if (!Socket::IsTemporarySocketError(s)) {
-          LOG(WARNING) << "Acceptor: accept failed: " << s.ToString();
+        if (!s.IsTryAgain()) {
+          LOG(WARNING) << "Acceptor: accept failed: " << s;
         }
         return;
       }

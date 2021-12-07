@@ -11,17 +11,15 @@
 // under the License.
 //
 
-#include <iostream>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string.hpp>
 
 #include "yb/client/yb_table_name.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 DEFINE_string(master_addresses, "", "Comma-separated list of YB Master server addresses");
 DEFINE_string(table_name, "", "Name of the table to generate partitions for");

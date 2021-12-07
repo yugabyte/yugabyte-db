@@ -24,10 +24,11 @@ import logging
 import multiprocessing
 from overrides import overrides
 
-from yugabyte_pycommon import init_logging, mkdir_p
+from yugabyte_pycommon import init_logging, mkdir_p  # type: ignore
 from yb.common_util import YB_SRC_ROOT, find_executable, rm_rf, check_call_and_log
 from yb.tool_base import YbBuildToolBase
-from yb.compile_commands import COMBINED_RAW_COMPILE_COMMANDS_FILE_NAME, filter_compile_commands
+from yb.compile_commands import (
+    get_compile_commands_file_path, COMBINED_RAW_DIR_NAME, filter_compile_commands)
 
 
 PVS_ANALYZER_EXIT_CODE_DETAILS = {
@@ -42,24 +43,24 @@ PVS_ANALYZER_EXIT_CODE_DETAILS = {
 
 
 class PvsStudioAnalyzerTool(YbBuildToolBase):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     @overrides
-    def run_impl(self):
+    def run_impl(self) -> None:
         self.run_pvs_analyzer()
 
     @overrides
-    def get_description(self):
+    def get_description(self) -> str:
         return __doc__
 
     @overrides
-    def add_command_line_args(self):
+    def add_command_line_args(self) -> None:
         self.arg_parser.add_argument(
             '--file_name_regex',
             help='Regular expression of the source file names to analyze')
 
-    def run_pvs_analyzer(self):
+    def run_pvs_analyzer(self) -> None:
         pvs_config_path = os.path.join(self.args.build_root, 'PVS-Studio.cfg')
 
         rules_config_path = os.path.join(YB_SRC_ROOT, 'yugabytedb.pvsconfig')
@@ -81,8 +82,8 @@ class PvsStudioAnalyzerTool(YbBuildToolBase):
             logging.info("Removing existing file %s", pvs_log_path)
             os.remove(pvs_log_path)
 
-        combined_raw_compile_commands_path = os.path.join(
-            self.args.build_root, COMBINED_RAW_COMPILE_COMMANDS_FILE_NAME)
+        combined_raw_compile_commands_path = get_compile_commands_file_path(
+            self.args.build_root, COMBINED_RAW_DIR_NAME)
 
         if not os.path.exists(combined_raw_compile_commands_path):
             raise IOError("Raw compilation commands file does not exist: %s" %
@@ -103,7 +104,11 @@ class PvsStudioAnalyzerTool(YbBuildToolBase):
                           compile_commands_path)
 
         pvs_studio_analyzer_executable = find_executable('pvs-studio-analyzer', must_find=True)
+        assert pvs_studio_analyzer_executable is not None
+
         plog_converter_executable = find_executable('plog-converter', must_find=True)
+        assert plog_converter_executable is not None
+
         analyzer_cmd_line = [
             pvs_studio_analyzer_executable,
             'analyze',
@@ -163,7 +168,7 @@ class PvsStudioAnalyzerTool(YbBuildToolBase):
         check_call_and_log(log_converter_cmd_line_html)
 
 
-def main():
+def main() -> None:
     init_logging()
     PvsStudioAnalyzerTool().run()
 

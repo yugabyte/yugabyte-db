@@ -13,14 +13,30 @@
 
 #include "yb/client/client_utils.h"
 
-#include "yb/client/client.h"
-#include "yb/client/client-internal.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/table.h"
+#include <functional>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
-#include "yb/rpc/secure_stream.h"
+#include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
+
+#include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc.h"
 
 #include "yb/server/secure.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/threadpool.h"
 
 DECLARE_bool(TEST_running_test);
 
@@ -30,8 +46,8 @@ namespace client {
 constexpr int32_t kClientTimeoutSecs = 60;
 
 std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
-    const std::shared_ptr<const YBTable>& table) {
-  return table->client()->data_->meta_cache_->LookupTabletByKeyFuture(
+    YBClient* client, const std::shared_ptr<YBTable>& table) {
+  return client->LookupTabletByKeyFuture(
       table, "" /* partition_key */,
       CoarseMonoClock::now() + std::chrono::seconds(kClientTimeoutSecs));
 }

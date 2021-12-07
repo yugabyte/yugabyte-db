@@ -2,17 +2,16 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.commissioner.Common;
-
-import javax.inject.Singleton;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Singleton
 public class NetworkManager extends DevopsBase {
@@ -21,10 +20,12 @@ public class NetworkManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "network";
 
   @Override
-  protected String getCommandType() { return YB_CLOUD_COMMAND_TYPE; }
+  protected String getCommandType() {
+    return YB_CLOUD_COMMAND_TYPE;
+  }
 
   public JsonNode bootstrap(UUID regionUUID, UUID providerUUID, String customPayload) {
-    List<String> commandArgs = new ArrayList();
+    List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--custom_payload");
     commandArgs.add(customPayload);
 
@@ -36,16 +37,16 @@ public class NetworkManager extends DevopsBase {
   }
 
   public JsonNode query(UUID regionUUID, String customPayload) {
-    List<String> commandArgs = new ArrayList();
+    List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--custom_payload");
     commandArgs.add(customPayload);
     return execAndParseCommandRegion(regionUUID, "query", commandArgs);
   }
 
-  public JsonNode cleanup(UUID regionUUID) {
+  public JsonNode cleanupOrFail(UUID regionUUID) {
     JsonNode response = execAndParseCommandRegion(regionUUID, "cleanup", Collections.emptyList());
     if (response.has("error")) {
-      throw new RuntimeException(response.get("error").asText());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, response.get("error").asText());
     }
     return response;
   }

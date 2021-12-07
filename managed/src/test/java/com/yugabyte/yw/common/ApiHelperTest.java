@@ -2,9 +2,26 @@
 
 package com.yugabyte.yw.common;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -18,42 +35,14 @@ import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.libs.ws.WSResponse;
 
-import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLConnection;
-import java.net.URLStreamHandler;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.when;
-
 @RunWith(MockitoJUnitRunner.class)
 public class ApiHelperTest {
-  @Mock
-  WSClient mockClient;
-  @Mock
-  WSRequest mockRequest;
-  @Mock
-  WSResponse mockResponse;
-  @Mock
-  HttpURLConnection mockConnection;
+  @Mock WSClient mockClient;
+  @Mock WSRequest mockRequest;
+  @Mock WSResponse mockResponse;
+  @Mock HttpURLConnection mockConnection;
 
-  @InjectMocks
-  ApiHelper apiHelper;
+  @InjectMocks ApiHelper apiHelper;
 
   @Test
   public void testGetRequestValidJSONWithUrl() {
@@ -76,7 +65,9 @@ public class ApiHelperTest {
     doThrow(new RuntimeException("Incorrect JSON")).when(mockResponse).asJson();
     JsonNode result = apiHelper.getRequest("http://foo.com/test");
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-    assertThat(result.get("error").asText(), CoreMatchers.equalTo("java.lang.RuntimeException: Incorrect JSON"));
+    assertThat(
+        result.get("error").asText(),
+        CoreMatchers.equalTo("java.lang.RuntimeException: Incorrect JSON"));
   }
 
   @Test
@@ -107,7 +98,8 @@ public class ApiHelperTest {
 
     HashMap<String, String> params = new HashMap<>();
     params.put("param", "foo");
-    JsonNode result = apiHelper.getRequest("http://foo.com/test", new HashMap<String, String>(), params);
+    JsonNode result =
+        apiHelper.getRequest("http://foo.com/test", new HashMap<String, String>(), params);
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
     Mockito.verify(mockRequest).setQueryParameter("param", "foo");
     assertEquals(result.get("Foo").asText(), "Bar");
@@ -131,12 +123,13 @@ public class ApiHelperTest {
   }
 
   private void testGetHeaderRequestHelper(String urlPath, boolean isSuccess) {
-    final URLStreamHandler handler = new URLStreamHandler() {
-      @Override
-      protected URLConnection openConnection(final URL arg0) throws IOException {
-        return mockConnection;
-      }
-    };
+    final URLStreamHandler handler =
+        new URLStreamHandler() {
+          @Override
+          protected URLConnection openConnection(final URL arg0) throws IOException {
+            return mockConnection;
+          }
+        };
     ApiHelper mockApiHelper = spy(apiHelper);
     try {
       when(mockConnection.getResponseMessage()).thenReturn(isSuccess ? "OK" : "Not Found");

@@ -18,7 +18,7 @@ Before trying the code in this section, make sure that you have created the supp
 
 - The _"edges"_ table and the procedure to populate it from the _"cast_members"_ table—see [`cr-actors-movies-edges-table-and-proc-sql`](../../bacon-numbers#cr-actors-movies-edges-table-and-proc-sql)
 
-- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to chose the [cr-raw-paths-with-tracing.sql](../../traversing-general-graphs/common-code#cr-raw-paths-with-tracing-sql) option.
+- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to choose the [cr-raw-paths-with-tracing.sql](../../traversing-general-graphs/common-code#cr-raw-paths-with-tracing-sql) option.
 
 {{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}
 
@@ -35,9 +35,7 @@ Here is a depiction of the synthetic data that this section uses:
 
 ![undirected-cyclic-graph](/images/api/ysql/the-sql-language/with-clause/bacon-numbers/actors-movies-1.jpg)
 
-It has six nodes and nine edges.
-
-Before trying any of the code in this section, make sure that you have installed all the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Then use this script to insert the synthetic data:
+It has six nodes and nine edges. Use this script to insert the synthetic data:
 
 ##### `insert-synthetic-data.sql`
 
@@ -123,9 +121,9 @@ Confirm that the expected actors are represented:
 ```plpgsql
 with v(actor) as (
   select node_1 from edges
-  union all
+  union
   select node_2 from edges)
-select distinct actor from v order by 1;
+select actor from v order by 1;
 ```
 
 This is the result:
@@ -169,13 +167,13 @@ This is the result:
  Twelfth Night
 ```
 
-List the edges that have _"node_1 < node_1"_:
+List the edges that have _"node_1 < node_2"_:
 
 ```plpgsql
 select
   node_1,
   node_2,
-  replace(translate(movies::text, '{"}', ''), ',', ' > ')  as movies
+  replace(translate(movies::text, '{"}', ''), ',', ' | ')  as movies
 from edges
 where node_1 < node_2
 order by 1, 2;
@@ -189,13 +187,13 @@ You see the expected nine edges:
  node_1 | node_2 |                       movies                       
 --------+--------+----------------------------------------------------
  Alfie  | Chloe  | Hamlet
- Alfie  | Helen  | Hamlet > Measure for Measure > Taming of the Shrew
+ Alfie  | Helen  | Hamlet | Measure for Measure | Taming of the Shrew
  Alfie  | Steve  | Macbeth
- Chloe  | Emily  | Julius Caesar > Merry Wives of Windsor
- Chloe  | Helen  | Hamlet > Romeo and Juliet
- Emily  | James  | As You Like It > Coriolanus > Othello
- Helen  | James  | King Lear > Twelfth Night
- Helen  | Steve  | King Lear > The Tempest
+ Chloe  | Emily  | Julius Caesar | Merry Wives of Windsor
+ Chloe  | Helen  | Hamlet | Romeo and Juliet
+ Emily  | James  | As You Like It | Coriolanus | Othello
+ Helen  | James  | King Lear | Twelfth Night
+ Helen  | Steve  | King Lear | The Tempest
  James  | Steve  | King Lear
 ```
 
@@ -205,7 +203,7 @@ Now list the edges that have the opposite direction:
 select
   node_1,
   node_2,
-  replace(translate(movies::text, '{"}', ''), ',', ' > ')  as movies
+  replace(translate(movies::text, '{"}', ''), ',', ' | ')  as movies
 from edges
 where node_1 > node_2
 order by 2, 1;
@@ -217,13 +215,13 @@ Again, you see the expected nine edges:
  node_1 | node_2 |                       movies                       
 --------+--------+----------------------------------------------------
  Chloe  | Alfie  | Hamlet
- Helen  | Alfie  | Hamlet > Measure for Measure > Taming of the Shrew
+ Helen  | Alfie  | Hamlet | Measure for Measure | Taming of the Shrew
  Steve  | Alfie  | Macbeth
- Emily  | Chloe  | Julius Caesar > Merry Wives of Windsor
- Helen  | Chloe  | Hamlet > Romeo and Juliet
- James  | Emily  | As You Like It > Coriolanus > Othello
- James  | Helen  | King Lear > Twelfth Night
- Steve  | Helen  | King Lear > The Tempest
+ Emily  | Chloe  | Julius Caesar | Merry Wives of Windsor
+ Helen  | Chloe  | Hamlet | Romeo and Juliet
+ James  | Emily  | As You Like It | Coriolanus | Othello
+ James  | Helen  | King Lear | Twelfth Night
+ Steve  | Helen  | King Lear | The Tempest
  Steve  | James  | King Lear
 ```
 
@@ -304,7 +302,7 @@ The five paths are highlighted in red here:
 
 ![undirected-cyclic-graph](/images/api/ysql/the-sql-language/with-clause/bacon-numbers/actors-movies-2.jpg)
 
-Now invoke _"find_paths()"_ _with_ early pruning and confirm that the result is identical to the produced by invoking in _without_ early pruning and then deriving the shortest paths:
+Now invoke _"find_paths()"_ _with_ early pruning and confirm that the result is identical to that produced by invoking in _without_ early pruning and then deriving the shortest paths:
 
 ```plpgsql
 call find_paths('Emily', true);
@@ -327,7 +325,7 @@ This is the result:
       2             3   Emily > Chloe > Helen
       3             3   Emily > James > Steve
 ```
-The first and second result both contain _"Emily > Chloe"_ and the third contains _"Emily > James"_. So all five paths are accounted for.
+The first result and the second result each contains _"Emily > Chloe"_ and the third contains _"Emily > James"_. So all five paths are accounted for.
 
 ## Decorate the path edges with the list of movies that brought each edge
 

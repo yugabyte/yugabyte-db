@@ -16,14 +16,15 @@
 
 #include <unordered_map>
 
+#include <boost/functional/hash.hpp>
 #include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/common/schema.h"
+
+#include "yb/common/column_id.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/util/async_util.h"
@@ -128,6 +129,10 @@ class TableHandle {
     return table_.get();
   }
 
+  YBClient* client() const {
+    return client_;
+  }
+
   std::vector<std::string> AllColumnNames() const;
 
   QLValuePB* PrepareColumn(QLWriteRequestPB* req, const string& column_name) const;
@@ -136,8 +141,10 @@ class TableHandle {
 
  private:
   typedef std::unordered_map<std::string, yb::ColumnId> ColumnIdsMap;
-  typedef std::unordered_map<yb::ColumnId, const std::shared_ptr<QLType>> ColumnTypesMap;
+  using ColumnTypesMap = std::unordered_map<
+      yb::ColumnId, const std::shared_ptr<QLType>, boost::hash<yb::ColumnId>>;
 
+  YBClient* client_;
   YBTablePtr table_;
   ColumnIdsMap column_ids_;
   ColumnTypesMap column_types_;

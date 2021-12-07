@@ -13,7 +13,11 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
+#include <google/protobuf/any.pb.h>
+
 #include "yb/docdb/docdb.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace docdb {
@@ -23,18 +27,22 @@ ConsensusFrontier::~ConsensusFrontier() {
 
 bool ConsensusFrontier::Equals(const UserFrontier& pre_rhs) const {
   const ConsensusFrontier& rhs = down_cast<const ConsensusFrontier&>(pre_rhs);
-  return op_id_ == rhs.op_id_ && ht_ == rhs.ht_ && history_cutoff_ == rhs.history_cutoff_ &&
-         hybrid_time_filter_ == rhs.hybrid_time_filter_;
+  return op_id_ == rhs.op_id_ &&
+         hybrid_time_ == rhs.hybrid_time_ &&
+         history_cutoff_ == rhs.history_cutoff_ &&
+         hybrid_time_filter_ == rhs.hybrid_time_filter_ &&
+         max_value_level_ttl_expiration_time_ == rhs.max_value_level_ttl_expiration_time_;
 }
 
 void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   ConsensusFrontierPB pb;
   op_id_.ToPB(pb.mutable_op_id());
-  pb.set_hybrid_time(ht_.ToUint64());
+  pb.set_hybrid_time(hybrid_time_.ToUint64());
   pb.set_history_cutoff(history_cutoff_.ToUint64());
   if (hybrid_time_filter_.is_valid()) {
     pb.set_hybrid_time_filter(hybrid_time_filter_.ToUint64());
   }
+  pb.set_max_value_level_ttl_expiration_time(max_value_level_ttl_expiration_time_.ToUint64());
   any->PackFrom(pb);
 }
 
@@ -42,13 +50,15 @@ void ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   ConsensusFrontierPB pb;
   any.UnpackTo(&pb);
   op_id_ = OpId::FromPB(pb.op_id());
-  ht_ = HybridTime(pb.hybrid_time());
+  hybrid_time_ = HybridTime(pb.hybrid_time());
   history_cutoff_ = NormalizeHistoryCutoff(HybridTime(pb.history_cutoff()));
   if (pb.has_hybrid_time_filter()) {
     hybrid_time_filter_ = HybridTime(pb.hybrid_time_filter());
   } else {
     hybrid_time_filter_ = HybridTime();
   }
+  max_value_level_ttl_expiration_time_ =
+      HybridTime::FromPB(pb.max_value_level_ttl_expiration_time());
 }
 
 void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {
@@ -56,9 +66,8 @@ void ConsensusFrontier::FromOpIdPBDeprecated(const OpIdPB& pb) {
 }
 
 std::string ConsensusFrontier::ToString() const {
-  return yb::Format(
-      "{ op_id: $0 hybrid_time: $1 history_cutoff: $2 hybrid_time_filter: $3 }",
-      op_id_, ht_, history_cutoff_, hybrid_time_filter_);
+  return YB_CLASS_TO_STRING(
+      op_id, hybrid_time, history_cutoff, hybrid_time_filter, max_value_level_ttl_expiration_time);
 }
 
 namespace {
@@ -102,10 +111,12 @@ void ConsensusFrontier::Update(
     const rocksdb::UserFrontier& pre_rhs, rocksdb::UpdateUserValueType update_type) {
   const ConsensusFrontier& rhs = down_cast<const ConsensusFrontier&>(pre_rhs);
   UpdateField(&op_id_, rhs.op_id_, update_type);
-  UpdateField(&ht_, rhs.ht_, update_type);
+  UpdateField(&hybrid_time_, rhs.hybrid_time_, update_type);
   UpdateField(&history_cutoff_, rhs.history_cutoff_, update_type);
   // Reset filter after compaction.
   hybrid_time_filter_ = HybridTime();
+  UpdateField(&max_value_level_ttl_expiration_time_,
+      rhs.max_value_level_ttl_expiration_time_, update_type);
 }
 
 Slice ConsensusFrontier::Filter() const {
@@ -122,7 +133,7 @@ bool ConsensusFrontier::IsUpdateValid(
   // for a later compaction is lower than that for an earlier compaction. This can happen if
   // FLAGS_timestamp_history_retention_interval_sec increases.
   return IsUpdateValidForField(op_id_, rhs.op_id_, update_type) &&
-         IsUpdateValidForField(ht_, rhs.ht_, update_type);
+         IsUpdateValidForField(hybrid_time_, rhs.hybrid_time_, update_type);
 }
 
 } // namespace docdb

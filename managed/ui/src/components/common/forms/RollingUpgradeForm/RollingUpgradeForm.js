@@ -18,6 +18,7 @@ import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import './RollingUpgradeForm.scss';
+import { EncryptionInTransit } from './EncryptionInTransit';
 
 class FlagInput extends Component {
   render() {
@@ -97,7 +98,7 @@ export default class RollingUpgradeForm extends Component {
       currentVersion = primaryCluster?.userIntent?.ybSoftwareVersion;
     }
     return currentVersion;
-  }
+  };
 
   setRollingUpgradeProperties = (values) => {
     const {
@@ -119,6 +120,12 @@ export default class RollingUpgradeForm extends Component {
         payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
         break;
       }
+      case 'systemdUpgrade': {
+        payload.taskType = 'Systemd';
+        payload.upgradeOption = 'Rolling';
+        var systemdBoolean = true;
+        break;
+      }
       case 'gFlagsModal': {
         payload.taskType = 'GFlags';
         payload.upgradeOption = values.upgradeOption;
@@ -135,7 +142,8 @@ export default class RollingUpgradeForm extends Component {
         payload.upgradeOption = 'Rolling';
         break;
       }
-      default: return;
+      default:
+        return;
     }
 
     const primaryCluster = _.cloneDeep(getPrimaryCluster(clusters));
@@ -150,7 +158,7 @@ export default class RollingUpgradeForm extends Component {
     if (isNonEmptyArray(values.masterGFlags)) {
       masterGFlagList = values.masterGFlags
         .map((masterFlag) => {
-          return (masterFlag.name && masterFlag.value)
+          return masterFlag.name && masterFlag.value
             ? { name: masterFlag.name, value: masterFlag.value }
             : null;
         })
@@ -159,7 +167,7 @@ export default class RollingUpgradeForm extends Component {
     if (isNonEmptyArray(values.tserverGFlags)) {
       tserverGFlagList = values.tserverGFlags
         .map((tserverFlag) => {
-          return (tserverFlag.name && tserverFlag.value)
+          return tserverFlag.name && tserverFlag.value
             ? { name: tserverFlag.name, value: tserverFlag.value }
             : null;
         })
@@ -168,11 +176,12 @@ export default class RollingUpgradeForm extends Component {
     primaryCluster.userIntent.ybSoftwareVersion = values.ybSoftwareVersion;
     primaryCluster.userIntent.masterGFlags = masterGFlagList;
     primaryCluster.userIntent.tserverGFlags = tserverGFlagList;
+    primaryCluster.userIntent.useSystemd = systemdBoolean;
     payload.clusters = [primaryCluster];
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
 
-    this.props.submitRollingUpgradeForm(payload, universeUUID).then(response => {
+    this.props.submitRollingUpgradeForm(payload, universeUUID).then((response) => {
       if (response.payload.status === 200) {
         this.props.fetchCurrentUniverse(universeUUID);
         this.props.fetchUniverseMetadata();
@@ -195,11 +204,11 @@ export default class RollingUpgradeForm extends Component {
       modalVisible,
       handleSubmit,
       universe,
-      certificates,
       modal: { visibleModal },
       universe: { error },
       softwareVersions,
-      formValues
+      formValues,
+      certificates
     } = this.props;
 
     const currentVersion = this.getCurrentVersion();
@@ -210,7 +219,8 @@ export default class RollingUpgradeForm extends Component {
         {item}
       </option>
     ));
-    const tlsCertificateOptions = certificates.map(item => (
+
+    const tlsCertificateOptions = certificates.map((item) => (
       <option
         key={item.uuid}
         disabled={item.uuid === universe.currentUniverse?.data?.universeDetails?.rootCA}
@@ -242,14 +252,17 @@ export default class RollingUpgradeForm extends Component {
             onFormSubmit={submitAction}
             error={error}
             footerAccessory={
-              formValues.ybSoftwareVersion !== currentVersion
-                ? (
-                  <YBCheckBox
-                    label="Confirm software upgrade"
-                    input={{ checked: this.state.formConfirmed, onChange: this.toggleConfirmValidation }}
-                  />
-                )
-                : <span>Latest software is installed</span>
+              formValues.ybSoftwareVersion !== currentVersion ? (
+                <YBCheckBox
+                  label="Confirm software upgrade"
+                  input={{
+                    checked: this.state.formConfirmed,
+                    onChange: this.toggleConfirmValidation
+                  }}
+                />
+              ) : (
+                <span>Latest software is installed</span>
+              )
             }
             asyncValidating={!this.state.formConfirmed}
           >
@@ -289,16 +302,10 @@ export default class RollingUpgradeForm extends Component {
           >
             <Tabs defaultActiveKey={1} className="gflag-display-container" id="gflag-container">
               <Tab eventKey={1} title="Master" className="gflag-class-1" bsClass="gflag-class-2">
-                <FieldArray
-                  name="masterGFlags"
-                  component={FlagItems}
-                />
+                <FieldArray name="masterGFlags" component={FlagItems} />
               </Tab>
               <Tab eventKey={2} title="T-Server">
-                <FieldArray
-                  name="tserverGFlags"
-                  component={FlagItems}
-                />
+                <FieldArray name="tserverGFlags" component={FlagItems} />
               </Tab>
             </Tabs>
             <div className="form-right-aligned-labels rolling-upgrade-form top-10 time-delay-container">
@@ -322,6 +329,16 @@ export default class RollingUpgradeForm extends Component {
         );
       }
       case 'tlsConfigurationModal': {
+        if (this.props.enableNewEncryptionInTransitModal) {
+          return (
+            <EncryptionInTransit
+              visible={modalVisible}
+              onHide={this.resetAndClose}
+              currentUniverse={universe.currentUniverse}
+              fetchCurrentUniverse={this.props.fetchCurrentUniverse}
+            />
+          );
+        }
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
@@ -334,14 +351,18 @@ export default class RollingUpgradeForm extends Component {
             onFormSubmit={submitAction}
             error={error}
             footerAccessory={
-              formValues.tlsCertificate !== universe.currentUniverse?.data?.universeDetails?.rootCA
-                ? (
-                  <YBCheckBox
-                    label="Confirm TLS Changes"
-                    input={{ checked: this.state.formConfirmed, onChange: this.toggleConfirmValidation }}
-                  />
-                )
-                : <span>Select new CA signed cert from the list</span>
+              formValues.tlsCertificate !==
+              universe.currentUniverse?.data?.universeDetails?.rootCA ? (
+                <YBCheckBox
+                  label="Confirm TLS Changes"
+                  input={{
+                    checked: this.state.formConfirmed,
+                    onChange: this.toggleConfirmValidation
+                  }}
+                />
+              ) : (
+                <span>Select new CA signed cert from the list</span>
+              )
             }
             asyncValidating={
               !this.state.formConfirmed ||
@@ -384,8 +405,50 @@ export default class RollingUpgradeForm extends Component {
             footerAccessory={
               <YBCheckBox
                 label="Confirm rolling restart"
-                input={{ checked: this.state.formConfirmed, onChange: this.toggleConfirmValidation }}
+                input={{
+                  checked: this.state.formConfirmed,
+                  onChange: this.toggleConfirmValidation
+                }}
               />
+            }
+            asyncValidating={!this.state.formConfirmed}
+          >
+            <div className="form-right-aligned-labels rolling-upgrade-form">
+              <Field
+                name="timeDelay"
+                type="number"
+                component={YBInputField}
+                label="Rolling Restart Delay Between Servers (secs)"
+              />
+            </div>
+            {errorAlert}
+          </YBModal>
+        );
+      }
+      case 'systemdUpgrade': {
+        return (
+          <YBModal
+            className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
+            visible={modalVisible}
+            formName="RollingUpgradeForm"
+            onHide={this.resetAndClose}
+            submitLabel="Upgrade"
+            showCancelButton
+            title="Upgrade from Cron to Systemd"
+            onFormSubmit={submitAction}
+            error={error}
+            footerAccessory={
+              formValues.systemdValue !== true ? (
+                <YBCheckBox
+                  label="Confirm Systemd upgrade"
+                  input={{
+                    checked: this.state.formConfirmed,
+                    onChange: this.toggleConfirmValidation
+                  }}
+                />
+              ) : (
+                <span>Already upgraded to Systemd</span>
+              )
             }
             asyncValidating={!this.state.formConfirmed}
           >

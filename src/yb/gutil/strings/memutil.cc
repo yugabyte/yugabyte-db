@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001 and onwards Google, Inc.
+// Copyright 2001 and onwards Google, Inc.
 //
 // The following only applies to changes made to this file as part of YugaByte development.
 //

@@ -48,8 +48,12 @@ import "yb/util/opid.proto";
 enum LogEntryTypePB {
   UNKNOWN = 0;
   REPLICATE = 1;
-  // Marker entry for dummy log messages. These will never end up in the log, just serve the purpose
-  // of making sure that all entries up to the FLUSH_MARKER entry are flushed.
+
+  // Marker entries are for dummy log messages. These will never end up in the log.
+
+  // Roll over active log segment before writing the next entry if active segment is not empty.
+  ROLLOVER_MARKER = 998;
+  // Serve the purpose of making sure that all entries up to the FLUSH_MARKER entry are flushed.
   FLUSH_MARKER = 999;
 };
 

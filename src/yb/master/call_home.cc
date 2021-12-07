@@ -15,20 +15,26 @@
 #include <sstream>
 #include <thread>
 
-#include <rapidjson/reader.h>
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
-
 #include <boost/algorithm/string.hpp>
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
-#include "yb/util/flag_tags.h"
+#include <rapidjson/reader.h>
+#include <rapidjson/writer.h>
 
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/ts_manager.h"
+
+#include "yb/rpc/scheduler.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/flag_tags.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/user.h"
 #include "yb/util/version_info.h"
 
 static const char* kLowLevel = "low";
@@ -131,11 +137,23 @@ void AppendPairToJson(const Key& key, const Value& value, std::string *out) {
   *out += '\"';
 }
 
+std::string GetCurrentUser() {
+  auto user_name = GetLoggedInUser();
+  if (user_name.ok()) {
+    YB_LOG_FIRST_N(INFO, 1) << "Logged in user: " << *user_name;
+    return *user_name;
+  } else {
+    YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current user: " << user_name.status();
+    return "unknown_user";
+  }
+}
+
 } // namespace
 
 class BasicCollector : public CollectorBase {
  public:
   using CollectorBase::CollectorBase;
+
   void Collect(CollectionLevel collection_level) {
     switch (server_type_) {
       case ServerType::ALL:
@@ -152,7 +170,7 @@ class BasicCollector : public CollectorBase {
         // Only collect hostname and username if collection level is medium or high.
         if (collection_level != CollectionLevel::LOW) {
           AppendPairToJson("hostname", master()->get_hostname(), &json_);
-          AppendPairToJson("current_user", master()->get_current_user(), &json_);
+          AppendPairToJson("current_user", GetCurrentUser(), &json_);
         }
         json_ += ",\"version_info\":" + VersionInfo::GetAllVersionInfoJson();
         break;
@@ -165,7 +183,7 @@ class BasicCollector : public CollectorBase {
         // Only collect hostname and username if collection level is medium or high.
         if (collection_level != CollectionLevel::LOW) {
           AppendPairToJson("hostname", tserver()->get_hostname(), &json_);
-          AppendPairToJson("current_user", tserver()->get_current_user(), &json_);
+          AppendPairToJson("current_user", GetCurrentUser(), &json_);
         }
         break;
       }
@@ -462,4 +480,13 @@ CollectionLevel CallHome::GetCollectionLevel() {
   }
   return CollectionLevel::LOW;
 }
+
+master::Master* CallHome::master() {
+  return down_cast<master::Master*>(server_);
+}
+
+tserver::TabletServer* CallHome::tserver() {
+  return down_cast<tserver::TabletServer*>(server_);
+}
+
 } // namespace yb

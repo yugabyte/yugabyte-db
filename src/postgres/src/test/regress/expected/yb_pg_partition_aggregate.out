@@ -17,10 +17,6 @@ CREATE TABLE pagg_tab_p2 PARTITION OF pagg_tab FOR VALUES IN ('0004', '0005', '0
 CREATE TABLE pagg_tab_p3 PARTITION OF pagg_tab FOR VALUES IN ('0008', '0009', '0010', '0011');
 INSERT INTO pagg_tab SELECT i % 20, i % 30, to_char(i % 12, 'FM0000'), i % 30 FROM generate_series(0, 2999) i;
 ANALYZE pagg_tab;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
 -- When GROUP BY clause matches; full aggregation is performed for each partition.
 EXPLAIN (COSTS OFF)
 SELECT c, sum(a), avg(b), count(*), min(a), max(b) FROM pagg_tab GROUP BY c HAVING avg(d) < 15 ORDER BY 1, 2, 3;
@@ -371,15 +367,7 @@ CREATE TABLE pagg_tab2_p3 PARTITION OF pagg_tab2 FOR VALUES FROM (20) TO (30);
 INSERT INTO pagg_tab1 SELECT i % 30, i % 20 FROM generate_series(0, 299, 2) i;
 INSERT INTO pagg_tab2 SELECT i % 20, i % 30 FROM generate_series(0, 299, 3) i;
 ANALYZE pagg_tab1;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
 ANALYZE pagg_tab2;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
 -- When GROUP BY clause matches; full aggregation is performed for each partition.
 /*
 EXPLAIN (COSTS OFF)
@@ -607,10 +595,6 @@ CREATE TABLE pagg_tab_m_p2 PARTITION OF pagg_tab_m FOR VALUES FROM (10, 10) TO (
 CREATE TABLE pagg_tab_m_p3 PARTITION OF pagg_tab_m FOR VALUES FROM (20, 20) TO (30, 30);
 INSERT INTO pagg_tab_m SELECT i % 30, i % 40, i % 50 FROM generate_series(0, 2999) i;
 ANALYZE pagg_tab_m;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
 -- Partial aggregation as GROUP BY clause does not match with PARTITION KEY
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a HAVING avg(c) < 22 ORDER BY 1, 2, 3;
@@ -618,20 +602,22 @@ SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a HAVING avg(c) < 22
 -----------------------------------------------------------------------------
  Sort
    Sort Key: pagg_tab_m_p1.a, (sum(pagg_tab_m_p1.b)), (avg(pagg_tab_m_p1.c))
-   ->  Finalize HashAggregate
+   ->  Finalize GroupAggregate
          Group Key: pagg_tab_m_p1.a
          Filter: (avg(pagg_tab_m_p1.c) < '22'::numeric)
-         ->  Append
-               ->  Partial HashAggregate
-                     Group Key: pagg_tab_m_p1.a
-                     ->  Seq Scan on pagg_tab_m_p1
-               ->  Partial HashAggregate
-                     Group Key: pagg_tab_m_p2.a
-                     ->  Seq Scan on pagg_tab_m_p2
-               ->  Partial HashAggregate
-                     Group Key: pagg_tab_m_p3.a
-                     ->  Seq Scan on pagg_tab_m_p3
-(15 rows)
+         ->  Sort
+               Sort Key: pagg_tab_m_p1.a
+               ->  Append
+                     ->  Partial HashAggregate
+                           Group Key: pagg_tab_m_p1.a
+                           ->  Seq Scan on pagg_tab_m_p1
+                     ->  Partial HashAggregate
+                           Group Key: pagg_tab_m_p2.a
+                           ->  Seq Scan on pagg_tab_m_p2
+                     ->  Partial HashAggregate
+                           Group Key: pagg_tab_m_p3.a
+                           ->  Seq Scan on pagg_tab_m_p3
+(17 rows)
 
 SELECT a, sum(b), avg(c), count(*) FROM pagg_tab_m GROUP BY a HAVING avg(c) < 22 ORDER BY 1, 2, 3;
  a  | sum  |         avg         | count
@@ -724,14 +710,6 @@ ALTER TABLE pagg_tab_ml_p3 ATTACH PARTITION pagg_tab_ml_p3_s1 FOR VALUES FROM (0
 ALTER TABLE pagg_tab_ml ATTACH PARTITION pagg_tab_ml_p3 FOR VALUES FROM (20) TO (30);
 INSERT INTO pagg_tab_ml SELECT i % 30, i % 10, to_char(i % 4, 'FM0000') FROM generate_series(0, 29999) i;
 ANALYZE pagg_tab_ml;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
 -- For Parallel Append
 SET max_parallel_workers_per_gather TO 2;
 -- Full aggregation at level 1 as GROUP BY clause matches with PARTITION KEY
@@ -921,10 +899,6 @@ CREATE TABLE pagg_tab_para_p2 PARTITION OF pagg_tab_para FOR VALUES FROM (10) TO
 CREATE TABLE pagg_tab_para_p3 PARTITION OF pagg_tab_para FOR VALUES FROM (20) TO (30);
 INSERT INTO pagg_tab_para SELECT i % 30, i % 20 FROM generate_series(0, 29999) i;
 ANALYZE pagg_tab_para;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
 -- When GROUP BY clause matches; full aggregation is performed for each partition.
 /*
 EXPLAIN (COSTS OFF)
@@ -957,20 +931,16 @@ SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) <
 
 -- Test when parent can produce parallel paths but not any (or some) of its children
 ALTER TABLE pagg_tab_para_p1 SET (parallel_workers = 0);
-ERROR:  ALTER TABLE SET name not supported yet
+ERROR:  ALTER TABLE SET not supported yet
 LINE 1: ALTER TABLE pagg_tab_para_p1 SET (parallel_workers = 0);
                                      ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
-ERROR:  ALTER TABLE SET name not supported yet
+ERROR:  ALTER TABLE SET not supported yet
 LINE 1: ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
                                      ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ANALYZE pagg_tab_para;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
 /*
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
@@ -987,15 +957,11 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
 (6 rows)
 
 ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
-ERROR:  ALTER TABLE SET name not supported yet
+ERROR:  ALTER TABLE SET not supported yet
 LINE 1: ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
                                      ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ANALYZE pagg_tab_para;
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
-WARNING:  analyzing non-temporary tables will be ignored
 /*
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
@@ -1045,4 +1011,3 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
  20 | 5000 | 5.0000000000000000 |  1000
  21 | 6000 | 6.0000000000000000 |  1000
 (6 rows)
-

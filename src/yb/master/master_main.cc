@@ -34,18 +34,25 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/log_util.h"
+
+#include "yb/gutil/sysinfo.h"
+
 #include "yb/master/call_home.h"
 #include "yb/master/master.h"
-#include "yb/consensus/log_util.h"
+#include "yb/master/sys_catalog_initialization.h"
+
+#include "yb/server/total_mem_watcher.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
 #include "yb/util/ulimit_util.h"
-#include "yb/gutil/sysinfo.h"
-#include "yb/server/total_mem_watcher.h"
-#include "yb/util/net/net_util.h"
 
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
@@ -61,6 +68,7 @@ DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 // Deprecated because it's misspelled.  But if set, this flag takes precedence over
 // remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
 DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
+DECLARE_bool(use_docdb_aware_bloom_filter);
 
 using namespace std::literals;
 
@@ -71,6 +79,10 @@ static int MasterMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
+  // Hotfix for https://github.com/yugabyte/yugabyte-db/issues/8731.
+  // Before enabling bloom filters for the master tablet we need to check whether master code use
+  // bloom filters properly at all, including if filter key is set correctly during scans.
+  FLAGS_use_docdb_aware_bloom_filter = false;
 
   string host_name;
   if (GetHostname(&host_name).ok()) {

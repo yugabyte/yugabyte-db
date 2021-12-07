@@ -12,6 +12,7 @@ import * as Yup from 'yup';
 import _ from 'lodash';
 import { ROOT_URL, USE_SSO } from '../../../../config';
 import { clearCredentials } from '../../../../routes';
+import { trimString } from '../../../../utils/ObjectUtils';
 
 class LoginForm extends Component {
   constructor(props) {
@@ -21,6 +22,7 @@ class LoginForm extends Component {
 
   submitLogin = (formValues) => {
     const { loginCustomer } = this.props;
+    formValues.email = trimString(formValues.email);
     loginCustomer(formValues);
   };
 

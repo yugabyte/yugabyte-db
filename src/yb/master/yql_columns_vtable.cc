@@ -13,9 +13,20 @@
 
 #include "yb/master/yql_columns_vtable.h"
 
+#include <stdint.h>
+
+#include <glog/logging.h>
+
 #include "yb/common/ql_name.h"
-#include "yb/common/ql_value.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+
+#include "yb/util/status_log.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace master {
@@ -50,12 +61,12 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
 
 Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
-  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto tables = catalog_manager().GetTables(GetTablesMode::kVisibleToClient);
   for (scoped_refptr<TableInfo> table : tables) {
 
     // Skip non-YQL tables.
-    if (!CatalogManager::IsYcqlTable(*table)) {
+    if (!IsYcqlTable(*table)) {
       continue;
     }
 
@@ -94,7 +105,9 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
       QLRow &row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always regular for regular columns)
-      RETURN_NOT_OK(SetColumnValue(kKind, "regular", &row));
+      const ColumnSchema& column = schema.column(i);
+      string kind = column.is_static() ? "static" : "regular";
+      RETURN_NOT_OK(SetColumnValue(kKind, kind, &row));
       RETURN_NOT_OK(SetColumnValue(kPosition, -1, &row));
     }
   }

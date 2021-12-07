@@ -11,24 +11,23 @@
 // under the License.
 //
 
-#include <string>
 #include "yb/client/in_flight_op.h"
+
+#include <string>
+
 #include "yb/client/meta_cache.h"
 #include "yb/client/yb_op.h"
-#include "yb/gutil/strings/substitute.h"
 
 namespace yb {
 namespace client {
 namespace internal {
 
-InFlightOp::InFlightOp(std::shared_ptr<YBOperation> yb_op_)
-    : yb_op(std::move(yb_op_)) {
+InFlightOp::InFlightOp(std::shared_ptr<YBOperation> yb_op_, size_t seq_no)
+    : yb_op(std::move(yb_op_)), sequence_number(seq_no) {
 }
 
 std::string InFlightOp::ToString() const {
-  return strings::Substitute(
-      "op[state=$0, yb_op=$1, remote_tablet=$2]", internal::ToString(state), yb_op->ToString(),
-      (tablet ? tablet->ToString() : "null"));
+  return YB_STRUCT_TO_STRING(yb_op, tablet, sequence_number);
 }
 
 } // namespace internal

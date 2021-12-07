@@ -19,6 +19,7 @@ A transaction is a sequence of operations performed as a single logical unit of 
 {{< note title="Note" >}}
 
 All update operations inside DocDB are considered to be transactions. This includes the following:
+
 * Operations that update just one row and those that update multiple rows that reside on different nodes.
 * If `autocommit` mode is enabled, each statement is executed as one transaction.
 
@@ -36,7 +37,7 @@ YugabyteDB uses **Hybrid Logical Clocks (HLCs)**. HLCs solve the problem by comb
 
 Each node in a YugabyteDB cluster first computes its HLC. HLC is represented as a (physical time component, logical component) tuple. HLCs generated on any node are strictly monotonic, and are compared as a tuple. When comparing two HLCs, the physical time component takes precedence over the logical component.
 
-* **Physical time component:** YugabyteDB uses the physical clock (`CLOCK_REALTIME` in Linux) of a node to initialize the physical time component of its HLC. Once initialized, the physical time component can only get updated to a higher value. A monotonic clock is used since it represents the time elapsed since some arbitrary, fixed point in the past and guarantees that the time source is strictly linearly increasing.
+* **Physical time component:** YugabyteDB uses the physical clock (`CLOCK_REALTIME` in Linux) of a node to initialize the physical time component of its HLC. Once initialized, the physical time component can only get updated to a higher value.
 
 * **Logical component:** For a given physical time component, the logical component of the HLC is a monotonically increasing number that provides ordering of events happening within that same physical time. This is initially set to 0. If the physical time component gets updated at any point, the logical component is reset to 0.
 
@@ -54,7 +55,7 @@ YugabyteDB maintains data consistency internally using *multi-version concurrenc
 
 ### MVCC using hybrid time
 
-YugabyteDB implements [multiversion concurrency control (MVCC)](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) and internally keeps track of multiple versions of values corresponding to the same key, for example, of a particular column in a particular row. The details of how multiple versions of the same key are stored in each replica's DocDB are described in [Persistence on top of RocksDB](../../concepts/docdb/persistence). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
+YugabyteDB implements [multiversion concurrency control (MVCC)](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) and internally keeps track of multiple versions of values corresponding to the same key, for example, of a particular column in a particular row. The details of how multiple versions of the same key are stored in each replica's DocDB are described in [Persistence on top of RocksDB](../../docdb/persistence). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
 
 The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of YugabyteDB's transaction model rely on these properties of Hybrid Time, e.g.:
 

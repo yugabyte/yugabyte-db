@@ -13,6 +13,7 @@ import requests
 import six
 import socket
 import time
+import json
 
 
 from googleapiclient import discovery
@@ -43,6 +44,7 @@ YB_FIREWALL_TARGET_TAGS = "cluster-server"
 
 GCP_SCRATCH = "scratch"
 GCP_PERSISTENT = "persistent"
+GCP_INTERNAL_INSTANCE_PREFIXES = ("N2-")
 
 
 # Code 429 does not have a name in httplib.
@@ -108,7 +110,7 @@ class GcpMetadata():
         try:
             url = "{}/{}".format(GcpMetadata.METADATA_URL_BASE, endpoint)
             req = requests.get(url, headers=GcpMetadata.CUSTOM_HEADERS, timeout=2)
-            return req.content if req.status_code == requests.codes.ok else None
+            return req.content.decode('utf-8') if req.status_code == requests.codes.ok else None
         except requests.exceptions.ConnectionError as e:
             return None
 
@@ -121,7 +123,7 @@ class GcpMetadata():
         network_data = GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
         try:
             # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
-            return network_data.split('/')[1]
+            return str(network_data).split('/')[1]
         except (IndexError, AttributeError):
             return None
 
@@ -382,8 +384,8 @@ class NetworkManager():
         if len(firewalls) == 0:
             return
         return self.waiter.wait(self.compute.firewalls().delete(
-          project=self.project,
-          firewall=firewall_name).execute())
+            project=self.project,
+            firewall=firewall_name).execute())
 
     def get_firewall_rules(self, network_url, name):
         filter = "(network eq {})(name eq {})".format(network_url, name)
@@ -404,7 +406,7 @@ class NetworkManager():
             "targetTags": get_firewall_tags(),
             "sourceRanges": ip_cidr_list,
             "allowed": [{"IPProtocol": p} for p in ["tcp", "udp", "icmp"]]
-            }
+        }
         fw_object = self.compute.firewalls()
         if firewall_exists:
             # Only update if any of these CIDRs are not already there or if targetFlags should
@@ -547,18 +549,27 @@ class GoogleCloudAdmin():
         return IMAGE_NAME_PREFIX + name.upper() + \
             (IMAGE_NAME_PREEMPTIBLE_SUFFIX if preemptible else "")
 
-    def create_disk(self, zone, body):
+    def create_disk(self, zone, instance_tags, body):
+        if instance_tags is not None:
+            body.update({"labels": json.loads(instance_tags)})
         operation = self.compute.disks().insert(project=self.project,
                                                 zone=zone,
                                                 body=body).execute()
-        self.waiter.wait(operatio, zonen)
+        return self.waiter.wait(operation, zone=zone)
 
     def mount_disk(self, zone, instance, body):
         operation = self.compute.instances().attachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
                                                         body=body).execute()
-        self.waiter.wait(operation, zone)
+        return self.waiter.wait(operation, zone=zone)
+
+    def unmount_disk(self, zone, instance, name):
+        operation = self.compute.instances().detachDisk(project=self.project,
+                                                        zone=zone,
+                                                        instance=instance,
+                                                        deviceName=name).execute()
+        return self.waiter.wait(operation, zone=zone)
 
     def update_disk(self, args, instance):
         zone = args.zone
@@ -581,17 +592,49 @@ class GoogleCloudAdmin():
                                                         body=body).execute()
                 self.waiter.wait(operation, zone=zone)
 
-    def delete_instance(self, zone, instance_name):
-        operation = self.compute.instances().delete(project=self.project,
-                                                    zone=zone,
-                                                    instance=instance_name).execute()
+    def change_instance_type(self, zone, instance_name, newInstanceType):
+        body = {
+            "machineType": "zones/" + zone + "/machineTypes/" + newInstanceType
+        }
+        operation = self.compute.instances().setMachineType(project=self.project,
+                                                            zone=zone,
+                                                            instance=instance_name,
+                                                            body=body).execute()
         self.waiter.wait(operation, zone=zone)
+
+    def delete_instance(self, region, zone, instance_name, has_static_ip=False):
+        if has_static_ip:
+            address = "ip-" + instance_name
+            logging.info("Deleting static ip {} attached to VM {}".format(address, instance_name))
+            self.compute.addresses().delete(
+                project=self.project, region=region, address=address).execute()
+            logging.info("Deleted static ip {} attached to VM {}".format(address, instance_name))
+        operation = self.compute.instances().delete(
+            project=self.project, zone=zone, instance=instance_name).execute()
+        self.waiter.wait(operation, zone=zone)
+
+    def stop_instance(self, zone, instance_name):
+        operation = self.compute.instances().stop(project=self.project,
+                                                  zone=zone,
+                                                  instance=instance_name).execute()
+        self.waiter.wait(operation, zone=zone)
+
+    def start_instance(self, zone, instance_name):
+        operation = self.compute.instances().start(project=self.project,
+                                                   zone=zone,
+                                                   instance=instance_name).execute()
+        return self.waiter.wait(operation, zone=zone)
 
     def query_vpc(self, region):
         """
         TODO: implement this once we get GCP custom region support...
         """
         return {}
+
+    def get_subnetwork_by_name(self, region, name):
+        host_project = self.get_host_project()
+        return self.compute.subnetworks().get(project=host_project,
+                                              region=region, subnetwork=name).execute()
 
     def get_regions(self):
         return list(self.metadata['regions'].keys())
@@ -617,6 +660,9 @@ class GoogleCloudAdmin():
                                                                zone=zone).execute()
         return instance_type_items["items"]
 
+    def get_host_project(self):
+        return os.environ.get("GCE_HOST_PROJECT", self.project)
+
     def get_pricing_map(self, ):
         # Requests encounters an SSL bug when run on portal, so verify is set to false
         pricing_url_response = requests.get(PRICING_JSON_URL, verify=False)
@@ -628,14 +674,15 @@ class GoogleCloudAdmin():
         return pricing_map
 
     @gcp_request_limit_retry
-    def get_instances(self, zone, instance_name, get_all=False):
+    def get_instances(self, zone, instance_name, get_all=False, filters=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
-        filter = "(status eq RUNNING)"
+        if not filters:
+            filters = "(status eq RUNNING)"
         if instance_name is not None:
-            filter += " (name eq {})".format(instance_name)
+            filters += " (name eq {})".format(instance_name)
         instances = self.compute.instances().aggregatedList(
             project=self.project,
-            filter=filter,
+            filter=filters,
             maxResults=(LIST_MAX_RESULTS if get_all else 1)).execute()
         instances = instances.get("items", [])
         if zone is not None:
@@ -651,25 +698,53 @@ class GoogleCloudAdmin():
         results = []
         for data in instances:
             metadata = data.get("metadata", {}).get("items", {})
+            disks = data.get("disks", [])
+            root_vol = next(disk for disk in disks if disk.get("boot", False))
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
-            interface = data.get("networkInterfaces", [None])[0]
-            access_config = interface.get("accessConfigs", [None])[0]
+            node_uuid_tags = [i["value"] for i in metadata if i["key"] == "node-uuid"]
+            universe_uuid_tags = [i["value"] for i in metadata if i["key"] == "universe-uuid"]
+            interface = [None]
+            private_ip = None
+            primary_subnet = None
+            secondary_private_ip = None
+            secondary_subnet = None
+            public_ip = None
+            if data.get("networkInterfaces"):
+                interface = data.get("networkInterfaces")
+                if len(interface):
+                    for i in interface:
+                        # Interface names are of form
+                        # nic0, nic1, nic2, etc.
+                        if i.get("name") == 'nic0':
+                            access_config = i.get("accessConfigs", [None])[0]
+                            public_ip = access_config.get("natIP") if access_config else None
+                            private_ip = i.get("networkIP")
+                            primary_subnet = i.get("subnetwork").split("/")[-1]
+                        elif i.get("name") == 'nic1':
+                            secondary_private_ip = i.get("networkIP")
+                            secondary_subnet = i.get("subnetwork").split("/")[-1]
             zone = data["zone"].split("/")[-1]
             region = zone[:-2]
             machine_type = data["machineType"].split("/")[-1]
-            public_ip = access_config.get("natIP") if access_config else None
             result = dict(
                 id=data.get("name"),
                 name=data.get("name"),
                 public_ip=public_ip,
-                private_ip=interface.get("networkIP"),
+                private_ip=private_ip,
+                secondary_private_ip=secondary_private_ip,
+                subnet=primary_subnet,
+                secondary_subnet=secondary_subnet,
                 region=region,
                 zone=zone,
                 instance_type=machine_type,
                 server_type=server_types[0] if server_types else None,
+                node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
+                universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 launched_by=None,
-                launch_time=data.get("creationTimestamp")
-                )
+                launch_time=data.get("creationTimestamp"),
+                root_volume=root_vol["source"],
+                root_volume_device_name=root_vol["deviceName"]
+            )
             if not get_all:
                 return result
             results.append(result)
@@ -677,13 +752,14 @@ class GoogleCloudAdmin():
 
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
-                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None):
-        network_name = os.environ.get("CUSTOM_GCE_NETWORK", YB_NETWORK_NAME)
+                        volume_size, boot_disk_size_gb=None, assign_public_ip=True,
+                        assign_static_public_ip=False, ssh_keys=None, boot_script=None,
+                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None):
         # Name of the project that target VPC network belongs to.
-        host_project = os.environ.get("GCE_HOST_PROJECT", self.project)
+        host_project = self.get_host_project()
 
         boot_disk_json = {
-            "autoDelete": True,
+            "autoDelete": auto_delete_boot_disk,
             "boot": True,
             "index": 0,
         }
@@ -694,7 +770,26 @@ class GoogleCloudAdmin():
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
-        accessConfigs = [{"natIP": None}] if assign_public_ip else None
+        access_configs = [{"natIP": None}] if assign_public_ip else None
+
+        if assign_static_public_ip:
+            # Create external static ip.
+            static_ip_name = "ip-" + instance_name
+            static_ip_description = "Static IP {} for GCP VM {} in region {}".format(
+                static_ip_name, instance_name, region)
+            static_ip_body = {"name": static_ip_name, "description": static_ip_description}
+            logging.info("[app] Creating " + static_ip_description)
+            self.waiter.wait(self.compute.addresses().insert(
+                project=self.project,
+                region=region,
+                body=static_ip_body).execute(), region=region)
+            static_ip = self.compute.addresses().get(
+                project=self.project,
+                region=region,
+                address=static_ip_name
+            ).execute().get("address", str)
+            logging.info("[app] Created Static IP at {} for VM {}".format(static_ip, instance_name))
+            access_configs = [{"natIP": static_ip, "description": static_ip_description}]
 
         body = {
             "canIpForward": can_ip_forward,
@@ -715,7 +810,7 @@ class GoogleCloudAdmin():
             },
             "name": instance_name,
             "networkInterfaces": [{
-                "accessConfigs": accessConfigs,
+                "accessConfigs": access_configs,
                 "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
                     host_project, region, cloud_subnet)
             }],
@@ -723,9 +818,23 @@ class GoogleCloudAdmin():
                 "items": get_firewall_tags()
             },
             "scheduling": {
-              "preemptible": use_preemptible
+                "preemptible": use_preemptible
             }
         }
+        # Attach a secondary network interface if present.
+        if cloud_subnet_secondary:
+            body["networkInterfaces"].append({
+                "accessConfigs": None,
+                "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
+                    host_project, region, cloud_subnet_secondary)
+            })
+
+        if boot_script:
+            with open(boot_script, 'r') as script:
+                body["metadata"]["items"].append({
+                    "key": "startup-script",
+                    "value": script.read()
+                })
 
         initial_params = {}
         if volume_type == GCP_SCRATCH:
@@ -745,7 +854,15 @@ class GoogleCloudAdmin():
             "initializeParams": initial_params
         }
 
-        for i in range(num_volumes):
+        if tags is not None:
+            tags_dict = json.loads(tags)
+            body.update({"labels": tags_dict})
+            initial_params.update({"labels": tags_dict})
+            boot_disk_init_params.update({"labels": tags_dict})
+            body["metadata"]["items"].append(
+                [{"key": k, "value": v} for (k, v) in tags_dict.items()])
+
+        for _ in range(num_volumes):
             body["disks"].append(disk_config)
 
         logging.info("[app] About to create GCP VM {} in region {}.".format(

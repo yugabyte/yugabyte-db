@@ -39,6 +39,7 @@ option cc_enable_arenas = true;
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/master/master_types.proto";
 import "yb/tablet/metadata.proto";
 import "yb/util/encryption.proto";
 import "yb/cdc/cdc_consumer.proto";
@@ -138,6 +139,11 @@ message MasterErrorPB {
     REACHED_SPLIT_LIMIT = 36;
 
     SPLIT_OR_BACKFILL_IN_PROGRESS = 37;
+
+    // Error in case a tablet-level operation was attempted on a tablet which is not running.
+    TABLET_NOT_RUNNING = 38;
+
+    TABLE_NOT_RUNNING = 39;
   }
 
   // The error code.
@@ -244,26 +250,10 @@ message BlacklistPB {
 // This has to respect the fixed schema of the catalog. In case of changes to
 // the schema, this proto must reflect them.
 message SysRowEntry {
-  enum Type {
-    UNKNOWN = 0;
-    TABLE = 1;
-    TABLET = 2;
-    CLUSTER_CONFIG = 3;
-    NAMESPACE = 4;
-    UDTYPE = 5;
-    ROLE = 6;
-    SNAPSHOT = 7;
-    REDIS_CONFIG = 8;
-    SYS_CONFIG = 9;
-    CDC_STREAM = 10;
-    UNIVERSE_REPLICATION = 11;
-    SNAPSHOT_SCHEDULE = 12;
-  }
-
   // The type of entry we are storing. Since the data is serialized, we cannot
   // just store it with
   // the data, as we are not able to read into the appropriate type.
-  optional Type type = 1;
+  optional SysRowEntryType type = 1;
 
   // The optional ID of the data that we are storing. This can be useful to only
   // read information
@@ -353,6 +343,10 @@ message BackfillJobPB {
   }
   // Index's TableId -> State for each index.
   map<string, State> backfill_state = 2;
+
+  // Number of rows processed for this backfill task (the same for all indexes)
+  optional uint64 num_rows_processed = 4 [ default = 0 ];
+
   optional uint64 backfilling_timestamp = 3;
 }
 
@@ -505,6 +499,8 @@ message SysRedisConfigEntryPB {
 // The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
 message SysCDCStreamEntryPB {
   enum State {
+    // Used to mark a stream that has been bootstrapped, but hasn't started streaming yet.
+    INITIATED = 3;
     ACTIVE = 0;
     DELETING = 1;
     // Currently DELETED is not being used because we delete streams entries from sys catalog.
@@ -700,6 +696,11 @@ message ReportedTabletPB {
 
   // Replica is reporting that load balancer moves should be disabled
   optional bool should_disable_lb_move = 7;
+
+  optional bytes fs_data_dir = 8;
+
+  // Is the tablet hidden.
+  optional bool is_hidden = 9;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.
@@ -766,19 +767,13 @@ message TabletForSplitPB {
   optional bytes OBSOLETE_split_encoded_key = 3;
 }
 
-message ListTabletsOnPathPB {
-  required bytes path_id = 1;
-  message TabletOnPath {
-    required bytes tablet_id = 1;
-    optional uint64 sst_file_size = 2;
-    optional uint64 wal_file_size = 3;
-    optional uint64 uncompressed_sst_file_size = 4;
-  }
-  repeated TabletOnPath tablet = 2;
-}
 
-message TabletPathInfoPB {
-  repeated ListTabletsOnPathPB list_path = 1;
+message TabletDriveStorageMetadataPB {
+  required bytes tablet_id = 1;
+  optional uint64 sst_file_size = 2;
+  optional uint64 wal_file_size = 3;
+  optional uint64 uncompressed_sst_file_size = 4;
+  optional bool may_have_orphaned_post_split_data = 5 [default = true];
 }
 
 message TSSnapshotScheduleInfoPB {
@@ -786,8 +781,18 @@ message TSSnapshotScheduleInfoPB {
   optional fixed64 last_snapshot_hybrid_time = 2;
 }
 
-message TSSnapshotSchedulesInfoPB {
+message TSSnapshotRestorationInfoPB {
+  // 16 bytes for UUID.
+  optional bytes id = 1;
+  optional fixed64 complete_time_ht = 2;
+}
+
+message TSSnapshotsInfoPB {
   repeated TSSnapshotScheduleInfoPB schedules = 1;
+  // Last restorations update hybrid time.
+  optional fixed64 last_restorations_update_ht = 2;
+  // Restorations info.
+  repeated TSSnapshotRestorationInfoPB restorations = 3;
 }
 
 // Heartbeat sent from the tablet-server to the master
@@ -822,7 +827,7 @@ message TSHeartbeatRequestPB {
   optional int32 cluster_config_version = 8;
 
   // List of candidate tablets for split based on tablet splitting strategy and settings.
-  repeated TabletForSplitPB tablets_for_split = 9;
+  repeated TabletForSplitPB DEPRECATED_tablets_for_split = 9;
 
   // Physical time on tablet server
   optional fixed64 ts_physical_time = 10;
@@ -833,7 +838,9 @@ message TSHeartbeatRequestPB {
   // Roundtrip time for previous heartbeat in microseconds.
   optional int64 rtt_us = 12;
 
-  optional TabletPathInfoPB tablet_path_info = 13;
+  reserved 13;
+
+  repeated TabletDriveStorageMetadataPB storage_metadata = 14;
 }
 
 message TSHeartbeatResponsePB {
@@ -879,11 +886,15 @@ message TSHeartbeatResponsePB {
 
   optional int32 cluster_config_version = 13;
 
-  optional int64 tablet_split_size_threshold_bytes = 14;
-
   optional int32 tablet_report_limit = 16;
 
-  optional TSSnapshotSchedulesInfoPB snapshot_schedules = 17;
+  optional TSSnapshotsInfoPB snapshots_info = 17;
+
+  optional int64 DEPRECATED_tablet_split_size_threshold_bytes = 14;
+
+  // Hash of transaction status table ids and versions, so that the TS knows when
+  // to update the cached list of status tablet ids in the transaction manager.
+  optional uint64 txn_table_versions_hash = 18;
 }
 
 message TSInformationPB {
@@ -960,6 +971,9 @@ message GetTabletLocationsRequestPB {
 
   // If table ID is specified, table's partition_list_version will be included into response.
   optional bytes table_id = 2;
+
+  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  optional bool include_inactive = 3;
 }
 
 message GetTabletLocationsResponsePB {
@@ -988,7 +1002,11 @@ message CreateTableRequestPB {
 
   required string name = 1;
   optional SchemaPB schema = 2;
-  optional int32 num_tablets = 3;  // deprecated
+
+  // Specifies number of tablets to create. If it's not set here
+  // 'SchemaPB::TablePropertiesPB::num_tablets' from 'schema' field will be used.
+  optional int32 num_tablets = 3;
+
   optional PartitionSchemaPB partition_schema = 5;
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
@@ -1032,17 +1050,6 @@ message CreateTableResponsePB {
   optional MasterErrorPB error = 1;
 
   optional bytes table_id = 2;
-}
-
-message AnalyzeTableRequestPB {
-  required TableIdentifierPB table = 1;
-}
-
-message AnalyzeTableResponsePB {
-  // The error, if an error occurred with this request.
-  optional MasterErrorPB error = 1;
-
-  optional uint32 rows = 2;
 }
 
 message IsCreateTableDoneRequestPB {
@@ -1122,7 +1129,12 @@ message DeleteTableResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 
+  // table_id for the requested table.
   optional bytes table_id = 2;
+  // Deleted table ids. Includes the requested table, and also
+  // any index tables that it may have.
+  repeated bytes deleted_table_ids = 4;
+
   // For index table, the indexed table of this index.
   optional TableIdentifierPB indexed_table = 3;
 }
@@ -1137,12 +1149,6 @@ message IsDeleteTableDoneResponsePB {
 
   // true if the delete operation is completed, false otherwise
   optional bool done = 2;
-}
-
-enum RelationType {
-  SYSTEM_TABLE_RELATION = 1;
-  USER_TABLE_RELATION = 2;
-  INDEX_TABLE_RELATION = 3;
 }
 
 message ListTablesRequestPB {
@@ -1187,6 +1193,9 @@ message GetTableLocationsRequestPB {
   optional uint32 max_returned_locations = 5 [ default = 10 ];
 
   optional bool require_tablets_running = 6;
+
+  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  optional bool include_inactive = 7;
 }
 
 message GetTableLocationsResponsePB {
@@ -1252,6 +1261,9 @@ message AlterTableRequestPB {
 
   // Replication information for this table.
   optional ReplicationInfoPB replication_info = 8;
+
+  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  optional TransactionMetadataPB transaction = 9;
 }
 
 message AlterTableResponsePB {
@@ -1352,6 +1364,22 @@ message ListTabletServersResponsePB {
     optional int32 millis_since_heartbeat = 3;
     optional bool alive = 4;
     optional TServerMetricsPB metrics = 5;
+  }
+  repeated Entry servers = 2;
+}
+
+message ListLiveTabletServersRequestPB {
+  // If set to true, return only the live tservers which are in the primary/sync cluster.
+  optional bool primary_only = 1 [default = false];
+}
+
+message ListLiveTabletServersResponsePB {
+  optional MasterErrorPB error = 1;
+
+  message Entry {
+    required NodeInstancePB instance_id = 1;
+    optional TSRegistrationPB registration = 2;
+    optional bool isFromReadReplica = 3;
   }
   repeated Entry servers = 2;
 }
@@ -1886,6 +1914,7 @@ message UDTypeInfoPB {
 message CreateCDCStreamRequestPB {
   optional string table_id = 1;
   repeated CDCStreamOptionsPB options = 3;
+  optional SysCDCStreamEntryPB.State initial_state = 4;
 }
 
 // Options for CDC stream. This will include details such as:
@@ -1905,11 +1934,13 @@ message CreateCDCStreamResponsePB {
 
 message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
+  optional bool force = 2 [default = false];
 }
 
 message DeleteCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
+  repeated bytes not_found_stream_ids = 2;
 }
 
 message ListCDCStreamsRequestPB {
@@ -1930,6 +1961,15 @@ message GetCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   optional CDCStreamInfoPB stream = 2;
+}
+
+message UpdateCDCStreamRequestPB {
+  optional bytes stream_id = 1;
+  optional SysCDCStreamEntryPB entry = 2;
+}
+
+message UpdateCDCStreamResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 message CDCStreamInfoPB {
@@ -2024,10 +2064,13 @@ message SetupUniverseReplicationResponsePB {
 
 message DeleteUniverseReplicationRequestPB {
   optional string producer_id = 1;
+  optional bool force = 2 [default = false];
 }
 
 message DeleteUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
+  // In case force is set, then still return any ignored warnings.
+  repeated AppStatusPB warnings = 2;
 }
 
 message AlterUniverseReplicationRequestPB {
@@ -2036,6 +2079,10 @@ message AlterUniverseReplicationRequestPB {
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids_to_add = 4;
   repeated string producer_table_ids_to_remove = 5;
+  optional string new_producer_universe_id = 7;
+
+  // Optional bootstrap ids for the add table operation.
+  repeated string producer_bootstrap_ids_to_add = 6;
 }
 
 message AlterUniverseReplicationResponsePB {
@@ -2060,6 +2107,18 @@ message GetUniverseReplicationResponsePB {
   optional SysUniverseReplicationEntryPB entry = 2;
 }
 
+message IsSetupUniverseReplicationDoneRequestPB {
+  optional string producer_id = 1;
+}
+
+message IsSetupUniverseReplicationDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  // True if the universe is properly setup for replication, false otherwise.
+  optional bool done = 2;
+  // The more specific error that occurred during replication, or OK if we succeeded.
+  optional AppStatusPB replication_error = 3;
+}
+
 message SplitTabletRequestPB {
   required bytes tablet_id = 1;
 }
@@ -2068,12 +2127,38 @@ message SplitTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message DeleteTabletRequestPB {
+message CreateTransactionStatusTableRequestPB {
+  required string table_name = 1;
+}
+
+message CreateTransactionStatusTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteNotServingTabletRequestPB {
   required bytes tablet_id = 1;
 }
 
-message DeleteTabletResponsePB {
+message DeleteNotServingTabletResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+message DdlLogRequestPB {
+}
+
+message DdlLogEntryPB {
+  optional TableType table_type = 1;
+  optional string namespace_name = 2;
+  optional string namespace_id = 3;
+  optional string table_name = 4;
+  optional string table_id = 5;
+  optional string action = 6;
+  optional fixed64 time = 7;
+}
+
+message DdlLogResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated DdlLogEntryPB entries = 2;
 }
 
 service MasterService {
@@ -2085,8 +2170,6 @@ service MasterService {
 
   rpc CreateTable(CreateTableRequestPB) returns (CreateTableResponsePB);
   rpc IsCreateTableDone(IsCreateTableDoneRequestPB) returns (IsCreateTableDoneResponsePB);
-
-  rpc AnalyzeTable(AnalyzeTableRequestPB) returns (AnalyzeTableResponsePB);
 
   rpc TruncateTable(TruncateTableRequestPB) returns (TruncateTableResponsePB);
   rpc IsTruncateTableDone(IsTruncateTableDoneRequestPB) returns (IsTruncateTableDoneResponsePB);
@@ -2146,6 +2229,8 @@ service MasterService {
   rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
+  rpc UpdateCDCStream (UpdateCDCStreamRequestPB)
+      returns (UpdateCDCStreamResponsePB);
 
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);
@@ -2153,6 +2238,8 @@ service MasterService {
 
   // Administrative/monitoring RPCs
   rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);
+  rpc ListLiveTabletServers(ListLiveTabletServersRequestPB)
+      returns (ListLiveTabletServersResponsePB);
   rpc ListMasters(ListMastersRequestPB) returns (ListMastersResponsePB);
   rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
   rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns
@@ -2207,6 +2294,8 @@ service MasterService {
       returns (SetUniverseReplicationEnabledResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
       returns (GetUniverseReplicationResponsePB);
+  rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
+      returns (IsSetupUniverseReplicationDoneResponsePB);
   rpc AddUniverseKeys(AddUniverseKeysRequestPB)  returns (AddUniverseKeysResponsePB);
   rpc GetUniverseKeyRegistry(GetUniverseKeyRegistryRequestPB)
       returns (GetUniverseKeyRegistryResponsePB);
@@ -2214,5 +2303,10 @@ service MasterService {
       returns (HasUniverseKeyInMemoryResponsePB);
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
-  rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
+  rpc CreateTransactionStatusTable(CreateTransactionStatusTableRequestPB)
+      returns (CreateTransactionStatusTableResponsePB);
+  rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
+      returns (DeleteNotServingTabletResponsePB);
+
+  rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 }

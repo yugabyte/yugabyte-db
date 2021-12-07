@@ -3,20 +3,14 @@
 package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.ExtraMigrationManager;
-import com.yugabyte.yw.models.AccessKey;
-
-import java.lang.reflect.Method;
-import java.lang.ReflectiveOperationException;
+import io.ebean.Finder;
+import io.ebean.Model;
 import java.util.List;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.ebean.*;
-import io.ebean.annotation.*;
 
 @Entity
 public class ExtraMigration extends Model {
@@ -29,7 +23,7 @@ public class ExtraMigration extends Model {
   public String migration;
 
   public static final Finder<String, ExtraMigration> find =
-    new Finder<String, ExtraMigration>(ExtraMigration.class) {};
+      new Finder<String, ExtraMigration>(ExtraMigration.class) {};
 
   public static List<ExtraMigration> getAll() {
     return find.query().orderBy("migration asc").findList();

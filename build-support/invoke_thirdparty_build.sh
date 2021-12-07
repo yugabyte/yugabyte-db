@@ -11,7 +11,7 @@ if [[ -n ${YB_THIRDPARTY_DIR:-} &&
         "($YB_SRC_ROOT)."
 fi
 
-thirdparty_sha1=$(<"$YB_BUILD_SUPPORT_DIR/thirdparty_sha1.txt")
+thirdparty_sha1=$( "$YB_BUILD_SUPPORT_DIR/thirdparty_tool" --get-sha1 )
 if [[ ! $thirdparty_sha1 =~ ^[0-9a-f]{40}$ ]]; then
   fatal "Invalid thirdparty SHA1: $thirdparty_sha1"
 fi

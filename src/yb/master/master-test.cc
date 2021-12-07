@@ -36,33 +36,41 @@
 #include <tuple>
 #include <vector>
 
-#include <gmock/internal/gmock-internal-utils.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
-#include "yb/gutil/strings/join.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master-test_base.h"
-#include "yb/master/master-test-util.h"
+
 #include "yb/master/call_home.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master-test-util.h"
+#include "yb/master/master-test_base.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
+
 #include "yb/rpc/messenger.h"
-#include "yb/server/rpc_server.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/server/server_base.proxy.h"
-#include "yb/util/capabilities.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/user.h"
 
 DECLARE_string(callhome_collection_level);
 DECLARE_string(callhome_tag);
@@ -177,7 +185,8 @@ TEST_F(MasterTest, TestCallHome) {
     if (collection_level.second.find("current_user") != collection_level.second.end()) {
       string received_user;
       ASSERT_OK(reader.ExtractString(reader.root(), "current_user", &received_user));
-      ASSERT_EQ(received_user, mini_master_->master()->get_current_user());
+      auto expected_user = ASSERT_RESULT(GetLoggedInUser());
+      ASSERT_EQ(received_user, expected_user);
     }
 
     auto count = reader.root()->MemberEnd() - reader.root()->MemberBegin();
@@ -575,8 +584,7 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 
   // Check block cache metrics directly and verify
   // that the counters are greater than 0
-  const unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
-    mini_master_->master()->metric_entity()->UnsafeMetricsMapForTests();
+  const auto metric_map = mini_master_->master()->metric_entity()->UnsafeMetricsMapForTests();
 
   scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(
       FindOrDie(metric_map,
@@ -685,8 +693,8 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
   vector<TabletId> tablet_ids;
   {
-    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
-    for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
+    CatalogManager::SharedLock lock(mini_master_->catalog_manager_impl().mutex_);
+    for (auto elem : *mini_master_->catalog_manager_impl().tablet_map_) {
       auto tablet = elem.second;
       if (tablet->table()->name() == kTableName) {
         tablet_ids.push_back(elem.first);
@@ -704,10 +712,10 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
 
   // Verify that the test table's tablets are in the DELETED state.
   {
-    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
+    CatalogManager::SharedLock lock(mini_master_->catalog_manager_impl().mutex_);
     for (const auto& tablet_id : tablet_ids) {
-      auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
-      ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
+      auto iter = mini_master_->catalog_manager_impl().tablet_map_->find(tablet_id);
+      ASSERT_NE(iter, mini_master_->catalog_manager_impl().tablet_map_->end());
       auto l = iter->second->LockForRead();
       ASSERT_EQ(l->pb.state(), SysTabletsEntryPB::DELETED);
     }
@@ -763,34 +771,12 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
   s = DoCreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
-  // Succeed the CreateTable call, but expect to have errors on call.
+  // Fail because there are no TServers matching the given placement policy.
   pb->set_min_num_replicas(live_replicas->num_replicas());
   cloud_info->set_placement_cloud("fail");
   UpdateMasterClusterConfig(&cluster_config);
-  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
-
-  IsCreateTableDoneRequestPB is_create_req;
-  IsCreateTableDoneResponsePB is_create_resp;
-
-  is_create_req.mutable_table()->set_table_name(kTableName);
-  is_create_req.mutable_table()->mutable_namespace_()->set_name(default_namespace_name);
-
-  // TODO(bogdan): once there are mechanics to cancel a create table, or for it to be cancelled
-  // automatically by the master, refactor this retry loop to an explicit wait and check the error.
-  int num_retries = 10;
-  while (num_retries > 0) {
-    s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
-    LOG(INFO) << s.ToString();
-    // The RPC layer will respond OK, but the internal fields will be set to error.
-    ASSERT_TRUE(s.ok());
-    ASSERT_TRUE(is_create_resp.has_done());
-    ASSERT_FALSE(is_create_resp.done());
-    if (is_create_resp.has_error()) {
-      ASSERT_EQ(is_create_resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
-    }
-
-    --num_retries;
-  }
+  s = DoCreateTable(kTableName, schema, &req);
+  ASSERT_TRUE(s.IsInvalidArgument());
 }
 
 TEST_F(MasterTest, TestNamespaces) {
@@ -1476,7 +1462,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
     // Internal search of CatalogManager should reveal it's state (debug UI uses this function).
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
                  [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
                    return ns && ns->id() == nsid;
@@ -1497,7 +1483,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
     // Internal search of CatalogManager should reveal it's DELETING to cleanup any partial apply.
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
         [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
           return ns && ns->id() == nsid;
@@ -1511,7 +1497,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
         [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
           return ns && ns->id() == nsid;
@@ -1525,7 +1511,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
         [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
           return ns && ns->id() == nsid;
@@ -1570,7 +1556,7 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
 
     // Internal search of CatalogManager should reveal whether it was partially created.
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto was_internally_created = std::any_of(namespace_internal.begin(), namespace_internal.end(),
         [&test_name](const scoped_refptr<NamespaceInfo>& ns) {
           if (ns && ns->name() == test_name && ns->state() != SysNamespaceEntryPB::DELETED) {
@@ -1634,6 +1620,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
 
     if (!del_resp.has_error()) {
       Status s = DeleteNamespaceWait(is_del_req);
+      ASSERT_FALSE(s.IsTimedOut()) << "Unexpected timeout: " << s;
       WARN_NOT_OK(s, "Expected failure");
       delete_failed = !s.ok();
     }

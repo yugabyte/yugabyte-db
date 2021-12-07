@@ -125,7 +125,7 @@ In the last example above, the column 'hasindexes' is a `Boolean` data type and 
 
 There are a lot of functions that can be applied to text. Below the functions are classified into logical groupings - in many cases the capability of the functions overlap and personal choice will determine how you approach solving the problem.
 
-The focus here was to quickly show how each of the functions could be used, along with some examples. It is assumed that you have the [`yb_demo` database](/latest/quick-start/explore-ysql/#1-load-data) installed.
+The focus here was to quickly show how each of the functions could be used, along with some examples. It is assumed that you have the [`yb_demo` database](/latest/quick-start/explore/ysql/#1-load-data) installed.
 
 ### Altering the appearance of text
 

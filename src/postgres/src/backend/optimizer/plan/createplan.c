@@ -23,6 +23,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
@@ -50,6 +51,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "access/yb_scan.h"
 #include "optimizer/ybcplan.h"
 
 /*
@@ -1661,6 +1663,7 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 		 */
 		subplan = create_plan_recurse(root, best_path->subpath,
 									  CP_IGNORE_TLIST);
+		Assert(is_projection_capable_plan(subplan));
 		tlist = build_path_tlist(root, &best_path->path);
 	}
 	else
@@ -2518,7 +2521,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 									bool *no_row_trigger,
 									List **no_update_index_list)
 {
-	RelOptInfo *relInfo;
+	RelOptInfo *relInfo = NULL;
 	Oid relid;
 	Relation relation;
 	Path *subpath;
@@ -2551,10 +2554,47 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 	/*
 	 * Multi-relation implies multi-shard.
-	 * Note that simple_rel_array is one-based, so size of two implies one entry.
 	 */
-	if (list_length(path->resultRelations) != 1 || root->simple_rel_array_size != 2)
+	if (list_length(path->resultRelations) != 1)
 		return false;
+
+	/*
+	 * Check that the number of relations being updated is 1.
+	 * Note that simple_rel_array is one-based.
+	 */
+	for (int rti = 1; rti < root->simple_rel_array_size; ++rti)
+	{
+			RelOptInfo *rel = root->simple_rel_array[rti];
+			if (rel != NULL)
+			{
+					if (relInfo == NULL)
+					{
+						/* Found the first non null RelOptInfo.
+						 * Set relInfo and relid.
+						 */
+						relInfo = rel;
+						relid = root->simple_rte_array[rti]->relid;
+					}
+					else
+					{
+							/*
+							 * There are multiple entries in simple_rel_array.
+							 * This implies that multiple relations are being
+							 * affected. Single row optimization is not
+							 * applicable here.
+							 */
+							return false;
+					}
+			}
+	}
+
+	/*
+	 * One relation must be updated.
+	 */
+	if (relInfo == NULL)
+	{
+			return false;
+	}
 
 	/* ON CONFLICT clause is not supported here yet. */
 	if (path->onconflict)
@@ -2567,10 +2607,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	/* Only allow at most one returning list. */
 	if (list_length(path->returningLists) > 1)
 		return false;
-
-	/* Extract the relation. Must be first entry since we only have one relation (one-based). */
-	relInfo = root->simple_rel_array[1];
-	relid = root->simple_rte_array[1]->relid;
 
 	/* Verify we're a YB relation. */
 	if (!IsYBRelationById(relid))
@@ -2605,7 +2641,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		index_path = (IndexPath *) projection_path->subpath;
 
 		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
-
+		
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified
 		 * columns. If true user write expression is not a supported single row write expression
@@ -2649,6 +2685,26 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				return false;
 			}
 
+			int resno = tle->resno;
+			TupleDesc tupleDesc = RelationGetDescr(relation);
+			Oid target_collation_id = ybc_get_attcollation(tupleDesc, resno);
+
+			/*
+			 * Updates involving non-C collation columns cannot do pushdown.
+			 * If an indexed column id has a non-C collation and we have in an
+			 * UPDATE statement set id = id || 'a'. After evaluating id || 'a',
+			 * we need to write a collation-encoded string of the result back to
+			 * column id. This requires computing a collation sort key of the
+			 * text result and needs postgres collation info but that is not
+			 * accessible in the tablet server. We can allow pushdown if we can
+			 * detect that column id is not a key-column. In that case we just
+			 * need to store the result itself with no collation-encoding.
+			 */
+			if (YBIsCollationValidNonC(target_collation_id))
+			{
+				RelationClose(relation);
+				return false;
+			}
 
 			if (needs_pushdown)
 			{
@@ -2811,21 +2867,41 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	}
 
 	/*
-	 * Verify RETURNING columns are either primary key or
-	 * UPDATE's SET and not pushed down columns.
-	 * TODO(dmitry): Remove restriction for pushed down columns on #5392 completion.
-	 */
-	if (list_length(path->returningLists) > 0)
+	* Additional check for RETURNING.
+	* For UPDATE, verify RETURNING columns do not contain unsupported expressions.
+	* FOR DELETE, this check passes only when RETURNING column(s) only contain
+	* primary key column(s).
+	*/
+	if (path->operation == CMD_UPDATE && list_length(path->returningLists) > 0)
 	{
 		foreach(values, linitial(path->returningLists))
 		{
-			int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
-			if ((!bms_is_member(attr, update_attrs) &&
-				!bms_is_member(attr, primary_key_attrs)) ||
-				bms_is_member(attr, pushdown_update_attrs))
+			TargetEntry* tle = lfirst_node(TargetEntry, values);
+			int attr = tle->resorigcol;
+			/* 
+			 * When a RETURNING expression is not a projection of a base column,
+			 * its AttrNumber is InvalidAttrNumber.
+			 */
+			if (attr == InvalidAttrNumber && !YBCIsSupportedSingleRowModifyReturningExpr(tle->expr))
 			{
 				RelationClose(relation);
 				return false;
+			}
+		}
+	}
+	else 
+	{
+		if (list_length(path->returningLists) > 0)
+		{
+			foreach(values, linitial(path->returningLists))
+			{
+				int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
+				if (!bms_is_member(attr, update_attrs) &&
+					!bms_is_member(attr, primary_key_attrs))
+				{
+					RelationClose(relation);
+					return false;
+				}
 			}
 		}
 	}
@@ -5107,6 +5183,11 @@ fix_indexqual_operand(Node *node, IndexOptInfo *index, int indexcol)
 	if (index->indexkeys[indexcol] != 0)
 	{
 		/* It's a simple index column */
+		if (IsA(node, FuncExpr))
+		{
+			Assert(((FuncExpr *)(node))->funcid == YB_HASH_CODE_OID);
+			return node;
+		}
 		if (IsA(node, Var) &&
 			((Var *) node)->varno == index->rel->relid &&
 			((Var *) node)->varattno == index->indexkeys[indexcol])

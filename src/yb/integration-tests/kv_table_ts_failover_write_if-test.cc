@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
@@ -27,7 +28,8 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/util/metrics.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -97,7 +99,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     table_.AddInt32ColumnValue(req, kValueColumnName, value);
     string op_str = Format("$0: $1", key, value);
     LOG(INFO) << "Sending write: " << op_str;
-    ASSERT_OK(session->Apply(insert));
+    session->Apply(insert);
     session->FlushAsync([insert, op_str](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       ASSERT_TRUE(s.ok() || s.IsAlreadyPresent())
@@ -262,9 +264,9 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
   });
 
   // Make sure we read initial value.
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&last_read_value]{ return last_read_value == initial_value; }, 60s,
-      "Waiting to read initial value...", small_delay);
+      "Waiting to read initial value...", small_delay));
 
   // Prevent follower_replica_ts_idx from being elected as a new leader.
   SetBoolFlag(follower_replica_ts_idx, "TEST_follower_reject_update_consensus_requests", true);
@@ -345,11 +347,11 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
     } else {
       LOG(INFO) << "Error during CAS: " << s;
       LOG(INFO) << "Retrying CAS: " << op_str;
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
       session->FlushAsync(callback);
     }
   };
-  ASSERT_OK(session->Apply(op));
+  session->Apply(op);
   session->FlushAsync(callback);
 
   // In case of bug ENG-3471 read part of CAS will be completed before appending pending ops to log,

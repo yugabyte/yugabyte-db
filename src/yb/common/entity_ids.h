@@ -15,48 +15,19 @@
 #define YB_COMMON_ENTITY_IDS_H
 
 #include <string>
-#include <set>
-#include <utility>
 
-#include "yb/util/result.h"
-#include "yb/util/strongly_typed_string.h"
+#include "yb/common/entity_ids_types.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
-
-// TODO: switch many of these to opaque types for additional type safety and efficiency.
-
-using NamespaceName = std::string;
-using TableName = std::string;
-using UDTypeName = std::string;
-using RoleName = std::string;
-
-using NamespaceId = std::string;
-using TableId = std::string;
-using UDTypeId = std::string;
-using CDCStreamId = std::string;
-
-using PeerId = std::string;
-using SnapshotId = std::string;
-using TabletServerId = PeerId;
-using TabletId = std::string;
-using TablegroupId = std::string;
-using TablespaceId = std::string;
-
-YB_STRONGLY_TYPED_STRING(KvStoreId);
-
-// TODO(#79): switch to YB_STRONGLY_TYPED_STRING
-using RaftGroupId = std::string;
-
-using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;
-
-using FlushRequestId = std::string;
-
-using RedisConfigKey = std::string;
 
 static const uint32_t kPgSequencesDataTableOid = 0xFFFF;
 static const uint32_t kPgSequencesDataDatabaseOid = 0xFFFF;
 
 static const uint32_t kPgIndexTableOid = 2610;  // Hardcoded for pg_index. (in pg_index.h)
+static const uint32_t kPgNamespaceTableOid = 2615; // Hardcoded for pg_namespace.
+                                                   // (in pg_namespace.h)
 static const uint32_t kPgClassTableOid = 1259;  // Hardcoded for pg_class. (in pg_class.h)
 static const uint32_t kPgDatabaseTableOid = 1262;  // Hardcoded for pg_database. (in pg_database.h)
 static const uint32_t kPgFirstNormalObjectId = 16384; // Hardcoded in transam.h
@@ -64,6 +35,7 @@ static const uint32_t kPgFirstNormalObjectId = 16384; // Hardcoded in transam.h
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgTablespaceTableId;
+extern const std::string kPgSequencesDataNamespaceId;
 
 // Get YB namespace id for a Postgres database.
 NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);
@@ -78,7 +50,7 @@ TablegroupId GetPgsqlTablegroupId(uint32_t database_oid, uint32_t tablegroup_oid
 TablespaceId GetPgsqlTablespaceId(uint32_t tablespace_oid);
 
 // Is the namespace/table id a Postgres database or table id?
-bool IsPgsqlId(const string& id);
+bool IsPgsqlId(const std::string& id);
 
 // Get Postgres database and table oids from a YB namespace/table id.
 Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id);

@@ -34,28 +34,32 @@
 #define YB_MASTER_MASTER_TEST_BASE_H
 
 #include <algorithm>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+#include <boost/optional/optional_fwd.hpp>
+#include <boost/version.hpp>
+#include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master-test-util.h"
-#include "yb/master/call_home.h"
-#include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
+
 #include "yb/rpc/messenger.h"
-#include "yb/server/rpc_server.h"
-#include "yb/server/server_base.proxy.h"
-#include "yb/util/jsonreader.h"
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
@@ -121,6 +125,9 @@ class MasterTestBase : public YBTest {
 
   string default_namespace_name = "default_namespace";
   string default_namespace_id;
+
+  MasterTestBase();
+  ~MasterTestBase();
 
   void SetUp() override;
   void TearDown() override;
@@ -210,59 +217,19 @@ class MasterTestBase : public YBTest {
   }
 
   void CheckNamespaces(const std::set<std::tuple<NamespaceName, NamespaceId>>& namespace_info,
-                       const ListNamespacesResponsePB& namespaces) {
-    for (int i = 0; i < namespaces.namespaces_size(); i++) {
-      auto search_key = std::make_tuple(namespaces.namespaces(i).name(),
-                                        namespaces.namespaces(i).id());
-      ASSERT_TRUE(namespace_info.find(search_key) != namespace_info.end())
-                    << strings::Substitute("Couldn't find namespace $0", namespaces.namespaces(i)
-                        .name());
-    }
-
-    ASSERT_EQ(namespaces.namespaces_size(), namespace_info.size());
-  }
+                       const ListNamespacesResponsePB& namespaces);
 
   bool FindNamespace(const std::tuple<NamespaceName, NamespaceId>& namespace_info,
-                     const ListNamespacesResponsePB& namespaces) {
-    for (int i = 0; i < namespaces.namespaces_size(); i++) {
-      auto cur_ns = std::make_tuple(namespaces.namespaces(i).name(),
-                                    namespaces.namespaces(i).id());
-      if (cur_ns == namespace_info) {
-        return true; // found!
-      }
-    }
-    return false; // namespace not found.
-  }
+                     const ListNamespacesResponsePB& namespaces);
 
   void CheckTables(
       const std::set<std::tuple<TableName, NamespaceName, NamespaceId, bool>>& table_info,
-      const ListTablesResponsePB& tables) {
-    for (int i = 0; i < tables.tables_size(); i++) {
-      auto search_key = std::make_tuple(tables.tables(i).name(),
-                                        tables.tables(i).namespace_().name(),
-                                        tables.tables(i).namespace_().id(),
-                                        tables.tables(i).relation_type());
-      ASSERT_TRUE(table_info.find(search_key) != table_info.end())
-          << strings::Substitute("Couldn't find table $0.$1",
-              tables.tables(i).namespace_().name(), tables.tables(i).name());
-    }
+      const ListTablesResponsePB& tables);
 
-    ASSERT_EQ(tables.tables_size(), table_info.size());
-  }
-
-  void UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config) {
-    ChangeMasterClusterConfigRequestPB change_req;
-    change_req.mutable_cluster_config()->CopyFrom(*cluster_config);
-    ChangeMasterClusterConfigResponsePB change_resp;
-    ASSERT_OK(proxy_->ChangeMasterClusterConfig(change_req, &change_resp, ResetAndGetController()));
-    // Bump version number by 1, so we do not have to re-query.
-    cluster_config->set_version(cluster_config->version() + 1);
-    LOG(INFO) << "Update cluster config to: " << cluster_config->ShortDebugString();
-  }
-
+  void UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config);
   std::unique_ptr<Messenger> client_messenger_;
-  gscoped_ptr<MiniMaster> mini_master_;
-  gscoped_ptr<MasterServiceProxy> proxy_;
+  std::unique_ptr<MiniMaster> mini_master_;
+  std::unique_ptr<MasterServiceProxy> proxy_;
   shared_ptr<RpcController> controller_;
 };
 

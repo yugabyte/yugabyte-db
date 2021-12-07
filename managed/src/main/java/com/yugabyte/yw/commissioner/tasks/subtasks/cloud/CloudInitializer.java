@@ -11,16 +11,23 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.AbstractInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
-import com.yugabyte.yw.cloud.AZUInitializer;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.models.Provider;
+import javax.inject.Inject;
 import play.api.Play;
 
 public class CloudInitializer extends CloudTaskBase {
+  @Inject
+  protected CloudInitializer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
+
   public static class Params extends CloudTaskParams {
     public String regionCode;
   }

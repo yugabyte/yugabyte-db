@@ -10,12 +10,9 @@
 
 set -e
 
-# Create python2 packages.
-export YB_MANAGED_DEVOPS_USE_PYTHON3=0
+export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 bin/install_python_requirements.sh --create_package --use_dynamic_paths
 
-# Use python3 to create the actual release.
-export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 . "${BASH_SOURCE%/*}"/bin/common.sh
 # Use dynamic paths to shorten shebangs below 64 characters.
 bin/install_python_requirements.sh --use_dynamic_paths

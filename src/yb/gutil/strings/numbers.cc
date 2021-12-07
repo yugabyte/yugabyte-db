@@ -28,21 +28,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <iomanip>
 #include <limits>
-using std::numeric_limits;
-#include <string>
 #include <sstream>
-using std::string;
+
+#include <glog/logging.h>
 
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
-#include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strtoint.h"
 #include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/gutil/strtoint.h"
+
+using std::numeric_limits;
+using std::string;
+
 
 // Reads a <double> in *text, which may not be whitespace-initiated.
 // *len is the length, or -1 if text is '\0'-terminated, which is more
@@ -94,7 +95,7 @@ static inline bool EatADouble(const char** text, int* len, bool allow_question,
     retval = strtod(pos, &end_nonconst);
   } else {
     // not '\0'-terminated & no obvious terminator found. must copy.
-    gscoped_array<char> buf(new char[rem + 1]);
+    std::unique_ptr<char[]> buf(new char[rem + 1]);
     memcpy(buf.get(), pos, rem);
     buf[rem] = '\0';
     retval = strtod(buf.get(), &end_nonconst);
@@ -918,6 +919,13 @@ char *InternalFastHexToBuffer(uint64 value, char* buffer, int num_byte) {
 
 char *FastHex64ToBuffer(uint64 value, char* buffer) {
   return InternalFastHexToBuffer(value, buffer, 16);
+}
+
+std::string FastHex64ToString(uint64 value) {
+  std::string result;
+  result.resize(16);
+  InternalFastHexToBuffer(value, &result[0], 16);
+  return result;
 }
 
 char *FastHex32ToBuffer(uint32 value, char* buffer) {

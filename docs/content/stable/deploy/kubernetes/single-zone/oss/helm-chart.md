@@ -14,7 +14,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="{{< relref "./helm-chart.md" >}}" class="nav-link active">
@@ -52,8 +51,8 @@ You must have a Kubernetes cluster that has Helm configured. If you have not ins
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB.
-- Helm 3.0 or later.
+- Kubernetes 1.18 (or later) with nodes such that a total of 12 CPU cores and 18 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 6 GB RAM allocated to YugabyteDB.
+- Helm 3.4 or later.
 - YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later
 - For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
@@ -63,7 +62,7 @@ Confirm that `helm` and `kubectl` are configured correctly.
 $ helm version
 ```
 
-```
+```output
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```
 
@@ -97,9 +96,9 @@ $ helm search repo yugabytedb/yugabyte
 
 **Output:**
 
-```sh
-NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...
+```output
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
+yugabytedb/yugabyte     2.8.0           2.8.0.0-b37    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -139,10 +138,10 @@ enableLoadBalancer=False --namespace yb-demo
 
 {{< note title="Important" >}}
 
-On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the vm with at least 4 cpus and 5GB memory so 
-the cluster has room to startup. Example command:
-```
-minikube start --cpus 4 --memory 5120
+On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the VM with at least 4 CPUs and 5 GB memory so the cluster has room to start up. Example command:
+
+```sh
+$ minikube start --cpus 4 --memory 5120
 ```
 
 {{< /note >}}
@@ -157,7 +156,7 @@ $ helm status yb-demo -n yb-demo
 
 **Output**:
 
-```sh
+```output
 NAME: yb-demo
 LAST DEPLOYED: Thu Feb 13 13:29:13 2020
 NAMESPACE: yb-demo
@@ -193,7 +192,7 @@ Check the pods.
 $ kubectl get pods --namespace yb-demo
 ```
 
-```
+```output
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    2/2       Running   0          4m
 yb-master-1    2/2       Running   0          4m
@@ -209,7 +208,7 @@ Check the services.
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)                                        AGE
 yb-master-ui         LoadBalancer   10.109.39.242   35.225.153.213 7000:31920/TCP                                 10s
 yb-masters           ClusterIP      None            <none>         7100/TCP,7000/TCP                              10s
@@ -225,9 +224,9 @@ $ helm history yb-demo -n yb-demo
 
 **Output:**
 
-```sh
-REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.1.4 2.1.4.0-b5  Install complete
+```output
+REVISION  UPDATED                   STATUS    CHART           APP VERSION  DESCRIPTION
+1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.6.5  2.6.5.0-b4   Install complete
 ```
 
 ## Connect using YugabyteDB Shells
@@ -252,7 +251,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` IP address o
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-tserver-service   LoadBalancer   10.98.36.163    35.225.153.214     6379:30929/TCP,9042:30975/TCP,5433:30048/TCP   10s
@@ -265,23 +264,34 @@ Instead of using the default values in the Helm chart, you can also modify the c
 
 ### CPU, memory, and replica count
 
-The default values for the Helm chart are in the `helm/yugabyte/values.yaml` file. The most important ones are listed below. As noted in the Prerequisites section above, the defaults are set for a 3-node Kubernetes cluster, each node with 4 CPU cores and 15 GB RAM.
+The default values for the Helm chart are in the `helm/yugabyte/values.yaml` file. The most important ones are listed below. As noted in the Prerequisites section above, the defaults are set for a 3-node Kubernetes cluster, each node with 4 CPU cores and 6 GB RAM allocated to YugabyteDB.
 
-```
-persistentVolume:
-  count: 2
-  storage: 10Gi
-  storageClass: standard
+```yaml
+storage:
+  master:
+    count: 2
+    size: 10Gi
+    storageClass: standard
+  tserver:
+    count: 2
+    size: 10Gi
+    storageClass: standard
 
 resource:
   master:
     requests:
       cpu: 2
-      memory: 7.5Gi
+      memory: 2Gi
+    limits:
+      cpu: 2
+      memory: 2Gi
   tserver:
     requests:
       cpu: 2
-      memory: 7.5Gi
+      memory: 4Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
 
 replicas:
   master: 3

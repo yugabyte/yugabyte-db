@@ -13,8 +13,12 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/common/ybc-internal.h"
+
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -88,10 +92,10 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
       // Update the constant expresions to insert the next row.
       // TODO(neil) When we support binds, we can also call UpdateBind here.
-      string h_str = strings::Substitute("$0", h);
+      h_str = strings::Substitute("$0", h);
       CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_id, h_str.c_str(), false));
       CHECK_YBC_STATUS(YBCPgUpdateConstInt8(expr_r1, r, false));
-      string val = strings::Substitute("$0-$1", h, r);
+      val = strings::Substitute("$0-$1", h, r);
       CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_val, val.c_str(), false));
     }
   }

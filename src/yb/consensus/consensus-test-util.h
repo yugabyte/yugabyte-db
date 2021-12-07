@@ -46,12 +46,13 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/test_consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/test_consensus_context.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
@@ -59,6 +60,7 @@
 #include "yb/server/clock.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -265,7 +267,7 @@ class DelayablePeerProxy : public TestPeerProxy {
   }
 
  protected:
-  gscoped_ptr<ProxyType> const proxy_;
+  std::unique_ptr<ProxyType> const proxy_;
   bool delay_response_; // Protected by lock_.
   CountDownLatch latch_;
 };
@@ -425,7 +427,7 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
     return messenger_.get();
   }
 
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   std::unique_ptr<rpc::Messenger> messenger_;
 };
 
@@ -648,7 +650,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   }
 
  private:
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   rpc::AutoShutdownMessengerHolder messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
@@ -659,7 +661,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
 // This is usually implemented by OperationDriver but here we
 // keep the implementation to the minimally required to have consensus
 // work.
-class TestDriver {
+class TestDriver : public ConsensusRoundCallback {
  public:
   TestDriver(ThreadPool* pool, const scoped_refptr<ConsensusRound>& round)
       : round_(round), pool_(pool) {
@@ -670,7 +672,8 @@ class TestDriver {
   }
 
   // Does nothing but enqueue the Apply
-  void ReplicationFinished(const Status& status) {
+  void ReplicationFinished(
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids) override {
     if (status.IsAborted()) {
       Cleanup();
       return;
@@ -678,6 +681,8 @@ class TestDriver {
     CHECK_OK(status);
     CHECK_OK(pool_->SubmitFunc(std::bind(&TestDriver::Apply, this)));
   }
+
+  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {}
 
   // Called in all modes to delete the transaction and, transitively, the consensus
   // round.
@@ -726,8 +731,7 @@ class TestOperationFactory : public TestConsensusContext {
   CHECKED_STATUS StartReplicaOperation(
       const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     auto txn = new TestDriver(pool_.get(), round);
-    txn->round_->SetConsensusReplicatedCallback(std::bind(&TestDriver::ReplicationFinished,
-                                                     txn, std::placeholders::_1));
+    txn->round_->SetCallback(txn);
     return Status::OK();
   }
 
@@ -749,7 +753,7 @@ class TestOperationFactory : public TestConsensusContext {
   }
 
  private:
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   Consensus* consensus_ = nullptr;
 };
 

@@ -11,21 +11,29 @@
 // under the License.
 //
 
-#include "yb/yql/pggate/pggate.h"
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
+#include "yb/common/ybc_util.h"
 
-#include "yb/tserver/tserver_shared_mem.h"
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/debug-util.h"
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+
+#include "yb/yql/pggate/pggate_flags.h"
 
 DEFINE_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");
@@ -37,26 +45,38 @@ DEFINE_bool(use_node_hostname_for_local_tserver, false,
     VLOG(vlog_level) << __func__ << ": " << TxnStateDebugStr() \
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
+DECLARE_uint64(max_clock_skew_usec);
+
+DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
+
 namespace {
 
-constexpr uint64_t txn_priority_highpri_upper_bound = yb::kHighPriTxnUpperBound;
-constexpr uint64_t txn_priority_highpri_lower_bound = yb::kHighPriTxnLowerBound;
-
 // Local copies that can be modified.
+uint64_t txn_priority_highpri_upper_bound = yb::kHighPriTxnUpperBound;
+uint64_t txn_priority_highpri_lower_bound = yb::kHighPriTxnLowerBound;
+
 uint64_t txn_priority_regular_upper_bound = yb::kRegularTxnUpperBound;
 uint64_t txn_priority_regular_lower_bound = yb::kRegularTxnLowerBound;
 
-// Converts double value in range 0..1 to uint64_t value in range
-// 0..(txn_priority_highpri_lower_bound - 1)
-uint64_t ConvertBound(double value) {
+// Converts double value in range 0..1 to uint64_t value in range [minValue, maxValue]
+uint64_t ConvertBound(long double value, uint64_t minValue, uint64_t maxValue) {
   if (value <= 0.0) {
-    return 0;
+    return minValue;
   }
+
   if (value >= 1.0) {
-    return txn_priority_highpri_lower_bound - 1;
+    return maxValue;
   }
-  // Have to cast to double to avoid a warning on implicit cast that changes the value.
-  return value * (static_cast<double>(txn_priority_highpri_lower_bound) - 1);
+
+  return minValue + value * (maxValue - minValue);
+}
+
+uint64_t ConvertRegularPriorityTxnBound(double value) {
+  return ConvertBound(value, yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound);
+}
+
+uint64_t ConvertHighPriorityTxnBound(double value) {
+  return ConvertBound(value, yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound);
 }
 
 } // namespace
@@ -64,16 +84,24 @@ uint64_t ConvertBound(double value) {
 extern "C" {
 
 void YBCAssignTransactionPriorityLowerBound(double newval, void* extra) {
-  txn_priority_regular_lower_bound = ConvertBound(newval);
+  txn_priority_regular_lower_bound = ConvertRegularPriorityTxnBound(newval);
+  txn_priority_highpri_lower_bound = ConvertHighPriorityTxnBound(newval);
   // YSQL layer checks (guc.c) should ensure this.
   DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
+  DCHECK_LE(txn_priority_highpri_lower_bound, txn_priority_highpri_upper_bound);
+  DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_highpri_lower_bound);
 }
 
 void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
-  txn_priority_regular_upper_bound = ConvertBound(newval);
+  txn_priority_regular_upper_bound = ConvertRegularPriorityTxnBound(newval);
+  txn_priority_highpri_upper_bound = ConvertHighPriorityTxnBound(newval);
   // YSQL layer checks (guc.c) should ensure this.
   DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
+  DCHECK_LE(txn_priority_highpri_lower_bound, txn_priority_highpri_upper_bound);
+  DCHECK_LE(txn_priority_regular_upper_bound, txn_priority_highpri_lower_bound);
 }
+
+int* YBCStatementTimeoutPtr = nullptr;
 
 }
 
@@ -90,6 +118,30 @@ using client::YBTransactionPtr;
 using client::YBSession;
 using client::YBSessionPtr;
 using client::LocalTabletFilter;
+
+#if defined(__APPLE__) && !defined(NDEBUG)
+// We are experiencing more slowness in tests on macOS in debug mode.
+const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
+#else
+const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
+#endif
+
+DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
+             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
+
+std::shared_ptr<yb::client::YBSession> BuildSession(
+    yb::client::YBClient* client,
+    const scoped_refptr<ClockBase>& clock) {
+  int statement_timeout = YBCStatementTimeoutPtr ? *YBCStatementTimeoutPtr : 0;
+  int session_timeout = FLAGS_pg_yb_session_timeout_ms;
+  if (statement_timeout > 0 && statement_timeout < session_timeout) {
+    session_timeout = statement_timeout;
+  }
+  auto session = std::make_shared<YBSession>(client, clock);
+  session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  session->SetTimeout(MonoDelta::FromMilliseconds(session_timeout));
+  return session;
+}
 
 PgTxnManager::PgTxnManager(
     AsyncClientInitialiser* async_client_init,
@@ -145,6 +197,39 @@ Status PgTxnManager::SetIsolationLevel(int level) {
 
 Status PgTxnManager::SetReadOnly(bool read_only) {
   read_only_ = read_only;
+  VLOG(2) << __func__ << " set to " << read_only_ << " from " << GetStackTrace();
+  return UpdateReadTimeForFollowerReadsIfRequired();
+}
+
+Status PgTxnManager::EnableFollowerReads(bool enable_follower_reads, int32_t session_staleness) {
+  VLOG_TXN_STATE(2) << (enable_follower_reads ? "Enabling follower reads "
+                                              : "Disabling follower reads ")
+                    << " with staleness " << session_staleness << " ms";
+  enable_follower_reads_ = enable_follower_reads;
+  follower_read_staleness_ms_ = session_staleness;
+  return UpdateReadTimeForFollowerReadsIfRequired();
+}
+
+Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
+  if (enable_follower_reads_ && read_only_ && !updated_read_time_for_follower_reads_) {
+    constexpr int32_t kMargin = 2;
+    RSTATUS_DCHECK(
+        follower_read_staleness_ms_ * 1000 > kMargin * GetAtomicFlag(&FLAGS_max_clock_skew_usec),
+        InvalidArgument,
+        yb::Format("Setting follower read staleness less than the $0 x max_clock_skew.", kMargin));
+    // Add a delta to the start point to lower the read point.
+    session_->SetReadPoint(ReadHybridTime::SingleTime(
+        clock_->Now().AddMilliseconds(-1 * follower_read_staleness_ms_)));
+    VLOG_TXN_STATE(2) << "Updating read-time with staleness "
+                      << yb::ToString(follower_read_staleness_ms_) << " to "
+                      << yb::ToString(session_->read_point()->GetReadTime());
+    updated_read_time_for_follower_reads_ = true;
+  } else {
+    VLOG(2) << " Not updating read-time " << yb::ToString(pg_isolation_level_)
+            << (updated_read_time_for_follower_reads_ ? " Already updated." : "")
+            << (enable_follower_reads_ ? " Follower reads allowed." : " Follower reads DISallowed.")
+            << (read_only_ ? " Is read-only" : " Is NOT read-only");
+  }
   return Status::OK();
 }
 
@@ -154,9 +239,11 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 }
 
 void PgTxnManager::StartNewSession() {
-  session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
+  session_ = BuildSession(async_client_init_->client(), clock_);
   session_->SetReadPoint(client::Restart::kFalse);
-  session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  enable_follower_reads_ = false;
+  read_only_ = false;
+  updated_read_time_for_follower_reads_ = false;
 }
 
 uint64_t PgTxnManager::GetPriority(const NeedsPessimisticLocking needs_pessimistic_locking) {
@@ -219,7 +306,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
   } else {
     if (tserver_shared_object_) {
       if (!tablet_server_proxy_) {
-        boost::optional<MonoDelta> resolve_cache_timeout;
+        MonoDelta resolve_cache_timeout;
         const auto& tserver_shared_data_ = **tserver_shared_object_;
         HostPort host_port(tserver_shared_data_.endpoint());
         if (FLAGS_use_node_hostname_for_local_tserver) {
@@ -234,6 +321,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
       }
       tserver::TakeTransactionRequestPB req;
       tserver::TakeTransactionResponsePB resp;
+      req.set_is_global(yb_force_global_transaction);
       rpc::RpcController controller;
       // TODO(dtxn) propagate timeout from higher level
       controller.set_timeout(10s);
@@ -262,7 +350,27 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
   return Status::OK();
 }
 
+Status PgTxnManager::SetActiveSubTransaction(SubTransactionId id) {
+  RETURN_NOT_OK(BeginWriteTransactionIfNecessary(
+      false /* read_only_op */, false /* needs_pessimistic_locking */));
+  SCHECK(
+      txn_, InternalError, "Attempted to set active subtransaction on uninitialized transaciton.");
+  txn_->SetActiveSubTransaction(id);
+  return Status::OK();
+}
+
+Status PgTxnManager::RollbackSubTransaction(SubTransactionId id) {
+  SCHECK(txn_, InternalError, "Attempted to rollback on uninitialized transaciton.");
+  return txn_->RollbackSubTransaction(id);
+}
+
 Status PgTxnManager::RestartTransaction() {
+  RSTATUS_DCHECK(
+      !txn_ || !txn_->HasSubTransactionState(), IllegalState,
+      "Attempted to restart when session has established savepoints");
+  RSTATUS_DCHECK(
+      !updated_read_time_for_follower_reads_, IllegalState,
+      "Attempted to restart when session used follower reads.");
   if (!txn_in_progress_ || !txn_) {
     CHECK_NOTNULL(session_);
     if (!session_->IsRestartRequired()) {
@@ -279,6 +387,21 @@ Status PgTxnManager::RestartTransaction() {
 
   DCHECK(can_restart_.load(std::memory_order_acquire));
 
+  return Status::OK();
+}
+
+/* This is called at the start of each statement in READ COMMITTED isolation level */
+Status PgTxnManager::MaybeResetTransactionReadPoint() {
+  CHECK_NOTNULL(session_);
+  // If a txn_ has been created, session_->read_point() returns the read point stored in txn_.
+  ConsistentReadPoint* rp = session_->read_point();
+  if (rp->RecentlyRestartedReadPoint()) {
+    rp->UnSetRecentlyRestartedReadPoint();
+    return Status::OK();
+  }
+  rp->SetCurrentReadTime();
+
+  VLOG(1) << "Setting current ht as read point " << rp->GetReadTime();
   return Status::OK();
 }
 
@@ -300,26 +423,25 @@ Status PgTxnManager::CommitTransaction() {
   return status;
 }
 
-Status PgTxnManager::AbortTransaction() {
+void PgTxnManager::AbortTransaction() {
   // If a DDL operation during a DDL txn fails the txn will be aborted before we get here.
   // However if there are failures afterwards (i.e. during COMMIT or catalog version increment),
   // then we might get here with a ddl_txn_. Clean it up in that case.
   if (ddl_txn_) {
-    RETURN_NOT_OK(ExitSeparateDdlTxnMode(false));
+    ClearSeparateDdlTxnMode();
   }
 
   if (!txn_in_progress_) {
-    return Status::OK();
+    return;
   }
   if (!txn_) {
     // This was a read-only transaction, nothing to commit.
     ResetTxnAndSession();
-    return Status::OK();
+    return;
   }
   // TODO: how do we report errors if the transaction has already committed?
   txn_->Abort();
   ResetTxnAndSession();
-  return Status::OK();
 }
 
 // TODO: dedup with similar logic in CQLServiceImpl.
@@ -368,8 +490,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!ddl_txn_,
           IllegalState, "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
-  ddl_session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  ddl_session_ = BuildSession(async_client_init_->client(), clock_);
   ddl_txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
   ddl_session_->SetTransaction(ddl_txn_);
   RETURN_NOT_OK(ddl_txn_->Init(
@@ -379,19 +500,24 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   return Status::OK();
 }
 
-Status PgTxnManager::ExitSeparateDdlTxnMode(bool is_success) {
-  VLOG_TXN_STATE(2) << "is_success=" << is_success;
+Status PgTxnManager::ExitSeparateDdlTxnMode() {
+  VLOG_TXN_STATE(2);
   RSTATUS_DCHECK(
       ddl_txn_ != nullptr,
       IllegalState, "ExitSeparateDdlTxnMode called when not in a DDL transaction");
-  if (is_success) {
-    RETURN_NOT_OK(ddl_txn_->CommitFuture().get());
-  } else {
+  RETURN_NOT_OK(ddl_txn_->CommitFuture().get());
+  ddl_txn_.reset();
+  ddl_session_.reset();
+  return Status::OK();
+}
+
+void PgTxnManager::ClearSeparateDdlTxnMode() {
+  VLOG_TXN_STATE(2);
+  if (ddl_txn_) {
     ddl_txn_->Abort();
   }
   ddl_txn_.reset();
   ddl_session_.reset();
-  return Status::OK();
 }
 
 std::string PgTxnManager::TxnStateDebugStr() const {

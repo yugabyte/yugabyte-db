@@ -39,14 +39,12 @@
 #include <string>
 #include <vector>
 
+#include <gflags/gflags_declare.h>
 #include <gtest/gtest_prod.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
-#include "yb/util/metrics.h"
-#include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
 DECLARE_bool(enable_data_block_fsync);
@@ -73,6 +71,9 @@ YB_STRONGLY_TYPED_BOOL(ShouldDeleteLogs);
 struct FsManagerOpts {
   FsManagerOpts();
   ~FsManagerOpts();
+
+  FsManagerOpts(const FsManagerOpts&);
+  FsManagerOpts& operator=(const FsManagerOpts&);
 
   // The entity under which all metrics should be grouped. If NULL, metrics
   // will not be produced.
@@ -156,6 +157,8 @@ class FsManager {
   // ==========================================================================
   //  on-disk path
   // ==========================================================================
+  std::set<std::string> GetFsRootDirs() const;
+
   std::vector<std::string> GetDataRootDirs() const;
 
   std::vector<std::string> GetWalRootDirs() const;
@@ -171,7 +174,7 @@ class FsManager {
   static bool IsWalSegmentFileName(const std::string& file_name);
 
   static std::string GetWalSegmentFilePath(
-      const string& wal_path, uint64_t sequence_number) {
+      const std::string& wal_path, uint64_t sequence_number) {
     return JoinPathSegments(wal_path, GetWalSegmentFileName(sequence_number));
   }
 
@@ -213,15 +216,9 @@ class FsManager {
     return env_->FileExists(path);
   }
 
-  CHECKED_STATUS ListDir(const std::string& path, std::vector<std::string> *objects) const {
-    return env_->GetChildren(path, objects);
-  }
+  CHECKED_STATUS ListDir(const std::string& path, std::vector<std::string> *objects) const;
 
-  Result<std::vector<std::string>> ListDir(const std::string& path) const {
-    std::vector<std::string> result;
-    RETURN_NOT_OK(env_->GetChildren(path, ExcludeDots::kTrue, &result));
-    return result;
-  }
+  Result<std::vector<std::string>> ListDir(const std::string& path) const;
 
   CHECKED_STATUS CreateDirIfMissing(const std::string& path, bool* created = NULL);
 
@@ -291,7 +288,7 @@ class FsManager {
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
 
-  gscoped_ptr<InstanceMetadataPB> metadata_;
+  std::unique_ptr<InstanceMetadataPB> metadata_;
 
   bool initted_;
 

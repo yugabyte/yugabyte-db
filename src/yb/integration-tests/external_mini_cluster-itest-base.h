@@ -44,6 +44,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/util/pstack_watcher.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -87,8 +88,8 @@ class ExternalMiniClusterITestBase : public YBTest {
                     int num_masters = 1,
                     bool enable_ysql = false);
 
-  gscoped_ptr<ExternalMiniCluster> cluster_;
-  gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   std::unique_ptr<client::YBClient> client_;
   itest::TabletServerMap ts_map_;
 };

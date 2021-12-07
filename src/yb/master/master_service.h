@@ -63,9 +63,6 @@ class MasterServiceImpl : public MasterServiceIf,
   void IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                          IsCreateTableDoneResponsePB* resp,
                          rpc::RpcContext rpc) override;
-  void AnalyzeTable(const AnalyzeTableRequestPB* req,
-                    AnalyzeTableResponsePB* resp,
-                    rpc::RpcContext rpc) override;
   void TruncateTable(const TruncateTableRequestPB* req,
                      TruncateTableResponsePB* resp,
                      rpc::RpcContext rpc) override;
@@ -107,6 +104,9 @@ class MasterServiceImpl : public MasterServiceIf,
                                 rpc::RpcContext rpc) override;
   void ListTabletServers(const ListTabletServersRequestPB* req,
                          ListTabletServersResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+  void ListLiveTabletServers(const ListLiveTabletServersRequestPB* req,
+                         ListLiveTabletServersResponsePB* resp,
                          rpc::RpcContext rpc) override;
 
   void CreateNamespace(const CreateNamespaceRequestPB* req,
@@ -202,6 +202,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void GetCDCStream(const GetCDCStreamRequestPB* req,
                     GetCDCStreamResponsePB* resp,
                     rpc::RpcContext rpc) override;
+  void UpdateCDCStream(const UpdateCDCStreamRequestPB *req,
+                       UpdateCDCStreamResponsePB* resp,
+                       rpc::RpcContext rpc) override;
 
   void ListMasters(const ListMastersRequestPB* req,
                    ListMastersResponsePB* resp,
@@ -319,11 +322,23 @@ class MasterServiceImpl : public MasterServiceIf,
                               GetUniverseReplicationResponsePB* resp,
                               rpc::RpcContext rpc) override;
 
+  void IsSetupUniverseReplicationDone(const IsSetupUniverseReplicationDoneRequestPB* req,
+                                      IsSetupUniverseReplicationDoneResponsePB* resp,
+                                      rpc::RpcContext rpc) override;
+
   void SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
-  void DeleteTablet(
-      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) override;
+  void CreateTransactionStatusTable(const CreateTransactionStatusTableRequestPB* req,
+                                    CreateTransactionStatusTableResponsePB* resp,
+                                    rpc::RpcContext rpc) override;
+
+  void DeleteNotServingTablet(
+      const DeleteNotServingTabletRequestPB* req,
+      DeleteNotServingTabletResponsePB* resp,
+      rpc::RpcContext rpc) override;
+
+  void DdlLog(const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext rpc) override;
 
  private:
 };

@@ -195,11 +195,11 @@ When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32 G
 
 ### 1 Million Rows
 
-| Workload | Throughput (ops/sec) | Read Latency | Write Latency
--------------|-----------|------------|------------|
-Workload A | 1,08,249 | 1ms | 3.5 ms update
-Workload B | 1,41,061 | 1.6ms | 4ms update
-Workload C | 1,88,111 | 1.3ms | Not applicable
-Workload D | 1,53,165 | 1.5ms | 4.5ms insert
-Workload E | 23,489 | 10ms scan | Not applicable
-Workload F | 80,451 | 1ms | 5ms read-modify-write
+| Workload | Throughput (ops/sec) | Read Latency | Write Latency |
+| :------- | -------------------: | :----------- | :------------ |
+| Workload A | 108,249 | 1 ms | 3.5 ms update |
+| Workload B | 141,061 | 1.6 ms | 4 ms update |
+| Workload C | 188,111 | 1.3 ms | Not applicable |
+| Workload D | 153,165 | 1.5 ms | 4.5 ms insert |
+| Workload E | 23,489 | 10 ms scan | Not applicable |
+| Workload F | 80,451 | 1 ms | 5 ms read-modify-write |

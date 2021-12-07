@@ -6,9 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 
-/**
- * This class will be used by the API to generate entries on Queries tab
- */
+/** This class will be used by the API to generate entries on Queries tab */
 public class LiveQueriesParams {
 
   public static class YSQLQueryParams {
@@ -20,14 +18,11 @@ public class LiveQueriesParams {
 
     public String process_start_time;
 
-    @JsonIgnore
-    public int process_running_for_ms;
+    @JsonIgnore public int process_running_for_ms;
 
-    @JsonIgnore
-    public String transaction_start_time;
+    @JsonIgnore public String transaction_start_time;
 
-    @JsonIgnore
-    public int transaction_running_for_ms;
+    @JsonIgnore public int transaction_running_for_ms;
 
     public int query_running_for_ms;
 
@@ -51,8 +46,7 @@ public class LiveQueriesParams {
 
     public ConnectionDetails connection_details;
 
-    @JsonIgnore
-    public int processed_call_count;
+    @JsonIgnore public int processed_call_count;
 
     public List<QueryCallsInFlight> calls_in_flight;
   }
@@ -61,7 +55,6 @@ public class LiveQueriesParams {
     public int elapsed_millis;
 
     public CassandraQueryDetails cql_details;
-
   }
 
   public static class CassandraQueryDetails {

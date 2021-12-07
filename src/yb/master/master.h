@@ -37,18 +37,16 @@
 #include <string>
 #include <vector>
 
-#include "yb/consensus/consensus.pb.h"
-#include "yb/gutil/gscoped_ptr.h"
+#include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_options.h"
 #include "yb/master/master_tserver.h"
 #include "yb/server/server_base.h"
-#include "yb/util/metrics.h"
-#include "yb/util/promise.h"
-#include "yb/util/status.h"
+#include "yb/tserver/db_server_base.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -67,12 +65,7 @@ struct RpcServerOptions;
 
 namespace master {
 
-class CatalogManager;
-class TSManager;
-class MasterPathHandlers;
-class FlushManager;
-
-class Master : public server::RpcAndWebServerBase {
+class Master : public tserver::DbServerBase {
  public:
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
@@ -92,15 +85,21 @@ class Master : public server::RpcAndWebServerBase {
 
   void Shutdown();
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
   TSManager* ts_manager() const { return ts_manager_.get(); }
 
-  enterprise::CatalogManager* catalog_manager() const { return catalog_manager_.get(); }
+  CatalogManagerIf* catalog_manager() const;
+
+  enterprise::CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
 
   FlushManager* flush_manager() const { return flush_manager_.get(); }
 
-  scoped_refptr<MetricEntity> metric_entity_cluster() { return metric_entity_cluster_; }
+  PermissionsManager& permissions_manager();
+
+  EncryptionManager& encryption_manager();
+
+  scoped_refptr<MetricEntity> metric_entity_cluster();
 
   void SetMasterAddresses(std::shared_ptr<server::MasterAddresses> master_addresses) {
     opts_.SetMasterAddresses(std::move(master_addresses));
@@ -146,14 +145,32 @@ class Master : public server::RpcAndWebServerBase {
   // Called currently by cluster master leader which is removing this master from the quorum.
   CHECKED_STATUS GoIntoShellMode();
 
+  SysCatalogTable& sys_catalog() const;
+
   yb::client::AsyncClientInitialiser& async_client_initializer() {
     return *async_client_init_;
+  }
+
+  enum MasterMetricType {
+    TaskMetric,
+    AttemptMetric,
+  };
+
+  // Functon that returns a object pointer to a RPC's histogram metric. If a histogram
+  // metric pointer is not created, it will create a new object pointer and return it.
+  scoped_refptr<Histogram> GetMetric(const std::string& metric_identifier,
+                                     Master::MasterMetricType type,
+                                     const std::string& description);
+
+  std::map<std::string, scoped_refptr<Histogram>>* master_metrics()
+    REQUIRES (master_metrics_mutex_) {
+      return &master_metrics_;
   }
 
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
-  void DisplayGeneralInfoIcons(std::stringstream* output);
+  void DisplayGeneralInfoIcons(std::stringstream* output) override;
 
  private:
   friend class MasterTest;
@@ -165,6 +182,10 @@ class Master : public server::RpcAndWebServerBase {
   // Requires that the web server and RPC server have been started.
   CHECKED_STATUS InitMasterRegistration();
 
+  const std::shared_future<client::YBClient*>& client_future() const override;
+
+  client::LocalTabletFilter CreateLocalTabletFilter() override;
+
   enum MasterState {
     kStopped,
     kInitialized,
@@ -173,17 +194,18 @@ class Master : public server::RpcAndWebServerBase {
 
   MasterState state_;
 
-  gscoped_ptr<TSManager> ts_manager_;
-  gscoped_ptr<enterprise::CatalogManager> catalog_manager_;
-  gscoped_ptr<MasterPathHandlers> path_handlers_;
-  gscoped_ptr<FlushManager> flush_manager_;
+  std::unique_ptr<TSManager> ts_manager_;
+  std::unique_ptr<enterprise::CatalogManager> catalog_manager_;
+  std::unique_ptr<MasterPathHandlers> path_handlers_;
+  std::unique_ptr<FlushManager> flush_manager_;
 
   // For initializing the catalog manager.
-  gscoped_ptr<ThreadPool> init_pool_;
+  std::unique_ptr<ThreadPool> init_pool_;
 
   // The status of the master initialization. This is set
   // by the async initialization task.
-  Promise<Status> init_status_;
+  std::promise<Status> init_status_;
+  std::shared_future<Status> init_future_;
 
   MasterOptions opts_;
 
@@ -201,6 +223,8 @@ class Master : public server::RpcAndWebServerBase {
   std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
   std::unique_ptr<yb::client::AsyncClientInitialiser> async_client_init_;
+  std::mutex master_metrics_mutex_;
+  std::map<std::string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Master);
 };

@@ -8,45 +8,60 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-
 package com.yugabyte.yw.cloud;
+
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP2_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_THROUGHPUT;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GROUP_EBS_IOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GROUP_EBS_THROUGHPUT;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.PRODUCT_FAMILY_COMPUTE_INSTANCE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.PRODUCT_FAMILY_PROVISIONED_THROUGHPUT;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.PRODUCT_FAMILY_STORAGE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.PRODUCT_FAMILY_SYSTEM_OPERATION;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_GENERAL_PURPOSE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_NAME_GP2;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_NAME_GP3;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_API_NAME_IO1;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.VOLUME_TYPE_PROVISIONED_IOPS;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
-import play.Environment;
-import play.libs.Json;
-import play.mvc.Result;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
-
-import static com.yugabyte.yw.cloud.PublicCloudConstants.*;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+import play.Environment;
+import play.libs.Json;
 
 // TODO: move pricing data fetch to ybcloud.
 @Singleton
 public class AWSInitializer extends AbstractInitializer {
+
   private static final boolean enableVerboseLogging = false;
 
-  @Inject
-  Environment environment;
+  @Inject Environment environment;
+
+  @Inject ConfigHelper configHelper;
 
   /**
    * Entry point to initialize AWS. This will create the various InstanceTypes and their
@@ -54,126 +69,93 @@ public class AWSInitializer extends AbstractInitializer {
    *
    * @param customerUUID UUID of the Customer.
    * @param providerUUID UUID of the Customer's configured AWS.
-   * @return A response result that can be returned to the user to indicate success/failure.
    */
   @Override
-  public Result initialize(UUID customerUUID, UUID providerUUID) {
-    try {
-      Provider provider = Provider.get(customerUUID, providerUUID);
-      InitializationContext context = new InitializationContext(provider);
+  public void initialize(UUID customerUUID, UUID providerUUID) {
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    InitializationContext context = new InitializationContext(provider);
 
-      LOG.info("Initializing AWS instance type and pricing info.");
-      LOG.info("This operation may take a few minutes...");
-      // Get the price Json object stored locally at conf/aws_pricing.
-      for (Region region : provider.regions) {
-        JsonNode regionJson = null;
+    LOG.info("Initializing AWS instance type and pricing info.");
+    LOG.info("This operation may take a few minutes...");
+    // Get the price Json object stored locally at conf/aws_pricing.
+    for (Region region : provider.regions) {
+      JsonNode regionJson = null;
 
-        String pricingFileName = "aws_pricing/" + region.code + ".tar.gz";
-        try (InputStream pricingStream = environment.resourceAsStream(pricingFileName);
-             GzipCompressorInputStream gzipStream = new GzipCompressorInputStream(pricingStream);
-             TarArchiveInputStream regionStream = new TarArchiveInputStream(gzipStream))
-        {
-          TarArchiveEntry currentEntry;
-          boolean pricingFileFound = false;
-          while ((currentEntry = regionStream.getNextTarEntry()) != null) {
-            if (currentEntry.getName().equals(region.code)) {
-              pricingFileFound = true;
-              break;
-            } else {
-              LOG.warn("Unexpected file in pricing archive {}", currentEntry.getName());
-            }
+      String pricingFileName = "aws_pricing/" + region.code + ".tar.gz";
+      try (InputStream pricingStream = environment.resourceAsStream(pricingFileName);
+          GzipCompressorInputStream gzipStream = new GzipCompressorInputStream(pricingStream);
+          TarArchiveInputStream regionStream = new TarArchiveInputStream(gzipStream)) {
+        TarArchiveEntry currentEntry;
+        boolean pricingFileFound = false;
+        while ((currentEntry = regionStream.getNextTarEntry()) != null) {
+          if (currentEntry.getName().equals(region.code)) {
+            pricingFileFound = true;
+            break;
+          } else {
+            LOG.warn("Unexpected file in pricing archive {}", currentEntry.getName());
           }
-          if (!pricingFileFound) {
-            LOG.error("Failed to get region pricing file from {}", pricingFileName);
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to get region pricing file");
-          }
-          ObjectMapper mapper = new ObjectMapper();
-          regionJson = mapper.readTree(regionStream);
-        } catch (IOException e) {
-          LOG.error("Failed to parse region metadata from region {}", region.code);
-          return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
         }
-
-        // The products sub-document has the list of EC2 products along with the SKU, its format is:
-        //    {
-        //      ...
-        //      "products" : {
-        //        <productDetailsJson, which is a list of product details>
-        //      }
-        //    }
-        JsonNode productDetailsListJson = regionJson.get("products");
-
-        // The "terms" or price details json object has the following format:
-        //  "terms" : {
-        //    "OnDemand" : {
-        //      <onDemandJson, which is a list of price details objects>
-        //    }
-        //  }
-        JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
-
-        storeEBSPriceComponents(context, productDetailsListJson, onDemandJson);
-        storeInstancePriceComponents(context, productDetailsListJson, onDemandJson);
-        parseProductDetailsList(context, productDetailsListJson);
-
-        // Create the instance types.
-        storeInstanceTypeInfoToDB(context);
-        LOG.info("Successfully stored pricing info for region {}", region.code);
+        if (!pricingFileFound) {
+          LOG.error("Failed to get region pricing file from {}", pricingFileName);
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Failed to get region pricing file");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        regionJson = mapper.readTree(regionStream);
+      } catch (IOException e) {
+        LOG.error("Failed to parse region metadata from region {}", region.code);
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failed to parse region metadata from region " + region.code + ". " + e.getMessage());
       }
-      LOG.info("Successfully finished parsing pricing info.");
-    } catch (Exception e) {
-      LOG.error("AWS initialize failed", e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
 
-    return YWResults.YWSuccess.withMessage("AWS Initialized.");
+      // The products sub-document has the list of EC2 products along with the SKU, its format is:
+      //    {
+      //      ...
+      //      "products" : {
+      //        <productDetailsJson, which is a list of product details>
+      //      }
+      //    }
+      JsonNode productDetailsListJson = regionJson.get("products");
+
+      // The "terms" or price details json object has the following format:
+      //  "terms" : {
+      //    "OnDemand" : {
+      //      <onDemandJson, which is a list of price details objects>
+      //    }
+      //  }
+      JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
+
+      storeEBSPriceComponents(context, productDetailsListJson, onDemandJson);
+      storeInstancePriceComponents(context, productDetailsListJson, onDemandJson);
+      parseProductDetailsList(context, productDetailsListJson);
+
+      // Create the instance types.
+      storeInstanceTypeInfoToDB(context);
+      LOG.info("Successfully stored pricing info for region {}", region.code);
+    }
+    LOG.info("Successfully finished parsing pricing info.");
   }
 
   /**
    * This will store the PriceComponents corresponding to EBS. Example IO1 size json blobs:
-   * "KA7RG53ZHMXMZFAF" : {
-   *   "KA7RG53ZHMXMZFAF.JRTCKXETXF" : {
-   *     "offerTermCode" : "JRTCKXETXF",
-   *     "sku" : "KA7RG53ZHMXMZFAF",
-   *     "effectiveDate" : "2017-06-01T00:00:00Z",
-   *     "priceDimensions" : {
-   *       "KA7RG53ZHMXMZFAF.JRTCKXETXF.6YS6EN2CT7" : {
-   *         "rateCode" : "KA7RG53ZHMXMZFAF.JRTCKXETXF.6YS6EN2CT7",
-   *         "description" : "$0.145 per GB-month of Provisioned IOPS SSD (io1)  provisioned storage - EU (London)",
-   *         "beginRange" : "0",
-   *         "endRange" : "Inf",
-   *         "unit" : "GB-Mo",
-   *         "pricePerUnit" : {
-   *           "USD" : "0.1450000000"
-   *         },
-   *         "appliesTo" : [ ]
-   *       }
-   *     },
-   *     "termAttributes" : { }
-   *   }
-   * },
-   * "KA7RG53ZHMXMZFAF" : {
-   *   "sku" : "KA7RG53ZHMXMZFAF",
-   *   "productFamily" : "Storage",
-   *   "attributes" : {
-   *     "servicecode" : "AmazonEC2",
-   *     "location" : "EU (London)",
-   *     "locationType" : "AWS Region",
-   *     "storageMedia" : "SSD-backed",
-   *     "volumeType" : "Provisioned IOPS",
-   *     "maxVolumeSize" : "16 TiB",
-   *     "maxIopsvolume" : "20000",
-   *     "maxThroughputvolume" : "320 MB/sec",
-   *     "usagetype" : "EUW2-EBS:VolumeUsage.piops",
-   *     "operation" : ""
-   *   }
-   * },
+   * "KA7RG53ZHMXMZFAF" : { "KA7RG53ZHMXMZFAF.JRTCKXETXF" : { "offerTermCode" : "JRTCKXETXF", "sku"
+   * : "KA7RG53ZHMXMZFAF", "effectiveDate" : "2017-06-01T00:00:00Z", "priceDimensions" : {
+   * "KA7RG53ZHMXMZFAF.JRTCKXETXF.6YS6EN2CT7" : { "rateCode" :
+   * "KA7RG53ZHMXMZFAF.JRTCKXETXF.6YS6EN2CT7", "description" : "$0.145 per GB-month of Provisioned
+   * IOPS SSD (io1) provisioned storage - EU (London)", "beginRange" : "0", "endRange" : "Inf",
+   * "unit" : "GB-Mo", "pricePerUnit" : { "USD" : "0.1450000000" }, "appliesTo" : [ ] } },
+   * "termAttributes" : { } } }, "KA7RG53ZHMXMZFAF" : { "sku" : "KA7RG53ZHMXMZFAF", "productFamily"
+   * : "Storage", "attributes" : { "servicecode" : "AmazonEC2", "location" : "EU (London)",
+   * "locationType" : "AWS Region", "storageMedia" : "SSD-backed", "volumeType" : "Provisioned
+   * IOPS", "maxVolumeSize" : "16 TiB", "maxIopsvolume" : "20000", "maxThroughputvolume" : "320
+   * MB/sec", "usagetype" : "EUW2-EBS:VolumeUsage.piops", "operation" : "" } },
    *
    * @param productDetailsListJson Products sub-document with list of EC2 products along with SKU.
    * @param onDemandJson Price details json object.
    */
-  private void storeEBSPriceComponents(InitializationContext context,
-                                       JsonNode productDetailsListJson,
-                                       JsonNode onDemandJson) {
+  private void storeEBSPriceComponents(
+      InitializationContext context, JsonNode productDetailsListJson, JsonNode onDemandJson) {
     LOG.info("Parsing product details list to store pricing info");
     for (JsonNode productDetailsJson : productDetailsListJson) {
       String sku = productDetailsJson.get("sku").textValue();
@@ -185,10 +167,13 @@ public class AWSInitializer extends AbstractInitializer {
         }
         continue;
       }
-      Region region = Region.find.query().where()
-          .eq("provider_uuid", context.provider.uuid)
-          .eq("name", regionJson.textValue())
-          .findOne();
+      Region region =
+          Region.find
+              .query()
+              .where()
+              .eq("provider_uuid", context.provider.uuid)
+              .eq("name", regionJson.textValue())
+              .findOne();
       if (region == null) {
         if (enableVerboseLogging) {
           LOG.error("No region " + regionJson.textValue() + " available");
@@ -243,11 +228,12 @@ public class AWSInitializer extends AbstractInitializer {
    * @param region The region the EBS item is in (e.g. us-west2).
    * @param onDemandJson Price details json object.
    */
-  private void storeEBSPriceComponent(InitializationContext context,
-                                      String sku,
-                                      String componentCode,
-                                      Region region,
-                                      JsonNode onDemandJson) {
+  private void storeEBSPriceComponent(
+      InitializationContext context,
+      String sku,
+      String componentCode,
+      Region region,
+      JsonNode onDemandJson) {
     // Then create the pricing component object by grabbing the first item (should only have one)
     // and populating the PriceDetails with all the relevant information
     PriceComponent.PriceDetails priceDetails = new PriceComponent.PriceDetails();
@@ -277,36 +263,19 @@ public class AWSInitializer extends AbstractInitializer {
   }
 
   /**
-   * This will store the PriceComponent corresponding to the InstanceType itself.
-   * Each price detail object has the format:
-   *      "DQ578CGN99KG6ECF" : {
-   *        "DQ578CGN99KG6ECF.JRTCKXETXF" : {
-   *          "offerTermCode" : "JRTCKXETXF",
-   *          "sku" : "DQ578CGN99KG6ECF",
-   *          "effectiveDate" : "2016-08-01T00:00:00Z",
-   *          "priceDimensions" : {
-   *            "DQ578CGN99KG6ECF.JRTCKXETXF.6YS6EN2CT7" : {
-   *              "rateCode" : "DQ578CGN99KG6ECF.JRTCKXETXF.6YS6EN2CT7",
-   *              "description" : "$4.931 per On Demand Windows hs1.8xlarge Instance Hour",
-   *              "beginRange" : "0",
-   *              "endRange" : "Inf",
-   *              "unit" : "Hrs",
-   *              "pricePerUnit" : {
-   *                "USD" : "4.9310000000"
-   *              },
-   *              "appliesTo" : [ ]
-   *            }
-   *          },
-   *          "termAttributes" : { }
-   *        }
-   *      }
+   * This will store the PriceComponent corresponding to the InstanceType itself. Each price detail
+   * object has the format: "DQ578CGN99KG6ECF" : { "DQ578CGN99KG6ECF.JRTCKXETXF" : { "offerTermCode"
+   * : "JRTCKXETXF", "sku" : "DQ578CGN99KG6ECF", "effectiveDate" : "2016-08-01T00:00:00Z",
+   * "priceDimensions" : { "DQ578CGN99KG6ECF.JRTCKXETXF.6YS6EN2CT7" : { "rateCode" :
+   * "DQ578CGN99KG6ECF.JRTCKXETXF.6YS6EN2CT7", "description" : "$4.931 per On Demand Windows
+   * hs1.8xlarge Instance Hour", "beginRange" : "0", "endRange" : "Inf", "unit" : "Hrs",
+   * "pricePerUnit" : { "USD" : "4.9310000000" }, "appliesTo" : [ ] } }, "termAttributes" : { } } }
    *
    * @param productDetailsListJson Products sub-document with list of EC2 products along with SKU.
    * @param onDemandJson Price details json object.
    */
-  private void storeInstancePriceComponents(InitializationContext context,
-                                            JsonNode productDetailsListJson,
-                                            JsonNode onDemandJson) {
+  private void storeInstancePriceComponents(
+      InitializationContext context, JsonNode productDetailsListJson, JsonNode onDemandJson) {
 
     // Get SKUs associated with Instances
     LOG.info("Parsing product details list to store pricing info");
@@ -316,18 +285,20 @@ public class AWSInitializer extends AbstractInitializer {
       boolean include = true;
 
       // Make sure this is a compute instance.
-      include &= matches(productAttrs, "productFamily", FilterOp.Equals,
-        PRODUCT_FAMILY_COMPUTE_INSTANCE);
+      include &=
+          matches(productAttrs, "productFamily", FilterOp.Equals, PRODUCT_FAMILY_COMPUTE_INSTANCE);
       // The service code should be 'AmazonEC2'.
       include &= matches(productAttrs, "servicecode", FilterOp.Equals, "AmazonEC2");
       // Filter by the OS we support.
       include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "Linux"));
       // Pick the supported license models.
-      include &= (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required") ||
-          matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
+      include &=
+          (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required")
+              || matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
       // Pick the valid disk drive types.
-      include &= (matches(productAttrs, "storage", FilterOp.Contains, "SSD") ||
-          matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
+      include &=
+          (matches(productAttrs, "storage", FilterOp.Contains, "SSD")
+              || matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
       // Make sure it is current generation.
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
       // Make sure tenancy is shared.
@@ -340,11 +311,11 @@ public class AWSInitializer extends AbstractInitializer {
       if (include) {
         JsonNode attributesJson = productDetailsJson.get("attributes");
         storeInstancePriceComponent(
-          context,
-          productDetailsJson.get("sku").textValue(),
-          attributesJson.get("instanceType").textValue(),
-          attributesJson.get("location").textValue(),
-          onDemandJson);
+            context,
+            productDetailsJson.get("sku").textValue(),
+            attributesJson.get("instanceType").textValue(),
+            attributesJson.get("location").textValue(),
+            onDemandJson);
       }
     }
   }
@@ -357,17 +328,21 @@ public class AWSInitializer extends AbstractInitializer {
    * @param regionName Name for the region the InstanceType is in (e.g. "US West (Oregon)").
    * @param onDemandJson Price details json object.
    */
-  private void storeInstancePriceComponent(InitializationContext context,
-                                           String sku,
-                                           String instanceCode,
-                                           String regionName,
-                                           JsonNode onDemandJson) {
+  private void storeInstancePriceComponent(
+      InitializationContext context,
+      String sku,
+      String instanceCode,
+      String regionName,
+      JsonNode onDemandJson) {
 
     // First check that region exists
-    Region region = Region.find.query().where()
-      .eq("provider_uuid", context.provider.uuid)
-      .eq("name", regionName)
-      .findOne();
+    Region region =
+        Region.find
+            .query()
+            .where()
+            .eq("provider_uuid", context.provider.uuid)
+            .eq("name", regionName)
+            .findOne();
     if (region == null) {
       LOG.error("Region " + regionName + " not found. Skipping.");
       return;
@@ -406,37 +381,20 @@ public class AWSInitializer extends AbstractInitializer {
   /**
    * Given a JSON blob containing details on various EC2 products, update the ec2AvailableInstances
    * map, which contains information on the various instances available through EC2. Each entry in
-   * the product details map looks like:
-   * "DQ578CGN99KG6ECF" : {
-   *   "sku" : "DQ578CGN99KG6ECF",
-   *   "productFamily" : "Compute Instance",
-   *   "attributes" : {
-   *     "servicecode" : "AmazonEC2",
-   *     "location" : "US East (N. Virginia)",
-   *     "locationType" : "AWS Region",
-   *     "instanceType" : "hs1.8xlarge",
-   *     "currentGeneration" : "No",
-   *     "instanceFamily" : "Storage optimized",
-   *     "vcpu" : "17",
-   *     "physicalProcessor" : "Intel Xeon E5-2650",
-   *     "clockSpeed" : "2 GHz",
-   *     "memory" : "117 GiB",
-   *     "storage" : "24 x 2000",
-   *     "networkPerformance" : "10 Gigabit",
-   *     "processorArchitecture" : "64-bit",
-   *     "tenancy" : "Shared",
-   *     "operatingSystem" : "Windows",
-   *     "licenseModel" : "License Included",
-   *     "usagetype" : "BoxUsage:hs1.8xlarge",
-   *     "operation" : "RunInstances:0002",
-   *     "preInstalledSw" : "NA"
-   *   }
-   * }
+   * the product details map looks like: "DQ578CGN99KG6ECF" : { "sku" : "DQ578CGN99KG6ECF",
+   * "productFamily" : "Compute Instance", "attributes" : { "servicecode" : "AmazonEC2", "location"
+   * : "US East (N. Virginia)", "locationType" : "AWS Region", "instanceType" : "hs1.8xlarge",
+   * "currentGeneration" : "No", "instanceFamily" : "Storage optimized", "vcpu" : "17",
+   * "physicalProcessor" : "Intel Xeon E5-2650", "clockSpeed" : "2 GHz", "memory" : "117 GiB",
+   * "storage" : "24 x 2000", "networkPerformance" : "10 Gigabit", "processorArchitecture" :
+   * "64-bit", "tenancy" : "Shared", "operatingSystem" : "Windows", "licenseModel" : "License
+   * Included", "usagetype" : "BoxUsage:hs1.8xlarge", "operation" : "RunInstances:0002",
+   * "preInstalledSw" : "NA" } }
    *
    * @param productDetailsListJson A JSON blob as described above.
    */
-  private void parseProductDetailsList(InitializationContext context,
-                                       JsonNode productDetailsListJson) {
+  private void parseProductDetailsList(
+      InitializationContext context, JsonNode productDetailsListJson) {
     LOG.info("Parsing product details list");
     Iterator<JsonNode> productDetailsListIter = productDetailsListJson.elements();
     while (productDetailsListIter.hasNext()) {
@@ -447,18 +405,20 @@ public class AWSInitializer extends AbstractInitializer {
       boolean include = true;
 
       // Make sure this is a compute instance.
-      include &= matches(productAttrs, "productFamily", FilterOp.Equals,
-        PRODUCT_FAMILY_COMPUTE_INSTANCE);
+      include &=
+          matches(productAttrs, "productFamily", FilterOp.Equals, PRODUCT_FAMILY_COMPUTE_INSTANCE);
       // The service code should be 'AmazonEC2'.
       include &= matches(productAttrs, "servicecode", FilterOp.Equals, "AmazonEC2");
       // Filter by the OS we support.
       include &= (matches(productAttrs, "operatingSystem", FilterOp.Equals, "Linux"));
       // Pick the supported license models.
-      include &= (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required") ||
-                  matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
+      include &=
+          (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required")
+              || matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
       // Pick the valid disk drive types.
-      include &= (matches(productAttrs, "storage", FilterOp.Contains, "SSD") ||
-                  matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
+      include &=
+          (matches(productAttrs, "storage", FilterOp.Contains, "SSD")
+              || matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
       // Make sure it is current generation.
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
       // Make sure tenancy is shared.
@@ -476,7 +436,9 @@ public class AWSInitializer extends AbstractInitializer {
       }
 
       if (enableVerboseLogging) {
-        LOG.info("Found matching product with sku={}, instanceType={}", productAttrs.get("sku"),
+        LOG.info(
+            "Found matching product with sku={}, instanceType={}",
+            productAttrs.get("sku"),
             productAttrs.get("instanceType"));
       }
       context.availableInstances.add(productAttrs);
@@ -492,8 +454,11 @@ public class AWSInitializer extends AbstractInitializer {
   private Map<String, String> extractAllAttributes(JsonNode productDetailsJson) {
     Map<String, String> productAttrs = new HashMap<>();
     productAttrs.put("sku", productDetailsJson.get("sku").textValue());
-    productAttrs.put("productFamily", productDetailsJson.get("productFamily") !=  null ?
-      productDetailsJson.get("productFamily").textValue() : "");
+    productAttrs.put(
+        "productFamily",
+        productDetailsJson.get("productFamily") != null
+            ? productDetailsJson.get("productFamily").textValue()
+            : "");
 
     // Iterate over all the attributes.
     Iterator<String> iter = productDetailsJson.get("attributes").fieldNames();
@@ -522,7 +487,7 @@ public class AWSInitializer extends AbstractInitializer {
     Provider provider = context.provider;
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     InstanceType.resetInstanceTypeDetailsForProvider(provider.uuid);
-    String instanceTypeCode = null;
+    String instanceTypeCode;
 
     for (Map<String, String> productAttrs : context.availableInstances) {
       // Get the instance type.
@@ -537,9 +502,8 @@ public class AWSInitializer extends AbstractInitializer {
       Integer numCores = Integer.parseInt(productAttrs.get("vcpu"));
 
       // Parse the memory size.
-      String memSizeStrGB = productAttrs.get("memory")
-          .replaceAll("(?i) gib", "")
-          .replaceAll(",", "");
+      String memSizeStrGB =
+          productAttrs.get("memory").replaceAll("(?i) gib", "").replaceAll(",", "");
       Double memSizeGB = Double.parseDouble(memSizeStrGB);
 
       Integer volumeCount;
@@ -555,8 +519,12 @@ public class AWSInitializer extends AbstractInitializer {
       String[] parts = productAttrs.get("storage").replaceAll(",", "").split(" ");
       if (parts.length < 4) {
         if (!productAttrs.get("storage").equals("EBS only")) {
-          String msg = "Volume type not specified in product sku=" + productAttrs.get("sku") +
-              ", storage={" + productAttrs.get("storage") + "}";
+          String msg =
+              "Volume type not specified in product sku="
+                  + productAttrs.get("sku")
+                  + ", storage={"
+                  + productAttrs.get("storage")
+                  + "}";
           LOG.error(msg);
           throw new UnsupportedOperationException(msg);
         } else {
@@ -583,8 +551,15 @@ public class AWSInitializer extends AbstractInitializer {
       }
 
       if (enableVerboseLogging) {
-        LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {}", provider.code,
-                 instanceTypeCode, numCores, memSizeGB, volumeCount, volumeSizeGB, volumeType);
+        LOG.info(
+            "Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {}",
+            provider.code,
+            instanceTypeCode,
+            numCores,
+            memSizeGB,
+            volumeCount,
+            volumeSizeGB,
+            volumeType);
       }
 
       // Create the instance type model. If one already exists, overwrite it.
@@ -606,9 +581,13 @@ public class AWSInitializer extends AbstractInitializer {
       InstanceType.upsert(provider.uuid, instanceTypeCode, numCores, memSizeGB, details);
       if (enableVerboseLogging) {
         instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
-        LOG.debug("Saving {}:{} ({} cores, {}GB) with details {}",
-          instanceType.getProviderUuid(), instanceType.getInstanceTypeCode(),
-          instanceType.numCores, instanceType.memSizeGB, Json.stringify(Json.toJson(details)));
+        LOG.debug(
+            "Saving {}:{} ({} cores, {}GB) with details {}",
+            instanceType.getProviderUuid(),
+            instanceType.getInstanceTypeCode(),
+            instanceType.numCores,
+            instanceType.memSizeGB,
+            Json.stringify(Json.toJson(details)));
       }
     }
   }
@@ -630,7 +609,9 @@ public class AWSInitializer extends AbstractInitializer {
   }
 
   private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
-    return InstanceType.AWS_INSTANCE_PREFIXES_SUPPORTED.stream().anyMatch(
-      productAttributes.getOrDefault("instanceType", "")::startsWith);
+    return configHelper
+        .getAWSInstancePrefixesSupported()
+        .stream()
+        .anyMatch(productAttributes.getOrDefault("instanceType", "")::startsWith);
   }
 }

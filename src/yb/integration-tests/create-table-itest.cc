@@ -35,23 +35,28 @@
 #include <set>
 #include <string>
 
-#include <gflags/gflags.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client-test-util.h"
 #include "yb/client/client_fwd.h"
+#include "yb/client/client-test-util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
+
 #include "yb/common/common.pb.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/catalog_manager.h"
+
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog_initialization.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/tsan_util.h"
 
 using std::multimap;
 using std::set;
@@ -67,6 +72,9 @@ METRIC_DECLARE_gauge_int64(is_raft_leader);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_CreateTablet);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_DeleteTablet);
 
+DECLARE_int32(ycql_num_tablets);
+DECLARE_int32(yb_num_shards_per_tserver);
+
 namespace yb {
 
 static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
@@ -77,7 +85,7 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
       const master::ReplicationInfoPB& replication_info, const string& table_suffix,
       const YBTableType table_type = YBTableType::YQL_TABLE_TYPE) {
     auto db_type = master::GetDatabaseTypeForTable(
-        client::YBTable::ClientToPBTableType(table_type));
+        client::ClientToPBTableType(table_type));
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(), db_type));
     std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
@@ -364,7 +372,7 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   ASSERT_OK(
       client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
                                "" /* ns_id */, "" /* src_ns_id */,
-                               boost::none /* next_pg_oid */, boost::none /* txn */, true));
+                               boost::none /* next_pg_oid */, nullptr /* txn */, true));
 
   {
     string ns_id;
@@ -434,7 +442,7 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
 
   ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
                                      "" /* ns_id */, "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, boost::none /* txn */, false));
+                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
 
   {
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
@@ -544,7 +552,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TestTransactionStatusTableCreat
   // Check that the transaction table hasn't been created yet.
   YQLDatabase db = YQL_DATABASE_CQL;
   YBTableName transaction_status_table(db, master::kSystemNamespaceId,
-                                  master::kSystemNamespaceName, kTransactionsTableName);
+                                  master::kSystemNamespaceName, kGlobalTransactionsTableName);
   bool exists = ASSERT_RESULT(client_->TableExists(transaction_status_table));
   ASSERT_FALSE(exists) << "Transaction table exists even though the "
                           "requirement for the minimum number of TS not met";
@@ -603,6 +611,77 @@ TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
     Partition::FromPB(tablets[i].partition(), &p);
     ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
   }
+}
+
+TEST_F(CreateTableITest, TestNumTabletsFlags) {
+  // Start an RF 3.
+  const int kNumReplicas = 3;
+  const int kNumTablets = 6;
+  const string kNamespaceName = "my_keyspace";
+  const YQLDatabase kNamespaceType = YQL_DATABASE_CQL;
+  const string kTableName1 = "test-table1";
+  const string kTableName2 = "test-table2";
+  const string kTableName3 = "test-table3";
+
+  // Set the value of the flags.
+  FLAGS_ycql_num_tablets = 1;
+  FLAGS_yb_num_shards_per_tserver = 3;
+  // Start an RF3.
+  ASSERT_NO_FATALS(StartCluster({}, {}, kNumReplicas));
+
+  // Create a namespace for all the tables.
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kNamespaceName, kNamespaceType));
+  // One common schema for all the tables.
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+
+  // Test 1: Create a table with explicit tablet count.
+  YBTableName table_name1(kNamespaceType, kNamespaceName, kTableName1);
+  std::unique_ptr<client::YBTableCreator> table_creator1(client_->NewTableCreator());
+  ASSERT_OK(table_creator1->table_name(table_name1)
+                .schema(&client_schema)
+                .num_tablets(kNumTablets)
+                .wait(true)
+                .Create());
+
+  // Verify that number of tablets is 6 instead of 1.
+  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTablets(
+      table_name1, -1, &tablets, /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse));
+  ASSERT_EQ(tablets.size(), 6);
+
+  // Test 2: Create another table without explicit number of tablets.
+  YBTableName table_name2(kNamespaceType, kNamespaceName, kTableName2);
+  std::unique_ptr<client::YBTableCreator> table_creator2(client_->NewTableCreator());
+  ASSERT_OK(table_creator2->table_name(table_name2)
+                .schema(&client_schema)
+                .wait(true)
+                .Create());
+
+  // Verify that number of tablets is 1.
+  tablets.Clear();
+  ASSERT_OK(client_->GetTablets(
+      table_name2, -1, &tablets, /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Reset the value of the flag.
+  FLAGS_ycql_num_tablets = -1;
+
+  // Test 3: Create a table without explicit tablet count.
+  YBTableName table_name3(kNamespaceType, kNamespaceName, kTableName3);
+  std::unique_ptr<client::YBTableCreator> table_creator3(client_->NewTableCreator());
+  ASSERT_OK(table_creator3->table_name(table_name3)
+                .schema(&client_schema)
+                .wait(true)
+                .Create());
+
+  // Verify that number of tablets is 6 instead of 1.
+  tablets.Clear();
+  ASSERT_OK(client_->GetTablets(
+      table_name3, -1, &tablets, /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse));
+  ASSERT_EQ(tablets.size(), 9);
 }
 
 }  // namespace yb

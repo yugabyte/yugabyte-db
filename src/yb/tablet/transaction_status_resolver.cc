@@ -13,18 +13,22 @@
 
 #include "yb/tablet/transaction_status_resolver.h"
 
-#include <gflags/gflags.h>
-
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/wire_protocol.h"
 
 #include "yb/rpc/rpc.h"
 
+#include "yb/tablet/transaction_participant_context.h"
+
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
                  "Inject delay before launching transaction status resolver RPC.");
@@ -63,7 +67,7 @@ class TransactionStatusResolver::Impl {
   }
 
   void Start(CoarseTimePoint deadline) {
-    LOG_WITH_PREFIX(INFO) << "Start, queues: " << queues_.size();
+    VLOG_WITH_PREFIX(2) << "Start, queues: " << queues_.size();
 
     deadline_ = deadline;
     run_latch_.Reset(1);
@@ -159,7 +163,10 @@ class TransactionStatusResolver::Impl {
       participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
     }
 
-    if (response.status().size() != 1 && response.status().size() != request_size) {
+    if ((response.status().size() != 1 &&
+            response.status().size() != request_size) ||
+        (response.aborted_subtxn_set().size() != 1 &&
+            response.aborted_subtxn_set().size() != request_size)) {
       // Node with old software version would always return 1 status.
       LOG_WITH_PREFIX(DFATAL)
           << "Bad response size, expected " << request_size << " entries, but found: "
@@ -176,6 +183,17 @@ class TransactionStatusResolver::Impl {
       auto& status_info = status_infos_[i];
       status_info.transaction_id = queue.front();
       status_info.status = response.status(i);
+
+      auto aborted_subtxn_set_or_status = AbortedSubTransactionSet::FromPB(
+        response.aborted_subtxn_set(i).set());
+      if (!aborted_subtxn_set_or_status.ok()) {
+        Complete(STATUS_FORMAT(
+            IllegalState, "Cannot deserialize AbortedSubTransactionSet: $0",
+            response.aborted_subtxn_set(i).DebugString()));
+        return;
+      }
+      status_info.aborted_subtxn_set = aborted_subtxn_set_or_status.get();
+
       if (i < response.status_hybrid_time().size()) {
         status_info.status_ht = HybridTime(response.status_hybrid_time(i));
       // Could happen only when coordinator has an old version.
@@ -193,7 +211,7 @@ class TransactionStatusResolver::Impl {
       queue.pop_front();
     }
     if (queue.empty()) {
-      LOG_WITH_PREFIX(INFO) << "Processed queue for: " << it->first;
+      VLOG_WITH_PREFIX(2) << "Processed queue for: " << it->first;
       queues_.erase(it);
     }
 
@@ -203,7 +221,7 @@ class TransactionStatusResolver::Impl {
   }
 
   void Complete(const Status& status) {
-    LOG_WITH_PREFIX(INFO) << "Complete: " << status;
+    VLOG_WITH_PREFIX(2) << "Complete: " << status;
     result_promise_.set_value(status);
     AtomicFlagSleepMs(&FLAGS_TEST_inject_status_resolver_complete_delay_ms);
     run_latch_.CountDown();

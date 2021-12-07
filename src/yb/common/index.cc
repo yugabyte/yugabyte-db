@@ -15,7 +15,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/index.h"
+
 #include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/result.h"
 
 using std::vector;
 using std::unordered_map;
@@ -39,6 +43,10 @@ void IndexInfo::IndexColumn::ToPB(IndexInfoPB::IndexColumnPB* pb) const {
   pb->set_column_name(column_name);
   pb->set_indexed_column_id(indexed_column_id);
   pb->mutable_colexpr()->CopyFrom(colexpr);
+}
+
+std::string IndexInfo::IndexColumn::ToString() const {
+  return YB_STRUCT_TO_STRING(column_id, column_name, indexed_column_id, colexpr);
 }
 
 namespace {
@@ -77,7 +85,9 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       indexed_range_column_ids_(ColumnIdsFromPB(pb.indexed_range_column_ids())),
       index_permissions_(pb.index_permissions()),
       backfill_error_message_(pb.backfill_error_message()),
-      use_mangled_column_name_(pb.use_mangled_column_name()) {
+      use_mangled_column_name_(pb.use_mangled_column_name()),
+      where_predicate_spec_(pb.has_where_predicate_spec() ?
+        std::make_shared<IndexInfoPB::WherePredicateSpecPB>(pb.where_predicate_spec()) : nullptr) {
   for (const IndexInfo::IndexColumn &index_col : columns_) {
     // Mark column as covered if the index column is the column itself.
     // Do not mark a column as covered when indexing by an expression of that column.
@@ -116,7 +126,7 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
 }
 
 vector<ColumnId> IndexInfo::index_key_column_ids() const {
-  unordered_map<ColumnId, ColumnId> map;
+  std::unordered_map<ColumnId, ColumnId, boost::hash<ColumnId>> map;
   for (const auto& column : columns_) {
     map[column.indexed_column_id] = column.column_id;
   }
@@ -198,6 +208,13 @@ bool IndexInfo::CheckColumnDependency(ColumnId column_id) const {
       return true;
     }
   }
+
+  if (where_predicate_spec_) {
+    for (auto indexed_col_id : where_predicate_spec_->column_ids()) {
+      if (indexed_col_id == column_id) return true;
+    }
+  }
+
   return false;
 }
 

@@ -19,6 +19,12 @@ Yugabyte uses PostgreSQL’s cost-based optimizer, which estimates the costs of 
 
 pg_hint_plan makes it possible to tweak execution plans using "hints", which are simple descriptions in the form of SQL comments.
 
+{{< note title="Note" >}}
+
+To use `pg_hint_plan` effectively, you need thorough knowledge of how your application will be deployed. Hint plans also need to be revisited when the database grows or the deployment changes to ensure that the plan is not limiting performance rather than optimizing it.
+
+{{< /note >}}
+
 ## Configuring pg_hint_plan
 
 pg_hint_plan is pre-configured, and enabled by default. The following GUC (Grand Unified Configuration) parameters control pg_hint_plan:
@@ -62,7 +68,7 @@ CREATE INDEX t3_val ON t3 (val);
 
 The schema of the resulting tables is as follows:
 
-```
+```output
                  Table "public.t1"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -96,7 +102,7 @@ Indexes:
 
 ### Create a hint plan
 
-pg_hint_plan parses hinting phrases of a special form present in SQL statements. This special form begins with the character sequence "/*+" and ends with "*/". Hint phrases consist of hint names followed by hint parameters enclosed within parentheses delimited by spaces.
+pg_hint_plan parses hinting phrases of a special form present in SQL statements. This special form begins with the character sequence "/\*+" and ends with "\*/". Hint phrases consist of hint names followed by hint parameters enclosed within parentheses delimited by spaces.
 
 In the example below, `HashJoin` is selected as the joining method for joining `pg_bench_branches` and `pg_bench_accounts` and a `SeqScan` is used for scanning the table `pgbench_accounts`.
 
@@ -111,7 +117,7 @@ yugabyte-#    JOIN pgbench_accounts a ON b.bid = a.bid
 yugabyte-#   ORDER BY a.aid;
 ```
 
-```
+```output
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Sort  (cost=31465.84..31715.84 rows=100000 width=197)
@@ -220,7 +226,7 @@ A single table can have many indices. Using pg_hint_plan, users can specify the 
 yugabyte=# EXPLAIN (COSTS false) SELECT * FROM t3 WHERE t3.id = 1;
 ```
 
-```
+```output
            QUERY PLAN
 --------------------------------
  Index Scan using t3_pkey on t3
@@ -235,7 +241,7 @@ yugabyte=# /*+IndexScan(t3 t3_id2)*/
 yugabyte-# EXPLAIN (COSTS false) SELECT * FROM t3 WHERE t3.id = 1;
 ```
 
-```
+```output
 LOG:  available indexes for IndexScan(t3): t3_id2
 LOG:  pg_hint_plan:
 used hint:
@@ -258,7 +264,7 @@ yugabyte=# /*+IndexScan(t3 no_exist)*/
 yugabyte-# EXPLAIN (COSTS false) SELECT * FROM t3 WHERE t3.id = 1;
 ```
 
-```
+```output
 LOG:  available indexes for IndexScan(t3):
 LOG:  pg_hint_plan:
 used hint:
@@ -281,7 +287,7 @@ yugabyte=# /*+IndexScan(t3 t3_id1 t3_id2)*/
 yugabyte-# EXPLAIN (COSTS false) SELECT * FROM t3 WHERE t3.id = 1;
 ```
 
-```
+```output
 LOG:  available indexes for IndexScan(t3): t3_id2 t3_id1
 LOG:  pg_hint_plan:
 used hint:
@@ -315,7 +321,7 @@ Join method hints enforce the join methods for SQL statements. Using pg_hint_pla
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
-```
+```output
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
@@ -338,7 +344,7 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
-```
+```output
 LOG:  pg_hint_plan:
 used hint:
 NestLoop(t1 t2)
@@ -363,7 +369,7 @@ yugabyte-# EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3
 yugabyte-# WHERE t1.id = t2.id AND t1.id = t3.id;
 ```
 
-```
+```output
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(t2)
@@ -397,7 +403,7 @@ yugabyte=# /*+Leading(t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t3.id;
 ```
 
-```
+```output
                  QUERY PLAN
 --------------------------------------------
  Nested Loop
@@ -415,7 +421,7 @@ yugabyte=# /*+Leading(t2 t3 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t3.id;
 ```
 
-```
+```output
                  QUERY PLAN
 --------------------------------------------
  Nested Loop
@@ -439,7 +445,7 @@ yugabyte=# /*+Set(work_mem "1MB")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
-```
+```output
 LOG:  pg_hint_plan:
 used hint:
 Set(work_mem 1MB)
@@ -478,7 +484,7 @@ pg_hint_plan leverages the planner method configuration by embedding these confi
 yugabyte=# EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
-```
+```output
               QUERY PLAN
 --------------------------------------
  Nested Loop
@@ -493,7 +499,7 @@ yugabyte=# /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
-```
+```output
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
@@ -558,7 +564,7 @@ INSERT 0 1
 yugabyte=# select * from hint_plan.hints;
 ```
 
-```
+```output
 -[ RECORD 1 ]-----+--------------------------------------------------------
 id                | 1
 norm_query_string | EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;

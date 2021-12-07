@@ -14,20 +14,29 @@
 #ifndef YB_DOCDB_DOCDB_DEBUG_H_
 #define YB_DOCDB_DOCDB_DEBUG_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include <memory>
 #include <ostream>
-
 #include <string>
-
-#include <boost/function.hpp>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/rocksdb/db.h"
+
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/listener.h"
 
 namespace yb {
 namespace docdb {
 
-std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type);
+std::string EntryToString(
+    const rocksdb::Iterator& iterator, StorageDbType db_type = StorageDbType::kRegular);
+std::string EntryToString(
+    const Slice& key, const Slice& value, StorageDbType db_type = StorageDbType::kRegular);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

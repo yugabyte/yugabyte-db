@@ -19,7 +19,8 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/util/decimal.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace pggate {
@@ -99,6 +100,8 @@ Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
       // Postgres does not have these datatypes.
       return STATUS_FORMAT(Corruption,
           "Unexpected data was read from database: col_value.type()=$0", col_value.value_case());
+    case InternalType::kGinNullValue:
+      PgWire::WriteUint8(col_value.gin_null_value(), buffer);
   }
 
   return Status::OK();

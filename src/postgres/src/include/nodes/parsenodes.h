@@ -710,8 +710,6 @@ typedef struct IndexElem
 	List	   *opclass;		/* name of desired opclass; NIL = default */
 	SortByDir	ordering;		/* ASC/DESC/default */
 	SortByNulls nulls_ordering; /* FIRST/LAST/default */
-
-	List	   *yb_name_list;	/* List of attribute names in parenthesis */
 } IndexElem;
 
 /*
@@ -868,18 +866,6 @@ typedef struct PartitionCmd
 	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
 } PartitionCmd;
 
-/*
- * RowBounds - row bounds for BACKFILL INDEX statement
- */
-typedef struct RowBounds
-{
-	NodeTag type;
-	const char	   *partition_key;	/* Partition key of tablet containing bound
-									 */
-	const char	   *row_key_start;	/* Starting row of bound (inclusive) */
-	const char	   *row_key_end;	/* Ending row of bound (exclusive) */
-} RowBounds;
-
 /****************************************************************************
  *	Nodes for a Query tree
  ****************************************************************************/
@@ -933,10 +919,10 @@ typedef struct RowBounds
  *	  inFromCl marks those range variables that are listed in the FROM clause.
  *	  It's false for RTEs that are added to a query behind the scenes, such
  *	  as the NEW and OLD variables for a rule, or the subqueries of a UNION.
- *	  This flag is not used anymore during parsing, since the parser now uses
- *	  a separate "namespace" data structure to control visibility, but it is
- *	  needed by ruleutils.c to determine whether RTEs should be shown in
- *	  decompiled queries.
+ *	  This flag is not used during parsing (except in transformLockingClause,
+ *	  q.v.); the parser now uses a separate "namespace" data structure to
+ *	  control visibility.  But it is needed by ruleutils.c to determine
+ *	  whether RTEs should be shown in decompiled queries.
  *
  *	  requiredPerms and checkAsUser specify run-time access permissions
  *	  checks to be performed at query startup.  The user must have *all*
@@ -1696,7 +1682,7 @@ typedef enum ObjectType
 	OBJECT_STATISTIC_EXT,
 	OBJECT_TABCONSTRAINT,
 	OBJECT_TABLE,
-	OBJECT_TABLEGROUP,
+	OBJECT_YBTABLEGROUP,
 	OBJECT_TABLESPACE,
 	OBJECT_TRANSFORM,
 	OBJECT_TRIGGER,
@@ -2205,9 +2191,10 @@ typedef struct OptSplit
 typedef struct CreateTableGroupStmt
 {
 	NodeTag		type;
-	char 		 *tablegroupname;
-	RoleSpec *owner;
+	char 	   *tablegroupname;
+	RoleSpec   *owner;
 	List 	   *options;
+	char 	   *tablespacename;
 } CreateTableGroupStmt;
 
 typedef struct DropTableGroupStmt
@@ -3392,12 +3379,30 @@ typedef struct ReindexStmt
  * ----------------------
  */
 
+/*
+ * RowBounds - row bounds for BACKFILL INDEX statement
+ */
+typedef struct RowBounds
+{
+	NodeTag type;
+	const char *partition_key;	/* Partition key of tablet containing bound */
+	const char *row_key_start;	/* Starting row of bound (inclusive) */
+	const char *row_key_end;	/* Ending row of bound (exclusive) */
+} RowBounds;
+
+typedef struct YbBackfillInfo
+{
+	NodeTag		type;
+	const char *bfinstr;		/* Backfill instruction */
+	uint64_t	read_time;		/* Read time for backfill */
+	RowBounds  *row_bounds;		/* Rows to backfill */
+} YbBackfillInfo;
+
 typedef struct BackfillIndexStmt
 {
-	NodeTag			type;
-	List		   *oid_list;		/* Oids of indexes to backfill */
-	uint64_t		read_time;		/* Read time for backfill */
-	RowBounds	   *row_bounds;		/* Rows to backfill */
+	NodeTag		type;
+	List	   *oid_list;		/* Oids of indexes to backfill */
+	YbBackfillInfo *bfinfo;
 } BackfillIndexStmt;
 
 /* ----------------------

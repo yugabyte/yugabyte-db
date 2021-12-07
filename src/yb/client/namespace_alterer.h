@@ -16,12 +16,15 @@
 
 #include <string>
 
-#include <boost/optional.hpp>
-
 #include "yb/client/client_fwd.h"
-#include "yb/util/status.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common.pb.h"
+
+#include "yb/master/master_fwd.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace client {
@@ -33,7 +36,7 @@ class YBNamespaceAlterer {
   YBNamespaceAlterer* RenameTo(const std::string& new_name);
   YBNamespaceAlterer* SetDatabaseType(YQLDatabase type);
 
-  CHECKED_STATUS Alter();
+  CHECKED_STATUS Alter(CoarseTimePoint deadline = CoarseTimePoint());
 
  private:
   friend class YBClient;

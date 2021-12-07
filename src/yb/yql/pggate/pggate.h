@@ -26,19 +26,20 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/common/ybc_util.h"
 
-#include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/async_initializer.h"
 #include "yb/server/server_base_options.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/type_mapping.h"
 
 #include "yb/server/hybrid_clock.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -54,12 +55,41 @@ class PggateOptions : public yb::server::ServerBaseOptions {
   virtual ~PggateOptions() {}
 };
 
+struct PgApiContext {
+  struct MessengerHolder {
+    std::unique_ptr<rpc::SecureContext> security_context;
+    std::unique_ptr<rpc::Messenger> messenger;
+
+    MessengerHolder(
+        std::unique_ptr<rpc::SecureContext> security_context,
+        std::unique_ptr<rpc::Messenger> messenger);
+    MessengerHolder(MessengerHolder&&);
+
+    ~MessengerHolder();
+  };
+
+  std::unique_ptr<MetricRegistry> metric_registry;
+  scoped_refptr<MetricEntity> metric_entity;
+  std::shared_ptr<MemTracker> mem_tracker;
+  MessengerHolder messenger_holder;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache;
+
+  PgApiContext();
+  PgApiContext(PgApiContext&&);
+  ~PgApiContext();
+};
+
 //--------------------------------------------------------------------------------------------------
 // Implements support for CAPI.
 class PgApiImpl {
  public:
-  PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
+  PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
+            YBCPgCallbacks pg_callbacks);
   virtual ~PgApiImpl();
+
+  const YBCPgCallbacks* pg_callbacks() {
+    return &pg_callbacks_;
+  }
 
   //------------------------------------------------------------------------------------------------
   // Access function to Pggate attribute.
@@ -90,7 +120,7 @@ class PgApiImpl {
                                       PgStatement **handle);
   // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
   CHECKED_STATUS AddToCurrentPgMemctx(size_t table_desc_id,
-                                      const PgTableDesc::ScopedRefPtr &table_desc);
+                                      const PgTableDescPtr &table_desc);
   // Read table descriptor that was cached in YB Memctx.
   CHECKED_STATUS GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle);
 
@@ -98,7 +128,7 @@ class PgApiImpl {
   CHECKED_STATUS InvalidateCache();
 
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
-  const bool GetDisableTransparentCacheRefreshRetry();
+  bool GetDisableTransparentCacheRefreshRetry();
 
   Result<bool> IsInitDbDone();
 
@@ -182,7 +212,7 @@ class PgApiImpl {
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
   // Load table.
-  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
+  Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
 
   // Invalidate the cache entry corresponding to table_id from the PgSession table cache.
   void InvalidateTableCache(const PgObjectId& table_id);
@@ -255,10 +285,8 @@ class PgApiImpl {
   CHECKED_STATUS GetTableDesc(const PgObjectId& table_id,
                               PgTableDesc **handle);
 
-  CHECKED_STATUS GetColumnInfo(YBCPgTableDesc table_desc,
-                               int16_t attr_number,
-                               bool *is_primary,
-                               bool *is_hash);
+  Result<YBCPgColumnInfo> GetColumnInfo(YBCPgTableDesc table_desc,
+                                        int16_t attr_number);
 
   CHECKED_STATUS DmlModifiesRow(PgStatement *handle, bool *modifies_row);
 
@@ -296,8 +324,6 @@ class PgApiImpl {
                               bool if_exist,
                               PgStatement **handle);
 
-  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
-
   CHECKED_STATUS ExecPostponedDdlStmt(PgStatement *handle);
 
   CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
@@ -329,8 +355,16 @@ class PgApiImpl {
   CHECKED_STATUS DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
       YBCPgExpr *attr_value);
 
+  CHECKED_STATUS DmlBindHashCode(PgStatement *handle, bool start_valid,
+                                bool start_inclusive, uint64_t start_hash_val,
+                                bool end_valid, bool end_inclusive,
+                                uint64_t end_hash_val);
+
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
+
+  // Utility method to get the info for column 'attr_num'.
+  Result<YBCPgColumnInfo> DmlGetColumnInfo(YBCPgStatement handle, int attr_num);
 
   // API for SET clause.
   CHECKED_STATUS DmlAssignColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
@@ -362,11 +396,10 @@ class PgApiImpl {
   //   - API for "group_by_expr"
 
   // Buffer write operations.
-  void StartOperationsBuffering();
+  CHECKED_STATUS StartOperationsBuffering();
   CHECKED_STATUS StopOperationsBuffering();
-  CHECKED_STATUS ResetOperationsBuffering();
+  void ResetOperationsBuffering();
   CHECKED_STATUS FlushBufferedOperations();
-  void DropBufferedOperations();
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -421,10 +454,17 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Analyze.
-  CHECKED_STATUS NewAnalyze(const PgObjectId& table_id,
+  CHECKED_STATUS NewSample(const PgObjectId& table_id,
+                           const int targrows,
                            PgStatement **handle);
 
-  CHECKED_STATUS ExecAnalyze(PgStatement *handle, int32_t* rows);
+  CHECKED_STATUS InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state);
+
+  CHECKED_STATUS SampleNextBlock(PgStatement *handle, bool *has_more);
+
+  CHECKED_STATUS ExecSample(PgStatement *handle);
+
+  CHECKED_STATUS GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows);
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
@@ -433,28 +473,38 @@ class PgApiImpl {
   CHECKED_STATUS BeginTransaction();
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
+  CHECKED_STATUS MaybeResetTransactionReadPoint();
   CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS AbortTransaction();
+  void AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
+  CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
-  CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
+  CHECKED_STATUS ExitSeparateDdlTxnMode();
+  void ClearSeparateDdlTxnMode();
+  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
   //------------------------------------------------------------------------------------------------
   // Column reference.
-  CHECKED_STATUS NewColumnRef(PgStatement *handle, int attr_num, const PgTypeEntity *type_entity,
-                              const PgTypeAttrs *type_attrs, PgExpr **expr_handle);
+  CHECKED_STATUS NewColumnRef(
+      PgStatement *handle, int attr_num, const PgTypeEntity *type_entity,
+      bool collate_is_valid_non_c, const PgTypeAttrs *type_attrs, PgExpr **expr_handle);
 
   // Constant expressions.
-  CHECKED_STATUS NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
-  CHECKED_STATUS NewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
-  CHECKED_STATUS NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
+  CHECKED_STATUS NewConstant(
+      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+  CHECKED_STATUS NewConstantVirtual(
+      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+      YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
+  CHECKED_STATUS NewConstantOp(
+      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+      bool is_gt);
 
   // TODO(neil) UpdateConstant should be merged into one.
   // Update constant.
@@ -471,39 +521,42 @@ class PgApiImpl {
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const void *value, int64_t bytes, bool is_null);
 
   // Operators.
-  CHECKED_STATUS NewOperator(PgStatement *stmt, const char *opname,
-                             const YBCPgTypeEntity *type_entity,
-                             PgExpr **op_handle);
+  CHECKED_STATUS NewOperator(
+      PgStatement *stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+      bool collate_is_valid_non_c, PgExpr **op_handle);
   CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
 
   // Foreign key reference caching.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
+  void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
   Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
   void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  struct MessengerHolder {
-    std::unique_ptr<rpc::SecureContext> security_context;
-    std::unique_ptr<rpc::Messenger> messenger;
-  };
+  Result<client::TabletServersInfo> ListTabletServers();
 
  private:
   // Control variables.
   PggateOptions pggate_options_;
 
   // Metrics.
-  gscoped_ptr<MetricRegistry> metric_registry_;
+  std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
 
   // Memory tracker.
   std::shared_ptr<MemTracker> mem_tracker_;
 
-  MessengerHolder messenger_holder_;
+  PgApiContext::MessengerHolder messenger_holder_;
 
   // YBClient is to communicate with either master or tserver.
   yb::client::AsyncClientInitialiser async_client_init_;
+
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+
+  // TODO Rename to client_ when YBClient is removed.
+  PgClient pg_client_;
 
   // TODO(neil) Map for environments (we should have just one ENV?). Environments should contain
   // all the custom flags the PostgreSQL sets. We ignore them all for now.

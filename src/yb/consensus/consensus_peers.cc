@@ -38,34 +38,37 @@
 #include <utility>
 #include <vector>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <boost/optional.hpp>
+#include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
-#include "yb/consensus/log.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/messenger.h"
+
 #include "yb/rpc/periodic.h"
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet_error.h"
+
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
 
@@ -238,6 +241,9 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       status = STATUS(NotSupported, "remote bootstrap is disabled");
     } else {
       status = queue_->GetRemoteBootstrapRequestForPeer(peer_pb_.permanent_uuid(), &rb_request_);
+      if (!consensus_->split_parent_tablet_id().empty()) {
+        rb_request_.set_split_parent_tablet_id(consensus_->split_parent_tablet_id());
+      }
     }
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Unable to generate remote bootstrap request for peer: "
@@ -385,7 +391,7 @@ void Peer::ProcessResponse() {
     return;
   }
 
-  auto s = StatusFromResponse(response_);
+  auto s = ResponseStatus(response_);
   if (!s.ok() &&
       tserver::TabletServerError(s) == tserver::TabletServerErrorPB::TABLET_NOT_RUNNING &&
       tablet::RaftGroupStateError(s) == tablet::RaftGroupStatePB::FAILED) {
@@ -454,7 +460,10 @@ void Peer::ProcessRemoteBootstrapResponse() {
   }
 
   if (rb_response_.has_error()) {
-    if (rb_response_.error().code() == tserver::TabletServerErrorPB::ALREADY_IN_PROGRESS) {
+    const auto error_code = rb_response_.error().code();
+    if (
+        error_code == tserver::TabletServerErrorPB::ALREADY_IN_PROGRESS ||
+        error_code == tserver::TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE) {
       queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
       YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
         << ":::Unable to begin remote bootstrap on peer: " << rb_response_.ShortDebugString();

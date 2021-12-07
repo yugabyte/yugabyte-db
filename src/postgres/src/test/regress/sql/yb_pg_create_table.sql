@@ -137,6 +137,18 @@ CREATE TABLE aggtest (
 	b			float4
 );
 
+CREATE TABLE array_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
+CREATE TABLE array_index_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
 CREATE TABLE testjsonb (
        j jsonb
 );
@@ -148,4 +160,13 @@ CREATE TABLE testjsonb (
 
 CREATE TYPE unknown_comptype AS (
 	u unknown    -- fail
+);
+
+CREATE TABLE IF NOT EXISTS test_tsvector(
+	t text,
+	a tsvector
+);
+
+CREATE TABLE IF NOT EXISTS test_tsvector(
+	t text
 );

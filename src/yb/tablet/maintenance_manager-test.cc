@@ -29,18 +29,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <gflags/gflags.h>
-#include <gtest/gtest.h>
 #include <memory>
 #include <mutex>
 #include <vector>
 
-#include "yb/gutil/strings/substitute.h"
+#include <gtest/gtest.h>
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
@@ -55,9 +54,9 @@ METRIC_DEFINE_gauge_uint32(test, maintenance_ops_running,
                            "Number of Maintenance Operations Running",
                            yb::MetricUnit::kMaintenanceOperations,
                            "The number of background maintenance operations currently running.");
-METRIC_DEFINE_histogram(test, maintenance_op_duration,
+METRIC_DEFINE_coarse_histogram(test, maintenance_op_duration,
                         "Maintenance Operation Duration",
-                        yb::MetricUnit::kSeconds, "", 60000000LU, 2);
+                        yb::MetricUnit::kSeconds, "");
 
 namespace yb {
 
@@ -264,19 +263,17 @@ TEST_F(MaintenanceManagerTest, TestLogRetentionPrioritization) {
   manager_->RegisterOp(&op2);
   manager_->RegisterOp(&op3);
 
-  // We want to do the low IO op first since it clears up some log retention.
-  ASSERT_EQ(&op1, manager_->FindBestOp());
+  // We want to do the low IO op first since it clears up some log retention, i.e. - op1
+  // Then we find the op clears the most log retention and ram, i.e. - op3
+  for (auto* op : { &op1, &op3, &op2 }) {
+    {
+      std::lock_guard<std::mutex> lock(manager_->mutex_);
 
-  manager_->UnregisterOp(&op1);
+      ASSERT_EQ(op, manager_->FindBestOp());
+    }
 
-  // Low IO is taken care of, now we find the op clears the most log retention and ram.
-  ASSERT_EQ(&op3, manager_->FindBestOp());
-
-  manager_->UnregisterOp(&op3);
-
-  ASSERT_EQ(&op2, manager_->FindBestOp());
-
-  manager_->UnregisterOp(&op2);
+    manager_->UnregisterOp(op);
+  }
 }
 
 // Test adding operations and make sure that the history of recently completed operations
@@ -289,7 +286,7 @@ TEST_F(MaintenanceManagerTest, TestCompletedOpsHistory) {
     op.set_ram_anchored(100);
     manager_->RegisterOp(&op);
 
-    CHECK_EQ(true, op.WaitForStateWithTimeout(OP_FINISHED, 200));
+    ASSERT_TRUE(op.WaitForStateWithTimeout(OP_FINISHED, 200));
     manager_->UnregisterOp(&op);
 
     MaintenanceManagerStatusPB status_pb;

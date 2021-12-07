@@ -1,0 +1,302 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+syntax = "proto3";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/common/common.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/master/master.proto";
+
+service PgClientService {
+  rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB);
+
+  rpc AlterDatabase(PgAlterDatabaseRequestPB) returns (PgAlterDatabaseResponsePB);
+  rpc AlterTable(PgAlterTableRequestPB) returns (PgAlterTableResponsePB);
+  rpc BackfillIndex(PgBackfillIndexRequestPB) returns (PgBackfillIndexResponsePB);
+  rpc CreateDatabase(PgCreateDatabaseRequestPB) returns (PgCreateDatabaseResponsePB);
+  rpc CreateSequencesDataTable(PgCreateSequencesDataTableRequestPB)
+      returns (PgCreateSequencesDataTableResponsePB);
+  rpc CreateTable(PgCreateTableRequestPB) returns (PgCreateTableResponsePB);
+  rpc CreateTablegroup(PgCreateTablegroupRequestPB) returns (PgCreateTablegroupResponsePB);
+  rpc DropDatabase(PgDropDatabaseRequestPB) returns (PgDropDatabaseResponsePB);
+  rpc DropTable(PgDropTableRequestPB) returns (PgDropTableResponsePB);
+  rpc DropTablegroup(PgDropTablegroupRequestPB) returns (PgDropTablegroupResponsePB);
+  rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
+      returns (PgGetCatalogMasterVersionResponsePB);
+  rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
+  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
+  rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
+      returns (PgListLiveTabletServersResponsePB);
+  rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
+  rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
+  rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
+  rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
+}
+
+message PgHeartbeatRequestPB {
+  uint64 session_id = 1;
+}
+
+message PgHeartbeatResponsePB {
+  AppStatusPB status = 1;
+  uint64 session_id = 2;
+}
+
+message PgObjectIdPB {
+  uint32 database_oid = 1;
+  uint32 object_oid = 2;
+}
+
+message PgAlterDatabaseRequestPB {
+  uint64 session_id = 1;
+  string database_name = 2;
+  uint32 database_oid = 3;
+  string new_name = 4;
+}
+
+message PgAlterDatabaseResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgBackfillIndexRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB table_id = 2;
+}
+
+message PgBackfillIndexResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgRenameColumnPB {
+  string old_name = 1;
+  string new_name = 2;
+}
+
+message PgRenameTablePB {
+  string database_name = 1;
+  string table_name = 2;
+}
+
+message PgAlterTableRequestPB {
+  uint64 session_id = 1;
+  TransactionMetadataPB use_transaction = 2; // TODO(PG_CLIENT) Replace with bool.
+  PgObjectIdPB table_id = 3;
+  repeated PgCreateColumnPB add_columns = 4;
+  repeated PgRenameColumnPB rename_columns = 5;
+  repeated string drop_columns = 6;
+  PgRenameTablePB rename_table = 7;
+}
+
+message PgAlterTableResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgCreateDatabaseRequestPB {
+  uint64 session_id = 1;
+  TransactionMetadataPB use_transaction = 2; // TODO(PG_CLIENT) Replace with bool.
+  string database_name = 3;
+  uint32 database_oid = 4;
+  uint32 source_database_oid = 5;
+  uint32 next_oid = 6;
+  bool colocated = 7;
+}
+
+message PgCreateDatabaseResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgCreateSequencesDataTableRequestPB {
+}
+
+message PgCreateSequencesDataTableResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgCreateColumnPB {
+  string attr_name = 1;
+  int32 attr_num = 2;
+  int32 attr_ybtype = 3;
+  bool is_hash = 4;
+  bool is_range = 5;
+  int32 sorting_type = 6;
+}
+
+message PgCreateSplitBoundaryPB {
+  repeated QLValuePB values = 1;
+}
+
+message PgCreateTableRequestPB {
+  uint64 session_id = 1;
+
+  TransactionMetadataPB use_transaction = 2; // TODO(PG_CLIENT) Replace with bool.
+  PgObjectIdPB table_id = 3;
+  string database_name = 4;
+  string table_name = 5;
+  int32 num_tablets = 6;
+  bool is_pg_catalog_table = 7;
+  bool is_shared_table = 8;
+  bool if_not_exist = 9;
+  bool colocated = 10;
+  PgObjectIdPB tablegroup_oid = 11;
+  PgObjectIdPB tablespace_oid = 12;
+  repeated PgCreateColumnPB create_columns = 13;
+  repeated PgCreateSplitBoundaryPB split_bounds = 14;
+
+  // Actual for index only.
+  PgObjectIdPB base_table_id = 15;
+  bool is_unique_index = 16;
+  bool skip_index_backfill = 17;
+}
+
+message PgCreateTableResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgCreateTablegroupRequestPB {
+  uint64 session_id = 1;
+
+  string database_name = 2;
+  PgObjectIdPB tablegroup_id = 3;
+}
+
+message PgCreateTablegroupResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgDropDatabaseRequestPB {
+  uint64 session_id = 1;
+  string database_name = 3;
+  uint32 database_oid = 4;
+}
+
+message PgDropDatabaseResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgDropTableRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB table_id = 2;
+  bool index = 3;
+}
+
+message PgDropTableResponsePB {
+  AppStatusPB status = 1;
+  master.TableIdentifierPB indexed_table = 2;
+}
+
+message PgDropTablegroupRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB tablegroup_id = 2;
+}
+
+message PgDropTablegroupResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgGetCatalogMasterVersionRequestPB {
+}
+
+message PgGetCatalogMasterVersionResponsePB {
+  AppStatusPB status = 1;
+  uint64 version = 2;
+}
+
+message PgGetDatabaseInfoRequestPB {
+  uint32 oid = 1;
+}
+
+message PgGetDatabaseInfoResponsePB {
+  AppStatusPB status = 1;
+
+  master.GetNamespaceInfoResponsePB info = 2;
+}
+
+message PgIsInitDbDoneRequestPB {
+}
+
+message PgIsInitDbDoneResponsePB {
+  AppStatusPB status = 1;
+  bool done = 2;
+}
+
+message PgListLiveTabletServersRequestPB {
+  bool primary_only = 1;
+}
+
+message PgLiveTabletServerPB {
+  string uuid = 1;
+  string hostname = 2;
+  string placement_uuid = 3;
+  string cloud = 4;
+  string region = 5;
+  string zone = 6;
+  bool is_primary = 7;
+  string public_ip = 8;
+  uint32 pg_port = 9;
+}
+
+message PgListLiveTabletServersResponsePB {
+  AppStatusPB status = 1;
+  repeated PgLiveTabletServerPB servers = 2;
+}
+
+message PgOpenTableRequestPB {
+  string table_id = 1;
+}
+
+message PgTablePartitionsPB {
+  uint32 version = 1;
+  repeated bytes keys = 2;
+}
+
+message PgOpenTableResponsePB {
+  AppStatusPB status = 1;
+
+  master.GetTableSchemaResponsePB info = 2;
+  PgTablePartitionsPB partitions = 3;
+}
+
+message PgReserveOidsRequestPB {
+  uint32 database_oid = 1;
+  uint32 next_oid = 2;
+  uint32 count = 3;
+}
+
+message PgReserveOidsResponsePB {
+  AppStatusPB status = 1;
+
+  uint32 begin_oid = 2;
+  uint32 end_oid = 3;
+}
+
+message PgTabletServerCountRequestPB {
+  bool primary_only = 1;
+}
+
+message PgTabletServerCountResponsePB {
+  AppStatusPB status = 1;
+  int32 count = 2;
+}
+
+message PgTruncateTableRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB table_id = 2;
+}
+
+message PgTruncateTableResponsePB {
+  AppStatusPB status = 1;
+}

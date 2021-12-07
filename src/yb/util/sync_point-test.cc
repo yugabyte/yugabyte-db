@@ -30,12 +30,17 @@
 // under the License.
 //
 
-#include "yb/util/sync_point.h"
+#include <atomic>
+#include <string>
 
 #include <gtest/gtest.h>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/test_util.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 
 using std::string;

@@ -15,8 +15,14 @@
 
 #include "yb/rpc/local_call.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace rpc {
@@ -28,8 +34,10 @@ LocalOutboundCall::LocalOutboundCall(
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
     RpcMetrics* rpc_metrics, ResponseCallback callback)
-    : OutboundCall(remote_method, outbound_call_metrics, response_storage, controller, rpc_metrics,
-                   std::move(callback), nullptr /* callback_thread_pool */) {
+    : OutboundCall(remote_method, outbound_call_metrics, /* method_metrics= */ nullptr,
+                   response_storage, controller, rpc_metrics, std::move(callback),
+                   /* callback_thread_pool= */ nullptr) {
+  TRACE_TO(trace_, "LocalOutboundCall");
 }
 
 Status LocalOutboundCall::SetRequestParam(
@@ -46,7 +54,7 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   DCHECK(inbound_call_.get() == nullptr);
   const MonoDelta timeout = controller()->timeout();
   const CoarseTimePoint deadline =
-      timeout.Initialized() ? ToCoarse(start_) + timeout : CoarseTimePoint::max();
+      timeout.Initialized() ? start_ + timeout : CoarseTimePoint::max();
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
   inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
       &rpc_metrics(), remote_method(), outbound_call, deadline);

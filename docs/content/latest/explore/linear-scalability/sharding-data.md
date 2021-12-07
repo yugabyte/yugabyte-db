@@ -9,7 +9,7 @@ menu:
     name: Sharding Data
     identifier: explore-transactions-sharding-data-1-ysql
     parent: explore-scalability
-    weight: 240
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---
@@ -51,9 +51,9 @@ YugabyteDB currently supports two ways of sharding data: [hash](#hash-sharding) 
 
 ### Hash sharding
 
-With (consistent) hash sharding, a partitioning algorithm distributes data evenly and randomly across shards. The algorithm places each row of the table into a shard determined by computing a consistent hash on the partition column values of that row.
+With (consistent) hash sharding, a sharding algorithm distributes data evenly and randomly across shards. The algorithm places each row of the table into a shard determined by computing a consistent hash on the hash column values of that row.
 
-The hash space for hash-sharded YugabyteDB tables is the 2-byte range from `0x0000` to `0xFFFF`. A table may therefore have at most 65,536 tablets. We expect this to be sufficient in practice even for very large data sets or cluster sizes.
+The hash space for hash-sharded YugabyteDB tables is the 2-byte range from `0x0000` to `0xFFFF`. A table may therefore have at most 65,536 tablets. This is expected to be sufficient in practice even for very large data sets or cluster sizes.
 
 For example, for a table with 16 tablets the overall hash space of 0x0000 to 0xFFFF is divided into 16 sub-ranges, one for each tablet: 0x0000 to 0x1000, 0x1000 to 0x2000, and so on up to 0xF000 to 0xFFFF. Read and write operations are processed by converting the primary key into an internal key and its hash value, and determining the tablet to which the operation should be routed.
 
@@ -135,94 +135,46 @@ CREATE TABLE order_details (
 
 ## Try it out
 
-In this tutorial, you'll explore automatic sharding inside YugabyteDB. First, you'll create some tables with a replication factor (RF) of `1`. This makes it easier to understand how automatic sharding works independent of data replication. Then, you'll insert entries one by one, and examine which how the data gets distributed across the various nodes.
+In this tutorial, you'll explore automatic sharding inside YugabyteDB. First, you'll create some tables to understand how automatic sharding works. Then, you'll insert entries one by one, and examine how the data gets distributed across the various nodes.
 
-This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
 
 ### Create a universe
 
 To create a universe, do the following:
 
-1. If you have a currently running local universe, destroy it using the following.
+1. Let’s begin by creating a single node cluster. Run the following command.
+
+   ```sh
+   $ ./bin/yugabyted start \
+                     --base_dir=/tmp/ybd1 \
+                     --listen=127.0.0.1 \
+                     --tserver_flags "memstore_size_mb=1"
+   ```
+
+   * `memstore_size_mb=1` sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that you can observe which tablets the data is written to.
+
+1. Add two more nodes to make this a 3-node by joining them with the previous node. You need to pass the memstore_size flag to each of the added YB-TServer servers.
 
     ```sh
-    $ ./bin/yb-ctl destroy
+    $ ./bin/yugabyted start \
+                      --base_dir=/tmp/ybd2 \
+                      --listen=127.0.0.2 \
+                      --join=127.0.0.1 \
+                      --tserver_flags "memstore_size_mb=1"
     ```
 
-1. Start a new local universe with a replication factor of 1 (RF=1). We are passing the following flags:
+    ```sh
+    $ ./bin/yugabyted start \
+                      --base_dir=/tmp/ybd3 \
+                      --listen=127.0.0.3 \
+                      --join=127.0.0.1 \
+                      --tserver_flags "memstore_size_mb=1"
+    ```
 
-    * `--rf` creates a universe with a replication factor of 1.
-    * `--num_shards_per_tserver` controls the total number of tablets (or partitions) when creating a new table. By setting the value to `4`, 12 tablets will be created on a 3-node cluster.
-    * `--tserver_flags "memstore_size_mb=1"` sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that you can observe which tablets the data is written to.
-
-    {{< note title="Warning" >}}
+{{< warning title="Warning" >}}
 Setting `memstore_size` to such a low value is not recommended in production, and is only being used here to illustrate the point by forcing flushes to happen more quickly.
-    {{< /note >}}
-
-    ```sh
-    $ ./bin/yb-ctl --rf 1 --num_shards_per_tserver 4 create \
-                --tserver_flags "memstore_size_mb=1"
-    ```
-
-1. Add two more nodes to make this a 3-node, rf=1 universe. We need to pass the memstore_size flag to each of the added YB-TServer servers.
-
-    ```sh
-    $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
-    ```
-
-    ```sh
-    $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
-    ```
-
-1. Check the status of the cluster to confirm that you have three YB-TServer servers.
-
-    ```sh
-    $ ./bin/yb-ctl status
-    ```
-
-    ```output
-    ----------------------------------------------------------------------------------------------------
-    | Node Count: 3 | Replication Factor: 1                                                            |
-    ----------------------------------------------------------------------------------------------------
-    | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
-    | YSQL                : ./bin/ysqlsh                                                               |
-    | YCQL                : ./bin/ycqlsh 127.0.0.1 9042                                                |
-    | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
-    | Web UI              : http://127.0.0.1:7000/                                                     |
-    | Cluster Data        : /Users/schoudhury/yugabyte-data                                            |
-    ----------------------------------------------------------------------------------------------------
-    ----------------------------------------------------------------------------------------------------
-    | Node 1: yb-tserver (pid 72053), yb-master (pid 72050)                                            |
-    ----------------------------------------------------------------------------------------------------
-    | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
-    | YSQL                : ./bin/ysqlsh                                                               |
-    | YCQL                : ./bin/ycqlsh 127.0.0.1 9042                                                |
-    | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
-    | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data                      |
-    | TServer Logs        : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data/tserver/logs         |
-    | Master Logs         : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data/master/logs          |
-    ----------------------------------------------------------------------------------------------------
-    ----------------------------------------------------------------------------------------------------
-    | Node 2: yb-tserver (pid 72128)                                                                   |
-    ----------------------------------------------------------------------------------------------------
-    | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
-    | YSQL                : ./bin/ysqlsh                                                               |
-    | YCQL                : ./bin/ycqlsh 127.0.0.2 9042                                                |
-    | YEDIS               : ./bin/redis-cli -h 127.0.0.2 -p 6379                                       |
-    | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-2/disk-1/yb-data                      |
-    | TServer Logs        : /Users/schoudhury/yugabyte-data/node-2/disk-1/yb-data/tserver/logs         |
-    ----------------------------------------------------------------------------------------------------
-    ----------------------------------------------------------------------------------------------------
-    | Node 3: yb-tserver (pid 72166)                                                                   |
-    ----------------------------------------------------------------------------------------------------
-    | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
-    | YSQL                : ./bin/ysqlsh -U postgres -h 127.0.0.3 -p 5433                              |
-    | YCQL                : ./bin/ycqlsh 127.0.0.3 9042                                                |
-    | YEDIS               : ./bin/redis-cli -h 127.0.0.3 -p 6379                                       |
-    | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-3/disk-1/yb-data                      |
-    | TServer Logs        : /Users/schoudhury/yugabyte-data/node-3/disk-1/yb-data/tserver/logs         |
-    ----------------------------------------------------------------------------------------------------
-    ```
+{{< /warning >}}
 
 ### Create a table
 
@@ -240,46 +192,51 @@ ycqlsh> CREATE KEYSPACE ybdemo_keyspace;
 ycqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
-For each table, YugabyteDB creates four shards for each YB-TServer in this universe. Because you have three nodes, this should create 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
+By default, [yugabyted](../../../reference/configuration/yugabyted) creates one tablet per node per table. So for a 3 node cluster, 3 tablets are created for the above table; one on every node. Every such tablet is replicated 3 times for fault tolerance, so that makes the total number of nodes to be 3*3=9. Every node thus contains 3 tablets, one of which it is the leader and the remaining 2 of which it is the follower. 
 
 ### Explore tablets
 
-**The tablets are evenly balanced across the various nodes**. You can see the number of tablets per node in the Tablet Servers page of the master Admin UI, by going to the [table details page](http://127.0.0.1:7000/tablet-servers). The page should look something like the image below.
+* **The tablets are evenly balanced across the various nodes**. You can see the number of tablets per node in the Tablet Servers page of the master Admin UI, by going to the [table details page](http://127.0.0.1:7000/tablet-servers). The page should look something like the image below.
 
-![Number of tablets in the table](/images/ce/auto-sharding-cassandra-table-1.png)
+    ![Number of tablets in the table](/images/ce/sharding_evenload.png)
 
-Notice that each node has 4 tablets, and the total number of tablets is 12 as expected.
+    Notice that each node has 3 tablets, and the total number of tablets is 9 as expected. Out of these 3, it is the leader of 1 and follower of other 2.
 
-**The table has 12 tablets, each owning a range of the keyspace**. Navigate to the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to examine the various tablets. This page should look as follows.
+* **The table has 3 shards, each owning a range of the keyspace**. Navigate to the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to examine the various tablets. This page should look as follows.
 
-![Tablet details of the table](/images/ce/auto-sharding-cassandra-tablets.png)
+    ![Tablet details of the table](/images/ce/sharding_keyranges.png)
 
-There are 12 tablets as expected, and the key ranges owned by each tablet are shown. This page also shows which node is currently hosting (and is the leader for) each tablet. Note here that tablet balancing across nodes happens on a per-table basis, with each table scaled out to an appropriate number of nodes.
+    There are 3 shards as expected, and the key ranges owned by each tablet are shown. This page also shows which node is currently hosting (and is the leader for) each tablet. Note here that tablet balancing across nodes happens on a per-table basis, with each table scaled out to an appropriate number of nodes.
 
-**Each tablet has a separate directory dedicated to it for data**. List out all the tablet directories and check their sizes, as follows:
+* **Each tablet has a separate directory dedicated to it for data**. List out all the tablet directories and check their sizes, as follows:
 
-```sh
-$ du -hs /yugabyte-data/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
-```
+1. First get the table-id of the table you created by going to the [table listing page](http://127.0.0.1:7000/tables) and accessing the row corresponding to `ybdemo_keyspace.cassandrakeyvalue`. In this illustration, the table-id is `769f533fbde9425a8520b9cd59efc8b8`.
 
-```output
- 20K    /yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-439ae3bde90049d6812e198e76ad29a4
- 20K    /yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-eecd01f0a7cd4537ba571bdb85d0c094
- 20K    /yugabyte-data/node-1/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4ea334056a3845518cc6614baef96966
- 20K    /yugabyte-data/node-1/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-52642a3a9d7b4d38a103dff5dd77a3c6
- 20K    /yugabyte-data/node-2/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4e31e26b3b204e34a1e0cfd6f7500525
- 20K    /yugabyte-data/node-2/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-b7ac08a983aa45a3843ab92b1719799a
- 20K    /yugabyte-data/node-2/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-22c349a07afb48e3844b570c24455431
- 20K    /yugabyte-data/node-2/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-8955db9e1ec841f3a30535b77d707586
- 20K    /yugabyte-data/node-3/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-adac9f92466b4d288a4ae346aaad3880
- 20K    /yugabyte-data/node-3/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-f04a6d5113a74ba79a04f01c80423ef5
- 20K    /yugabyte-data/node-3/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-1c472c1204fe40afbc7948dadce22be8
- 20K    /yugabyte-data/node-3/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-5aaeb96381044aa2b09ed9973830bb27
- ```
+    ![Id of the created table](/images/ce/sharding_tableid.png)
+
+1. Next, you can view all the tablet directories and their sizes for this table by running the following command. Remember to replace the id with your corresponding id.
+
+    ```sh
+    $ du -hs /tmp/ybd*/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/* | grep -v '0B'
+    ```
+
+    ```output
+    28K	/tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    28K	/tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K	/tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    ```
+
+    There are nine entries, one corresponding to each tablet with 28K bytes as the size.
 
 ### Insert and query a table
 
-In this section, you'll use a sample app to insert a key-value entry with the value size around 2MB. Since the memstores are configured to be 1MB, this causes the data to flush to disk immediately.
+In this section, you'll use a sample app to insert a key-value entry with the value size around 10MB. Since the memstores are configured to be 1MB, this causes the data to flush to disk immediately.
 
 The key flags you pass to the sample app are:
 
@@ -294,7 +251,7 @@ Let's get started:
 1. Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`):
 
     ```sh
-    $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.6/yb-sample-apps.jar
+    $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar
     ```
 
 1. Run the `CassandraKeyValue` workload application.
@@ -311,9 +268,14 @@ Let's get started:
     ```
 
     ```output
-    2018-02-05 07:33:33,525 [INFO|...] Num unique keys to insert: 1
+    0 [main] INFO com.yugabyte.sample.Main  - Starting sample app...
     ...
-    2018-02-05 07:33:36,899 [INFO|...] The sample app has finished
+    38 [main] INFO com.yugabyte.sample.common.CmdLineOpts  - Num unique keys to insert: 1
+    38 [main] INFO com.yugabyte.sample.common.CmdLineOpts  - Num keys to update: 1
+    38 [main] INFO com.yugabyte.sample.common.CmdLineOpts  - Num keys to read: -1
+    38 [main] INFO com.yugabyte.sample.common.CmdLineOpts  - Value size: 10000000
+    ...
+    4360 [main] INFO com.yugabyte.sample.Main  - The sample app has finished
     ```
 
 1. Check what you've inserted using `ycqlsh`.
@@ -337,56 +299,97 @@ Let's get started:
 1. Next, check the sizes of the various tablets:
 
     ```sh
-    $ du -hs /yugabyte-data/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
+    $ du -hs /tmp/ybd*/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/* | grep -v '0B'
     ```
 
     ```output
-    20K    .../rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-439ae3bde90049d6812e198e76ad29a4
-    9.6M    .../rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-eecd01f0a7cd4537ba571bdb85d0c094
-    20K    .../rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4ea334056a3845518cc6614baef96966
-    ...
+    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    9.6M    /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K	/tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    9.6M    /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    9.6M    /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
     ```
 
-1. Here, the key has been written to one of the tablets. In this example, the tablet's UUID is `eecd01f0a7cd4537ba571bdb85d0c094`. Check the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to determine which node this tablet belongs to, and in this case it's `node-1`.
+You can see that the key was successfully inserted in one of the tablets leading to a proliferation of size to 9.6 MB. Because this tablet has 3 copies distributed across the 3 nodes, you can see 3 entries of this size.
 
-    ![Tablet ownership with auto-sharding](/images/ce/auto-sharding-tablet-ownership.png)
+Here, the key has been written to one of the tablets. In this example, the tablet's UUID is `0df2c7cd87a844c99172ea1ebcd0a3ee`. Check the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to determine which node this tablet belongs to, and in this case it's `node-1`.
 
-1. You can also easily confirm that `node-1` does have about 10MB of storage being used.
-
-    ![Inserting values with auto-sharding](/images/ce/auto-sharding-single-kv-insert.png)
+![Tablet ownership with auto-sharding](/images/ce/sharding_tablet.png)
 
 ### Automatic sharding when adding nodes
 
 1. Add one more node to the universe for a total of 4 nodes:
 
     ```sh
-    $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
+    $ ./bin/yugabyted start \
+                      --base_dir=/tmp/ybd4 \
+                      --listen=127.0.0.4 \
+                      --join=127.0.0.1 \
+                      --tserver_flags "memstore_size_mb=1"
     ```
 
-1. Check the tablet servers page, to see that the tablets are re-distributed evenly among the 4 nodes and each node now has 3 shards:
+1. Check the tablet servers page, to see that the tablets are re-distributed evenly among the 4 nodes:
 
-    ![Auto-sharding when adding one node](/images/ce/auto-sharding-add-1-node.png)
+    ![Auto-sharding when adding one node](/images/ce/sharding_4nodes.png)
 
 1. Add 2 more nodes to the universe, making it a total of 6 nodes:
 
     ```sh
-    $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
+    $ ./bin/yugabyted start \
+                      --base_dir=/tmp/ybd5 \
+                      --listen=127.0.0.5 \
+                      --join=127.0.0.1 \
+                      --tserver_flags "memstore_size_mb=1"
     ```
 
     ```sh
-    $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
+    $ ./bin/yugabyted start \
+                      --base_dir=/tmp/ybd5 \
+                      --listen=127.0.0.5 \
+                      --join=127.0.0.1 \
+                      --tserver_flags "memstore_size_mb=1"
     ```
 
 1. Verify that the tablets are evenly distributed across the 6 nodes. Each node now has 2 tablets.
 
-    ![Auto-sharding when adding three nodes](/images/ce/auto-sharding-add-3-node.png)
+    ![Auto-sharding when adding three nodes](/images/ce/sharding_6nodes.png)
 
 ### [Optional] Clean up
 
-If you're done experimenting, run the following command to shut down the local cluster:
+If you're done experimenting, run the following commands to shut down the local cluster:
 
 ```sh
-$ ./bin/yb-ctl destroy
+$ ./bin/yugabyted destroy \
+                  --base_dir=/tmp/ybd1
+```
+
+```sh
+$ ./bin/yugabyted destroy \
+                  --base_dir=/tmp/ybd2
+```
+
+```sh
+$ ./bin/yugabyted destroy \
+                  --base_dir=/tmp/ybd3
+```
+
+```sh
+$ ./bin/yugabyted destroy \
+                  --base_dir=/tmp/ybd4
+```
+
+```sh
+$ ./bin/yugabyted destroy \
+                  --base_dir=/tmp/ybd5
+```
+
+```sh
+$ ./bin/yugabyted destroy \
+                  --base_dir=/tmp/ybd6
 ```
 
 ## Further reading

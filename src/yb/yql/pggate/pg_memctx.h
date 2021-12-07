@@ -20,7 +20,9 @@
 
 #include <boost/intrusive/list.hpp>
 
-#include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_gate_fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace pggate {
@@ -75,7 +77,7 @@ class PgMemctx {
   static void Destroy(Registrable *obj);
 
   // Cache the table descriptor in the memory context to be destroyed later on.
-  void Cache(size_t hash_id, const PgTableDesc::ScopedRefPtr &table_desc);
+  void Cache(size_t hash_id, const PgTableDescPtr &table_desc);
 
   // Read the table descriptor from cache.
   void GetCache(size_t hash_id, PgTableDesc **handle);
@@ -91,7 +93,7 @@ class PgMemctx {
   void Clear();
 
   // All talbe descriptors that are allocated with this memory context.
-  std::unordered_map<size_t, PgTableDesc::ScopedRefPtr> tabledesc_map_;
+  std::unordered_map<size_t, PgTableDescPtr> tabledesc_map_;
 
   boost::intrusive::list<Registrable> registered_objects_;
 

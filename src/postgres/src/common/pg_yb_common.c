@@ -35,6 +35,8 @@
 
 #include "utils/elog.h"
 
+const bool kTestOnlyUseOSDefaultCollation = false;
+
 bool
 YBCIsEnvVarTrue(const char* env_var_name)
 {
@@ -134,13 +136,45 @@ YBIsNonTxnCopyEnabled()
 	return cached_value;
 }
 
-bool
-YBIsAnalyzeCmdEnabled()
+const char *YBGetCurrentCloud()
 {
+	return getenv("FLAGS_placement_cloud");
+}
+
+const char *YBGetCurrentRegion()
+{
+	return getenv("FLAGS_placement_region");
+}
+
+const char *YBGetCurrentZone()
+{
+	return getenv("FLAGS_placement_zone");
+}
+
+int YBGetMaxClockSkewUsec() {
+	const int kDefaultClockSkewUsec = 500 * 1000;  // from physical_time.cc
+	const char *clock_skew_str = getenv("FLAGS_max_clock_skew_usec");
+	if (clock_skew_str) {
+		return atoi(clock_skew_str);
+	}
+	return kDefaultClockSkewUsec;
+}
+
+bool
+YBIsCollationEnabled()
+{
+#ifdef USE_ICU
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrue("FLAGS_ysql_allow_analyze_cmd");
+		/*
+		 * The default value must be in sync with that of FLAGS_TEST_pg_collation_enabled.
+		 */
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_TEST_pg_collation_enabled",
+												  true /* default_value */);
 	}
 	return cached_value;
+#else
+	return false;
+#endif
 }

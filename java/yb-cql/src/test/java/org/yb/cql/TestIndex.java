@@ -33,7 +33,7 @@ import com.datastax.driver.core.exceptions.InvalidQueryException;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.TableProperties;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -511,6 +511,71 @@ public class TestIndex extends BaseCQLTest {
                 "");
   }
 
+  private void testUniqueIndexUpdate(boolean strongConsistency) throws Exception {
+    // Create test table and indexes.
+    createTable("create table test_update " +
+                "(h1 int, h2 int, r1 int, r2 int, v1 int, v2 int, " +
+                "primary key ((h1, h2), r1, r2)) ", strongConsistency);
+    createIndex("create unique index idx_pk on test_update(r1)", strongConsistency);
+    createIndex("create unique index idx_non_pk on test_update(v1)", strongConsistency);
+
+    Map<String, String> tableColumnMap = new HashMap<String, String>() {{
+        put("idx_pk", "r1, h1, h2, r2");
+        put("idx_non_pk", "v1, h1, h2, r1, r2");
+      }};
+
+    Map<String, String> indexColumnMap = new HashMap<String, String>() {{
+        put("idx_pk", "\"C$_r1\", \"C$_h1\", \"C$_h2\", \"C$_r2\"");
+        put("idx_non_pk", "\"C$_v1\", \"C$_h1\", \"C$_h2\", \"C$_r1\", \"C$_r2\"");
+      }};
+
+    // test_update: Row[1, 1, 1, 1, 1, 1]
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+                      "insert into test_update (h1, h2, r1, r2, v1, v2) " +
+                      "values (1, 1, 1, 1, 1, 1);");
+
+    // test_update: Row[1, 1, 1, 1, 99, 1]
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+                      "update test_update set v1 = 99 " +
+                      "where h1 = 1 and h2 = 1 and r1 = 1 and r2 = 1;");
+
+    // Conflict on 'v1=99' duplicate value in unique index 'idx_non_pk'.
+    runInvalidStmt(
+          "update test_update set v1=99, v2=5 WHERE h1=9 and h2=9 and r1=9 and r2=9",
+          "Duplicate value disallowed by unique index idx_non_pk");
+
+    // Conflict on 'r1=1' duplicate value in unique index 'idx_pk'.
+    runInvalidStmt(
+          "update test_update set v1=88, v2=88 WHERE h1=9 and h2=9 and r1=1 and r2=9;",
+          "Duplicate value disallowed by unique index idx_pk");
+
+    if (strongConsistency) {
+      // Conflict on 'v1=NULL' duplicate value in unique index 'idx_non_pk'.
+      runInvalidStmt(
+          "start transaction;" +
+          "  update test_update set v1=NULL, v2=5 WHERE h1=2 and h2=1 and r1=2 and r2=2;" +
+          "  update test_update set v1=NULL, v2=6 WHERE h1=2 and h2=1 and r1=3 and r2=3;" +
+          "commit;",
+          "Duplicate value disallowed by unique index idx_non_pk");
+      assertQuery("select * from test_update where v1 = NULL", "");
+
+      // Conflict on 'r1=4' duplicate value in unique index 'idx_pk'.
+      runInvalidStmt(
+          "start transaction;" +
+          "  update test_update set v1=11, v2=12 WHERE h1=3 and h2=1 and r1=4 and r2=1;" +
+          "  update test_update set v1=21, v2=22 WHERE h1=3 and h2=1 and r1=4 and r2=2;" +
+          "commit;",
+          "Duplicate value disallowed by unique index idx_pk");
+      assertQuery("select * from test_update where r1 = 4", "");
+    } else {
+      runInvalidStmt(
+          "start transaction;" +
+          "  update test_update set v1=7, v2=7 WHERE h1=7 and h2=7 and r1=7 and r2=7;" +
+          "commit;",
+          "Transactions are not enabled in the table");
+    }
+  }
+
   private void testIndexUpdateMisc(boolean strongConsistency) throws Exception {
     // #7641: UPDATE a row without liveness column. Set some columns with only null values
     // (so it actually seems like a delete until we discover an existing non-null column).
@@ -533,10 +598,13 @@ public class TestIndex extends BaseCQLTest {
     assertIndexUpdate(tableColumnMap, indexColumnMap,
       "update test_update set v2=null where h1=1 and r1=2");
 
+    session.execute("drop table test_update");
+
+    // =========================================================================
+
     // Follow-up test case: Apart from actual bug in #7641, we also test below case:
     //   - UPDATE a row without liveness column. Set only null values on regular columns except a
     //     non-null value on a static column. Index entry should get deleted.
-    session.execute("drop table test_update");
     createTable("create table test_update (h1 int, r1 int, s1 int static, v2 int, v3 int, " +
       "primary key(h1, r1)) ", strongConsistency);
     createIndex("create index i1 on test_update (v3)", strongConsistency);
@@ -547,9 +615,50 @@ public class TestIndex extends BaseCQLTest {
 
     // Perform update - index entry should be removed since tuple is removed in main table.
     session.execute("update test_update set s1=4, v2=null where h1=1 and r1=2");
-    // assertQuery("select * from test_update where v3=null", "");
+    assertQuery("select * from test_update where v3=null", "");
     Set<String> index_tuples = queryTable("i1", indexColumnMap.get("i1"));
     assertTrue(index_tuples.size() == 0);
+    session.execute("drop table test_update");
+
+    // =========================================================================
+
+    // Test case for #8834
+    String create_table_stmt = "CREATE TABLE test_update(h1 uuid PRIMARY KEY," +
+      " v1 int, v2 int, v3 text) WITH default_time_to_live = 0";
+
+    if (strongConsistency)
+      create_table_stmt += " AND transactions = {'enabled': 'true'}";
+
+    session.execute(create_table_stmt);
+    createIndex("CREATE INDEX i1 ON test_update (v2, h1)", strongConsistency);
+
+    tableColumnMap = new HashMap<String, String>() {{put("i1", "v2, h1");}};
+    indexColumnMap = new HashMap<String, String>() {{put("i1", "\"C$_v2\", \"C$_h1\"");}};
+
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+
+    session.execute("drop index i1");
+
+    // Test to ensure below condition in case of a row deletion using
+    // DELETE of some cols/ UPDATE of cols to NULLs -
+    //   A column that is DELETEd or UPDATEd to NULL is still read
+    //   in cql_operation.cc if there is an index on that column. This is to ensure that the old
+    //   index entry for that column is removed.
+    createIndex("CREATE INDEX i1 ON test_update (v3)", strongConsistency);
+    tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1");}};
+    indexColumnMap = new HashMap<String, String>() {{put("i1", "\"C$_v3\", \"C$_h1\"");}};
+
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = NULL where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+
+    // Add the row again and this time do a DELETE.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "DELETE v3 from test_update where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
   }
 
   @Test
@@ -560,6 +669,16 @@ public class TestIndex extends BaseCQLTest {
   @Test
   public void testWeakIndexUpdate() throws Exception {
     testIndexUpdate(false);
+  }
+
+  @Test
+  public void testUniqueIndexUpdate() throws Exception {
+    testUniqueIndexUpdate(true);
+  }
+
+  @Test
+  public void testWeakUniqueIndexUpdate() throws Exception {
+    testUniqueIndexUpdate(false);
   }
 
   @Test
@@ -694,24 +813,22 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testCreateIndexWithWhereClause() throws Exception {
-    LOG.info("Start test: " + getCurrentTestMethodName());
+  public void testBlockCreateIndexWithWhereClause() throws Exception {
     destroyMiniCluster();
+
+    // cql_raise_index_where_clause_error=false by default.
     createMiniCluster(
-        Collections.emptyMap(),
-        Collections.singletonMap("cql_raise_index_where_clause_error", "false"));
+      Collections.emptyMap(),
+      Collections.singletonMap("cql_raise_index_where_clause_error", "true"));
     setUpCqlClient();
 
     // Create test table.
-    LOG.info("create test table");
     session.execute("create table test_create_index " +
-                    "(h1 int, h2 text, r1 int, r2 text, " +
-                    "c1 int, c2 text, c3 decimal, c4 timestamp, c5 boolean, " +
+                    "(h1 int, h2 text, r1 int, r2 text, c1 int, " +
                     "primary key ((h1, h2), r1, r2)) " +
                     "with transactions = {'enabled' : true};");
     LOG.info("create test index");
-    session.execute("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
-    LOG.info("End test: " + getCurrentTestMethodName());
+    runInvalidStmt("CREATE INDEX i1 ON test_create_index (r1) where r1 = 5;");
   }
 
   @Test
@@ -938,7 +1055,7 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testDMLInTranaction() throws Exception {
+  public void testDMLInTransaction() throws Exception {
     // Create 2 tables with secondary indexes and verify they can be updated in the one transaction.
     session.execute("create table test_txn1 (k int primary key, v int) " +
                     "with transactions = {'enabled' : true};");
@@ -969,7 +1086,29 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testDMLInTranactionWith2Indexes() throws Exception {
+  public void testDMLInTransactionWithIndex() throws Exception {
+    // Create 2 tables with secondary indexes and verify they can be updated in the one transaction.
+    session.execute("create table test_txn1 (k int primary key, v int) " +
+                    "with transactions = {'enabled' : true}");
+    session.execute("create index test_txn1_by_v on test_txn1 (v)");
+
+    session.execute("create table test_txn2 (k text primary key, v text) " +
+                    "with transactions = {'enabled' : true}");
+    session.execute("create index test_txn2_by_v on test_txn2 (v)");
+
+    session.execute("begin transaction" +
+                    "  insert into test_txn1 (k, v) values (1, 101);" +
+                    "  insert into test_txn2 (k, v) values ('k1', 'v101');" +
+                    "end transaction;");
+    // Verify the rows.
+    assertQuery("select * from test_txn1", "Row[1, 101]");
+    assertQuery("select * from test_txn1_by_v", "Row[1, 101]");
+    assertQuery("select * from test_txn2", "Row[k1, v101]");
+    assertQuery("select * from test_txn2_by_v", "Row[k1, v101]");
+  }
+
+  @Test
+  public void testDMLInTransactionWith2Indexes() throws Exception {
     // Create table with 2 secondary indexes and verify they can be updated in the one transaction.
     session.execute("create table test_txn (k int primary key, v1 int, v2 int) " +
                     "with transactions = {'enabled' : true};");
@@ -1070,7 +1209,7 @@ public class TestIndex extends BaseCQLTest {
     }
   }
 
-  protected void doTestDMLInTranactionWith9Indexes(boolean testAbort) throws Exception {
+  protected void doTestDMLInTransactionWith9Indexes(boolean testAbort) throws Exception {
     // Create table with secondary indexes and verify they can be updated in the one transaction.
     session.execute("create table test_txn (k int primary key, " +
                     "v1 int, v2 int, v3 int, v4 int, v5 int, v6 int, v7 int, v8 int, v9 int) " +
@@ -1101,13 +1240,13 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testDMLInTranactionWith9Indexes() throws Exception {
-    doTestDMLInTranactionWith9Indexes(false);
+  public void testDMLInTransactionWith9Indexes() throws Exception {
+    doTestDMLInTransactionWith9Indexes(false);
   }
 
   @Test
-  public void testDMLInAbortedTranactionWith9Indexes() throws Exception {
-    doTestDMLInTranactionWith9Indexes(true);
+  public void testDMLInAbortedTransactionWith9Indexes() throws Exception {
+    doTestDMLInTransactionWith9Indexes(true);
   }
 
   @Test
@@ -1305,9 +1444,9 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testDropDuringWrite() throws Exception {
-    int numTables = SanitizerUtil.nonTsanVsTsan(5, 2);
-    int numTablets = SanitizerUtil.nonTsanVsTsan(6, 3);
-    int numThreads = SanitizerUtil.nonTsanVsTsan(10, 4);
+    int numTables = BuildTypeUtil.nonTsanVsTsan(5, 2);
+    int numTablets = BuildTypeUtil.nonTsanVsTsan(6, 3);
+    int numThreads = BuildTypeUtil.nonTsanVsTsan(10, 4);
     for (int i = 0; i != numTables; ++i) {
       String tableName = "index_test_" + i;
       String indexName = "index_" + i;
@@ -1625,7 +1764,10 @@ public class TestIndex extends BaseCQLTest {
       return null;
 
     if (value.charAt(0) == '\'')
-      if  (value.charAt(1) == '{') // JSONB
+      if (value.charAt(1) == '{') // JSONB
+        return value.substring(1, value.length() - 1);
+      else if (value.equals("'null'")) // JSONB null i.e., 'null'. Obviously assuming no other tests
+          // have a non-jsonb col = 'null' -> in which case we really want to include single quotes.
         return value.substring(1, value.length() - 1);
       else if (quoteStr)
         return value; // Text as "'str'"
@@ -1638,6 +1780,13 @@ public class TestIndex extends BaseCQLTest {
     if (!runPrepared) {
       LOG.info("Run query: " + query);
       return session.execute(query);
+    }
+
+    int idx_of_with = query.indexOf(" with");
+    String with_clause = "";
+    if (idx_of_with != -1) {
+      with_clause = query.substring(query.indexOf(" with"), query.length());
+      query = query.substring(0, query.indexOf(" with"));
     }
 
     query = query.replaceAll("=", " = ")
@@ -1687,7 +1836,10 @@ public class TestIndex extends BaseCQLTest {
       fail("Unknown statement type: " + command);
     }
 
-    LOG.info("Run prepared query: " + statement);
+    if (!with_clause.isEmpty())
+      statement += with_clause;
+
+    LOG.info("Run prepared query: " + statement + " with bind variables " + bindValues);
     assertFalse(statement.isEmpty());
     PreparedStatement prepared = session.prepare(statement);
     return session.execute(prepared.bind(bindValues.toArray()));
@@ -2033,11 +2185,217 @@ public class TestIndex extends BaseCQLTest {
     assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
         "delete c, j from test_update where h = 66 and r = 77");
 */
+
+    // Test cases involving different types of NULLs and ignore_null_jsonb_attributes=true/false.
+    //   There are two types of NULLs - the YCQL NULL and the jsonb 'null'.
+    //   1. Only the full jsonb col can be YCQL NULL - moreover this can't be done using an explicit
+    //      UPDATE/INSERT with NULL, but only by not specifying any value for the jsonb col.
+    //   2. Both the whole jsonb col or any internal json attribute can be the json 'null'
+
+    // Test for the case where the jsonb col is the YCQL NULL.
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update (h, r) values (1, 1);"
+      // not updated indexes:
+    );
+
+    // There are two operations to test for jsonb 'null's (msb in testcase description) -
+    //   1. Row insertion
+    //   2. Update on an existing row
+    //
+    // For both tests there 8 variations based on 0/1 for the following params (last 3 bits in
+    // testcase decription) -
+    //   1. ignore_null_jsonb_attributes=false/true if using UPDATE statement
+    //   2. j->'a' = 'null' (OR) j->'a'->'b' = 'null'
+    //      Note that the latter can't be done with UPDATE statement since we allow upsert only with
+    //      json nesting depth of 1.
+    //   3. Using an UPDATE/INSERT statement for the operation
+
+    // 0000
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};"
+      // not updated indexes:
+    );
+
+    // 0001
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');"
+      // not updated indexes:
+    );
+
+    // 0010 - not possible
+
+    // 0011
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');"
+      // not updated indexes:
+    );
+
+    // 0100
+    session.execute("truncate table test_update");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // 0101 - not possible
+    // 0110 - not possible
+    // 0111 - not possible
+
+    // 1000
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': false};",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // 1001
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, 'null')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":null}');",
+      // not updated indexes:
+      "i2", "i3", "i5", "i6");
+
+    // 1010 - not possible
+
+    // 1011
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, 'null')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\":{\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 'b': null
+    session.execute("truncate table test_update");
+    session.execute(
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\": null}}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\":null}}');",
+      // not updated indexes:
+      "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 'b': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\": 1}}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": {\"b\":null}}');",
+      // not updated indexes:
+      "i5", "i6");
+
+    // 1100
+    // INSERT with j as NULL
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c) values (1, 1, 1)");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': null
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": null}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // INSERT with j as jsonb with 'a': 1
+    session.execute("truncate table test_update");
+    session.execute("insert into test_update(h, r, c, j) values (1, 1, 1, '{\"a\": 1}')");
+    assertIndexDataAndMetrics(tp, tableColumnMap, indexColumnMap,
+      "update test_update set j->'a' = 'null' where h = 1 and r = 1" +
+      " with options = {'ignore_null_jsonb_attributes': true};",
+      // not updated indexes:
+      "test_update", "i1", "i2", "i3", "i4", "i5", "i6");
+
+    // 1101 - not possible
+    // 1110 - not possible
+    // 1111 - not possible
   }
 
   @Test
   public void testOptimizedJsonIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL));
+    doTestOptimizedJsonIndexUpdate(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL));
   }
 
   @Test
@@ -2047,7 +2405,7 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testPreparedOptimizedJsonIndexUpdate() throws Exception {
-    doTestOptimizedIndexUpdate(new TableProperties(
+    doTestOptimizedJsonIndexUpdate(new TableProperties(
         TableProperties.TP_NON_TRANSACTIONAL | TableProperties.TP_PREPARED_QUERY));
   }
 

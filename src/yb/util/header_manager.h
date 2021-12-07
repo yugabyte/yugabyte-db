@@ -14,11 +14,13 @@
 #ifndef YB_UTIL_HEADER_MANAGER_H
 #define YB_UTIL_HEADER_MANAGER_H
 
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include <memory>
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
-namespace enterprise {
+
+class Slice;
 
 struct EncryptionParams;
 typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
@@ -47,7 +49,6 @@ class HeaderManager {
   virtual bool IsEncryptionEnabled() = 0;
 };
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_HEADER_MANAGER_H

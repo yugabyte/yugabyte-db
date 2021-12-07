@@ -30,11 +30,13 @@
 // under the License.
 //
 
-#include <boost/bind.hpp>
+#include <atomic>
+#include <string>
+
 #include <gtest/gtest.h>
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/test_util.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
@@ -52,7 +54,7 @@ static void DecrementLatch(CountDownLatch* latch, int amount) {
 // as 1 by one.
 TEST(TestCountDownLatch, TestLatch) {
 
-  gscoped_ptr<ThreadPool> pool;
+  std::unique_ptr<ThreadPool> pool;
   ASSERT_OK(ThreadPoolBuilder("cdl-test").set_max_threads(1).Build(&pool));
 
   CountDownLatch latch(1000);

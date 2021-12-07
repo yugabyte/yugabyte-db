@@ -38,15 +38,11 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/container/static_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
-#include <boost/thread/shared_mutex.hpp>
 #include <gtest/gtest_prod.h>
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/options.h"
-#include "yb/client/async_initializer.h"
 #include "yb/client/client_fwd.h"
+#include "yb/client/async_initializer.h"
 
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
@@ -54,23 +50,29 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
-#include "yb/master/master_fwd.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/master/master_fwd.h"
+
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_splitter.h"
-#include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/tserver/tablet_memory_manager.h"
+#include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
@@ -169,7 +171,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const bool colocated = false,
       const std::vector<SnapshotScheduleId>& snapshot_schedules = {});
 
-  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperationState* state, log::Log* raft_log) override;
+  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperation* operation, log::Log* raft_log) override;
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
@@ -253,9 +255,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   }
 
   // Get all of the tablets currently hosted on this server.
-  void GetTabletPeers(TabletPeers* tablet_peers,
-                      TabletPtrs* tablet_ptrs = nullptr) const;
-  TabletPeers GetTabletPeers() const;
+  TabletPeers GetTabletPeers(TabletPtrs* tablet_ptrs = nullptr) const;
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 
@@ -319,12 +319,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
-  CHECKED_STATUS UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info);
+  CHECKED_STATUS UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
 
   client::YBClient& client();
+
+  const std::shared_future<client::YBClient*>& client_future();
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
@@ -484,7 +486,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
-  HybridTime AllowedHistoryCutoff(const tablet::RaftGroupMetadata& metadata);
+  HybridTime AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
   const CoarseTimePoint start_time_;
 
@@ -586,6 +588,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
       snapshot_schedule_allowed_history_cutoff_
       GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
+  // Store snapshot schedules that were missing on previous calls to AllowedHistoryCutoff.
+  std::unordered_map<SnapshotScheduleId, int64_t, SnapshotScheduleIdHash>
+      missing_snapshot_schedules_
+      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
+  int64_t snapshot_schedules_version_ = 0;
+  HybridTime last_restorations_update_ht_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

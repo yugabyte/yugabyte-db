@@ -50,6 +50,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
@@ -67,17 +68,21 @@
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
 DEFINE_int64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
+DECLARE_int32(max_tables_metrics_breakdowns);
 TAG_FLAG(web_log_bytes, advanced);
 TAG_FLAG(web_log_bytes, runtime);
 
@@ -153,7 +158,20 @@ static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebRespons
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
   Tags tags(as_text);
   (*output) << tags.header << "Command-line Flags" << tags.end_header;
-  (*output) << tags.pre_tag << CommandlineFlagsIntoString() << tags.end_pre_tag;
+  (*output) << tags.pre_tag;
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+  for (const auto& flag_info : flag_infos) {
+    (*output) << "--" << flag_info.name << "=";
+    std::unordered_set<string> tags;
+    GetFlagTags(flag_info.name, &tags);
+    if (PREDICT_FALSE(ContainsKey(tags, "sensitive_info"))) {
+      (*output) << "****" << endl;
+    } else {
+      (*output) << flag_info.current_value << endl;
+    }
+  }
+  (*output) << tags.end_pre_tag;
 }
 
 // Registered to handle "/status", and simply returns empty JSON.
@@ -237,40 +255,58 @@ static MetricLevel MetricLevelFromName(const std::string& level) {
   }
 }
 
+static void ParseRequestOptions(const Webserver::WebRequest& req,
+                                vector<string> *requested_metrics,
+                                MetricPrometheusOptions *promethus_opts,
+                                MetricJsonOptions *json_opts = nullptr,
+                                JsonWriter::Mode *json_mode = nullptr) {
+
+  if (requested_metrics) {
+    const string* requested_metrics_param = FindOrNull(req.parsed_args, "metrics");
+    if (requested_metrics_param != nullptr) {
+      SplitStringUsing(*requested_metrics_param, ",", requested_metrics);
+    } else {
+      // Default to including all metrics.
+      requested_metrics->push_back("*");
+    }
+  }
+
+  string arg;
+  if (json_opts) {
+    arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
+    json_opts->include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
+
+    arg = FindWithDefault(req.parsed_args, "include_schema", "false");
+    json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
+
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    json_opts->level = MetricLevelFromName(arg);
+  }
+
+  if (promethus_opts) {
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    promethus_opts->level = MetricLevelFromName(arg);
+    promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
+      "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
+    promethus_opts->priority_regex = FindWithDefault(req.parsed_args, "priority_regex", "");
+  }
+
+  if (json_mode) {
+    arg = FindWithDefault(req.parsed_args, "compact", "false");
+    *json_mode =
+        ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  }
+}
+
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  const string* requested_metrics_param = FindOrNull(req.parsed_args, "metrics");
   vector<string> requested_metrics;
   MetricJsonOptions opts;
-
-  {
-    string arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
-    opts.include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
-  }
-  {
-    string arg = FindWithDefault(req.parsed_args, "include_schema", "false");
-    opts.include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
-  }
-  {
-    string arg = FindWithDefault(req.parsed_args, "level", "debug");
-    opts.level = MetricLevelFromName(arg);
-  }
   JsonWriter::Mode json_mode;
-  {
-    string arg = FindWithDefault(req.parsed_args, "compact", "false");
-    json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
-      JsonWriter::COMPACT : JsonWriter::PRETTY;
-  }
+  ParseRequestOptions(req, &requested_metrics, /* prometheus opts */ nullptr, &opts, &json_mode);
 
+  std::stringstream* output = &resp->output;
   JsonWriter writer(output, json_mode);
-
-  if (requested_metrics_param != nullptr) {
-    SplitStringUsing(*requested_metrics_param, ",", &requested_metrics);
-  } else {
-    // Default to including all metrics.
-    requested_metrics.push_back("*");
-  }
 
   WARN_NOT_OK(metrics->WriteAsJson(&writer, requested_metrics, opts),
               "Couldn't write JSON metrics over HTTP");
@@ -278,16 +314,13 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 
 static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+  vector<string> requested_metrics;
   MetricPrometheusOptions opts;
+  ParseRequestOptions(req, &requested_metrics, &opts);
 
-  {
-    string arg = FindWithDefault(req.parsed_args, "level", "debug");
-    opts.level = MetricLevelFromName(arg);
-  }
-
+  std::stringstream *output = &resp->output;
   PrometheusWriter writer(output);
-  WARN_NOT_OK(metrics->WriteForPrometheus(&writer, opts),
+  WARN_NOT_OK(metrics->WriteForPrometheus(&writer, requested_metrics, opts),
               "Couldn't write text metrics for Prometheus");
 }
 

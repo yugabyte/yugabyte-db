@@ -122,7 +122,7 @@ kubectl exec -it yb-tserver-rook-yugabytedb-0 -- ysqlsh  -h yb-tserver-rook-yuga
 
 For details on the YSQL API, see:
 
-- [Explore YSQL](../../../../../quick-start/explore-ysql/)
+- [Explore YSQL](../../../../../quick-start/explore/ysql/)
 - [YSQL Reference](../../../../../api/ysql/) 
 
 ## Cleanup

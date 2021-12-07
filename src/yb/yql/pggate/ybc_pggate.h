@@ -58,7 +58,7 @@ YBCStatus YBCPgInvalidateCache();
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
-const bool YBCGetDisableTransparentCacheRefreshRetry();
+bool YBCGetDisableTransparentCacheRefreshRetry();
 
 // Set catalog_version to the local tserver's catalog version stored in shared memory.  Return error
 // if the shared memory has not been initialized (e.g. in initdb).
@@ -66,6 +66,9 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 // Set auth_key to the local tserver's postgres authentication key stored in shared memory.  Return
 // error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
+
+// Get access to callbacks.
+const YBCPgCallbacks* YBCGetPgCallbacks();
 
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
@@ -221,8 +224,7 @@ YBCStatus YBCPgGetTableDesc(YBCPgOid database_oid,
 
 YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
-                             bool *is_primary,
-                             bool *is_hash);
+                             YBCPgColumnInfo *column_info);
 
 YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
                                   YBCPgTableProperties *properties);
@@ -272,10 +274,6 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
-YBCStatus YBCPgAsyncUpdateIndexPermissions(
-    const YBCPgOid database_oid,
-    const YBCPgOid indexed_table_oid);
-
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 YBCStatus YBCPgBackfillIndex(
@@ -320,6 +318,12 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBC
     YBCPgExpr attr_value_end);
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
     YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
+
+YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle, bool start_valid,
+                                bool start_inclusive, uint64_t start_hash_val,
+                                bool end_valid, bool end_inclusive,
+                                uint64_t end_hash_val);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
@@ -352,17 +356,23 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor* data, uint64_t *yb
 
 
 // Buffer write operations.
-void YBCPgStartOperationsBuffering();
+YBCStatus YBCPgStartOperationsBuffering();
 YBCStatus YBCPgStopOperationsBuffering();
-YBCStatus YBCPgResetOperationsBuffering();
+void YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
-void YBCPgDropBufferedOperations();
 
-YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
-                          const YBCPgOid table_oid,
-                          YBCPgStatement *handle);
+YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
+                         const YBCPgOid table_oid,
+                         const int targrows,
+                         YBCPgStatement *handle);
 
-YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count);
+YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state);
+
+YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more);
+
+YBCStatus YBCPgExecSample(YBCPgStatement handle);
+
+YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
@@ -422,31 +432,42 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 YBCStatus YBCPgBeginTransaction();
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
+YBCStatus YBCPgMaybeResetTransactionReadPoint();
 YBCStatus YBCPgCommitTransaction();
-YBCStatus YBCPgAbortTransaction();
+void YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
+YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
-YBCStatus YBCPgExitSeparateDdlTxnMode(bool success);
+YBCStatus YBCPgExitSeparateDdlTxnMode();
+void YBCPgClearSeparateDdlTxnMode();
+YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
+YBCStatus YBCPgRollbackSubTransaction(uint32_t id);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
 
 // Column references.
-YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
-                            const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewColumnRef(
+    YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, const YBCPgTypeAttrs *type_attrs,
+    YBCPgExpr *expr_handle);
 
 // Constant expressions.
 // Construct an actual constant value.
-YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstant(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
 // Construct a virtual constant value.
-YBCStatus YBCPgNewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                  YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantVirtual(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
 // Construct an operator expression on a constant.
-YBCStatus YBCPgNewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
+YBCStatus YBCPgNewConstantOp(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+    bool is_gt);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.
@@ -459,13 +480,23 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null);
 YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
 
 // Expressions with operators "=", "+", "between", "in", ...
-YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
-                           const YBCPgTypeEntity *type_entity,
-                           YBCPgExpr *op_handle);
+YBCStatus YBCPgNewOperator(
+    YBCPgStatement stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
+
+YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
+                            bool is_null, size_t *type_size);
+
+YBCStatus YBCAppendDatumToKey(uint64_t data,  const YBCPgTypeEntity
+                            *typeentity, bool is_null, char *key_ptr,
+                            size_t *bytes_written);
+
+uint16_t YBCCompoundHash(const char *key, size_t length);
 
 // Referential Integrity Check Caching.
 void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
+void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor* descr);
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor* descr, bool* res);
 YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr);
@@ -521,8 +552,24 @@ const void* YBCPgGetThreadLocalErrMsg();
 
 void YBCPgResetCatalogReadTime();
 
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
+
 #ifdef __cplusplus
 }  // extern "C"
+#endif
+
+#ifdef __cplusplus
+namespace yb {
+namespace pggate {
+
+struct PgApiContext;
+
+void YBCInitPgGateEx(
+    const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
+    PgApiContext *context);
+
+} // namespace pggate
+} // namespace yb
 #endif
 
 #endif  // YB_YQL_PGGATE_YBC_PGGATE_H

@@ -54,7 +54,7 @@ begin
   ...
   v := array_fill(42, '{2, 2, 2}');
 ```
-See [`array_fill()`](..//functions-operators/array-fill/). 
+See [`array_fill()`](../functions-operators/array-fill/). 
 
 The property of the declaration of an array variable that it cannot fix the dimensionality of a value that is subsequently assigned to the variable was pointed out in [Array data types and functionality](../../type_array/). A column in a table with an array data type shares this property so that the column  can hold arrays of different dimensionality in different rows. This goes hand-in-hand with the fact that the following declarations of _"v1"_ and "_v2"_, though apparently different, define identical semantics.
 
@@ -117,7 +117,7 @@ This is the result:
  {"{1,2}","{3,4,5}"}
 ```
 
-This sentence is copied from [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
+This sentence is copied from [The non-lossy round trip: value to text typecast and back to value](../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
 
 > Notice how the syntax for the _array of arrays_ `text` value compares with the syntax for the _2-d array_ `text` value. Because the _array of arrays_ is ragged, the two inner `{}` pairs contain respectively two and three values. To distinguish between this case and the ordinary rectilinear case, the inner `{}` pairs are surrounded by double quotes.
 
@@ -551,9 +551,9 @@ This is the result (after manual whitespace formatting):
 ```
 **Note:** The annotations _"block_matrix"_, and so on, are just that. Because they are _within_ the `text` value, they are part of that value and therefore render it illegal. They were added manually just to highlight the meaning of the overall `text` value.
 
-Finally, check that even this exotic structure conforms to the universal rule, copied from [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
+Finally, check that even this exotic structure conforms to the universal rule, copied from [The non-lossy round trip: value to text typecast and back to value](../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
 
-> - Any value of any data type, primitive or composite, can be `::text` typecasted. Similarly, there always exists a `text` value that, when properly spelled, can be typecasted to a value of any desired data type, primitive or composite.
+> - Any value of any data type, primitive or composite, can be `::text` typecast. Similarly, there always exists a `text` value that, when properly spelled, can be typecast to a value of any desired data type, primitive or composite.
 > - If you `::text` typecast a value of any data type and then typecast that `text` value to the original value's data type, then the value that you get is identical to the original value.
 
 ```plpgsql

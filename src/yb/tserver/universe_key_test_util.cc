@@ -20,10 +20,10 @@
 namespace yb {
 namespace tserver {
 
-std::unique_ptr<yb::enterprise::UniverseKeyManager> GenerateTestUniverseKeyManager() {
-  auto universe_key_manager = std::make_unique<yb::enterprise::UniverseKeyManager>();
+std::unique_ptr<UniverseKeyManager> GenerateTestUniverseKeyManager() {
+  auto universe_key_manager = std::make_unique<UniverseKeyManager>();
   UniverseKeyRegistryPB registry;
-  auto encryption_params = yb::enterprise::EncryptionParams::NewEncryptionParams();
+  auto encryption_params = EncryptionParams::NewEncryptionParams();
   EncryptionParamsPB params_pb;
   encryption_params->ToEncryptionParamsPB(&params_pb);
   auto version_id = RandomHumanReadableString(16);

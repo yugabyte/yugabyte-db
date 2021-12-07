@@ -490,8 +490,8 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 					PLpgSQL_var *var = (PLpgSQL_var *) estate.datums[n];
 
 					assign_simple_var(&estate, var,
-									  fcinfo->args[i].value,
-									  fcinfo->args[i].isnull,
+									  fcinfo->arg[i],
+									  fcinfo->argnull[i],
 									  false);
 
 					/*
@@ -542,12 +542,12 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 				{
 					PLpgSQL_rec *rec = (PLpgSQL_rec *) estate.datums[n];
 
-					if (!fcinfo->args[i].isnull)
+					if (!fcinfo->argnull[i])
 					{
 						/* Assign row value from composite datum */
 						exec_move_row_from_datum(&estate,
 												 (PLpgSQL_variable *) rec,
-												 fcinfo->args[i].value);
+												 fcinfo->arg[i]);
 					}
 					else
 					{
@@ -2106,23 +2106,6 @@ exec_stmt_call(PLpgSQL_execstate *estate, PLpgSQL_stmt_call *stmt)
 		 */
 		if (plan == NULL || local_plan)
 		{
-			/* Don't let SPI save the plan if it's going to be local */
-			exec_prepare_plan(estate, expr, 0, !local_plan);
-			plan = expr->plan;
-
-			/*
-			 * A CALL or DO can never be a simple expression.  (If it could
-			 * be, we'd have to worry about saving/restoring the previous
-			 * values of the related expr fields, not just expr->plan.)
-			 */
-			Assert(!expr->expr_simple_expr);
-
-			/*
-			 * The procedure call could end transactions, which would upset
-			 * the snapshot management in SPI_execute*, so don't let it do it.
-			 * Instead, we set the snapshots ourselves below.
-			 */
-			plan->no_snapshots = true;
 
 			/*
 			 * Force target to be recalculated whenever the plan changes, in
@@ -2130,7 +2113,24 @@ exec_stmt_call(PLpgSQL_execstate *estate, PLpgSQL_stmt_call *stmt)
 			 */
 			stmt->target = NULL;
 			cur_target = NULL;
+
+			/* Don't let SPI save the plan if it's going to be local */
+			exec_prepare_plan(estate, expr, 0, !local_plan);
+			plan = expr->plan;
 		}
+
+		/*
+		 * A CALL or DO can never be a simple expression.  (If it could be,
+		 * we'd have to worry about saving/restoring the previous values of
+		 * the related expr fields, not just expr->plan.)
+		 */
+		Assert(!expr->expr_simple_expr);
+
+		/*
+		 * Tell SPI to allow non-atomic execution.  (The field name is a
+		 * legacy choice.)
+		 */
+		plan->no_snapshots = true;
 
 		/*
 		 * We construct a DTYPE_ROW datum representing the plpgsql variables
@@ -4044,6 +4044,22 @@ exec_eval_cleanup(PLpgSQL_execstate *estate)
 
 /* ----------
  * Generate a prepared plan
+ *
+ * CAUTION: it is possible for this function to throw an error after it has
+ * built a SPIPlan and saved it in expr->plan.  Therefore, be wary of doing
+ * additional things contingent on expr->plan being NULL.  That is, given
+ * code like
+ *
+ *	if (query->plan == NULL)
+ *	{
+ *		// okay to put setup code here
+ *		exec_prepare_plan(estate, query, ...);
+ *		// NOT okay to put more logic here
+ *	}
+ *
+ * extra steps at the end are unsafe because they will not be executed when
+ * re-executing the calling statement, if exec_prepare_plan failed the first
+ * time.  This is annoyingly error-prone, but the alternatives are worse.
  * ----------
  */
 static void
@@ -4073,15 +4089,15 @@ exec_prepare_plan(PLpgSQL_execstate *estate,
 		SPI_keepplan(plan);
 	expr->plan = plan;
 
-	/* Check to see if it's a simple expression */
-	exec_simple_check_plan(estate, expr);
-
 	/*
 	 * Mark expression as not using a read-write param.  exec_assign_value has
 	 * to take steps to override this if appropriate; that seems cleaner than
 	 * adding parameters to all other callers.
 	 */
 	expr->rwparam = -1;
+
+	/* Check to see if it's a simple expression */
+	exec_simple_check_plan(estate, expr);
 }
 
 
@@ -4100,16 +4116,24 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	long		tcount;
 	int			rc;
 	PLpgSQL_expr *expr = stmt->sqlstmt;
+	int			too_many_rows_level = 0;
+
+	if (plpgsql_extra_errors & PLPGSQL_XCHECK_TOOMANYROWS)
+		too_many_rows_level = ERROR;
+	else if (plpgsql_extra_warnings & PLPGSQL_XCHECK_TOOMANYROWS)
+		too_many_rows_level = WARNING;
 
 	/*
 	 * On the first call for this statement generate the plan, and detect
 	 * whether the statement is INSERT/UPDATE/DELETE
 	 */
 	if (expr->plan == NULL)
+		exec_prepare_plan(estate, expr, CURSOR_OPT_PARALLEL_OK, true);
+
+	if (!stmt->mod_stmt_set)
 	{
 		ListCell   *l;
 
-		exec_prepare_plan(estate, expr, CURSOR_OPT_PARALLEL_OK, true);
 		stmt->mod_stmt = false;
 		foreach(l, SPI_plan_get_plan_sources(expr->plan))
 		{
@@ -4130,6 +4154,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 				break;
 			}
 		}
+		stmt->mod_stmt_set = true;
 	}
 
 	/*
@@ -4139,9 +4164,10 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 
 	/*
 	 * If we have INTO, then we only need one row back ... but if we have INTO
-	 * STRICT, ask for two rows, so that we can verify the statement returns
-	 * only one.  INSERT/UPDATE/DELETE are always treated strictly. Without
-	 * INTO, just run the statement to completion (tcount = 0).
+	 * STRICT or extra check too_many_rows, ask for two rows, so that we can
+	 * verify the statement returns only one.  INSERT/UPDATE/DELETE are always
+	 * treated strictly. Without INTO, just run the statement to completion
+	 * (tcount = 0).
 	 *
 	 * We could just ask for two rows always when using INTO, but there are
 	 * some cases where demanding the extra row costs significant time, eg by
@@ -4150,7 +4176,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	 */
 	if (stmt->into)
 	{
-		if (stmt->strict || stmt->mod_stmt)
+		if (stmt->strict || stmt->mod_stmt || too_many_rows_level)
 			tcount = 2;
 		else
 			tcount = 1;
@@ -4267,19 +4293,23 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 		}
 		else
 		{
-			if (n > 1 && (stmt->strict || stmt->mod_stmt))
+			if (n > 1 && (stmt->strict || stmt->mod_stmt || too_many_rows_level))
 			{
 				char	   *errdetail;
+				int			errlevel;
 
 				if (estate->func->print_strict_params)
 					errdetail = format_expr_params(estate, expr);
 				else
 					errdetail = NULL;
 
-				ereport(ERROR,
+				errlevel = (stmt->strict || stmt->mod_stmt) ? ERROR : too_many_rows_level;
+
+				ereport(errlevel,
 						(errcode(ERRCODE_TOO_MANY_ROWS),
 						 errmsg("query returned more than one row"),
-						 errdetail ? errdetail_internal("parameters: %s", errdetail) : 0));
+						 errdetail ? errdetail_internal("parameters: %s", errdetail) : 0,
+						 errhint("Make sure the query returns a single row, or use LIMIT 1.")));
 			}
 			/* Put the first result row into the target */
 			exec_move_row(estate, target, tuptab->vals[0], tuptab->tupdesc);
@@ -4506,7 +4536,7 @@ exec_stmt_dynfors(PLpgSQL_execstate *estate, PLpgSQL_stmt_dynfors *stmt)
 	int			rc;
 
 	portal = exec_dynquery_with_params(estate, stmt->query, stmt->params,
-									   NULL, 0);
+									   NULL, CURSOR_OPT_NO_SCROLL);
 
 	/*
 	 * Execute the loop
@@ -4896,6 +4926,14 @@ exec_assign_expr(PLpgSQL_execstate *estate, PLpgSQL_datum *target,
 	 * if we can pass the target variable as a read-write parameter to the
 	 * expression.  (This is a bit messy, but it seems cleaner than modifying
 	 * the API of exec_eval_expr for the purpose.)
+	 *
+	 * NOTE: this coding ignores the advice given in exec_prepare_plan's
+	 * comments, that one should not do additional setup contingent on
+	 * expr->plan being NULL.  This means that if we get an error while trying
+	 * to check for the expression being simple, we won't check for a
+	 * read-write parameter either, so that neither optimization will be
+	 * applied in future executions.  Nothing will fail though, so we live
+	 * with that bit of messiness too.
 	 */
 	if (expr->plan == NULL)
 	{
@@ -5837,14 +5875,21 @@ exec_run_select(PLpgSQL_execstate *estate,
 	 * On the first call for this expression generate the plan.
 	 *
 	 * If we don't need to return a portal, then we're just going to execute
-	 * the query once, which means it's OK to use a parallel plan, even if the
-	 * number of rows being fetched is limited.  If we do need to return a
-	 * portal, the caller might do cursor operations, which parallel query
-	 * can't support.
+	 * the query immediately, which means it's OK to use a parallel plan, even
+	 * if the number of rows being fetched is limited.  If we do need to
+	 * return a portal (i.e., this is for a FOR loop), the user's code might
+	 * invoke additional operations inside the FOR loop, making parallel query
+	 * unsafe.  In any case, we don't expect any cursor operations to be done,
+	 * so specify NO_SCROLL for efficiency and semantic safety.
 	 */
 	if (expr->plan == NULL)
-		exec_prepare_plan(estate, expr,
-						  portalP == NULL ? CURSOR_OPT_PARALLEL_OK : 0, true);
+	{
+		int			cursorOptions = CURSOR_OPT_NO_SCROLL;
+
+		if (portalP == NULL)
+			cursorOptions |= CURSOR_OPT_PARALLEL_OK;
+		exec_prepare_plan(estate, expr, cursorOptions, true);
+	}
 
 	/*
 	 * Set up ParamListInfo to pass to executor
@@ -6915,6 +6960,19 @@ exec_move_row_from_fields(PLpgSQL_execstate *estate,
 	int			td_natts = tupdesc ? tupdesc->natts : 0;
 	int			fnum;
 	int			anum;
+	int			strict_multiassignment_level = 0;
+
+	/*
+	 * The extra check strict strict_multi_assignment can be active,
+	 * only when input tupdesc is specified.
+	 */
+	if (tupdesc != NULL)
+	{
+		if (plpgsql_extra_errors & PLPGSQL_XCHECK_STRICTMULTIASSIGNMENT)
+			strict_multiassignment_level = ERROR;
+		else if (plpgsql_extra_warnings & PLPGSQL_XCHECK_STRICTMULTIASSIGNMENT)
+			strict_multiassignment_level = WARNING;
+	}
 
 	/* Handle RECORD-target case */
 	if (target->dtype == PLPGSQL_DTYPE_REC)
@@ -6993,10 +7051,23 @@ exec_move_row_from_fields(PLpgSQL_execstate *estate,
 				}
 				else
 				{
+					/* no source for destination column */
 					value = (Datum) 0;
 					isnull = true;
 					valtype = UNKNOWNOID;
 					valtypmod = -1;
+
+					/* When source value is missing */
+					if (strict_multiassignment_level)
+							ereport(strict_multiassignment_level,
+									(errcode(ERRCODE_DATATYPE_MISMATCH),
+									 errmsg("number of source and target fields in assignment do not match"),
+									 /* translator: %s represents a name of an extra check */
+									 errdetail("%s check of %s is active.",
+											   "strict_multi_assignment",
+													  strict_multiassignment_level == ERROR ? "extra_errors" :
+																	  "extra_warnings"),
+									 errhint("Make sure the query returns the exact list of columns.")));
 				}
 
 				/* Cast the new value to the right type, if needed. */
@@ -7008,6 +7079,29 @@ exec_move_row_from_fields(PLpgSQL_execstate *estate,
 												  attr->atttypid,
 												  attr->atttypmod);
 				newnulls[fnum] = isnull;
+			}
+
+			/*
+			 * When strict_multiassignment extra check is active, then ensure
+			 * there are no unassigned source attributes.
+			 */
+			if (strict_multiassignment_level && anum < td_natts)
+			{
+				/* skip dropped columns in the source descriptor */
+				while (anum < td_natts &&
+					   TupleDescAttr(tupdesc, anum)->attisdropped)
+					anum++;
+
+				if (anum < td_natts)
+					ereport(strict_multiassignment_level,
+							(errcode(ERRCODE_DATATYPE_MISMATCH),
+							 errmsg("number of source and target fields in assignment do not match"),
+							 /* translator: %s represents a name of an extra check */
+							 errdetail("%s check of %s is active.",
+									   "strict_multi_assignment",
+										  strict_multiassignment_level == ERROR ? "extra_errors" :
+																	  "extra_warnings"),
+							 errhint("Make sure the query returns the exact list of columns.")));
 			}
 
 			values = newvalues;
@@ -7066,14 +7160,48 @@ exec_move_row_from_fields(PLpgSQL_execstate *estate,
 			}
 			else
 			{
+				/* no source for destination column */
 				value = (Datum) 0;
 				isnull = true;
 				valtype = UNKNOWNOID;
 				valtypmod = -1;
+
+				if (strict_multiassignment_level)
+						ereport(strict_multiassignment_level,
+								(errcode(ERRCODE_DATATYPE_MISMATCH),
+								 errmsg("number of source and target fields in assignment do not match"),
+						 /* translator: %s represents a name of an extra check */
+						 errdetail("%s check of %s is active.",
+								  "strict_multi_assignment",
+								  strict_multiassignment_level == ERROR ? "extra_errors" :
+																	  "extra_warnings"),
+								 errhint("Make sure the query returns the exact list of columns.")));
 			}
 
 			exec_assign_value(estate, (PLpgSQL_datum *) var,
 							  value, isnull, valtype, valtypmod);
+		}
+
+		/*
+		 * When strict_multiassignment extra check is active, ensure there
+		 * are no unassigned source attributes.
+		 */
+		if (strict_multiassignment_level && anum < td_natts)
+		{
+			while (anum < td_natts &&
+				   TupleDescAttr(tupdesc, anum)->attisdropped)
+				anum++;			/* skip dropped column in tuple */
+
+			if (anum < td_natts)
+				ereport(strict_multiassignment_level,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("number of source and target fields in assignment do not match"),
+						 /* translator: %s represents a name of an extra check */
+						 errdetail("%s check of %s is active.",
+								  "strict_multi_assignment",
+								  strict_multiassignment_level == ERROR ? "extra_errors" :
+																	  "extra_warnings"),
+						 errhint("Make sure the query returns the exact list of columns.")));
 		}
 
 		return;
@@ -7713,6 +7841,10 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
  * exec_simple_check_plan -		Check if a plan is simple enough to
  *								be evaluated by ExecEvalExpr() instead
  *								of SPI.
+ *
+ * Note: the refcount manipulations in this function assume that expr->plan
+ * is a "saved" SPI plan.  That's a bit annoying from the caller's standpoint,
+ * but it's otherwise difficult to avoid leaking the plan on failure.
  * ----------
  */
 static void
@@ -7795,7 +7927,8 @@ exec_simple_check_plan(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	 * OK, we can treat it as a simple plan.
 	 *
 	 * Get the generic plan for the query.  If replanning is needed, do that
-	 * work in the eval_mcontext.
+	 * work in the eval_mcontext.  (Note that replanning could throw an error,
+	 * in which case the expr is left marked "not simple", which is fine.)
 	 */
 	oldcontext = MemoryContextSwitchTo(get_eval_mcontext(estate));
 	cplan = SPI_plan_get_cached_plan(expr->plan);

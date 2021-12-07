@@ -541,3 +541,10 @@ select relname, oid from pg_class where relname = 'with_table_oid_2';
 -- Test with session variable off
 set yb_enable_create_with_table_oid=0;
 create table with_table_oid_variable_false (a int) with (table_oid = 55555);
+RESET yb_enable_create_with_table_oid;
+
+-- CREATE TABLE with implicit UNIQUE INDEX shouldn't spout a notice about it
+-- being nonconcurrent.
+BEGIN;
+CREATE TABLE tab_with_unique (i int, UNIQUE (i));
+COMMIT;

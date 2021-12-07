@@ -140,22 +140,30 @@ export default class NodeDetailsTable extends Component {
         //express as a duration
         const diffDuration = moment.duration(difference);
         const diffArray = [
-          [diffDuration.seconds(), 'sec'],
-          [diffDuration.minutes(), 'min'],
-          [diffDuration.hours(), 'hour'],
-          [diffDuration.days(), 'day'],
+          [diffDuration.years(), 'year'],
           [diffDuration.months(), 'month'],
-          [diffDuration.years(), 'year']
+          [diffDuration.days(), 'day'],
+          [diffDuration.hours(), 'hour'],
+          [diffDuration.minutes(), 'min'],
+          [diffDuration.seconds(), 'sec']
         ];
 
-        const idx = diffArray.findIndex((elem) => elem[0] === 0);
-        uptime =
-          idx < 2
-            ? '< 1 min'
-            : `${diffArray[idx - 1][0]}
-            ${pluralize(diffArray[idx - 1][1], diffArray[idx - 1][0])}
-            ${diffArray[idx - 2][0]}
-            ${pluralize(diffArray[idx - 2][1], diffArray[idx - 2][0])}`;
+        /* remove all 0 durations from the array until the first one is found
+           not removing all zeros, as we want to display something like 10 min 0 sec -
+           so that precision is clear for the user */
+        let foundNonZero = false;
+        const filteredDurations = diffArray.filter((duration) =>
+          foundNonZero === true || (duration[0] !== 0 && (foundNonZero = true)));
+        if (filteredDurations.length === 1) {
+          const diffEntry = filteredDurations[0];
+          uptime = `${diffEntry[0]} ${pluralize(diffEntry[1], diffEntry[0])}`
+        } else if (filteredDurations.length > 1) {
+          const firstEntry = filteredDurations[0];
+          const secondEntry = filteredDurations[1];
+          uptime = `${firstEntry[0]} ${pluralize(firstEntry[1], firstEntry[0])}
+                    ${secondEntry[0]} ${pluralize(secondEntry[1], secondEntry[0])}`;
+        }
+        // 0 typically means that the node is in DEAD state - so leave '_' uptime
       }
       return (
         <Fragment>

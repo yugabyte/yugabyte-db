@@ -26,7 +26,6 @@
 #include <inttypes.h>
 
 #include <string>
-#include <sstream>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -36,6 +35,8 @@
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/log_buffer.h"
+
+#include "yb/util/result.h"
 
 using yb::Result;
 using std::ostringstream;

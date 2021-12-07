@@ -30,6 +30,7 @@
 
 #include "yb/util/slice.h"
 #include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/db/version_edit.h"
 
 namespace rocksdb {
 
@@ -164,6 +165,34 @@ class CompactionFilterFactory {
 
   virtual std::unique_ptr<CompactionFilter> CreateCompactionFilter(
       const CompactionFilter::Context& context) = 0;
+
+  // Returns a name that identifies this compaction filter factory.
+  virtual const char* Name() const = 0;
+};
+
+// Makes a decision about whether or not to exclude a file in a compaction based on whether
+// or not the file has expired.  If expired, file will be removed at the end of compaction.
+class CompactionFileFilter {
+ public:
+  virtual ~CompactionFileFilter() = default;
+
+  // Determines whether to keep or discard a file based on the file's metadata.
+  virtual FilterDecision Filter(const FileMetaData* file) = 0;
+
+  // Returns a name that identifies this compaction filter.
+  // The name will be printed to LOG file on start up for diagnosis.
+  virtual const char* Name() const = 0;
+};
+
+// Each compaction will create a new CompactionFileFilter allowing each
+// filter to have unique state when making expiration decisions.
+class CompactionFileFilterFactory {
+ public:
+  virtual ~CompactionFileFilterFactory() { }
+
+  // Creates a unique pointer to a new CompactionFileFilter.
+  virtual std::unique_ptr<CompactionFileFilter> CreateCompactionFileFilter(
+      const std::vector<FileMetaData*>& input_files) = 0;
 
   // Returns a name that identifies this compaction filter factory.
   virtual const char* Name() const = 0;

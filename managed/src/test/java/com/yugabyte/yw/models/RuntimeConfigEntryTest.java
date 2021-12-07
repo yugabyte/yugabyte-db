@@ -1,14 +1,20 @@
 package com.yugabyte.yw.models;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import org.junit.Before;
-import org.junit.Test;
-
 import java.util.List;
 import java.util.UUID;
-
-import static org.junit.Assert.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import org.junit.Before;
+import org.junit.Test;
 
 public class RuntimeConfigEntryTest extends FakeDBApplication {
 
@@ -117,6 +123,17 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
     checkCascadeDelete(scopeUuid);
   }
 
+  @Test
+  public void testCreateEntryWithHugeValues() {
+    UUID scopeUuid = defaultCustomer.uuid;
+    String longString =
+        Stream.generate(() -> "\u4F60\u597D")
+            .limit(1024 * 64 / 2 + 1)
+            .collect(Collectors.joining());
+    RuntimeConfigEntry.upsert(defaultCustomer, YB_SB_START_YEAR_KEY, longString);
+    checkStartYear(scopeUuid, longString);
+  }
+
   private void checkCascadeDelete(UUID scopeUuid) {
     assertNull(ScopedRuntimeConfig.get(scopeUuid));
     assertNull(RuntimeConfigEntry.get(scopeUuid, YB_SB_START_YEAR_KEY));
@@ -133,18 +150,22 @@ public class RuntimeConfigEntryTest extends FakeDBApplication {
   private void checkAll(UUID scopeUuid) {
     List<RuntimeConfigEntry> entryList = RuntimeConfigEntry.getAll(scopeUuid);
     assertSame(2, entryList.size());
-    entryList.forEach(runtimeConfigEntry -> {
-      switch (runtimeConfigEntry.getPath()) {
-        case YB_SB_START_YEAR_KEY:
-          assertEquals("2020", runtimeConfigEntry.getValue());
-          break;
-        case YB_SB_TIMEZONE_KEY:
-          assertEquals("PST", runtimeConfigEntry.getValue());
-          break;
-        default:
-          fail("Unexpected path " + runtimeConfigEntry.getPath()
-            + "for config entry: " + runtimeConfigEntry);
-      }
-    });
+    entryList.forEach(
+        runtimeConfigEntry -> {
+          switch (runtimeConfigEntry.getPath()) {
+            case YB_SB_START_YEAR_KEY:
+              assertEquals("2020", runtimeConfigEntry.getValue());
+              break;
+            case YB_SB_TIMEZONE_KEY:
+              assertEquals("PST", runtimeConfigEntry.getValue());
+              break;
+            default:
+              fail(
+                  "Unexpected path "
+                      + runtimeConfigEntry.getPath()
+                      + "for config entry: "
+                      + runtimeConfigEntry);
+          }
+        });
   }
 }

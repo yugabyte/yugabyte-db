@@ -11,7 +11,7 @@
 
 package com.yugabyte.yw.scheduler;
 
-import com.google.common.annotations.VisibleForTesting;
+import static com.cronutils.model.CronType.UNIX;
 
 import akka.actor.ActorSystem;
 import com.cronutils.model.Cron;
@@ -19,36 +19,45 @@ import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
-
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static com.cronutils.model.CronType.UNIX;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
+import scala.concurrent.ExecutionContext;
+import scala.concurrent.duration.Duration;
 
 @Singleton
+@Slf4j
 public class Scheduler {
-
-  private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
 
   private final int YB_SCHEDULER_INTERVAL = 2;
   private final int MIN_TO_SEC = 60;
@@ -67,44 +76,41 @@ public class Scheduler {
     this.commissioner = commissioner;
     this.initialize();
 
-    LOG.info("Starting scheduling service");
+    log.info("Starting scheduling service");
   }
 
   private void initialize() {
-    this.actorSystem.scheduler().schedule(
-      Duration.create(0, TimeUnit.MINUTES), // initialDelay
-      Duration.create(YB_SCHEDULER_INTERVAL, TimeUnit.MINUTES), // interval
-      this::scheduleRunner,
-      this.executionContext
-    );
+    this.actorSystem
+        .scheduler()
+        .schedule(
+            Duration.create(0, TimeUnit.MINUTES), // initialDelay
+            Duration.create(YB_SCHEDULER_INTERVAL, TimeUnit.MINUTES), // interval
+            this::scheduleRunner,
+            this.executionContext);
   }
 
-  /**
-   * Iterates through all the schedule entries and runs the tasks that are due to be scheduled.
-   */
+  /** Iterates through all the schedule entries and runs the tasks that are due to be scheduled. */
   @VisibleForTesting
   void scheduleRunner() {
-    if (HighAvailabilityConfig.isFollower()) {
-      LOG.debug("Skipping scheduler for follower platform");
+    if (!running.compareAndSet(false, true)) {
+      log.info("Previous run of scheduler is still underway");
       return;
     }
 
-    // Check if last scheduled thread is still running.
-    if (running.get()) {
-      LOG.info("Previous scheduler still running");
-      return;
-    }
-
-    LOG.info("Running scheduler");
     try {
-      running.set(true);
+      if (HighAvailabilityConfig.isFollower()) {
+        log.debug("Skipping scheduler for follower platform");
+        return;
+      }
+
+      log.info("Running scheduler");
       for (Schedule schedule : Schedule.getAllActive()) {
         Date currentTime = new Date();
         long frequency = schedule.getFrequency();
         String cronExpression = schedule.getCronExpression();
         if (cronExpression == null && frequency == 0) {
-          LOG.error("Scheduled task does not have a recurrence specified {}",
-            schedule.getScheduleUUID());
+          log.error(
+              "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
           continue;
         }
         TaskType taskType = schedule.getTaskType();
@@ -118,13 +124,17 @@ public class Scheduler {
           lastScheduledTime = lastTask.getScheduledTime();
           lastCompletedTime = lastTask.getCompletedTime();
         }
-        boolean runTask = false;
+        boolean shouldRunTask = false;
+        boolean alreadyRunning = false;
         long diff = 0;
 
         // Check if task needs to be scheduled again.
-        if (lastScheduledTime != null && lastCompletedTime != null) {
+        if (lastScheduledTime != null) {
           diff = Math.abs(currentTime.getTime() - lastScheduledTime.getTime());
-        } else if (lastScheduledTime == null) {
+          if (lastCompletedTime == null) {
+            alreadyRunning = true;
+          }
+        } else {
           diff = Long.MAX_VALUE;
         }
         // If frequency if specified, check if the task needs to be scheduled.
@@ -132,141 +142,165 @@ public class Scheduler {
         // time. If the diff is greater than the frequency, means we need to run the task
         // again.
         if (frequency != 0L && diff > frequency) {
-          runTask = true;
+          shouldRunTask = true;
         }
         // In the case frequency is not defined and we have a cron expression, we compute
         // solely in accordance to the cron execution time. If the execution time is within the
         // scheduler interval, we run the task.
         else if (cronExpression != null) {
           CronParser unixCronParser =
-            new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
+              new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
           Cron parsedUnixCronExpression = unixCronParser.parse(cronExpression);
           Instant now = Instant.now();
           // LocalDateTime now = LocalDateTime.ofInstant(Instant.now(), ZoneId.of("UTC"));
           ZonedDateTime utcNow = now.atZone(ZoneId.of("UTC"));
           ExecutionTime executionTime = ExecutionTime.forCron(parsedUnixCronExpression);
           long timeFromLastExecution =
-            executionTime.timeFromLastExecution(utcNow).get().getSeconds();
+              executionTime.timeFromLastExecution(utcNow).get().getSeconds();
           if (timeFromLastExecution < YB_SCHEDULER_INTERVAL * MIN_TO_SEC) {
             // In case the last task was completed, or the last task was never even scheduled,
             // we run the task. If the task was scheduled, but didn't complete, we skip this
             // iteration completely.
-            if (lastCompletedTime != null || lastScheduledTime == null) {
-              runTask = true;
-            } else {
-              LOG.warn("Previous scheduled task still running, skipping this iteration's task. " +
-                "Will try again next at {}.", executionTime.nextExecution(utcNow).get());
+            shouldRunTask = true;
+            if (lastScheduledTime != null && lastCompletedTime == null) {
+              log.warn(
+                  "Previous scheduled task still running, skipping this iteration's task. "
+                      + "Will try again next at {}.",
+                  executionTime.nextExecution(utcNow).get());
             }
           }
         }
-        if (runTask) {
+        if (shouldRunTask) {
           if (taskType == TaskType.BackupUniverse) {
-            this.runBackupTask(schedule);
+            this.runBackupTask(schedule, alreadyRunning);
           }
           if (taskType == TaskType.MultiTableBackup) {
-            this.runMultiTableBackupsTask(schedule);
+            this.runMultiTableBackupsTask(schedule, alreadyRunning);
+          }
+          if (taskType == TaskType.ExternalScript && !alreadyRunning) {
+            this.runExternalScriptTask(schedule);
           }
         }
       }
       Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
-      expiredBackups.forEach((customer, backups) ->
-        backups.forEach(backup -> this.runDeleteBackupTask(customer, backup)));
+      expiredBackups.forEach(
+          (customer, backups) -> {
+            deleteExpiredBackupsForCustomer(customer, backups);
+          });
     } catch (Exception e) {
-      LOG.error("Error Running scheduler thread", e);
+      log.error("Error Running scheduler thread", e);
     } finally {
       running.set(false);
     }
   }
 
-  private void runBackupTask(Schedule schedule) {
-    UUID customerUUID = schedule.getCustomerUUID();
-    Customer customer = Customer.get(customerUUID);
-    JsonNode params = schedule.getTaskParams();
-    BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
-    taskParams.scheduleUUID = schedule.scheduleUUID;
-    Universe universe = Universe.maybeGet(taskParams.universeUUID).orElse(null);
-    if (universe == null) {
-      schedule.stopSchedule();
-      return;
+  private void deleteExpiredBackupsForCustomer(Customer customer, List<Backup> expiredBackups) {
+    Map<UUID, List<Backup>> expiredBackupsPerSchedule = new HashMap<>();
+    List<Backup> backupsToDelete = new ArrayList<>();
+    expiredBackups.forEach(
+        backup -> {
+          UUID scheduleUUID = backup.getScheduleUUID();
+          if (scheduleUUID == null) {
+            backupsToDelete.add(backup);
+          } else {
+            if (!expiredBackupsPerSchedule.containsKey(scheduleUUID)) {
+              expiredBackupsPerSchedule.put(scheduleUUID, new ArrayList<>());
+            }
+            expiredBackupsPerSchedule.get(scheduleUUID).add(backup);
+          }
+        });
+    for (UUID scheduleUUID : expiredBackupsPerSchedule.keySet()) {
+      backupsToDelete.addAll(
+          getBackupsToDeleteForSchedule(
+              customer.getUuid(), scheduleUUID, expiredBackupsPerSchedule.get(scheduleUUID)));
     }
-    if (universe.getUniverseDetails().updateInProgress ||
-        universe.getUniverseDetails().backupInProgress ||
-        universe.getUniverseDetails().universePaused) {
-      LOG.warn("Cannot run Backup task since the universe {} is currently {}",
-               taskParams.universeUUID.toString(), "in a locked/paused state");
-      return;
+
+    for (Backup backup : backupsToDelete) {
+      this.runDeleteBackupTask(customer, backup);
     }
-    Backup backup = Backup.create(customerUUID, taskParams);
-    UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
-    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    LOG.info("Submitted task to backup table {}:{}, task uuid = {}.",
-      taskParams.tableUUID, taskParams.getTableName(), taskUUID);
-    backup.setTaskUUID(taskUUID);
-    CustomerTask.create(customer,
-      taskParams.universeUUID,
-      taskUUID,
-      CustomerTask.TargetType.Backup,
-      CustomerTask.TaskType.Create,
-      taskParams.getTableName());
-    LOG.info("Saved task uuid {} in customer tasks table for table {}:{}.{}", taskUUID,
-      taskParams.tableUUID, taskParams.getKeyspace(), taskParams.getTableName());
   }
 
-  private void runMultiTableBackupsTask(Schedule schedule) {
-    UUID customerUUID = schedule.getCustomerUUID();
-    Customer customer = Customer.get(customerUUID);
-    JsonNode params = schedule.getTaskParams();
-    MultiTableBackup.Params taskParams = Json.fromJson(params,
-      MultiTableBackup.Params.class);
-    taskParams.scheduleUUID = schedule.scheduleUUID;
-    Universe universe;
-    try {
-      universe = Universe.getOrBadRequest(taskParams.universeUUID);
-    } catch (Exception e) {
-      schedule.stopSchedule();
-      return;
+  private List<Backup> getBackupsToDeleteForSchedule(
+      UUID customerUUID, UUID scheduleUUID, List<Backup> expiredBackups) {
+    List<Backup> backupsToDelete = new ArrayList<Backup>();
+    int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN,
+        totalBackupsCount = Backup.fetchAllBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    if (schedule.getTaskParams().has("minNumBackupsToRetain")) {
+      minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
     }
-    Map<String, String> config = universe.getConfig();
-    if (universe.getUniverseDetails().updateInProgress || config.isEmpty() ||
-        config.get(Universe.TAKE_BACKUPS).equals("false") ||
-        universe.getUniverseDetails().backupInProgress ||
-        universe.getUniverseDetails().universePaused) {
-      LOG.warn("Cannot run MultiTableBackup task since the universe {} is currently {}",
-               taskParams.universeUUID.toString(), "in a locked/paused state");
-      return;
+
+    int numBackupsToDelete =
+        Math.min(expiredBackups.size(), Math.max(0, totalBackupsCount - minNumBackupsToRetain));
+    Collections.sort(
+        expiredBackups,
+        new Comparator<Backup>() {
+          @Override
+          public int compare(Backup b1, Backup b2) {
+            return b1.getCreateTime().compareTo(b2.getCreateTime());
+          }
+        });
+    for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
+      backupsToDelete.add(expiredBackups.get(i));
     }
-    UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
-    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    LOG.info("Submitted backup for universe: {}, task uuid = {}.",
-      taskParams.universeUUID, taskUUID);
-    CustomerTask.create(customer,
-      taskParams.universeUUID,
-      taskUUID,
-      CustomerTask.TargetType.Backup,
-      CustomerTask.TaskType.Create,
-      universe.name
-    );
-    LOG.info("Saved task uuid {} in customer tasks table for universe {}:{}", taskUUID,
-      taskParams.universeUUID, universe.name);
+    return backupsToDelete;
+  }
+
+  private void runBackupTask(Schedule schedule, boolean alreadyRunning) {
+    BackupUniverse backupUniverse = AbstractTaskBase.createTask(BackupUniverse.class);
+    backupUniverse.runScheduledBackup(schedule, commissioner, alreadyRunning);
+  }
+
+  private void runMultiTableBackupsTask(Schedule schedule, boolean alreadyRunning) {
+    MultiTableBackup multiTableBackup = AbstractTaskBase.createTask(MultiTableBackup.class);
+    multiTableBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
   }
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {
     if (backup.state != Backup.BackupState.Completed) {
-      LOG.warn("Cannot delete backup {} since it is not in completed state.",
-        backup.backupUUID);
+      log.warn("Cannot delete backup {} since it is not in completed state.", backup.backupUUID);
       return;
     }
     DeleteBackup.Params taskParams = new DeleteBackup.Params();
     taskParams.customerUUID = customer.getUuid();
     taskParams.backupUUID = backup.backupUUID;
     UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-    LOG.info("Submitted task to delete backup {}, task uuid = {}.",
-      backup.backupUUID, taskUUID);
-    CustomerTask.create(customer,
-      backup.backupUUID,
-      taskUUID,
-      CustomerTask.TargetType.Backup,
-      CustomerTask.TaskType.Delete,
-      "Backup");
+    log.info("Submitted task to delete backup {}, task uuid = {}.", backup.backupUUID, taskUUID);
+    CustomerTask.create(
+        customer,
+        backup.backupUUID,
+        taskUUID,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Delete,
+        "Backup");
+  }
+
+  private void runExternalScriptTask(Schedule schedule) {
+    JsonNode params = schedule.getTaskParams();
+    RunExternalScript.Params taskParams = Json.fromJson(params, RunExternalScript.Params.class);
+    Customer customer = Customer.getOrBadRequest(taskParams.customerUUID);
+    Universe universe;
+    try {
+      universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    } catch (Exception e) {
+      schedule.stopSchedule();
+      log.info(
+          "External script scheduler is stopped for the universe {} as universe was deleted.",
+          taskParams.universeUUID);
+      return;
+    }
+    UUID taskUUID = commissioner.submit(TaskType.ExternalScript, taskParams);
+    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    CustomerTask.create(
+        customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ExternalScript,
+        universe.name);
+    log.info(
+        "Submitted external script task with task uuid = {} for universe {}.",
+        taskUUID,
+        universe.universeUUID);
   }
 }

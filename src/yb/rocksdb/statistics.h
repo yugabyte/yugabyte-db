@@ -23,9 +23,8 @@
 
 #include <atomic>
 #include <cstddef>
-#include <cstdint>
-#include <string>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
@@ -213,6 +212,10 @@ enum Tickers : uint32_t {
   BLOCK_CACHE_MULTI_TOUCH_BYTES_READ,
   BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE,
 
+  // Files filtered during compaction due to TTL expiration
+  COMPACTION_FILES_FILTERED,
+  COMPACTION_FILES_NOT_FILTERED,
+
   // End of ticker enum.
   TICKER_ENUM_MAX,
 };
@@ -312,7 +315,10 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {BLOCK_CACHE_MULTI_TOUCH_HIT, "rocksdb_block_cache_multi_touch_hit"},
     {BLOCK_CACHE_MULTI_TOUCH_ADD, "rocksdb_block_cache_multi_touch_add"},
     {BLOCK_CACHE_MULTI_TOUCH_BYTES_READ, "rocksdb_block_cache_multi_touch_bytes_read"},
-    {BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, "rocksdb_block_cache_multi_touch_bytes_write"}
+    {BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, "rocksdb_block_cache_multi_touch_bytes_write"},
+
+    {COMPACTION_FILES_FILTERED, "rocksdb_compaction_files_filtered"},
+    {COMPACTION_FILES_NOT_FILTERED, "rocksdb_compaction_files_not_filtered"},
 };
 
 /**
@@ -326,28 +332,14 @@ enum Histograms : uint32_t {
   DB_GET = 0,
   DB_WRITE,
   COMPACTION_TIME,
-  SUBCOMPACTION_SETUP_TIME,
-  TABLE_SYNC_MICROS,
-  COMPACTION_OUTFILE_SYNC_MICROS,
   WAL_FILE_SYNC_MICROS,
-  MANIFEST_FILE_SYNC_MICROS,
-  // TIME SPENT IN IO DURING TABLE OPEN
-  TABLE_OPEN_IO_MICROS,
   DB_MULTIGET,
   READ_BLOCK_COMPACTION_MICROS,
   READ_BLOCK_GET_MICROS,
   WRITE_RAW_BLOCK_MICROS,
-  STALL_L0_SLOWDOWN_COUNT,
-  STALL_MEMTABLE_COMPACTION_COUNT,
-  STALL_L0_NUM_FILES_COUNT,
-  HARD_RATE_LIMIT_DELAY_COUNT,
-  SOFT_RATE_LIMIT_DELAY_COUNT,
   NUM_FILES_IN_SINGLE_COMPACTION,
   DB_SEEK,
-  WRITE_STALL,
   SST_READ_MICROS,
-  // The number of subcompactions actually scheduled during a compaction
-  NUM_SUBCOMPACTIONS_SCHEDULED,
   // Value size distribution in each operation
   BYTES_PER_READ,
   BYTES_PER_WRITE,
@@ -359,26 +351,14 @@ const std::vector<std::pair<Histograms, std::string>> HistogramsNameMap = {
     {DB_GET, "rocksdb_db_get_micros"},
     {DB_WRITE, "rocksdb_db_write_micros"},
     {COMPACTION_TIME, "rocksdb_compaction_times_micros"},
-    {SUBCOMPACTION_SETUP_TIME, "rocksdb_subcompaction_setup_times_micros"},
-    {TABLE_SYNC_MICROS, "rocksdb_table_sync_micros"},
-    {COMPACTION_OUTFILE_SYNC_MICROS, "rocksdb_compaction_outfile_sync_micros"},
     {WAL_FILE_SYNC_MICROS, "rocksdb_wal_file_sync_micros"},
-    {MANIFEST_FILE_SYNC_MICROS, "rocksdb_manifest_file_sync_micros"},
-    {TABLE_OPEN_IO_MICROS, "rocksdb_table_open_io_micros"},
     {DB_MULTIGET, "rocksdb_db_multiget_micros"},
     {READ_BLOCK_COMPACTION_MICROS, "rocksdb_read_block_compaction_micros"},
     {READ_BLOCK_GET_MICROS, "rocksdb_read_block_get_micros"},
     {WRITE_RAW_BLOCK_MICROS, "rocksdb_write_raw_block_micros"},
-    {STALL_L0_SLOWDOWN_COUNT, "rocksdb_l0_slowdown_count"},
-    {STALL_MEMTABLE_COMPACTION_COUNT, "rocksdb_memtable_compaction_count"},
-    {STALL_L0_NUM_FILES_COUNT, "rocksdb_num_files_stall_count"},
-    {HARD_RATE_LIMIT_DELAY_COUNT, "rocksdb_hard_rate_limit_delay_count"},
-    {SOFT_RATE_LIMIT_DELAY_COUNT, "rocksdb_soft_rate_limit_delay_count"},
     {NUM_FILES_IN_SINGLE_COMPACTION, "rocksdb_numfiles_in_singlecompaction"},
     {DB_SEEK, "rocksdb_db_seek_micros"},
-    {WRITE_STALL, "rocksdb_db_write_stall"},
     {SST_READ_MICROS, "rocksdb_sst_read_micros"},
-    {NUM_SUBCOMPACTIONS_SCHEDULED, "rocksdb_num_subcompactions_scheduled"},
     {BYTES_PER_READ, "rocksdb_bytes_per_read"},
     {BYTES_PER_WRITE, "rocksdb_bytes_per_write"},
     {BYTES_PER_MULTIGET, "rocksdb_bytes_per_multiget"},

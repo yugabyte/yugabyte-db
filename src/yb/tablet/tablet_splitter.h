@@ -15,13 +15,17 @@
 #ifndef YB_TABLET_TABLET_SPLITTER_H
 #define YB_TABLET_TABLET_SPLITTER_H
 
+#include <type_traits>
+
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/util/status.h"
+#include "yb/consensus/log_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tablet {
-
-class SplitOperationState;
 
 // Interface which provides functionality for applying Raft tablet split operation.
 // Used by TabletPeer to avoid introducing backward dependency on tserver component.
@@ -38,8 +42,7 @@ class TabletSplitter {
   // state is a context of operation to apply.
   // If raft_log is specified - it will be used as a source tablet Raft log (during tablet bootstrap
   // tablet peer's Raft consensus is not yet initialized, so we pass raft_log explicitly).
-  virtual CHECKED_STATUS ApplyTabletSplit(
-      SplitOperationState* state, log::Log* raft_log = nullptr) = 0;
+  virtual CHECKED_STATUS ApplyTabletSplit(SplitOperation* operation, log::Log* raft_log) = 0;
 };
 
 }  // namespace tablet

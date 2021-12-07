@@ -16,6 +16,7 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rocksdb/cache.h"
@@ -27,7 +28,9 @@
 
 #include "yb/util/background_task.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -47,10 +50,6 @@ DEFINE_int64(global_memstore_size_mb_max, 2048,
              "Global memstore size is determined as a percentage of the available "
              "memory. However, this flag limits it in absolute size. Value of 0 "
              "means no limit on the value obtained by the percentage. Default is 2048.");
-DEFINE_int32(flush_background_task_interval_msec, 0,
-             "The tick interval time for the flush background task. "
-             "This defaults to 0, which means disable the background task "
-             "And only use callbacks on memstore allocations. ");
 
 namespace {
   constexpr int kDbCacheSizeUsePercentage = -1;
@@ -214,7 +213,6 @@ void TabletMemoryManager::InitLogCacheGC() {
 
 void TabletMemoryManager::ConfigureBackgroundTask(tablet::TabletOptions* options) {
   // Calculate memstore_size_bytes based on total RAM available and global percentage.
-  bool should_count_memory = FLAGS_global_memstore_size_percentage > 0;
   CHECK(FLAGS_global_memstore_size_percentage > 0 && FLAGS_global_memstore_size_percentage <= 100)
     << Substitute(
         "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
@@ -230,17 +228,15 @@ void TabletMemoryManager::ConfigureBackgroundTask(tablet::TabletOptions* options
 
   // Add memory monitor and background thread for flushing.
   // TODO(zhaoalex): replace task with Poller
-  if (should_count_memory) {
-    background_task_.reset(new BackgroundTask(
-      std::function<void()>([this]() { FlushTabletIfLimitExceeded(); }),
-      "tablet manager",
-      "flush scheduler bgtask",
-      std::chrono::milliseconds(FLAGS_flush_background_task_interval_msec)));
-    options->memory_monitor = std::make_shared<rocksdb::MemoryMonitor>(
-        memstore_size_bytes,
-        std::function<void()>([this](){
-                                YB_WARN_NOT_OK(background_task_->Wake(), "Wakeup error"); }));
-  }
+  background_task_.reset(new BackgroundTask(
+    std::function<void()>([this]() { FlushTabletIfLimitExceeded(); }),
+    "tablet manager",
+    "flush scheduler bgtask"));
+  options->memory_monitor = std::make_shared<rocksdb::MemoryMonitor>(
+      memstore_size_bytes,
+      std::function<void()>([this](){
+                              YB_WARN_NOT_OK(background_task_->Wake(), "Wakeup error"); }));
+
   // Must assign memory_monitor_ after configuring the background task.
   memory_monitor_ = options->memory_monitor;
 }
@@ -293,21 +289,24 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
     YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
                                            "tablet to flush", memory_monitor_->limit());
     auto flush_tick = rocksdb::FlushTick();
-    tablet::TabletPeerPtr tablet_to_flush = TabletToFlush();
-    // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
-    // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
-    // will not happen often, but should be fixed.
-    if (tablet_to_flush) {
-      LOG(INFO)
-          << LogPrefix(tablet_to_flush)
-          << "Flushing tablet with oldest memstore write at "
-          << tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime();
-      WARN_NOT_OK(
-          tablet_to_flush->tablet()->Flush(
-              tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
-          Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
-      for (auto listener : TEST_listeners) {
-        listener->StartedFlush(tablet_to_flush->tablet_id());
+    tablet::TabletPeerPtr peer_to_flush = TabletToFlush();
+    if (peer_to_flush) {
+      auto tablet_to_flush = peer_to_flush->shared_tablet();
+      // TODO(bojanserafimov): If peer_to_flush flushes now because of other reasons,
+      // we will schedule a second flush, which will unnecessarily stall writes for a short time.
+      // This will not happen often, but should be fixed.
+      if (tablet_to_flush) {
+        LOG(INFO)
+            << LogPrefix(peer_to_flush)
+            << "Flushing tablet with oldest memstore write at "
+            << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
+        WARN_NOT_OK(
+            tablet_to_flush->Flush(
+                tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
+            Substitute("Flush failed on $0", peer_to_flush->tablet_id()));
+        for (auto listener : TEST_listeners) {
+          listener->StartedFlush(peer_to_flush->tablet_id());
+        }
       }
     }
   }

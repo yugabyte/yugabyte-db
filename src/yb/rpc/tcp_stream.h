@@ -16,13 +16,16 @@
 
 #include <ev++.h>
 
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/stream.h"
 
 #include "yb/util/net/socket.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
+
+class Counter;
+
 namespace rpc {
 
 struct TcpStreamSendingData {
@@ -80,8 +83,8 @@ class TcpStream : public Stream {
   bool IsConnected() override { return connected_; }
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
 
-  const Endpoint& Remote() override { return remote_; }
-  const Endpoint& Local() override { return local_; }
+  const Endpoint& Remote() const override { return remote_; }
+  const Endpoint& Local() const override { return local_; }
 
   const Protocol* GetProtocol() override {
     return StaticProtocol();
@@ -148,6 +151,8 @@ class TcpStream : public Stream {
   size_t inbound_bytes_to_skip_ = 0;
   bool waiting_write_ready_ = false;
   MemTrackerPtr mem_tracker_;
+  scoped_refptr<Counter> bytes_sent_counter_;
+  scoped_refptr<Counter> bytes_received_counter_;
 };
 
 } // namespace rpc

@@ -30,23 +30,28 @@
 // under the License.
 //
 
-#include <sys/uio.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <vector>
 
-#include <boost/bind.hpp>
 #include <boost/function.hpp>
+
 #include <glog/stl_logging.h>
 
-#include "yb/consensus/consensus-test-util.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/random.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/stopwatch.h"
 
 DEFINE_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");
@@ -151,6 +156,14 @@ class LogTest : public LogTestBase {
   void DoCorruptionTest(CorruptionType type, CorruptionPosition place,
                         Status expected_status, int expected_entries);
 
+  Result<std::vector<OpId>> AppendAndCopy(size_t num_batches, size_t num_entries_per_batch);
+
+  std::string GetLogCopyPath(int copy_idx) {
+    return Format("$0.copy-$1", tablet_wal_path_, copy_idx);
+  }
+
+  Result<SegmentSequence> GetSegmentsFromLogCopyAndCheckLastOpIndex(
+      size_t copy_idx, int64_t last_op_min_idx);
 };
 
 // If we write more than one entry in a batch, we should be able to
@@ -1172,6 +1185,176 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
   ASSERT_OK(reader->ReadReplicatesInRange(first_log_index, first_log_index + kSequenceLength - 1,
                                           LogReader::kNoSizeLimit, &repls));
   ASSERT_EQ(kSequenceLength, repls.size());
+}
+
+TEST_F(LogTest, AllocateSegmentAndRollOver) {
+  constexpr auto kNumIters = 10;
+
+  // Big enough to not trigger automated rollover and test manual one.
+  options_.segment_size_bytes = 1_MB;
+
+  BuildLog();
+
+  ASSERT_EQ(log_->num_segments(), 1);
+  ASSERT_EQ(log_->active_segment_sequence_number(), 1);
+
+  for (auto i = 0; i < kNumIters; ++i) {
+    AppendReplicateBatchToLog(1, AppendSync::kTrue);
+    ASSERT_OK(log_->AllocateSegmentAndRollOver());
+  }
+
+  ASSERT_EQ(log_->num_segments(), kNumIters + 1);
+  ASSERT_EQ(log_->active_segment_sequence_number(), kNumIters + 1);
+
+  ASSERT_OK(log_->Close());
+}
+
+TEST_F(LogTest, ConcurrentAllocateSegmentAndRollOver) {
+  constexpr auto kNumBatches = 10;
+  constexpr auto kNumEntriesPerBatch = 10;
+
+  // Trigger rollover aggressively during normal append.
+  options_.segment_size_bytes = 1;
+
+  BuildLog();
+
+  for (auto i = 0; i < kNumBatches; ++i) {
+    AppendReplicateBatchToLog(kNumEntriesPerBatch, AppendSync::kFalse);
+    ASSERT_OK(log_->AllocateSegmentAndRollOver());
+  }
+
+  LOG(INFO) << "Log segments: " << log_->num_segments();
+  ASSERT_GE(log_->num_segments(), kNumBatches);
+
+  ASSERT_OK(log_->Close());
+}
+
+Result<std::vector<OpId>> LogTest::AppendAndCopy(size_t num_batches, size_t num_entries_per_batch) {
+  std::vector<OpId> last_op_id_before_copy;
+  last_op_id_before_copy.reserve(num_batches);
+  for (auto i = 0; i < num_batches; ++i) {
+    AppendReplicateBatchToLog(
+        num_entries_per_batch, i % 2 == 0 ? AppendSync::kFalse : AppendSync::kTrue);
+    last_op_id_before_copy.push_back(log_->GetLatestEntryOpId());
+    RETURN_NOT_OK(log_->CopyTo(GetLogCopyPath(i)));
+  }
+  return last_op_id_before_copy;
+}
+
+Result<SegmentSequence> LogTest::GetSegmentsFromLogCopyAndCheckLastOpIndex(
+    const size_t copy_idx, const int64_t last_op_min_idx) {
+  const auto log_copy_dir = GetLogCopyPath(copy_idx);
+  std::unique_ptr<LogReader> copied_log_reader;
+  RETURN_NOT_OK(LogReader::Open(
+      fs_manager_->env(), make_scoped_refptr(new LogIndex(log_copy_dir)), kTestTablet,
+      log_copy_dir, fs_manager_->uuid(), /* table_metric_entity = */ nullptr,
+      /* tablet_metric_entity = */ nullptr, &copied_log_reader));
+
+  SegmentSequence copied_segments;
+  RETURN_NOT_OK(copied_log_reader->GetSegmentsSnapshot(&copied_segments));
+
+  SCHECK_GE(
+      copied_segments.back()->footer().max_replicate_index(), last_op_min_idx, InternalError,
+      "Last copied operation index should be >= index of last log operation added before calling "
+      "Log::CopyTo.");
+
+  return copied_segments;
+}
+
+// Verifies CopyTo works in parallel with rollovers triggered by concurrent
+// log entries writes.
+TEST_F(LogTest, CopyTo) {
+  constexpr auto kNumBatches = 10;
+  constexpr auto kNumEntriesPerBatch = 10;
+
+  // Trigger rollover aggressively during normal append.
+  options_.segment_size_bytes = 1;
+
+  BuildLog();
+
+  auto last_op_id_before_copy = ASSERT_RESULT(AppendAndCopy(kNumBatches, kNumEntriesPerBatch));
+
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetSegmentsSnapshot(&segments));
+
+  for (auto i = 0; i < kNumBatches; ++i) {
+    auto copied_segments = ASSERT_RESULT(
+        GetSegmentsFromLogCopyAndCheckLastOpIndex(i, last_op_id_before_copy[i].index));
+    ASSERT_LE(copied_segments.size(), segments.size());
+
+    // Copied log segments should match log segments of the original log.
+    for (int seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
+      auto& segment = segments[seg_idx];
+      auto& segment_copy = copied_segments[seg_idx];
+
+      auto entries_result = segment->ReadEntries();
+      ASSERT_OK(entries_result.status);
+      auto entries_copy_result = segment_copy->ReadEntries();
+      ASSERT_OK(entries_copy_result.status);
+
+      ASSERT_EQ(entries_copy_result.committed_op_id, entries_result.committed_op_id);
+      ASSERT_EQ(entries_copy_result.end_offset, entries_result.end_offset);
+      ASSERT_EQ(entries_copy_result.entry_metadata, entries_result.entry_metadata);
+      ASSERT_EQ(entries_copy_result.entries.size(), entries_result.entries.size());
+      for (int entry_idx = 0; entry_idx < entries_copy_result.entries.size(); ++entry_idx) {
+        ASSERT_EQ(
+            entries_copy_result.entries[entry_idx]->DebugString(),
+            entries_result.entries[entry_idx]->DebugString());
+      }
+    }
+  }
+
+  ASSERT_OK(log_->Close());
+}
+
+// Verifies CopyTo works in parallel with rollovers triggered by concurrent
+// log entries writes and log GC.
+TEST_F(LogTest, CopyToWithConcurrentGc) {
+  constexpr auto kNumBatches = 20;
+  constexpr auto kNumEntriesPerBatch = 10;
+
+  // Trigger rollover aggressively during normal append.
+  options_.segment_size_bytes = 1;
+
+  BuildLog();
+
+  log_->set_wal_retention_secs(0);
+  std::atomic<bool> stop_gc{false};
+  std::thread gc_thread([log = log_.get(), &stop_gc]{
+    while (!stop_gc.load()) {
+      auto gc_index = log->GetLatestEntryOpId().index;
+      int num_gced = 0;
+      ASSERT_OK(log->GC(gc_index, &num_gced));
+    }
+  });
+
+  auto last_op_id_before_copy_result = AppendAndCopy(kNumBatches, kNumEntriesPerBatch);
+  stop_gc = true;
+  gc_thread.join();
+  auto last_op_id_before_copy = ASSERT_RESULT(std::move(last_op_id_before_copy_result));
+
+  for (auto i = 0; i < kNumBatches; ++i) {
+    auto copied_segments = ASSERT_RESULT(
+        GetSegmentsFromLogCopyAndCheckLastOpIndex(i, last_op_id_before_copy[i].index));
+
+    // Make sure copied log contains a sequence of entries without gaps in index.
+    int64_t last_index = -1;
+    for (int seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
+      auto& segment_copy = copied_segments[seg_idx];
+      auto entries_copy_result = segment_copy->ReadEntries();
+      ASSERT_OK(entries_copy_result.status);
+
+      for (const auto& entry : entries_copy_result.entries) {
+        const auto index = entry->replicate().id().index();
+        if (last_index >= 0) {
+          ASSERT_EQ(index, last_index + 1);
+        }
+        last_index = index;
+      }
+    }
+  }
+
+  ASSERT_OK(log_->Close());
 }
 
 } // namespace log

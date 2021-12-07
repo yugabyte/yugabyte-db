@@ -156,6 +156,7 @@ class UniverseForm extends Component {
         instanceType: formValues[clusterType].instanceType,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
         replicationFactor: formValues[clusterType].replicationFactor,
+        useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
           numVolumes: formValues[clusterType].numVolumes,
@@ -170,6 +171,11 @@ class UniverseForm extends Component {
         useTimeSync: formValues[clusterType].useTimeSync,
         assignPublicIP: formValues[clusterType].assignPublicIP,
         enableYSQL: formValues[clusterType].enableYSQL,
+        enableYSQLAuth: formValues[clusterType].enableYSQLAuth,
+        ysqlPassword: formValues[clusterType].ysqlPassword,
+        enableYCQL: formValues[clusterType].enableYCQL,
+        enableYCQLAuth: formValues[clusterType].enableYCQLAuth,
+        ycqlPassword: formValues[clusterType].ycqlPassword,
         enableIPV6: formValues[clusterType].enableIPV6,
         enableExposingService: formValues[clusterType].enableExposingService,
         enableYEDIS: formValues[clusterType].enableYEDIS,
@@ -319,6 +325,26 @@ class UniverseForm extends Component {
     return null;
   };
 
+  getYCQLstate = () => {
+    const { formValues, universe } = this.props;
+
+    if (isNonEmptyObject(formValues['primary'])) {
+      return formValues['primary'].enableYCQL;
+    }
+
+    const {
+      currentUniverse: {
+        data: { universeDetails }
+      }
+    } = universe;
+    if (isNonEmptyObject(universeDetails)) {
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      return primaryCluster.userIntent.enableYCQL;
+    }
+    // We shouldn't get here!!!
+    return null;
+  };
+
   getYEDISstate = () => {
     const { formValues, universe } = this.props;
 
@@ -367,6 +393,11 @@ class UniverseForm extends Component {
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
         enableYSQL: self.getYSQLstate(),
+        enableYSQLAuth: formValues[clusterType].enableYSQLAuth,
+        ysqlPassword: formValues[clusterType].ysqlPassword,
+        enableYCQL: self.getYCQLstate(),
+        enableYCQLAuth: formValues[clusterType].enableYCQLAuth,
+        ycqlPassword: formValues[clusterType].ycqlPassword,
         enableYEDIS: self.getYEDISstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
@@ -379,6 +410,7 @@ class UniverseForm extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         replicationFactor: formValues[clusterType].replicationFactor,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
+        useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
           numVolumes: formValues[clusterType].numVolumes,
@@ -405,7 +437,7 @@ class UniverseForm extends Component {
             return { name: tserverFlag.name.trim(), value: tserverFlag.value.trim() };
           });
 
-        if (currentProvider === 'aws' || currentProvider === 'azu') {
+        if (['aws', 'azu', 'gcp'].includes(currentProvider)) {
           clusterIntent.instanceTags = formValues.primary.instanceTags
             .filter((userTag) => {
               return isNonEmptyString(userTag.name) && isNonEmptyString(userTag.value);
@@ -416,13 +448,16 @@ class UniverseForm extends Component {
         }
       } else {
         if (isDefinedNotNull(formValues.primary)) {
-          clusterIntent.tserverGFlags = formValues.primary.tserverGFlags
-            .filter((tserverFlag) => {
-              return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
-            })
-            .map((tserverFlag) => {
-              return { name: tserverFlag.name, value: tserverFlag.value.trim() };
-            });
+          clusterIntent.tserverGFlags =
+            (formValues.primary.tserverGFlags &&
+              formValues.primary.tserverGFlags
+                .filter((tserverFlag) => {
+                  return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
+                })
+                .map((tserverFlag) => {
+                  return { name: tserverFlag.name, value: tserverFlag.value.trim() };
+                })) ||
+            {};
         } else {
           const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent
             .tserverGFlags;
@@ -499,6 +534,16 @@ class UniverseForm extends Component {
         }
       ];
     }
+
+    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
+      return {
+        ...nodeDetail,
+        cloudInfo: {
+          ...nodeDetail.cloudInfo,
+          assignPublicIP: formValues['primary'].assignPublicIP
+        }
+      };
+    });
 
     submitPayload.clusters = submitPayload.clusters.filter((c) => c.userIntent !== null);
     // filter clusters array if configuring(adding only) Read Replica due to server side validation
@@ -957,8 +1002,14 @@ class PrimaryClusterFields extends Component {
           'primary.volumeSize',
           'primary.storageType',
           'primary.assignPublicIP',
+          'primary.useSystemd',
           'primary.useTimeSync',
           'primary.enableYSQL',
+          'primary.enableYSQLAuth',
+          'primary.ysqlPassword',
+          'primary.enableYCQL',
+          'primary.enableYCQLAuth',
+          'primary.ycqlPassword',
           'primary.enableIPV6',
           'primary.enableExposingService',
           'primary.enableYEDIS',
@@ -994,8 +1045,12 @@ class ReadOnlyClusterFields extends Component {
           'async.volumeSize',
           'async.storageType',
           'async.assignPublicIP',
+          'async.useSystemd',
           'async.useTimeSync',
           'async.enableYSQL',
+          'async.enableYSQLAuth',
+          'async.enableYCQL',
+          'async.enableYCQLAuth',
           'async.enableIPV6',
           'async.enableExposingService',
           'async.enableYEDIS',

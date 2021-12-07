@@ -24,18 +24,29 @@
 #ifndef YB_ROCKSDB_DB_VERSION_EDIT_H
 #define YB_ROCKSDB_DB_VERSION_EDIT_H
 
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
 #include <algorithm>
+#include <limits>
+#include <memory>
 #include <set>
+#include <stack>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <string>
 
 #include <boost/optional.hpp>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
 
 namespace rocksdb {
 
@@ -93,10 +104,11 @@ struct FileMetaData {
 
   int refs;
   FileDescriptor fd;
-  bool being_compacted;     // Is this file undergoing compaction?
-  BoundaryValues smallest;  // The smallest values in this file
-  BoundaryValues largest;   // The largest values in this file
-  bool imported = false;    // Was this file imported from another DB.
+  bool being_compacted;        // Is this file undergoing compaction?
+  bool being_deleted = false;  // Updated by DB::DeleteFile
+  BoundaryValues smallest;     // The smallest values in this file
+  BoundaryValues largest;      // The largest values in this file
+  bool imported = false;       // Was this file imported from another DB.
 
   // Needs to be disposed when refs becomes 0.
   Cache::Handle* table_reader_handle;
@@ -119,6 +131,9 @@ struct FileMetaData {
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
 
+  bool delete_after_compaction = false;  // True if file has been marked for
+                                         // direct deletion.
+
   FileMetaData();
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects
@@ -131,6 +146,9 @@ struct FileMetaData {
   bool Unref(TableCache* table_cache);
 
   Slice UserFilter() const; // Extracts user filter from largest boundary value if present.
+
+  // Outputs smallest and largest user frontiers to string, if they exist.
+  std::string FrontiersToString() const;
 
   std::string ToString() const;
 };

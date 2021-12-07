@@ -10,26 +10,49 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.writeFile;
+import static com.yugabyte.yw.common.Util.writeJsonFile;
+
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.io.PatternFilenameFilter;
+import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.Configuration;
+import play.Environment;
+import play.libs.Json;
 
 @Singleton
 public class SwamperHelper {
   public static final Logger LOG = LoggerFactory.getLogger(SwamperHelper.class);
+
+  @VisibleForTesting static final String ALERT_CONFIG_FILE_PREFIX = "yugaware.ad.";
+  private static final Pattern ALERT_CONFIG_FILE_PATTERN =
+      Pattern.compile(
+          "^yugaware\\.ad\\.[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+              + "-[0-9a-fA-F]{12}\\.yml$");
 
   /*
      Sample targets file
@@ -49,8 +72,14 @@ public class SwamperHelper {
     ]
   */
 
+  private final play.Configuration appConfig;
+  private final Environment environment;
+
   @Inject
-  play.Configuration appConfig;
+  public SwamperHelper(Configuration appConfig, Environment environment) {
+    this.appConfig = appConfig;
+    this.environment = environment;
+  }
 
   public enum TargetType {
     INVALID_EXPORT,
@@ -93,19 +122,17 @@ public class SwamperHelper {
       Universe universe, TargetType t, Collection<NodeDetails> nodes, String exportedInstance) {
     ObjectNode target = Json.newObject();
     ArrayNode targetNodes = Json.newArray();
-    nodes.forEach((node) -> {
-      if (node.isActive()) {
-        targetNodes.add(node.cloudInfo.private_ip + ":" + t.getPort(node));
-      }
-    });
+    nodes.forEach(
+        (node) -> {
+          if (node.isActive()) {
+            targetNodes.add(node.cloudInfo.private_ip + ":" + t.getPort(node));
+          }
+        });
 
     ObjectNode labels = Json.newObject();
     labels.put(
-        LabelType.NODE_PREFIX.toString().toLowerCase(),
-        universe.getUniverseDetails().nodePrefix);
-    labels.put(
-        LabelType.EXPORT_TYPE.toString().toLowerCase(),
-        t.toString().toLowerCase());
+        LabelType.NODE_PREFIX.toString().toLowerCase(), universe.getUniverseDetails().nodePrefix);
+    labels.put(LabelType.EXPORT_TYPE.toString().toLowerCase(), t.toString().toLowerCase());
     if (exportedInstance != null) {
       labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), exportedInstance);
     }
@@ -117,32 +144,16 @@ public class SwamperHelper {
 
   private String getSwamperFile(UUID universeUUID, String prefix) {
     String swamperFile = appConfig.getString("yb.swamper.targetPath");
-    if (swamperFile == null || swamperFile.isEmpty()) {
+    if (StringUtils.isEmpty(swamperFile)) {
       return null;
     }
-    File swamperTargetFolder = new File(swamperFile);
+    File swamperTargetDirectory = new File(swamperFile);
 
-    if (swamperTargetFolder.exists() && swamperTargetFolder.isDirectory()) {
-      return String.format("%s/%s.%s.json",
-          swamperTargetFolder.toString(), prefix, universeUUID.toString());
+    if (swamperTargetDirectory.isDirectory() || swamperTargetDirectory.mkdirs()) {
+      return String.format(
+          "%s/%s.%s.json", swamperTargetDirectory, prefix, universeUUID.toString());
     }
     return null;
-  }
-
-  private void writeTargetJsonFile(String swamperFile, ArrayNode targetsJson) {
-    if (swamperFile != null) {
-      try {
-        FileWriter file = new FileWriter(swamperFile);
-        file.write((Json.prettyPrint(targetsJson)));
-        file.flush();
-        file.close();
-        LOG.info("Wrote Swamper Target file: {}", swamperFile);
-
-      } catch (IOException e) {
-        LOG.error("Unable to write to Swamper Target JSON: {}", swamperFile);
-        throw new RuntimeException(e.getMessage());
-      }
-    }
   }
 
   public void writeUniverseTargetJson(UUID universeUUID) {
@@ -151,29 +162,42 @@ public class SwamperHelper {
     // Write out the node specific file.
     ArrayNode nodeTargets = Json.newArray();
     String swamperFile = getSwamperFile(universeUUID, "node");
-    universe.getNodes().forEach((node) -> {
-      nodeTargets.add(getIndividualConfig(
-          universe, TargetType.NODE_EXPORT, Collections.singletonList(node), node.nodeName));
-    });
-    writeTargetJsonFile(swamperFile, nodeTargets);
+    if (swamperFile == null) {
+      return;
+    }
+    universe
+        .getNodes()
+        .forEach(
+            (node) -> {
+              nodeTargets.add(
+                  getIndividualConfig(
+                      universe,
+                      TargetType.NODE_EXPORT,
+                      Collections.singletonList(node),
+                      node.nodeName));
+            });
+    writeJsonFile(swamperFile, nodeTargets);
 
     // Write out the yugabyte specific file.
     ArrayNode ybTargets = Json.newArray();
     swamperFile = getSwamperFile(universeUUID, "yugabyte");
     for (TargetType t : TargetType.values()) {
       if (t != TargetType.NODE_EXPORT && t != TargetType.INVALID_EXPORT) {
-        universe.getNodes().forEach((node) -> {
-          // Since some nodes might not be active (for example removed),
-          // we do not want to add them to the swamper targets.
-          if (node.isActive()) {
-            ybTargets.add(getIndividualConfig(
-              universe, t, Collections.singletonList(node), node.nodeName
-            ));
-          }
-        });
+        universe
+            .getNodes()
+            .forEach(
+                (node) -> {
+                  // Since some nodes might not be active (for example removed),
+                  // we do not want to add them to the swamper targets.
+                  if (node.isActive()) {
+                    ybTargets.add(
+                        getIndividualConfig(
+                            universe, t, Collections.singletonList(node), node.nodeName));
+                  }
+                });
       }
     }
-    writeTargetJsonFile(swamperFile, ybTargets);
+    writeJsonFile(swamperFile, ybTargets);
   }
 
   private void removeUniverseTargetJson(UUID universeUUID, String prefix) {
@@ -193,5 +217,93 @@ public class SwamperHelper {
     removeUniverseTargetJson(universeUUID, "node");
     removeUniverseTargetJson(universeUUID, "yugabyte");
   }
-}
 
+  private File getSwamperRuleDirectory() {
+    String rulesFile = appConfig.getString("yb.swamper.rulesPath");
+    if (StringUtils.isEmpty(rulesFile)) {
+      return null;
+    }
+    File swamperRulesDirectory = new File(rulesFile);
+
+    if (swamperRulesDirectory.isDirectory() || swamperRulesDirectory.mkdirs()) {
+      return swamperRulesDirectory;
+    }
+    return null;
+  }
+
+  private String getSwamperRuleFile(UUID ruleUUID) {
+    File swamperRulesDirectory = getSwamperRuleDirectory();
+    if (swamperRulesDirectory != null) {
+      return String.format(
+          "%s/%s%s.yml", swamperRulesDirectory, ALERT_CONFIG_FILE_PREFIX, ruleUUID.toString());
+    }
+    return null;
+  }
+
+  public void writeAlertDefinition(AlertConfiguration configuration, AlertDefinition definition) {
+    String swamperFile = getSwamperRuleFile(definition.getUuid());
+    if (swamperFile == null) {
+      return;
+    }
+
+    String fileContent;
+    try (InputStream templateStream =
+        environment.resourceAsStream("alert/alert_definition_header.yml")) {
+      fileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to read alert definition header template", e);
+    }
+
+    String template;
+    try (InputStream templateStream =
+        environment.resourceAsStream("alert/alert_definition_rule.yml")) {
+      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to read alert definition rule template", e);
+    }
+
+    fileContent +=
+        configuration
+            .getThresholds()
+            .keySet()
+            .stream()
+            .map(
+                severity -> {
+                  AlertRuleTemplateSubstitutor substitutor =
+                      new AlertRuleTemplateSubstitutor(configuration, definition, severity);
+                  return substitutor.replace(template);
+                })
+            .collect(Collectors.joining());
+
+    writeFile(swamperFile, fileContent);
+  }
+
+  public void removeAlertDefinition(UUID definitionUUID) {
+    String swamperFile = getSwamperRuleFile(definitionUUID);
+    if (swamperFile != null) {
+      File file = new File(swamperFile);
+
+      if (file.exists()) {
+        file.delete();
+        LOG.info("Swamper Rules file deleted: {}", swamperFile);
+      }
+    }
+  }
+
+  public List<UUID> getAlertDefinitionConfigUuids() {
+    File swamperRulesDir = getSwamperRuleDirectory();
+    if (swamperRulesDir == null) {
+      return Collections.emptyList();
+    }
+    String[] configFiles =
+        swamperRulesDir.list(new PatternFilenameFilter(ALERT_CONFIG_FILE_PATTERN));
+    if (configFiles == null) {
+      throw new RuntimeException("Failed to list alert rules config files");
+    }
+    return Arrays.stream(configFiles)
+        .map(FilenameUtils::removeExtension)
+        .map(filename -> filename.replaceAll(ALERT_CONFIG_FILE_PREFIX, ""))
+        .map(UUID::fromString)
+        .collect(Collectors.toList());
+  }
+}

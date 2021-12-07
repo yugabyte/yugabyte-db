@@ -4678,8 +4678,8 @@ jsonb_set_lax(PG_FUNCTION_ARGS)
 
 		newval = DirectFunctionCall1(jsonb_in, CStringGetDatum("null"));
 
-		fcinfo->args[2].value = newval;
-		fcinfo->args[2].isnull = false;
+		fcinfo->arg[2] = newval;
+		fcinfo->argnull[2] = false;
 		return jsonb_set(fcinfo);
 	}
 	else if (strcmp(handle_val, "delete_key") == 0)
@@ -5222,7 +5222,7 @@ parse_jsonb_index_flags(Jsonb *jb)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("flag array element is not a string"),
-					 errhint("Possible values are: \"string\", \"numeric\", \"boolean\", \"key\", and \"all\"")));
+					 errhint("Possible values are: \"string\", \"numeric\", \"boolean\", \"key\", and \"all\".")));
 
 		if (v.val.string.len == 3 &&
 			pg_strncasecmp(v.val.string.val, "all", 3) == 0)
@@ -5244,7 +5244,7 @@ parse_jsonb_index_flags(Jsonb *jb)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("wrong flag in flag array: \"%s\"",
 							pnstrdup(v.val.string.val, v.val.string.len)),
-					 errhint("Possible values are: \"string\", \"numeric\", \"boolean\", \"key\", and \"all\"")));
+					 errhint("Possible values are: \"string\", \"numeric\", \"boolean\", \"key\", and \"all\".")));
 	}
 
 	/* expect end of array now */
@@ -5577,6 +5577,16 @@ int json_get_int_value(text *json, char *key)
 	return ret_value;
 }
 
+/*
+ * This differs from json_get_value in that the string it returns does not do
+ * character escaping.
+ */
+text *
+json_get_denormalized_value(text *json, char *key)
+{
+	return get_worker(json, &key, NULL, 1, true);
+}
+
 text*
 json_get_value(text *json, char *key)
 {
@@ -5592,8 +5602,8 @@ get_json_array_element(text *json, int index)
 int get_json_array_length(text *json)
 {
 	/* Create a dummy fcinfo to invoke json_array_length */
-	FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(1));
-	fcinfo->args[0].value = PointerGetDatum(json);
+	FunctionCallInfo fcinfo = palloc0(sizeof(FunctionCallInfoData));
+	fcinfo->arg[0] = PointerGetDatum(json);
 	Datum result = json_array_length(fcinfo);
 	return DatumGetInt32(result);
 }

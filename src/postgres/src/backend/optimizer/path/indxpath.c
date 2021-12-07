@@ -23,8 +23,10 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "pg_yb_utils.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
@@ -37,6 +39,7 @@
 #include "utils/bytea.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
+#include "utils/rel.h"
 #include "utils/selfuncs.h"
 
 
@@ -126,7 +129,6 @@ static Cost bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel,
 					List *paths);
 static PathClauseUsage *classify_index_clause_usage(Path *path,
 							List **clauselist);
-static Relids get_bitmap_tree_required_outer(Path *bitmapqual);
 static void find_indexpath_quals(Path *bitmapqual, List **quals, List **preds);
 static int	find_list_position(Node *node, List **nodelist);
 static bool check_index_only(RelOptInfo *rel, IndexOptInfo *index);
@@ -356,23 +358,16 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 	 */
 	if (bitjoinpaths != NIL)
 	{
-		List	   *path_outer;
 		List	   *all_path_outers;
 		ListCell   *lc;
 
-		/*
-		 * path_outer holds the parameterization of each path in bitjoinpaths
-		 * (to save recalculating that several times), while all_path_outers
-		 * holds all distinct parameterization sets.
-		 */
-		path_outer = all_path_outers = NIL;
+		/* Identify each distinct parameterization seen in bitjoinpaths */
+		all_path_outers = NIL;
 		foreach(lc, bitjoinpaths)
 		{
 			Path	   *path = (Path *) lfirst(lc);
-			Relids		required_outer;
+			Relids		required_outer = PATH_REQ_OUTER(path);
 
-			required_outer = get_bitmap_tree_required_outer(path);
-			path_outer = lappend(path_outer, required_outer);
 			if (!bms_equal_any(required_outer, all_path_outers))
 				all_path_outers = lappend(all_path_outers, required_outer);
 		}
@@ -387,16 +382,14 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 			double		loop_count;
 			BitmapHeapPath *bpath;
 			ListCell   *lcp;
-			ListCell   *lco;
 
 			/* Identify all the bitmap join paths needing no more than that */
 			this_path_set = NIL;
-			forboth(lcp, bitjoinpaths, lco, path_outer)
+			foreach(lcp, bitjoinpaths)
 			{
 				Path	   *path = (Path *) lfirst(lcp);
-				Relids		p_outers = (Relids) lfirst(lco);
 
-				if (bms_is_subset(p_outers, max_outers))
+				if (bms_is_subset(PATH_REQ_OUTER(path), max_outers))
 					this_path_set = lappend(this_path_set, path);
 			}
 
@@ -410,7 +403,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 			bitmapqual = choose_bitmap_and(root, rel, this_path_set);
 
 			/* And push that path into the mix */
-			required_outer = get_bitmap_tree_required_outer(bitmapqual);
+			required_outer = PATH_REQ_OUTER(bitmapqual);
 			loop_count = get_loop_count(root, rel->relid, required_outer);
 			bpath = create_bitmap_heap_path(root, rel, bitmapqual,
 											required_outer, loop_count, 0);
@@ -1611,25 +1604,19 @@ path_usage_comparator(const void *a, const void *b)
 
 /*
  * Estimate the cost of actually executing a bitmap scan with a single
- * index path (no BitmapAnd, at least not at this level; but it could be
- * a BitmapOr).
+ * index path (which could be a BitmapAnd or BitmapOr node).
  */
 static Cost
 bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
 {
 	BitmapHeapPath bpath;
-	Relids		required_outer;
-
-	/* Identify required outer rels, in case it's a parameterized scan */
-	required_outer = get_bitmap_tree_required_outer(ipath);
 
 	/* Set up a dummy BitmapHeapPath */
 	bpath.path.type = T_BitmapHeapPath;
 	bpath.path.pathtype = T_BitmapHeapScan;
 	bpath.path.parent = rel;
 	bpath.path.pathtarget = rel->reltarget;
-	bpath.path.param_info = get_baserel_parampathinfo(root, rel,
-													  required_outer);
+	bpath.path.param_info = ipath->param_info;
 	bpath.path.pathkeys = NIL;
 	bpath.bitmapqual = ipath;
 
@@ -1638,10 +1625,13 @@ bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
 	 * Parallel bitmap heap path will be considered at later stage.
 	 */
 	bpath.path.parallel_workers = 0;
+
+	/* Now we can do cost_bitmap_heap_scan */
 	cost_bitmap_heap_scan(&bpath.path, root, rel,
 						  bpath.path.param_info,
 						  ipath,
-						  get_loop_count(root, rel->relid, required_outer));
+						  get_loop_count(root, rel->relid,
+										 PATH_REQ_OUTER(ipath)));
 
 	return bpath.path.total_cost;
 }
@@ -1653,46 +1643,15 @@ bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
 static Cost
 bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel, List *paths)
 {
-	BitmapAndPath apath;
-	BitmapHeapPath bpath;
-	Relids		required_outer;
-
-	/* Set up a dummy BitmapAndPath */
-	apath.path.type = T_BitmapAndPath;
-	apath.path.pathtype = T_BitmapAnd;
-	apath.path.parent = rel;
-	apath.path.pathtarget = rel->reltarget;
-	apath.path.param_info = NULL;	/* not used in bitmap trees */
-	apath.path.pathkeys = NIL;
-	apath.bitmapquals = paths;
-	cost_bitmap_and_node(&apath, root);
-
-	/* Identify required outer rels, in case it's a parameterized scan */
-	required_outer = get_bitmap_tree_required_outer((Path *) &apath);
-
-	/* Set up a dummy BitmapHeapPath */
-	bpath.path.type = T_BitmapHeapPath;
-	bpath.path.pathtype = T_BitmapHeapScan;
-	bpath.path.parent = rel;
-	bpath.path.pathtarget = rel->reltarget;
-	bpath.path.param_info = get_baserel_parampathinfo(root, rel,
-													  required_outer);
-	bpath.path.pathkeys = NIL;
-	bpath.bitmapqual = (Path *) &apath;
+	BitmapAndPath *apath;
 
 	/*
-	 * Check the cost of temporary path without considering parallelism.
-	 * Parallel bitmap heap path will be considered at later stage.
+	 * Might as well build a real BitmapAndPath here, as the work is slightly
+	 * too complicated to be worth repeating just to save one palloc.
 	 */
-	bpath.path.parallel_workers = 0;
+	apath = create_bitmap_and_path(root, rel, paths);
 
-	/* Now we can do cost_bitmap_heap_scan */
-	cost_bitmap_heap_scan(&bpath.path, root, rel,
-						  bpath.path.param_info,
-						  (Path *) &apath,
-						  get_loop_count(root, rel->relid, required_outer));
-
-	return bpath.path.total_cost;
+	return bitmap_scan_cost_est(root, rel, (Path *) apath);
 }
 
 
@@ -1758,49 +1717,6 @@ classify_index_clause_usage(Path *path, List **clauselist)
 	}
 	result->clauseids = clauseids;
 	result->unclassifiable = false;
-
-	return result;
-}
-
-
-/*
- * get_bitmap_tree_required_outer
- *		Find the required outer rels for a bitmap tree (index/and/or)
- *
- * We don't associate any particular parameterization with a BitmapAnd or
- * BitmapOr node; however, the IndexPaths have parameterization info, in
- * their capacity as standalone access paths.  The parameterization required
- * for the bitmap heap scan node is the union of rels referenced in the
- * child IndexPaths.
- */
-static Relids
-get_bitmap_tree_required_outer(Path *bitmapqual)
-{
-	Relids		result = NULL;
-	ListCell   *lc;
-
-	if (IsA(bitmapqual, IndexPath))
-	{
-		return bms_copy(PATH_REQ_OUTER(bitmapqual));
-	}
-	else if (IsA(bitmapqual, BitmapAndPath))
-	{
-		foreach(lc, ((BitmapAndPath *) bitmapqual)->bitmapquals)
-		{
-			result = bms_join(result,
-							  get_bitmap_tree_required_outer((Path *) lfirst(lc)));
-		}
-	}
-	else if (IsA(bitmapqual, BitmapOrPath))
-	{
-		foreach(lc, ((BitmapOrPath *) bitmapqual)->bitmapquals)
-		{
-			result = bms_join(result,
-							  get_bitmap_tree_required_outer((Path *) lfirst(lc)));
-		}
-	}
-	else
-		elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual));
 
 	return result;
 }
@@ -2290,6 +2206,12 @@ match_clause_to_index(IndexOptInfo *index,
 	}
 }
 
+static bool is_yb_hash_code_call(Node *clause)
+{
+	return clause && IsA(clause, FuncExpr)
+				&& (((FuncExpr *) clause)->funcid == YB_HASH_CODE_OID);
+}
+
 /*
  * match_clause_to_indexcol()
  *	  Determines whether a restriction clause matches a column of an index.
@@ -2440,8 +2362,14 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
-		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
-			is_indexable_operator(expr_op, opfamily, true))
+		if (is_yb_hash_code_call(leftop)) {
+				return is_indexable_operator(expr_op,
+							INTEGER_LSM_FAM_OID, true)
+						&& is_opclause(clause);
+		}
+
+		if (IndexCollMatchesExprColl(idxcollation, expr_coll)
+			&& is_indexable_operator(expr_op, opfamily, true))
 			return true;
 
 		/*
@@ -2460,6 +2388,12 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		!bms_is_member(index_relid, left_relids) &&
 		!contain_volatile_functions(leftop))
 	{
+		if (is_yb_hash_code_call(rightop)) {
+				return is_indexable_operator(expr_op,
+							INTEGER_LSM_FAM_OID, true)
+						&& is_opclause(clause);
+		}
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			is_indexable_operator(expr_op, opfamily, false))
 			return true;
@@ -3251,6 +3185,90 @@ match_index_to_operand(Node *operand,
 	indkey = index->indexkeys[indexcol];
 	if (indkey != 0)
 	{
+
+		if (operand && IsA(operand, FuncExpr))
+		{
+			/*
+			 * YB: Forming an estimate to see if this call can be pushed down
+			 * by assessing whether or not its parameters are all column
+			 * variables and whether or not the number of arguments to the call
+			 * is the same as the number of hash columns in the primary key
+			 * of the index in question
+			 */
+			FuncExpr *fn = (FuncExpr *) operand;
+			if (fn->funcid == YB_HASH_CODE_OID
+				&& fn->args->length > 0
+				&& index->nhashcolumns == fn->args->length)
+			{
+				Relation indrel = RelationIdGetRelation(index->indexoid);
+				Bitmapset *hash_keys = NULL;
+				for (int natt = 1;
+						natt <= indrel->rd_index->indnkeyatts; natt++)
+				{
+					if (indrel->rd_indoption[natt - 1] & INDOPTION_HASH)
+					{
+						int table_att = index->indexkeys[natt - 1];
+						hash_keys = bms_add_member(hash_keys,
+										YBAttnumToBmsIndex(indrel, table_att));
+					}
+				}
+				ListCell *ls;
+				bool can_pushdown_hash_call = true;
+				Bitmapset *args_bms = NULL;
+				int last_index_att = -1;
+				foreach(ls, fn->args)
+				{
+					Expr *arg = (Expr *) lfirst(ls);
+					if (!IsA(arg, Var))
+					{
+						can_pushdown_hash_call = false;
+						break;
+					}
+
+					Var *var = (Var *) arg;
+
+					if (index->rel->relid != var->varno)
+					{
+						can_pushdown_hash_call = false;
+						break;
+					}
+
+					/* YB: Need to make sure that the arguments to
+					 * yb_hash_code are in the correct order
+					 * we can make this for loop to map from index att
+					 * to table att slightly more efficient by starting the
+					 * loop from last_index_att */
+					int index_att = -1;
+					for (int natt = 1;
+						natt <= indrel->rd_index->indnkeyatts; natt++)
+					{
+						int cand_table_att = index->indexkeys[natt - 1];
+						if (cand_table_att == var->varattno)
+						{
+							index_att = natt;
+							break;
+						}
+					}
+
+					if (index_att <= last_index_att) {
+						can_pushdown_hash_call = false;
+						break;
+					} else {
+						last_index_att = index_att;
+					}
+
+					int arg_bms_index = YBAttnumToBmsIndex(indrel,
+															var->varattno);
+					args_bms = bms_add_member(args_bms, arg_bms_index);
+				}
+				can_pushdown_hash_call &= bms_equal(args_bms, hash_keys);
+
+				RelationClose(indrel);
+				bms_free(args_bms);
+				bms_free(hash_keys);
+				return can_pushdown_hash_call;
+			}
+		}
 		/*
 		 * Simple index column; operand must be a matching Var.
 		 */

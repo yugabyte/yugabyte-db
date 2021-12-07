@@ -2,7 +2,6 @@ import _ from 'lodash';
 import React, { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import moment from 'moment';
 import { YBButton } from '../../common/forms/fields';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
 import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
@@ -13,6 +12,7 @@ import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
 import './HAInstances.scss';
+import { timeFormatter } from '../../../utils/TableFormatters';
 
 const renderAddress = (cell: any, row: HAPlatformInstance): ReactElement => (
   <a href={row.address} target="_blank" rel="noopener noreferrer">
@@ -25,8 +25,8 @@ const renderInstanceType = (cell: HAPlatformInstance['is_leader']): ReactElement
   <BadgeInstanceType isActive={cell} />
 );
 
-const renderLastBackup = (cell: HAPlatformInstance['last_backup']): string =>
-  cell ? moment(cell).format('lll') : 'n/a';
+const renderLastBackup = (cell: HAPlatformInstance['last_backup']): ReactElement | string =>
+  cell ? timeFormatter(cell) : 'n/a';
 
 export const HAInstances: FC = () => {
   const [isAddInstancesModalVisible, setAddInstancesModalVisible] = useState(false);

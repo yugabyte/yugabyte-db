@@ -11,16 +11,19 @@
 // under the License.
 //
 
+#include "yb/master/encryption_manager.h"
+
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
-#include "yb/master/encryption_manager.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
 #include "yb/master/universe_key_registry_service.h"
+
 #include "yb/util/encryption.pb.h"
+#include "yb/util/env.h"
 #include "yb/util/pb_util.h"
-#include "yb/rpc/rpc_controller.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::chrono_literals;
 
@@ -136,46 +139,11 @@ CHECKED_STATUS EncryptionManager::FillHeartbeatResponseEncryption(
   return Status::OK();
 }
 
-Status EncryptionManager::GetUniverseKeyRegistry(rpc::ProxyCache* proxy_cache) {
+void EncryptionManager::PopulateUniverseKeys(const UniverseKeysPB& universe_key_registry) {
   std::lock_guard<simple_spinlock> l(universe_key_mutex_);
-  for (const auto& host_port : peers_to_get_universe_key_from_) {
-    GetUniverseKeyRegistryRequestPB req;
-    auto resp = std::make_shared<GetUniverseKeyRegistryResponsePB>();
-    auto rpc = std::make_shared<rpc::RpcController>();
-    rpc->set_timeout(10s);
-
-    MasterServiceProxy peer_proxy(proxy_cache, host_port);
-    LOG(INFO) << "Getting registry from master: " << host_port.ToString();
-    peer_proxy.GetUniverseKeyRegistryAsync(
-        req, resp.get(), rpc.get(),
-        std::bind(&EncryptionManager::ProcessGetUniverseKeyRegistryResponse, this, resp, rpc,
-                  host_port));
-  }
-
-  peers_to_get_universe_key_from_.clear();
-  return Status::OK();
-}
-
-
-void EncryptionManager::ProcessGetUniverseKeyRegistryResponse(
-      std::shared_ptr<GetUniverseKeyRegistryResponsePB> resp,
-      std::shared_ptr<rpc::RpcController> rpc,
-      HostPort hp) {
-  std::lock_guard<simple_spinlock> l(universe_key_mutex_);
-  if (!rpc->status().ok() || resp->has_error()) {
-    LOG(WARNING) << Format("rpc status: $0, resp: $1", rpc->status(), resp->ShortDebugString());
-    peers_to_get_universe_key_from_.insert(hp);
-    return;
-  }
-  for (const auto& entry : resp->universe_keys().map()) {
+  for (const auto& entry : universe_key_registry.map()) {
     (*universe_keys_->mutable_map())[entry.first] = entry.second;
   }
-}
-
-Status EncryptionManager::AddPeersToGetUniverseKeyFrom(const HostPortSet& hps) {
-  std::lock_guard<simple_spinlock> l(universe_key_mutex_);
-  peers_to_get_universe_key_from_ = hps;
-  return Status::OK();
 }
 
 Result<std::string> EncryptionManager::GetLatestUniverseKey(

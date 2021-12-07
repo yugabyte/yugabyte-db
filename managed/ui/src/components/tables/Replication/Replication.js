@@ -40,7 +40,9 @@ export default class Replication extends Component {
   }
 
   queryMetrics = (graphFilter) => {
-    const { universe: { currentUniverse }} = this.props;
+    const {
+      universe: { currentUniverse }
+    } = this.props;
     const universeDetails = getPromiseState(currentUniverse).isSuccess()
       ? currentUniverse.data.universeDetails
       : 'all';
@@ -56,7 +58,8 @@ export default class Replication extends Component {
   render() {
     const {
       universe: { currentUniverse },
-      graph: { metrics }
+      graph: { metrics, prometheusQueryEnabled },
+      customer: { currentUser }
     } = this.props;
 
     const universeDetails = currentUniverse.data.universeDetails;
@@ -152,12 +155,12 @@ export default class Replication extends Component {
           header={
             <div className="replication-header">
               <h2>Replication</h2>
-              {!universePaused &&
+              {!universePaused && (
                 <ReplicationAlertModalBtn
                   universeUUID={currentUniverse.data.universeUUID}
                   disabled={!showMetrics}
                 />
-              }
+              )}
             </div>
           }
           body={
@@ -168,11 +171,13 @@ export default class Replication extends Component {
               {showMetrics && metrics[GRAPH_TYPE] && (
                 <div className="graph-container">
                   <MetricsPanel
+                    currentUser={currentUser}
                     metricKey={METRIC_NAME}
                     metric={aggregatedMetrics}
                     className={'metrics-panel-container'}
                     width={this.state.graphWidth}
                     height={540}
+                    prometheusQueryEnabled={prometheusQueryEnabled}
                   />
                 </div>
               )}
@@ -182,4 +187,4 @@ export default class Replication extends Component {
       </div>
     );
   }
-};
+}

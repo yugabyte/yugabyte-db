@@ -42,20 +42,29 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rocksdb/db.h"
+
 #include "yb/server/webui_util.h"
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/jsonwriter.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
@@ -204,7 +213,7 @@ void HandleTabletPage(
   // Output schema in tabular format.
   *output << "<h2>Schema</h2>\n";
   const SchemaPtr schema = peer->tablet_metadata()->schema();
-  HtmlOutputSchemaTable(*schema, output);
+  server::HtmlOutputSchemaTable(*schema, output);
 
   *output << "<h2>Other Tablet Info Pages</h2>" << endl;
 
@@ -397,8 +406,7 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
   std::stringstream *output = &resp->output;
   bool as_text = ContainsKey(req.parsed_args, "raw");
 
-  vector<std::shared_ptr<TabletPeer> > peers;
-  tserver_->tablet_manager()->GetTabletPeers(&peers);
+  auto peers = tserver_->tablet_manager()->GetTabletPeers();
 
   string arg = FindWithDefault(req.parsed_args, "include_traces", "false");
   Operation::TraceType trace_type = ParseLeadingBoolValue(
@@ -540,8 +548,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
 void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
                                                 Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  vector<std::shared_ptr<TabletPeer>> peers;
-  tserver_->tablet_manager()->GetTabletPeers(&peers);
+  auto peers = tserver_->tablet_manager()->GetTabletPeers();
   auto table_map = GetTablesInfo(peers);
   bool show_missing_size_footer = false;
 
@@ -592,8 +599,7 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  vector<std::shared_ptr<TabletPeer> > peers;
-  tserver_->tablet_manager()->GetTabletPeers(&peers);
+  auto peers = tserver_->tablet_manager()->GetTabletPeers();
   std::sort(peers.begin(), peers.end(), &CompareByTabletId);
 
   *output << "<h1>Tablets</h1>\n";
@@ -768,8 +774,7 @@ void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& re
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
-  vector<std::shared_ptr<TabletPeer> > tablet_peers;
-  tserver_->tablet_manager()->GetTabletPeers(&tablet_peers);
+  auto tablet_peers = tserver_->tablet_manager()->GetTabletPeers();
 
   jw.StartObject();
   jw.String("failed_tablets");

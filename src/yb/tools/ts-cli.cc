@@ -31,33 +31,36 @@
 //
 // Tool to query tablet server operational data
 
-#include <iostream>
 #include <memory>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/client/table_handle.h"
-
 #include "yb/common/partition.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/server/server_base.proxy.h"
+
+#include "yb/consensus/consensus.proxy.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/server/secure.h"
+#include "yb/server/server_base.proxy.h"
+
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
-#include "yb/consensus/consensus.proxy.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/util/env.h"
+
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/protobuf_util.h"
 #include "yb/util/net/net_util.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/secure_stream.h"
+#include "yb/util/protobuf_util.h"
+#include "yb/util/result.h"
 
 using std::ostringstream;
 using std::shared_ptr;
@@ -84,6 +87,7 @@ using yb::tserver::TabletServerAdminServiceProxy;
 using yb::tserver::TabletServerServiceProxy;
 
 const char* const kListTabletsOp = "list_tablets";
+const char* const kVerifyTabletOp = "verify_tablet";
 const char* const kAreTabletsRunningOp = "are_tablets_running";
 const char* const kIsServerReadyOp = "is_server_ready";
 const char* const kSetFlagOp = "set_flag";
@@ -103,9 +107,12 @@ DEFINE_string(server_address, "localhost",
               "Address of server to run against");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
-DEFINE_bool(force, false, "If true, allows the set_flag command to set a flag "
+DEFINE_bool(force, false, "set_flag: If true, allows command to set a flag "
             "which is not explicitly marked as runtime-settable. Such flag changes may be "
-            "simply ignored on the server, or may cause the server to crash.");
+            "simply ignored on the server, or may cause the server to crash.\n"
+            "delete_tablet: If true, command will delete the tablet and remove the tablet "
+            "from the memory, otherwise tablet metadata will be kept in memory with state "
+            "TOMBSTONED.");
 
 DEFINE_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
@@ -185,7 +192,8 @@ class TsAdminClient {
   // Delete a tablet replica from the specified peer.
   // The 'reason' string is passed to the tablet server, used for logging.
   Status DeleteTablet(const std::string& tablet_id,
-                      const std::string& reason);
+                      const std::string& reason,
+                      tablet::TabletDataState delete_type);
 
   // Sets hybrid_time to the value of the tablet server's current hybrid_time.
   Status CurrentHybridTime(uint64_t* hybrid_time);
@@ -200,6 +208,14 @@ class TsAdminClient {
   // If 'tablet_id' is empty string, flush or compact all tablets.
   Status FlushTablets(const std::string& tablet_id, bool is_compaction);
 
+  // Verify the given tablet against its indexes
+  // Assume the tablet belongs to a main table
+  Status VerifyTablet(
+      const std::string& tablet_id,
+      const std::vector<string>& index_ids,
+      const string& start_key,
+      const int num_rows);
+
  private:
   std::string addr_;
   MonoDelta timeout_;
@@ -207,9 +223,9 @@ class TsAdminClient {
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
   shared_ptr<server::GenericServiceProxy> generic_proxy_;
-  gscoped_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
-  gscoped_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
-  gscoped_ptr<consensus::ConsensusServiceProxy> cons_proxy_;
+  std::unique_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+  std::unique_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
+  std::unique_ptr<consensus::ConsensusServiceProxy> cons_proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };
@@ -322,6 +338,38 @@ Status TsAdminClient::RefreshFlags() {
   return generic_proxy_->RefreshFlags(req, &resp, &rpc);
 }
 
+Status TsAdminClient::VerifyTablet(
+    const std::string& tablet_id,
+    const std::vector<string>& index_ids,
+    const string& start_key,
+    const int num_rows) {
+  tserver::VerifyTableRowRangeRequestPB req;
+  tserver::VerifyTableRowRangeResponsePB resp;
+
+  req.set_tablet_id(tablet_id);
+  req.set_start_key("");
+  req.set_num_rows(num_rows);
+  for (const std::string& str : index_ids) {
+    req.add_index_ids(str);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  RETURN_NOT_OK(ts_proxy_->VerifyTableRowRange(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "Reporting VerifyJob stats." << std::endl;
+  for (auto it = resp.consistency_stats().begin(); it != resp.consistency_stats().end(); it++) {
+    std::cout << "VerifyJob found " << it->second << " mismatched rows for index " << it->first
+              << std::endl;
+  }
+
+  return Status::OK();
+}
+
 Status TsAdminClient::GetTabletSchema(const std::string& tablet_id,
                                       SchemaPB* schema) {
   VLOG(1) << "Fetching schema for tablet " << tablet_id;
@@ -390,7 +438,8 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
 }
 
 Status TsAdminClient::DeleteTablet(const string& tablet_id,
-                                   const string& reason) {
+                                   const string& reason,
+                                   tablet::TabletDataState delete_type) {
   ServerStatusPB status_pb;
   RETURN_NOT_OK(GetStatus(&status_pb));
 
@@ -401,7 +450,7 @@ Status TsAdminClient::DeleteTablet(const string& tablet_id,
   req.set_tablet_id(tablet_id);
   req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
   req.set_reason(reason);
-  req.set_delete_type(tablet::TABLET_DATA_TOMBSTONED);
+  req.set_delete_type(delete_type);
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK_PREPEND(ts_admin_proxy_->DeleteTablet(req, &resp, &rpc),
                         "DeleteTablet() failed");
@@ -460,7 +509,8 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
     req.set_all_tablets(true);
   }
   req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
-  req.set_is_compaction(is_compaction);
+  req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
+                                  : tserver::FlushTabletsRequestPB::FLUSH);
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK_PREPEND(ts_admin_proxy_->FlushTablets(req, &resp, &rpc),
                         "FlushTablets() failed");
@@ -469,6 +519,9 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
     return STATUS(IOError, "Failed to flush tablet: ",
                            resp.error().ShortDebugString());
   }
+  std::cout << "Successfully " << (is_compaction ? "compacted " : "flushed ")
+            << (tablet_id.empty() ? "all tablets" : "tablet <" + tablet_id + ">")
+            << std::endl;
   return Status::OK();
 }
 
@@ -486,14 +539,16 @@ void SetUsage(const char* argv0) {
       << "  " << kRefreshFlagsOp << "\n"
       << "  " << kTabletStateOp << " <tablet_id>\n"
       << "  " << kDumpTabletOp << " <tablet_id>\n"
-      << "  " << kDeleteTabletOp << " <tablet_id> <reason string>\n"
+      << "  " << kDeleteTabletOp << " [-force] <tablet_id> <reason string>\n"
       << "  " << kCurrentHybridTime << "\n"
       << "  " << kStatus << "\n"
       << "  " << kCountIntents << "\n"
       << "  " << kFlushTabletOp << " <tablet_id>\n"
       << "  " << kFlushAllTabletsOp << "\n"
       << "  " << kCompactTabletOp << " <tablet_id>\n"
-      << "  " << kCompactAllTabletsOp << "\n";
+      << "  " << kCompactAllTabletsOp << "\n"
+      << "  " << kVerifyTabletOp
+      << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -553,6 +608,20 @@ static int TsCliMain(int argc, char** argv) {
                 << std::endl;
       std::cout << "Schema: " << schema.ToString() << std::endl;
     }
+  } else if (op == kVerifyTabletOp) {
+    string tablet_id = argv[2];
+    int num_indexes = std::stoi(argv[3]);
+    std::vector<string> index_ids;
+    for (int i = 0; i < num_indexes; i++) {
+      index_ids.push_back(argv[4 + i]);
+    }
+    string start_key = argv[num_indexes + 4];
+    int num_rows = std::stoi(argv[num_indexes + 5]);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.VerifyTablet(tablet_id, index_ids, start_key, num_rows),
+        "Unable to verify tablet " + tablet_id);
+
   } else if (op == kAreTabletsRunningOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
@@ -616,8 +685,9 @@ static int TsCliMain(int argc, char** argv) {
 
     string tablet_id = argv[2];
     string reason = argv[3];
-
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.DeleteTablet(tablet_id, reason),
+    tablet::TabletDataState state = FLAGS_force ? tablet::TABLET_DATA_DELETED :
+                                                  tablet::TABLET_DATA_TOMBSTONED;
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.DeleteTablet(tablet_id, reason, state),
                                     "Unable to delete tablet");
   } else if (op == kCurrentHybridTime) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);

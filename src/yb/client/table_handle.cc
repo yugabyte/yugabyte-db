@@ -15,13 +15,18 @@
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 
-#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals; // NOLINT
 
@@ -63,6 +68,7 @@ Status TableHandle::Create(const YBTableName& table_name,
 Status TableHandle::Open(const YBTableName& table_name, YBClient* client) {
   RETURN_NOT_OK(client->OpenTable(table_name, &table_));
 
+  client_ = client;
   auto schema = table_->schema();
   for (size_t i = 0; i < schema.num_columns(); ++i) {
     yb::ColumnId col_id = yb::ColumnId(schema.ColumnId(i));
@@ -74,7 +80,7 @@ Status TableHandle::Open(const YBTableName& table_name, YBClient* client) {
 }
 
 Status TableHandle::Reopen() {
-  return Open(name(), table_->client());
+  return Open(name(), client_);
 }
 
 const YBTableName& TableHandle::name() const {
@@ -193,7 +199,7 @@ TableIterator::TableIterator() : table_(nullptr) {}
 
 TableIterator::TableIterator(const TableHandle* table, const TableIteratorOptions& options)
     : table_(table), error_handler_(options.error_handler) {
-  auto client = (*table)->client();
+  auto client = table->client();
 
   session_ = client->NewSession();
 
@@ -243,7 +249,7 @@ bool TableIterator::ExecuteOps() {
   constexpr size_t kMaxConcurrentOps = 5;
   const size_t new_executed_ops = std::min(ops_.size(), executed_ops_ + kMaxConcurrentOps);
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
-    REPORT_AND_RETURN_FALSE_IF_NOT_OK(session_->Apply(ops_[i]));
+    session_->Apply(ops_[i]);
   }
 
   if (!IsFlushStatusOkOrHandleErrors(session_->FlushAndGetOpsErrors())) {
@@ -281,7 +287,7 @@ void TableIterator::Move() {
       if (paging_state_) {
         auto& op = ops_[ops_index_];
         *op->mutable_request()->mutable_paging_state() = *paging_state_;
-        REPORT_AND_RETURN_IF_NOT_OK(session_->Apply(op));
+        session_->Apply(op);
         if (!IsFlushStatusOkOrHandleErrors(session_->FlushAndGetOpsErrors())) {
           return;
         }

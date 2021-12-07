@@ -12,27 +12,27 @@
 // under the License.
 //
 //
+
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/meta_cache.h"
 
 #include "yb/common/redis_protocol.pb.h"
 
-#include "yb/yql/redis/redisserver/redis_encoding.h"
-#include "yb/yql/redis/redisserver/redis_parser.h"
-
 #include "yb/rpc/connection.h"
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
-#include "yb/util/logging.h"
-#include "yb/util/size_literals.h"
-
 #include "yb/util/debug/trace_event.h"
-
+#include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+
+#include "yb/yql/redis/redisserver/redis_encoding.h"
+#include "yb/yql/redis/redisserver/redis_parser.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -70,11 +70,14 @@ RedisConnectionContext::RedisConnectionContext(
 
 RedisConnectionContext::~RedisConnectionContext() {}
 
-Result<rpc::ProcessDataResult> RedisConnectionContext::ProcessCalls(
+Result<rpc::ProcessCallsResult> RedisConnectionContext::ProcessCalls(
     const rpc::ConnectionPtr& connection, const IoVecs& data,
     rpc::ReadBufferFull read_buffer_full) {
   if (!can_enqueue()) {
-    return rpc::ProcessDataResult{0, Slice()};
+    return rpc::ProcessCallsResult{
+      .consumed = 0,
+      .buffer = Slice(),
+    };
   }
 
   if (!parser_) {
@@ -111,7 +114,10 @@ Result<rpc::ProcessDataResult> RedisConnectionContext::ProcessCalls(
   }
   parser.Consume(begin_of_batch);
   end_of_batch_ -= begin_of_batch;
-  return rpc::ProcessDataResult{begin_of_batch, Slice()};
+  return rpc::ProcessCallsResult{
+    .consumed = begin_of_batch,
+    .buffer = Slice(),
+  };
 }
 
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
@@ -213,6 +219,7 @@ Status RedisInboundCall::ParseFrom(
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
+  request_data_memory_usage_.store(data->size(), std::memory_order_release);
   request_data_ = std::move(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
@@ -245,14 +252,22 @@ Status RedisInboundCall::ParseFrom(
   return Status::OK();
 }
 
-const std::string& RedisInboundCall::service_name() const {
-  static std::string result = "yb.redisserver.RedisServerService"s;
-  return result;
+namespace {
+
+const rpc::RemoteMethod remote_method("yb.redisserver.RedisServerService", "anyMethod");
+
 }
 
-const std::string& RedisInboundCall::method_name() const {
-  static std::string result = "anyMethod"s;
-  return result;
+Slice RedisInboundCall::static_serialized_remote_method() {
+  return remote_method.serialized_body();
+}
+
+Slice RedisInboundCall::serialized_remote_method() const {
+  return remote_method.serialized_body();
+}
+
+Slice RedisInboundCall::method_name() const {
+  return remote_method.method_name();
 }
 
 CoarseTimePoint RedisInboundCall::GetClientDeadline() const {
@@ -361,7 +376,7 @@ RefCntBuffer SerializeResponses(const Collection& responses) {
   return result;
 }
 
-void RedisInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void RedisInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   output->push_back(SerializeResponses(responses_));
 }
 
@@ -388,7 +403,7 @@ void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* res
     // Did we get all responses and ready to send data.
     size_t responded = ready_count_.fetch_add(1, std::memory_order_release) + 1;
     if (responded == client_batch_.size()) {
-      RecordHandlingCompleted(/* handler_run_time */ nullptr);
+      RecordHandlingCompleted();
       QueueResponse(!had_failures_.load(std::memory_order_acquire));
     }
   }

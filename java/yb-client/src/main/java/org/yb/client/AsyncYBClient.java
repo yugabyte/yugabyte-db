@@ -41,6 +41,8 @@
 //
 package org.yb.client;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
@@ -51,63 +53,22 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.Message;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
-
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.util.io.pem.PemObject;
-import org.bouncycastle.util.io.pem.PemReader;
-import org.yb.Common;
-import org.yb.Common.YQLDatabase;
-import org.yb.Schema;
-import org.yb.annotations.InterfaceAudience;
-import org.yb.annotations.InterfaceStability;
-import org.yb.consensus.Metadata;
-import org.yb.master.Master;
-import org.yb.master.Master.GetTableLocationsResponsePB;
-import org.yb.master.Master.ListTablesResponsePB.TableInfo;
-import org.yb.util.AsyncUtil;
-import org.yb.util.NetUtil;
-import org.yb.util.Pair;
-import org.yb.util.Slice;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelEvent;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.DefaultChannelPipeline;
-import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
-import org.jboss.netty.channel.socket.SocketChannel;
-import org.jboss.netty.channel.socket.SocketChannelConfig;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
-import org.jboss.netty.handler.timeout.ReadTimeoutHandler;
-import org.jboss.netty.handler.ssl.SslHandler;
-import org.jboss.netty.util.HashedWheelTimer;
-import org.jboss.netty.util.Timeout;
-import org.jboss.netty.util.TimerTask;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.TrustManagerFactory;
-
-import java.security.cert.CertificateFactory;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
-import java.security.KeyStore;
-import java.security.KeyFactory;
-import java.security.PrivateKey;
-import java.security.Security;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-
 import java.io.FileInputStream;
 import java.io.FileReader;
-
-import javax.annotation.concurrent.GuardedBy;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.Security;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -116,14 +77,47 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManagerFactory;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.util.io.pem.PemObject;
+import org.bouncycastle.util.io.pem.PemReader;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.channel.ChannelEvent;
+import org.jboss.netty.channel.ChannelStateEvent;
+import org.jboss.netty.channel.DefaultChannelPipeline;
+import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
+import org.jboss.netty.channel.socket.SocketChannel;
+import org.jboss.netty.channel.socket.SocketChannelConfig;
+import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
+import org.jboss.netty.handler.ssl.SslHandler;
+import org.jboss.netty.handler.timeout.ReadTimeoutHandler;
+import org.jboss.netty.util.HashedWheelTimer;
+import org.jboss.netty.util.Timeout;
+import org.jboss.netty.util.TimerTask;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.Common;
+import org.yb.Common.YQLDatabase;
+import org.yb.Schema;
+import org.yb.annotations.InterfaceAudience;
+import org.yb.annotations.InterfaceStability;
+import org.yb.consensus.Metadata;
+import org.yb.master.Master;
+import org.yb.master.Master.GetTableLocationsResponsePB;
+import org.yb.util.AsyncUtil;
+import org.yb.util.NetUtil;
+import org.yb.util.Pair;
+import org.yb.util.Slice;
 
 /**
  * A fully asynchronous and thread-safe client for YB.
@@ -788,6 +782,185 @@ public class AsyncYBClient implements AutoCloseable {
     Deferred<HasUniverseKeyInMemoryResponse> d = rpc.getDeferred();
     client.sendRpc(rpc);
     return d;
+  }
+
+  /**
+   * Create xCluster replication relationships between the source universe and the target universe,
+   * and replicate the given tables
+   *
+   * Prerequisites: tables to be replicated must exist on target universe with same name and schema.
+   * AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   * @param sourceTableIDs The tables in the source universe that should be replicated
+   * @param sourceMasterAddresses The master addresses of the source universe
+   * @param sourceBootstrapIDs The bootstrap IDs for the source universe
+   *                           (optional, can pass an empty list)
+   *
+   * @return a deferred object that yields a create xCluster replication response.
+   * */
+  public Deferred<SetupUniverseReplicationResponse> setupUniverseReplication(
+    UUID sourceUniverseUUID,
+    Set<String> sourceTableIDs,
+    Set<Common.HostPortPB> sourceMasterAddresses,
+    Set<String> sourceBootstrapIDs) {
+    checkIsClosed();
+    SetupUniverseReplicationRequest request =
+      new SetupUniverseReplicationRequest(
+        this.masterTable,
+        sourceUniverseUUID,
+        sourceTableIDs,
+        sourceMasterAddresses,
+        sourceBootstrapIDs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<IsSetupUniverseReplicationDoneResponse> isSetupUniverseReplicationDone(
+    String producerId) {
+    checkIsClosed();
+    IsSetupUniverseReplicationDoneRequest request =
+      new IsSetupUniverseReplicationDoneRequest(
+        this.masterTable,
+        producerId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationAddTables(
+    UUID sourceUniverseUUID,
+    Set<String> sourceTableIDsToAdd) {
+    return alterUniverseReplication(
+      sourceUniverseUUID, sourceTableIDsToAdd, new HashSet<>(), new HashSet<>());
+  }
+
+  public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationRemoveTables(
+    UUID sourceUniverseUUID,
+    Set<String> sourceTableIDsToRemove) {
+    return alterUniverseReplication(
+      sourceUniverseUUID, new HashSet<>(), sourceTableIDsToRemove, new HashSet<>());
+  }
+
+  public Deferred<AlterUniverseReplicationResponse>
+  alterUniverseReplicationSourceMasterAddresses(
+    UUID sourceUniverseUUID,
+    Set<Common.HostPortPB> sourceMasterAddresses) {
+    return alterUniverseReplication(
+      sourceUniverseUUID, new HashSet<>(), new HashSet<>(), sourceMasterAddresses);
+  }
+
+  /**
+   * Alter existing xCluster replication relationships by modifying which tables to replicate from a
+   * source universe, as well as the master addresses of the source universe
+   *
+   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   * @param sourceTableIDsToAdd Table IDs in the source universe to start replicating from
+   * @param sourceTableIDsToRemove Table IDs in the source universe to stop replicating from
+   * @param sourceMasterAddresses New list of master addresses for the source universe
+   *
+   * Note that exactly one of the params must be non empty, the rest must be empty lists
+   *
+   * @return a deferred object that yields an alter xCluster replication response.
+   * */
+  private Deferred<AlterUniverseReplicationResponse> alterUniverseReplication(
+    UUID sourceUniverseUUID,
+    Set<String> sourceTableIDsToAdd,
+    Set<String> sourceTableIDsToRemove,
+    Set<Common.HostPortPB> sourceMasterAddresses) {
+    int addedTables = sourceTableIDsToAdd.isEmpty() ? 0 : 1;
+    int removedTables = sourceTableIDsToRemove.isEmpty() ? 0 : 1;
+    int changedMasterAddresses = sourceMasterAddresses.isEmpty() ? 0 : 1;
+    if(addedTables + removedTables + changedMasterAddresses != 1) {
+      throw new IllegalArgumentException(
+        "Exactly one xCluster replication alteration per request is currently supported");
+    }
+
+    checkIsClosed();
+    AlterUniverseReplicationRequest request =
+      new AlterUniverseReplicationRequest(
+        this.masterTable,
+        sourceUniverseUUID,
+        sourceTableIDsToAdd,
+        sourceTableIDsToRemove,
+        sourceMasterAddresses);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Delete existing xCluster replications from a source universe to our target universe
+   *
+   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   *
+   * @return a deferred object that yields a delete xCluster replication response.
+   * */
+  public Deferred<DeleteUniverseReplicationResponse> deleteUniverseReplication(
+    UUID sourceUniverseUUID) {
+    checkIsClosed();
+    DeleteUniverseReplicationRequest request =
+      new DeleteUniverseReplicationRequest(this.masterTable, sourceUniverseUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Gets all xCluster replication info between the source and target universe
+   * (tables being replicated, state of replication, etc).
+   *
+   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   *
+   * @return a deferred object that yields a get xCluster replication response.
+   * */
+  public Deferred<GetUniverseReplicationResponse> getUniverseReplication(
+    UUID sourceUniverseUUID) {
+    checkIsClosed();
+    GetUniverseReplicationRequest request =
+      new GetUniverseReplicationRequest(this.masterTable, sourceUniverseUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Sets existing xCluster replication relationships between the source and target universes to be
+   * either active or inactive
+   *
+   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   * @param active Whether the replication should be enabled or not
+   *
+   * @return a deferred object that yields a set xCluster replication active response.
+   * */
+  public Deferred<SetUniverseReplicationEnabledResponse> setUniverseReplicationEnabled(
+    UUID sourceUniverseUUID, boolean active) {
+    checkIsClosed();
+    SetUniverseReplicationEnabledRequest request =
+      new SetUniverseReplicationEnabledRequest(this.masterTable, sourceUniverseUUID, active);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Creates a checkpoint of most recent op ids for all tablets of the given tables (otherwise known
+   * as bootstrapping)
+   *
+   * @param tableIDs List of table IDs to create checkpoints for
+   *
+   * @return a deferred object that yields a bootstrap universe response which contains a list of
+   * bootstrap IDs corresponding to the same order of table IDs.
+   * */
+  public Deferred<BootstrapUniverseResponse> bootstrapUniverse(List<String> tableIDs) {
+    checkIsClosed();
+    BootstrapUniverseRequest request =
+      new BootstrapUniverseRequest(this.masterTable, tableIDs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
   }
 
   /**
@@ -2115,6 +2288,7 @@ public class AsyncYBClient implements AutoCloseable {
       try {
         PemReader pemReader = new PemReader(new FileReader(keyFile));
         PemObject pemObject = pemReader.readPemObject();
+        pemReader.close();
         byte[] bytes = pemObject.getContent();
         PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
         KeyFactory kf = KeyFactory.getInstance("RSA");
@@ -2129,15 +2303,16 @@ public class AsyncYBClient implements AutoCloseable {
       }
     }
 
+    @SuppressWarnings("unchecked")
     private SslHandler createSslHandler(String certfile, String clientCertFile,
                                         String clientKeyFile) {
       try {
         Security.addProvider(new BouncyCastleProvider());
         CertificateFactory cf = CertificateFactory.getInstance("X.509");
         FileInputStream fis = new FileInputStream(certFile);
-        X509Certificate ca;
+        List<X509Certificate> cas;
         try {
-          ca = (X509Certificate) cf.generateCertificate(fis);
+          cas = (List<X509Certificate>) (List<?>) cf.generateCertificates(fis);
         } catch (Exception e) {
           log.error("Exception generating CA certificate from input file: ", e);
           throw e;
@@ -2149,14 +2324,18 @@ public class AsyncYBClient implements AutoCloseable {
         String keyStoreType = KeyStore.getDefaultType();
         KeyStore keyStore = KeyStore.getInstance(keyStoreType);
         keyStore.load(null, null);
-        keyStore.setCertificateEntry("ca", ca);
+        for (int i = 0; i < cas.size(); i++) {
+          // Adding to the trust store. Expect the caller to have verified
+          // the certs.
+          keyStore.setCertificateEntry("ca_" + i, cas.get(i));
+        }
 
         // Create a TrustManager that trusts the CAs in our KeyStore
         String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
         TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
         tmf.init(keyStore);
 
-        X509Certificate clientCert = null;
+        List<X509Certificate> clientCerts = null;
         KeyStore clientKeyStore = null;
         KeyManagerFactory kmf = null;
         if (clientCertFile != null) {
@@ -2166,7 +2345,7 @@ public class AsyncYBClient implements AutoCloseable {
           }
           fis = new FileInputStream(clientCertFile);
           try {
-            clientCert = (X509Certificate) cf.generateCertificate(fis);
+            clientCerts = (List<X509Certificate>) (List<?>) cf.generateCertificates(fis);
           } catch (Exception e) {
             log.error("Exception generating CA certificate from input file: ", e);
             throw e;
@@ -2174,13 +2353,14 @@ public class AsyncYBClient implements AutoCloseable {
             fis.close();
           }
           PrivateKey pk = getPrivateKey(clientKeyFile);
-          Certificate[] chain = new Certificate[2];
-          chain[0] = clientCert;
-          chain[1] = ca;
-
+          Certificate[] chain = new Certificate[clientCerts.size()];
           clientKeyStore = KeyStore.getInstance(keyStoreType);
           clientKeyStore.load(null, null);
-          clientKeyStore.setCertificateEntry("node_crt", clientCert);
+          for (int i = 0; i < clientCerts.size(); i++) {
+            chain[i] = clientCerts.get(i);
+            clientKeyStore.setCertificateEntry("node_crt_" + i, clientCerts.get(i));
+          }
+
           String password = "password";
           char[] ksPass = password.toCharArray();
           clientKeyStore.setKeyEntry("node_key", pk, ksPass, chain);

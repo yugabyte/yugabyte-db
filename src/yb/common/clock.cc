@@ -15,6 +15,9 @@
 
 #include <thread>
 
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+
 using namespace std::literals;
 
 DEFINE_uint64(wait_hybrid_time_sleep_interval_us, 10000,

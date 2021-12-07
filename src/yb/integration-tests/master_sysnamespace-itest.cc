@@ -12,11 +12,17 @@
 //
 
 #include <yb/master/master_defaults.h>
+
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/master.h"
+
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -33,13 +39,13 @@ class MasterSysNamespaceTest : public YBTest {
     YBTest::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     rpc::MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new MasterServiceProxy(&proxy_cache,
-                                        cluster_->leader_mini_master()->bound_rpc_addr()));
+    proxy_.reset(new MasterServiceProxy(
+        &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr()));
   }
 
   void TearDown() override {
@@ -58,12 +64,14 @@ class MasterSysNamespaceTest : public YBTest {
     ASSERT_EQ(3, locs_pb.replicas_size());
     for (const TabletLocationsPB::ReplicaPB& replica : locs_pb.replicas()) {
       if (replica.role() == consensus::RaftPeerPB::LEADER) {
-        ASSERT_EQ(cluster_->leader_mini_master()->bound_rpc_addr().host(),
-                  replica.ts_info().private_rpc_addresses(0).host());
-        ASSERT_EQ(cluster_->leader_mini_master()->bound_rpc_addr().port(),
-                  replica.ts_info().private_rpc_addresses(0).port());
-        ASSERT_EQ(cluster_->leader_mini_master()->permanent_uuid(),
-                  replica.ts_info().permanent_uuid());
+        auto* leader_mini_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+        ASSERT_EQ(
+            leader_mini_master->bound_rpc_addr().host(),
+            replica.ts_info().private_rpc_addresses(0).host());
+        ASSERT_EQ(
+            leader_mini_master->bound_rpc_addr().port(),
+            replica.ts_info().private_rpc_addresses(0).port());
+        ASSERT_EQ(leader_mini_master->permanent_uuid(), replica.ts_info().permanent_uuid());
       } else {
         // Search for appropriate master.
         int i;

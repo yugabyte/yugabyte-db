@@ -92,6 +92,11 @@ target_link_libraries(rocksdb_dump
   rocksdb_tools
   yb_docdb)
 
+add_executable(sst_dump sst_dump.cc)
+target_link_libraries(sst_dump
+  rocksdb_tools
+  yb_docdb)
+
 add_executable(yb-fs_list fs_list-tool.cc)
 target_link_libraries(yb-fs_list
   ${LINK_LIBS}
@@ -156,7 +161,10 @@ target_link_libraries(yb-pbc-dump
 )
 
 add_library(admin-test-base admin-test-base.cc)
-target_link_libraries(admin-test-base integration-tests yb_test_util yb_util)
+target_link_libraries(admin-test-base cql_test_util integration-tests yb_test_util yb_util)
+
+add_library(tools_test_utils tools_test_utils.cc)
+target_link_libraries(tools_test_utils yb_util yb_test_util)
 
 set(YB_TEST_LINK_LIBS
   admin-test-base
@@ -169,6 +177,7 @@ set(YB_TEST_LINK_LIBS
   yb_docdb_test_common
   ql_util
   ql-dml-test-base
+  tools_test_utils
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
 ADD_YB_TEST(yb-bulk_load-test)
@@ -179,10 +188,10 @@ ADD_YB_TEST(ysck_remote-test)
 ADD_YB_TEST(yb-admin-snapshot-schedule-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-snapshot-schedule-test
   yb-admin)
-target_link_libraries(yb-admin-snapshot-schedule-test cql_test_util)
 ADD_YB_TEST(yb-admin-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-test
   yb-admin)
+YB_TEST_TARGET_LINK_LIBRARIES(yb-admin-test cql_test_util)
 ADD_YB_TEST(yb-admin-multi-master-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-multi-master-test
   yb-admin)

@@ -273,7 +273,7 @@ Connecting to the cluster with the default password would no longer work:
 ```
 $ bin/ycqlsh -u cassandra -p cassandra
 Connection error:
-  ... Provided username cassandra and/or password are incorrect ...
+  ... Provided username 'cassandra' and/or password are incorrect ...
 ```
 
 You can now connect to the cluster using the new password:

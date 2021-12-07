@@ -15,6 +15,8 @@
 
 #include "yb/yql/pggate/util/pg_wire.h"
 
+#include "yb/gutil/endian.h"
+
 namespace yb {
 namespace pggate {
 
@@ -64,7 +66,7 @@ void PgWire::WriteDouble(double value, faststring *buffer) {
   WriteInt(NetworkByteOrder::Store64, int_value, buffer);
 }
 
-void PgWire::WriteText(const string& value, faststring *buffer) {
+void PgWire::WriteText(const std::string& value, faststring *buffer) {
   // Postgres expected text string to be null-terminated, so we have to add '\0' here.
   // Postgres will call strlen() without using the returning byte count.
   const uint64 length = value.size() + 1;
@@ -72,7 +74,7 @@ void PgWire::WriteText(const string& value, faststring *buffer) {
   buffer->append(static_cast<const void *>(value.c_str()), length);
 }
 
-void PgWire::WriteBinary(const string& value, faststring *buffer) {
+void PgWire::WriteBinary(const std::string& value, faststring *buffer) {
   const uint64 length = value.size();
   WriteInt(NetworkByteOrder::Store64, length, buffer);
   buffer->append(value);
@@ -139,6 +141,12 @@ size_t PgWire::ReadNumber(Slice *cursor, double *value) {
 // Read Text Data
 size_t PgWire::ReadBytes(Slice *cursor, char *value, int64_t bytes) {
   memcpy(value, cursor->data(), bytes);
+  return bytes;
+}
+
+// Read Text data into string
+size_t PgWire::ReadString(Slice *cursor, std::string *value, int64_t bytes) {
+  value->assign(cursor->cdata(), bytes);
   return bytes;
 }
 

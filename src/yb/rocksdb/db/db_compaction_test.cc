@@ -21,19 +21,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <atomic>
-
+#include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/experimental.h"
-#include "yb/rocksdb/utilities/convenience.h"
+#include "yb/rocksdb/port/stack_trace.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/testutil.h"
 
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(use_priority_thread_pool_for_compactions);
+DECLARE_bool(use_priority_thread_pool_for_flushes);
 
 using std::atomic;
 using namespace std::literals;
@@ -126,8 +131,7 @@ void GetOverlappingFileNumbersForLevelCompaction(
   for (int m = min_level; m <= max_level; ++m) {
     for (auto& file : cf_meta.levels[m].files) {
       for (auto* included_file : overlapping_files) {
-        if (HaveOverlappingKeyRanges(
-                comparator, *included_file, file)) {
+        if (HaveOverlappingKeyRanges(comparator, *included_file, file)) {
           overlapping_files.insert(&file);
           overlapping_file_names->insert(file.name);
           break;
@@ -2773,6 +2777,187 @@ TEST_P(CompactionPriTest, Test) {
   }
 }
 
+// Test that manual compaction is aborted during shutdown.
+TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
+  FLAGS_use_priority_thread_pool_for_compactions = true;
+
+  for (const auto use_priority_thread_pool_for_flushes : {false, true}) {
+    LOG(INFO) << "use_priority_thread_pool_for_flushes: " << use_priority_thread_pool_for_flushes;
+    FLAGS_use_priority_thread_pool_for_flushes = use_priority_thread_pool_for_flushes;
+
+    auto* env = Env::Default();
+    const auto db_root_path = yb::Format(
+        "$0/priority_pool_for_flushes_$1", test::TmpDir(env), use_priority_thread_pool_for_flushes);
+    ASSERT_OK(env->CreateDir(db_root_path));
+
+    // We use two dbs, so manual compaction from the first one will start, but from second one will
+    // be waiting inside thread pool when we start rocksdb shutdown and we expect it to be
+    // cancelled.
+    constexpr auto kNumDBs = 2;
+    constexpr auto kMaxBackgroundCompactions = 1;
+    constexpr auto kNumKeysPerSst = 10000;
+    constexpr auto kNumSst = 5;
+    constexpr auto kTimeout = 10s * yb::kTimeMultiplier;
+    constexpr auto kMaxCompactFlushRate = 256_MB;
+
+    yb::PriorityThreadPool thread_pool(kMaxBackgroundCompactions);
+    std::shared_ptr<RateLimiter> rate_limiter(NewGenericRateLimiter(kMaxCompactFlushRate));
+    struct DbInfo {
+      std::unique_ptr<DB> db;
+      std::shared_ptr<CompactionStartedListener> compactions_listener =
+          std::make_shared<CompactionStartedListener>();
+      std::shared_ptr<test::FlushedFileCollector> flushed_file_collector =
+          std::make_shared<test::FlushedFileCollector>();
+      std::string db_path;
+    };
+    std::vector<DbInfo> dbs;
+
+    for (int db_idx = 0; db_idx < kNumDBs; ++db_idx) {
+      const auto db_name = yb::Format("compact_test_db_$0", db_idx);
+
+      DbInfo db_info;
+      db_info.db_path = db_root_path +  "/" + db_name;
+
+      rocksdb::BlockBasedTableOptions table_options;
+      table_options.block_size = 2_KB;
+      table_options.filter_block_size = 2_KB;
+      table_options.index_block_size = 2_KB;
+
+      Options options;
+      options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
+      // Setting write_buffer_size big enough, because we use manual flush in this test.
+      options.write_buffer_size = 128_MB;
+      options.arena_block_size = 4_KB;
+      options.num_levels = 1;
+      options.compaction_style = kCompactionStyleUniversal;
+      options.level0_file_num_compaction_trigger = -1;
+      options.level0_slowdown_writes_trigger = -1;
+      options.level0_stop_writes_trigger = kNumSst * 2;
+      options.disable_auto_compactions = true;
+      options.max_background_compactions = kMaxBackgroundCompactions;
+      options.priority_thread_pool_for_compactions_and_flushes = &thread_pool;
+      options.listeners.push_back(db_info.compactions_listener);
+      options.listeners.push_back(db_info.flushed_file_collector);
+      options.log_prefix = db_name + ": ";
+      options.info_log_level = InfoLogLevel::INFO_LEVEL;
+      options.info_log = std::make_shared<yb::YBRocksDBLogger>(options.log_prefix);
+      options.rate_limiter = rate_limiter;
+      options.create_if_missing = true;
+
+      db_info.db = ASSERT_RESULT(DB::Open(options, db_info.db_path));
+      dbs.push_back(std::move(db_info));
+    }
+
+    size_t last_sst_size = 0;
+    for (auto& db_info : dbs) {
+      const auto& db = db_info.db;
+      rocksdb::FlushOptions flush_options;
+      flush_options.wait = true;
+      int key = 0;
+      for (auto num = 0; num < kNumSst; num++) {
+        for (auto i = 0; i < kNumKeysPerSst; i++) {
+          ASSERT_OK(db->Put(WriteOptions(), DBTestBase::Key(++key), ""));
+        }
+        ASSERT_OK(db->Flush(flush_options));
+
+        std::string num_files_str;
+        ASSERT_TRUE(db->GetProperty("rocksdb.num-files-at-level0", &num_files_str));
+        ASSERT_EQ(num_files_str, yb::AsString(num + 1));
+      }
+      // Write some more keys, so it will be flushed later on manual compaction or
+      // shutdown of 2nd db.
+      for (auto i = 0; i < 100; i++) {
+        ASSERT_OK(db->Put(WriteOptions(), DBTestBase::Key(++key), ""));
+      }
+      // For 1st db we flush to estimate file size to be flushed for 2nd db.
+      if (last_sst_size == 0) {
+        ASSERT_OK(db->Flush(flush_options));
+        const auto last_file_path =
+            db_info.flushed_file_collector->GetFlushedFileInfos().back().file_path;
+        for (const auto& file_meta : db->GetLiveFilesMetaData()) {
+          if (file_meta.db_path + file_meta.name == last_file_path) {
+            last_sst_size = file_meta.total_size;
+            break;
+          }
+        }
+      }
+    }
+
+    // Set rate for last file flush to take about 1 second.
+    LOG(INFO) << "Last SST size: " << last_sst_size;
+    rate_limiter->SetBytesPerSecond(last_sst_size);
+
+    std::vector<std::thread> threads;
+    std::atomic<size_t> manual_compactions_finished{0};
+    std::atomic<size_t> manual_compactions_aborted{0};
+
+    auto manual_compaction_func = [&manual_compactions_aborted,
+                                   &manual_compactions_finished](DB* db) {
+      LOG(INFO) << db->GetName() << ": CompactRange - starting";
+      const auto s = db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+      ASSERT_TRUE(s.ok() || s.IsAborted() || s.IsShutdownInProgress()) << s;
+      if (s.IsAborted() || s.IsShutdownInProgress()) {
+        manual_compactions_aborted.fetch_add(1);
+      }
+      LOG(INFO) << db->GetName() << ": CompactRange - finished: " << AsString(s);
+      manual_compactions_finished.fetch_add(1);
+    };
+
+    threads.push_back(std::thread(
+        [&manual_compaction_func, db = dbs[0].db.get()] { manual_compaction_func(db); }));
+    ASSERT_OK(yb::LoggedWaitFor(
+        [listener = dbs[0].compactions_listener] {
+          return listener->GetNumCompactionsStarted() > 0;
+        },
+        kTimeout, "Waiting for first compaction start"));
+
+    for (size_t db_idx = 1; db_idx < dbs.size(); ++db_idx) {
+      threads.push_back(std::thread(
+          [&manual_compaction_func, db = dbs[db_idx].db.get()] { manual_compaction_func(db); }));
+    }
+    ASSERT_OK(yb::LoggedWaitFor(
+        [&thread_pool] { return thread_pool.TEST_num_tasks_pending() > 1; }, kTimeout,
+        "Waiting for second compaction to be scheduled"));
+
+    // Second DB shutdown start should cancel second manual compaction task and abort compaction.
+    dbs.back().db->StartShutdown();
+
+    ASSERT_OK(yb::LoggedWaitFor(
+        [&manual_compactions_aborted] { return manual_compactions_aborted == 1; }, kTimeout,
+        "Waiting for second compaction to be aborted"));
+
+    ASSERT_EQ(down_cast<DBImpl*>(dbs[0].db.get())->TEST_NumTotalRunningCompactions(), 1)
+        << "First compaction should be still running";
+
+    rate_limiter->SetBytesPerSecond(kMaxCompactFlushRate);
+
+    ASSERT_OK(yb::LoggedWaitFor(
+        [&manual_compactions_finished] { return manual_compactions_finished == 2; }, kTimeout,
+        "Waiting for first compaction to finish"));
+
+    for (auto& t : threads) {
+      t.join();
+    }
+
+    // Shutdown dbs.
+    for (auto& db_info : dbs) {
+      db_info.db.reset();
+    }
+
+    ASSERT_EQ(dbs.back().compactions_listener->GetNumCompactionsStarted(), 0)
+        << "Second manual compaction should be cancelled before starting";
+
+    {
+      DB* db;
+      Options options;
+      DB::OpenForReadOnly(options, dbs.back().db_path, &db);
+      std::unique_ptr<DB> db_holder(db);
+      // We should have one more flush for last small SST.
+      ASSERT_EQ(db->GetCurrentVersionNumSSTFiles(), kNumSst + 1);
+    }
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(
     CompactionPriTest, CompactionPriTest,
     ::testing::Values(CompactionPri::kByCompensatedSize,
@@ -2787,6 +2972,7 @@ int main(int argc, char** argv) {
 #if !defined(ROCKSDB_LITE)
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
+  google::ParseCommandLineNonHelpFlags(&argc, &argv, /* remove_flags */ true);
   return RUN_ALL_TESTS();
 #else
   return 0;

@@ -16,21 +16,25 @@
 
 #include <atomic>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/functional/hash.hpp>
+
+#include "yb/common/column_id.h"
+#include "yb/common/hybrid_time.h"
+
+#include "yb/docdb/expiration.h"
 
 #include "yb/gutil/thread_annotations.h"
-#include "yb/util/strongly_typed_bool.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/metadata.h"
 
-#include "yb/common/schema.h"
-#include "yb/common/hybrid_time.h"
+#include "yb/server/hybrid_clock.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/expiration.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace docdb {
@@ -39,6 +43,8 @@ YB_STRONGLY_TYPED_BOOL(IsMajorCompaction);
 YB_STRONGLY_TYPED_BOOL(ShouldRetainDeleteMarkersInMajorCompaction);
 
 struct Expiration;
+using ColumnIds = std::unordered_set<ColumnId, boost::hash<ColumnId>>;
+using ColumnIdsPtr = std::shared_ptr<ColumnIds>;
 
 // A "directive" of how a particular compaction should retain old (overwritten or deleted) values.
 struct HistoryRetentionDirective {

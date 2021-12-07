@@ -38,7 +38,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
@@ -258,24 +258,29 @@ static void ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 static YBCPgYBTupleIdDescriptor*
 YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, HeapTuple tup)
 {
-	Oid table_oid = riinfo->pk_relid;
+	Oid source_table_oid = riinfo->pk_relid;
 	bool using_index = false;
 	Relation idx_rel = RelationIdGetRelation(riinfo->conindid);
 	Relation source_rel = idx_rel;
 	if (idx_rel->rd_index != NULL && !idx_rel->rd_index->indisprimary)
 	{
 		Assert(IndexRelationGetNumberOfKeyAttributes(idx_rel) == riinfo->nkeys);
-		table_oid = riinfo->conindid;
+		source_table_oid = riinfo->conindid;
 		using_index = true;
 	} else
 	{
 		RelationClose(idx_rel);
 		source_rel = RelationIdGetRelation(riinfo->pk_relid);
 	}
+	Oid source_dboid = YBCGetDatabaseOid(source_rel);
 	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(
-		YBCGetDatabaseOid(source_rel), table_oid, riinfo->nkeys + (using_index ? 1 : 0));
+		source_dboid, source_table_oid, riinfo->nkeys + (using_index ? 1 : 0));
 	YBCPgAttrValueDescriptor *next_attr = result->attrs;
+
 	Relation fk_rel = RelationIdGetRelation(riinfo->fk_relid);
+	YBCPgTableDesc ybc_source_table_desc = NULL;
+	HandleYBStatus(YBCPgGetTableDesc(source_dboid, source_table_oid, &ybc_source_table_desc));
+
 	TupleDesc fk_tupdesc = fk_rel->rd_att;
 	TupleDesc source_tupdesc = source_rel->rd_att;
 	for (int i = 0; i < riinfo->nkeys; ++i, ++next_attr)
@@ -295,8 +300,19 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, HeapTuple tup)
 			result = NULL;
 			break;
 		}
-		next_attr->type_entity = YBCDataTypeFromOidMod(fk_attnum, type_id);
+		next_attr->type_entity = YbDataTypeFromOidMod(fk_attnum, type_id);
+		/*
+		 * The foreign key search will happen on source_rel so we need to use the collation from
+		 * the source_rel column, not from fk_rel column.
+		 */
+		next_attr->collation_id =
+			TupleDescAttr(source_tupdesc, next_attr->attr_num - 1)->attcollation;
 		next_attr->datum = heap_getattr(tup, fk_attnum, fk_tupdesc, &next_attr->is_null);
+		YBCPgColumnInfo column_info = {0};
+		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_source_table_desc,
+												   next_attr->attr_num,
+												   &column_info), ybc_source_table_desc);
+		YBSetupAttrCollationInfo(next_attr, &column_info);
 	}
 	RelationClose(fk_rel);
 	RelationClose(source_rel);

@@ -163,7 +163,17 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			npreparedxacts;
 	createdb_failure_params fparms;
 
-	if (dbname != NULL && (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0)) {
+	/*
+	 * We do insert into pg_database without explicit OID, which conflicts
+	 * with OID generation logic for YSQL upgrade.
+	 * This is mostly relevant as a sanity check for tests.
+	 */
+	if (IsYsqlUpgrade)
+		elog(ERROR, "CREATE DATABASE is disallowed in YSQL upgrade mode");
+
+	if (dbname != NULL && (strcmp(dbname, "template0") == 0 ||
+		strcmp(dbname, "template1") == 0))
+	{
 		YBSetPreparingTemplates();
 	}
 
@@ -405,7 +415,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 							 "https://github.com/yugabyte/yugabyte-db/issues"),
 					 parser_errposition(pstate, dencoding->location)));
 
-		if (dcollate && dbcollate && strcmp(dbcollate, "C") != 0)
+		if (!(YBIsCollationEnabled() && kTestOnlyUseOSDefaultCollation) && dcollate &&
+			dbcollate && strcmp(dbcollate, "C") != 0)
 			ereport(YBUnsupportedFeatureSignalLevel(),
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("Value other than 'C' for lc_collate "
@@ -656,6 +667,12 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	/* Register owner dependency */
 	recordDependencyOnOwner(DatabaseRelationId, dboid, datdba);
+
+	/*
+	 * Register tablespace dependency to prevent dropping database default
+	 * tablespace.
+	 */
+	recordDependencyOnTablespace(DatabaseRelationId, dboid, dst_deftablespace);
 
 	/* Create pg_shdepend entries for objects within database */
 	copyTemplateDependencies(src_dboid, dboid);

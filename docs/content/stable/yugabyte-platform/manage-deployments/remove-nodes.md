@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: remove-nodes
     parent: manage-deployments
-    weight: 50
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---
@@ -18,7 +18,7 @@ If a VM or machine in a universe reaches its end of life and has unrecoverable h
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
-So, for the `yb-14-node-actions-n3` node, you can use the **Actions** drop-down list at the end and choose the **Remove Node** option. This will bring the node to the `Removed` status and no further data can be accessed from this node as server processes are shut down.
+So, for the `yb-15-node-actions-n3` node, you can use the **Actions** drop-down list at the end and choose the **Remove Node** option. This will bring the node to the `Removed` status and no further data can be accessed from this node as server processes are shut down.
 
 ![Remove Node Actions](/images/ee/node-actions-removed.png)
 

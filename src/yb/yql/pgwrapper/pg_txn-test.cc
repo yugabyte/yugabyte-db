@@ -14,6 +14,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 
@@ -78,7 +79,7 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(ReadRecentSet)) {
   auto conn = ASSERT_RESULT(Connect());
   constexpr int kWriters = 16;
   constexpr int kReaders = 16;
-  constexpr uint32_t kReadLength = 32;
+  constexpr int kReadLength = 32;
 
   ASSERT_OK(conn.Execute(
       "CREATE TABLE test (key INT, value INT, PRIMARY KEY((key) HASH)) SPLIT INTO 1 TABLETS"));
@@ -89,16 +90,16 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(ReadRecentSet)) {
   for (int i = 0; i != kWriters; ++i) {
     thread_holder.AddThreadFunctor(
         [this, &stop = thread_holder.stop_flag(), &value] {
-      auto conn = ASSERT_RESULT(Connect());
+      auto connection = ASSERT_RESULT(Connect());
       while (!stop.load()) {
         int cur = value.fetch_add(1);
-        ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-        auto status = conn.ExecuteFormat("INSERT INTO test VALUES ($0, $0)", cur);
+        ASSERT_OK(connection.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+        auto status = connection.ExecuteFormat("INSERT INTO test VALUES ($0, $0)", cur);
         if (status.ok()) {
-          status = conn.CommitTransaction();
+          status = connection.CommitTransaction();
         }
         if (!status.ok()) {
-          ASSERT_OK(conn.RollbackTransaction());
+          ASSERT_OK(connection.RollbackTransaction());
         }
       }
     });
@@ -132,31 +133,31 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(ReadRecentSet)) {
   for (int i = 0; i != kReaders; ++i) {
     thread_holder.AddThreadFunctor(
         [this, &stop = thread_holder.stop_flag(), &value, &reads, &reads_mutex] {
-      auto conn = ASSERT_RESULT(Connect());
+      auto connection = ASSERT_RESULT(Connect());
       char str_buffer[0x200];
       while (!stop.load()) {
-        int read_min = std::max<uint32_t>(value.load() - kReadLength, 0);
+        const auto read_min = std::max(value.load() - kReadLength, 0);
         char* p = str_buffer;
-        for (int v = read_min; v != read_min + kReadLength; ++v) {
+        for (auto v = read_min; v != read_min + kReadLength; ++v) {
           if (p != str_buffer) {
             *p++ = ',';
           }
           p = FastInt64ToBufferLeft(v, p);
         }
-        ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-        auto res = conn.FetchFormat("SELECT value FROM test WHERE value in ($0)", str_buffer);
+        ASSERT_OK(connection.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+        auto res = connection.FetchFormat("SELECT value FROM test WHERE value in ($0)", str_buffer);
         if (!res.ok()) {
-          ASSERT_OK(conn.RollbackTransaction());
+          ASSERT_OK(connection.RollbackTransaction());
           continue;
         }
-        auto status = conn.CommitTransaction();
+        auto status = connection.CommitTransaction();
         if (!status.ok()) {
-          ASSERT_OK(conn.RollbackTransaction());
+          ASSERT_OK(connection.RollbackTransaction());
           continue;
         }
         uint64_t mask = 0;
-        for (int i = 0, count = PQntuples(res->get()); i != count; ++i) {
-          mask |= 1ULL << (ASSERT_RESULT(GetInt32(res->get(), i, 0)) - read_min);
+        for (int j = 0, count = PQntuples(res->get()); j != count; ++j) {
+          mask |= 1ULL << (ASSERT_RESULT(GetInt32(res->get(), j, 0)) - read_min);
         }
         std::lock_guard<std::mutex> lock(reads_mutex);
         Read new_read{read_min, mask};
@@ -184,10 +185,10 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(ReadRecentSet)) {
           // Check that one set is subset of another subset.
           // I.e. only one set is allowed to have elements that is not contained in another set.
           if ((lmask | rmask) != std::max(lmask, rmask)) {
-            int read_min = std::max(old_read.read_min, new_read.read_min);
+            const auto read = std::max(old_read.read_min, new_read.read_min);
             ADD_FAILURE() << "R1: " << old_read.ToString() << "\nR2: " << new_read.ToString()
-                          << "\nR1-R2: " << Read::ValuesToString(read_min, rmask ^ (lmask & rmask))
-                          << ", R2-R1: " << Read::ValuesToString(read_min, lmask ^ (lmask & rmask));
+                          << "\nR1-R2: " << Read::ValuesToString(read, rmask ^ (lmask & rmask))
+                          << ", R2-R1: " << Read::ValuesToString(read, lmask ^ (lmask & rmask));
             stop.store(true);
           }
           return false;

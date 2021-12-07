@@ -34,6 +34,7 @@ message TabletSnapshotOpRequestPB {
     CREATE_ON_MASTER = 4; // Replicated at master, while creating snapshot for multiple tablets.
     DELETE_ON_MASTER = 5;
     RESTORE_SYS_CATALOG = 6;
+    RESTORE_FINISHED = 7; // Whole restore operation is finished.
   }
 
   // UUID of server this request is addressed to.
@@ -55,6 +56,8 @@ message TabletSnapshotOpRequestPB {
   string snapshot_dir_override = 6;
 
   fixed64 snapshot_hybrid_time = 7;
+
+  fixed64 restoration_hybrid_time = 17;
 
   // Extra data assigned for this snapshot request, so instance it could contain SysRowEntries.
   google.protobuf.Any extra_data = 8;

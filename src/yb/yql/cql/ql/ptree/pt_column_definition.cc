@@ -16,6 +16,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_create_index.h"
+#include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 DEFINE_bool(cql_allow_static_column_index, false,
@@ -25,7 +30,7 @@ namespace yb {
 namespace ql {
 
 PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
-                                       YBLocation::SharedPtr loc,
+                                       YBLocationPtr loc,
                                        const MCSharedPtr<MCString>& name,
                                        const PTBaseType::SharedPtr& datatype,
                                        const PTListNode::SharedPtr& qualifiers)
@@ -37,7 +42,7 @@ PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
       is_hash_key_(false),
       is_static_(false),
       order_(-1),
-      sorting_type_(ColumnSchema::SortingType::kNotSpecified),
+      sorting_type_(SortingType::kNotSpecified),
       coldef_name_(*name) {
 }
 
@@ -82,7 +87,7 @@ void PTColumnDefinition::AddIndexedRef(int32_t col_id) {
 //--------------------------------------------------------------------------------------------------
 
 PTIndexColumn::PTIndexColumn(MemoryContext *memctx,
-                             YBLocation::SharedPtr loc,
+                             YBLocationPtr loc,
                              const MCSharedPtr<MCString>& name,
                              const PTExpr::SharedPtr& colexpr)
   : PTColumnDefinition(memctx, loc, name, nullptr, nullptr), colexpr_(colexpr) {
@@ -171,6 +176,10 @@ CHECKED_STATUS PTIndexColumn::SetupHashKey(SemContext *sem_context) {
   RETURN_NOT_OK(Analyze(sem_context));
   PTCreateTable* table = sem_context->current_create_table_stmt();
   return table->AppendHashColumn(sem_context, coldef_);
+}
+
+std::shared_ptr<QLType> PTIndexColumn::ql_type() const {
+  return colexpr_->ql_type();
 }
 
 CHECKED_STATUS PTIndexColumn::SetupCoveringIndexColumn(SemContext *sem_context) {

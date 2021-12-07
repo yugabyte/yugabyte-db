@@ -10,13 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/master_tablet_service.h"
 
-#include "yb/master/catalog_manager-internal.h"
+#include "yb/common/wire_protocol.h"
 
-#include "yb/master/master_service_base.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
+
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
                  "Reject specified percentage of writes to the YSQL catalog tables.");
@@ -43,7 +51,7 @@ bool MasterTabletServiceImpl::GetTabletOrRespond(
     tablet::TabletPeerPtr looked_up_tablet_peer) {
   // Ignore looked_up_tablet_peer.
 
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
   if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, context)) {
     return false;
   }
@@ -64,7 +72,7 @@ bool MasterTabletServiceImpl::GetTabletOrRespond(
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
                                     tserver::WriteResponsePB* resp,
                                     rpc::RpcContext context) {
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
   if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
     return;
   }
@@ -94,7 +102,7 @@ void MasterTabletServiceImpl::IsTabletServerReady(
     const tserver::IsTabletServerReadyRequestPB* req,
     tserver::IsTabletServerReadyResponsePB* resp,
     rpc::RpcContext context) {
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
   int total_tablets = NUM_TABLETS_SYS_CATALOG;
   resp->set_total_tablets(total_tablets);
   resp->set_num_tablets_not_running(total_tablets);

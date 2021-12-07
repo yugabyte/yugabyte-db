@@ -24,6 +24,9 @@ INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(
 EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE h = 1;
 SELECT * FROM pk_multi WHERE h = 1;
 
+EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
+SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
+
 -- Test unique secondary index ordering
 CREATE TABLE usc_asc(k int, v int);
 CREATE UNIQUE INDEX ON usc_asc(v ASC NULLS FIRST);
@@ -64,20 +67,32 @@ CREATE INDEX on sc_desc_nl(h HASH, r DESC NULLS LAST);
 INSERT INTO sc_desc_nl(h,r,v) values (1,1,1), (1,2,2), (1,3,3), (1,4,4), (1,5,5), (1, null, 6);
 -- Rows should be ordered DESC NULLS LAST by r.
 SELECT * FROM sc_desc_nl WHERE h = 1;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1);
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= 2;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r >= 2;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r < 4;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < 4;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r > 1 AND r <= 4;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r > 1 AND r <= 4;
 
 -- <value> >/>=/=/<=/< null is never true per SQL semantics.
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r = null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r = null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r >= null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r > null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r > null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r <= null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r <= null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r < null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < null;
 
 -- IS NULL should be pushed down and return the expected result.
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
 EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
+
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
+EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
 
 DROP TABLE sc_desc_nl;
 
@@ -164,6 +179,8 @@ insert into test values(6,6,6,6,6,6,'Ff',6,88);
 -- Creating indices with included columns
 create index idx_col3 on test(col3) include (col4,col5,col6);
 create index idx_col5 on test(col5) include (col6,col7);
+-- Ordering is disallowed for included columns
+create index on test(col5) include (col6 hash, col7);
 
 -- Performing a few updates and checking if subsequent commands exhibit expected behavior
 update test set col3=11, col4=11 where pk=1;
@@ -214,6 +231,14 @@ SELECT * FROM test WHERE col5 = 444 and col6 = 35;
 update test set col6=5554 where pk=5;
 EXPLAIN SELECT * FROM test WHERE col6 = 5554;
 SELECT * FROM test WHERE col6 = 5554;
+
+-- test index only scan with non-target column refs in qual (github issue #9176)
+-- baseline, col5 is in target columns
+EXPLAIN SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+-- same lines are expected without col5 in the target list
+EXPLAIN SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
 
 -- testing update on primary key
 update test set pk=17 where pk=1;

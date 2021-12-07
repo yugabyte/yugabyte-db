@@ -18,7 +18,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
-#include "yb/util/random_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
@@ -33,7 +33,9 @@ namespace yb {
 namespace pgwrapper {
 
 void PgMiniTestBase::DoTearDown() {
-  pg_supervisor_->Stop();
+  if (pg_supervisor_) {
+    pg_supervisor_->Stop();
+  }
   YBMiniClusterTestBase::DoTearDown();
 }
 
@@ -52,13 +54,18 @@ void PgMiniTestBase::SetUp() {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   YBMiniClusterTestBase::SetUp();
 
-  MiniClusterOptions mini_cluster_opt(NumMasters(), NumTabletServers());
-  cluster_ = std::make_unique<MiniCluster>(env_.get(), mini_cluster_opt);
+  MiniClusterOptions mini_cluster_opt = MiniClusterOptions {
+      .num_masters = NumMasters(),
+      .num_tablet_servers = NumTabletServers(),
+      .num_drives = 1,
+      .master_env = env_.get()
+  };
+  cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
   ASSERT_OK(cluster_->Start());
 
   ASSERT_OK(WaitForInitDb(cluster_.get()));
 
-  auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
+  auto pg_ts = PickPgTabletServer(cluster_->mini_tablet_servers());
   auto port = cluster_->AllocateFreePort();
   PgProcessConf pg_process_conf = ASSERT_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
       yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
@@ -81,6 +88,11 @@ void PgMiniTestBase::SetUp() {
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
 
   DontVerifyClusterBeforeNextTearDown();
+}
+
+const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletServer(
+    const MiniCluster::MiniTabletServers& servers) {
+  return RandomElement(servers);
 }
 
 } // namespace pgwrapper

@@ -14,12 +14,16 @@
 #ifndef YB_TABLET_TABLET_SNAPSHOTS_H
 #define YB_TABLET_TABLET_SNAPSHOTS_H
 
+#include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_component.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/util/status.h"
+#include "yb/util/opid.h"
+#include "yb/util/status_fwd.h"
 
 namespace rocksdb {
 
@@ -29,6 +33,8 @@ class DB;
 
 namespace yb {
 
+class Env;
+class FsManager;
 class RWOperationCounter;
 class rw_semaphore;
 
@@ -49,16 +55,18 @@ class TabletSnapshots : public TabletComponent {
   explicit TabletSnapshots(Tablet* tablet);
 
   // Create snapshot for this tablet.
-  CHECKED_STATUS Create(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Create(SnapshotOperation* operation);
 
   CHECKED_STATUS Create(const CreateSnapshotData& data);
 
   // Restore snapshot for this tablet. In addition to backup/restore, this is used for initial
   // syscatalog RocksDB creation without the initdb overhead.
-  CHECKED_STATUS Restore(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Restore(SnapshotOperation* operation);
 
   // Delete snapshot for this tablet.
-  CHECKED_STATUS Delete(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Delete(const SnapshotOperation& operation);
+
+  CHECKED_STATUS RestoreFinished(SnapshotOperation* operation);
 
   // Prepares the operation context for a snapshot operation.
   CHECKED_STATUS Prepare(SnapshotOperation* operation);
@@ -94,7 +102,7 @@ class TabletSnapshots : public TabletComponent {
       const docdb::ConsensusFrontier& frontier);
 
   // Applies specified snapshot operation.
-  CHECKED_STATUS Apply(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Apply(SnapshotOperation* operation);
 
   CHECKED_STATUS CleanupSnapshotDir(const std::string& dir);
   Env& env();

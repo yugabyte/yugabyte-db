@@ -57,8 +57,8 @@ export const KUBERNETES_PROVIDERS = [
   { code: "pks", name: "Pivotal Container Service" },
   { code: "tanzu", name: "VMware Tanzu" },
   { code: "openshift", name: "Red Hat OpenShift" },
-  { code: "gke", name: "Google Container Engine" },
-  { code: "aks", name: "Azure Container Service" },
-  { code: "eks", name: "Elastic Container Service" },
+  { code: "gke", name: "Google Kubernetes Engine" },
+  { code: "aks", name: "Azure Kubernetes Service" },
+  { code: "eks", name: "Elastic Kubernetes Service" },
   { code: "custom", name: "Custom Kubernetes Service" }
 ];

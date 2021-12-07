@@ -14,20 +14,31 @@
 #include <chrono>
 #include <regex>
 
-#include "yb/integration-tests/test_workload.h"
-#include "yb/integration-tests/ts_itest-base.h"
+#include "yb/client/table.h"
+
+#include "yb/common/common.pb.h"
+
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/test_workload.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/memory_monitor.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_memory_manager.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
@@ -108,7 +119,7 @@ class FlushITest : public YBTest {
     // Start cluster
     MiniClusterOptions opts;
     opts.num_tablet_servers = 1;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     // Patch tablet options inside tablet manager, will be applied to new created tablets.
     cluster_->GetTabletManager(0)->TEST_tablet_options()->listeners.push_back(
@@ -159,9 +170,9 @@ class FlushITest : public YBTest {
 
   void WriteAtLeast(size_t size_bytes) {
     workload_->Start();
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [this, size_bytes] { return BytesWritten() >= size_bytes; }, 60s,
-        Format("Waiting until we've written at least $0 bytes ...", size_bytes), kWaitDelay);
+        Format("Waiting until we've written at least $0 bytes ...", size_bytes), kWaitDelay));
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
   }
@@ -186,16 +197,16 @@ class FlushITest : public YBTest {
   void WriteUntilCompaction() {
     int num_compactions_started = rocksdb_listener_->GetNumCompactionsStarted();
     workload_->Start();
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [this, num_compactions_started] {
           return rocksdb_listener_->GetNumCompactionsStarted() > num_compactions_started;
-        }, 60s, "Waiting until we've written to start compaction ...", kWaitDelay);
+        }, 60s, "Waiting until we've written to start compaction ...", kWaitDelay));
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
-    AssertLoggedWaitFor(
+    ASSERT_OK(LoggedWaitFor(
         [this] {
           return NumTotalRunningCompactions(cluster_.get()) == 0 && NumRunningFlushes() == 0;
-        }, 60s, "Waiting until compactions and flushes are done ...", kWaitDelay);
+        }, 60s, "Waiting until compactions and flushes are done ...", kWaitDelay));
   }
 
   void AddTabletsWithNonEmptyMemTable(std::unordered_map<TabletId, int>* tablets, int order) {
@@ -301,9 +312,9 @@ void FlushITest::TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_res
 
   DumpMemoryUsage();
 
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this] { return !memory_monitor()->Exceeded(); }, 30s,
-      "Waiting until memory is freed by flushes...", kWaitDelay);
+      "Waiting until memory is freed by flushes...", kWaitDelay));
 
   LOG(INFO) << "Tables: " << tables;
 

@@ -501,6 +501,8 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 	Oid			tablespaceoid;
+	char	   *detail;
+	char	   *detail_log;
 
 	/*
 	 * Find the target tuple
@@ -549,10 +551,13 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 					   tablespacename);
 
 	/* Check for pg_shdepend entries depending on this tablespace */
-	char	  *detail;
-	char	  *detail_log;
 	if (checkSharedDependencies(TableSpaceRelationId, tablespaceoid,
 								&detail, &detail_log))
+	{
+		if (IsYugaByteEnabled() && detail != NULL)
+		{
+			detail = YBDetailSorted(detail);
+		}
 		ereport(ERROR,
 				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 				 errmsg("tablespace \"%s\" cannot be dropped "
@@ -560,6 +565,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 						tablespacename),
 				 errdetail_internal("%s", detail),
 				 errdetail_log("%s", detail_log)));
+	}
 
 	/* DROP hook for the tablespace being removed */
 	InvokeObjectDropHook(TableSpaceRelationId, tablespaceoid, 0);

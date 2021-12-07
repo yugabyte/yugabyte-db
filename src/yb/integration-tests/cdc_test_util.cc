@@ -16,9 +16,17 @@
 #include <gtest/gtest.h>
 
 #include "yb/consensus/log.h"
+
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -71,8 +79,7 @@ void VerifyWalRetentionTime(MiniCluster* cluster,
                             uint32_t expected_wal_retention_secs) {
   int ntablets_checked = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
-    vector<std::shared_ptr<tablet::TabletPeer>> peers;
-    mini_tserver->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       const std::string& table_name = peer->tablet_metadata()->table_name();
       if (table_name.substr(0, table_name_start.length()) == table_name_start) {

@@ -34,13 +34,13 @@
 #include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 
@@ -183,9 +183,9 @@ TEST_F(YBTsCliTest, TestRefreshFlags) {
   ASSERT_OK(Subprocess::Call(argv));
 
   // Wait for the master process to have the updated GFlag value.
-  AssertLoggedWaitFor([&]() -> Result<bool> {
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     return VERIFY_RESULT(cluster_->master(0)->GetFlag(gflag)) == new_value;
-  }, MonoDelta::FromSeconds(60), "Verify updated GFlag");
+  }, MonoDelta::FromSeconds(60), "Verify updated GFlag"));
 
   // The TServer should still have the old value because we didn't send it the RPC.
   ts_flag = ASSERT_RESULT(cluster_->tablet_server(0)->GetFlag(gflag));
@@ -200,9 +200,9 @@ TEST_F(YBTsCliTest, TestRefreshFlags) {
   ASSERT_OK(Subprocess::Call(argv));
 
   // Wait for the TS process to have the updated GFlag value.
-  AssertLoggedWaitFor([&]() -> Result<bool> {
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     return VERIFY_RESULT(cluster_->tablet_server(0)->GetFlag(gflag)) == new_value;
-  }, MonoDelta::FromSeconds(60), "Verify updated GFlag");
+  }, MonoDelta::FromSeconds(60), "Verify updated GFlag"));
 }
 
 } // namespace tools

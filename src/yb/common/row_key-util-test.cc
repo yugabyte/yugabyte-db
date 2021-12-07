@@ -36,7 +36,10 @@
 #include "yb/common/row.h"
 #include "yb/common/row_key-util.h"
 #include "yb/common/schema.h"
+
 #include "yb/gutil/mathlimits.h"
+
+#include "yb/util/memory/arena.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

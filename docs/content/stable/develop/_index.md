@@ -27,20 +27,7 @@ menu:
       </div>
     </a>
   </div>
-  
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ecosystem-integrations/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/ecosystem-integrations.png" aria-hidden="true" />
-        <div class="articles">6 articles</div>
-        <div class="title">Ecosystem integrations</div>
-      </div>
-      <div class="body">
-        Integrate YugabyteDB with Apache Kafka, Apache Spark, JanusGraph, KairosDB, Presto, and Metabase.
-      </div>
-    </a>
-  </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="realworld-apps/">
       <div class="head">
@@ -49,20 +36,20 @@ menu:
         <div class="title">Real world examples</div>
       </div>
       <div class="body">
-        Try out e-commerce, retail analytics, and IoT fleet management in these real world, end-to-end YugabyteDB applications.
+        Try out e-commerce and IoT fleet management in these real world, end-to-end YugabyteDB applications.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="graphql/">
+    <a class="section-link icon-offset" href="gitdev/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
         <div class="articles">2 articles</div>
-        <div class="title">Build GraphQL applications</div>
+        <div class="title">Cloud-native development</div>
       </div>
       <div class="body">
-        Use Hasura GraphQL Engine and Prisma to use GraphQL with YugabyteDB.
+        Ready-to-code, fully-integrated, automated code workflows in the cloud.
       </div>
     </a>
   </div>
@@ -81,7 +68,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="best-practices/">
+    <a class="section-link icon-offset" href="best-practices-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
         <div class="articles">3 articles</div>
@@ -91,7 +78,6 @@ menu:
         Best practices for data modeling and cluster configuration.
       </div>
     </a>
-
   </div>
 
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">

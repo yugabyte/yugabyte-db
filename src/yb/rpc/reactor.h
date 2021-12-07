@@ -32,29 +32,42 @@
 #ifndef YB_RPC_REACTOR_H_
 #define YB_RPC_REACTOR_H_
 
+#include <pthread.h>
 #include <stdint.h>
+#include <sys/types.h>
 
+#include <atomic>
+#include <condition_variable>
 #include <functional>
 #include <list>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 
-#include <ev++.h> // NOLINT
-
 #include <boost/intrusive/list.hpp>
 #include <boost/utility.hpp>
+#include <ev++.h> // NOLINT
+#include <gflags/gflags_declare.h>
+#include <glog/logging.h>
 
+#include "yb/gutil/bind.h"
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/outbound_call.h"
 
-#include "yb/util/thread.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/async_util.h"
+#include "yb/util/condition_variable.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/status.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/source_location.h"
 
 namespace yb {
 namespace rpc {
@@ -235,6 +248,10 @@ class DelayedTask : public ReactorTask {
 
   std::string ToString() const override;
 
+  std::string LogPrefix() const {
+    return ToString() + ": ";
+  }
+
  private:
   void DoAbort(const Status& abort_status) override;
 
@@ -358,8 +375,8 @@ class Reactor {
   // 'socket', but not the Socket object itself.
   // If the reactor is already shut down, takes care of closing the socket.
   void RegisterInboundSocket(
-      Socket *socket, const Endpoint& remote, std::unique_ptr<ConnectionContext> connection_context,
-      const MemTrackerPtr& mem_tracker);
+      Socket *socket, int32_t receive_buffer_size, const Endpoint& remote,
+      const ConnectionContextFactoryPtr& factory);
 
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
   // down before it is run, the Abort method will be called.
@@ -371,6 +388,10 @@ class Reactor {
   template<class F>
   bool ScheduleReactorFunctor(const F& f, const SourceLocation& source_location) {
     return ScheduleReactorTask(MakeFunctorReactorTask(f, source_location));
+  }
+
+  ReactorState state() {
+    return state_.load(std::memory_order_acquire);
   }
 
  private:

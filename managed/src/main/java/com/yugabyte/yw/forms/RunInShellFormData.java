@@ -4,7 +4,6 @@ package com.yugabyte.yw.forms;
 
 import play.data.validation.Constraints;
 
-
 public class RunInShellFormData {
   public enum ShellType {
     YSQLSH,
@@ -15,8 +14,7 @@ public class RunInShellFormData {
 
   public String command_file;
 
-  @Constraints.Required()
-  public String db_name;
+  @Constraints.Required() public String db_name;
 
   public ShellType shell_type = ShellType.YSQLSH;
 

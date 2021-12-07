@@ -15,9 +15,14 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
 import java.util.List;
 import java.util.Map;
 
@@ -27,6 +32,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yugabyte.util.PSQLException;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.LocatedTablet;
 import org.yb.client.YBClient;
@@ -65,13 +71,16 @@ public class TestTablespaceProperties extends BasePgSQLTest {
           "placement_zone", "zone3"));
   @Override
   public int getTestMethodTimeoutSec() {
-    return getPerfMaxRuntime(1000, 1200, 1500, 1500, 1500);
+    return getPerfMaxRuntime(1500, 1700, 2000, 2000, 2000);
   }
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
+    builder.addMasterFlag("vmodule", "sys_catalog=5,cluster_balance=1");
+    builder.addMasterFlag("ysql_tablespace_info_refresh_secs",
+                          Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
     builder.perTServerFlags(perTserverZonePlacementFlags);
   }
 
@@ -100,15 +109,13 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     try (Statement setupStatement = connection.createStatement()) {
       // Create tables in default and custom tablespaces.
       setupStatement.execute(
-          "CREATE TABLE " +  customTable + "(a int) TABLESPACE testTablespace");
+          "CREATE TABLE " +  customTable + "(a SERIAL) TABLESPACE testTablespace");
 
       setupStatement.execute(
-          "CREATE TABLE " + defaultTable + "(a int)");
+          "CREATE TABLE " + defaultTable + "(a int CONSTRAINT " + customIndex +
+          " UNIQUE USING INDEX TABLESPACE testTablespace)");
 
       // Create indexes in default and custom tablespaces.
-      setupStatement.execute("CREATE INDEX " + customIndex + " on " +
-          defaultTable + "(a) TABLESPACE testTablespace");
-
       setupStatement.execute("CREATE INDEX " + defaultIndexCustomTable + " on " +
           customTable + "(a)");
 
@@ -153,16 +160,87 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     testLBTablespacePlacement();
   }
 
+  public void negativeTest() throws Exception {
+    // Create tablespaces with invalid placement.
+    try (Statement setupStatement = connection.createStatement()) {
+      // Create a tablespace specifying a cloud that does not exist.
+      setupStatement.execute(
+          "CREATE TABLESPACE invalid_tblspc WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud3\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}," +
+          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      // Create a tablespace wherein the individual min_num_replicas can be
+      // satisfied, but the total replication factor cannot.
+      setupStatement.execute(
+          "CREATE TABLESPACE insufficient_rf_tblspc WITH (replica_placement=" +
+          "'{\"num_replicas\":5, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}," +
+          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      // Create a table that can be used for the index test below.
+      setupStatement.execute("CREATE TABLE negativeTestTable (a int)");
+    }
+
+    // Test creation of table in invalid tablespace.
+    final String expected_error_msg = "Not enough tablet servers in cloud3:region1:zone1";
+    boolean error_thrown = false;
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(
+          "CREATE TABLE invalidPlacementTable (a int) TABLESPACE invalid_tblspc");
+    } catch (PSQLException e) {
+      assertTrue(e.getMessage().contains(expected_error_msg));
+      error_thrown = true;
+    }
+
+    // Verify that error was indeed thrown.
+    assertTrue(error_thrown);
+
+    // Reset error_thrown and perform same test for indexes.
+    error_thrown = false;
+
+    // Test creation of index in invalid tablespace.
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(
+          "CREATE INDEX invalidPlacementIdx ON negativeTestTable(a) TABLESPACE invalid_tblspc");
+    } catch (PSQLException e) {
+      assertTrue(e.getMessage().contains(expected_error_msg));
+      error_thrown = true;
+    }
+
+    assertTrue(error_thrown);
+
+    // Reset error_thrown and test whether error is thrown when the replication factor
+    // cannot be satisfied.
+    error_thrown = false;
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(
+          "CREATE TABLE insufficent_rf (a int)  TABLESPACE insufficient_rf_tblspc");
+    } catch (PSQLException e) {
+      assertTrue(e.getMessage().contains("Not enough live tablet servers to create table " +
+                                         "with replication factor 5. 3 tablet servers are alive"));
+      error_thrown = true;
+    }
+
+    assertTrue(error_thrown);
+  }
+
   public void sanityTest() throws Exception {
     YBClient client = miniCluster.getClient();
 
     // Set required YB-Master flags.
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-      assertTrue(client.setFlag(hp, "ysql_tablespace_info_refresh_secs",
-            Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS)));
       assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
-      assertTrue(client.setFlag(hp, "v", "3"));
     }
+
+    negativeTest();
+
+    // Test table creation failures.
+    testTableCreationFailure();
 
     createTestData("sanity_test");
 
@@ -196,7 +274,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     YBClient client = miniCluster.getClient();
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
       assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "false"));
-      assertTrue(client.setFlag(hp, "v", "3"));
     }
 
     // At this point, since tablespaces are disabled, the LB will detect that the older
@@ -230,7 +307,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
       assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
-      assertTrue(client.setFlag(hp, "v", "3"));
     }
 
     // Since the tablespace-id was not checked during creation, the tablet replicas
@@ -248,6 +324,112 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     LOG.info("Verify whether tablet replicas placed incorrectly at creation time are moved to " +
              "their appropriate placement by the load balancer");
     verifyPlacement();
+  }
+
+  public void testTableCreationFailure() throws Exception {
+    final YBClient client = miniCluster.getClient();
+    int previousBGWait = MiniYBCluster.CATALOG_MANAGER_BG_TASK_WAIT_MS;
+
+    try (Statement stmt = connection.createStatement()) {
+      for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+        // Increase the interval between subsequent runs of bg thread so that
+        // it assigns replicas for tablets of both the tables concurrently.
+        assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms", "10000"));
+        assertTrue(client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "true"));
+      }
+      LOG.info("Increased the delay between successive runs of bg threads.");
+      // Create tablespace with valid placement.
+      stmt.execute(
+          " CREATE TABLESPACE valid_ts " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}," +
+          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+      LOG.info("Created a tablespace with valid placement information.");
+      // Create tablespace with invalid placement.
+      stmt.execute(
+          " CREATE TABLESPACE invalid_ts " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}," +
+          "{\"cloud\":\"cloud4\",\"region\":\"region4\",\"zone\":\"zone4\"," +
+          "\"min_num_replicas\":1}]}')");
+      LOG.info("Created a tablespace with invalid placement information.");
+
+      int count = 2;
+      final AtomicBoolean errorsDetectedForValidTable = new AtomicBoolean(false);
+      final AtomicBoolean errorsDetectedForInvalidTable = new AtomicBoolean(false);
+      final CyclicBarrier barrier = new CyclicBarrier(count);
+      final Thread[] threads = new Thread[count];
+      final Connection[] connections = new Connection[count];
+
+      // Create connections for concurrent create table.
+      for (int i = 0; i < count; ++i) {
+        ConnectionBuilder b = getConnectionBuilder();
+        b.withTServer(count % miniCluster.getNumTServers());
+        connections[i] = b.connect();
+      }
+
+      // Enqueue a couple of concurrent table creation jobs.
+      // Thread that creates an invalid table.
+      threads[0] = new Thread(() -> {
+        try (Statement lstmt = connections[0].createStatement()) {
+          barrier.await();
+          try {
+            LOG.info("Creating a table with invalid placement information.");
+            lstmt.execute("CREATE TABLE invalidplacementtable (a int) TABLESPACE invalid_ts");
+          } catch (Exception e) {
+            LOG.error(e.getMessage());
+            errorsDetectedForInvalidTable.set(true);
+          }
+        } catch (InterruptedException | BrokenBarrierException | SQLException throwables) {
+          LOG.info("Infrastructure exception, can be ignored", throwables);
+        } finally {
+          barrier.reset();
+        }
+      });
+
+      // Thread that creates a valid table.
+      threads[1] = new Thread(() -> {
+        try (Statement lstmt = connections[1].createStatement()) {
+          barrier.await();
+          try {
+            LOG.info("Creating a table with valid placement information.");
+            lstmt.execute("CREATE TABLE validplacementtable (a int) TABLESPACE valid_ts");
+          } catch (Exception e) {
+            LOG.error(e.getMessage());
+            errorsDetectedForValidTable.set(true);
+          }
+        } catch (InterruptedException | BrokenBarrierException | SQLException throwables) {
+          LOG.info("Infrastructure exception, can be ignored", throwables);
+        } finally {
+          barrier.reset();
+        }
+      });
+
+      // Wait for join.
+      Arrays.stream(threads).forEach(t -> t.start());
+      for (Thread t : threads) {
+        t.join();
+      }
+
+      // Reset the bg threads delay.
+      for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+        assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms",
+                                Integer.toString(previousBGWait)));
+        assertTrue(client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "false"));
+      }
+      // Verify that the transaction DDL garbage collector removes this table.
+      assertTrue(client.waitForTableRemoval(30000, "invalidplacementtable"));
+
+      LOG.info("Valid table created successfully: " + !errorsDetectedForValidTable.get());
+      LOG.info("Invalid table created successfully: " + !errorsDetectedForInvalidTable.get());
+      assertFalse(errorsDetectedForValidTable.get());
+      assertTrue(errorsDetectedForInvalidTable.get());
+    }
   }
 
   // Verify that the tables and indices have been placed in appropriate
@@ -326,7 +508,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     final YBClient client = miniCluster.getClient();
     List<Master.ListTablesResponsePB.TableInfo> tables =
       client.getTablesList(table).getTableInfoList();
-    assertEquals(1, tables.size());
+    assertEquals("More than one table found with name " + table, 1, tables.size());
     final YBTable ybtable = client.openTableByUUID(
       tables.get(0).getId().toStringUtf8());
     return ybtable.getTabletsLocations(30000);

@@ -13,7 +13,6 @@
 #include "yb/util/signal_util.h"
 
 #include <signal.h>
-#include <errno.h>
 #include "yb/util/errno.h"
 
 namespace yb {
@@ -53,5 +52,9 @@ const std::vector<int> kYsqlHandledSignals{
     SIGTERM, // bgworker_die
     SIGQUIT // bgworker_quickdie
 };
+
+Result<sigset_t> ThreadYsqlSignalMaskBlock() {
+  return ThreadSignalMaskBlock(kYsqlHandledSignals);
+}
 
 } // namespace yb

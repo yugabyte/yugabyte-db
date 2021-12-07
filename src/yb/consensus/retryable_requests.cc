@@ -13,18 +13,26 @@
 
 #include "yb/consensus/retryable_requests.h"
 
-#include <boost/multi_index_container.hpp>
-#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
 
-#include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_round.h"
+
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+
+using namespace std::literals;
 
 DEFINE_int32(retryable_request_timeout_secs, 120,
              "Amount of time to keep write request in index, to prevent duplicate writes.");
@@ -53,16 +61,15 @@ namespace {
 
 struct RunningRetryableRequest {
   RetryableRequestId request_id;
-  yb::OpId op_id;
   RestartSafeCoarseTimePoint time;
   mutable std::vector<ConsensusRoundPtr> duplicate_rounds;
 
   RunningRetryableRequest(
-      RetryableRequestId request_id_, const OpIdPB& op_id_, RestartSafeCoarseTimePoint time_)
-      : request_id(request_id_), op_id(yb::OpId::FromPB(op_id_)), time(time_) {}
+      RetryableRequestId request_id_, RestartSafeCoarseTimePoint time_)
+      : request_id(request_id_), time(time_) {}
 
   std::string ToString() const {
-    return Format("{ request_id: $0 op_id $1 time: $2 }", request_id, op_id, time);
+    return YB_STRUCT_TO_STRING(request_id, time);
   }
 };
 
@@ -107,12 +114,6 @@ typedef boost::multi_index_container <
             boost::multi_index::member <
                 RunningRetryableRequest, RetryableRequestId, &RunningRetryableRequest::request_id
             >
-        >,
-        boost::multi_index::ordered_unique <
-            boost::multi_index::tag<OpIdIndex>,
-            boost::multi_index::member <
-                RunningRetryableRequest, yb::OpId, &RunningRetryableRequest::op_id
-            >
         >
     >
 > RunningRetryableRequests;
@@ -155,9 +156,9 @@ class ReplicateData {
  public:
   ReplicateData() : client_id_(ClientId::Nil()), write_request_(nullptr) {}
 
-  explicit ReplicateData(const tserver::WriteRequestPB* write_request, const yb::OpIdPB& op_id)
+  explicit ReplicateData(const tserver::WriteRequestPB* write_request, const OpIdPB& op_id)
       : client_id_(write_request->client_id1(), write_request->client_id2()),
-        write_request_(write_request), op_id_(yb::OpId::FromPB(op_id)) {
+        write_request_(write_request), op_id_(OpId::FromPB(op_id)) {
 
   }
 
@@ -248,8 +249,7 @@ class RetryableRequests::Impl {
     }
 
     auto& running_indexed_by_request_id = client_retryable_requests.running.get<RequestIdIndex>();
-    auto emplace_result = running_indexed_by_request_id.emplace(
-        data.request_id(), round->replicate_msg()->id(), entry_time);
+    auto emplace_result = running_indexed_by_request_id.emplace(data.request_id(), entry_time);
     if (!emplace_result.second) {
       emplace_result.first->duplicate_rounds.push_back(round);
       return false;
@@ -263,11 +263,10 @@ class RetryableRequests::Impl {
     return true;
   }
 
-  yb::OpId CleanExpiredReplicatedAndGetMinOpId() {
-    yb::OpId result(std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max());
+  OpId CleanExpiredReplicatedAndGetMinOpId() {
+    OpId result = OpId::Max();
     auto now = clock_.Now();
-    auto clean_start =
-        now - std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+    auto clean_start = now - GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
     for (auto ci = clients_.begin(); ci != clients_.end();) {
       ClientRetryableRequests& client_retryable_requests = ci->second;
       auto& op_id_index = client_retryable_requests.replicated.get<OpIdIndex>();
@@ -315,7 +314,7 @@ class RetryableRequests::Impl {
     if (running_it == running_indexed_by_request_id.end()) {
 #ifndef NDEBUG
       LOG_WITH_PREFIX(ERROR) << "Running requests: "
-                             << yb::ToString(running_indexed_by_request_id);
+                             << AsString(running_indexed_by_request_id);
 #endif
       LOG_WITH_PREFIX(DFATAL) << "Replication finished for request with unknown id " << data;
       return;

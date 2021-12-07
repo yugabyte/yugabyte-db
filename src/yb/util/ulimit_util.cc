@@ -29,18 +29,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/ulimit_util.h"
 
 #include <sys/resource.h>
 
-#include <algorithm>
+#include <map>
 #include <string>
-#include <sstream>
-
-#include <gflags/gflags.h>
 
 #include "yb/util/env.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/ulimit.h"
 

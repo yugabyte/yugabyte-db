@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.3-SNAPSHOT</version>
+    <version>0.8.11-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-loadtester</artifactId>
@@ -16,14 +16,14 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.3-SNAPSHOT</version>
+      <version>0.8.11-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.3-SNAPSHOT</version>
+      <version>0.8.11-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -95,7 +95,7 @@
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>yb-sample-apps</artifactId>
-      <version>1.0.9</version>
+      <version>1.0.11</version>
     </dependency>
   </dependencies>
 

@@ -21,7 +21,7 @@
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -29,9 +29,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
-
-#include "yb/util/result.h"
+#include "yb/tserver/backup.pb.h"
 
 namespace yb {
 namespace master {
@@ -52,25 +50,19 @@ class SnapshotCoordinatorContext {
   // with null entries returned for unknown tablet ids.
   virtual TabletInfos GetTabletInfos(const std::vector<TabletId>& id) = 0;
 
-  virtual void SendCreateTabletSnapshotRequest(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      const SnapshotScheduleId& schedule_id, HybridTime snapshot_hybrid_time,
+  virtual AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
+      const TabletInfoPtr& tablet, const std::string& snapshot_id,
+      tserver::TabletSnapshotOpRequestPB::Operation operation,
       TabletSnapshotOperationCallback callback) = 0;
 
-  virtual void SendRestoreTabletSnapshotRequest(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      HybridTime restore_at, SendMetadata send_metadata,
-      TabletSnapshotOperationCallback callback) = 0;
-
-  virtual void SendDeleteTabletSnapshotRequest(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& snapshot_id,
-      TabletSnapshotOperationCallback callback) = 0;
+  virtual void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) = 0;
 
   virtual Result<SysRowEntries> CollectEntriesForSnapshot(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
-  virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
-  virtual CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) = 0;
+  virtual CHECKED_STATUS RestoreSysCatalog(
+      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+      Status* complete_status) = 0;
   virtual CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) = 0;
 
   virtual void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
@@ -89,7 +81,7 @@ class SnapshotCoordinatorContext {
 };
 
 Result<docdb::KeyBytes> EncodedKey(
-    SysRowEntry::Type type, const Slice& id, SnapshotCoordinatorContext* context);
+    SysRowEntryType type, const Slice& id, SnapshotCoordinatorContext* context);
 
 } // namespace master
 } // namespace yb

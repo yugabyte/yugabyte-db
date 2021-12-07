@@ -15,12 +15,12 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Distributed ACID transactions are transactions that modify multiple rows in more than one shard. YugabyteDB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both the YCQL context as well as in the YSQL context. This section provides some common concepts and notions used in Yugabyte's approach to implementing distributed transactions.  Once you are familiar with these concepts, see [Transactional IO Path](../transactional-io-path/) for a walk-through of a distributed transaction's life cycle.
+Distributed ACID transactions are transactions that modify multiple rows in more than one shard. YugabyteDB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both YCQL and YSQL contexts. This section provides some common concepts and notions used in Yugabyte's approach to implementing distributed transactions.  Once you are familiar with these concepts, see [Transactional IO Path](../transactional-io-path/) for a walk-through of a distributed transaction's life cycle.
 
 ## Provisional records
 
 Just as YugabyteDB stores values written by single-shard ACID transactions into
-[DocDB](../../concepts/docdb/persistence/), it needs to store uncommitted values written by
+[DocDB](../../docdb/persistence/), it needs to store uncommitted values written by
 distributed transactions in a similar persistent data structure. However, we cannot just write them
 to DocDB as regular values, because they would then become visible at different times to clients
 reading through different tablet servers, allowing a client to see a partially applied transaction
@@ -29,7 +29,7 @@ responsible for the keys the transaction is trying to modify. We call them "prov
 to "regular" ("permanent") records, because they are invisible to readers until the transaction
 commits.
 
-Provisional records are stored are stored in a separate RocksDB instance in the same tablet peer.
+Provisional records are stored in a separate RocksDB instance in the same tablet peer.
 Compared to other possible design options, such as storing provisional records inline with the
 regular records or putting them in the same RocksDB instance altogether with regular records, the
 approach we have chosen has the following benefits:
@@ -51,12 +51,12 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
 #### 1. Primary provisional records
 
-  ```
+  ```output
   DocumentKey, SubKey1, ..., SubKeyN, LockType, ProvisionalRecordHybridTime -> TxnId, Value
   ```
 
   The `DocumentKey`, `SubKey1`, ..., `SubKey` components exactly match those in DocDB's
-  [encoding](../../concepts/docdb/persistence/#mapping-docdb-documents-to-rocksdb) of "paths" to
+  [encoding](../../docdb/persistence/#mapping-docdb-documents-to-rocksdb) of "paths" to
   a particular subdocument (e.g. a row, a column, or an element in a collection-type column) to
   RocksDB keys.
 
@@ -75,7 +75,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
   `7c98406e-2373-499d-88c2-25d72a4a178c`. In that case we will end up with the following provisional
   record values in RocksDB:
 
-  ```
+  ```output
   row1, WeakSIWrite, 1516847525206000 -> 7c98406e-2373-499d-88c2-25d72a4a178c
   row1, col1, StrongSIWrite, 1516847525206000 -> 7c98406e-2373-499d-88c2-25d72a4a178c, value1
   ```
@@ -100,7 +100,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
 #### 3. Provisional record keys indexed by transaction ID ("reverse index")
 
-```
+```output
 TxnId, HybridTime -> primary provisional record key
 ```
 

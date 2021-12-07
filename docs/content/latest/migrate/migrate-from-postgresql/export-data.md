@@ -16,27 +16,27 @@ The recommended way to export data from PostgreSQL for purposes of importing it 
 
 ## Exporting an entire database
 
-The recommended way to dump an entire database from PostgreSQL is to use the YugabyteDB [`ysql_dump`](/latest/admin/ysql-dump) backup utility, which is in turn derived from PostgreSQL pg_dump.
+The recommended way to dump an entire database from PostgreSQL is to use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump) backup utility, which is in turn derived from PostgreSQL pg_dump.
 
-```
+```sh
 $ ysql_dump -d mydatabase > mydatabase-dump.sql
 ```
 
 {{< note title="Note" >}}
-The `ysql_dump` may has been tested on PostgreSQL v11.2, and not work on very new versions of PostgreSQL. To export an entire database in these cases, use the pg_dump tool, this is documented in detail in the [PostgreSQL documentation on pg_dump](https://www.postgresql.org/docs/12/app-pgdump.html).
+The `ysql_dump` approach has been tested on PostgreSQL v11.2, and may not work on very new versions of PostgreSQL. To export an entire database in these cases, use the pg_dump tool, which is documented in detail in the [PostgreSQL documentation on pg_dump](https://www.postgresql.org/docs/12/app-pgdump.html).
 {{< /note >}}
 
 ## Export using COPY
 
 This is an alternative to using ysql_dump in order to export a single table from the source PostgreSQL database into CSV files. This tool allows extracting a subset of rows and/or columns from a table. This can be achieved by connecting to the source DB using psql and using the `COPY TO` command, as shown below. 
 
-```
+```sql
 COPY mytable TO 'export-1.csv' DELIMITER ',' CSV HEADER;
 ```
 
 To extract a subset of rows from a table, it is possible to output the result of an SQL command.
 
-```
+```sql
 COPY (
   SELECT * FROM mytable
     WHERE <where condition>
@@ -51,7 +51,7 @@ Exporting large data sets from PostgreSQL can be made efficient by running multi
 
 An example of running multiple exports in parallel is shown below. Remember to use a suitable value for *num_rows_per_export*, for example 1 million rows.
 
-```
+```sql
 COPY (
   SELECT * FROM mytable
     ORDER BY primary_key_col 
@@ -66,5 +66,3 @@ COPY (
 
 ...
 ```
-
-

@@ -55,17 +55,15 @@ Along with the above, include the following common ports in firewall rules.
 | HTTPS for Platform  | 443 |
 | HTTP for Replicated | 8800 |
 
-## Monitoring with Prometheus
+## Prometheus monitoring
 
-Use the following targets to configure [Prometheus](https://prometheus.io/) to scrape available metrics (in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format)) from the YugabyteDB HTTP endpoint:
+YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints. These endpoints have the following structure.
 
 ```
 <target>/prometheus-metrics
 ```
 
 You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
-
-For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
 
 ### Servers
 
@@ -85,3 +83,5 @@ Use the following `yb-tserver` targets for the various API metrics.
 | ysql    | `<yb-tserver-address>:13000` |
 | ycql    | `<yb-tserver-address>:12000` |
 | yedis   | `<yb-tserver-address>:11000` |
+
+For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).

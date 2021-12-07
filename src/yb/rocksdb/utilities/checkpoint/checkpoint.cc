@@ -40,6 +40,7 @@
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

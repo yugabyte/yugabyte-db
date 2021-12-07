@@ -56,7 +56,9 @@ target_link_libraries(yb-cql
   yb_client
   cql_service_proto
   server_common
-  server_process)
+  server_process
+  ldap
+  lber)
 
 # Tests
 set(YB_TEST_LINK_LIBS yb-cql integration-tests ${YB_MIN_TEST_LIBS})

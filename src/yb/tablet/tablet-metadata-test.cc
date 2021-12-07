@@ -31,18 +31,25 @@
 //
 
 #include <cstddef>
+
 #include <glog/logging.h>
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/common/ql_protocol_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/operations/snapshot_operation.h"
-#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_snapshots.h"
+
 #include "yb/util/opid.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace tablet {
@@ -62,7 +69,7 @@ class TestRaftGroupMetadata : public YBTabletTest {
                        QLWriteRequestPB* req);
 
  protected:
-  gscoped_ptr<LocalTabletWriter> writer_;
+  std::unique_ptr<LocalTabletWriter> writer_;
 };
 
 void TestRaftGroupMetadata::BuildPartialRow(int key, int intval, const char* strval,
@@ -130,17 +137,17 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   const string snapshotId = "0123456789ABCDEF0123456789ABCDEF";
   tserver::TabletSnapshotOpRequestPB request;
   request.set_snapshot_id(snapshotId);
-  tablet::SnapshotOperationState tx_state(tablet.get(), &request);
-  tx_state.set_hybrid_time(tablet->clock()->Now());
-  tx_state.set_op_id(OpId(-1, 2));
-  ASSERT_OK(tablet->snapshots().Create(&tx_state));
+  tablet::SnapshotOperation operation(tablet.get(), &request);
+  operation.set_hybrid_time(tablet->clock()->Now());
+  operation.set_op_id(OpId(-1, 2));
+  ASSERT_OK(tablet->snapshots().Create(&operation));
 
   ASSERT_TRUE(env_->DirExists(tablet->metadata()->rocksdb_dir()));
   ASSERT_TRUE(env_->DirExists(tablet->metadata()->intents_rocksdb_dir()));
   ASSERT_TRUE(env_->DirExists(tablet->metadata()->snapshots_dir()));
 
   CHECK_OK(tablet->metadata()->DeleteTabletData(
-    TabletDataState::TABLET_DATA_DELETED, tx_state.op_id()));
+    TabletDataState::TABLET_DATA_DELETED, operation.op_id()));
 
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->rocksdb_dir()));
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->intents_rocksdb_dir()));

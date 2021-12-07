@@ -2,30 +2,59 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.TaskType;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Summary;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-
-import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.ScheduleTask;
-import com.yugabyte.yw.models.CustomerTask;
+import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.TaskInfo;
 import play.api.Play;
 
 /**
  * This class is responsible for creating and running a task. It provides all the common
- * infrastructure across the different types of tasks. It creates and keeps an instance of the
- * ITask object that actually performs the work specific to the current task type.
+ * infrastructure across the different types of tasks. It creates and keeps an instance of the ITask
+ * object that actually performs the work specific to the current task type.
  */
 public class TaskRunner implements Runnable {
+
+  // Metric names
+  private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
+      "ybp_commissioner_task_waiting_sec";
+  private static final String COMMISSIONER_TASK_EXECUTION_SEC_METRIC =
+      "ybp_commissioner_task_execution_sec";
+
+  // Metrics
+  public static final Summary COMMISSIONER_TASK_WAITING_SEC =
+      buildSummary(
+          COMMISSIONER_TASK_WAITING_SEC_METRIC,
+          "Duration between task creation and execution",
+          KnownAlertLabels.TASK_TYPE.labelName());
+  public static final Summary COMMISSIONER_TASK_EXECUTION_SEC =
+      buildSummary(
+          COMMISSIONER_TASK_EXECUTION_SEC_METRIC,
+          "Duration of task execution",
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          KnownAlertLabels.RESULT.labelName());
 
   public static final Logger LOG = LoggerFactory.getLogger(TaskRunner.class);
 
@@ -60,18 +89,25 @@ public class TaskRunner implements Runnable {
     LOG.debug("Done loading tasks.");
   }
 
+  static Summary buildSummary(String name, String description, String... labelNames) {
+    return Summary.build(name, description)
+        .quantile(0.5, 0.05)
+        .quantile(0.9, 0.01)
+        .maxAgeSeconds(TimeUnit.HOURS.toSeconds(1))
+        .labelNames(labelNames)
+        .register(CollectorRegistry.defaultRegistry);
+  }
+
   /**
    * Creates the task runner along with the task object and persists the task info info.
    *
-   * @param taskType        : the task type
-   * @param claimTask       : if true, adds this process as the owner of the task being created
+   * @param taskType : the task type
+   * @param claimTask : if true, adds this process as the owner of the task being created
    * @return the TaskRunner object on which run can be called.
    * @throws InstantiationException
    * @throws IllegalAccessException
    */
-  public static TaskRunner createTask(TaskType taskType,
-                                      ITaskParams taskParams,
-                                      boolean claimTask)
+  public static TaskRunner createTask(TaskType taskType, ITaskParams taskParams, boolean claimTask)
       throws InstantiationException, IllegalAccessException {
 
     // Create the task runner object.
@@ -79,8 +115,6 @@ public class TaskRunner implements Runnable {
 
     // Persist the task in the queue.
     taskRunner.save();
-    LOG.info("Created task, details: " + taskRunner.toString());
-    LOG.debug("Created task, details: " + taskRunner.toDebugString());
 
     return taskRunner;
   }
@@ -89,13 +123,13 @@ public class TaskRunner implements Runnable {
       throws InstantiationException, IllegalAccessException {
 
     // Create an instance of the task.
-    task = taskTypeToTaskClassMap.get(taskType).newInstance();
+    task = Play.current().injector().instanceOf(taskTypeToTaskClassMap.get(taskType));
     // Init the task.
     task.initialize(taskParams);
     // Create a new task info object.
     taskInfo = new TaskInfo(taskType);
     // Set the task details.
-    taskInfo.setTaskDetails(task.getTaskDetails());
+    taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
     // Set the owner info.
     String hostname = "";
     try {
@@ -111,9 +145,7 @@ public class TaskRunner implements Runnable {
     return taskInfo.getTaskUUID();
   }
 
-  /**
-   * Serializes and saves the task object created so far in the persistent queue.
-   */
+  /** Serializes and saves the task object created so far in the persistent queue. */
   public void save() {
     taskInfo.save();
   }
@@ -144,6 +176,8 @@ public class TaskRunner implements Runnable {
   public void run() {
     LOG.debug("Running task {}", getTaskUUID());
     task.setUserTaskUUID(getTaskUUID());
+    Date executionStart = new Date();
+    writeTaskWaitMetric();
     updateTaskState(TaskInfo.State.Running);
     try {
       // Run the task.
@@ -151,13 +185,13 @@ public class TaskRunner implements Runnable {
 
       // Update the task state to success and checkpoint it.
       updateTaskState(TaskInfo.State.Success);
-
+      writeTaskSuccessMetric(executionStart);
     } catch (Throwable t) {
       LOG.error("Error running task", t);
-      if (task.shouldSendNotification()) task.sendNotification();
       // Update the task state to failure and checkpoint it.
       updateTaskState(TaskInfo.State.Failure);
-
+      writeTaskFailedMetric(executionStart);
+      addTaskErrorMessage(t.getMessage());
     } finally {
       // Update the customer task to a completed state.
       CustomerTask customerTask = CustomerTask.findByTaskUUID(taskInfo.getTaskUUID());
@@ -173,15 +207,49 @@ public class TaskRunner implements Runnable {
 
       // Run a one-off Platform HA sync every time a task finishes.
       replicationManager.oneOffSync();
+
+      // Terminate the task to release resources.
+      // Any added subtasks in the subgroups are also terminated.
+      task.terminate();
     }
   }
 
-  public String getState() {
-    return taskInfo.getTaskState().toString();
+  private void addTaskErrorMessage(String message) {
+    ObjectNode details = taskInfo.getTaskDetails().deepCopy();
+    JsonNode errorStringNode = details.get("errorString");
+    String errorString = errorStringNode == null ? null : errorStringNode.asText();
+    if (StringUtils.isEmpty(errorString)) {
+      details.put("errorString", message);
+      taskInfo.setTaskDetails(details);
+      taskInfo.save();
+    }
+  }
+
+  private void writeTaskWaitMetric() {
+    COMMISSIONER_TASK_WAITING_SEC
+        .labels(getTaskType())
+        .observe(getDurationSeconds(taskInfo.getCreationTime(), new Date()));
+  }
+
+  private void writeTaskSuccessMetric(Date executionStart) {
+    COMMISSIONER_TASK_EXECUTION_SEC
+        .labels(getTaskType(), State.Success.name())
+        .observe(getDurationSeconds(executionStart, new Date()));
+  }
+
+  private void writeTaskFailedMetric(Date executionStart) {
+    COMMISSIONER_TASK_EXECUTION_SEC
+        .labels(getTaskType(), State.Failure.name())
+        .observe(getDurationSeconds(executionStart, new Date()));
+  }
+
+  private String getTaskType() {
+    return taskInfo.getTaskType().name();
   }
 
   /**
    * Updates the task state and saves it to the persistent queue.
+   *
    * @param newState
    */
   private void updateTaskState(TaskInfo.State newState) {

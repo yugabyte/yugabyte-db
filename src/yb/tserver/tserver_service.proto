@@ -42,6 +42,9 @@ import "yb/tablet/metadata.proto";
 service TabletServerService {
   rpc Write(WriteRequestPB) returns (WriteResponsePB);
   rpc Read(ReadRequestPB) returns (ReadResponsePB);
+  rpc VerifyTableRowRange(VerifyTableRowRangeRequestPB)
+      returns (VerifyTableRowRangeResponsePB);
+
   rpc NoOp(NoOpRequestPB) returns (NoOpResponsePB);
   rpc ListTablets(ListTabletsRequestPB) returns (ListTabletsResponsePB);
   rpc GetLogLocation(GetLogLocationRequestPB) returns (GetLogLocationResponsePB);
@@ -74,6 +77,10 @@ service TabletServerService {
 
   // Takes precreated transaction from this tserver.
   rpc TakeTransaction(TakeTransactionRequestPB) returns (TakeTransactionResponsePB);
+
+  rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
+
+  rpc GetSharedData(GetSharedDataRequestPB) returns (GetSharedDataResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -167,6 +174,8 @@ message GetTransactionStatusResponsePB {
   // Size could be less than status size. In this case appropriates values should be interpreted
   // as invalid hybrid time.
   repeated fixed64 coordinator_safe_time = 6;
+
+  repeated AbortedSubTransactionSetPB aborted_subtxn_set = 7;
 }
 
 message GetTransactionStatusAtParticipantRequestPB {
@@ -205,8 +214,28 @@ message AbortTransactionResponsePB {
 }
 
 message TakeTransactionRequestPB {
+  optional bool is_global = 1;
 }
 
 message TakeTransactionResponsePB {
   optional TransactionMetadataPB metadata = 1;
+}
+
+message GetSplitKeyRequestPB {
+  required bytes tablet_id = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message GetSplitKeyResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional bytes split_partition_key = 2;
+  optional bytes split_encoded_key = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
+message GetSharedDataRequestPB {
+}
+
+message GetSharedDataResponsePB {
+  optional bytes data = 1;
 }

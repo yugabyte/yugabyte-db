@@ -26,6 +26,10 @@ namespace yb {
 namespace tools {
 namespace enterprise {
 
+// Flags for list_snapshot command.
+YB_DEFINE_ENUM(ListSnapshotsFlag, (SHOW_DETAILS)(NOT_SHOW_RESTORED)(SHOW_DELETED)(JSON));
+using ListSnapshotsFlags = EnumBitSet<ListSnapshotsFlag>;
+
 class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   typedef yb::tools::ClusterAdminClient super;
  public:
@@ -36,16 +40,17 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       : super(init_master_addrs, timeout) {}
 
   // Snapshot operations.
-  CHECKED_STATUS ListSnapshots(bool show_details, bool show_restored, bool show_deleted);
+  CHECKED_STATUS ListSnapshots(const ListSnapshotsFlags& flags);
   CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables,
                                 const bool add_indexes = true,
                                 const int flush_timeout_secs = 0);
   CHECKED_STATUS CreateNamespaceSnapshot(const TypedNamespaceName& ns);
   Result<rapidjson::Document> ListSnapshotRestorations(
       const TxnSnapshotRestorationId& restoration_id);
-  Result<rapidjson::Document> CreateSnapshotSchedule(const std::vector<client::YBTableName>& tables,
+  Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,
                                                      MonoDelta interval, MonoDelta retention);
   Result<rapidjson::Document> ListSnapshotSchedules(const SnapshotScheduleId& schedule_id);
+  Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
   CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id,
@@ -89,12 +94,20 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                           const std::vector<TableId>& tables,
                                           const std::vector<std::string>& producer_bootstrap_ids);
 
-  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id);
+  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id, bool force = false);
 
-  CHECKED_STATUS AlterUniverseReplication(const std::string& producer_uuid,
-                                          const std::vector<std::string>& producer_addresses,
-                                          const std::vector<TableId>& add_tables,
-                                          const std::vector<TableId>& remove_tables);
+  CHECKED_STATUS AlterUniverseReplication(
+      const std::string& producer_uuid,
+      const std::vector<std::string>& producer_addresses,
+      const std::vector<TableId>& add_tables,
+      const std::vector<TableId>& remove_tables,
+      const std::vector<std::string>& producer_bootstrap_ids_to_add,
+      const std::string& new_producer_universe_id);
+
+  CHECKED_STATUS RenameUniverseReplication(const std::string& old_universe_name,
+                                           const std::string& new_universe_name);
+
+  CHECKED_STATUS WaitForSetupUniverseReplicationToFinish(const string& producer_uuid);
 
   CHECKED_STATUS SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
@@ -108,6 +121,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
 
   Result<HostPort> GetFirstRpcAddressForTS();
+
+  void CleanupEnvironmentOnSetupUniverseReplicationFailure(
+    const std::string& producer_uuid, const Status& failure_status);
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };

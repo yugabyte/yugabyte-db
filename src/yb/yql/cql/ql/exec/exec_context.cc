@@ -14,12 +14,26 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/exec/exec_context.h"
-#include "yb/yql/cql/ql/ptree/pt_select.h"
-#include "yb/client/callbacks.h"
+
+#include <boost/function.hpp>
+
 #include "yb/client/table.h"
+#include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/common/ql_rowblock.h"
+#include "yb/common/schema.h"
+
 #include "yb/rpc/thread_pool.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+
+#include "yb/yql/cql/ql/exec/rescheduler.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
 
 namespace yb {
 namespace ql {
@@ -179,6 +193,14 @@ void ExecContext::Reset(const Restart restart, Rescheduler* rescheduler) {
 TnodeContext::TnodeContext(const TreeNode* tnode) : tnode_(tnode), start_time_(MonoTime::Now()) {
 }
 
+TnodeContext::~TnodeContext() = default;
+
+TnodeContext* TnodeContext::AddChildTnode(const TreeNode* tnode) {
+  DCHECK(!child_context_);
+  child_context_ = std::make_unique<TnodeContext>(tnode);
+  return child_context_.get();
+}
+
 Status TnodeContext::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
   // Append data arriving from DocDB.
   // (1) SELECT without nested query.
@@ -296,6 +318,11 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
 
   req->clear_hash_code();
   req->clear_max_hash_code();
+
+  if (hash_code_from_partition_key_ops_.is_initialized())
+    req->set_hash_code(*hash_code_from_partition_key_ops_);
+  if (max_hash_code_from_partition_key_ops_.is_initialized())
+    req->set_max_hash_code(*max_hash_code_from_partition_key_ops_);
 }
 
 bool TnodeContext::HasPendingOperations() const {
@@ -518,6 +545,10 @@ Status QueryPagingState::LoadPagingStateFromDocdb(const RowsResult::SharedPtr& r
   }
 
   return Status::OK();
+}
+
+const std::string& ExecContext::stmt() const {
+  return parse_tree_.stmt();
 }
 
 }  // namespace ql

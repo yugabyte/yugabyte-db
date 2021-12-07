@@ -1,8 +1,7 @@
-bin
+/bin
 build
 logs
 target
-devops/python_virtual_env
 .idea
 .idea_modules
 /.classpath
@@ -34,6 +33,7 @@ react/npm-debug.log
 
 conf/*
 src/main/public/*
+src/main/resources/version_metadata.json
 *.pyc
 docker/yugaware/*.yml
 
@@ -45,3 +45,5 @@ ui/junit.xml
 .session.vim*
 
 src/public/*
+
+client/*/generated

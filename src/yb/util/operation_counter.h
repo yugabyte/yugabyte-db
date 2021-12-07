@@ -16,16 +16,12 @@
 
 #include <atomic>
 #include <mutex>
-#include <unordered_map>
 
 #include "yb/util/cross_thread_mutex.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/monotime.h"
-#include "yb/util/result.h"
-
-#ifndef NDEBUG
 #include "yb/util/debug/long_operation_tracker.h"
-#endif
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -152,7 +148,7 @@ class ScopedRWOperation {
   void Reset();
 
   std::string resource_name() const {
-    return data_.resource_name_;
+    return data_.counter_ ? data_.counter_->resource_name() : "null";
   }
  private:
   struct Data {
@@ -167,10 +163,7 @@ class ScopedRWOperation {
 };
 
 // RETURN_NOT_OK macro support.
-inline Status MoveStatus(const ScopedRWOperation& scoped) {
-  return scoped.ok() ? Status::OK()
-                     : STATUS_FORMAT(TryAgain, "Resource unavailable : $0", scoped.resource_name());
-}
+Status MoveStatus(const ScopedRWOperation& scoped);
 
 // A convenience class to automatically pause/resume a RWOperationCounter.
 class ScopedRWOperationPause {
@@ -189,6 +182,10 @@ class ScopedRWOperationPause {
   ~ScopedRWOperationPause();
 
   void Reset();
+
+  std::string resource_name() const {
+    return data_.counter_ ? data_.counter_->resource_name() : "null";
+  }
 
   void operator=(ScopedRWOperationPause&& p) {
     Reset();

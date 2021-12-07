@@ -40,7 +40,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -56,6 +56,11 @@ void IoVecsToBuffer(const IoVecs& io_vecs, size_t begin, size_t end, std::vector
 void IoVecsToBuffer(const IoVecs& io_vecs, size_t begin, size_t end, char* result);
 inline const char* IoVecBegin(const iovec& inp) { return static_cast<const char*>(inp.iov_base); }
 inline const char* IoVecEnd(const iovec& inp) { return IoVecBegin(inp) + inp.iov_len; }
+
+inline void IoVecRemovePrefix(size_t len, iovec* iov) {
+  iov->iov_len -= len;
+  iov->iov_base = static_cast<char*>(iov->iov_base) + len;
+}
 
 class Socket {
  public:
@@ -88,10 +93,6 @@ class Socket {
   // Get the raw file descriptor, or -1 if there is no file descriptor being
   // managed.
   int GetFd() const;
-
-  // Returns true if the error is temporary and will go away if we retry on
-  // the socket.
-  static bool IsTemporarySocketError(const Status& status);
 
   CHECKED_STATUS Init(int flags); // See FLAG_NONBLOCKING
 

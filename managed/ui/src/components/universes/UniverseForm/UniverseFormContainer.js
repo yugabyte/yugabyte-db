@@ -61,9 +61,14 @@ import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    submitConfigureUniverse: (values) => {
+    submitConfigureUniverse: (values, universeUUID = null) => {
       dispatch(configureUniverseTemplateLoading());
       return dispatch(configureUniverseTemplate(values)).then((response) => {
+        if(response.error && universeUUID) {
+          dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+            dispatch(fetchUniverseInfoResponse(response.payload));
+          });
+        }
         return dispatch(configureUniverseTemplateResponse(response.payload));
       });
     },
@@ -215,6 +220,11 @@ const formFieldNames = [
   'primary.assignPublicIP',
   'primary.useTimeSync',
   'primary.enableYSQL',
+  'primary.enableYSQLAuth',
+  'primary.ysqlPassword',
+  'primary.enableYCQL',
+  'primary.enableYCQLAuth',
+  'primary.ycqlPassword',
   'primary.enableIPV6',
   'primary.enableExposingService',
   'primary.enableYEDIS',
@@ -225,6 +235,7 @@ const formFieldNames = [
   'primary.tlsCertificateId',
   'primary.mountPoints',
   'primary.awsArnString',
+  'primary.useSystemd',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -236,12 +247,18 @@ const formFieldNames = [
   'async.assignPublicIP',
   'async.useTimeSync',
   'async.enableYSQL',
+  'async.enableYSQLAuth',
+  'async.enableYCQL',
+  'async.enableYCQLAuth',
   'async.enableIPV6',
   'async.enableExposingService',
   'async.enableYEDIS',
   'async.enableNodeToNodeEncrypt',
   'async.enableClientToNodeEncrypt',
+  'async.diskIops',
+  'async.throughput',
   'async.mountPoints',
+  'async.useSystemd',
   'masterGFlags',
   'tserverGFlags',
   'instanceTags',
@@ -262,6 +279,9 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].assignPublicIP = userIntent.assignPublicIP;
     data[clusterType].useTimeSync = userIntent.useTimeSync;
     data[clusterType].enableYSQL = userIntent.enableYSQL;
+    data[clusterType].enableYSQLAuth = userIntent.enableYSQLAuth;
+    data[clusterType].enableYCQL = userIntent.enableYCQL;
+    data[clusterType].enableYCQLAuth = userIntent.enableYCQLAuth;
     data[clusterType].enableIPV6 = userIntent.enableIPV6;
     data[clusterType].enableExposingService = userIntent.enableExposingService;
     data[clusterType].enableYEDIS = userIntent.enableYEDIS;
@@ -272,6 +292,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].replicationFactor = userIntent.replicationFactor;
     data[clusterType].instanceType = userIntent.instanceType;
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    data[clusterType].useSystemd = userIntent.useSystemd;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
     data[clusterType].throughput = userIntent.deviceInfo.throughput;
@@ -315,10 +336,14 @@ function mapStateToProps(state, ownProps) {
       numNodes: 3,
       isMultiAZ: true,
       instanceType: 'c5.large',
-      accessKeyCode: 'yugabyte-default',
+      accessKeyCode: '',
       assignPublicIP: true,
+      useSystemd: false,
       useTimeSync: true,
       enableYSQL: true,
+      enableYSQLAuth: true,
+      enableYCQL: true,
+      enableYCQLAuth: true,
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
@@ -326,31 +351,40 @@ function mapStateToProps(state, ownProps) {
       enableClientToNodeEncrypt: true,
       enableEncryptionAtRest: false,
       awsArnString: '',
-      selectEncryptionAtRestConfig: null
+      selectEncryptionAtRestConfig: null,
+      diskIops: null,
+      throughput: null
     },
     async: {
       universeName: '',
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
+      useSystemd: false,
       useTimeSync: true,
       enableYSQL: true,
+      enableYSQLAuth: true,
+      enableYCQL: true,
+      enableYCQLAuth: true,
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
-      enableNodeToNodeEncrypt: false,
-      enableClientToNodeEncrypt: false
+      enableNodeToNodeEncrypt: true,
+      enableClientToNodeEncrypt: true,
+      diskIops: null,
+      throughput: null
     }
   };
 
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type !== 'Create') {
     // TODO (vit.pankin): don't like this type having Async in it,
     // it should be clusterType or currentView
-    data = getFormData(
+    const formResult = getFormData(
       currentUniverse,
       ownProps.type,
       ownProps.type === 'Async' ? 'async' : 'primary'
     );
+    data = isEmptyObject(formResult) ? data : formResult;
   }
 
   const selector = formValueSelector('UniverseForm');
@@ -389,6 +423,11 @@ function mapStateToProps(state, ownProps) {
       'primary.mountPoints',
       'primary.useTimeSync',
       'primary.enableYSQL',
+      'primary.enableYSQLAuth',
+      'primary.ysqlPassword',
+      'primary.enableYCQL',
+      'primary.enableYCQLAuth',
+      'primary.ycqlPassword',
       'primary.enableIPV6',
       'primary.enableExposingService',
       'primary.enableYEDIS',
@@ -408,6 +447,7 @@ function mapStateToProps(state, ownProps) {
       'primary.yqlRpcPort',
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
+      'primary.useSystemd',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -425,6 +465,9 @@ function mapStateToProps(state, ownProps) {
       'async.storageType',
       'async.assignPublicIP',
       'async.enableYSQL',
+      'async.enableYSQLAuth',
+      'async.enableYCQL',
+      'async.enableYCQLAuth',
       'async.enableIPV6',
       'async.enableExposingService',
       'async.enableYEDIS',
@@ -432,6 +475,7 @@ function mapStateToProps(state, ownProps) {
       'async.enableClientToNodeEncrypt',
       'async.mountPoints',
       'async.useTimeSync',
+      'async.useSystemd',
       'masterGFlags',
       'tserverGFlags',
       'instanceTags'
@@ -447,7 +491,7 @@ const asyncValidate = (values, dispatch) => {
       values.formType !== 'Async'
     ) {
       dispatch(checkIfUniverseExists(values.primary.universeName)).then((response) => {
-        if (response.payload.status !== 200 && values.formType !== 'Edit') {
+        if (response.payload.status === 200 && values.formType !== 'Edit' && response.payload.data.length > 0) {
           reject({ primary: { universeName: 'Universe name already exists' } });
         } else {
           resolve();
@@ -521,7 +565,8 @@ const universeForm = reduxForm({
   form: 'UniverseForm',
   validate,
   asyncValidate,
-  fields: formFieldNames
+  fields: formFieldNames,
+  asyncChangeFields: ['primary.universeName', 'async.universeName']
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(universeForm(UniverseForm));

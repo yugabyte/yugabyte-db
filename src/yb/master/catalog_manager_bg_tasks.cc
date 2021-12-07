@@ -29,28 +29,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/master/catalog_manager_bg_tasks.h"
+
 #include <memory>
 
-#include "yb/master/master_service_base.h"
-#include "yb/util/logging.h"
-#include "yb/util/mutex.h"
+#include "yb/gutil/casts.h"
 
-#include "yb/master/catalog_manager_bg_tasks.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/cluster_balance.h"
-#include "yb/master/encryption_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/ts_descriptor.h"
+
 #include "yb/util/flag_tags.h"
+#include "yb/util/mutex.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using std::shared_ptr;
 
 DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
              "Amount of time the catalog manager background task thread waits "
              "between runs");
-TAG_FLAG(catalog_manager_bg_task_wait_ms, hidden);
+TAG_FLAG(catalog_manager_bg_task_wait_ms, runtime);
 
-DEFINE_int32(load_balancer_initial_delay_secs, 120,
+DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
@@ -58,8 +59,18 @@ DEFINE_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
+DECLARE_bool(enable_ysql);
+
 namespace yb {
 namespace master {
+
+CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
+    : closing_(false),
+      pending_updates_(false),
+      cond_(&lock_),
+      thread_(nullptr),
+      catalog_manager_(down_cast<enterprise::CatalogManager*>(catalog_manager)) {
+}
 
 void CatalogManagerBgTasks::Wake() {
   MutexLock lock(lock_);
@@ -129,18 +140,28 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->tasks_tracker_->CleanupOldTasks();
 
       TabletInfos to_delete;
-      TabletInfos to_process;
+      TableToTabletInfos to_process;
 
       // Get list of tablets not yet running or already replaced.
       catalog_manager_->ExtractTabletsToProcess(&to_delete, &to_process);
 
+      bool processed_tablets = false;
       if (!to_process.empty()) {
         // Transition tablet assignment state from preparing to creating, send
         // and schedule creation / deletion RPC messages, etc.
-        WARN_NOT_OK(catalog_manager_->ProcessPendingAssignments(to_process),
-                    "Error processing pending assignments");
-        // TODO: Add tests for this in the revision that makes create/alter fault tolerant.
-      } else {
+        for (const auto& entries : to_process) {
+          LOG(INFO) << "Processing pending assignments for table: " << entries.first;
+          Status s = catalog_manager_->ProcessPendingAssignments(entries.second);
+          WARN_NOT_OK(s, "Assignment failed");
+          // Set processed_tablets as true if the call succeeds for at least one table.
+          processed_tablets = processed_tablets || s.ok();
+          // TODO Add tests for this in the revision that makes
+          // create/alter fault tolerant.
+        }
+      }
+
+      // Do the LB enabling check
+      if (!processed_tablets) {
         if (catalog_manager_->TimeSinceElectedLeader() >
             MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
           catalog_manager_->load_balance_policy_->RunLoadBalancer();
@@ -164,12 +185,14 @@ void CatalogManagerBgTasks::Run() {
         }
       }
 
-      // Start the tablespace background task.
-      catalog_manager_->StartTablespaceBgTaskIfStopped();
+      if (FLAGS_enable_ysql) {
+        // Start the tablespace background task.
+        catalog_manager_->StartTablespaceBgTaskIfStopped();
+      }
+    } else {
+      // Reset Metrics when leader_status is not ok.
+      catalog_manager_->ResetMetrics();
     }
-    WARN_NOT_OK(catalog_manager_->encryption_manager_->
-                GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),
-                "Could not schedule GetUniverseKeyRegistry task.");
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add
     //  - HandleReportedTablet/ProcessPendingAssignments will call WakeIfHasPendingUpdates()

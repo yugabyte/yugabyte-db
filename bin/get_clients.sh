@@ -3,17 +3,14 @@
 
 set -e
 
-VERSION=2.2
+VERSION=2.6
 PKG_PREFIX=yugabyte-client
 
 uname=$(uname | tr '[:upper:]' '[:lower:]')
 pkg="${PKG_PREFIX}-${VERSION}-$uname.tar.gz"
 
 printf "Downloading %s ... \r" "$pkg"
-wget -q "https://downloads.yugabyte.com/${pkg}" -O "$pkg"
-
-printf "Extracting %s ... \r" $pkg
-tar -zxf "$pkg"
+curl --silent "https://downloads.yugabyte.com/${pkg}" | tar -xz
 
 if test "$uname" = "linux"; then
    printf "Setting up %s ... \r" $pkg

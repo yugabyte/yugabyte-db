@@ -17,6 +17,38 @@ backup:
 monitors:
   cpuacct: []
   memory: []
+custom_requirements:
+  - id: check_free_space
+    message: Ensure there is sufficient space for platform installation.
+    details: Must have at least 16 GB space available.
+    results:
+      - status: success
+        message:
+          default_message: Directory {{.directory}} has enough space available.
+          args:
+            directory: '{{repl ConfigOption "storage_path"}}'
+        condition:
+          status_code: 0
+          bool_expr: '{{repl Trim .Result | ParseFloat | lt 16e9 }}'
+      - status: error
+        message:
+          default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 16 GB.
+          args:
+            directory: '{{repl ConfigOption "storage_path"}}'
+            bytes: '{{repl ParseFloat .Result | HumanSize }}'
+        condition:
+          status_code: 0
+      - status: warn
+        message:
+          default_message: 'Invalid status code {{.status}}. Error: {{.error}}'
+          args:
+            status: '{{repl .StatusCode }}'
+            error: '{{repl .Error }}'
+    command:
+      id: disk_space_available
+      data:
+        cluster: false
+        dir: '{{repl ConfigOption "storage_path"}}'
 cmds:
   - name: dbpass_cmd
     cmd: random
@@ -76,20 +108,22 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.2.1
+        version: v2.27.1
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
             permission: "0777"
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
+          - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_rules'
+            container_path: /opt/yugabyte/prometheus/rules
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
             container_path: /prometheus_configs
             permission: "0777"
         ports:
           - private_port: "9090"
             public_port: "9090"
-        entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && /bin/prometheus --config.file=/prometheus_configs/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} --web.enable-admin-api --web.enable-lifecycle"]
+        entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && exec /bin/prometheus --config.file=/prometheus_configs/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} --web.enable-admin-api --web.enable-lifecycle"]
         publish_events:
           - name: Prometheus started
             trigger: container-start
@@ -105,6 +139,8 @@ components:
                   evaluation_interval: {{repl ConfigOption "prometheus_scrape_interval"}}
                   external_labels:
                       monitor: 'swamper'
+              rule_files:
+                - '/opt/yugabyte/prometheus/rules/yugaware.ad.*.yml'
               scrape_configs:
                 - job_name: 'prometheus'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
@@ -124,6 +160,80 @@ components:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/node.*.json'
                   metric_relabel_configs:
+                    # Below relabels are required for smooth migration from node_exporter
+                    # 0.13.0 to the latest
+                    - source_labels: ["__name__"]
+                      regex: "node_cpu"
+                      target_label: "__name__"
+                      replacement: "node_cpu_seconds_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_filesystem_free"
+                      target_label: "__name__"
+                      replacement: "node_filesystem_free_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_filesystem_size"
+                      target_label: "__name__"
+                      replacement: "node_filesystem_size_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_disk_reads_completed"
+                      target_label: "__name__"
+                      replacement: "node_disk_reads_completed_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_disk_writes_completed"
+                      target_label: "__name__"
+                      replacement: "node_disk_writes_completed_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_MemTotal"
+                      target_label: "__name__"
+                      replacement: "node_memory_MemTotal_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_Slab"
+                      target_label: "__name__"
+                      replacement: "node_memory_Slab_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_Cached"
+                      target_label: "__name__"
+                      replacement: "node_memory_Cached_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_Buffers"
+                      target_label: "__name__"
+                      replacement: "node_memory_Buffers_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_MemFree"
+                      target_label: "__name__"
+                      replacement: "node_memory_MemFree_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_receive_bytes"
+                      target_label: "__name__"
+                      replacement: "node_network_receive_bytes_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_transmit_bytes"
+                      target_label: "__name__"
+                      replacement: "node_network_transmit_bytes_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_receive_packets"
+                      target_label: "__name__"
+                      replacement: "node_network_receive_packets_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_transmit_packets"
+                      target_label: "__name__"
+                      replacement: "node_network_transmit_packets_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_receive_errs"
+                      target_label: "__name__"
+                      replacement: "node_network_receive_errs_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_transmit_errs"
+                      target_label: "__name__"
+                      replacement: "node_network_transmit_errs_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_disk_bytes_read"
+                      target_label: "__name__"
+                      replacement: "node_disk_read_bytes_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_disk_bytes_written"
+                      target_label: "__name__"
+                      replacement: "node_disk_written_bytes_total"
                     # Save the name of the metric so we can group_by since we cannot by __name__ directly...
                     - source_labels: ["__name__"]
                       regex: "(.*)"
@@ -132,6 +242,24 @@ components:
 
                 - job_name: "yugabyte"
                   metrics_path: "/prometheus-metrics"
+                  params:
+                    # Enable priority regex on all tables
+                    # URL encoding done by prometheus
+                    max_tables_metrics_breakdowns: ["0"]
+                    priority_regex:
+                      - "rocksdb_(number_db_(next|seek)
+                      |block_cache_(add|single_touch_add|multi_touch_add)\
+                      |current_version_(sst_files_size|num_sst_files)\
+                      |db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)\
+                      |bloom_filter_(checked|useful)|stall_micros|flush_write_bytes\
+                      |compact_[^_]+_bytes|compaction_times_micros_[^_]+\
+                      |numfiles_in_singlecompaction_[^_]+)\
+                      |async_replication_[^_]+_lag_micros|transaction_conflicts\
+                      |majority_sst_files_rejections|expired_transactions
+                      |log_(sync_latency_[^_]+|group_commit_latency_[^_]+\
+                      |append_latency_[^_]+|bytes_logged|reader_bytes_read\
+                      |append_latency_count|sync_latency_count|cache_size|cache_num_ops)\
+                      |glog_[^_]+_messages"
                   file_sd_configs:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/yugabyte.*.json'
@@ -168,6 +296,8 @@ components:
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
+          - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_rules'
+            container_path: /opt/yugabyte/prometheus/rules
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/data'
             container_path: /opt/yugabyte/yugaware/data
           - host_path: '{{repl ConfigOption "storage_path"}}/releases'
@@ -196,8 +326,6 @@ components:
               play.crypto.secret="{{repl ConfigOption "app_secret"}}"
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
-              play.evolutions.enabled = false
-              play.modules.enabled += "org.flywaydb.play.PlayModule"
 
               db {
                 default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
@@ -210,8 +338,6 @@ components:
               ebean {
                 default = ["com.yugabyte.yw.models.*"]
               }
-
-              play.modules.enabled += "org.flywaydb.play.PlayModule"
 
               play.filters {
                 # CSRF config
@@ -234,7 +360,9 @@ components:
                 # CORS config
                 cors {
                   pathPrefixes = ["/"]
-                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}"]
+                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}",
+                    "{{repl ConfigOption "support_origin_url"}}"
+                  ]
                   supportsCredentials=true
                   allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
                   allowedHttpHeaders = ["Accept", "Origin", "Content-Type", "X-Auth-Token", "X-AUTH-YW-API-TOKEN", ${play.filters.csrf.header.name}]
@@ -248,11 +376,12 @@ components:
                 docker.network = bridge
                 seedData = false
                 swamper.targetPath = /opt/yugabyte/prometheus/targets
+                swamper.rulesPath = /opt/yugabyte/prometheus/rules
                 multiTenant = false
                 releases.path = "/opt/yugabyte/releases"
                 docker.release = "/opt/yugabyte/release"
                 thirdparty.packagePath = /opt/third-party
-                helm.package = "/opt/yugabyte/helm/yugabyte-latest.tgz"
+                helm.packagePath = "/opt/yugabyte/helm"
                 health.check_interval_ms = 300000
                 health.status_interval_ms = 43200000
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
@@ -300,6 +429,12 @@ components:
 
                 location / {
                   proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                }
+                location ~ /settings/ha/internal/upload$ {
+                  proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                  # HA backp upload endpoint needs to allow bigger request size
+                  # Broaden the location match regex to cover more endpoints as needed
+                  client_max_body_size {{repl ConfigOption "upload_size"}};
                 }
               }
         ports:
@@ -350,6 +485,12 @@ config:
           name: host_ip
           value_at: 0
         required: true
+      - name: support_origin_url
+        title: Support Origin URL
+        type: text
+        value: ""
+        default: localhost:9000
+        help_text: Specify a support origin URL to be whitelisted in the CORS filter
       - name: nginx_external_port
         title: Yugaware UI Port
         type: text
@@ -360,6 +501,11 @@ config:
         help_text: When enabled we will listen to https
         type: bool
         default: "0"
+      - name: upload_size
+        title: Maximum Request Size
+        help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
+        type: text
+        default: "10G"
       - name: tls_version
         title: TLS Versions
         help_text: TLS version support for Platform HTTPS frontend

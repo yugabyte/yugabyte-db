@@ -31,7 +31,6 @@
 #
 
 set(GUTIL_SRCS
-  atomicops-internals-x86.cc
   bits.cc
   callback_internal.cc
   cpu.cc
@@ -66,6 +65,10 @@ set(GUTIL_SRCS
   threading/thread_collision_warner.cc
   utf/rune.c
   walltime.cc)
+
+if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
+  list(APPEND GUTIL_SRCS atomicops-internals-x86.cc)
+endif()
 
 set(GUTIL_LIBS
   glog

@@ -3290,7 +3290,7 @@ add_tablegroup_footer(printTableContent *const cont, char relkind,
 
 			initPQExpBuffer(&buf);
 			printfPQExpBuffer(&buf,
-							  "SELECT grpname FROM pg_catalog.pg_tablegroup\n"
+							  "SELECT grpname FROM pg_catalog.pg_yb_tablegroup\n"
 							  "WHERE oid = '%u';", tablegroup);
 			result = PSQLexec(buf.data);
 			if (!result)
@@ -4349,8 +4349,11 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 		{
 			printACLColumn(&buf, "g.grpacl");
 			appendPQExpBuffer(&buf,
-							  ",\n  pg_catalog.obj_description(g.oid, 'pg_tablegroup') AS \"%s\"",
+							  ",\n  pg_catalog.obj_description(g.oid, 'pg_yb_tablegroup') AS \"%s\"",
 							  gettext_noop("Group Description"));
+			appendPQExpBuffer(&buf,
+							  ",\n  ts.spcname AS \"%s\"",
+							  gettext_noop("Group Tablespace"));
 			appendPQExpBuffer(&buf,
 							  ",\n  g.grpoptions AS \"%s\",\n",
 							  gettext_noop("Group Options"));
@@ -4409,8 +4412,11 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 			appendPQExpBufferStr(&buf, ",\n  ");
 			printACLColumn(&buf, "g.grpacl");
 			appendPQExpBuffer(&buf,
-							  ",\n  pg_catalog.obj_description(g.oid, 'pg_tablegroup') AS \"%s\"",
+							  ",\n  pg_catalog.obj_description(g.oid, 'pg_yb_tablegroup') AS \"%s\"",
 							  gettext_noop("Description"));
+			appendPQExpBuffer(&buf,
+							  ",\n  ts.spcname AS \"%s\"",
+							  gettext_noop("Tablespace"));
 			appendPQExpBuffer(&buf,
 							  ",\n  g.grpoptions AS \"%s\"",
 							  gettext_noop("Options"));
@@ -4418,7 +4424,11 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 	}
 
 	appendPQExpBufferStr(&buf,
-						 "\nFROM pg_catalog.pg_tablegroup g\n");
+						 "\nFROM pg_catalog.pg_yb_tablegroup g\n");
+
+	if (verbose)
+		appendPQExpBufferStr(&buf,
+							 "\nLEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid = g.grptablespace\n");
 
 	// If 't' is included, need to do the join based on pg_class reloptions
 	if (showRelations)

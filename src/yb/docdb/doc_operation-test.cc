@@ -14,25 +14,26 @@
 #include <thread>
 
 #include "yb/common/common.pb.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/internal_stats.h"
-
-#include "yb/common/partial_row.h"
+#include "yb/common/index.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/db/internal_stats.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -63,6 +64,72 @@ std::vector<ColumnId> CreateColumnIds(size_t count) {
 }
 
 constexpr int32_t kFixedHashCode = 0;
+const int64_t kAlwaysDiscard = -1;
+
+// DiscardUntilFileFilter is a test CompactionFileFilter than will be used to mark some
+// files for direct deletion during the PickCompaction process in UniversalCompactionPicker.
+// Any files with numbers less than the provided last discard file number will be
+// included in the compaction but directly deleted.
+//
+// DiscardUntilFileFilter emulates behavior of DocDBCompactionFileFilter, which expires
+// files based on their TTL.
+class DiscardUntilFileFilter : public rocksdb::CompactionFileFilter {
+ public:
+  explicit DiscardUntilFileFilter(int64_t last_discard) :
+      last_discard_(last_discard) {}
+
+  // Filters all file numbers less than or equal to the filter's last_discard_.
+  // Setting last_discard_ to the kAlwaysDiscard constant will result in every
+  // incoming file being filtered.
+  rocksdb::FilterDecision Filter(const rocksdb::FileMetaData* file) override {
+    if (last_discard_ == kAlwaysDiscard || file->fd.GetNumber() <= last_discard_) {
+      LOG(INFO) << "Filtering file: " << file->fd.GetNumber() << ", size: "
+          << file->fd.GetBaseFileSize() << ", total file size: " << file->fd.GetTotalFileSize();
+      return rocksdb::FilterDecision::kDiscard;
+    }
+    return rocksdb::FilterDecision::kKeep;
+  }
+
+  const char* Name() const override { return "DiscardUntilFileFilter"; }
+
+ private:
+  const int64_t last_discard_;
+};
+
+// A CompactionFileFilterFactory that takes a file number as input, and filters all
+// file numbers lower than or equal to that one. Any larger file numbers will not
+// be filtered.
+class DiscardUntilFileFilterFactory : public rocksdb::CompactionFileFilterFactory {
+ public:
+  explicit DiscardUntilFileFilterFactory(const int64_t last_to_discard) :
+      last_to_discard_(last_to_discard) {}
+
+  std::unique_ptr<rocksdb::CompactionFileFilter> CreateCompactionFileFilter(
+      const std::vector<rocksdb::FileMetaData*>& inputs) override {
+    return std::make_unique<DiscardUntilFileFilter>(last_to_discard_);
+  }
+
+  const char* Name() const override { return "DiscardUntilFileFilterFactory"; }
+
+ private:
+  const int64_t last_to_discard_;
+};
+
+// MakeMaxFileSizeFunction will create a function that returns the
+// rocksdb_max_file_size_for_compaction flag if it is set to a positive number, and returns
+// the max uint64 otherwise. It does NOT take the schema's table TTL into consideration.
+auto MakeMaxFileSizeFunction() {
+  // Trick to get type of max_file_size_for_compaction field.
+  typedef typename decltype(
+      static_cast<rocksdb::Options*>(nullptr)->max_file_size_for_compaction)::element_type
+      MaxFileSizeFunction;
+  return std::make_shared<MaxFileSizeFunction>([]{
+    if (FLAGS_rocksdb_max_file_size_for_compaction > 0) {
+      return FLAGS_rocksdb_max_file_size_for_compaction;
+    }
+    return std::numeric_limits<uint64_t>::max();
+  });
+}
 
 } // namespace
 
@@ -105,10 +172,11 @@ class DocOperationTest : public DocDBTestBase {
   void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
                QLResponsePB* ql_writeresp_pb,
                const HybridTime& hybrid_time = HybridTime::kMax,
-               const TransactionOperationContextOpt& txn_op_context =
+               const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
+    IndexMap index_map;
     QLWriteOperation ql_write_op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
-                                 IndexMap(), nullptr /* unique_index_key_schema */, txn_op_context);
+                                 index_map, nullptr /* unique_index_key_schema */, txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
@@ -182,7 +250,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
   yb::QLWriteRequestPB WriteQLRowReq(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
                   const vector<int32_t>& column_values, const HybridTime& hybrid_time,
-                  const TransactionOperationContextOpt& txn_op_content =
+                  const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb;
     ql_writereq_pb.set_type(stmt_type);
@@ -204,7 +272,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
                   const vector<int32_t>& column_values, int64_t ttl, const HybridTime& hybrid_time,
-                  const TransactionOperationContextOpt& txn_op_content =
+                  const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb = WriteQLRowReq(
         stmt_type, schema, column_values, hybrid_time, txn_op_content);
@@ -216,7 +284,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
                   const vector<int32_t>& column_values, const HybridTime& hybrid_time,
-                  const TransactionOperationContextOpt& txn_op_content =
+                  const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb = WriteQLRowReq(
         stmt_type, schema, column_values, hybrid_time, txn_op_content);
@@ -261,6 +329,13 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     Slice data(rows_data.data(), rows_data.size());
     EXPECT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
     return row_block;
+  }
+
+  void SetMaxFileSizeForCompaction(const uint64_t max_size) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = max_size;
+    // Make a function that will always use rocksdb_max_file_size_for_compaction.
+    // Normally, max_file_size_for_compaction is only used for tables with TTL.
+    max_file_size_for_compaction_ = MakeMaxFileSizeFunction();
   }
 };
 
@@ -522,9 +597,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   // Now verify row exists as long as liveness system column exists.
   doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
-                                 PrimitiveValue::SystemColumnId(
-                                     SystemColumnIds::kLivenessColumn)),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue::kLivenessColumn),
                          Value(PrimitiveValue(ValueType::kNullLow)),
                          HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
@@ -690,7 +763,7 @@ class DocOperationScanTest : public DocOperationTest {
     Seed(&rng_);
   }
 
-  void InitSchema(ColumnSchema::SortingType range_column_sorting) {
+  void InitSchema(SortingType range_column_sorting) {
     range_column_sorting_type_ = range_column_sorting;
     ColumnSchema hash_column("k", INT32, false, true);
     ColumnSchema range_column("r", INT32, false, false, false, false, 1, range_column_sorting);
@@ -747,7 +820,7 @@ class DocOperationScanTest : public DocOperationTest {
   }
 
   void PerformScans(const bool is_forward_scan,
-      const TransactionOperationContextOpt& txn_op_context,
+      const TransactionOperationContext& txn_op_context,
       boost::function<void(const size_t keys_in_scan_range)> after_scan_callback) {
     std::vector <PrimitiveValue> hashed_components = {PrimitiveValue::Int32(h_key_)};
     std::vector <QLOperator> operators = {
@@ -797,7 +870,7 @@ class DocOperationScanTest : public DocOperationTest {
           }
 
           if (is_forward_scan ==
-              (range_column_sorting_type_ == ColumnSchema::SortingType::kDescending)) {
+              (range_column_sorting_type_ == SortingType::kDescending)) {
             std::reverse(expected_rows.begin(), expected_rows.end());
           }
           DocQLScanSpec ql_scan_spec(
@@ -830,14 +903,14 @@ class DocOperationScanTest : public DocOperationTest {
     }
   }
 
-  void TestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan) {
+  void TestWithSortingType(SortingType sorting_type, bool is_forward_scan) {
     DoTestWithSortingType(sorting_type, is_forward_scan, 1 /* num_rows_per_key */);
     ASSERT_OK(DestroyRocksDB());
     ASSERT_OK(ReopenRocksDB());
     DoTestWithSortingType(sorting_type, is_forward_scan, 5 /* num_rows_per_key */);
   }
 
-  virtual void DoTestWithSortingType(ColumnSchema::SortingType schema_type, bool is_forward_scan,
+  virtual void DoTestWithSortingType(SortingType schema_type, bool is_forward_scan,
       size_t num_rows_per_key) = 0;
 
   constexpr static int32_t kNumKeys = 20;
@@ -845,7 +918,7 @@ class DocOperationScanTest : public DocOperationTest {
   constexpr static uint32_t kMaxTime = 1500;
 
   std::mt19937_64 rng_;
-  ColumnSchema::SortingType range_column_sorting_type_;
+  SortingType range_column_sorting_type_;
   Schema schema_;
   int32_t h_key_;
   std::vector<RowDataWithHt> rows_;
@@ -853,13 +926,13 @@ class DocOperationScanTest : public DocOperationTest {
 
 class DocOperationRangeFilterTest : public DocOperationScanTest {
  protected:
-  void DoTestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan,
+  void DoTestWithSortingType(SortingType sorting_type, bool is_forward_scan,
       size_t num_rows_per_key) override;
 };
 
 // Currently we test using one column and one scan type.
 // TODO(akashnil): In future we want to implement and test arbitrary ASC DESC combinations for scan.
-void DocOperationRangeFilterTest::DoTestWithSortingType(ColumnSchema::SortingType sorting_type,
+void DocOperationRangeFilterTest::DoTestWithSortingType(SortingType sorting_type,
     const bool is_forward_scan, const size_t num_rows_per_key) {
   ASSERT_OK(DisableCompactions());
 
@@ -886,24 +959,24 @@ void DocOperationRangeFilterTest::DoTestWithSortingType(ColumnSchema::SortingTyp
 }
 
 TEST_F_EX(DocOperationTest, QLRangeFilterAscendingForwardScan, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kAscending, true);
+  TestWithSortingType(SortingType::kAscending, true);
 }
 
 TEST_F_EX(DocOperationTest, QLRangeFilterDescendingForwardScan, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kDescending, true);
+  TestWithSortingType(SortingType::kDescending, true);
 }
 
 TEST_F_EX(DocOperationTest, QLRangeFilterAscendingReverseScan, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kAscending, false);
+  TestWithSortingType(SortingType::kAscending, false);
 }
 
 TEST_F_EX(DocOperationTest, QLRangeFilterDescendingReverseScan, DocOperationRangeFilterTest) {
-  TestWithSortingType(ColumnSchema::kDescending, false);
+  TestWithSortingType(SortingType::kDescending, false);
 }
 
 class DocOperationTxnScanTest : public DocOperationScanTest {
  protected:
-  void DoTestWithSortingType(ColumnSchema::SortingType sorting_type, bool is_forward_scan,
+  void DoTestWithSortingType(SortingType sorting_type, bool is_forward_scan,
       size_t num_rows_per_key) override {
     ASSERT_OK(DisableCompactions());
 
@@ -921,19 +994,19 @@ class DocOperationTxnScanTest : public DocOperationScanTest {
 };
 
 TEST_F_EX(DocOperationTest, QLTxnAscendingForwardScan, DocOperationTxnScanTest) {
-  TestWithSortingType(ColumnSchema::kAscending, true);
+  TestWithSortingType(SortingType::kAscending, true);
 }
 
 TEST_F_EX(DocOperationTest, QLTxnDescendingForwardScan, DocOperationTxnScanTest) {
-  TestWithSortingType(ColumnSchema::kDescending, true);
+  TestWithSortingType(SortingType::kDescending, true);
 }
 
 TEST_F_EX(DocOperationTest, QLTxnAscendingReverseScan, DocOperationTxnScanTest) {
-  TestWithSortingType(ColumnSchema::kAscending, false);
+  TestWithSortingType(SortingType::kAscending, false);
 }
 
 TEST_F_EX(DocOperationTest, QLTxnDescendingReverseScan, DocOperationTxnScanTest) {
-  TestWithSortingType(ColumnSchema::kDescending, false);
+  TestWithSortingType(SortingType::kDescending, false);
 }
 
 TEST_F(DocOperationTest, TestQLCompactions) {
@@ -1025,11 +1098,10 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w
 
 namespace {
 
-size_t GenerateFiles(int total_batches, DocOperationTest* test) {
+size_t GenerateFiles(int total_batches, DocOperationTest* test, const int kBigFileFrequency = 7) {
   auto schema = test->CreateSchema();
 
   auto t0 = HybridTime::FromMicrosecondsAndLogicalValue(1000, 0);
-  const int kBigFileFrequency = 7;
   const int kBigFileRows = 10000;
   size_t expected_files = 0;
   bool first = true;
@@ -1056,6 +1128,17 @@ size_t GenerateFiles(int total_batches, DocOperationTest* test) {
   return expected_files;
 }
 
+int CountBigFiles(const std::vector<rocksdb::LiveFileMetaData>& files,
+    const size_t kMaxFileSize) {
+  int num_large_files = 0;
+  for (auto file : files) {
+    if (file.uncompressed_size > kMaxFileSize) {
+      num_large_files++;
+    }
+  }
+  return num_large_files;
+}
+
 void WaitCompactionsDone(rocksdb::DB* db) {
   for (;;) {
     std::this_thread::sleep_for(500ms);
@@ -1080,7 +1163,7 @@ TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
   rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_EQ(kTotalBatches, files.size());
 
-  FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
+  SetMaxFileSizeForCompaction(100_KB);
   ASSERT_OK(ReinitDBOptions());
 
   WaitCompactionsDone(rocksdb());
@@ -1097,7 +1180,7 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   const int kTotalBatches = 20;
   GenerateFiles(kTotalBatches, this);
 
-  FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
+  SetMaxFileSizeForCompaction(100_KB);
   ASSERT_OK(ReinitDBOptions());
 
   WaitCompactionsDone(rocksdb());
@@ -1115,6 +1198,81 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   auto stats = handle_impl->cfd()->internal_stats();
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_NUM_FILES_TOTAL));
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_SLOWDOWN_TOTAL));
+}
+
+TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
+  ASSERT_OK(DisableCompactions());
+  const size_t kMaxFileSize = 100_KB;
+  const int kNumFilesToWrite = 20;
+  const int kBigFileFrequency = 7;
+  const int kExpectedBigFiles = (kNumFilesToWrite-1)/kBigFileFrequency + 1;
+  auto expected_files = GenerateFiles(kNumFilesToWrite, this, kBigFileFrequency);
+  LOG(INFO) << "Files that would exist without compaction, if no filtering: " << expected_files;
+
+  auto files = rocksdb()->GetLiveFilesMetaData();
+  ASSERT_EQ(kNumFilesToWrite, files.size());
+  ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
+
+  SetMaxFileSizeForCompaction(kMaxFileSize);
+
+  // Use a filter factory that will expire every file.
+  compaction_file_filter_factory_ =
+      std::make_shared<DiscardUntilFileFilterFactory>(kAlwaysDiscard);
+
+  ASSERT_OK(ReinitDBOptions());
+
+  WaitCompactionsDone(rocksdb());
+
+  files = rocksdb()->GetLiveFilesMetaData();
+
+  // We expect all files to be filtered and thus removed, no matter the size.
+  ASSERT_EQ(0, files.size());
+  auto stats = rocksdb()->GetOptions().statistics;
+  ASSERT_EQ(kNumFilesToWrite, stats->getTickerCount(rocksdb::COMPACTION_FILES_FILTERED));
+}
+
+TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
+  ASSERT_OK(DisableCompactions());
+  const size_t kMaxFileSize = 100_KB;
+  const int kNumFilesToWrite = 20;
+  const int kBigFileFrequency = 7;
+  const int kNumFilesToExpire = 3;
+  const int kExpectedBigFiles = (kNumFilesToWrite-1)/kBigFileFrequency + 1;
+  // Expected files should be one fewer than if none were discarded, since the first "big file"
+  // will be expired.
+  auto expected_files = GenerateFiles(kNumFilesToWrite, this, kBigFileFrequency) - 1;
+  LOG(INFO) << "Expiring " << kNumFilesToExpire <<
+      " files, first kept big file at " << kBigFileFrequency + 1;
+  LOG(INFO) << "Expected files after compaction: " << expected_files;
+
+  auto files = rocksdb()->GetLiveFilesMetaData();
+  ASSERT_EQ(kNumFilesToWrite, files.size());
+  ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
+  // Files will be ordered from latest to earliest, so select the nth file from the back.
+  auto last_to_discard =
+      rocksdb::TableFileNameToNumber(files[files.size() - kNumFilesToExpire].name);
+
+  SetMaxFileSizeForCompaction(kMaxFileSize);
+
+  // Use a filter factory that will expire every three files.
+  compaction_file_filter_factory_ =
+      std::make_shared<DiscardUntilFileFilterFactory>(last_to_discard);
+
+  ASSERT_OK(ReinitDBOptions());
+
+  WaitCompactionsDone(rocksdb());
+
+  files = rocksdb()->GetLiveFilesMetaData();
+
+  // We expect three files to expire, one big file and two small ones.
+  // The remaining small files should be compacted, leaving 5 files remaining.
+  //
+  // [large][small][small]....[large][small][small]...[large][small][small]...
+  // becomes [compacted small][large][compacted small][large][compacted small]
+  ASSERT_EQ(expected_files, files.size());
+
+  auto stats = rocksdb()->GetOptions().statistics;
+  ASSERT_EQ(kNumFilesToExpire, stats->getTickerCount(rocksdb::COMPACTION_FILES_FILTERED));
 }
 
 }  // namespace docdb

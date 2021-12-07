@@ -3,6 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
+import { toast } from 'react-toastify';
 import {
   YBFormInput,
   YBButton,
@@ -19,14 +20,6 @@ import { regionsData } from '../PublicCloud/views/providerRegionsData';
 import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { toast } from 'react-toastify';
-
-// TODO: (Daniel) - Replace this hard-coding with an API that returns
-//  a list of supported KMS Configurations
-const kmsConfigTypes = [
-  { value: 'SMARTKEY', label: 'Equinix SmartKey' },
-  { value: 'AWS', label: 'AWS KMS' }
-];
 
 const awsRegionList = regionsData.map((region, index) => {
   return {
@@ -34,6 +27,13 @@ const awsRegionList = regionsData.map((region, index) => {
     label: region.destVpcRegion
   };
 });
+
+// TODO: (Daniel) - Replace this hard-coding with an API that returns a list of supported KMS Configurations
+let kmsConfigTypes = [
+  { value: 'SMARTKEY', label: 'Equinix SmartKey' },
+  { value: 'AWS', label: 'AWS KMS' },
+  { value: 'HASHICORP', label: 'Hashicorp' }
+];
 
 class KeyManagementConfiguration extends Component {
   state = {
@@ -52,17 +52,55 @@ class KeyManagementConfiguration extends Component {
         this.setState({ listView: true });
       }
     });
+    this._ismounted = true;
   }
 
+  componentWillUnmount() {
+    this._ismounted = false;
+  }
+
+  //recursively monitor task status
+  onTaskFailure = () => toast.error('Failed to add configuration');
+
+  onTaskSuccess = () => {
+    toast.success('Successfully added the configuration');
+    this.props.fetchKMSConfigList();
+  };
+
+  monitorTaskStatus = (taskUUID) => {
+    this._ismounted &&
+      this.props.getCurrentTaskData(taskUUID).then((res) => {
+        if (res.error) this.onTaskFailure();
+        else {
+          const status = res.payload?.data?.status;
+          if (status === 'Failure') this.onTaskFailure();
+          else if (status === 'Success') this.onTaskSuccess();
+          else setTimeout(() => this.monitorTaskStatus(taskUUID), 5000); //recursively check task status
+        }
+      });
+  };
+
   submitKMSForm = (values) => {
-    const { fetchKMSConfigList, setKMSConfig } = this.props;
+    const { setKMSConfig } = this.props;
     const { kmsProvider } = values;
     if (kmsProvider) {
-      const data = {};
-      data['name'] = values.name;
+      const data = { name: values.name };
+
+      const createConfig = (data) => {
+        setKMSConfig(kmsProvider.value, data).then((res) => {
+          if (res) {
+            this.setState({ listView: true });
+            this.monitorTaskStatus(res.payload.data.taskUUID);
+          }
+        });
+      };
+
       switch (kmsProvider.value) {
         case 'AWS':
           data['AWS_REGION'] = values.region.value;
+
+          if (values.kmsEndPoint) data['AWS_KMS_ENDPOINT'] = values.kmsEndPoint;
+
           if (!this.state.enabledIAMProfile) {
             data['AWS_ACCESS_KEY_ID'] = values.accessKeyId;
             data['AWS_SECRET_ACCESS_KEY'] = values.secretKeyId;
@@ -70,15 +108,18 @@ class KeyManagementConfiguration extends Component {
           if (values.cmkPolicyContent) {
             readUploadedFile(values.cmkPolicyContent).then((text) => {
               data['cmk_policy'] = text;
-              setKMSConfig(kmsProvider.value, data).then(() => {
-                fetchKMSConfigList();
-                this.setState({ listView: true });
-              });
+              createConfig(data);
             });
             return;
           } else if (values.cmkId) {
             data['cmk_id'] = values.cmkId;
           }
+          break;
+        case 'HASHICORP':
+          data['HC_VAULT_ADDRESS'] = values.v_address;
+          data['HC_VAULT_TOKEN'] = values.v_token;
+          data['HC_VAULT_ENGINE'] = 'transit';
+          data['HC_VAULT_MOUNT_PATH'] = values.v_mount_path ? values.v_mount_path : 'transit/';
           break;
         default:
         case 'SMARTKEY':
@@ -86,11 +127,7 @@ class KeyManagementConfiguration extends Component {
           data['api_key'] = values.apiKey;
           break;
       }
-      setKMSConfig(kmsProvider.value, data).then(() => {
-        fetchKMSConfigList();
-        this.setState({ listView: true });
-        toast.success('Successfully added the configuration');
-      });
+      createConfig(data);
     }
   };
 
@@ -137,6 +174,7 @@ class KeyManagementConfiguration extends Component {
             <Field
               name={'enableIAMProfile'}
               component={YBCheckBox}
+              checkState={this.state.enabledIAMProfile ? true : false}
               input={{
                 onChange: () => this.setState({ enabledIAMProfile: !this.state.enabledIAMProfile })
               }}
@@ -163,10 +201,7 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">
-            <YBInfoTip
-              title="Access Key Id"
-              content="Enter your AWS access key ID."
-            />
+            <YBInfoTip title="Access Key Id" content="Enter your AWS access key ID." />
           </Col>
         </Row>
         <Row className="config-provider-row" key={'secret-key-field'}>
@@ -182,10 +217,7 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">
-            <YBInfoTip
-              title="Secret Key Id"
-              content="Enter your AWS access key secret."
-            />
+            <YBInfoTip title="Secret Key Id" content="Enter your AWS access key secret." />
           </Col>
         </Row>
         <Row className="config-provider-row" key={'region-field'}>
@@ -226,6 +258,22 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
         </Row>
+        <Row className="kms-endpoint-row" key={'kms-endpoint-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">AWS KMS Endpoint</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'kmsEndPoint'}
+              component={YBFormInput}
+              placeholder={'AWS KMS Endpoint'}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip title="AWS KMS Endpoint" content="Enter your AWS KMS Endpoint." />
+          </Col>
+        </Row>
         <Row>
           <div className={'bottom-form-field'}>
             <Field
@@ -240,6 +288,71 @@ class KeyManagementConfiguration extends Component {
     );
   };
 
+  getHCVaultForm = () => {
+    return (
+      <Fragment>
+        <Row className="config-provider-row" key={'v-url-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Vault Address</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'v_address'}
+              component={YBFormInput}
+              placeholder={''}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+        </Row>
+        <Row className="config-provider-row" key={'v-token-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Secret Token</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'v_token'}
+              component={YBFormInput}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+        </Row>
+        <Row className="config-provider-row" key={'v-secret-engine-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Secret Engine</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'v_secret_engine'}
+              value="transit"
+              disabled={true}
+              component={YBFormInput}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+        </Row>
+        <Row className="config-provider-row" key={'v-mount-path-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Mount Path</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'v_mount_path'}
+              placeholder={'transit/'}
+              component={YBFormInput}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Mount Path"
+              content="Enter the mount path. If mount path is not specified, path will be auto set to 'transit/'"
+            />
+          </Col>
+        </Row>
+      </Fragment>
+    );
+  };
+
   displayFormContent = (provider) => {
     if (!provider) {
       return this.getSmartKeyForm();
@@ -249,6 +362,8 @@ class KeyManagementConfiguration extends Component {
         return this.getSmartKeyForm();
       case 'AWS':
         return this.getAWSForm();
+      case 'HASHICORP':
+        return this.getHCVaultForm();
       default:
         return this.getSmartKeyForm();
     }
@@ -260,12 +375,10 @@ class KeyManagementConfiguration extends Component {
 
   deleteAuthConfig = (configUUID) => {
     const { configList, deleteKMSConfig, fetchKMSConfigList } = this.props;
-    deleteKMSConfig(configUUID);
-    if (configList.data.length <= 1) {
-      this.setState({ listView: false });
-    } else {
-      fetchKMSConfigList();
-    }
+    deleteKMSConfig(configUUID).then(() => {
+      if (configList.data.length <= 1) this.setState({ listView: false });
+      else fetchKMSConfigList();
+    });
   };
 
   /**
@@ -273,11 +386,14 @@ class KeyManagementConfiguration extends Component {
    */
   showListView = () => {
     this.setState({ listView: true });
-  }
+  };
 
   render() {
-    const { configList } = this.props;
+    const { configList, featureFlags } = this.props;
     const { listView, enabledIAMProfile } = this.state;
+    const isHCVaultEnabled = featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
+    if (!isHCVaultEnabled)
+      kmsConfigTypes = kmsConfigTypes.filter((config) => config.value !== 'HASHICORP');
 
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
       return <YBLoadingCircleIcon />;
@@ -290,37 +406,43 @@ class KeyManagementConfiguration extends Component {
           onDelete={this.deleteAuthConfig}
         />
       );
-
-    };
+    }
 
     const validationSchema = Yup.object().shape({
+      name: Yup.string().required('Name is Required'),
+      kmsProvider: Yup.object().required('Provider name is Required'),
       apiUrl: Yup.string(),
-
       apiKey: Yup.mixed().when('kmsProvider', {
-        is: (provider) => provider.value === 'SMARTKEY',
+        is: (provider) => provider?.value === 'SMARTKEY',
         then: Yup.mixed().required('API key is Required')
       }),
 
       accessKeyId: Yup.string().when('kmsProvider', {
-        is: (provider) => provider.value === 'AWS' && !enabledIAMProfile,
+        is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
         then: Yup.string().required('Access Key ID is Required')
       }),
 
       secretKeyId: Yup.string().when('kmsProvider', {
-        is: (provider) => provider.value === 'AWS' && !enabledIAMProfile,
+        is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
         then: Yup.string().required('Secret Key ID is Required')
       }),
+
       region: Yup.mixed().when('kmsProvider', {
-        is: (provider) => provider.value === 'AWS',
+        is: (provider) => provider?.value === 'AWS',
         then: Yup.mixed().required('AWS Region is Required')
       }),
-      cmkPolicyContent: Yup.string(),
 
-      name: Yup.string().when('kmsProvider', {
-        is: (provider) => provider.value !== null,
-        then: Yup.string().required('Name is Required')
+      v_address: Yup.mixed().when('kmsProvider', {
+        is: (provider) => provider?.value === 'HASHICORP',
+        then: Yup.mixed().required('Vault Address is Required')
       }),
 
+      v_token: Yup.mixed().when('kmsProvider', {
+        is: (provider) => provider?.value === 'HASHICORP',
+        then: Yup.mixed().required('Secret Token is Required')
+      }),
+
+      cmkPolicyContent: Yup.string(),
       cmkId: Yup.string()
     });
 
@@ -373,16 +495,8 @@ class KeyManagementConfiguration extends Component {
                 </Col>
               </Row>
               <div className="form-action-button-container">
-                <YBButton
-                  btnText="Save"
-                  btnClass="btn btn-orange"
-                  btnType="submit"
-                />
-                <YBButton
-                  btnText="Cancel"
-                  btnClass="btn btn-orange"
-                  onClick={this.showListView}
-                />
+                <YBButton btnText="Save" btnClass="btn btn-orange" btnType="submit" />
+                <YBButton btnText="Cancel" btnClass="btn btn-orange" onClick={this.showListView} />
               </div>
             </form>
           )}

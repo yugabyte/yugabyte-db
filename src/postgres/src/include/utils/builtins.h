@@ -78,6 +78,9 @@ extern text *cstring_to_text_with_len(const char *s, int len);
 extern char *text_to_cstring(const text *t);
 extern void text_to_cstring_buffer(const text *src, char *dst, size_t dst_len);
 
+/* pg_locale.c */
+extern bool lc_collate_is_c(Oid collation);
+
 #define CStringGetTextDatum(s) PointerGetDatum(cstring_to_text(s))
 #define TextDatumGetCString(d) text_to_cstring((text *) DatumGetPointer(d))
 

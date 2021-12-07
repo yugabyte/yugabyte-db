@@ -14,6 +14,7 @@ import * as Yup from 'yup';
 import _ from 'lodash';
 import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
+import { toast } from 'react-toastify';
 
 // TODO set predefined defaults another way not to share defaults this way
 const CHECK_INTERVAL_MS = 300000;
@@ -26,8 +27,7 @@ const validationSchema = Yup.object().shape({
     alertingEmail: Yup.string().nullable(), // This field can be one or more emails separated by commas
     checkIntervalMs: Yup.number().typeError('Must specify a number'),
     statusUpdateIntervalMs: Yup.number().typeError('Must specify a number'),
-    reportOnlyErrors: Yup.boolean().default(false).nullable(),
-    reportBackupFailures: Yup.boolean().default(false).nullable()
+    reportOnlyErrors: Yup.boolean().default(false).nullable()
   }),
   customSmtp: Yup.boolean(),
   smtpData: Yup.object().when('customSmtp', {
@@ -69,13 +69,12 @@ export default class AlertProfileForm extends Component {
   }
 
   componentDidUpdate() {
-    const { customerProfile, handleProfileUpdate } = this.props;
+    const { customerProfile } = this.props;
     const { statusUpdated } = this.state;
     if (
       statusUpdated &&
       (getPromiseState(customerProfile).isSuccess() || getPromiseState(customerProfile).isError())
     ) {
-      handleProfileUpdate(customerProfile.data);
       this.setState({ statusUpdated: false });
     }
   }
@@ -84,6 +83,7 @@ export default class AlertProfileForm extends Component {
     const { customer = {}, users = [], updateCustomerDetails } = this.props;
 
     showOrRedirect(customer.data.features, 'main.profile');
+    const isReadOnly = isDisabled(customer.data.features, 'health.configure');
 
     // Filter users for userUUID set during login
     const loginUserId = localStorage.getItem('userId');
@@ -110,8 +110,7 @@ export default class AlertProfileForm extends Component {
             : STATUS_UPDATE_INTERVAL_MS
           : '',
         sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
-        reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors,
-        reportBackupFailures: customer.data.alertingData && customer.data.alertingData.reportBackupFailures
+        reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors
       },
       customSmtp: isNonEmptyObject(_.get(customer, 'data.smtpData', {})),
       smtpData: {
@@ -148,6 +147,7 @@ export default class AlertProfileForm extends Component {
             updateCustomerDetails(data);
             this.setState({ statusUpdated: true });
             setSubmitting(false);
+            toast.success('Configuration updated successfully');
 
             // default form to new values to avoid unwanted validation of smtp fields when they are hidden
             resetForm(values);
@@ -164,6 +164,7 @@ export default class AlertProfileForm extends Component {
                     component={YBFormInput}
                     label="Alert emails"
                     placeholder="Emails to forward alerts to"
+                    disabled={isReadOnly}
                   />
                   <Field name="alertingData.sendAlertsToYb">
                     {({ field }) => (
@@ -174,6 +175,7 @@ export default class AlertProfileForm extends Component {
                           value: field.value,
                           onChange: field.onChange
                         }}
+                        isReadOnly={isReadOnly}
                         label="Send alert emails to YugaByte team"
                         subLabel="Whether or not to send alerting emails to the YugaByte team."
                       />
@@ -187,6 +189,7 @@ export default class AlertProfileForm extends Component {
                     onInputChanged={handleChange}
                     selectVal={values.callhomeLevel}
                     options={callhomeOptions}
+                    isReadOnly={isReadOnly}
                   />
                   <Field
                     name="alertingData.checkIntervalMs"
@@ -194,6 +197,7 @@ export default class AlertProfileForm extends Component {
                     component={YBFormInput}
                     label="Health check interval"
                     placeholder="Milliseconds to check universe status"
+                    disabled={isReadOnly}
                   />
                   <Field
                     name="alertingData.statusUpdateIntervalMs"
@@ -201,6 +205,7 @@ export default class AlertProfileForm extends Component {
                     component={YBFormInput}
                     label="Report email interval"
                     placeholder="Milliseconds to send a status report email"
+                    disabled={isReadOnly}
                   />
                   <Field name="alertingData.reportOnlyErrors">
                     {({ field }) => (
@@ -213,20 +218,7 @@ export default class AlertProfileForm extends Component {
                         }}
                         label="Only include errors in alert emails"
                         subLabel="Whether or not to include errors in alert emails."
-                      />
-                    )}
-                  </Field>
-                  <Field name="alertingData.reportBackupFailures">
-                    {({ field }) => (
-                      <YBToggle
-                        onToggle={handleChange}
-                        name="alertingData.reportBackupFailures"
-                        input={{
-                          value: field.value,
-                          onChange: field.onChange
-                        }}
-                        label="Send backup failure notification"
-                        subLabel="Whether or not to send an email if a backup task fails."
+                        isReadOnly={isReadOnly}
                       />
                     )}
                   </Field>
@@ -246,6 +238,7 @@ export default class AlertProfileForm extends Component {
                         }}
                         label={<h3>Custom SMTP Configuration</h3>}
                         subLabel="Whether or not to use custom SMTP Configuration."
+                        isReadOnly={isReadOnly}
                       />
                     )}
                   </Field>
@@ -256,6 +249,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Server"
                       placeholder="SMTP server address"
+                      disabled={isReadOnly}
                     />
                     <Field
                       name="smtpData.smtpPort"
@@ -263,6 +257,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Port"
                       placeholder="SMTP server port"
+                      disabled={isReadOnly}
                     />
                     <Field
                       name="smtpData.emailFrom"
@@ -270,6 +265,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Email From"
                       placeholder="Send outgoing emails from"
+                      disabled={isReadOnly}
                     />
                     <Field
                       name="smtpData.smtpUsername"
@@ -277,6 +273,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Username"
                       placeholder="SMTP server username"
+                      disabled={isReadOnly}
                     />
                     <Field
                       name="smtpData.smtpPassword"
@@ -285,6 +282,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Password"
                       placeholder="SMTP server password"
+                      disabled={isReadOnly}
                     />
                     <Field name="smtpData.useSSL">
                       {({ field }) => (
@@ -297,6 +295,7 @@ export default class AlertProfileForm extends Component {
                           }}
                           label="SSL"
                           subLabel="Whether or not to use SSL."
+                          isReadOnly={isReadOnly}
                         />
                       )}
                     </Field>
@@ -311,22 +310,25 @@ export default class AlertProfileForm extends Component {
                           }}
                           label="TLS"
                           subLabel="Whether or not to use TLS."
+                          isReadOnly={isReadOnly}
                         />
                       )}
                     </Field>
                   </div>
                 </Col>
               </Row>
+              {!isReadOnly && (
               <div className="form-action-button-container">
                 <Col sm={12}>
                   <YBButton
                     btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting || isDisabled(customer.data.features, 'universe.create')}
+                    disabled={isSubmitting}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>
               </div>
+              )}
             </Form>
           )}
         </Formik>

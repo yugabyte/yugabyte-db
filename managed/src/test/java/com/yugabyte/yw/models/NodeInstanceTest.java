@@ -4,16 +4,13 @@ package com.yugabyte.yw.models;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
-import java.util.List;
-import java.util.UUID;
-
-import org.junit.Before;
-import org.junit.Test;
-
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
-
+import java.util.List;
+import java.util.UUID;
+import org.junit.Before;
+import org.junit.Test;
 
 public class NodeInstanceTest extends FakeDBApplication {
   private Provider provider;
@@ -24,7 +21,7 @@ public class NodeInstanceTest extends FakeDBApplication {
   public void setUp() {
     provider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-    zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
   }
 
   private NodeInstance createNode() {
@@ -43,7 +40,7 @@ public class NodeInstanceTest extends FakeDBApplication {
 
     assertNotNull(node);
     assertEquals(defaultNodeName, node.getNodeName());
-    assertEquals(zone.uuid, node.zoneUuid);
+    assertEquals(zone.uuid, node.getZoneUuid());
 
     NodeInstanceFormData.NodeInstanceData details = node.getDetails();
     assertEquals("fake_ip", details.ip);
@@ -72,7 +69,7 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertEquals(nodes.size(), 0);
 
     // Update node to in use and confirm no more fetching.
-    node.inUse = true;
+    node.setInUse(true);
     node.save();
     nodes = NodeInstance.listByZone(zone.uuid, null);
     assertEquals(nodes.size(), 0);
@@ -105,10 +102,10 @@ public class NodeInstanceTest extends FakeDBApplication {
   public void testClearNodeDetails() {
     NodeInstance node = createNode();
     node.setNodeName("yb-universe-1-n1");
-    node.inUse = true;
+    node.setInUse(true);
     node.save();
     node.clearNodeDetails();
-    assertEquals(node.inUse, false);
+    assertEquals(node.isInUse(), false);
     assertEquals(node.getNodeName(), "");
   }
 

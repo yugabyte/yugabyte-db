@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import _ from 'lodash';
 import React, { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -8,6 +7,7 @@ import { FieldArray, SubmissionError } from 'redux-form';
 import { Link, withRouter } from 'react-router';
 
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { YBLoadingCircleIcon } from '../../common/indicators';
 import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
@@ -15,11 +15,17 @@ import { YBBreadcrumb } from '../../common/descriptors';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { YBCodeBlock } from '../../common/descriptors/index';
 import { YBConfirmModal } from '../../modals';
+import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
+import { DropdownButton, MenuItem } from 'react-bootstrap';
+
+const TIMEOUT_BEFORE_REFRESH = 2500;
+
+const PRECHECK_STATUS_ORDER = ['None', 'Initializing', 'Created', 'Running', 'Success', 'Failure'];
 
 class OnPremNodesList extends Component {
   constructor(props) {
     super(props);
-    this.state = { nodeToBeDeleted: {} };
+    this.state = { nodeToBeDeleted: {}, nodeToBePrechecked: {}, tasksPolling: false };
   }
 
   addNodeToList = () => {
@@ -41,11 +47,31 @@ class OnPremNodesList extends Component {
     this.props.hideDialog();
   };
 
+  showConfirmPrecheckModal(row) {
+    this.setState({ nodeToBePrechecked: row });
+    this.props.showConfirmPrecheckModal();
+  }
+
+  hidePrecheckNodeModal = () => {
+    this.setState({ nodeToBePrechecked: {} });
+    this.props.hideDialog();
+  };
+
+  precheckInstance = () => {
+    const row = this.state.nodeToBePrechecked;
+    if (!row.inUse) {
+      const onPremProvider = this.findProvider();
+      this.props.precheckInstance(onPremProvider.uuid, row.ip);
+
+      setTimeout(() => {
+        this.props.fetchCustomerTasks();
+      }, TIMEOUT_BEFORE_REFRESH);
+    }
+    this.hidePrecheckNodeModal();
+  };
+
   deleteInstance = () => {
-    const {
-      cloud: { providers }
-    } = this.props;
-    const onPremProvider = providers.data.find((provider) => provider.code === 'onprem');
+    const onPremProvider = this.findProvider();
     const row = this.state.nodeToBeDeleted;
     if (!row.inUse) {
       this.props.deleteInstance(onPremProvider.uuid, row.ip);
@@ -53,11 +79,18 @@ class OnPremNodesList extends Component {
     this.hideDeleteNodeModal();
   };
 
+  findProvider = () => {
+    const {
+      cloud: { providers }
+    } = this.props;
+    return providers.data.find((provider) => provider.code === 'onprem');
+  };
+
   submitAddNodesForm = (vals, dispatch, reduxProps) => {
     const {
-      cloud: { supportedRegionList, nodeInstanceList, accessKeys, providers }
+      cloud: { supportedRegionList, nodeInstanceList, accessKeys }
     } = this.props;
-    const onPremProvider = providers.data.find((provider) => provider.code === 'onprem');
+    const onPremProvider = this.findProvider();
     const self = this;
     const currentCloudRegions = supportedRegionList.data.filter(
       (region) => region.provider.code === 'onprem'
@@ -73,9 +106,9 @@ class OnPremNodesList extends Component {
     }, {});
 
     // function takes in node list and returns node object keyed by zone
-    const getInstancesKeyedByZone = function (instances, region, zoneList) {
+    const getInstancesKeyedByZone = (instances, region, zoneList) => {
       if (isNonEmptyArray(instances[region])) {
-        return instances[region].reduce(function (acc, val) {
+        return instances[region].reduce((acc, val) => {
           if (isNonEmptyObject(val) && isNonEmptyString(val.zone)) {
             const currentZone = val.zone.trim();
             const instanceName = isNonEmptyString(val.instanceName) ? val.instanceName.trim() : '';
@@ -111,22 +144,26 @@ class OnPremNodesList extends Component {
           return isNonEmptyObject(instanceListByZone) ? instanceListByZone : null;
         })
         .filter(Boolean);
-      const existingNodeIps = new Set(nodeInstanceList.data.map(instance => instance.details.ip.trim()));
-      const errors = { instances: {}};
-      Object.keys(vals.instances).forEach(region => {
+      const existingNodeIps = new Set(
+        nodeInstanceList.data.map((instance) => instance.details.ip.trim())
+      );
+      const errors = { instances: {} };
+      Object.keys(vals.instances).forEach((region) => {
         vals.instances[region].forEach((az, index) => {
           // Check if IP address is already in use by other node instance
-          if (existingNodeIps.has(az.instanceTypeIP.trim())) {
-            // If array exists then there are multiple errors
-            if (!Array.isArray(errors.instances[region])) {
-              errors.instances[region] = [];
+          if (az.instanceTypeIP) {
+            if (existingNodeIps.has(az.instanceTypeIP.trim())) {
+              // If array exists then there are multiple errors
+              if (!Array.isArray(errors.instances[region])) {
+                errors.instances[region] = [];
+              }
+              errors.instances[region][index] = {
+                instanceTypeIP: `Duplicate IP error: ${az.instanceTypeIP}`
+              };
+            } else {
+              // Add node instance to Set
+              existingNodeIps.add(az.instanceTypeIP.trim());
             }
-            errors.instances[region][index] = {
-              instanceTypeIP: `Duplicate IP error: ${az.instanceTypeIP}`
-            };
-          } else {
-            // Add node instance to Set
-            existingNodeIps.add(az.instanceTypeIP.trim());
           }
         });
       });
@@ -181,18 +218,66 @@ class OnPremNodesList extends Component {
     );
     this.props.getRegionListItems(onPremProvider.uuid);
     this.props.getInstanceTypeListItems(onPremProvider.uuid);
+    this.props.fetchCustomerTasks();
+  }
+
+  scheduleTasksPolling = () => {
+    if (!this.state.tasksPolling) {
+      this.timeout = setInterval(() => this.props.fetchCustomerTasks(), TASK_SHORT_TIMEOUT);
+      this.setState({ tasksPolling: true });
+    }
+  };
+
+  stopTasksPolling = () => {
+    if (this.state.tasksPolling) {
+      clearTimeout(this.timeout);
+      this.setState({ tasksPolling: false });
+    }
+  };
+
+  componentDidUpdate(prevProps) {
+    const { tasks } = this.props;
+    if (tasks && isNonEmptyArray(tasks.customerTaskList)) {
+      const activeTasks = tasks.customerTaskList.filter(
+        (task) =>
+          task.type === 'PrecheckNode' &&
+          (task.status === 'Running' || task.status === 'Initializing')
+      );
+      if (activeTasks.length > 0) {
+        this.scheduleTasksPolling();
+      } else {
+        this.stopTasksPolling();
+      }
+    }
   }
 
   render() {
     const {
-      cloud: { nodeInstanceList, instanceTypes, supportedRegionList, accessKeys, providers },
+      cloud: { nodeInstanceList, instanceTypes, supportedRegionList, accessKeys },
       handleSubmit,
+      tasks: { customerTaskList },
       showProviderView,
       visibleModal
     } = this.props;
     const self = this;
     let nodeListItems = [];
     if (getPromiseState(nodeInstanceList).isSuccess()) {
+      //finding prechecking tasks
+      const lastTasks = new Map();
+      if (isNonEmptyArray(customerTaskList)) {
+        customerTaskList
+          .filter((task) => task.type === 'PrecheckNode')
+          .sort((a, b) => b.createTime.localeCompare(a.createTime))
+          .forEach((task) => {
+            if (!lastTasks.has(task.targetUUID)) {
+              lastTasks.set(task.targetUUID, task);
+            }
+          });
+      }
+      const taskStatusOrder = (task) => {
+        const status = task ? task.status : 'None';
+        return PRECHECK_STATUS_ORDER.indexOf(status);
+      };
       nodeListItems = nodeInstanceList.data.map(function (item) {
         return {
           nodeId: item.nodeUuid,
@@ -203,30 +288,80 @@ class OnPremNodesList extends Component {
           region: item.details.region,
           zone: item.details.zone,
           zoneUuid: item.zoneUuid,
-          instanceName: item.instanceName
+          instanceName: item.instanceName,
+          precheckTask: lastTasks.get(item.nodeUuid),
+          precheckStatus: taskStatusOrder(lastTasks.get(item.nodeUuid))
         };
       });
     }
-    const removeNodeItem = function (cell, row) {
+
+    const renderIconByStatus = (task) => {
+      if (!task) {
+        return <div />;
+      }
+      const status = task.status;
+      const errorIcon = (
+        <i
+          className="fa fa-warning yb-fail-color precheck-status-container"
+          onClick={() => {
+            window.open(`/tasks/${task.id}`);
+          }}
+        />
+      );
+      if (status === 'Created' || status === 'Initializing') {
+        return <i className="fa fa-clock-o" />;
+      } else if (status === 'Success') {
+        return <i className="fa fa-check-circle yb-success-color" />;
+      } else if (status === 'Running') {
+        return <YBLoadingCircleIcon size="inline" />;
+      } else if (status === 'Failure') {
+        return errorIcon;
+      }
+      return errorIcon;
+    };
+
+    const isActive = (task) => {
+      if (!task) {
+        return false;
+      }
+      return !(task.status === 'Success' || task.status === 'Failure');
+    };
+
+    const precheckTaskItem = (cell, row) => {
       if (row) {
-        if (row.inUse) {
-          return <i className={`fa fa-trash remove-cell-container`} />;
-        } else {
-          return (
-            <i
-              className={`fa fa-trash remove-cell-container remove-cell-active`}
-              onClick={self.showConfirmDeleteModal.bind(self, row)}
-            />
-          );
-        }
+        return <div>{row.inUse ? '' : renderIconByStatus(row.precheckTask)}</div>;
       }
     };
 
+    const actionsList = (cell, row) => {
+      const precheckDisabled = row.inUse || isActive(row.precheckTask);
+      return (
+        <>
+          <DropdownButton
+            className="ckup-config-actions btn btn-default"
+            title="Actions"
+            id="bg-nested-dropdown"
+            pullRight
+          >
+            <MenuItem
+              onClick={self.showConfirmPrecheckModal.bind(self, row)}
+              disabled={precheckDisabled}
+            >
+              <i className="fa fa-play-circle-o" />
+              Perform check
+            </MenuItem>
+            <MenuItem onClick={self.showConfirmDeleteModal.bind(self, row)} disabled={row.inUse}>
+              <i className={`fa fa-trash`} />
+              Delete node
+            </MenuItem>
+          </DropdownButton>
+        </>
+      );
+    };
+
     let provisionMessage = <span />;
-    const onPremProvider = providers.data.find((provider) => provider.code === 'onprem');
-    let useHostname = false;
+    const onPremProvider = this.findProvider();
     if (isDefinedNotNull(onPremProvider)) {
-      useHostname = _.get(onPremProvider, 'config.USE_HOSTNAME', false) === 'true';
       const onPremKey = accessKeys.data.find(
         (accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid
       );
@@ -250,42 +385,45 @@ class OnPremNodesList extends Component {
       (region) => region.provider.code === 'onprem'
     );
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions)
-      ? currentCloudRegions.map(function (regionItem, idx) {
-          const zoneOptions = regionItem.zones.map(function (zoneItem, zoneIdx) {
-            return (
-              <option key={zoneItem + zoneIdx} value={zoneItem.code}>
-                {zoneItem.code}
+      ? currentCloudRegions
+          .filter((regionItem) => regionItem.active)
+          .map(function (regionItem, idx) {
+            const zoneOptions = regionItem.zones
+              .filter((zoneItem) => zoneItem.active)
+              .map(function (zoneItem, zoneIdx) {
+                return (
+                  <option key={zoneItem + zoneIdx} value={zoneItem.code}>
+                    {zoneItem.code}
+                  </option>
+                );
+              });
+            const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
+              return (
+                <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
+                  {machineTypeItem.instanceTypeCode}
+                </option>
+              );
+            });
+            zoneOptions.unshift(
+              <option key={-1} value={''}>
+                Select
               </option>
             );
-          });
-          const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
-            return (
-              <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
-                {machineTypeItem.instanceTypeCode}
+            machineTypeOptions.unshift(
+              <option key={-1} value={''}>
+                Select
               </option>
             );
-          });
-          zoneOptions.unshift(
-            <option key={-1} value={''}>
-              Select
-            </option>
-          );
-          machineTypeOptions.unshift(
-            <option key={-1} value={''}>
-              Select
-            </option>
-          );
-          return (
-            <div key={`instance${idx}`}>
-              <div className="instance-region-type">{regionItem.code}</div>
-              <div className="form-field-grid">
-                <FieldArray
-                  name={`instances.${regionItem.code}`}
-                  component={InstanceTypeForRegion}
-                  zoneOptions={zoneOptions}
-                  machineTypeOptions={machineTypeOptions}
-                  useHostname={useHostname}
-                  formType={'modal'}
+            return (
+              <div key={`instance${idx}`}>
+                <div className="instance-region-type">{regionItem.code}</div>
+                <div className="form-field-grid">
+                  <FieldArray
+                    name={`instances.${regionItem.code}`}
+                    component={InstanceTypeForRegion}
+                    zoneOptions={zoneOptions}
+                    machineTypeOptions={machineTypeOptions}
+                    formType={'modal'}
                 />
               </div>
             </div>
@@ -297,7 +435,10 @@ class OnPremNodesList extends Component {
         ? ' ' + this.state.nodeToBeDeleted.nodeName
         : ''
     }?`;
-    const modalAddressSpecificText = useHostname ? 'hostnames' : 'IP addresses';
+    const precheckConfirmationText = `Are you sure you want to run precheck on node${
+      isNonEmptyObject(this.state.nodeToBePrechecked) ? ' ' + this.state.nodeToBePrechecked.ip : ''
+    }?`;
+    const modalAddressSpecificText = 'IP addresses/hostnames';
     return (
       <div className="onprem-node-instances">
         <span className="buttons pull-right">
@@ -329,6 +470,9 @@ class OnPremNodesList extends Component {
               <TableHeaderColumn dataField="ip" dataSort>
                 Address
               </TableHeaderColumn>
+              <TableHeaderColumn dataField="precheckStatus" dataFormat={precheckTaskItem} dataSort>
+                Preflight Check
+              </TableHeaderColumn>
               <TableHeaderColumn dataField="inUse" dataFormat={this.handleCheckNodesUsage} dataSort>
                 Universe Name
               </TableHeaderColumn>
@@ -341,7 +485,14 @@ class OnPremNodesList extends Component {
               <TableHeaderColumn dataField="instanceType" dataSort>
                 Instance Type
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="" dataFormat={removeNodeItem} />
+              <TableHeaderColumn
+                dataField=""
+                dataFormat={actionsList}
+                columnClassName="yb-actions-cell"
+                className="yb-actions-cell"
+              >
+                Actions
+              </TableHeaderColumn>
             </BootstrapTable>
           </Col>
         </Row>
@@ -367,10 +518,22 @@ class OnPremNodesList extends Component {
           currentModal={'confirmDeleteNodeInstance'}
           visibleModal={visibleModal}
           onConfirm={this.deleteInstance}
-          confirmLabel={'Delete'}
-          cancelLabel={'Cancel'}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
         >
           {deleteConfirmationText}
+        </YBConfirmModal>
+        <YBConfirmModal
+          name={'confirmPrecheckNodeInstance'}
+          title={'Perform preflight check'}
+          hideConfirmModal={this.hidePrecheckNodeModal}
+          currentModal={'confirmPrecheckNodeInstance'}
+          visibleModal={visibleModal}
+          onConfirm={this.precheckInstance}
+          confirmLabel="Apply"
+          cancelLabel="Cancel"
+        >
+          {precheckConfirmationText}
         </YBConfirmModal>
       </div>
     );

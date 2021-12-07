@@ -13,6 +13,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master.pb.h"
+#include "yb/util/trace.h"
 
 using std::set;
 
@@ -66,6 +67,16 @@ std::string UniverseReplicationInfo::ToString() const {
   return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
+void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  setup_universe_replication_error_ = status;
+}
+
+Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return setup_universe_replication_error_;
+}
+
 ////////////////////////////////////////////////////////////
 // SnapshotInfo
 ////////////////////////////////////////////////////////////
@@ -101,13 +112,6 @@ void SnapshotInfo::AddEntries(
   SysSnapshotEntryPB& pb = mutable_metadata()->mutable_dirty()->pb;
   AddEntries(
       table_description, pb.mutable_entries(), pb.mutable_tablet_snapshots(), added_namespaces);
-}
-
-template <class Info>
-auto AddInfoEntry(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* out) {
-  auto lock = info->LockForRead();
-  FillInfoEntry(*info, out->Add());
-  return lock;
 }
 
 void SnapshotInfo::AddEntries(

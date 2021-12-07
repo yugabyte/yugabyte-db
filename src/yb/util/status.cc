@@ -18,21 +18,17 @@
 //
 
 // Portions Copyright (c) YugaByte, Inc.
-
 #include "yb/util/status.h"
 
-#include <stdio.h>
-#include <stdint.h>
-
+#include <array>
+#include <atomic>
 #include <regex>
-#include <unordered_map>
 
-#include <boost/optional.hpp>
-
-#include "yb/gutil/strings/fastmem.h"
-#include "yb/util/locks.h"
-#include "yb/util/malloc.h"
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/malloc.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
 
 namespace yb {
 
@@ -369,9 +365,9 @@ Status::Status(Code code,
                const char* file_name,
                int line_number,
                const Slice& msg,
-               const Slice& errors,
+               const Slice& error,
                DupFileName dup_file_name)
-    : state_(State::Create(code, file_name, line_number, msg, Slice(), errors, dup_file_name)) {
+    : state_(State::Create(code, file_name, line_number, msg, Slice(), error, dup_file_name)) {
 }
 
 Status::Status(StatePtr state)
@@ -380,6 +376,23 @@ Status::Status(StatePtr state)
 
 Status::Status(YBCStatusStruct* state, AddRef add_ref)
     : state_(pointer_cast<State*>(state), add_ref) {
+}
+
+Status::Status(Code code,
+               const char* file_name,
+               int line_number,
+               const StatusErrorCode& error,
+               DupFileName dup_file_name)
+    : Status(code, file_name, line_number, error.Message(), Slice(), error, dup_file_name) {
+}
+
+Status::Status(Code code,
+       const char* file_name,
+       int line_number,
+       const Slice& msg,
+       const StatusErrorCode& error,
+       DupFileName dup_file_name)
+    : Status(code, file_name, line_number, msg, error.Message(), error, dup_file_name) {
 }
 
 YBCStatusStruct* Status::RetainStruct() const {
@@ -393,13 +406,13 @@ YBCStatusStruct* Status::DetachStruct() {
   return pointer_cast<YBCStatusStruct*>(state_.detach());
 }
 
-#define YB_STATUS_RETURN_MESSAGE(name, pb_name, value, message) \
-    case Status::BOOST_PP_CAT(k, name): \
-      return message;
-
 const char* Status::CodeAsCString() const {
   switch (code()) {
-    BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_RETURN_MESSAGE, YB_STATUS_CODES)
+  #define YB_STATUS_CODE(name, pb_name, value, message) \
+    case Status::BOOST_PP_CAT(k, name): \
+      return message;
+  #include "yb/util/status_codes.h"
+  #undef YB_STATUS_CODE
   }
   return nullptr;
 }
@@ -601,6 +614,14 @@ const std::string& Status::CategoryName(uint8_t category) {
 
 StatusCategoryRegisterer::StatusCategoryRegisterer(const StatusCategoryDescription& description) {
   Status::RegisterCategory(description);
+}
+
+std::string StringVectorBackedErrorTag::DecodeToString(const uint8_t* source) {
+  return AsString(Decode(source));
+}
+
+void StatusCheck(bool value) {
+  CHECK(value);
 }
 
 }  // namespace yb

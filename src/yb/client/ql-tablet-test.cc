@@ -17,30 +17,46 @@
 #include <thread>
 
 #include <boost/optional/optional.hpp>
-#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_key.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/integration-tests/test_workload.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_defaults.h"
 
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_retention_policy.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/types.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/skewed_clock.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -48,9 +64,10 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/random_util.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -71,6 +88,8 @@ DECLARE_int32(memstore_size_mb);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_bool(TEST_allow_stop_writes);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(ysql_num_shards_per_tserver);
+DECLARE_int32(transaction_table_num_tablets_per_tserver);
 DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
 DECLARE_bool(TEST_log_cache_skip_eviction);
 DECLARE_uint64(sst_files_hard_limit);
@@ -80,6 +99,9 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+DECLARE_int32(TEST_backfill_sabotage_frequency);
+DECLARE_string(regular_tablets_data_block_key_value_encoding);
+DECLARE_string(compression_type);
 
 namespace yb {
 namespace client {
@@ -120,13 +142,20 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     CreateTable(kTable2Name, &table2_);
   }
 
-  void SetValue(const YBSessionPtr& session, int32_t key, int32_t value, const TableHandle& table) {
+  std::shared_ptr<YBqlWriteOp> CreateSetValueOp(
+      int32_t key, int32_t value, const TableHandle& table) {
     const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table.AddInt32ColumnValue(req, kValueColumn, value);
+    return op;
+  }
+
+  void SetValue(const YBSessionPtr& session, int32_t key, int32_t value, const TableHandle& table) {
+    auto op = CreateSetValueOp(key, value, table);
     ASSERT_OK(session->ApplyAndFlush(op));
-    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
+        << op->response().error_message();
   }
 
   boost::optional<int32_t> GetValue(
@@ -147,13 +176,20 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return client::CreateReadOp(key, table, kValueColumn);
   }
 
-  void CreateTable(const YBTableName& table_name, TableHandle* table, int num_tablets = 0) {
+  void CreateTable(
+      const YBTableName& table_name, TableHandle* table, int num_tablets = 0,
+      bool transactional = false) {
     YBSchemaBuilder builder;
     builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
     builder.AddColumn(kValueColumn)->Type(INT32);
 
     if (num_tablets == 0) {
       num_tablets = CalcNumTablets(3);
+    }
+    if (transactional) {
+      TableProperties table_properties;
+      table_properties.SetTransactional(true);
+      builder.SetTableProperties(table_properties);
     }
     ASSERT_OK(table->Create(table_name, num_tablets, client_.get(), &builder));
   }
@@ -175,6 +211,22 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     ASSERT_OK(WaitSync(begin, end, table));
   }
 
+  CHECKED_STATUS BatchedFillTable(
+      const int begin, const int end, const int batch_size, const TableHandle& table) {
+    {
+      auto session = CreateSession();
+      for (int i = begin; i != end; ++i) {
+        auto op = CreateSetValueOp(i, ValueForKey(i), table);
+        if ((i - begin + 1) % batch_size == 0 || i == end) {
+          RETURN_NOT_OK(session->ApplyAndFlush(op));
+        } else {
+          session->Apply(op);
+        }
+      }
+    }
+    return WaitSync(begin, end, table);
+  }
+
   void VerifyTable(int begin, int end, const TableHandle& table) {
     auto session = CreateSession();
     for (int i = begin; i != end; ++i) {
@@ -184,35 +236,46 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     }
   }
 
-  CHECKED_STATUS WaitSync(int begin, int end, const TableHandle& table) {
-    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+  typedef std::pair<std::vector<std::string>, std::unordered_set<std::string>> TabletIdsAndReplicas;
 
-    master::GetTableLocationsRequestPB req;
-    master::GetTableLocationsResponsePB resp;
-    req.set_max_returned_locations(std::numeric_limits<uint32_t>::max());
-    table->name().SetIntoTableIdentifierPB(req.mutable_table());
-    RETURN_NOT_OK(
-        cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
-    std::vector<master::TabletLocationsPB> tablets;
+  Result<TabletIdsAndReplicas> GetTabletIdsAndReplicas(const TableHandle& table) {
+    std::vector<std::string> tablet_ids;
     std::unordered_set<std::string> replicas;
-    for (const auto& tablet : resp.tablet_locations()) {
-      tablets.emplace_back(tablet);
-      for (const auto& replica : tablet.replicas()) {
-        replicas.insert(replica.ts_info().permanent_uuid());
+
+    auto tablet_infos = GetTabletInfos(table.name());
+    if (!tablet_infos) {
+      return STATUS_FORMAT(NotFound,
+                           "No tablet information found for $0",
+                           table->name());
+    }
+    for (auto tablet_info : *tablet_infos) {
+      tablet_ids.emplace_back(tablet_info->tablet_id());
+      auto replica_map = tablet_info->GetReplicaLocations();
+      for (auto it = replica_map->begin(); it != replica_map->end(); it++) {
+        replicas.insert(it->first);
       }
     }
+    return TabletIdsAndReplicas(tablet_ids, replicas);
+  }
+
+  CHECKED_STATUS WaitSync(int begin, int end, const TableHandle& table) {
+    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+    TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
+    std::vector<std::string> tablet_ids = info.first;
+    std::unordered_set<std::string> replicas = info.second;
     for (const auto& replica : replicas) {
-      RETURN_NOT_OK(DoWaitSync(deadline, tablets, replica, begin, end, table));
+      RETURN_NOT_OK(DoWaitSync(deadline, tablet_ids, replica, begin, end, table));
     }
     return Status::OK();
   }
 
-  CHECKED_STATUS DoWaitSync(const MonoTime& deadline,
-                            const std::vector<master::TabletLocationsPB>& tablets,
-                            const std::string& replica,
-                            int begin,
-                            int end,
-                            const TableHandle& table) {
+  CHECKED_STATUS DoWaitSync(
+      const MonoTime& deadline,
+      const std::vector<std::string>& tablet_ids,
+      const std::string& replica,
+      int begin,
+      int end,
+      const TableHandle& table) {
     auto tserver = cluster_->find_tablet_server(replica);
     if (!tserver) {
       return STATUS_FORMAT(NotFound, "Tablet server for $0 not found", replica);
@@ -224,7 +287,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     auto condition = [&]() -> Result<bool> {
       for (int i = begin; i != end; ++i) {
         bool found = false;
-        for (const auto& tablet : tablets) {
+        for (const std::string& tablet_id : tablet_ids) {
           tserver::ReadRequestPB req;
           {
             std::string partition_key;
@@ -237,11 +300,12 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
             ql_batch->set_max_hash_code(hash_code);
           }
 
-          tserver::ReadResponsePB resp;
           rpc::RpcController controller;
           controller.set_timeout(MonoDelta::FromSeconds(1));
-          req.set_tablet_id(tablet.tablet_id());
+          req.set_tablet_id(tablet_id);
           req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+
+          tserver::ReadResponsePB resp;
           proxy->Read(req, &resp, &controller);
 
           const auto& ql_batch = resp.ql_batch(0);
@@ -250,8 +314,14 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
                                  "Bad resp status: $0",
                                  QLResponsePB_QLStatus_Name(ql_batch.status()));
           }
-          std::shared_ptr<std::vector<ColumnSchema>>
-            columns = std::make_shared<std::vector<ColumnSchema>>(table->schema().columns());
+          Schema projection;
+          vector<ColumnId> column_refs;
+          column_refs.emplace_back(table.ColumnId(kValueColumn));
+          Schema total_schema = client::internal::GetSchema(table->schema());
+          RETURN_NOT_OK(total_schema.CreateProjectionByIdsIgnoreMissing(column_refs, &projection));
+          std::shared_ptr<std::vector<ColumnSchema>> columns =
+              std::make_shared<std::vector<ColumnSchema>>(YBSchema(projection).columns());
+
           Slice data = VERIFY_RESULT(controller.GetSidecar(ql_batch.rows_data_sidecar()));
           yb::ql::RowsResult result(table->name(), columns, data.ToBuffer());
           auto row_block = result.GetRowBlock();
@@ -279,12 +349,76 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Wait(condition, deadline, "Waiting for replication");
   }
 
+  CHECKED_STATUS VerifyConsistency(
+      int begin, int end, const TableHandle& table, int expected_rows_mismatched = 0) {
+    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+    TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
+    std::vector<std::string> tablet_ids = info.first;
+    std::unordered_set<std::string> replicas = info.second;
+
+    for (const auto& replica : replicas) {
+      RETURN_NOT_OK(
+          DoVerify(deadline, tablet_ids, replica, begin, end, table, expected_rows_mismatched));
+    }
+    return Status::OK();
+  }
+
+  CHECKED_STATUS DoVerify(
+      const MonoTime& deadline,
+      const std::vector<std::string>& tablet_ids,
+      const std::string& replica,
+      const int begin,
+      const int end,
+      const TableHandle& table,
+      const int expected_rows_mismatched) {
+    auto tserver = cluster_->find_tablet_server(replica);
+    if (!tserver) {
+      return STATUS_FORMAT(NotFound, "Tablet server for $0 not found", replica);
+    }
+    auto endpoint = tserver->server()->rpc_server()->GetBoundAddresses().front();
+    auto proxy = std::make_unique<tserver::TabletServerServiceProxy>(
+        &tserver->server()->proxy_cache(), HostPort::FromBoundEndpoint(endpoint));
+
+    CHECK_EQ(tablet_ids.size(), 1);
+    for (const string& tablet_id : tablet_ids) {
+      tserver::VerifyTableRowRangeRequestPB req;
+      tserver::VerifyTableRowRangeResponsePB resp;
+
+      req.set_tablet_id(tablet_id);
+      req.set_num_rows(end - begin + 1);
+      req.clear_start_key();  // empty string indicates start scan from start
+      // read_time: if left empty, the safe time retrieved will be used instead
+
+      rpc::RpcController controller;
+      controller.set_deadline(deadline);
+      RETURN_NOT_OK(proxy->VerifyTableRowRange(req, &resp, &controller));
+
+      if (resp.consistency_stats().size() == 0) {
+        return STATUS_FORMAT(
+            NotFound,
+            "Individual index consistency state missing for table $0.",
+            table.table()->id());
+      }
+      for (auto it = resp.consistency_stats().begin(); it != resp.consistency_stats().end(); it++) {
+        if (it->second != expected_rows_mismatched) {
+          return STATUS_FORMAT(
+              Corruption,
+              "Incorrect number of rows reported to be dropped for index $0 built on table $1:"
+              "found $2 rows reported when $3 rows mismatched was expected.",
+              it->first, table.table()->id(), it->second, expected_rows_mismatched);
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
   CHECKED_STATUS Import() {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
     EXPECT_OK(cluster_->FlushTablets());
 
-    auto source_infos = GetTabletInfos(kTable1Name);
-    auto dest_infos = GetTabletInfos(kTable2Name);
+    auto source_infos = VERIFY_RESULT(GetTabletInfos(kTable1Name));
+    auto dest_infos = VERIFY_RESULT(GetTabletInfos(kTable2Name));
     EXPECT_EQ(source_infos.size(), dest_infos.size());
     for (size_t i = 0; i != source_infos.size(); ++i) {
       std::string start1, end1, start2, end2;
@@ -323,23 +457,20 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  scoped_refptr<master::TableInfo> GetTableInfo(const YBTableName& table_name) {
-    auto* catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
-    auto all_tables = catalog_manager->GetTables(master::GetTablesMode::kAll);
+  Result<scoped_refptr<master::TableInfo>> GetTableInfo(const YBTableName& table_name) {
+    auto& catalog_manager =
+        VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    auto all_tables = catalog_manager.GetTables(master::GetTablesMode::kAll);
     for (const auto& table : all_tables) {
       if (table->name() == table_name.table_name()) {
         return table;
       }
     }
-    return nullptr;
+    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
   }
 
-  std::vector<scoped_refptr<master::TabletInfo>> GetTabletInfos(const YBTableName& table_name) {
-    auto table_info = GetTableInfo(table_name);
-    EXPECT_NE(nullptr, table_info);
-    std::vector<scoped_refptr<master::TabletInfo>> tablets;
-    table_info->GetAllTablets(&tablets);
-    return tablets;
+  Result<master::TabletInfos> GetTabletInfos(const YBTableName& table_name) {
+    return VERIFY_RESULT(GetTableInfo(table_name))->GetTablets();
   }
 
   Status WaitForTableCreation(const YBTableName& table_name,
@@ -352,7 +483,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
       auto master_proxy = std::make_shared<master::MasterServiceProxy>(
           &client_->proxy_cache(),
-          cluster_->leader_mini_master()->bound_rpc_addr());
+          VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
       rpc::RpcController rpc;
       rpc.set_timeout(MonoDelta::FromSeconds(30));
 
@@ -362,6 +493,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   void TestDeletePartialKey(int num_range_keys_in_delete);
+
+  void CreateAndVerifyIndexConsistency(int expected_number_rows_mismatched);
 
   TableHandle table1_;
   TableHandle table2_;
@@ -426,8 +559,37 @@ TEST_F(QLTabletTest, OverlappedImport) {
   ASSERT_NOK(Import());
 }
 
+void QLTabletTest::CreateAndVerifyIndexConsistency(const int expected_number_rows_mismatched) {
+  CreateTable(kTable1Name, &table1_, 1, true);
+  FillTable(0, kTotalKeys, table1_);
+
+  TableHandle index_table;
+  kv_table_test::CreateIndex(
+      yb::client::Transactional::kTrue, 1, false, table1_, client_.get(), &index_table);
+
+  ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+      kTable1Name, index_table.name(), INDEX_PERM_READ_WRITE_AND_DELETE, 100ms /* max_wait */));
+  ASSERT_OK(VerifyConsistency(
+      0, kTotalKeys - 1, table1_,
+      expected_number_rows_mismatched));  // no missing indexed rows check
+  ASSERT_OK(VerifyConsistency(
+      0, kTotalKeys - 1, index_table, expected_number_rows_mismatched));  // no orphans check
+}
+
+TEST_F(QLTabletTest, VerifyIndexRange) { CreateAndVerifyIndexConsistency(0); }
+
+TEST_F(QLTabletTest, VerifyIndexRangeWithInconsistentTable) {
+  FLAGS_TEST_backfill_sabotage_frequency = 10;
+  const int kRowsDropped = kTotalKeys / FLAGS_TEST_backfill_sabotage_frequency;
+  CreateAndVerifyIndexConsistency(kRowsDropped);
+}
+
 // Test expected number of tablets for transactions table - added for #2293.
 TEST_F(QLTabletTest, TransactionsTableTablets) {
+  FLAGS_yb_num_shards_per_tserver = 1;
+  FLAGS_ysql_num_shards_per_tserver = 2;
+  FLAGS_transaction_table_num_tablets_per_tserver = 4;
+
   YBSchemaBuilder builder;
   builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
   builder.AddColumn(kValueColumn)->Type(INT32);
@@ -441,13 +603,16 @@ TEST_F(QLTabletTest, TransactionsTableTablets) {
   ASSERT_OK(table.Create(kTable1Name, 8, client_.get(), &builder));
 
   // Wait for transactions table to be created.
-  YBTableName table_name(YQL_DATABASE_CQL, master::kSystemNamespaceName, kTransactionsTableName);
+  YBTableName table_name(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
   master::IsCreateTableDoneResponsePB resp;
   ASSERT_OK(WaitForTableCreation(table_name, &resp));
   ASSERT_TRUE(resp.done());
 
-  auto tablets = GetTabletInfos(table_name);
-  ASSERT_EQ(tablets.size(), cluster_->num_tablet_servers() * FLAGS_yb_num_shards_per_tserver);
+  auto tablets = ASSERT_RESULT(GetTabletInfos(table_name));
+  ASSERT_EQ(
+      tablets.size(),
+      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver);
 }
 
 void DoStepDowns(MiniCluster* cluster) {
@@ -459,8 +624,7 @@ void DoStepDowns(MiniCluster* cluster) {
 
 void VerifyLogIndicies(MiniCluster* cluster) {
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
 
     for (const auto& peer : peers) {
       int64_t index = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
@@ -561,8 +725,8 @@ TEST_F(QLTabletTest, WaitFlush) {
   std::vector<tablet::TabletPeerPtr> peers;
 
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> tserver_peers;
-    cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&tserver_peers);
+    auto tserver_peers =
+        cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(tserver_peers.size(), 1);
     peers.push_back(tserver_peers.front());
   }
@@ -643,8 +807,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
   std::this_thread::sleep_for(kSleepTime);
 
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(1, peers.size());
     auto& peer = *peers[0];
     auto op_id = peer.log()->GetLatestEntryOpId();
@@ -756,7 +919,7 @@ TEST_F(QLTabletTest, LeaderChange) {
   table.SetInt32Condition(
     req->mutable_if_expr()->mutable_condition(), kValueColumn, QL_OP_EQUAL, kValue1);
   req->mutable_column_refs()->add_ids(table.ColumnId(kValueColumn));
-  ASSERT_OK(session->Apply(write_op));
+  session->Apply(write_op);
 
   SetAtomicFlag(30000, &FLAGS_TEST_delay_execute_async_ms);
   auto flush_future = session->FlushFuture();
@@ -839,7 +1002,7 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
       for (int i = 0; i != num_range_keys_in_delete; ++i) {
         QLAddInt32RangeValue(req, key);
       }
-      ASSERT_OK(session1->Apply(op_del));
+      session1->Apply(op_del);
     }
 
     const auto op_update = table.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
@@ -850,7 +1013,7 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
       QLAddInt32RangeValue(req, key);
       table.AddInt32ColumnValue(req, kValueColumn, kValue2);
       req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_EXISTS);
-      ASSERT_OK(session2->Apply(op_update));
+      session2->Apply(op_update);
     }
     auto future_del = session1->FlushFuture();
     auto future_update = session2->FlushFuture();
@@ -972,7 +1135,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
   QLAddInt32HashValue(req, 42);
   auto session = CreateSession();
   table.AddStringColumnValue(req, kValueColumn, std::string(kValueSize, 'X'));
-  ASSERT_OK(session->Apply(op));
+  session->Apply(op);
   auto future = session->FlushFuture();
   auto server_tracker = MemTracker::GetRootTracker()->FindChild("server 1");
   auto tablets_tracker = server_tracker->FindChild("Tablets");
@@ -1465,6 +1628,62 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
 
     ASSERT_OK(cluster_->RestartSync());
   }
+}
+
+TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
+  constexpr auto kNumRows = 4000;
+  constexpr auto kNumRowsPerBatch = 100;
+  // We are testing delta encoding, but not compression.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_compression_type) = "NoCompression";
+
+  struct SstSizes {
+    size_t regular_table = 0;
+    size_t index_table = 0;
+  };
+  std::unordered_map<rocksdb::KeyValueEncodingFormat, SstSizes, EnumHash> sst_sizes;
+
+  constexpr auto kEncodingSharedPrefix =
+      rocksdb::KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
+  constexpr auto kEncodingThreeSharedParts =
+      rocksdb::KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
+
+  for (auto encoding : {kEncodingSharedPrefix, kEncodingThreeSharedParts}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_regular_tablets_data_block_key_value_encoding) =
+        KeyValueEncodingFormatToString(encoding);
+    const YBTableName table_name(
+        YQL_DATABASE_CQL, "my_keyspace", Format("ql_client_test_table_$0", encoding));
+    TableHandle table;
+    CreateTable(table_name, &table, /* num_tablets = */ 1);
+    ASSERT_OK(BatchedFillTable(/* begin = */ 0, /* end = */ kNumRows, kNumRowsPerBatch, table));
+
+    TableHandle index_table;
+    kv_table_test::CreateIndex(
+        yb::client::Transactional::kTrue, /* indexed_column_index = */ 1,
+        /* use_mangled_names = */ false, table, client_.get(), &index_table);
+    ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, index_table.name(), INDEX_PERM_READ_WRITE_AND_DELETE, /* max_wait = */ 10s));
+
+    ASSERT_OK(cluster_->FlushTablets());
+
+    auto get_tablet_size = [](tablet::Tablet* tablet) -> Result<size_t> {
+      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
+      RETURN_NOT_OK(tablet->ForceFullRocksDBCompact());
+      return tablet->GetCurrentVersionSstFilesSize();
+    };
+
+    for (const auto& tablet_peer : ListTableTabletPeers(cluster_.get(), table->id())) {
+      sst_sizes[encoding].regular_table += ASSERT_RESULT(get_tablet_size(tablet_peer->tablet()));
+    }
+    for (const auto& tablet_peer : ListTableTabletPeers(cluster_.get(), index_table->id())) {
+      sst_sizes[encoding].index_table += ASSERT_RESULT(get_tablet_size(tablet_peer->tablet()));
+    }
+  }
+  ASSERT_GT(
+      1.0 * sst_sizes[kEncodingSharedPrefix].regular_table /
+          sst_sizes[kEncodingThreeSharedParts].regular_table,
+      1.3);
+  ASSERT_EQ(sst_sizes[kEncodingSharedPrefix].index_table,
+            sst_sizes[kEncodingThreeSharedParts].index_table);
 }
 
 } // namespace client

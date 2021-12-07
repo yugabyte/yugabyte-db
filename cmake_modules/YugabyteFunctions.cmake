@@ -74,6 +74,7 @@ function(ENFORCE_OUT_OF_SOURCE_BUILD)
 endfunction()
 
 function(DETECT_BREW)
+  EXPECT_COMPILER_TYPE_TO_BE_SET()
   if(NOT DEFINED IS_CLANG)
     message(FATAL_ERROR "IS_CLANG undefined")
   endif()
@@ -96,7 +97,10 @@ function(DETECT_BREW)
      # In practice, we only use Linuxbrew with Clang 7.x.
      (NOT IS_CLANG OR "${COMPILER_VERSION}" VERSION_LESS "8.0.0") AND
      # In practice, we only use Linuxbrew with GCC 5.x.
-     (NOT IS_GCC OR "${COMPILER_VERSION}" VERSION_LESS "6.0.0"))
+     (NOT IS_GCC OR "${COMPILER_VERSION}" VERSION_LESS "6.0.0") AND
+     # Only a few compiler types could be used with Linuxbrew. The "clang7" compiler type is
+     # explicitly NOT included.
+     ("${YB_COMPILE_TYPE}" MATCHES "^(gcc|gcc5|clang)$"))
     message("Trying to detect whether we should use Linuxbrew. "
             "IS_CLANG=${IS_CLANG}, "
             "IS_GCC=${IS_GCC}, "
@@ -159,6 +163,13 @@ function(INIT_COMPILER_TYPE_FROM_BUILD_ROOT)
 endfunction()
 
 # Makes sure that we are using a supported compiler family.
+function(EXPECT_COMPILER_TYPE_TO_BE_SET)
+  if (NOT DEFINED YB_COMPILER_TYPE OR "${YB_COMPILER_TYPE}" STREQUAL "")
+    message(FATAL_ERROR "The YB_COMPILER_TYPE CMake variable is not set or is empty")
+  endif()
+endfunction()
+
+# Makes sure that we are using a supported compiler family.
 function(VALIDATE_COMPILER_TYPE)
   if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
     set(ENV{YB_COMPILER_TYPE} "${COMPILER_FAMILY}")
@@ -204,28 +215,52 @@ endfunction()
 # Linker flags applied to both executables and shared libraries. We append this both to
 # CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
 # These flags apply to both YB and RocksDB parts of the codebase.
-function(ADD_LINKER_FLAGS FLAGS)
+#
+# This is an internal macro that modifies variables at the parent scope, which is really the parent
+# scope of the functions calling it, i.e. function caller's scope.
+macro(_ADD_LINKER_FLAGS_MACRO FLAGS)
   if ($ENV{YB_VERBOSE})
     message("Adding to linker flags: ${FLAGS}")
   endif()
+
+  # We must set these variables in both current and parent scope, because this macro can be called
+  # multiple times from the same function.
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}")
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+endmacro()
+
+# Check if the given directory is not an empty string and also warn if it does not exist.
+function(_CHECK_LIB_DIR DIR_PATH DESCRIPTION)
+  if (DIR_PATH STREQUAL "")
+    message(FATAL_ERROR "Trying to add an empty ${DESCRIPTION}.")
+  endif()
+  if(NOT EXISTS "${DIR_PATH}")
+    message(
+      WARNING
+      "Adding a non-existent ${DESCRIPTION} '${DIR_PATH}'. "
+      "This might be OK in case the directory is created during the build.")
+  endif()
+endfunction()
+
+function(ADD_LINKER_FLAGS FLAGS)
+  _ADD_LINKER_FLAGS_MACRO("${FLAGS}")
 endfunction()
 
 function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
-  if (RPATH_ENTRY STREQUAL "")
-    message(FATAL_ERROR "Trying to add an empty rpath entry.")
-  endif()
-  if(NOT EXISTS "${RPATH_ENTRY}")
-    message(
-      WARNING
-      "Adding a non-existent rpath directory '${RPATH_ENTRY}'. This might be OK in case the "
-      "directory is created during the build.")
-  endif()
+  _CHECK_LIB_DIR("${RPATH_ENTRY}" "rpath entry")
   message("Adding a global rpath entry: ${RPATH_ENTRY}")
-  set(FLAGS "-Wl,-rpath,${RPATH_ENTRY}")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
+endfunction()
+
+# This is similar to ADD_GLOBAL_RPATH_ENTRY but also adds an -L<dir> linker flag.
+function(ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR DIR_PATH)
+  _CHECK_LIB_DIR("${DIR_PATH}" "library directory and rpath entry")
+  message("Adding a library directory and global rpath entry: ${DIR_PATH}")
+  _ADD_LINKER_FLAGS_MACRO("-L${DIR_PATH}")
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${DIR_PATH}")
 endfunction()
 
 # CXX_YB_COMMON_FLAGS are flags that are common across the 'src/yb' portion of the codebase (but do
@@ -249,6 +284,13 @@ function(ADD_CXX_FLAGS FLAGS)
     message("Adding C++ flags: ${FLAGS}")
   endif()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}" PARENT_SCOPE)
+endfunction()
+
+function(ADD_EXE_LINKER_FLAGS FLAGS)
+  if ($ENV{YB_VERBOSE})
+    message("Adding executable linking flags: ${FLAGS}")
+  endif()
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
 
 function(YB_INCLUDE_EXTENSIONS)
@@ -326,15 +368,14 @@ function(add_executable name)
   endif()
 endfunction()
 
-macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
-  message("YB_SETUP_CLANG: THIRDPARTY_BUILD_TYPE=${THIRDPARTY_BUILD_TYPE}")
+macro(YB_SETUP_CLANG)
   ADD_CXX_FLAGS("-stdlib=libc++")
 
   # Disables using the precompiled template specializations for std::string, shared_ptr, etc
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_BUILD_TYPE}/libcxx")
+  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
   if(NOT EXISTS "${LIBCXX_DIR}")
     message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
   endif()
@@ -353,6 +394,11 @@ macro(YB_SETUP_CLANG THIRDPARTY_BUILD_TYPE)
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
   if(NOT EXISTS "${LIBCXX_DIR}/lib")
     message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+  endif()
+
+  if("${COMPILER_VERSION}" MATCHES "^7[.]*" AND NOT USING_LINUXBREW)
+    # A special linker flag needed only with the Clang 7 build not using Linuxbrew.
+    ADD_LINKER_FLAGS("-lgcc_s")
   endif()
 endmacro()
 
@@ -406,9 +452,9 @@ macro(YB_SETUP_SANITIZER)
     ADD_CXX_FLAGS("-DADDRESS_SANITIZER")
 
     # Compile and link against the thirdparty ASAN instrumented libstdcxx.
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    ADD_EXE_LINKER_FLAGS("-fsanitize=address")
     if("${COMPILER_FAMILY}" STREQUAL "gcc")
-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lubsan -ldl")
+      ADD_EXE_LINKER_FLAGS("-lubsan -ldl")
       ADD_CXX_FLAGS("-Wno-error=maybe-uninitialized")
     endif()
   elseif("${YB_BUILD_TYPE}" STREQUAL "tsan")
@@ -421,12 +467,12 @@ macro(YB_SETUP_SANITIZER)
     ADD_CXX_FLAGS("-DTHREAD_SANITIZER")
 
     # Compile and link against the thirdparty TSAN instrumented libstdcxx.
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+    ADD_EXE_LINKER_FLAGS("-fsanitize=thread")
     if("${COMPILER_FAMILY}" STREQUAL "clang" AND
        "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
       # To avoid issues with missing libunwind symbols:
       # https://gist.githubusercontent.com/mbautin/5bc53ed2d342eab300aec7120eb42996/raw
-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lunwind")
+      ADD_EXE_LINKER_FLAGS("-lunwind")
     endif()
   else()
     message(FATAL_ERROR "Invalid build type for YB_SETUP_SANITIZER: '${YB_BUILD_TYPE}'")
@@ -509,11 +555,11 @@ function(parse_build_root_basename)
   string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
   list(LENGTH YB_BUILD_ROOT_BASENAME_COMPONENTS YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH)
   if(YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH LESS 3 OR
-     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 4)
+     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 5)
     message(
         FATAL_ERROR
         "Wrong number of components of the build root basename: "
-        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3 or 4 components. "
+        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3, 4, or 5 components. "
         "Basename: ${YB_BUILD_ROOT_BASENAME}")
   endif()
   list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
@@ -547,4 +593,16 @@ function(parse_build_root_basename)
         "'${YB_LINKING_TYPE}'. Expected 'static' or 'dynamic'.")
   endif()
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
+
+  if (YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 3)
+    list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 3 YB_TARGET_ARCH_FROM_BUILD_ROOT)
+    if(NOT "${YB_TARGET_ARCH_FROM_BUILD_ROOT}" STREQUAL "ninja")
+      if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${YB_TARGET_ARCH_FROM_BUILD_ROOT}")
+        message(
+            FATAL_ERROR
+            "Target architecture inferred from build root is '${YB_TARGET_ARCH_FROM_BUILD_ROOT}', "
+            "but CMAKE_SYSTEM_PROCESSOR is ${CMAKE_SYSTEM_PROCESSOR}")
+      endif()
+    endif()
+  endif()
 endfunction()

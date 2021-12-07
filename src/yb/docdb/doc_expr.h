@@ -8,8 +8,6 @@
 #define YB_DOCDB_DOC_EXPR_H_
 
 #include "yb/common/ql_expr.h"
-#include "yb/common/schema.h"
-#include "yb/docdb/key_bytes.h"
 
 namespace yb {
 namespace docdb {

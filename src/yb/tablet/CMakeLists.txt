@@ -49,7 +49,6 @@ set(TABLET_SRCS
   transaction_loader.cc
   transaction_participant.cc
   transaction_status_resolver.cc
-  operation_order_verifier.cc
   operations/operation.cc
   operations/change_metadata_operation.cc
   operations/history_cutoff_operation.cc
@@ -113,10 +112,11 @@ target_link_libraries(tablet
 
 add_library(tablet_test_util
             local_tablet_writer.cc
+            tablet-harness.cc
             tablet-test-util.cc)
 target_link_libraries(tablet_test_util tablet yb_common yb_test_util yb_util)
 
-set(YB_TEST_LINK_LIBS tablet tablet_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS tablet tablet_test_util yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)
 ADD_YB_TEST(tablet-split-test)
 ADD_YB_TEST(tablet-metadata-test)

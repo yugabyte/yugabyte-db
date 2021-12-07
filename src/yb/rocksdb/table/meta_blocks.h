@@ -28,14 +28,13 @@
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/builder.h"
-#include "yb/rocksdb/db/table_properties_collector.h"
-#include "yb/rocksdb/util/kv_map.h"
 #include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
 #include "yb/rocksdb/options.h"
-#include "yb/util/slice.h"
-#include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/util/kv_map.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
@@ -46,6 +45,12 @@ class Footer;
 class Logger;
 struct TableProperties;
 class InternalIterator;
+
+// We use kKeyDeltaEncodingSharedPrefix format for meta index blocks, but since
+// kMetaIndexBlockRestartInterval == 1 every key in these blocks will still have zero shared prefix
+// length and will be stored fully.
+constexpr auto kMetaIndexBlockKeyValueEncodingFormat =
+    KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
 
 class MetaIndexBuilder {
  public:

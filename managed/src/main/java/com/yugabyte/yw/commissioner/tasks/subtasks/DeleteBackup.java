@@ -13,20 +13,24 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
-import play.api.Play;
-import play.libs.Json;
-
 import java.util.List;
 import java.util.UUID;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
-
+@Slf4j
 public class DeleteBackup extends AbstractTaskBase {
+
+  @Inject
+  public DeleteBackup(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends AbstractTaskParams {
     public UUID customerUUID;
@@ -37,35 +41,32 @@ public class DeleteBackup extends AbstractTaskBase {
     return (Params) taskParams;
   }
 
-  private TableManager tableManager;
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    tableManager = Play.current().injector().instanceOf(TableManager.class);
-  }
-
   @Override
   public void run() {
     Backup backup = Backup.get(params().customerUUID, params().backupUUID);
-    if (backup.state != Backup.BackupState.Completed) {
+    if ((backup.state != Backup.BackupState.Completed)
+        && (backup.state != Backup.BackupState.Failed)) {
       // TODO: Allow deletion of InProgress backups. But not sure if backend supports it
       //  and may not be worth the effort.
-      LOG.error("Cannot delete backup in any other state other than completed.");
+      log.error("Cannot delete backup in any other state other than completed or failed");
       return;
     }
     try {
       BackupTableParams backupParams = backup.getBackupInfo();
       List<BackupTableParams> backupList =
-        backupParams.backupList == null ? ImmutableList.of(backupParams) : backupParams.backupList;
+          backupParams.backupList == null
+              ? ImmutableList.of(backupParams)
+              : backupParams.backupList;
       if (deleteAllBackups(backupList)) {
         transitionState(backup, Backup.BackupState.Deleted);
         return;
       }
     } catch (Exception ex) {
-      LOG.error("Unexpected error in DeleteBackup {}. We will ignore the error and Mark the " +
-        "backup as failed to be deleted and remove it from scheduled cleanup.",
-        params().backupUUID, ex);
+      log.error(
+          "Unexpected error in DeleteBackup {}. We will ignore the error and Mark the "
+              + "backup as failed to be deleted and remove it from scheduled cleanup.",
+          params().backupUUID,
+          ex);
     }
     transitionState(backup, Backup.BackupState.FailedToDelete);
   }
@@ -89,13 +90,26 @@ public class DeleteBackup extends AbstractTaskBase {
   private boolean deleteBackup(BackupTableParams backupTableParams) {
     backupTableParams.actionType = BackupTableParams.ActionType.DELETE;
     ShellResponse response = tableManager.deleteBackup(backupTableParams);
-    JsonNode jsonNode = Json.parse(response.message);
+    JsonNode jsonNode = null;
+    try {
+      jsonNode = Json.parse(response.message);
+    } catch (Exception e) {
+      log.error(
+          "Delete Backup failed for {}. Response code={}, Output={}.",
+          backupTableParams.storageLocation,
+          response.code,
+          response.message);
+      return false;
+    }
     if (response.code != 0 || jsonNode.has("error")) {
-      LOG.error("Delete Backup failed for {}. Response code={}, hasError={}.",
-        backupTableParams.storageLocation, response.code, jsonNode.has("error"));
+      log.error(
+          "Delete Backup failed for {}. Response code={}, hasError={}.",
+          backupTableParams.storageLocation,
+          response.code,
+          jsonNode.has("error"));
       return false;
     } else {
-      LOG.info("[" + getName() + "] STDOUT: " + response.message);
+      log.info("[" + getName() + "] STDOUT: " + response.message);
       return true;
     }
   }

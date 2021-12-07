@@ -34,12 +34,9 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <cstring>
 #include <random>
 
-#include "yb/util/env.h"
 #include "yb/util/random.h"
-#include <boost/thread/tss.hpp>
 
 namespace yb {
 
@@ -73,6 +70,16 @@ std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng) {
   std::vector<uint8_t> data(len);
   std::generate(data.begin(), data.end(), [=] { return RandomUniformInt(0, UCHAR_MAX, rng); });
   return data;
+}
+
+std::string RandomString(size_t len, std::mt19937_64* rng) {
+  std::string str;
+  str.reserve(len);
+  while (len > 0) {
+    str += yb::RandomUniformInt<char>();
+    len--;
+  }
+  return str;
 }
 
 std::string RandomHumanReadableString(int len, Random* rnd) {

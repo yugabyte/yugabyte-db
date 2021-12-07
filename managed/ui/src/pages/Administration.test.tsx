@@ -6,6 +6,8 @@ import { createMemoryHistory } from 'history';
 import { Administration } from './Administration';
 import { render } from '../test-utils';
 
+jest.mock('../components/alerts/AlertConfiguration/AlertConfigurationContainer.js')
+
 const setup = (storeState = {}) => {
   const history = createMemoryHistory();
   history.push('/admin');
@@ -66,12 +68,5 @@ describe('Administration page', () => {
     );
     setup(store);
     expect(browserHistoryPush).toBeCalledWith('/');
-  });
-
-  it('should replace short url to full one', () => {
-    const browserHistoryReplace = jest.fn();
-    jest.spyOn(browserHistory, 'replace').mockImplementation(browserHistoryReplace);
-    setup();
-    expect(browserHistoryReplace).toBeCalledWith('/admin/ha/replication');
   });
 });

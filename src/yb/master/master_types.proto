@@ -1,0 +1,40 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+enum RelationType {
+  SYSTEM_TABLE_RELATION = 1;
+  USER_TABLE_RELATION = 2;
+  INDEX_TABLE_RELATION = 3;
+}
+
+enum SysRowEntryType {
+  UNKNOWN = 0;
+  TABLE = 1;
+  TABLET = 2;
+  CLUSTER_CONFIG = 3;
+  NAMESPACE = 4;
+  UDTYPE = 5;
+  ROLE = 6;
+  SNAPSHOT = 7;
+  REDIS_CONFIG = 8;
+  SYS_CONFIG = 9;
+  CDC_STREAM = 10;
+  UNIVERSE_REPLICATION = 11;
+  SNAPSHOT_SCHEDULE = 12;
+  DDL_LOG_ENTRY = 13;
+}

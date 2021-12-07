@@ -33,11 +33,9 @@
 #define YB_COMMON_COLUMNBLOCK_H
 
 #include "yb/common/types.h"
-#include "yb/common/row.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/memory/arena.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -246,9 +244,9 @@ class ScopedColumnBlock : public ColumnBlock {
   }
 
  private:
-  gscoped_array<uint8_t> null_bitmap_;
-  gscoped_array<cpp_type> data_;
-  gscoped_ptr<Arena> arena_;
+  std::unique_ptr<uint8_t[]> null_bitmap_;
+  std::unique_ptr<cpp_type[]> data_;
+  std::unique_ptr<Arena> arena_;
 
 };
 

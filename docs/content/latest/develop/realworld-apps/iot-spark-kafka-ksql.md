@@ -115,7 +115,7 @@ A program that generates random test data and publishes it to the Kafka topic `i
 
 A single data point is a JSON payload and looks as follows:
 
-```
+```json
 {
   "vehicleId":"0bf45cac-d1b8-4364-a906-980e1c2bdbcb",
   "vehicleType":"Taxi",
@@ -153,7 +153,7 @@ CREATE STREAM traffic_stream (
            TIMESTAMP_FORMAT='yyyy-MM-dd HH:mm:ss');
 ```
 
-Various aggreations/queries can now be run on the above stream with results of each type of query stored in a topic of its own. This application uses 3 such queries/topics. Thereafter, the [Kafka Connect Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) reads these 3 topics and persists the results into the 3 corresponding tables in YugabyteDB.
+Various aggregations/queries can now be run on the above stream with results of each type of query stored in a topic of its own. This application uses 3 such queries/topics. Thereafter, the [Kafka Connect Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) reads these 3 topics and persists the results into the 3 corresponding tables in YugabyteDB.
 
 ```sql
 CREATE TABLE total_traffic
@@ -202,20 +202,25 @@ CREATE STREAM poi_traffic
 
 ### Apache Spark streaming
 
-This is a Apache Spark streaming application that consumes the data stream from the Kafka topic, converts them into meaningful insights and writes the resulting aggregate data back to YugabyteDB.
+As an alternative to KSQL, you can use [Apache Spark](https://spark.apache.org/) - a multi-language engine for executing data engineering, data science, and machine learning on single-node machines or clusters.
 
-Spark communicates with YugabyteDB using the Spark-Cassandra connector. This is done as follows:
+Below is a sample Apache Spark streaming application (Java) that consumes the data stream from a Kafka topic, converts it into meaningful insights and writes the resulting aggregate data to YugabyteDB via a [DataStax Spark Cassandra Connector](https://github.com/datastax/spark-cassandra-connector).
+
+Set up the Spark Cassandra Connector:
 
 ```java
-SparkConf conf =
-  new SparkConf().setAppName(prop.getProperty("com.iot.app.spark.app.name"))
-                 .set("spark.cassandra.connection.host",prop.getProperty("com.iot.app.cassandra.host"))
+SparkConf conf = new SparkConf()
+                   .setAppName(prop.getProperty("com.iot.app.spark.app.name"))
+                   .setMaster(prop.getProperty("com.iot.app.spark.master"))
+                   .set("spark.cassandra.connection.host", cassandraHost)
+                   .set("spark.cassandra.connection.port", cassandraPort)
+                   .set("spark.cassandra.connection.keep_alive_ms", prop.getProperty("com.iot.app.cassandra.keep_alive"));
 ```
 
-The data is consumed from a Kafka stream and collected in 5 second batches. This is achieved as follows:
+The data is consumed from a Kafka stream and collected in 5 second batches:
 
 ```java
-JavaStreamingContext jssc = new JavaStreamingContext(conf,Durations.seconds(5));
+JavaStreamingContext jssc = new JavaStreamingContext(conf, Durations.seconds(5));
 
 JavaPairInputDStream<String, IoTData> directKafkaStream =
   KafkaUtils.createDirectStream(jssc,
@@ -225,14 +230,195 @@ JavaPairInputDStream<String, IoTData> directKafkaStream =
                                 IoTDataDecoder.class,
                                 kafkaParams,
                                 topicsSet
-                                );
+                               );
 ```
 
-It computes the following:
+Create non-filtered and filtered streams, to be used later in actual processing:
 
-- Compute a breakdown by vehicle type and the shipment route across all the vehicles and shipments done so far.
-- Compute the above breakdown for active shipments. This is done by computing the breakdown by vehicle type and shipment route for the last 30 seconds.
-- Detect the vehicles which are within a 20 mile radius of a given Point of Interest (POI), which represents a road-closure.
+```java
+// Non-filtered stream for Point-of-interest (POI) traffic data calculation
+JavaDStream<IoTData> nonFilteredIotDataStream = directKafkaStream.map(tuple -> tuple._2());
+
+// Filtered stream for total and traffic data calculation
+JavaPairDStream<String,IoTData> iotDataPairStream = 
+  nonFilteredIotDataStream.mapToPair(iot -> new Tuple2<String,IoTData>(iot.getVehicleId(),iot)).reduceByKey((a, b) -> a );
+
+// Check vehicle ID is already processed
+JavaMapWithStateDStream<String, IoTData, Boolean, Tuple2<IoTData,Boolean>> iotDStreamWithStatePairs =
+  iotDataPairStream.mapWithState(
+    StateSpec.function(processedVehicleFunc).timeout(Durations.seconds(3600)) // Maintain state for one hour
+  );
+
+// Filter processed vehicle IDs and keep un-processed
+JavaDStream<Tuple2<IoTData,Boolean>> filteredIotDStreams =
+  iotDStreamWithStatePairs.map(tuple2 -> tuple2).filter(tuple -> tuple._2.equals(Boolean.FALSE));
+
+// Get stream of IoTData
+JavaDStream<IoTData> filteredIotDataStream = filteredIotDStreams.map(tuple -> tuple._1);
+```
+
+The above code uses the following function to check for processed vehicles:
+
+```java
+Function3<String, Optional<IoTData>, State<Boolean>, Tuple2<IoTData, Boolean>> processedVehicleFunc = (String, iot, state) -> {
+  Tuple2<IoTData,Boolean> vehicle = new Tuple2<>(iot.get(), false);
+  if (state.exists()) {
+    vehicle = new Tuple2<>(iot.get(), true);
+  }
+  else {
+    state.update(Boolean.TRUE);
+  }
+  return vehicle;
+};
+```
+
+Compute a breakdown by vehicle type and the shipment route across all the vehicles and shipments done so far:
+
+```java
+// Get count of vehicle group by routeId and vehicleType
+JavaPairDStream<AggregateKey, Long> countDStreamPair =
+  filteredIotDataStream
+    .mapToPair(iot -> new Tuple2<>(new AggregateKey(iot.getRouteId(), iot.getVehicleType()), 1L))
+    .reduceByKey((a, b) -> a + b);
+    
+// Keep state for total count
+JavaMapWithStateDStream<AggregateKey, Long, Long, Tuple2<AggregateKey, Long>> countDStreamWithStatePair =
+  countDStreamPair.mapWithState(
+    StateSpec.function(totalSumFunc).timeout(Durations.seconds(3600)) // Maintain state for one hour
+  );
+
+// Transform to DStream of TrafficData
+JavaDStream<Tuple2<AggregateKey, Long>> countDStream = countDStreamWithStatePair.map(tuple2 -> tuple2);
+JavaDStream<TotalTrafficData> trafficDStream = countDStream.map(totalTrafficDataFunc);
+
+// Map Cassandra table column
+Map<String, String> columnNameMappings = new HashMap<String, String>();
+columnNameMappings.put("routeId", "routeid");
+columnNameMappings.put("vehicleType", "vehicletype");
+columnNameMappings.put("totalCount", "totalcount");
+columnNameMappings.put("timeStamp", "timestamp");
+columnNameMappings.put("recordDate", "recorddate");
+
+// Call CassandraStreamingJavaUtil function to save in database
+javaFunctions(trafficDStream)
+  .writerBuilder("traffickeyspace", "total_traffic", CassandraJavaUtil.mapToRow(TotalTrafficData.class, columnNameMappings))
+  .saveToCassandra();
+```
+
+Compute the same breakdown for active shipments. This is done by computing the breakdown by vehicle type and shipment route for the last 30 seconds:
+
+```java
+// Reduce by key and window (30 sec window and 10 sec slide)
+JavaPairDStream<AggregateKey, Long> countDStreamPair =
+  filteredIotDataStream
+    .mapToPair(iot -> new Tuple2<>(new AggregateKey(iot.getRouteId(), iot.getVehicleType()), 1L))
+    .reduceByKeyAndWindow((a, b) -> a + b, Durations.seconds(30), Durations.seconds(10));
+
+// Transform to DStream of TrafficData
+JavaDStream<WindowTrafficData> trafficDStream = countDStreamPair.map(windowTrafficDataFunc);
+
+// Map Cassandra table column
+Map<String, String> columnNameMappings = new HashMap<String, String>();
+columnNameMappings.put("routeId", "routeid");
+columnNameMappings.put("vehicleType", "vehicletype");
+columnNameMappings.put("totalCount", "totalcount");
+columnNameMappings.put("timeStamp", "timestamp");
+columnNameMappings.put("recordDate", "recorddate");
+
+// Call CassandraStreamingJavaUtil function to save in database
+javaFunctions(trafficDStream)
+  .writerBuilder("traffickeyspace", "window_traffic", CassandraJavaUtil.mapToRow(WindowTrafficData.class, columnNameMappings))
+  .saveToCassandra();
+```
+
+Detect the vehicles which are within a 20 mile radius of a given Point of Interest (POI), which represents a road-closure:
+
+```java
+// Filter by routeId, vehicleType and in POI range
+JavaDStream<IoTData> iotDataStreamFiltered =
+  nonFilteredIotDataStream
+    .filter(iot -> (iot.getRouteId().equals(broadcastPOIValues.value()._2())
+                    && iot.getVehicleType().contains(broadcastPOIValues.value()._3())
+                    && GeoDistanceCalculator.isInPOIRadius(
+                         Double.valueOf(iot.getLatitude()),
+                         Double.valueOf(iot.getLongitude()),
+                         broadcastPOIValues.value()._1().getLatitude(),
+                         broadcastPOIValues.value()._1().getLongitude(),
+                         broadcastPOIValues.value()._1().getRadius()
+                       )
+                   )
+    );
+
+// Pair with POI
+JavaPairDStream<IoTData, POIData> poiDStreamPair =
+  iotDataStreamFiltered.mapToPair(iot -> new Tuple2<>(iot, broadcastPOIValues.value()._1()));
+
+// Transform to DStream of POITrafficData
+JavaDStream<POITrafficData> trafficDStream = poiDStreamPair.map(poiTrafficDataFunc);
+
+// Map Cassandra table column
+Map<String, String> columnNameMappings = new HashMap<String, String>();
+columnNameMappings.put("vehicleId", "vehicleid");
+columnNameMappings.put("distance", "distance");
+columnNameMappings.put("vehicleType", "vehicletype");
+columnNameMappings.put("timeStamp", "timestamp");
+
+// Call CassandraStreamingJavaUtil function to save in database
+javaFunctions(trafficDStream)
+  .writerBuilder("traffickeyspace", "poi_traffic", CassandraJavaUtil.mapToRow(POITrafficData.class, columnNameMappings))
+  .withConstantTTL(120) // Keeping data for 2 minutes
+  .saveToCassandra();
+```
+
+The above "detection within radius" code uses the following helper functions:
+
+```java
+// Function to get running sum by maintaining the state
+Function3<AggregateKey, Optional<Long>, State<Long>, Tuple2<AggregateKey, Long>> totalSumFunc = (key, currentSum, state) -> {
+  long totalSum = currentSum.or(0L) + (state.exists() ? state.get() : 0);
+  Tuple2<AggregateKey, Long> total = new Tuple2<>(key, totalSum);
+  state.update(totalSum);
+  return total;
+};
+
+// Function to create TotalTrafficData object from IoT data
+Function<Tuple2<AggregateKey, Long>, TotalTrafficData> totalTrafficDataFunc = (tuple -> {
+  TotalTrafficData trafficData = new TotalTrafficData();
+  trafficData.setRouteId(tuple._1().getRouteId());
+  trafficData.setVehicleType(tuple._1().getVehicleType());
+  trafficData.setTotalCount(tuple._2());
+  trafficData.setTimeStamp(new Date());
+  trafficData.setRecordDate(new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
+  return trafficData;
+});
+
+// Function to create WindowTrafficData object from IoT data
+Function<Tuple2<AggregateKey, Long>, WindowTrafficData> windowTrafficDataFunc = (tuple -> {
+  WindowTrafficData trafficData = new WindowTrafficData();
+  trafficData.setRouteId(tuple._1().getRouteId());
+  trafficData.setVehicleType(tuple._1().getVehicleType());
+  trafficData.setTotalCount(tuple._2());
+  trafficData.setTimeStamp(new Date());
+  trafficData.setRecordDate(new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
+  return trafficData;
+});
+
+// Function to create POITrafficData object from IoT data
+Function<Tuple2<IoTData, POIData>, POITrafficData> poiTrafficDataFunc = (tuple -> {
+  POITrafficData poiTraffic = new POITrafficData();
+  poiTraffic.setVehicleId(tuple._1.getVehicleId());
+  poiTraffic.setVehicleType(tuple._1.getVehicleType());
+  poiTraffic.setTimeStamp(new Date());
+  double distance = GeoDistanceCalculator.getDistance(
+    Double.valueOf(tuple._1.getLatitude()).doubleValue(),
+    Double.valueOf(tuple._1.getLongitude()).doubleValue(),
+    tuple._2.getLatitude(),
+    tuple._2.getLongitude()
+  );
+  poiTraffic.setDistance(distance);
+  return poiTraffic;
+});
+```
 
 ## Data dashboard
 
@@ -248,7 +434,7 @@ public interface TotalTrafficDataRepository extends CassandraRepository<TotalTra
 }
 ```
 
-In order to connect to YugabyteDB cluster and get connection for database operations, you write the assandraConfig class. This is done as follows:
+In order to connect to YugabyteDB cluster and get connection for database operations, you write the `CassandraConfig` class. This is done as follows:
 
 ```java
 public class CassandraConfig extends AbstractCassandraConfiguration {
@@ -269,4 +455,4 @@ Note that currently the Dashboard does not use the raw events table and relies o
 
 ## Summary
 
-This application is a blue print for building IoT applications. The instructions to build and run the application, as well as the source code can be found in the [IoT Fleet Management GitHub repository](https://github.com/yugabyte/yb-iot-fleet-management).
+This application is a blueprint for building IoT applications. The instructions to build and run the application, as well as the source code can be found in the [IoT Fleet Management GitHub repository](https://github.com/yugabyte/yb-iot-fleet-management).

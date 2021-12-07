@@ -2568,7 +2568,6 @@ _equalIndexElem(const IndexElem *a, const IndexElem *b)
 	COMPARE_NODE_FIELD(opclass);
 	COMPARE_SCALAR_FIELD(ordering);
 	COMPARE_SCALAR_FIELD(nulls_ordering);
-	COMPARE_NODE_FIELD(yb_name_list);
 
 	return true;
 }
@@ -3004,6 +3003,32 @@ _equalValue(const Value *a, const Value *b)
 			break;
 	}
 
+	return true;
+}
+
+static bool
+_equalBackfillIndexStmt(const BackfillIndexStmt *a, const BackfillIndexStmt *b)
+{
+	COMPARE_SCALAR_FIELD(oid_list);
+	COMPARE_NODE_FIELD(bfinfo);
+	return true;
+}
+
+static bool
+_equalYbBackfillInfo(const YbBackfillInfo *a, const YbBackfillInfo *b)
+{
+	COMPARE_STRING_FIELD(bfinstr);
+	COMPARE_SCALAR_FIELD(read_time);
+	COMPARE_NODE_FIELD(row_bounds);
+	return true;
+}
+
+static bool
+_equalRowBounds(const RowBounds *a, const RowBounds *b)
+{
+	COMPARE_STRING_FIELD(partition_key);
+	COMPARE_STRING_FIELD(row_key_start);
+	COMPARE_STRING_FIELD(row_key_end);
 	return true;
 }
 
@@ -3742,6 +3767,15 @@ equal(const void *a, const void *b)
 			break;
 		case T_OptTableGroup:
 			retval = _equalOptTableGroup(a, b);
+			break;
+		case T_BackfillIndexStmt:
+			retval = _equalBackfillIndexStmt(a, b);
+			break;
+		case T_YbBackfillInfo:
+			retval = _equalYbBackfillInfo(a, b);
+			break;
+		case T_RowBounds:
+			retval = _equalRowBounds(a, b);
 			break;
 
 		default:

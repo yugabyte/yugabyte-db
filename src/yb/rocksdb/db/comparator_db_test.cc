@@ -19,18 +19,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <map>
 #include <string>
 
-#include "yb/rocksdb/memtable/stl_wrappers.h"
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/kv_map.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 using std::unique_ptr;
 

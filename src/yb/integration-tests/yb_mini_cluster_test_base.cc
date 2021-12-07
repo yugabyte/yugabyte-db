@@ -13,11 +13,14 @@
 
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

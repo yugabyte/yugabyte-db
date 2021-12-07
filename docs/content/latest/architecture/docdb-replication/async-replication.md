@@ -21,11 +21,11 @@ xCluster replication enables asynchronous replication between independent Yugaby
 
 YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
 
-For details about configuring a 2DC deployment, see [Replicate between two data centers](../../../deploy/multi-dc/2dc-deployment).
+For details about configuring a 2DC deployment, see [Replicate between two data centers](../../../deploy/multi-dc/async-replication).
 
 {{< note title="Note" >}}
 
-Asynchronous replication of data will work across all the APIs (YSQL, YCQL) since the replication across the clusters is done at the DocDB level.
+Asynchronous replication of data works across all the APIs (YSQL, YCQL), since the replication across the clusters is done at the DocDB level.
 
 {{</note >}}
 
@@ -41,7 +41,7 @@ The source-sink deployment architecture is shown in the diagram below:
 
 ### Active-Active
 
-The replication of data can be bi-directional between two clusters. In this case, both clusters can perform reads and writes. Writes to any cluster is asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters at a similar time window, this will result in the write with the larger timestamp becoming the latest write. Thus, in this case, the clusters are all active and this deployment mode is called multi-master deployments or active-active deployments).
+The replication of data can be bi-directional between two clusters. In this case, both clusters can perform reads and writes. Writes to any cluster is asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters at a similar time window, this will result in the write with the larger timestamp becoming the latest write. Thus, in this case, the clusters are all active, and this deployment mode is called a multi-master deployment or active-active deployment.
 
 {{< note title="Note" >}}
 
@@ -49,7 +49,7 @@ The multi-master deployment is built internally using two master-slave unidirect
 
 {{</note >}}
 
-The architecture diagram is shown below:
+The following is an architecture diagram:
 
 <img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-multi-master-deployment.png" style="max-width:750px;"/>
 
@@ -59,7 +59,7 @@ The architecture diagram is shown below:
 
 - Updates will be timeline consistent. That is, target data center will receive updates for a row in the same order in which they occurred on the source.
 - Active-active replication is supported, with both data centers accepting writes and replicating them to the other data center.
-- It is possible to perform replication to multiple target clusters. Similarly, it will be possible to consume replicated data from multiple source clusters.
+- It is possible to perform replication to multiple target clusters. Similarly, it is possible to consume replicated data from multiple source clusters.
 
 ### Impact on application design
 
@@ -73,20 +73,20 @@ Since 2DC replication is done asynchronously and by replicating the WAL (and the
 
 ### Limitations
 
-- Transaction atomicity
-  - Transactions from the producer won't be applied atomically on the consumer. That is, some changes in a transaction may be visible before others.
+- Transaction atomicity:
+  - Transactions from the source are not applied atomically on the target. That is, some changes in a transaction may be visible before others.
 
-- Automatically bootstrapping sink clusters
-  - Currently: it is the responsibility of the end user to ensure that a sink cluster has sufficiently recent updates so that replication can safely resume.
-  - Future: bootstrapping the sink cluster can be automated.
+- Automatically bootstrapping sink clusters:
+  - Currently, it is the responsibility of the end user to ensure that a sink cluster has sufficiently recent updates so that replication can safely resume.
+  - In the future, bootstrapping the sink cluster can be automated.
 
-- Replicating DDL changes
-  - Currently: DDL changes are not automatically replicated. Applying create table and alter table commands to the sync clusters is the responsibility of the user.
-  - Future: Allow safe DDL changes to be propagated automatically.
+- Replicating DDL changes:
+  - Currently, DDL changes are not automatically replicated. Applying create table and alter table commands to the sync clusters is the responsibility of the user.
+  - In the future, allowing safe DDL changes to be propagated automatically.
 
-- Safety of DDL and DML in active-active
-  - Currently: Certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe since a violation could easily be introduced by inserting different values on the two clusters - each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
-  - Future: Detect such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default.
+- Safety of DDL and DML in active-active:
+  - Currently, certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe since a violation could easily be introduced by inserting different values on the two clusters - each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
+  - In the future, allowing detection of such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default.
 
 ## Transactional guarantees
 

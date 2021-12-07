@@ -217,6 +217,7 @@ create_backup() {
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
+    trap 'run_sudo_cmd "rm -rf ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
     echo "Creating prometheus snapshot..."
     set_prometheus_data_dir "${prometheus_host}" "${data_dir}"
     snapshot_dir=$(curl -X POST "http://${prometheus_host}:9090/api/v1/admin/tsdb/snapshot" |

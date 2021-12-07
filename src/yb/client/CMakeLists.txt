@@ -37,10 +37,12 @@ set(CLIENT_SRCS
   client.cc
   client_builder-internal.cc
   client_error.cc
+  client_master_rpc.cc
   client-internal.cc
   client_utils.cc
   error.cc
   error_collector.cc
+  forward_rpc.cc
   in_flight_op.cc
   meta_cache.cc
   meta_data_cache.cc
@@ -58,6 +60,7 @@ set(CLIENT_SRCS
   transaction_manager.cc
   transaction_pool.cc
   transaction_rpc.cc
+  universe_key_client.cc
   value.cc
   yb_op.cc
   yb_table_name.cc
@@ -72,6 +75,7 @@ set(CLIENT_LIBS
   server_process
   tserver_proto
   tserver_service_proto
+  tserver_forward_service_proto
   tserver_util
   yb_util
   gutil
@@ -106,7 +110,7 @@ target_link_libraries(yb_client_test_util
                       gmock
                       yb_client)
 
-add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc snapshot_test_base.cc)
+add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc)
 target_link_libraries(ql-dml-test-base integration-tests)
 
 # Tests

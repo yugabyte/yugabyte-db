@@ -32,13 +32,33 @@
 
 #include "yb/server/server_base_options.h"
 
-#include <gflags/gflags.h>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <vector>
 
+#include <glog/logging.h>
+
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/rpc/yb_rpc.h"
+
+#include "yb/master/master_defaults.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -245,8 +265,7 @@ Status DetermineMasterAddresses(
   return Status::OK();
 }
 
-Status ResolveMasterAddresses(MasterAddressesPtr master_addresses,
-                              std::vector<Endpoint>* resolved_addresses) {
+Result<std::vector<Endpoint>> ResolveMasterAddresses(const MasterAddresses& master_addresses) {
   const auto resolve_sleep_interval_sec = 1;
   auto resolve_max_iterations =
       (FLAGS_master_discovery_timeout_ms / 1000) / resolve_sleep_interval_sec;
@@ -254,11 +273,12 @@ Status ResolveMasterAddresses(MasterAddressesPtr master_addresses,
     resolve_max_iterations = 120;
   }
 
-  for (const auto &list : *master_addresses) {
-    for (const auto &master_addr : list) {
+  std::vector<Endpoint> result;
+  for (const auto& list : master_addresses) {
+    for (const auto& master_addr : list) {
       // Retry resolving master address for 'master_discovery_timeout' period of time
       int num_iters = 0;
-      Status s = master_addr.ResolveAddresses(resolved_addresses);
+      Status s = master_addr.ResolveAddresses(&result);
       while (!s.ok()) {
         num_iters++;
         if (num_iters > resolve_max_iterations) {
@@ -266,11 +286,11 @@ Status ResolveMasterAddresses(MasterAddressesPtr master_addresses,
               master_addr);
         }
         std::this_thread::sleep_for(std::chrono::seconds(resolve_sleep_interval_sec));
-        s = master_addr.ResolveAddresses(resolved_addresses);
+        s = master_addr.ResolveAddresses(&result);
       }
     }
   }
-  return Status::OK();
+  return result;
 }
 
 std::string MasterAddressesToString(const MasterAddresses& addresses) {

@@ -12,10 +12,19 @@
 //
 
 #include "yb/master/yql_local_vtable.h"
+
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/master.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -53,7 +62,7 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   vector<std::shared_ptr<TSDescriptor> > descs;
   GetSortedLiveDescriptors(&descs);
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
 
   struct Entry {
     size_t index;
@@ -96,8 +105,8 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
 
   for (const auto& entry : entries) {
     QLRow& row = vtable->Extend();
-    InetAddress private_ip(VERIFY_RESULT(entry.ips.private_ip_future.get()));
-    InetAddress public_ip(VERIFY_RESULT(entry.ips.public_ip_future.get()));
+    InetAddress private_ip(VERIFY_RESULT(Copy(entry.ips.private_ip_future.get())));
+    InetAddress public_ip(VERIFY_RESULT(Copy(entry.ips.public_ip_future.get())));
     const CloudInfoPB& cloud_info = entry.ts_info.registration().common().cloud_info();
     RETURN_NOT_OK(SetColumnValue(kSystemLocalKeyColumn, "local", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalBootstrappedColumn, "COMPLETED", &row));
@@ -119,8 +128,7 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
                                 yb::master::kSystemTablesReleaseVersion, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalRpcAddressColumn, public_ip, &row));
 
-    Uuid schema_version;
-    RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
+    Uuid schema_version = VERIFY_RESULT(Uuid::FromString(master::kDefaultSchemaVersion));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalSchemaVersionColumn, schema_version, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalThriftVersionColumn, "20.1.0", &row));
     // setting tokens

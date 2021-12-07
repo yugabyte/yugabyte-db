@@ -1,13 +1,12 @@
 package com.yugabyte.yw.commissioner.tasks.params;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-
 import com.yugabyte.yw.forms.UniverseTaskParams;
 
 public class ServerSubTaskParams extends UniverseTaskParams {
   // The name of the node which contains the server process.
-    public String nodeName;
+  public String nodeName;
 
-    // Server type running on the above node for which we will wait.
-    public ServerType serverType;
+  // Server type running on the above node for which we will wait.
+  public ServerType serverType;
 }

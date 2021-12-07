@@ -10,23 +10,20 @@
 
 package com.yugabyte.yw.common.ha;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import scala.concurrent.ExecutionContext;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -34,17 +31,26 @@ import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
-
-import static com.yugabyte.yw.common.ha.PlatformReplicationHelper.REPLICATION_FREQUENCY_KEY;
+import lombok.extern.slf4j.Slf4j;
+import scala.concurrent.ExecutionContext;
 
 @Singleton
+@Slf4j
 public class PlatformReplicationManager {
+
   private static final String BACKUP_SCRIPT = "bin/yb_platform_backup.sh";
   static final String DB_PASSWORD_ENV_VAR_KEY = "PGPASSWORD";
+
+  @VisibleForTesting
+  public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
 
   private final AtomicReference<Cancellable> schedule;
 
@@ -54,14 +60,11 @@ public class PlatformReplicationManager {
 
   private final PlatformReplicationHelper replicationHelper;
 
-  private static final Logger LOG = LoggerFactory.getLogger(PlatformReplicationManager.class);
-
   @Inject
   public PlatformReplicationManager(
-    ActorSystem actorSystem,
-    ExecutionContext executionContext,
-    PlatformReplicationHelper replicationHelper
-  ) {
+      ActorSystem actorSystem,
+      ExecutionContext executionContext,
+      PlatformReplicationHelper replicationHelper) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.replicationHelper = replicationHelper;
@@ -74,12 +77,12 @@ public class PlatformReplicationManager {
 
   public void start() {
     if (replicationHelper.isBackupScheduleRunning(this.getSchedule())) {
-      LOG.warn("Platform backup schedule is already started");
+      log.warn("Platform backup schedule is already started");
       return;
     }
 
     if (!replicationHelper.isBackupScheduleEnabled()) {
-      LOG.debug("Cannot start backup schedule because it is disabled");
+      log.debug("Cannot start backup schedule because it is disabled");
       return;
     }
 
@@ -92,12 +95,12 @@ public class PlatformReplicationManager {
 
   public void stop() {
     if (!replicationHelper.isBackupScheduleRunning(this.getSchedule())) {
-      LOG.debug("Platform backup schedule is already stopped");
+      log.debug("Platform backup schedule is already stopped");
       return;
     }
 
     if (!this.getSchedule().cancel()) {
-      LOG.warn("Unknown error occurred stopping platform backup schedule");
+      log.warn("Unknown error occurred stopping platform backup schedule");
     }
   }
 
@@ -117,24 +120,21 @@ public class PlatformReplicationManager {
 
   public JsonNode setFrequencyStartAndEnable(Duration duration) {
     this.stop();
-    replicationHelper.getRuntimeConfig().setValue(
-      REPLICATION_FREQUENCY_KEY,
-      String.format("%d ms", duration.toMillis())
-    );
+    replicationHelper.setReplicationFrequency(duration);
     replicationHelper.setBackupScheduleEnabled(true);
     this.start();
-
     return this.getBackupInfo();
   }
 
   private Cancellable createSchedule(Duration frequency) {
-    LOG.info("Scheduling periodic platform backups every {}", frequency.toString());
-    return this.actorSystem.scheduler().schedule(
-      Duration.ofMillis(0), // initialDelay
-      frequency, // interval
-      this::sync,
-      this.executionContext
-    );
+    log.info("Scheduling periodic platform backups every {}", frequency.toString());
+    return this.actorSystem
+        .scheduler()
+        .schedule(
+            Duration.ofMillis(0), // initialDelay
+            frequency, // interval
+            this::sync,
+            this.executionContext);
   }
 
   public List<File> listBackups(URL leader) {
@@ -143,15 +143,12 @@ public class PlatformReplicationManager {
 
   public JsonNode getBackupInfo() {
     return replicationHelper.getBackupInfoJson(
-      replicationHelper.getBackupFrequency().toMillis(),
-      replicationHelper.isBackupScheduleRunning(this.getSchedule())
-    );
+        replicationHelper.getBackupFrequency().toMillis(),
+        replicationHelper.isBackupScheduleRunning(this.getSchedule()));
   }
 
-  public void demoteLocalInstance(
-    PlatformInstance localInstance,
-    String leaderAddr
-  ) throws MalformedURLException {
+  public void demoteLocalInstance(PlatformInstance localInstance, String leaderAddr)
+      throws MalformedURLException {
     if (!localInstance.getIsLocal()) {
       throw new RuntimeException("Cannot perform this action on a remote instance");
     }
@@ -176,14 +173,17 @@ public class PlatformReplicationManager {
 
     // Update which instance should be local.
     previousLocal.get().setIsLocalAndUpdate(false);
-    config.getInstances().forEach(i -> {
-      i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID()));
-      try {
-        // Clear out any old backups.
-        replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
-      } catch (MalformedURLException ignored) {
-      }
-    });
+    config
+        .getInstances()
+        .forEach(
+            i -> {
+              i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID()));
+              try {
+                // Clear out any old backups.
+                replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
+              } catch (MalformedURLException ignored) {
+              }
+            });
 
     // Mark the failover timestamp.
     config.updateLastFailover();
@@ -191,6 +191,9 @@ public class PlatformReplicationManager {
     // Remotely demote any instance reporting to be a leader.
     config.getRemoteInstances().forEach(replicationHelper::demoteRemoteInstance);
     // Promote the new local leader.
+    // we need to refresh because i.setIsLocalAndUpdate updated the underlying db bypassing
+    // newLeader bean.
+    newLeader.refresh();
     newLeader.promote();
   }
 
@@ -199,58 +202,60 @@ public class PlatformReplicationManager {
    * Assumption is that any platform instance existing locally but not provided in the payload has
    * been deleted on the leader, and thus should be deleted here too.
    *
-   * @param config        the local HA Config model
-   * @param instancesJson the JSON payload received from the leader instance
+   * @param config the local HA Config model
+   * @param newInstances the JSON payload received from the leader instance
    */
   public Set<PlatformInstance> importPlatformInstances(
-    HighAvailabilityConfig config,
-    ArrayNode instancesJson
-  ) {
-    List<PlatformInstance> existingInstances = config.getInstances();
-    // Get list of existing addresses.
-    Set<String> existingAddrs = existingInstances.stream()
-      .map(PlatformInstance::getAddress)
-      .collect(Collectors.toSet());
-
-    // Map request JSON payload to list of platform instances.
-    Set<PlatformInstance> newInstances = StreamSupport.stream(instancesJson.spliterator(), false)
-      .map(obj -> Json.fromJson(obj, PlatformInstance.class))
-      .filter(Objects::nonNull)
-      .collect(Collectors.toSet());
+      HighAvailabilityConfig config, List<PlatformInstance> newInstances) {
+    String localAddress = config.getLocal().get().getAddress();
 
     // Get list of request payload addresses.
-    Set<String> newAddrs = newInstances.stream()
-      .map(PlatformInstance::getAddress)
-      .collect(Collectors.toSet());
+    Set<String> newAddrs =
+        newInstances.stream().map(PlatformInstance::getAddress).collect(Collectors.toSet());
+
+    if (!newAddrs.contains(localAddress)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Current instance (%s) not found in Sync request %s", localAddress, newAddrs));
+    }
+
+    List<PlatformInstance> existingInstances = config.getInstances();
+    // Get list of existing addresses.
+    Set<String> existingAddrs =
+        existingInstances.stream().map(PlatformInstance::getAddress).collect(Collectors.toSet());
 
     // Delete any instances that exist locally but aren't included in the sync request.
     Set<String> instanceAddrsToDelete = Sets.difference(existingAddrs, newAddrs);
-    existingInstances.stream()
-      .filter(i -> instanceAddrsToDelete.contains(i.getAddress()))
-      .forEach(PlatformInstance::delete);
+    existingInstances
+        .stream()
+        .filter(i -> instanceAddrsToDelete.contains(i.getAddress()))
+        .forEach(PlatformInstance::delete);
 
     // Import the new instances, or update existing ones.
-    return newInstances.stream()
-      .map(replicationHelper::processImportedInstance)
-      .filter(Optional::isPresent)
-      .map(Optional::get)
-      .collect(Collectors.toSet());
+    return newInstances
+        .stream()
+        .map(replicationHelper::processImportedInstance)
+        .filter(Optional::isPresent)
+        .map(Optional::get)
+        .collect(Collectors.toSet());
   }
 
   @VisibleForTesting
   boolean sendBackup(PlatformInstance remoteInstance) {
     HighAvailabilityConfig config = remoteInstance.getConfig();
     String clusterKey = config.getClusterKey();
-    boolean result = replicationHelper.getMostRecentBackup().map(backup ->
-      replicationHelper.exportBackups(
-        config,
-        clusterKey,
-        remoteInstance.getAddress(),
-        backup
-      ) && remoteInstance.updateLastBackup()
-    ).orElse(false);
+    boolean result =
+        replicationHelper
+            .getMostRecentBackup()
+            .map(
+                backup ->
+                    replicationHelper.exportBackups(
+                            config, clusterKey, remoteInstance.getAddress(), backup)
+                        && remoteInstance.updateLastBackup())
+            .orElse(false);
     if (!result) {
-      LOG.error("Error sending platform backup to " + remoteInstance.getAddress());
+      log.error("Error sending platform backup to " + remoteInstance.getAddress());
     }
 
     return result;
@@ -263,65 +268,88 @@ public class PlatformReplicationManager {
   }
 
   private synchronized void sync() {
-    HighAvailabilityConfig.get().ifPresent(config -> {
-      try {
-        List<PlatformInstance> remoteInstances = config.getRemoteInstances();
-        // No point in taking a backup if there is no one to send it to.
-        if (remoteInstances.isEmpty()) {
-          LOG.debug("Skipping HA cluster sync...");
+    try {
+      HighAvailabilityConfig.get()
+          .ifPresent(
+              config -> {
+                try {
+                  if (!config.getLocal().isPresent()) {
+                    log.error(NO_LOCAL_INSTANCE_MSG);
+                    return;
+                  }
 
-          return;
-        }
+                  List<PlatformInstance> remoteInstances = config.getRemoteInstances();
+                  // No point in taking a backup if there is no one to send it to.
+                  if (remoteInstances.isEmpty()) {
+                    log.debug("Skipping HA cluster sync...");
 
-        // Create the platform backup.
-        if (!this.createBackup()) {
-          LOG.error("Error creating platform backup");
+                    return;
+                  }
 
-          return;
-        }
+                  // Create the platform backup.
+                  if (!this.createBackup()) {
+                    log.error("Error creating platform backup");
 
-        // Update local last backup time if creating the backup succeeded.
-        config.getLocal().ifPresent(localInstance -> {
-          localInstance.updateLastBackup();
+                    return;
+                  }
 
-          // Send the platform backup to all followers.
-          Set<PlatformInstance> instancesToSync = remoteInstances.stream()
-            .filter(this::sendBackup)
-            .collect(Collectors.toSet());
+                  // Update local last backup time if creating the backup succeeded.
+                  config
+                      .getLocal()
+                      .ifPresent(
+                          localInstance -> {
+                            localInstance.updateLastBackup();
 
-          // Sync the HA cluster state to all followers that successfully received a backup.
-          instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
-        });
-      } catch (Exception e) {
-        LOG.error("Error running sync for HA config {}", config.getUUID(), e);
-      } finally {
-        // Remove locally created backups since they have already been sent to followers.
-        replicationHelper.cleanupCreatedBackups();
-      }
-    });
+                            // Send the platform backup to all followers.
+                            Set<PlatformInstance> instancesToSync =
+                                remoteInstances
+                                    .stream()
+                                    .filter(this::sendBackup)
+                                    .collect(Collectors.toSet());
+
+                            // Sync the HA cluster state to all followers that successfully received
+                            // a
+                            // backup.
+                            instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
+                          });
+                } catch (Exception e) {
+                  log.error("Error running sync for HA config {}", config.getUUID(), e);
+                } finally {
+                  // Remove locally created backups since they have already been sent to followers.
+                  replicationHelper.cleanupCreatedBackups();
+                }
+              });
+    } catch (Exception e) {
+      log.error("Error running platform replication sync", e);
+    }
   }
 
   public void cleanupReceivedBackups(URL leader) {
     replicationHelper.cleanupReceivedBackups(leader, replicationHelper.getNumBackupsRetention());
   }
 
-  public boolean saveReplicationData(String fileName, File uploadedFile, URL leader,
-                                     URL sender) {
+  public boolean saveReplicationData(String fileName, File uploadedFile, URL leader, URL sender) {
     Path replicationDir = replicationHelper.getReplicationDirFor(leader.getHost());
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName);
     if (replicationDir.toFile().exists() || replicationDir.toFile().mkdirs()) {
       try {
         Util.moveFile(uploadedFile.toPath(), saveAsFile);
-        LOG.debug("Store platform backup received from leader {} via {} as {}.",
-          leader.toString(), sender.toString(), saveAsFile);
+        log.debug(
+            "Store platform backup received from leader {} via {} as {}.",
+            leader.toString(),
+            sender.toString(),
+            saveAsFile);
 
         return true;
       } catch (IOException ioException) {
-        LOG.error("File move failed from {} as {}", uploadedFile.toPath(), saveAsFile, ioException);
+        log.error("File move failed from {} as {}", uploadedFile.toPath(), saveAsFile, ioException);
       }
     } else {
-      LOG.error("Could create folder {} to store platform backup received from leader {} via {}",
-        replicationDir, leader.toString(), sender.toString());
+      log.error(
+          "Could create folder {} to store platform backup received from leader {} via {}",
+          replicationDir,
+          leader.toString(),
+          sender.toString());
     }
 
     return false;
@@ -332,6 +360,7 @@ public class PlatformReplicationManager {
   }
 
   abstract class PlatformBackupParams {
+
     // The addr that the prometheus server is running on.
     private final String prometheusHost;
     // The username that YW uses to connect to it's DB.
@@ -384,6 +413,7 @@ public class PlatformReplicationManager {
   }
 
   private class CreatePlatformBackupParams extends PlatformBackupParams {
+
     // Whether to exclude prometheus metric data from the backup or not.
     private final boolean excludePrometheus;
     // Whether to exclude the YB release binaries from the backup or not.
@@ -418,6 +448,7 @@ public class PlatformReplicationManager {
   }
 
   private class RestorePlatformBackupParams extends PlatformBackupParams {
+
     // Where to input a previously taken platform backup from.
     private final File input;
 
@@ -443,12 +474,12 @@ public class PlatformReplicationManager {
    */
   @VisibleForTesting
   boolean createBackup() {
-    LOG.debug("Creating platform backup...");
+    log.debug("Creating platform backup...");
 
     ShellResponse response = replicationHelper.runCommand(new CreatePlatformBackupParams());
 
     if (response.code != 0) {
-      LOG.error("Backup failed: " + response.message);
+      log.error("Backup failed: " + response.message);
     }
 
     return response.code == 0;
@@ -461,11 +492,11 @@ public class PlatformReplicationManager {
    * @return the output/results of running the script
    */
   public boolean restoreBackup(File input) {
-    LOG.info("Restoring platform backup...");
+    log.info("Restoring platform backup...");
 
     ShellResponse response = replicationHelper.runCommand(new RestorePlatformBackupParams(input));
     if (response.code != 0) {
-      LOG.error("Restore failed: " + response.message);
+      log.error("Restore failed: " + response.message);
     }
 
     return response.code == 0;

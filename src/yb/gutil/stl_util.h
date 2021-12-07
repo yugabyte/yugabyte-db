@@ -44,33 +44,34 @@
 
 #include <stddef.h>
 #include <string.h>  // for memcpy
+
 #include <algorithm>
+#include <cassert>
+#include <deque>
+#include <functional>
+#include <set>
+#include <vector>
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+
 using std::copy;
 using std::max;
 using std::min;
 using std::reverse;
 using std::sort;
 using std::swap;
-#include <cassert>
-#include <deque>
 using std::deque;
-#include <functional>
 using std::binary_function;
 using std::less;
-#include <iterator>
 using std::back_insert_iterator;
 using std::iterator_traits;
-#include <memory>
-#include <string>
 using std::string;
-#include <vector>
 using std::vector;
-#include <set>
 
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/algorithm.h"
+
+namespace yb {
 
 // Sort and remove duplicates of an STL vector or deque.
 template<class T>
@@ -963,14 +964,14 @@ bool SortedRangesHaveIntersection(InputIterator1 begin1, InputIterator1 end1,
   return false;
 }
 
-// release_ptr is intended to help remove systematic use of gscoped_ptr
+// release_ptr is intended to help remove systematic use of std::unique_ptr
 // in cases like:
 //
 // vector<Foo *> v;
 // ElementDeleter d(&v);
 // ... {
 //   int remove_idx = f(v);
-//   gscoped_ptr<Foo> t(v[remove_idx]);
+//   std::unique_ptr<Foo> t(v[remove_idx]);
 //   v[remove_idx] = NULL;  // Save from deleter.
 //   return t.release();
 // }
@@ -998,5 +999,24 @@ void EraseIf(const Predicate& predicate, Collection* collection) {
   collection->erase(std::remove_if(collection->begin(), collection->end(), predicate),
                     collection->end());
 }
+
+template <class Value, class Collection>
+bool Erase(const Value& value, Collection* collection) {
+  auto it = std::find(collection->begin(), collection->end(), value);
+  if (it == collection->end()) {
+    return false;
+  }
+
+  collection->erase(it);
+  return true;
+}
+
+} // namespace yb
+
+// For backward compatibility
+using yb::STLAppendToString;
+using yb::STLAssignToString;
+using yb::STLStringResizeUninitialized;
+using yb::string_as_array;
 
 #endif  // YB_GUTIL_STL_UTIL_H

@@ -2,24 +2,25 @@
 
 package com.yugabyte.yw.metrics;
 
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.MetricConfig;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TimeZone;
+import java.util.concurrent.Callable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
-import java.util.HashMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
-
 public class MetricQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryExecutor.class);
-
+  public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
   private ApiHelper apiHelper;
   private play.Configuration appConfig;
   private YBMetricQueryComponent ybMetricQueryComponent;
@@ -29,9 +30,12 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   private String queryUrl;
   private int queryRangeSecs = 0;
 
-  public MetricQueryExecutor(play.Configuration appConfig, ApiHelper apiHelper,
-                             Map<String, String> queryParam, Map<String, String> additionalFilters,
-                             YBMetricQueryComponent ybMetricQueryComponent) {
+  public MetricQueryExecutor(
+      play.Configuration appConfig,
+      ApiHelper apiHelper,
+      Map<String, String> queryParam,
+      Map<String, String> additionalFilters,
+      YBMetricQueryComponent ybMetricQueryComponent) {
     this.apiHelper = apiHelper;
     this.appConfig = appConfig;
     this.queryParam.putAll(queryParam);
@@ -54,13 +58,15 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         LOG.warn("Invalid value for step parameter, ignoring: " + queryParam.get("step"));
       }
     } else {
-      LOG.warn("Missing step size in query parameters, this is unexpected. " +
-               "Queries over longer time windows like 6h/1d will be inaccurate.");
+      LOG.warn(
+          "Missing step size in query parameters, this is unexpected. "
+              + "Queries over longer time windows like 6h/1d will be inaccurate.");
     }
   }
 
   /**
    * Get the metrics base uri based on the appConfig yb.metrics.uri
+   *
    * @return returns metrics url string
    */
   private String getMetricsUrl() {
@@ -77,7 +83,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     if (useNativeMetrics) {
       return ybMetricQueryComponent.query(queryParam);
     } else {
-        if (queryParam.containsKey("end")) {
+      if (queryParam.containsKey("end")) {
         this.queryUrl = this.getMetricsUrl() + "/query_range";
       } else {
         this.queryUrl = this.getMetricsUrl() + "/query";
@@ -86,6 +92,32 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       LOG.trace("Executing metric query {}: {}", queryUrl, queryParam);
       return apiHelper.getRequest(queryUrl, new HashMap<>(), queryParam);
     }
+  }
+
+  private String getDirectURL(String queryExpr) {
+
+    String durationSecs = "3600s";
+    String endString = "";
+
+    long endUnixTime = Long.parseLong(queryParam.getOrDefault("end", "0"));
+    long startUnixTime = Long.parseLong(queryParam.getOrDefault("start", "0"));
+    if (endUnixTime != 0 && startUnixTime != 0 && endUnixTime > startUnixTime) {
+      // The timezone is set to UTC because If there is a discrepancy between platform and
+      // prometheus timezones, the resulting directURL will show incorrect timeframe.
+      endString =
+          Util.unixTimeToDateString(
+              endUnixTime * 1000, DATE_FORMAT_STRING, TimeZone.getTimeZone("UTC"));
+      durationSecs = String.format("%ds", (endUnixTime - startUnixTime));
+    }
+
+    // Note: this is the URL as prometheus' web interface renders these metrics. It is
+    // possible this breaks over time as we upgrade prometheus.
+    return String.format(
+        "%s/graph?g0.expr=%s&g0.tab=0&g0.range_input=%s&g0.end_input=%s",
+        this.getMetricsUrl().replace("/api/v1", ""),
+        URLEncoder.encode(queryExpr),
+        durationSecs,
+        endString);
   }
 
   @Override
@@ -102,7 +134,13 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       List<MetricGraphData> output = new ArrayList<>();
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
-        queryParam.put("query", e.getValue());
+        String queryExpr = e.getValue();
+        queryParam.put("query", queryExpr);
+        try {
+          responseJson.put("directURL", getDirectURL(queryExpr));
+        } catch (Exception de) {
+          LOG.trace("Error getting direct url", de);
+        }
         JsonNode queryResponseJson = getMetrics();
         if (queryResponseJson == null) {
           responseJson.set("data", Json.toJson(new ArrayList<>()));
@@ -110,7 +148,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           return responseJson;
         }
         MetricQueryResponse queryResponse =
-          Json.fromJson(queryResponseJson, MetricQueryResponse.class);
+            Json.fromJson(queryResponseJson, MetricQueryResponse.class);
         if (queryResponse.error != null) {
           responseJson.put("error", queryResponse.error);
           break;

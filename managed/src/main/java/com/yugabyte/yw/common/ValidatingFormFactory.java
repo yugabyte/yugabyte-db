@@ -10,28 +10,50 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import play.data.Form;
 import play.data.FormFactory;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import play.libs.Json;
 
 @Singleton
 public class ValidatingFormFactory {
+
   private final FormFactory formFactory;
 
+  private final BeanValidator validator;
+
   @Inject
-  public ValidatingFormFactory(FormFactory formFactory) {
+  public ValidatingFormFactory(FormFactory formFactory, BeanValidator validator) {
     this.formFactory = formFactory;
+    this.validator = validator;
   }
 
   public <T> Form<T> getFormDataOrBadRequest(Class<T> clazz) {
     Form<T> formData = formFactory.form(clazz).bindFromRequest();
     if (formData.hasErrors()) {
-      throw new YWServiceException(BAD_REQUEST, formData.errorsAsJson());
+      throw new PlatformServiceException(BAD_REQUEST, formData.errorsAsJson());
     }
     return formData;
   }
 
+  public <T> T getFormDataOrBadRequest(JsonNode jsonNode, Class<T> clazz) {
+    // TODO: Ability to ignore fail on unknown fields
+    //      DataBinder dataBinder = new DataBinder(bean);
+    //      dataBinder.setIgnoreUnknownFields(false);
+    //      dataBinder.bind(new MutablePropertyValues(requestData));
+    T bean;
+    try {
+      bean = Json.fromJson(jsonNode, clazz);
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Failed to parse " + clazz.getSimpleName() + " object: " + e.getMessage());
+    }
+    // Do this so that constraint get validated
+    validator.validate(bean);
+    return bean;
+  }
 }

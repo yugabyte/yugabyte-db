@@ -11,24 +11,20 @@
 // under the License.
 //
 
-#include <sys/types.h>
-#include <openssl/rand.h>
-
 #include <string>
-
-#include "yb/util/header_manager_impl.h"
-#include "yb/tserver/universe_key_test_util.h"
-
-#include "yb/util/encryption_util.h"
-#include "yb/util/status.h"
-#include "yb/util/test_util.h"
-#include "yb/util/universe_key_manager.h"
-#include "yb/util/random_util.h"
-
-#include "yb/gutil/endian.h"
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
+
+#include "yb/gutil/endian.h"
+
+#include "yb/tserver/universe_key_test_util.h"
+
+#include "yb/util/encryption_util.h"
+#include "yb/util/header_manager_impl.h"
+#include "yb/util/status.h"
+#include "yb/util/test_util.h"
+#include "yb/util/universe_key_manager.h"
 
 using yb::tserver::GenerateTestUniverseKeyManager;
 
@@ -40,9 +36,9 @@ class TestHeaderManagerImpl : public YBTest {};
 
 TEST_F(TestHeaderManagerImpl, FileOps) {
   auto universe_key_manger = GenerateTestUniverseKeyManager();
-  std::unique_ptr<yb::enterprise::HeaderManager> header_manager =
-      enterprise::DefaultHeaderManager(universe_key_manger.get());
-  auto params = yb::enterprise::EncryptionParams::NewEncryptionParams();
+  std::unique_ptr<HeaderManager> header_manager =
+      DefaultHeaderManager(universe_key_manger.get());
+  auto params = EncryptionParams::NewEncryptionParams();
   string header = ASSERT_RESULT(header_manager->SerializeEncryptionParams(*params.get()));
   auto start_idx = header_manager->GetEncryptionMetadataStartIndex();
   auto status = ASSERT_RESULT(header_manager->GetFileEncryptionStatusFromPrefix(

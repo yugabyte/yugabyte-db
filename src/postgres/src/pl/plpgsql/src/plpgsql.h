@@ -862,10 +862,10 @@ typedef struct PLpgSQL_stmt_execsql
 	PLpgSQL_stmt_type cmd_type;
 	int			lineno;
 	PLpgSQL_expr *sqlstmt;
-	bool		mod_stmt;		/* is the stmt INSERT/UPDATE/DELETE?  Note:
-								 * mod_stmt is set when we plan the query */
+	bool		mod_stmt;		/* is the stmt INSERT/UPDATE/DELETE? */
 	bool		into;			/* INTO supplied? */
 	bool		strict;			/* INTO STRICT flag */
+	bool		mod_stmt_set;	/* is mod_stmt valid yet? */
 	PLpgSQL_variable *target;	/* INTO target (record or row) */
 } PLpgSQL_stmt_execsql;
 
@@ -1142,10 +1142,12 @@ extern bool plpgsql_print_strict_params;
 
 extern bool plpgsql_check_asserts;
 
-/* extra compile-time checks */
-#define PLPGSQL_XCHECK_NONE			0
-#define PLPGSQL_XCHECK_SHADOWVAR	1
-#define PLPGSQL_XCHECK_ALL			((int) ~0)
+/* extra compile-time and run-time checks */
+#define PLPGSQL_XCHECK_NONE						0
+#define PLPGSQL_XCHECK_SHADOWVAR				(1 << 1)
+#define PLPGSQL_XCHECK_TOOMANYROWS				(1 << 2)
+#define PLPGSQL_XCHECK_STRICTMULTIASSIGNMENT	(1 << 3)
+#define PLPGSQL_XCHECK_ALL						((int) ~0)
 
 extern int	plpgsql_extra_warnings;
 extern int	plpgsql_extra_errors;

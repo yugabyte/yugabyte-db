@@ -10,6 +10,7 @@ import { isNonEmptyArray, isNonEmptyObject, isEmptyString } from '../../../utils
 import { YBModalForm } from '../../common/forms';
 import { Field } from 'formik';
 import * as Yup from 'yup';
+import { BackupStorageOptions } from '../BackupStorageOptions';
 
 export default class RestoreBackup extends Component {
   static propTypes = {
@@ -25,7 +26,9 @@ export default class RestoreBackup extends Component {
     ) {
       const { restoreToUniverseUUID } = values;
       const payload = {
-        storageConfigUUID: values.storageConfigUUID,
+        storageConfigUUID: values.storageConfigUUID.value
+          ? values.storageConfigUUID.value
+          : values.storageConfigUUID,
         storageLocation: values.storageLocation,
         actionType: 'RESTORE',
         parallelism: values.parallelism
@@ -40,6 +43,9 @@ export default class RestoreBackup extends Component {
         payload.keyspace = values.restoreToKeyspace;
       }
 
+      if (values.restoreTimeStamp !== initialValues.restoreTimeStamp) {
+        payload.restoreTimeStamp = values.restoreTimeStamp.trim();
+      }
       if (_.get(values, 'kmsConfigUUID.value.length', 0) > 0) {
         payload['kmsConfigUUID'] = values.kmsConfigUUID.value;
       }
@@ -68,7 +74,8 @@ export default class RestoreBackup extends Component {
       universeList,
       storageConfigs,
       currentUniverse,
-      cloud
+      cloud,
+      featureFlags
     } = this.props;
 
     // If the backup information is not provided, most likely we are trying to load the backup
@@ -79,6 +86,7 @@ export default class RestoreBackup extends Component {
       restoreToUniverseUUID: Yup.string().required('Restore To Universe is Required'),
       restoreToKeyspace: Yup.string().nullable(),
       restoreToTableName: Yup.string().nullable(),
+      restoreTimeStamp: Yup.string().nullable(),
       storageConfigUUID: Yup.string().required('Storage Config is Required'),
       storageLocation: Yup.string()
         .nullable()
@@ -117,18 +125,8 @@ export default class RestoreBackup extends Component {
       return { value: config.metadata.configUUID, label: labelName };
     });
 
-    const storageOptions = storageConfigs.map((config) => {
-      return { value: config.configUUID, label: config.name + ' Storage' };
-    });
-
-    const initialValues = {
-      ...this.props.initialValues,
-      storageConfigUUID: hasBackupInfo
-        ? storageOptions.find((element) => {
-          return element.value === this.props.initialValues.storageConfigUUID;
-        })
-        : ''
-    };
+    const configTypeList = BackupStorageOptions(storageConfigs);
+    const initialValues = this.props.initialValues;
     const isUniverseBackup =
       hasBackupInfo && Array.isArray(backupInfo.backupList) && backupInfo.backupList.length;
 
@@ -162,12 +160,13 @@ export default class RestoreBackup extends Component {
             const payload = {
               ...values,
               restoreToUniverseUUID,
-              storageConfigUUID: values.storageConfigUUID.value,
+              storageConfigUUID: values.storageConfigUUID,
               kmsConfigUUID: values.kmsConfigUUID
             };
             if (values.storageLocation) {
               payload.storageLocation = values.storageLocation.trim();
             }
+
             this.restoreBackup(payload);
           }}
           initialValues={initialValues}
@@ -177,8 +176,11 @@ export default class RestoreBackup extends Component {
             name="storageConfigUUID"
             {...(hasBackupInfo ? { type: 'hidden' } : null)}
             component={YBFormSelect}
+            className="config"
+            classNamePrefix="select-nested"
             label={'Storage'}
-            options={storageOptions}
+            defaultValue={initialValues.storageConfigUUID.value}
+            options={configTypeList}
           />
           <Field
             name="storageLocation"
@@ -206,6 +208,10 @@ export default class RestoreBackup extends Component {
             disabled={isMultiTableBackup}
             label={'Table'}
           />
+          {(featureFlags.test?.addRestoreTimeStamp ||
+              featureFlags.released?.addRestoreTimeStamp) && (
+              <Field name="restoreTimeStamp" component={YBFormInput} label={'TimeStamp'} />
+            )}
           <Field name="parallelism" component={YBFormInput} label={'Parallel Threads'} />
           <Field
             name="kmsConfigUUID"

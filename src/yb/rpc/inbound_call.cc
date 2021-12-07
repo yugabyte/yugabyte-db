@@ -40,15 +40,13 @@
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
-#include "yb/rpc/serialization.h"
-#include "yb/rpc/service_pool.h"
+#include "yb/rpc/service_if.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
-#include "yb/util/memory/memory.h"
 
 using std::shared_ptr;
 using std::vector;
@@ -158,13 +156,24 @@ MonoDelta InboundCall::GetTimeInQueue() const {
   return timing_.time_handled.GetDeltaSince(timing_.time_received);
 }
 
-void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_time) {
+ThreadPoolTask* InboundCall::BindTask(InboundCallHandler* handler) {
+  auto shared_this = shared_from(this);
+  if (!handler->CallQueued()) {
+    return nullptr;
+  }
+  tracker_ = handler;
+  task_.Bind(handler, shared_this);
+  return &task_;
+}
+
+void InboundCall::RecordHandlingCompleted() {
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_completed.Initialized()) << "Already marked as completed";
   timing_.time_completed = MonoTime::Now();
   VLOG_WITH_PREFIX(4) << "Completed handling";
-  if (handler_run_time) {
-    handler_run_time->Increment((timing_.time_completed - timing_.time_handled).ToMicroseconds());
+  if (rpc_method_metrics_ && rpc_method_metrics_->handler_latency) {
+    rpc_method_metrics_->handler_latency->Increment(
+        (timing_.time_completed - timing_.time_handled).ToMicroseconds());
   }
 }
 
@@ -197,8 +206,8 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
     return false;
   }
 
-  Clear();
   RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, STATUS(TimedOut, message));
+  Clear();
 
   return true;
 }
@@ -206,10 +215,11 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
 void InboundCall::Clear() {
   serialized_request_.clear();
   request_data_.Reset();
+  request_data_memory_usage_.store(0, std::memory_order_release);
 }
 
 size_t InboundCall::DynamicMemoryUsage() const {
-  return DynamicMemoryUsageOf(request_data_, trace_);
+  return request_data_memory_usage_.load(std::memory_order_acquire) + DynamicMemoryUsageOf(trace_);
 }
 
 void InboundCall::InboundCallTask::Run() {
@@ -221,6 +231,30 @@ void InboundCall::InboundCallTask::Done(const Status& status) {
   auto call = std::move(call_);
   if (!status.ok()) {
     handler_->Failure(call, status);
+  }
+}
+
+void InboundCall::SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value) {
+  rpc_method_metrics_ = &value.get();
+  if (rpc_method_metrics_ && rpc_method_metrics_->request_bytes) {
+    auto request_size = request_data_.size();
+    if (request_size) {
+      rpc_method_metrics_->request_bytes->IncrementBy(request_size);
+    }
+  }
+}
+
+void InboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+  size_t old_size = output->size();
+  DoSerialize(output);
+  if (rpc_method_metrics_ && rpc_method_metrics_->response_bytes) {
+    auto response_size = 0;
+    for (size_t i = old_size; i != output->size(); ++i) {
+      response_size += (*output)[i].size();
+    }
+    if (response_size) {
+      rpc_method_metrics_->response_bytes->IncrementBy(response_size);
+    }
   }
 }
 

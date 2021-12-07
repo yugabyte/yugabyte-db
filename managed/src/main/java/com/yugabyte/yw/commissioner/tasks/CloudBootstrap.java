@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
@@ -20,20 +21,44 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.models.Provider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.models.Region;
+import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import java.util.stream.Collectors;
+import javax.inject.Inject;
 import play.libs.Json;
 
 public class CloudBootstrap extends CloudTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CloudBootstrap.class);
+  @Inject
+  protected CloudBootstrap(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
+  @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
   public static class Params extends CloudTaskParams {
+    public static Params fromProvider(Provider provider) {
+      Params taskParams = new Params();
+      taskParams.airGapInstall = provider.airGapInstall;
+      taskParams.customHostCidrs = provider.customHostCidrs;
+      taskParams.destVpcId = provider.destVpcId;
+      taskParams.hostVpcId = provider.hostVpcId;
+      taskParams.hostVpcRegion = provider.hostVpcRegion;
+      taskParams.keyPairName = provider.keyPairName;
+      taskParams.providerUUID = provider.uuid;
+      taskParams.sshPort = provider.sshPort;
+      taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
+      taskParams.sshUser = provider.sshUser;
+      taskParams.perRegionMetadata =
+          provider
+              .regions
+              .stream()
+              .collect(Collectors.toMap(region -> region.name, PerRegionMetadata::fromRegion));
+      return taskParams;
+    }
+
     // Class to encapsulate custom network bootstrap overrides per region.
     public static class PerRegionMetadata {
       // Custom VPC ID to use for this region
@@ -44,6 +69,7 @@ public class CloudBootstrap extends CloudTaskBase {
       // Custom CIDR to use for the VPC, if YB is creating it.
       // Default: chosen by YB.
       // Required: False.
+      // TODO: Remove. This is not used currently.
       public String vpcCidr;
 
       // Custom map from AZ name to Subnet ID for AWS.
@@ -51,10 +77,20 @@ public class CloudBootstrap extends CloudTaskBase {
       // Required: True for custom input, False for YW managed.
       public Map<String, String> azToSubnetIds;
 
+      // Custom map from AZ name to Subnet ID for AWS.
+      // Default: Empty
+      // Required: False for custom input, False for YW managed.
+      public Map<String, String> azToSecondarySubnetIds = null;
+
       // Region Subnet ID for GCP.
       // Default: created by YB.
       // Required: True for custom input, False for YW managed.
       public String subnetId;
+
+      // Region Secondary Subnet ID for GCP.
+      // Default: Null
+      // Required: False for custom input, False for YW managed.
+      public String secondarySubnetId = null;
 
       // TODO(bogdan): does this not need a custom SSH user as well???
       // Custom AMI ID to use for YB nodes.
@@ -66,6 +102,36 @@ public class CloudBootstrap extends CloudTaskBase {
       // Default: created by YB.
       // Required: True for custom input, False for YW managed.
       public String customSecurityGroupId;
+
+      public static PerRegionMetadata fromRegion(Region region) {
+        PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
+        perRegionMetadata.customImageId = region.ybImage;
+        perRegionMetadata.customSecurityGroupId = region.getSecurityGroupId();
+        //    perRegionMetadata.subnetId = can only be set per zone
+        perRegionMetadata.vpcId = region.getVnetName();
+        //    perRegionMetadata.vpcCidr = never used
+        if (region.zones == null || region.zones.size() == 0) {
+          perRegionMetadata.azToSubnetIds = new HashMap<>();
+        } else {
+          perRegionMetadata.azToSubnetIds =
+              region
+                  .zones
+                  .stream()
+                  .filter(zone -> zone.name != null && zone.subnet != null)
+                  .collect(Collectors.toMap(zone -> zone.name, zone -> zone.subnet));
+          // Check if the zones have a secondary subnet
+          perRegionMetadata.azToSecondarySubnetIds =
+              region
+                  .zones
+                  .stream()
+                  .filter(zone -> zone.name != null && zone.secondarySubnet != null)
+                  .collect(Collectors.toMap(zone -> zone.name, zone -> zone.secondarySubnet));
+          // In case of GCP, we want to use the secondary subnet, which will be the same across
+          // zones. Will be ignored in all other cases.
+          perRegionMetadata.secondarySubnetId = region.zones.get(0).secondarySubnet;
+        }
+        return perRegionMetadata;
+      }
     }
 
     // Map from region name to metadata.
@@ -97,8 +163,13 @@ public class CloudBootstrap extends CloudTaskBase {
     public String destVpcId = null;
   }
 
+  // TODO: these fields should probably be persisted with provider but currently these are lost
+  public static class ProviderTransientData {}
+
   @Override
-  protected Params taskParams() { return (Params) taskParams; }
+  protected Params taskParams() {
+    return (Params) taskParams;
+  }
 
   @Override
   public void run() {
@@ -108,15 +179,22 @@ public class CloudBootstrap extends CloudTaskBase {
         || p.code.equals(Common.CloudType.aws.toString())
         || p.code.equals(Common.CloudType.azu.toString())) {
       createCloudSetupTask()
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
     }
-    taskParams().perRegionMetadata.forEach((regionCode, metadata) -> {
-      createRegionSetupTask(regionCode, metadata)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
-    });
-    taskParams().perRegionMetadata.forEach((regionCode, metadata) -> {
-      createAccessKeySetupTask(regionCode).setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-    });
+    taskParams()
+        .perRegionMetadata
+        .forEach(
+            (regionCode, metadata) -> {
+              createRegionSetupTask(regionCode, metadata)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
+            });
+    taskParams()
+        .perRegionMetadata
+        .forEach(
+            (regionCode, metadata) -> {
+              createAccessKeySetupTask(regionCode)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+            });
 
     createInitializerTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
@@ -130,15 +208,14 @@ public class CloudBootstrap extends CloudTaskBase {
     CloudSetup.Params params = new CloudSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.customPayload = Json.stringify(Json.toJson(taskParams()));
-    CloudSetup task = new CloudSetup();
+    CloudSetup task = createTask(CloudSetup.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
 
-  public SubTaskGroup createRegionSetupTask(
-      String regionCode, Params.PerRegionMetadata metadata) {
+  public SubTaskGroup createRegionSetupTask(String regionCode, Params.PerRegionMetadata metadata) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("Create Region task", executor);
 
     CloudRegionSetup.Params params = new CloudRegionSetup.Params();
@@ -147,7 +224,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.metadata = metadata;
     params.destVpcId = taskParams().destVpcId;
 
-    CloudRegionSetup task = new CloudRegionSetup();
+    CloudRegionSetup task = createTask(CloudRegionSetup.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -164,7 +241,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.sshUser = taskParams().sshUser;
     params.sshPort = taskParams().sshPort;
     params.airGapInstall = taskParams().airGapInstall;
-    CloudAccessKeySetup task = new CloudAccessKeySetup();
+    CloudAccessKeySetup task = createTask(CloudAccessKeySetup.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -175,7 +252,7 @@ public class CloudBootstrap extends CloudTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("Create Cloud initializer task", executor);
     CloudInitializer.Params params = new CloudInitializer.Params();
     params.providerUUID = taskParams().providerUUID;
-    CloudInitializer task = new CloudInitializer();
+    CloudInitializer task = createTask(CloudInitializer.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);

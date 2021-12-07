@@ -13,8 +13,8 @@
 
 #include "yb/util/bytes_formatter.h"
 
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include <string>
+#include <gtest/gtest.h>
 
 using std::string;
 

@@ -34,16 +34,17 @@
 
 #include <string>
 
-#include "yb/common/schema.h"
+#include "yb/common/common_fwd.h"
 #include "yb/gutil/macros.h"
-#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
 class FsManager;
+class UniverseKeyManager;
 
 namespace consensus {
 class RaftConfigPB;
@@ -57,10 +58,14 @@ class TabletServer;
 class MiniTabletServer {
  public:
   static Result<std::unique_ptr<MiniTabletServer>> CreateMiniTabletServer(
-      const string& fs_root,
+      const std::string& fs_root,
       uint16_t rpc_port,
       int index = 0);
 
+  MiniTabletServer(const std::vector<std::string>& wal_paths,
+                   const std::vector<std::string>& data_paths,
+                   uint16_t rpc_port,
+                   const TabletServerOptions& extra_opts, int index = 0);
   MiniTabletServer(const std::string& fs_root, uint16_t rpc_port,
                    const TabletServerOptions& extra_opts, int index = 0);
   ~MiniTabletServer();
@@ -135,8 +140,10 @@ class MiniTabletServer {
   TabletServerOptions opts_;
   int index_;
 
-  gscoped_ptr<FsManager> fs_manager_;
-  gscoped_ptr<TabletServer> server_;
+  std::unique_ptr<UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<yb::Env> encrypted_env_;
+  std::unique_ptr<rocksdb::Env> rocksdb_encrypted_env_;
+  std::unique_ptr<TabletServer> server_;
   std::unique_ptr<Tunnel> tunnel_;
 };
 

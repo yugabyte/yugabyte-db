@@ -17,12 +17,14 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/util/test_util.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance_mocked.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
 
 DECLARE_bool(load_balancer_count_move_as_add);
 
@@ -35,17 +37,20 @@ const int kDefaultNumReplicas = 3;
 const string kLivePlacementUuid = "live";
 const string kReadReplicaPlacementUuidPrefix = "rr_$0";
 
-scoped_refptr<TabletInfo> CreateTablet(
+inline scoped_refptr<TabletInfo> CreateTablet(
     const scoped_refptr<TableInfo>& table, const TabletId& tablet_id, const string& start_key,
-    const string& end_key) {
+    const string& end_key, uint64_t split_depth = 0) {
   scoped_refptr<TabletInfo> tablet = new TabletInfo(table, tablet_id);
   auto l = tablet->LockForWrite();
   PartitionPB* partition = l.mutable_data()->pb.mutable_partition();
   partition->set_partition_key_start(start_key);
   partition->set_partition_key_end(end_key);
   l.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+  if (split_depth) {
+    l.mutable_data()->pb.set_split_depth(split_depth);
+  }
 
-  table->AddTablet(tablet.get());
+  table->AddTablet(tablet);
   l.Commit();
   return tablet;
 }
@@ -363,8 +368,8 @@ class TestLoadBalancerBase {
     // Remove the 2 tablet peers that are wrongly placed and assign a new one that is properly
     // placed.
     for (const auto& tablet : tablets_) {
-      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
-        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      std::shared_ptr<TabletReplicaMap> replica_map =
+        std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
       replica_map->erase(ts_descs_[1]->permanent_uuid());
       replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
@@ -490,8 +495,8 @@ class TestLoadBalancerBase {
 
     // Remove the only tablet peer from AZ "c".
     for (const auto& tablet : tablets_) {
-      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
-        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      std::shared_ptr<TabletReplicaMap> replica_map =
+        std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
       replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
     }
@@ -646,8 +651,8 @@ class TestLoadBalancerBase {
 
     // Remove the only tablet peer from AZ "c".
     for (const auto& tablet : tablets_) {
-      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
-        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      std::shared_ptr<TabletReplicaMap> replica_map =
+        std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
       replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
     }
@@ -905,7 +910,7 @@ class TestLoadBalancerBase {
     // Prepare the replicas.
     tablet::RaftGroupStatePB state = tablet::RUNNING;
     for (int i = 0; i < tablets_.size(); ++i) {
-      auto replica_map = std::make_shared<TabletInfo::ReplicaMap>();
+      auto replica_map = std::make_shared<TabletReplicaMap>();
       for (int j = 0; j < ts_descs_.size(); ++j) {
         TabletReplica replica;
         auto ts_desc = ts_descs_[j];
@@ -971,8 +976,8 @@ class TestLoadBalancerBase {
 
   void AddRunningReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc,
                          bool is_live = true) {
-    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
-      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    std::shared_ptr<TabletReplicaMap> replicas =
+      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
     NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING,
@@ -982,8 +987,8 @@ class TestLoadBalancerBase {
   }
 
   void RemoveReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
-    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
-      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    std::shared_ptr<TabletReplicaMap> replicas =
+      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
     int before_size = replicas->size();
     replicas->erase(ts_desc->permanent_uuid());
     ASSERT_TRUE(before_size > replicas->size());
@@ -991,8 +996,8 @@ class TestLoadBalancerBase {
   }
 
   void MoveTabletLeader(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
-    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
-      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    std::shared_ptr<TabletReplicaMap> replicas =
+      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
     for (auto& replica : *replicas) {
       if (replica.second.ts_desc->permanent_uuid() == ts_desc->permanent_uuid()) {
         replica.second.role = consensus::RaftPeerPB::LEADER;

@@ -35,17 +35,26 @@
 #include <algorithm>
 #include <set>
 
+#include <glog/logging.h>
+
 #include "yb/common/crc16.h"
+#include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/row_key-util.h"
-#include "yb/common/wire_protocol.pb.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/row.h"
+#include "yb/common/schema.h"
+
 #include "yb/docdb/doc_key.h"
-#include "yb/gutil/map-util.h"
+
 #include "yb/gutil/hash/hash.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/status_format.h"
+#include "yb/util/yb_partition.h"
+
 #include "yb/yql/redis/redisserver/redis_constants.h"
-#include "yb/common/ql_value.h"
 
 namespace yb {
 
@@ -97,6 +106,14 @@ void Partition::FromPB(const PartitionPB& pb, Partition* partition) {
 
   partition->partition_key_start_ = pb.partition_key_start();
   partition->partition_key_end_ = pb.partition_key_end();
+}
+
+std::string Partition::ToString() const {
+  return Format(
+      "{ partition_key_start: $0 partition_key_end: $1 hash_buckets: $2 }",
+      Slice(partition_key_start_).ToDebugString(),
+      Slice(partition_key_end_).ToDebugString(),
+      hash_buckets_);
 }
 
 namespace {
@@ -451,6 +468,18 @@ uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key
   return (bytes[0] << 8) | bytes[1];
 }
 
+string PartitionSchema::GetEncodedKeyPrefix(
+    const string& partition_key, const PartitionSchemaPB& partition_schema) {
+  if (partition_schema.has_hash_schema()) {
+    const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    docdb::KeyBytes split_encoded_key_bytes;
+    docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key_bytes)
+      .Hash(doc_key_hash, std::vector<docdb::PrimitiveValue>());
+    return split_encoded_key_bytes.ToStringBuffer();
+  }
+  return partition_key;
+}
+
 Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_start,
                                                   const string& partition_key_end) {
   if (!IsValidHashPartitionKeyBound(partition_key_start) ||
@@ -599,12 +628,12 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
     partitions->swap(new_partitions);
   }
 
-  unordered_set<int> range_column_idxs;
+  std::unordered_set<int> range_column_idxs;
   for (ColumnId column_id : range_schema_.column_ids) {
     int column_idx = schema.find_column_by_id(column_id);
     if (column_idx == Schema::kColumnNotFound) {
-      return STATUS(InvalidArgument, Substitute("Range partition column ID $0 "
-                                                "not found in table schema.", column_id));
+      return STATUS_FORMAT(
+          InvalidArgument, "Range partition column ID $0 not found in table schema", column_id);
     }
     if (!InsertIfNotPresent(&range_column_idxs, column_idx)) {
       return STATUS(InvalidArgument, "Duplicate column in range partition",
@@ -817,7 +846,7 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
                                                   const Schema& schema) const {
   CHECK(!schema.num_hash_key_columns());
   std::string s;
-  s.append("range: [(");
+  s.append("range: [");
   if (partition.partition_key_start().empty()) {
     s.append("<start>");
   } else {
@@ -829,7 +858,7 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
   } else {
     s.append(docdb::DocKey::DebugSliceToString(partition.partition_key_end()));
   }
-  s.append("))");
+  s.append(")");
   return s;
 }
 
@@ -877,7 +906,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     YBPartialRow start_row(&schema);
     YBPartialRow end_row(&schema);
 
-    s.append("range: [(");
+    s.append("range: [");
 
     vector<string> start_components;
     Slice encoded_range_key_start = partition.range_key_start();
@@ -889,7 +918,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     } else {
       s.append(Substitute("<decode-error: $0>", status.ToString()));
     }
-    s.append("), (");
+    s.append(", ");
 
     vector<string> end_components;
     Slice encoded_range_key_end = partition.range_key_end();
@@ -900,7 +929,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     } else {
       s.append(Substitute("<decode-error: $0>", status.ToString()));
     }
-    s.append("))");
+    s.append(")");
   }
 
   return s;
@@ -1291,6 +1320,15 @@ Status PartitionSchema::Validate(const Schema& schema) const {
   }
 
   return Status::OK();
+}
+
+bool PartitionSchema::IsHashPartitioning() const {
+  return hash_schema_ != boost::none;
+}
+
+YBHashSchema PartitionSchema::hash_schema() const {
+  CHECK(hash_schema_);
+  return *hash_schema_;
 }
 
 } // namespace yb

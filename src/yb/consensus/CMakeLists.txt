@@ -115,6 +115,7 @@ set(CONSENSUS_SRCS
   consensus_meta.cc
   consensus_peers.cc
   consensus_queue.cc
+  consensus_round.cc
   leader_election.cc
   log_cache.cc
   peer_manager.cc
@@ -143,8 +144,10 @@ set(YB_TEST_LINK_LIBS
   log
   rpc_test_util
   tserver
-  tablet
+  tablet_error
+  yb_common_test_util
   yb_util
+  yb_common_test_util
   ${YB_MIN_TEST_LIBS}
 )
 

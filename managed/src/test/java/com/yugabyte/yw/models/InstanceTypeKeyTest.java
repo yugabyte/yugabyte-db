@@ -1,11 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import org.junit.Test;
+import static org.junit.Assert.assertEquals;
 
 import java.util.UUID;
-
-import static org.junit.Assert.assertEquals;
+import org.junit.Test;
 
 public class InstanceTypeKeyTest {
 

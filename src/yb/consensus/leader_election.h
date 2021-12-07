@@ -46,14 +46,13 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/leader_lease.h"
-#include "yb/consensus/opid_util.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/locks.h"
-#include "yb/util/net/net_util.h"
 
 namespace yb {
 class Status;

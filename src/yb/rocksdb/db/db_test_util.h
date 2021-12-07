@@ -43,6 +43,8 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
@@ -75,12 +77,12 @@
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/test_util.h" // For ASSERT_OK
+
 namespace yb {
-namespace enterprise {
 
 class UniverseKeyManager;
 
-} // namespace enterprise
 } // namespace yb
 
 namespace rocksdb {
@@ -92,6 +94,9 @@ uint64_t TestGetTickerCount(const Options& options, Tickers ticker_type) {
 void TestResetTickerCount(const Options& options, Tickers ticker_type) {
   return options.statistics->setTickerCount(ticker_type, 0);
 }
+
+// Update options for RocksDB to be redirected to GLOG via YBRocksDBLogger.
+void ConfigureLoggingToGlog(Options* options, const std::string& log_prefix = "TEST: ");
 
 class OnFileDeletionListener : public EventListener {
  public:
@@ -120,6 +125,18 @@ class OnFileDeletionListener : public EventListener {
  private:
   size_t matched_count_;
   std::string expected_file_name_;
+};
+
+class CompactionStartedListener : public EventListener {
+ public:
+  void OnCompactionStarted() override {
+    ++num_compactions_started_;
+  }
+
+  int GetNumCompactionsStarted() { return num_compactions_started_; }
+
+ private:
+  std::atomic<int> num_compactions_started_;
 };
 
 namespace anon {
@@ -588,6 +605,7 @@ class DBTestBase : public testing::Test {
     kLevelSubcompactions = 30,
     kUniversalSubcompactions = 31,
     kBlockBasedTableWithIndexRestartInterval = 32,
+    kBlockBasedTableWithThreeSharedPartsKeyDeltaEncoding = 33,
   };
   int option_config_;
 
@@ -603,7 +621,7 @@ class DBTestBase : public testing::Test {
   Options last_options_;
 
   // For encryption
-  std::unique_ptr<yb::enterprise::UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<yb::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> encrypted_env_;
 
   static const std::string kKeyId;

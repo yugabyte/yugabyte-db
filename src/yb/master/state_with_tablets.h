@@ -15,19 +15,19 @@
 #define YB_MASTER_STATE_WITH_TABLETS_H
 
 #include <boost/iterator/transform_iterator.hpp>
-
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
-
-#include "yb/common/entity_ids.h"
+#include <boost/multi_index_container.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <glog/logging.h>
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_backup.pb.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {
@@ -35,7 +35,8 @@ namespace master {
 class StateWithTablets {
  public:
   StateWithTablets(
-      SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state);
+      SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state,
+      std::string log_prefix);
 
   virtual ~StateWithTablets() = default;
 
@@ -60,7 +61,7 @@ class StateWithTablets {
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
-  void Done(const TabletId& tablet_id, const Status& status);
+  void Done(const TabletId& tablet_id, Status status);
   bool AllInState(SysSnapshotEntryPB::State state);
   bool HasInState(SysSnapshotEntryPB::State state);
   void SetInitialTabletsState(SysSnapshotEntryPB::State state);
@@ -124,13 +125,19 @@ class StateWithTablets {
 
   void RemoveTablets(const std::vector<std::string>& tablet_ids);
 
-  virtual bool IsTerminalFailure(const Status& status) = 0;
-
   auto tablet_ids() const {
     auto lambda = [](const TabletData& data) { return data.id; };
     return boost::make_iterator_range(
         boost::make_transform_iterator(tablets_.begin(), lambda),
         boost::make_transform_iterator(tablets_.end(), lambda));
+  }
+
+  const std::string& LogPrefix() const;
+
+  virtual bool IsTerminalFailure(const Status& status) = 0;
+
+  virtual CHECKED_STATUS CheckDoneStatus(const Status& status) {
+    return status;
   }
 
  protected:
@@ -175,6 +182,7 @@ class StateWithTablets {
 
   SnapshotCoordinatorContext& context_;
   SysSnapshotEntryPB::State initial_state_;
+  const std::string log_prefix_;
 
   Tablets tablets_;
 

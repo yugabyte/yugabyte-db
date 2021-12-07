@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <algorithm>
 #include <thread>
 
@@ -20,7 +19,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 
@@ -96,7 +96,7 @@ class Task : public PriorityThreadPoolTask {
     }
   }
 
-  bool BelongsTo(void* key) override {
+  bool ShouldRemoveWithKey(void* key) override {
     return false;
   }
 
@@ -105,7 +105,7 @@ class Task : public PriorityThreadPoolTask {
   }
 
   std::string ToString() const override {
-    return Format("{ index: $0 }", index_);
+    return YB_CLASS_TO_STRING(index);
   }
 
  private:
@@ -200,8 +200,8 @@ class RandomTask : public PriorityThreadPoolTask {
   }
 
   // Returns true if the task belongs to specified key, which was passed to
-  // PriorityThreadPool::Remove.
-  bool BelongsTo(void* key) override {
+  // PriorityThreadPool::Remove and should be removed.
+  bool ShouldRemoveWithKey(void* key) override {
     return false;
   }
 

@@ -18,6 +18,7 @@
 //
 // Modified for yb:
 // - use boost mutexes instead of port mutexes
+#include "yb/util/memenv/memenv.h"
 
 #include <string.h>
 
@@ -28,18 +29,15 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
 #include "yb/util/file_system_mem.h"
 #include "yb/util/malloc.h"
 #include "yb/util/mutex.h"
-#include "yb/util/memenv/memenv.h"
 #include "yb/util/random.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -407,6 +405,10 @@ class InMemoryEnv : public EnvWrapper {
 
   Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
     LOG(FATAL) << "Not implemented";
+  }
+
+  bool IsEncrypted() const override {
+    return false;
   }
 
  private:

@@ -20,51 +20,57 @@ import javax.inject.Singleton;
 
 @Singleton
 public class EncryptionAtRestUniverseKeyCache {
-    private class EncryptionAtRestUniverseKeyCacheEntry {
-        private String keyRef;
-        private String keyVal;
+  private class EncryptionAtRestUniverseKeyCacheEntry {
+    private String keyRef;
+    private String keyVal;
 
-        public EncryptionAtRestUniverseKeyCacheEntry(byte[] keyRef, byte[] keyVal) {
-            this.keyRef = Base64.getEncoder().encodeToString(keyRef);
-            this.keyVal = Base64.getEncoder().encodeToString(keyVal);
-        }
-
-        public byte[] getKeyRef() { return Base64.getDecoder().decode(this.keyRef); }
-
-        public byte[] getKeyVal() { return Base64.getDecoder().decode(this.keyVal); }
-
-        public void updateEntry(byte[] keyRef, byte[] keyVal) {
-            this.keyRef = Base64.getEncoder().encodeToString(keyRef);
-            this.keyVal = Base64.getEncoder().encodeToString(keyVal);
-        }
+    public EncryptionAtRestUniverseKeyCacheEntry(byte[] keyRef, byte[] keyVal) {
+      this.keyRef = Base64.getEncoder().encodeToString(keyRef);
+      this.keyVal = Base64.getEncoder().encodeToString(keyVal);
     }
 
-    private Map<UUID, EncryptionAtRestUniverseKeyCacheEntry> cache;
-
-    @Inject
-    public EncryptionAtRestUniverseKeyCache() {
-        this.cache = new HashMap<UUID, EncryptionAtRestUniverseKeyCacheEntry>();
+    public byte[] getKeyRef() {
+      return Base64.getDecoder().decode(this.keyRef);
     }
 
-    public void setCacheEntry(UUID universeUUID, byte[] keyRef, byte[] keyVal) {
-        EncryptionAtRestUniverseKeyCacheEntry cacheEntry = this.cache.get(universeUUID);
-        if (cacheEntry != null) cacheEntry.updateEntry(keyRef, keyVal);
-        else cacheEntry = new EncryptionAtRestUniverseKeyCacheEntry(keyRef, keyVal);
-        this.cache.put(universeUUID, cacheEntry);
+    public byte[] getKeyVal() {
+      return Base64.getDecoder().decode(this.keyVal);
     }
 
-    public byte[] getCacheEntry(UUID universeUUID, byte[] keyRef) {
-        byte[] result = null;
-        EncryptionAtRestUniverseKeyCacheEntry cacheEntry = this.cache.get(universeUUID);
-        if (cacheEntry != null && Arrays.equals(cacheEntry.getKeyRef(), keyRef)) {
-            result = cacheEntry.getKeyVal();
-        }
-        return result;
+    public void updateEntry(byte[] keyRef, byte[] keyVal) {
+      this.keyRef = Base64.getEncoder().encodeToString(keyRef);
+      this.keyVal = Base64.getEncoder().encodeToString(keyVal);
     }
+  }
 
-    public void removeCacheEntry(UUID universeUUID) {
-        this.cache.remove(universeUUID);
+  private Map<UUID, EncryptionAtRestUniverseKeyCacheEntry> cache;
+
+  @Inject
+  public EncryptionAtRestUniverseKeyCache() {
+    this.cache = new HashMap<UUID, EncryptionAtRestUniverseKeyCacheEntry>();
+  }
+
+  public void setCacheEntry(UUID universeUUID, byte[] keyRef, byte[] keyVal) {
+    EncryptionAtRestUniverseKeyCacheEntry cacheEntry = this.cache.get(universeUUID);
+    if (cacheEntry != null) cacheEntry.updateEntry(keyRef, keyVal);
+    else cacheEntry = new EncryptionAtRestUniverseKeyCacheEntry(keyRef, keyVal);
+    this.cache.put(universeUUID, cacheEntry);
+  }
+
+  public byte[] getCacheEntry(UUID universeUUID, byte[] keyRef) {
+    byte[] result = null;
+    EncryptionAtRestUniverseKeyCacheEntry cacheEntry = this.cache.get(universeUUID);
+    if (cacheEntry != null && Arrays.equals(cacheEntry.getKeyRef(), keyRef)) {
+      result = cacheEntry.getKeyVal();
     }
+    return result;
+  }
 
-    public void clearCache() { this.cache.clear(); }
+  public void removeCacheEntry(UUID universeUUID) {
+    this.cache.remove(universeUUID);
+  }
+
+  public void clearCache() {
+    this.cache.clear();
+  }
 }

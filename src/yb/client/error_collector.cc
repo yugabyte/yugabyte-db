@@ -33,7 +33,6 @@
 #include "yb/client/error_collector.h"
 
 #include "yb/client/error.h"
-#include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 
 namespace yb {
@@ -48,35 +47,17 @@ ErrorCollector::~ErrorCollector() {}
 void ErrorCollector::AddError(std::unique_ptr<YBError> error) {
   LOG_IF(DFATAL, error->status().ok())
       << "Unexpected to add OK status as error for: " << error->failed_op().ToString();
-  std::lock_guard<simple_spinlock> l(mutex_);
   errors_.push_back(std::move(error));
 }
 
-int ErrorCollector::CountErrors() const {
-  std::lock_guard<simple_spinlock> l(mutex_);
+size_t ErrorCollector::CountErrors() const {
   return errors_.size();
 }
 
 CollectedErrors ErrorCollector::GetAndClearErrors() {
   CollectedErrors result;
-  {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    errors_.swap(result);
-  }
+  errors_.swap(result);
   return result;
-}
-
-void ErrorCollector::ClearErrors() {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  errors_.clear();
-}
-
-Status ErrorCollector::GetSingleErrorStatus() {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  if (errors_.size() == 1) {
-    return errors_.front()->status();
-  }
-  return Status::OK();
 }
 
 void ErrorCollector::AddError(std::shared_ptr<YBOperation> operation, Status status) {

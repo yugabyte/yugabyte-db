@@ -32,14 +32,17 @@
 #ifndef YB_UTIL_COW_OBJECT_H
 #define YB_UTIL_COW_OBJECT_H
 
+#include <fcntl.h>
+
 #include <algorithm>
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
-#include "yb/util/rwc_lock.h"
+
+#include "yb/util/fault_injection.h"
 #include "yb/util/logging.h"
+#include "yb/util/rwc_lock.h"
 
 namespace yb {
 
@@ -131,7 +134,7 @@ class CowObject {
   mutable RWCLock lock_;
 
   State state_;
-  gscoped_ptr<State> dirty_state_;
+  std::unique_ptr<State> dirty_state_;
 
   // Set only when mutable_dirty() method is called. Unset whenever dirty_state_ is reset().
   bool is_dirty_ = false;
@@ -244,6 +247,14 @@ class CowWriteLock {
     cow_ = nullptr;
   }
 
+  void CommitOrWarn(const Status& status, const char* action) {
+    if (!status.ok()) {
+      LOG(WARNING) << "An error occurred while " << action << ": " << status;
+      return;
+    }
+    Commit();
+  }
+
   void Unlock() {
     if (cow_) {
       cow_->AbortMutation();
@@ -262,7 +273,7 @@ class CowWriteLock {
   }
 
   // Obtain the mutable data.
-  State* mutable_data() {
+  State* mutable_data() const {
     return cow_->mutable_dirty();
   }
 

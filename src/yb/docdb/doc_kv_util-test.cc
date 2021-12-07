@@ -11,18 +11,21 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/doc_ttl_util.h"
-
 #include <string>
 
-#include "yb/docdb/value.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
-#include "yb/util/bytes_formatter.h"
+#include <gtest/gtest.h>
 
-#include "yb/util/slice.h"
+#include "yb/common/schema.h"
+
+#include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/value.h"
+
 #include "yb/rocksdb/util/random.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 using std::string;
@@ -73,7 +76,7 @@ TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
 TEST(DocKVUtilTest, AppendZeroEncodedStrToKey) {
   KeyBuffer buf("a"s);
   AppendZeroEncodedStrToKey("bc", &buf);
-  ASSERT_EQ("abc", buf.ToString());
+  ASSERT_EQ("abc", buf.ToStringBuffer());
   string str_with_embedded_zeros = "f";
   str_with_embedded_zeros.push_back('\x0');
   str_with_embedded_zeros.push_back('g');
@@ -134,6 +137,55 @@ TEST(DocKVUtilTest, ComputeTTL) {
 
   MonoDelta reset_ttl = MonoDelta::FromMilliseconds(0);
   EXPECT_TRUE(ComputeTTL(reset_ttl, schema).Equals(Value::kMaxTtl));
+}
+
+TEST(DocKVUtilTest, FileExpirationFromValueTTL) {
+  HybridTime key_hybrid_time = 1000_usec_ht;
+
+  MonoDelta value_ttl = Value::kMaxTtl;
+  EXPECT_EQ(FileExpirationFromValueTTL(key_hybrid_time, value_ttl), kUseDefaultTTL);
+
+  value_ttl = Value::kResetTtl;
+  EXPECT_EQ(FileExpirationFromValueTTL(key_hybrid_time, value_ttl), kNoExpiration);
+
+  value_ttl = MonoDelta::FromMicroseconds(1000);
+  EXPECT_EQ(FileExpirationFromValueTTL(key_hybrid_time, value_ttl), 2000_usec_ht);
+
+  key_hybrid_time = HybridTime::kInvalid;
+  EXPECT_EQ(FileExpirationFromValueTTL(key_hybrid_time, value_ttl), kNoExpiration);
+
+  key_hybrid_time = HybridTime::kMax;
+  EXPECT_EQ(FileExpirationFromValueTTL(key_hybrid_time, value_ttl), kNoExpiration);
+}
+
+TEST(DocKVUtilTest, MaxExpirationFromValueAndTableTTL) {
+  HybridTime key_ht = 1000_usec_ht;
+  MonoDelta table_ttl;
+  HybridTime val_expiry_ht;
+
+  val_expiry_ht = 2000_usec_ht;
+  table_ttl = Value::kMaxTtl;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), val_expiry_ht);
+  val_expiry_ht = kUseDefaultTTL;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), kNoExpiration);
+  val_expiry_ht = kNoExpiration;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), kNoExpiration);
+
+  table_ttl = MonoDelta::FromMicroseconds(500);
+  val_expiry_ht = 2000_usec_ht;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), val_expiry_ht);
+  val_expiry_ht = 1100_usec_ht;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), 1500_usec_ht);
+  val_expiry_ht = kNoExpiration;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), kNoExpiration);
+  val_expiry_ht = kUseDefaultTTL;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), 1500_usec_ht);
+
+  key_ht = HybridTime::kMax;
+  val_expiry_ht = 2000_usec_ht;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), kNoExpiration);
+  key_ht = HybridTime::kInvalid;
+  EXPECT_EQ(MaxExpirationFromValueAndTableTTL(key_ht, table_ttl, val_expiry_ht), kNoExpiration);
 }
 
 TEST(DocKVUtilTest, FloatEncoding) {

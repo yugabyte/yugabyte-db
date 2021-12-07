@@ -14,3 +14,9 @@ YbgExprContextCreate
 YbgExprContextAddColValue
 YbgEvalExpr
 YbgSplitArrayDatum
+
+# Relation sampling
+YbgSamplerCreate
+YbgSamplerGetState
+YbgSamplerRandomFract
+YbgReservoirGetNextS

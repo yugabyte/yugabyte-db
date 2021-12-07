@@ -9,7 +9,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.3-SNAPSHOT</version>
+    <version>0.8.11-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-multiapi</artifactId>
@@ -19,14 +19,14 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.3-SNAPSHOT</version>
+      <version>0.8.11-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.3-SNAPSHOT</version>
+      <version>0.8.11-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -34,13 +34,6 @@
       <artifactId>yb-cql</artifactId>
       <type>test-jar</type>
       <scope>test</scope>
-      <!-- Exclude Cassandra driver because it is already included by Spark -->
-      <exclusions>
-        <exclusion>
-          <groupId>com.yugabyte</groupId>
-          <artifactId>cassandra-driver-core</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
@@ -62,12 +55,8 @@
       <artifactId>commons-codec</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.spark</groupId>
-      <artifactId>spark-core_2.11</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.spark</groupId>
-      <artifactId>spark-sql_2.11</artifactId>
+      <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>

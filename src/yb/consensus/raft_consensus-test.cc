@@ -35,19 +35,25 @@
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus_peers.h"
+
 #include "yb/consensus/consensus-test-util.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/peer_manager.h"
+
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
+
 #include "yb/server/logical_clock.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/tablet/preparer.h"
 
 DECLARE_bool(enable_leader_failure_detection);
 
@@ -158,14 +164,13 @@ class RaftConsensusSpy : public RaftConsensus {
                     parent_mem_tracker,
                     mark_dirty_clbk,
                     YQL_TABLE_TYPE,
-                    nullptr /* retryable_requests */,
-                    SplitOpInfo()) {
+                    nullptr /* retryable_requests */) {
     // These "aliases" allow us to count invocations and assert on them.
     ON_CALL(*this, StartConsensusOnlyRoundUnlocked(_))
         .WillByDefault(Invoke(this,
               &RaftConsensusSpy::StartNonLeaderConsensusRoundUnlockedConcrete));
-    ON_CALL(*this, NonTxRoundReplicationFinished(_, _, _))
-        .WillByDefault(Invoke(this, &RaftConsensusSpy::NonTxRoundReplicationFinishedConcrete));
+    ON_CALL(*this, NonTrackedRoundReplicationFinished(_, _, _))
+        .WillByDefault(Invoke(this, &RaftConsensusSpy::NonTrackedRoundReplicationFinishedConcrete));
   }
 
   MOCK_METHOD1(AppendNewRoundToQueueUnlocked, Status(const scoped_refptr<ConsensusRound>& round));
@@ -173,11 +178,11 @@ class RaftConsensusSpy : public RaftConsensus {
     return RaftConsensus::AppendNewRoundToQueueUnlocked(round);
   }
 
-  MOCK_METHOD1(AppendNewRoundsToQueueUnlocked, Status(
-      const std::vector<scoped_refptr<ConsensusRound>>& rounds));
+  MOCK_METHOD2(AppendNewRoundsToQueueUnlocked, Status(
+      const ConsensusRounds& rounds, size_t* processed_rounds));
   Status AppendNewRoundsToQueueUnlockedConcrete(
-      const std::vector<scoped_refptr<ConsensusRound>>& rounds) {
-    return RaftConsensus::AppendNewRoundsToQueueUnlocked(rounds);
+      const ConsensusRounds& rounds, size_t* processed_rounds) {
+    return RaftConsensus::AppendNewRoundsToQueueUnlocked(rounds, processed_rounds);
   }
 
   MOCK_METHOD1(StartConsensusOnlyRoundUnlocked, Status(const ReplicateMsgPtr& msg));
@@ -185,15 +190,13 @@ class RaftConsensusSpy : public RaftConsensus {
     return RaftConsensus::StartConsensusOnlyRoundUnlocked(msg);
   }
 
-  MOCK_METHOD3(NonTxRoundReplicationFinished, void(ConsensusRound* round,
+  MOCK_METHOD3(NonTrackedRoundReplicationFinished, void(ConsensusRound* round,
                                                    const StdStatusCallback& client_cb,
                                                    const Status& status));
-  void NonTxRoundReplicationFinishedConcrete(ConsensusRound* round,
+  void NonTrackedRoundReplicationFinishedConcrete(ConsensusRound* round,
                                              const StdStatusCallback& client_cb,
                                              const Status& status) {
-    LOG(INFO) << "Committing round with opid " << round->id()
-              << " given Status " << status.ToString();
-    RaftConsensus::NonTxRoundReplicationFinished(round, client_cb, status);
+    LOG(INFO) << "Round " << round->id() << " finished with status: " << status;
   }
 
  private:
@@ -284,7 +287,7 @@ class RaftConsensusTest : public YBTest {
 
     ON_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
         .WillByDefault(Invoke(this, &RaftConsensusTest::MockAppendNewRound));
-    ON_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
+    ON_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_, _))
         .WillByDefault(Invoke(this, &RaftConsensusTest::MockAppendNewRounds));
   }
 
@@ -303,11 +306,11 @@ class RaftConsensusTest : public YBTest {
     return consensus_->AppendNewRoundToQueueUnlockedConcrete(round);
   }
 
-  Status MockAppendNewRounds(const std::vector<scoped_refptr<ConsensusRound>>& rounds) {
+  Status MockAppendNewRounds(const ConsensusRounds& rounds, size_t* processed_rounds) {
     for (const auto& round : rounds) {
       rounds_.push_back(round);
     }
-    RETURN_NOT_OK(consensus_->AppendNewRoundsToQueueUnlockedConcrete(rounds));
+    RETURN_NOT_OK(consensus_->AppendNewRoundsToQueueUnlockedConcrete(rounds, processed_rounds));
     for (const auto& round : rounds) {
       LOG(INFO) << "Round append: " << round->id() << ", ReplicateMsg: "
                 << round->replicate_msg()->ShortDebugString();
@@ -340,9 +343,10 @@ class RaftConsensusTest : public YBTest {
     replicate_ptr->set_hybrid_time(clock_->Now().ToUint64());
     scoped_refptr<ConsensusRound> round(new ConsensusRound(consensus_.get(),
                                                            std::move(replicate_ptr)));
-    round->SetConsensusReplicatedCallback(
-        std::bind(&RaftConsensusSpy::NonTxRoundReplicationFinished,
-             consensus_.get(), round.get(), &DoNothingStatusCB, std::placeholders::_1));
+    round->SetCallback(MakeNonTrackedRoundCallback(
+        round.get(),
+        std::bind(&RaftConsensusSpy::NonTrackedRoundReplicationFinished,
+                  consensus_.get(), round.get(), &DoNothingStatusCB, std::placeholders::_1)));
     round->BindToTerm(consensus_->TEST_LeaderTerm());
 
     CHECK_OK(consensus_->TEST_Replicate(round));
@@ -359,14 +363,14 @@ class RaftConsensusTest : public YBTest {
   }
 
  protected:
-  gscoped_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
   ConsensusOptions options_;
   RaftConfigPB config_;
   OpIdPB initial_id_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
-  gscoped_ptr<PeerProxyFactory> proxy_factory_;
+  std::unique_ptr<PeerProxyFactory> proxy_factory_;
   scoped_refptr<server::Clock> clock_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> table_metric_entity_;
@@ -381,7 +385,7 @@ class RaftConsensusTest : public YBTest {
   // the test is.
   MockQueue* queue_;
   MockPeerManager* peer_manager_;
-  gscoped_ptr<MockOperationFactory> operation_factory_;
+  std::unique_ptr<MockOperationFactory> operation_factory_;
 };
 
 ConsensusRequestPB RaftConsensusTest::MakeConsensusRequest(int64_t caller_term,
@@ -417,7 +421,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
       .Times(1);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
       .Times(1);
-  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
+  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_, _))
       .Times(11);
   EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _))
       .Times(22).WillRepeatedly(Return(Status::OK()));
@@ -430,9 +434,9 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
   OpId committed_index;
   OpId last_applied_op_id;
   consensus_->TEST_UpdateMajorityReplicated(
-      OpId::FromPB(rounds_[0]->id()), &committed_index, &last_applied_op_id);
-  ASSERT_EQ(OpId::FromPB(rounds_[0]->id()), committed_index);
-  ASSERT_EQ(last_applied_op_id, OpId::FromPB(rounds_[0]->id()));
+      rounds_[0]->id(), &committed_index, &last_applied_op_id);
+  ASSERT_EQ(rounds_[0]->id(), committed_index);
+  ASSERT_EQ(last_applied_op_id, rounds_[0]->id());
 
   // Append 10 rounds
   for (int i = 0; i < 10; i++) {
@@ -440,8 +444,8 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
     // queue reports majority replicated index in the leader's term
     // committed index should move accordingly.
     consensus_->TEST_UpdateMajorityReplicated(
-        OpId::FromPB(round->id()), &committed_index, &last_applied_op_id);
-    ASSERT_EQ(last_applied_op_id, OpId::FromPB(round->id()));
+        round->id(), &committed_index, &last_applied_op_id);
+    ASSERT_EQ(last_applied_op_id, round->id());
   }
 }
 
@@ -456,7 +460,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
       .Times(1);
   EXPECT_CALL(*queue_, SetLeaderMode(_, _, _, _))
       .Times(2);
-  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_))
+  EXPECT_CALL(*consensus_.get(), AppendNewRoundsToQueueUnlocked(_, _))
       .Times(3);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
       .Times(2);
@@ -470,9 +474,9 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   OpId committed_index;
   OpId last_applied_op_id;
   consensus_->TEST_UpdateMajorityReplicated(
-      OpId::FromPB(rounds_[0]->id()), &committed_index, &last_applied_op_id);
-  ASSERT_EQ(OpId::FromPB(rounds_[0]->id()), committed_index);
-  ASSERT_EQ(last_applied_op_id, OpId::FromPB(rounds_[0]->id()));
+      rounds_[0]->id(), &committed_index, &last_applied_op_id);
+  ASSERT_EQ(rounds_[0]->id(), committed_index);
+  ASSERT_EQ(last_applied_op_id, rounds_[0]->id());
 
   // Append another round in the current term (besides the original config round).
   scoped_refptr<ConsensusRound> round = AppendNoOpRound();
@@ -486,7 +490,7 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   OpId new_committed_index;
   OpId new_last_applied_op_id;
   consensus_->TEST_UpdateMajorityReplicated(
-      OpId::FromPB(round->id()), &new_committed_index, &new_last_applied_op_id);
+      round->id(), &new_committed_index, &new_last_applied_op_id);
   ASSERT_EQ(committed_index, new_committed_index);
   ASSERT_EQ(last_applied_op_id, new_last_applied_op_id);
 
@@ -495,15 +499,15 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
   // Now notify that the last change config was committed, this should advance the
   // commit index to the id of the last change config.
   consensus_->TEST_UpdateMajorityReplicated(
-      OpId::FromPB(last_config_round->id()), &committed_index, &last_applied_op_id);
+      last_config_round->id(), &committed_index, &last_applied_op_id);
 
   DumpRounds();
-  ASSERT_EQ(OpId::FromPB(last_config_round->id()), committed_index);
-  ASSERT_EQ(last_applied_op_id, OpId::FromPB(last_config_round->id()));
+  ASSERT_EQ(last_config_round->id(), committed_index);
+  ASSERT_EQ(last_applied_op_id, last_config_round->id());
 }
 
 // Asserts that a ConsensusRound has an OpId set in its ReplicateMsg.
-MATCHER(HasOpId, "") { return arg->id().IsInitialized(); }
+MATCHER(HasOpId, "") { return !arg->id().empty(); }
 
 // These matchers assert that a Status object is of a certain type.
 MATCHER(IsOk, "") { return arg.ok(); }
@@ -572,7 +576,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
 
   // Commit the 10 no-ops from the previous term, along with the one pushed to
   // assert leadership.
-  EXPECT_CALL(*consensus_.get(), NonTxRoundReplicationFinished(HasOpId(), _, IsOk()))
+  EXPECT_CALL(*consensus_.get(), NonTrackedRoundReplicationFinished(HasOpId(), _, IsOk()))
       .Times(11);
   EXPECT_CALL(*peer_manager_, SignalRequest(_))
       .Times(AnyNumber());
@@ -608,7 +612,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
 
 MATCHER_P2(RoundHasOpId, term, index, "") {
   LOG(INFO) << "expected: " << MakeOpId(term, index) << ", actual: " << arg->id();
-  return arg->id().term() == term && arg->id().index() == index;
+  return arg->id().term == term && arg->id().index == index;
 }
 
 // Tests the case where a leader is elected and pushed a sequence of
@@ -658,14 +662,15 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
   // 1 OK for the 3.6 op.
   for (int index = 1; index < 6; index++) {
     EXPECT_CALL(*consensus_.get(),
-                NonTxRoundReplicationFinished(RoundHasOpId(2, index), _, IsOk())).Times(1);
+                NonTrackedRoundReplicationFinished(RoundHasOpId(2, index), _, IsOk())).Times(1);
   }
   for (int index = 6; index < 12; index++) {
     EXPECT_CALL(*consensus_.get(),
-                NonTxRoundReplicationFinished(RoundHasOpId(2, index), _, IsAborted())).Times(1);
+                NonTrackedRoundReplicationFinished(
+                    RoundHasOpId(2, index), _, IsAborted())).Times(1);
   }
   EXPECT_CALL(*consensus_.get(),
-              NonTxRoundReplicationFinished(RoundHasOpId(3, 6), _, IsOk())).Times(1);
+              NonTrackedRoundReplicationFinished(RoundHasOpId(3, 6), _, IsOk())).Times(1);
 
   // Nothing's committed so far, so now just send an Update() message
   // emulating another guy got elected leader and is overwriting a suffix
@@ -710,7 +715,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
   // Now we expect to commit ops 3.7 - 3.9.
   for (int index = 7; index < 10; index++) {
     EXPECT_CALL(*consensus_.get(),
-                NonTxRoundReplicationFinished(RoundHasOpId(3, index), _, IsOk())).Times(1);
+                NonTrackedRoundReplicationFinished(RoundHasOpId(3, index), _, IsOk())).Times(1);
   }
 
   request.mutable_ops()->Clear();

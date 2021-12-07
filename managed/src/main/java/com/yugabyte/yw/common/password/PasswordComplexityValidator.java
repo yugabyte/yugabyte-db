@@ -11,19 +11,19 @@
 package com.yugabyte.yw.common.password;
 
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
-import play.data.validation.ValidationError;
-
 import java.util.function.Function;
 import java.util.function.Predicate;
+import play.data.validation.ValidationError;
 
 class PasswordComplexityValidator implements PasswordValidator {
   private final Function<PasswordPolicyFormData, Integer> characterNumberExtractor;
   private final Predicate<Character> characterTypePredicate;
   private final String characterTypeName;
 
-  PasswordComplexityValidator(Function<PasswordPolicyFormData, Integer> characterNumberExtractor,
-                              Predicate<Character> characterTypePredicate,
-                              String characterTypeName) {
+  PasswordComplexityValidator(
+      Function<PasswordPolicyFormData, Integer> characterNumberExtractor,
+      Predicate<Character> characterTypePredicate,
+      String characterTypeName) {
     this.characterNumberExtractor = characterNumberExtractor;
     this.characterTypePredicate = characterTypePredicate;
     this.characterTypeName = characterTypeName;
@@ -40,8 +40,9 @@ class PasswordComplexityValidator implements PasswordValidator {
     }
 
     if (foundCharacters < requiredCharacters) {
-      return new ValidationError(PASSWORD_FIELD, "Password should contain at least "
-        + requiredCharacters + " " + characterTypeName);
+      return new ValidationError(
+          PASSWORD_FIELD,
+          "Password should contain at least " + requiredCharacters + " " + characterTypeName);
     }
     return null;
   }

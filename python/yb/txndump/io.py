@@ -95,3 +95,6 @@ class BinaryIO:
 
     def read(self, size: int = -1) -> bytes:
         return self._input.read(size)
+
+    def read_string(self) -> str:
+        return self._input.read(-1).decode('utf-8')

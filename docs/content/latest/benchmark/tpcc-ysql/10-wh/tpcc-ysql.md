@@ -1,7 +1,6 @@
-### TPC-C Load Phase
+## TPC-C Load Phase
 
-Before starting the workload, you will need to load the data first. Make sure
-to replace the IP addresses with that of the nodes in the cluster.
+Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
@@ -32,23 +31,20 @@ $ ./tpccbenchmark --load=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
   </tbody>
 </table>
 
----
-**NOTE**
 
-The loading time for 10 warehouses on a cluster with 3 nodes of type c5d.4xlarge is around 3 minutes.
+The loading time for ten warehouses on a cluster with 3 nodes of type c5d.4xlarge is approximately 3 minutes.
 
----
 
-### TPC-C Execute Phase
+## TPC-C Execute Phase
 
-You can then run the workload against the database as follows:
+You can run the workload against the database as follows:
 
 ```sh
 $ ./tpccbenchmark --execute=true \
   --nodes=127.0.0.1,127.0.0.2,127.0.0.3
 ```
 
-## 4. TPC-C Benchmark Results
+## TPC-C Benchmark Results
 
 <table>
   <tbody>
@@ -82,7 +78,7 @@ $ ./tpccbenchmark --execute=true \
   </tbody>
 </table>
 
-Once the execution is done the TPM-C number along with the efficiency is printed.
+Once the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
 
 ```
 21:09:23,588 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000263504, measuredRequests=8554) = 4.752221526539232 requests/sec reqs/sec
@@ -95,5 +91,4 @@ Once the execution is done the TPM-C number along with the efficiency is printed
 21:09:23,596 (DBWorkload.java:983) INFO  - Delivery, Avg Latency: 66.986 msecs, p99 Latency: 185.919 msecs
 21:09:23,596 (DBWorkload.java:983) INFO  - StockLevel, Avg Latency: 98.32 msecs, p99 Latency: 192.054 msecs
 21:09:23,597 (DBWorkload.java:792) INFO  - Output Raw data into file: results/oltpbench.csv
-
 ```

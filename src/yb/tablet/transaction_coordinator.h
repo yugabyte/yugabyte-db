@@ -22,42 +22,29 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/transaction.h"
-
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/server/server_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/tserver/tserver_fwd.h"
+
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
-#include "yb/util/metrics.h"
-#include "yb/util/opid.h"
-#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+template <class T>
+class RepeatedPtrField;
+}
+}
+
 
 namespace yb {
-
-namespace server {
-
-class Clock;
-
-}
-
-namespace tserver {
-
-class AbortTransactionResponsePB;
-class GetTransactionStatusResponsePB;
-class TransactionStatePB;
-
-}
-
 namespace tablet {
-
-class TransactionIntentApplier;
-class UpdateTxnOperationState;
 
 // Get current transaction timeout.
 std::chrono::microseconds GetTransactionTimeout();
@@ -77,10 +64,10 @@ class TransactionCoordinatorContext {
   virtual HybridTime HtLeaseExpiration() const = 0;
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
-  virtual std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
+  virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       tserver::TransactionStatePB* request) = 0;
   virtual void SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
+      std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
   server::Clock& clock() const {
     return *clock_ptr();
@@ -127,7 +114,7 @@ class TransactionCoordinator {
   void ProcessAborted(const AbortedData& data);
 
   // Handles new request for transaction update.
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
   // Prepares log garbage collection. Return min index that should be preserved.
   int64_t PrepareGC(std::string* details = nullptr);

@@ -11,9 +11,12 @@
 // under the License.
 //
 
+#include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -22,8 +25,11 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -49,7 +55,7 @@ class NetworkFailureTest : public MiniClusterTestWithClient<MiniCluster> {
     auto opts = MiniClusterOptions();
     opts.num_tablet_servers = 4;
     opts.num_masters = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(CreateClient());
@@ -117,7 +123,7 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
       table_.AddInt32ColumnValue(req, kValueColumn, value);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
       futures.push_back(session->FlushFuture());
       ops.push_back(op);
     }

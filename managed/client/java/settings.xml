@@ -1,0 +1,27 @@
+<settings>
+  <profiles>
+    <profile>
+      <id>maven-yugabyte-packages</id>
+      <repositories>
+        <repository>
+          <id>maven-yugabyte-s3</id>
+          <url>s3://repository.yugabyte.com/test-temporary/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+      </repositories>
+
+        <properties>
+        <yugabyte.snapshots.repository.id>maven-yugabyte-s3</yugabyte.snapshots.repository.id>
+    <yugabyte.snapshots.repository.url>s3://repository.yugabyte.com/maven/</yugabyte.snapshots.repository.url>
+        <yugabyte.releases.repository.id>maven-yugabyte-s3</yugabyte.releases.repository.id>
+        <yugabyte.releases.repository.url>s3://repository.yugabyte.com/maven/</yugabyte.releases.repository.url>
+      </properties>
+    </profile>
+</profiles>
+
+  <activeProfiles>
+    <activeProfile>maven-yugabyte-packages</activeProfile>
+  </activeProfiles>
+
+</settings>

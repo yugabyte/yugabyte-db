@@ -40,11 +40,14 @@
 #include <utility>
 #include <vector>
 
-#include "yb/common/schema.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/locks.h"
-#include "yb/util/status.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+
+#include "yb/gutil/callback_forward.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 class MonoDelta;
@@ -86,10 +89,7 @@ class YsckTabletReplica {
     return ts_uuid_;
   }
 
-  std::string ToString() const {
-    return Format("{ is_leader: $0 is_follower: $1 ts_uuid: $2 }",
-                  is_leader_, is_follower_, ts_uuid_);
-  }
+  std::string ToString() const;
 
  private:
   const bool is_leader_;

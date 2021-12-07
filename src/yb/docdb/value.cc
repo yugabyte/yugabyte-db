@@ -11,11 +11,17 @@
 // under the License.
 //
 
+#include "yb/docdb/value.h"
+
 #include <string>
 
 #include "yb/common/table_properties_constants.h"
-#include "yb/docdb/value.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/fast_varint.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace docdb {
@@ -45,6 +51,11 @@ CHECKED_STATUS Value::DecodeMergeFlags(Slice* slice, uint64_t* merge_flags) {
   return Status::OK();
 }
 
+CHECKED_STATUS Value::DecodeMergeFlags(const rocksdb::Slice& slice, uint64_t* merge_flags) {
+  rocksdb::Slice value_copy = slice;
+  return DecodeMergeFlags(&value_copy, merge_flags);
+}
+
 CHECKED_STATUS DecodeIntentDocHT(Slice* slice, DocHybridTime* doc_ht) {
   if (!DecodeType(ValueType::kHybridTime, DocHybridTime::kInvalid, slice, doc_ht)) {
     return Status::OK();
@@ -54,9 +65,16 @@ CHECKED_STATUS DecodeIntentDocHT(Slice* slice, DocHybridTime* doc_ht) {
 
 Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
   if (DecodeType(ValueType::kTtl, kMaxTtl, slice, ttl)) {
-    *ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarInt(slice)));
+    *ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(slice)));
   }
   return Status::OK();
+}
+
+Status Value::DecodeTTL(const rocksdb::Slice& rocksdb_value, MonoDelta* ttl) {
+  rocksdb::Slice value_copy = rocksdb_value;
+  uint64_t merge_flags;
+  RETURN_NOT_OK(DecodeMergeFlags(&value_copy, &merge_flags));
+  return DecodeTTL(&value_copy, ttl);
 }
 
 Status Value::DecodeUserTimestamp(const rocksdb::Slice& rocksdb_value,
@@ -200,6 +218,13 @@ const string& Value::EncodedTombstone() {
 
 void Value::ClearIntentDocHt() {
   intent_doc_ht_ = DocHybridTime::kInvalid;
+}
+
+Result<bool> Value::IsTombstoned(const Slice& slice) {
+  Value doc_value;
+  Slice value = slice;
+  RETURN_NOT_OK(doc_value.DecodeControlFields(&value));
+  return value[0] == ValueTypeAsChar::kTombstone;
 }
 
 }  // namespace docdb

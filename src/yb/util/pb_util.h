@@ -40,10 +40,9 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/faststring.h"
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 
 namespace google {
 namespace protobuf {
@@ -86,6 +85,7 @@ void AppendToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::AppendPartialToString
 void AppendPartialToString(const MessageLite &msg, faststring *output);
+void AppendPartialToString(const MessageLite &msg, std::string *output);
 
 // See MessageLite::SerializeToString.
 void SerializeToString(const MessageLite &msg, faststring *output);
@@ -309,7 +309,7 @@ class ReadablePBContainerFile {
   // The fully-qualified PB type name of the messages in the container.
   std::string pb_type_;
 
-  // Wrapped in a gscoped_ptr so that clients need not include PB headers.
+  // Wrapped in a std::unique_ptr so that clients need not include PB headers.
   std::unique_ptr<google::protobuf::FileDescriptorSet> protos_;
 
   std::unique_ptr<RandomAccessFile> reader_;
@@ -321,6 +321,9 @@ class ReadablePBContainerFile {
 // If the file does not exist, returns STATUS(NotFound, ""). Otherwise, may
 // return other Status error codes such as Status::IOError.
 Status ReadPBContainerFromPath(Env* env, const std::string& path,
+                               google::protobuf::Message* msg);
+
+Status ReadPBContainerFromPath(Env* env, const std::string& path, const std::string& pb_type_name,
                                google::protobuf::Message* msg);
 
 // Serialize a "containerized" protobuf to the given path.

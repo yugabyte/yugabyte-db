@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/restore-data" class="nav-link active">
+    <a href="/latest/manage/backup-restore/restore-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -31,7 +31,7 @@ showAsideToc: true
 
 ## Restore the schema
 
-In order to restore the schema, run the following command.
+To restore the schema, run the following command:
 
 ```sh
 $ ycqlsh -e "source 'schema.cql'"
@@ -53,7 +53,7 @@ You can restore data from a backup that has a subset of columns as well.
 
 The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
 
-```
+```sh
 cqlsh -e <command> <host> [<port>]
 ```
 
@@ -93,7 +93,6 @@ You can drop the keyspace by running the following:
 ycqlsh> DROP KEYSPACE myapp;
 ```
 
-
 ### Restore the table schema
 
 You can import the schema from the `myapp_schema.cql` schema backup file by running the following:
@@ -108,7 +107,7 @@ The schema backup file `myapp_schema.cql` should look as show below:
 $ cat myapp_schema.cql
 ```
 
-```
+```sql
 CREATE KEYSPACE myapp WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '3'}  AND durable_writes = true;
 
 CREATE TABLE myapp.stock_market (
@@ -126,7 +125,7 @@ You can verify that the table was created by connecting to the cluster using `yc
 ycqlsh> DESC myapp.stock_market;
 ```
 
-```
+```sql
 CREATE TABLE myapp.stock_market (
     stock_symbol text,
     ts text,
@@ -146,8 +145,11 @@ $ ycqlsh -e "COPY myapp.stock_market FROM 'myapp_data.csv' WITH HEADER = TRUE ;"
 
 The data backup file `myapp_data.csv` should look as follows:
 
-```
+```sh
 $ cat myapp_data.csv
+```
+
+```output
 stock_symbol,ts,current_price
 AAPL,2017-10-26 09:00:00,157.41
 AAPL,2017-10-26 10:00:00,157
@@ -164,7 +166,7 @@ to the cluster using `ycqlsh` and running the following query:
 ycqlsh> SELECT * FROM myapp.stock_market;
 ```
 
-```
+```output
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
          GOOG | 2017-10-26 09:00:00 |        972.56

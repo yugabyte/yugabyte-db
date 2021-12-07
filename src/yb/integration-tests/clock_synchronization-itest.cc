@@ -12,18 +12,22 @@
 //
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/mock_hybrid_clock.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
+
 #include "yb/util/random.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);
@@ -48,7 +52,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     MiniClusterOptions opts;
 
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client::YBSchemaBuilder b;

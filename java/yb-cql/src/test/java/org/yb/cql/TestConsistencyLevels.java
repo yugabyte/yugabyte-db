@@ -85,12 +85,12 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
   protected void createMiniClusterWithPlacementRegion() throws Exception {
     // Create a cluster with tservers in different regions.
-    createMiniCluster(1, NUM_TABLET_SERVERS, (cb) -> {
+    createMiniCluster(1, NUM_TABLET_SERVERS, (builder) -> {
       List<Map<String, String>> perTserverFlags = new ArrayList<>();
       for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
         perTserverFlags.add(Collections.singletonMap("placement_region", REGION_PREFIX + i));
       }
-      cb.perTServerFlags(perTserverFlags);
+      builder.perTServerFlags(perTserverFlags);
     });
   }
 

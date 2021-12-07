@@ -248,7 +248,7 @@ main(int argc, char *argv[])
 				pgdb = pg_strdup(optarg);
 				break;
 
-			case 'm':           /* YB master hosts */
+			case 'm':           /* DEPRECATED and NOT USED: YB master hosts */
 				masterHosts = pg_strdup(optarg);
 				break;
 
@@ -633,7 +633,8 @@ help(void)
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
-	printf(_("  -m, --masters=IPS            YugaByte Master hosts IP addresses\n"));
+	printf(_("  -m, --masters=HOST:PORT      DEPRECATED and NOT USED\n"
+			 "                               comma-separated list of YB-Master hosts and ports\n"));
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR     connect using connection string\n"));
@@ -1478,13 +1479,10 @@ runPgDump(const char *dbname, const char *create_opts)
 					  pgdumpopts->data, create_opts);
 
 	/*
-	 * YB: If there is a custom YB-Master host to use, append that.
+	 * DEPRECATED: Custom YB-Master host/port to use.
 	 */
 	if (masterHosts != NULL)
-	{
-		appendPQExpBufferStr(cmd, " -m ");
-		appendPQExpBufferStr(cmd, masterHosts);
-	}
+		fprintf(stderr, "WARNING: ignoring the deprecated argument --masters (-m)\n");
 
 	/*
 	 * If we have a filename, use the undocumented plain-append pg_dump

@@ -12,20 +12,28 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
-import java.util.Arrays;
-import java.util.HashSet;
-
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Arrays;
+import java.util.HashSet;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Allows the addition of the master server to a node. Spawns master the process and ensures
 // the task waits for the right set of load balance primitives.
+@Slf4j
 public class StartMasterOnNode extends UniverseDefinitionTaskBase {
+
+  @Inject
+  protected StartMasterOnNode(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -34,7 +42,10 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    LOG.info("Started {} task for node {} in univ uuid={}", getName(), taskParams().nodeName,
+    log.info(
+        "Started {} task for node {} in univ uuid={}",
+        getName(),
+        taskParams().nodeName,
         taskParams().universeUUID);
     NodeDetails currentNode = null;
     boolean hitException = false;
@@ -49,7 +60,7 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " in universe " + universe.name;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -57,33 +68,43 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       taskParams().placementUuid = currentNode.placementUuid;
       if (!instanceExists(taskParams())) {
         String msg = "No instance exists for " + taskParams().nodeName;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
       if (currentNode.isMaster) {
         String msg = "Node " + taskParams().nodeName + " already has the Master process running.";
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state == NodeState.Stopped || currentNode.state == NodeState.Removed
+      if (currentNode.state == NodeState.Stopped
+          || currentNode.state == NodeState.Removed
           || currentNode.state == NodeState.Decommissioned) {
-        String msg = "Node " + taskParams().nodeName + " is in removed or decommissioned state"
-            + ", the Master process cannot be started. Use \"Start Node\" instead.";
-        LOG.error(msg);
+        String msg =
+            "Node "
+                + taskParams().nodeName
+                + " is in removed or decommissioned state"
+                + ", the Master process cannot be started. Use \"Start Node\" instead.";
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
       if (!areMastersUnderReplicated(currentNode, universe)) {
-        String msg = "Unable to start the Master process on node " + taskParams().nodeName
-            + ", no more Masters allowed.";
-        LOG.error(msg);
+        String msg =
+            "Unable to start the Master process on node "
+                + taskParams().nodeName
+                + ", no more Masters allowed.";
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
-      LOG.info("Bringing up master for under replicated universe {} ({})", universe.universeUUID,
+      log.info(
+          "Bringing up master for under replicated universe {} ({})",
+          universe.universeUUID,
           universe.name);
+
+      preTaskActions();
 
       // Update node state to Starting Master.
       createSetNodeStateTask(currentNode, NodeState.Starting)
@@ -96,9 +117,12 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);
 
       // Update master configuration on the node.
-      createConfigureServerTasks(Arrays.asList(currentNode), true /* isShell */,
-          true /* updateMasterAddrs */, true /* isMaster */)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createConfigureServerTasks(
+              Arrays.asList(currentNode),
+              true /* isShell */,
+              true /* updateMasterAddrs */,
+              true /* isMaster */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start a master process.
       createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
@@ -109,8 +133,9 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Wait for the master to be responsive.
-      createWaitForServersTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)),
-          ServerType.MASTER).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForServersTasks(
+              new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Add master to the quorum.
       createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
@@ -132,7 +157,7 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       hitException = true;
       throw t;
     } finally {
@@ -145,7 +170,10 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       // the universe.
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task for node {} in univ uuid={}", getName(), taskParams().nodeName,
+    log.info(
+        "Finished {} task for node {} in univ uuid={}",
+        getName(),
+        taskParams().nodeName,
         taskParams().universeUUID);
   }
 }

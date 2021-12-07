@@ -15,6 +15,7 @@
 
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/util/slice.h"
 
@@ -39,7 +40,7 @@ Status BinarySearchIndexReader::Create(
   return s;
 }
 Result<Slice> BinarySearchIndexReader::GetMiddleKey() {
-  return index_block_->GetMiddleKey();
+  return index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
 Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
@@ -128,7 +129,7 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
 }
 
 Result<Slice> HashIndexReader::GetMiddleKey() {
-  return index_block_->GetMiddleKey();
+  return index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
 class MultiLevelIterator : public InternalIterator {
@@ -299,14 +300,14 @@ Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
 
 InternalIterator* MultiLevelIndexReader::NewIterator(
     BlockIter* iter, TwoLevelIteratorState* index_iterator_state, bool) {
-  InternalIterator* top_level_iter =
-      top_level_index_block_->NewIterator(comparator_.get(), iter, true /* total_order_seek */);
+  InternalIterator* top_level_iter = top_level_index_block_->NewIndexIterator(
+      comparator_.get(), iter, true /* total_order_seek */);
   return new MultiLevelIterator(
       index_iterator_state, top_level_iter, num_levels_, top_level_iter != iter);
 }
 
 Result<Slice> MultiLevelIndexReader::GetMiddleKey() {
-  return top_level_index_block_->GetMiddleKey();
+  return top_level_index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
 } // namespace rocksdb

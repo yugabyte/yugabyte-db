@@ -113,8 +113,11 @@ public abstract class BaseAuthenticationCQLTest extends BaseCQLTest {
       assertFalse(expectFailure);
     } catch (com.datastax.driver.core.exceptions.AuthenticationException e) {
       // If we're expecting a failure, we should be in here.
-      assertTrue(expectFailure);
-      assertTrue(e.getMessage().contains(expectedMessage));
+      assertTrue(e.getMessage(), expectFailure);
+      if (!e.getMessage().contains(expectedMessage)) {
+        LOG.info("Expecting '" + expectedMessage + "' contained in '" + e.getMessage() + "'");
+        assertTrue(false);
+      }
     }
   }
 

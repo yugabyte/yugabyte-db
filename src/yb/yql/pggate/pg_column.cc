@@ -15,57 +15,34 @@
 
 #include "yb/yql/pggate/pg_column.h"
 
+#include "yb/client/schema.h"
+
+#include "yb/common/ql_type.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/schema.h"
 
 namespace yb {
 namespace pggate {
 
-PgColumn::PgColumn() {
+namespace {
+
+ColumnSchema kColumnYBctid(
+    "ybctid", QLType::CreatePrimitiveType<DataType::BINARY>(),
+    false, false, false, false, to_underlying(PgSystemAttrNum::kYBTupleId));
+
 }
 
-void PgColumn::Init(PgSystemAttrNum attr_num) {
-  switch (attr_num) {
-    case PgSystemAttrNum::kSelfItemPointer:
-    case PgSystemAttrNum::kObjectId:
-    case PgSystemAttrNum::kMinTransactionId:
-    case PgSystemAttrNum::kMinCommandId:
-    case PgSystemAttrNum::kMaxTransactionId:
-    case PgSystemAttrNum::kMaxCommandId:
-    case PgSystemAttrNum::kTableOid:
-    case PgSystemAttrNum::kYBRowId:
-    case PgSystemAttrNum::kYBIdxBaseTupleId:
-    case PgSystemAttrNum::kYBUniqueIdxKeySuffix:
-      break;
-
-    case PgSystemAttrNum::kYBTupleId: {
-      int idx = static_cast<int>(PgSystemAttrNum::kYBTupleId);
-      desc_.Init(idx,
-                 idx,
-                 "ybctid",
-                 false,
-                 false,
-                 idx,
-                 QLType::Create(DataType::BINARY),
-                 InternalType::kBinaryValue,
-                 ColumnSchema::SortingType::kNotSpecified);
-      return;
-    }
-  }
-
-  LOG(FATAL) << "Invalid attribute number for hidden column";
-}
-
-bool PgColumn::is_virtual_column() {
-  // Currently only ybctid is a virtual column.
-  return attr_num() == static_cast<int>(PgSystemAttrNum::kYBTupleId);
+PgColumn::PgColumn(std::reference_wrapper<const Schema> schema, size_t index)
+    : schema_(schema), index_(index) {
 }
 
 //--------------------------------------------------------------------------------------------------
 
 PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req) {
-  if (desc_.is_partition()) {
+  if (is_partition()) {
     bind_pb_ = write_req->add_partition_column_values();
-  } else if (desc_.is_primary()) {
+  } else if (is_primary()) {
     bind_pb_ = write_req->add_range_column_values();
   }
   return bind_pb_;
@@ -73,10 +50,10 @@ PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req) 
 
 PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlWriteRequestPB *write_req) {
   if (bind_pb_ == nullptr) {
-    DCHECK(!desc_.is_partition() && !desc_.is_primary())
+    DCHECK(!is_partition() && !is_primary())
       << "Binds for primary columns should have already been allocated by AllocPrimaryBindPB()";
 
-    if (id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+    if (is_virtual_column()) {
       bind_pb_ = write_req->mutable_ybctid_column_value();
     } else {
       PgsqlColumnValuePB* col_pb = write_req->add_column_values();
@@ -96,12 +73,28 @@ PgsqlExpressionPB *PgColumn::AllocAssignPB(PgsqlWriteRequestPB *write_req) {
   return assign_pb_;
 }
 
+bool PgColumn::is_partition() const {
+  return index_ < schema_.num_hash_key_columns();
+}
+
+bool PgColumn::is_primary() const {
+  return index_ < schema_.num_key_columns();
+}
+
+bool PgColumn::is_virtual_column() const {
+  return index_ == schema_.num_columns();
+}
+
+const ColumnSchema& PgColumn::desc() const {
+  return is_virtual_column() ? kColumnYBctid : schema_.column(index_);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlReadRequestPB *read_req) {
-  if (desc_.is_partition()) {
+  if (is_partition()) {
     bind_pb_ = read_req->add_partition_column_values();
-  } else if (desc_.is_primary()) {
+  } else if (is_primary()) {
     bind_pb_ = read_req->add_range_column_values();
   }
   return bind_pb_;
@@ -109,10 +102,10 @@ PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlReadRequestPB *read_req) {
 
 PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlReadRequestPB *read_req) {
   if (bind_pb_ == nullptr) {
-    DCHECK(!desc_.is_partition() && !desc_.is_primary())
+    DCHECK(!is_partition() && !is_primary())
       << "Binds for primary columns should have already been allocated by AllocPrimaryBindPB()";
 
-    if (id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+    if (is_virtual_column()) {
       bind_pb_ = read_req->mutable_ybctid_column_value();
     } else {
       DLOG(FATAL) << "Binds for other columns are not allowed";
@@ -129,6 +122,27 @@ PgsqlExpressionPB *PgColumn::AllocBindConditionExprPB(PgsqlReadRequestPB *read_r
     bind_condition_expr_pb_->mutable_condition()->set_op(QL_OP_AND);
   }
   return bind_condition_expr_pb_->mutable_condition()->add_operands();
+}
+
+void PgColumn::ResetBindPB() {
+  bind_pb_ = nullptr;
+}
+
+int PgColumn::id() const {
+  return is_virtual_column() ? to_underlying(PgSystemAttrNum::kYBTupleId)
+                             : schema_.column_id(index_);
+}
+
+InternalType PgColumn::internal_type() const {
+  return client::YBColumnSchema::ToInternalDataType(desc().type());
+}
+
+const std::string& PgColumn::attr_name() const {
+  return desc().name();
+}
+
+int PgColumn::attr_num() const {
+  return desc().order();
 }
 
 }  // namespace pggate

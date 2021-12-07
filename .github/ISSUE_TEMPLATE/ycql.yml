@@ -1,0 +1,15 @@
+name: Core-YCQL
+description: Create a YCQL issue.
+title: "[YCQL] Title"
+labels: ["area/ycql"]
+body:
+- type: textarea
+  id: ycql
+  attributes:
+    label: Description
+    placeholder: |
+      **Provide a detailed description of the issue you want to report related to YCQL.**
+      
+      **Include steps to reproduce the issue.**
+  validations:
+    required: true 

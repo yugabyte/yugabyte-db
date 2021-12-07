@@ -85,7 +85,7 @@ class AutoReleasePool {
 
   template <class T>
   struct SpecificElement : GenericElement {
-    explicit SpecificElement(T *t): t(t) {}
+    explicit SpecificElement(T *t_): t(t_) {}
     ~SpecificElement() {
       delete t;
     }
@@ -95,7 +95,7 @@ class AutoReleasePool {
 
   template <class T>
   struct SpecificArrayElement : GenericElement {
-    explicit SpecificArrayElement(T *t): t(t) {}
+    explicit SpecificArrayElement(T *t_): t(t_) {}
     ~SpecificArrayElement() {
       delete [] t;
     }
@@ -110,4 +110,5 @@ class AutoReleasePool {
 
 
 } // namespace yb
-#endif
+
+#endif // YB_UTIL_AUTO_RELEASE_POOL_H

@@ -16,11 +16,11 @@
 
 #include <future>
 
-#include "yb/master/master.pb.h"
+#include "yb/common/common.pb.h"
+
+#include "yb/master/master_fwd.h"
 
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/net/inetaddress.h"
-#include "yb/util/result.h"
 #include "yb/util/uuid.h"
 
 namespace yb {

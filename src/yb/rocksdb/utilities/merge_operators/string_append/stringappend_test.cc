@@ -19,17 +19,18 @@
 // under the License.
 //
 
-#include <iostream>
 #include <map>
 
-#include "yb/rocksdb/db.h"
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/merge_operator.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/utilities/db_ttl.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend2.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/random.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

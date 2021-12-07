@@ -29,15 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/consensus/log_anchor_registry.h"
 
 #include <mutex>
 #include <string>
 
 #include "yb/consensus/opid_util.h"
-
-#include "yb/gutil/strings/substitute.h"
 
 namespace yb {
 namespace log {
@@ -158,40 +155,6 @@ LogAnchor::LogAnchor()
 
 LogAnchor::~LogAnchor() {
   CHECK(!is_registered) << "Attempted to destruct a registered LogAnchor";
-}
-
-MinLogIndexAnchorer::MinLogIndexAnchorer(LogAnchorRegistry* registry,
-                                         string owner)
-    : registry_(DCHECK_NOTNULL(registry)),
-      owner_(std::move(owner)),
-      minimum_log_index_(kInvalidOpIdIndex) {}
-
-MinLogIndexAnchorer::~MinLogIndexAnchorer() {
-  CHECK_OK(ReleaseAnchor());
-}
-
-void MinLogIndexAnchorer::AnchorIfMinimum(int64_t log_index) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (PREDICT_FALSE(minimum_log_index_ == kInvalidOpIdIndex)) {
-    minimum_log_index_ = log_index;
-    registry_->Register(minimum_log_index_, owner_, &anchor_);
-  } else if (log_index < minimum_log_index_) {
-    minimum_log_index_ = log_index;
-    CHECK_OK(registry_->UpdateRegistration(minimum_log_index_, &anchor_));
-  }
-}
-
-Status MinLogIndexAnchorer::ReleaseAnchor() {
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (PREDICT_TRUE(minimum_log_index_ != kInvalidOpIdIndex)) {
-    return registry_->Unregister(&anchor_);
-  }
-  return Status::OK(); // If there were no inserts, return OK.
-}
-
-int64_t MinLogIndexAnchorer::minimum_log_index() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return minimum_log_index_;
 }
 
 } // namespace log

@@ -15,8 +15,12 @@
 
 #include <chrono>
 
-#include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/common/ybc-internal.h"
+
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::chrono_literals;
 
@@ -205,7 +209,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < kInsertRowCount; i++) {
-    bool has_data = false;
+    has_data = false;
     CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
     CHECK(has_data) << "Not all inserted rows have been fetched: only "
                     << i << " rows fetched out of " << kInsertRowCount;
@@ -220,18 +224,18 @@ TEST_F(PggateTestCatalog, TestDml) {
               << ", job = (" << values[5] << ")";
 
     // Check result.
-    int col_index = 0;
+    col_index = 0;
     CHECK_EQ(values[col_index++], 0);  // compid : int64
-    int32_t empid = values[col_index++];  // empid : int32
+    empid = values[col_index++];  // empid : int32
     CHECK_EQ(values[col_index++], empid);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + empid);  // project_count : int32
 
-    float salary = *reinterpret_cast<float*>(&values[col_index++]); // salary : float
+    salary = *reinterpret_cast<float*>(&values[col_index++]); // salary : float
     CHECK_LE(salary, empid + 1.0*empid/10.0 + 0.01);
     CHECK_GE(salary, empid + 1.0*empid/10.0 - 0.01);
 
-    string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", empid);
+    selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+    expected_job_name = strings::Substitute("Job_title_$0", empid);
     CHECK_EQ(selected_job_name, expected_job_name);
   }
 
@@ -316,7 +320,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   // Fetching rows and checking their contents.
   select_row_count = 0;
   for (int i = 0; i < kInsertRowCount; i++) {
-    bool has_data = false;
+    has_data = false;
     CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
     if (!has_data) {
       break;
@@ -333,9 +337,9 @@ TEST_F(PggateTestCatalog, TestDml) {
               << ", job = (" << reinterpret_cast<char*>(values[5]) << ")";
 
     // Check result.
-    int col_index = 0;
+    col_index = 0;
     int32_t compid = values[col_index++];  // id : int32
-    int32_t empid = values[col_index++];  // empid : int32
+    empid = values[col_index++];  // empid : int32
     CHECK_EQ(compid, 0);
     if (empid%2 == 0) {
       // Check if EVEN rows stays the same as inserted.
@@ -343,12 +347,12 @@ TEST_F(PggateTestCatalog, TestDml) {
       CHECK_EQ(values[col_index++], 100 + empid);  // project_count : int32
 
       // salary : float
-      float salary = *reinterpret_cast<float*>(&values[col_index++]);
+      salary = *reinterpret_cast<float*>(&values[col_index++]);
       CHECK_LE(salary, empid + 1.0*empid/10.0 + 0.01);
       CHECK_GE(salary, empid + 1.0*empid/10.0 - 0.01);
 
-      string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-      string expected_job_name = strings::Substitute("Job_title_$0", empid);
+      selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+      expected_job_name = strings::Substitute("Job_title_$0", empid);
       CHECK_EQ(selected_job_name, expected_job_name);
 
     } else {
@@ -357,12 +361,12 @@ TEST_F(PggateTestCatalog, TestDml) {
       CHECK_EQ(values[col_index++], 77 + 100 + empid);  // project_count : int32
 
       // salary : float
-      float salary = *reinterpret_cast<float*>(&values[col_index++]);
+      salary = *reinterpret_cast<float*>(&values[col_index++]);
       CHECK_LE(salary, 77 + empid + 1.0*empid/10.0 + 0.01);
       CHECK_GE(salary, 77 + empid + 1.0*empid/10.0 - 0.01);
 
-      string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-      string expected_job_name = strings::Substitute("Job_title_$0", 77 + empid);
+      selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+      expected_job_name = strings::Substitute("Job_title_$0", 77 + empid);
       CHECK_EQ(selected_job_name, expected_job_name);
     }
   }

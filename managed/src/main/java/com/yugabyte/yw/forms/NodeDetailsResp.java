@@ -11,25 +11,19 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import java.util.HashSet;
 import java.util.Set;
 
 public class NodeDetailsResp {
 
-  @JsonUnwrapped
-  @JsonIgnoreProperties("allowedActions")
-  public final NodeDetails delegate;
+  @JsonUnwrapped public final NodeDetails delegate;
 
-  @JsonIgnore
-  public final Universe universe;
+  @JsonIgnore public final Universe universe;
 
   public NodeDetailsResp(NodeDetails nodeDetails, Universe universe) {
     this.delegate = nodeDetails;
@@ -38,11 +32,6 @@ public class NodeDetailsResp {
 
   @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   public Set<NodeActionType> getAllowedActions() {
-    Set<NodeActionType> allowedActions = new HashSet<>(delegate.getStaticAllowedActions());
-    if (universe != null && delegate.state == NodeDetails.NodeState.Live && !delegate.isMaster
-      && Util.areMastersUnderReplicated(delegate, universe)) {
-      allowedActions.add(NodeActionType.START_MASTER);
-    }
-    return allowedActions;
+    return new AllowedActionsHelper(universe, delegate).listAllowedActions();
   }
 }

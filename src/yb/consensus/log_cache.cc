@@ -37,26 +37,25 @@
 #include <mutex>
 #include <vector>
 
-#include <gflags/gflags.h>
-#include <google/protobuf/wire_format_lite.h>
-#include <google/protobuf/wire_format_lite_inl.h>
-
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/consensus/consensus_util.h"
+#include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/debug-util.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/metrics.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -71,6 +70,11 @@ DEFINE_int32(global_log_cache_size_limit_mb, 1024,
              "Server-wide version of 'log_cache_size_limit_mb'. The total memory used for "
              "caching log entries across all tablets is kept under this threshold.");
 TAG_FLAG(global_log_cache_size_limit_mb, advanced);
+
+DEFINE_int32(global_log_cache_size_limit_percentage, 5,
+             "The maximum percentage of root process memory that can be used for caching log "
+             "entries across all tablets. Default is 5.");
+TAG_FLAG(global_log_cache_size_limit_percentage, advanced);
 
 DEFINE_test_flag(bool, log_cache_skip_eviction, false,
                  "Don't evict log entries in tests.");
@@ -87,6 +91,8 @@ METRIC_DEFINE_counter(tablet, log_cache_disk_reads, "Log Cache Disk Reads",
                       yb::MetricUnit::kEntries,
                       "Amount of operations read from disk.");
 
+DECLARE_bool(get_changes_honor_deadline);
+
 namespace yb {
 namespace consensus {
 
@@ -99,7 +105,7 @@ const std::string kParentMemTrackerId = "log_cache"s;
 typedef vector<const ReplicateMsg*>::const_iterator MsgIter;
 
 LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
-                   const scoped_refptr<log::Log>& log,
+                   const log::LogPtr& log,
                    const MemTrackerPtr& server_tracker,
                    const string& local_uuid,
                    const string& tablet_id)
@@ -129,7 +135,17 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
 }
 
 MemTrackerPtr LogCache::GetServerMemTracker(const MemTrackerPtr& server_tracker) {
-  const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
+  CHECK(FLAGS_global_log_cache_size_limit_percentage > 0 &&
+        FLAGS_global_log_cache_size_limit_percentage <= 100)
+    << Substitute("Flag FLAGS_global_log_cache_size_limit_percentage must be between 0 and 100. ",
+                  "Current value: $0",
+                  FLAGS_global_log_cache_size_limit_percentage);
+
+  int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
+  int64_t root_mem_limit = MemTracker::GetRootTracker()->limit();
+  global_max_ops_size_bytes = std::min(
+      global_max_ops_size_bytes,
+      root_mem_limit * FLAGS_global_log_cache_size_limit_percentage / 100);
   return MemTracker::FindOrCreateTracker(
       global_max_ops_size_bytes, kParentMemTrackerId, server_tracker);
 }
@@ -148,7 +164,7 @@ void LogCache::Init(const OpIdPB& preceding_op) {
   min_pinned_op_index_ = next_sequential_op_index_;
 }
 
-Result<LogCache::PrepareAppendResult> LogCache::PrepareAppendOperations(const ReplicateMsgs& msgs) {
+LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateMsgs& msgs) {
   // SpaceUsed is relatively expensive, so do calculations outside the lock
   PrepareAppendResult result;
   std::vector<CacheEntry> entries_to_insert;
@@ -194,7 +210,7 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
                                   const StatusCallback& callback) {
   PrepareAppendResult prepare_result;
   if (!msgs.empty()) {
-    prepare_result = VERIFY_RESULT(PrepareAppendOperations(msgs));
+    prepare_result = PrepareAppendOperations(msgs);
   }
 
   Status log_status = log_->AsyncAppendReplicates(
@@ -243,13 +259,13 @@ Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
   {
     std::lock_guard<simple_spinlock> l(lock_);
 
-    // We sometimes try to look up OpIds that have never been written on the local node. In that
-    // case, don't try to read the op from the log reader, since it might actually race against the
-    // writing of the op.
+    // We sometimes try to look up OpIds that have never been written on
+    // the local node. In that case, don't try to read the op from the
+    // log reader, since it might actually race against the writing of the op.
     if (op_index >= next_sequential_op_index_) {
       return STATUS(Incomplete, Substitute("Op with index $0 is ahead of the local log "
-                                           "(next sequential op: $1)",
-                                           op_index, next_sequential_op_index_));
+                                          "(next sequential op: $1)",
+                                          op_index, next_sequential_op_index_));
     }
     auto iter = cache_.find(op_index);
     if (iter != cache_.end()) {
@@ -281,13 +297,13 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                         int64_t to_op_index,
-                                        int max_size_bytes) {
+                                        int max_size_bytes,
+                                        CoarseTimePoint deadline) {
   DCHECK_GE(after_op_index, 0);
 
   VLOG_WITH_PREFIX_UNLOCKED(4) << "ReadOps, after_op_index: " << after_op_index
                                << ", to_op_index: " << to_op_index
                                << ", max_size_bytes: " << max_size_bytes;
-
   ReadOpsResult result;
   result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
 
@@ -297,9 +313,19 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
       ? std::min(to_op_index + 1, next_sequential_op_index_)
       : next_sequential_op_index_;
 
+  // Remove the deadline if the GetChanges deadline feature is disabled.
+  if (!ANNOTATE_UNPROTECTED_READ(FLAGS_get_changes_honor_deadline)) {
+    deadline = CoarseTimePoint::max();
+  }
+
   // Return as many operations as we can, up to the limit.
   int64_t remaining_space = max_size_bytes;
   while (remaining_space >= 0 && next_index < to_index) {
+    // Stop reading if a deadline was specified and the deadline has been exceeded.
+    if (deadline != CoarseTimePoint::max() && CoarseMonoClock::Now() >= deadline) {
+      break;
+    }
+
     // If the messages the peer needs haven't been loaded into the queue yet, load them.
     MessageCache::const_iterator iter = cache_.lower_bound(next_index);
     if (iter == cache_.end() || iter->first != next_index) {
@@ -317,7 +343,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
       ReplicateMsgs raw_replicate_ptrs;
       RETURN_NOT_OK_PREPEND(
         log_->GetLogReader()->ReadReplicatesInRange(
-            next_index, up_to, remaining_space, &raw_replicate_ptrs),
+            next_index, up_to, remaining_space, &raw_replicate_ptrs, deadline),
         Substitute("Failed to read ops $0..$1", next_index, up_to));
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
       LOG_WITH_PREFIX_UNLOCKED(INFO)
@@ -360,7 +386,6 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
     }
   }
   result.have_more_messages = remaining_space < 0;
-
   return result;
 }
 
@@ -424,6 +449,22 @@ void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {
 
 int64_t LogCache::BytesUsed() const {
   return tracker_->consumption();
+}
+
+Result<OpId> LogCache::TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type) {
+  constexpr int kStepSize = 20;
+  for (auto end = max_allowed_index; end > 0; end -= kStepSize) {
+    auto result = VERIFY_RESULT(ReadOps(
+        std::max<int64_t>(0, end - kStepSize), end, std::numeric_limits<int>::max()));
+    for (auto it = result.messages.end(); it != result.messages.begin();) {
+      --it;
+      if ((**it).op_type() == op_type) {
+        return OpId::FromPB((**it).id());
+      }
+    }
+  }
+  return STATUS_FORMAT(NotFound, "Operation of type $0 not found before $1",
+                       OperationType_Name(op_type), max_allowed_index);
 }
 
 string LogCache::StatsString() const {
@@ -533,6 +574,10 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
     // ops from another tablet than evict recent ops from this one.
     EvictSomeUnlocked(min_pinned_op_index_, need_to_free);
   }
+}
+
+int64_t LogCache::num_cached_ops() const {
+  return metrics_.num_ops->value();
 }
 
 #define INSTANTIATE_METRIC(x, ...) \

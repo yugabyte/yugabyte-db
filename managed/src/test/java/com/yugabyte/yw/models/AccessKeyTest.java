@@ -2,21 +2,24 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import java.util.List;
+import java.util.UUID;
+import javax.persistence.PersistenceException;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
-
-import javax.persistence.PersistenceException;
-
-import java.util.List;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
 
 public class AccessKeyTest extends FakeDBApplication {
   Provider defaultProvider;

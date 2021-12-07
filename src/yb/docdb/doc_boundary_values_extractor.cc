@@ -17,6 +17,9 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace docdb {

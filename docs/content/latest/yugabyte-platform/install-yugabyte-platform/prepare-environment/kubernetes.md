@@ -18,7 +18,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
@@ -39,7 +39,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link active">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -53,7 +53,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
@@ -62,8 +62,8 @@ showAsideToc: true
 
 The Yugabyte Platform Helm chart has been tested using the following software versions:
 
-- Kubernetes 1.10 or later.
-- Helm 3.0 or later.
+- Kubernetes 1.18 or later.
+- Helm 3.4 or later.
 - Ability to pull Yugabyte Platform Docker image from quay.io repository
 
 
@@ -81,6 +81,6 @@ $ helm version
 
 The output should be similar to the following:
 
-```
+```output
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```

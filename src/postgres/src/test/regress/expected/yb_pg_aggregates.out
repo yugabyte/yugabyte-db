@@ -572,8 +572,6 @@ FROM bool_test;
  t | t | f |   | f | t
 (1 row)
 
--- drop temp table
-DROP TABLE bool_test;
 --
 -- Test cases that should be optimized into indexscans instead of
 -- the generic aggregate implementation.
@@ -900,29 +898,31 @@ explain (costs off) select a,c from t1 group by a,c,d;
 explain (costs off) select *
 from t1 inner join t2 on t1.a = t2.x and t1.b = t2.y
 group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.y,t2.z;
-                       QUERY PLAN
---------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  HashAggregate
    Group Key: t1.a, t1.b, t2.x, t2.y
-   ->  Nested Loop
-         Join Filter: ((t1.a = t2.x) AND (t1.b = t2.y))
-         ->  Seq Scan on t1
+   ->  Hash Join   
+         Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
          ->  Seq Scan on t2
-(6 rows)
+         ->  Hash
+               ->  Seq Scan on t1
+(7 rows)
 
 -- Test case where t1 can be optimized but not t2
 explain (costs off) select t1.*,t2.x,t2.z
 from t1 inner join t2 on t1.a = t2.x and t1.b = t2.y
 group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.z;
-                       QUERY PLAN
---------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  HashAggregate
    Group Key: t1.a, t1.b, t2.x, t2.z
-   ->  Nested Loop
-         Join Filter: ((t1.a = t2.x) AND (t1.b = t2.y))
-         ->  Seq Scan on t1
+   ->  Hash Join   
+         Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
          ->  Seq Scan on t2
-(6 rows)
+         ->  Hash
+               ->  Seq Scan on t1
+(7 rows)
 
 -- Cannot optimize when PK is deferrable
 -- explain (costs off) select * from t3 group by a,b,c;
@@ -1355,6 +1355,36 @@ select aggfns(distinct a,b,c order by a,c using ~<~,b) filter (where a > 1)
  {"(2,2,bar)","(3,1,baz)"}
 (1 row)
 
+-- check handling of bare boolean Var in FILTER
+select max(0) filter (where b1) from bool_test;
+ max 
+-----
+   0
+(1 row)
+
+select (select max(0) filter (where b1)) from bool_test;
+ max 
+-----
+   0
+(1 row)
+
+-- check for correct detection of nested-aggregate errors in FILTER
+select max(unique1) filter (where sum(ten) > 0) from tenk1;
+ERROR:  aggregate functions are not allowed in FILTER
+LINE 1: select max(unique1) filter (where sum(ten) > 0) from tenk1;
+                                          ^
+select (select max(unique1) filter (where sum(ten) > 0) from int8_tbl) from tenk1;
+ERROR:  aggregate function calls cannot be nested
+LINE 1: select (select max(unique1) filter (where sum(ten) > 0) from...
+                                                  ^
+select max(unique1) filter (where bool_or(ten > 0)) from tenk1;
+ERROR:  aggregate functions are not allowed in FILTER
+LINE 1: select max(unique1) filter (where bool_or(ten > 0)) from ten...
+                                          ^
+select (select max(unique1) filter (where bool_or(ten > 0)) from int8_tbl) from tenk1;
+ERROR:  aggregate function calls cannot be nested
+LINE 1: select (select max(unique1) filter (where bool_or(ten > 0)) ...
+                                                  ^
 -- ordered-set aggregates
 select p, percentile_cont(p) within group (order by x::float8)
 from generate_series(1,5) x,
@@ -1923,7 +1953,7 @@ CREATE AGGREGATE balk(int4)
     INITCOND = '0'
 );
 -- force use of parallelism
--- TODO(jayden): ALTER TABLE SET name not yet implemented (#1124).
+-- TODO(jayden): ALTER TABLE SET not yet implemented (#1124).
 -- ALTER TABLE tenk1 set (parallel_workers = 4);
 SET LOCAL parallel_setup_cost=0;
 SET LOCAL max_parallel_workers_per_gather=4;

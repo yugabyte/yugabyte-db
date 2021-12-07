@@ -21,18 +21,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <stdio.h>
 
 #ifndef ROCKSDB_LITE
+
 #include <algorithm>
-#include <cmath>
 #include <vector>
 
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/utilities/table_properties_collectors.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/utilities/table_properties_collectors/compact_on_deletion_collector.h"
+#include "yb/rocksdb/utilities/table_properties_collectors.h"
+
 #include "yb/util/stopwatch.h"
 #include "yb/util/tsan_util.h"
 

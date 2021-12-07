@@ -14,10 +14,11 @@
 #define YB_UTIL_SPLIT_H_
 
 #include <string>
+#include <vector>
 
 #include <boost/container/small_vector.hpp>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/slice.h"
 
 namespace yb {

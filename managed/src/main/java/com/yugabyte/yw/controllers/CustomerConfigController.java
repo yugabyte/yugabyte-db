@@ -2,91 +2,145 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
-import com.yugabyte.yw.common.AlertManager;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
+import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.UUID;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.UUID;
-
-
+@Api(
+    value = "Customer Configuration",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
 
-  @Inject
-  private CustomerConfigValidator configValidator;
+  private final CustomerConfigService customerConfigService;
 
   @Inject
-  private AlertManager alertManager;
+  public CustomerConfigController(CustomerConfigService customerConfigService) {
+    this.customerConfigService = customerConfigService;
+  }
 
+  @Inject Commissioner commissioner;
+
+  @ApiOperation(
+      value = "Create a customer configuration",
+      response = CustomerConfig.class,
+      nickname = "createCustomerConfig")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Config",
+        value = "Configuration data to be created",
+        required = true,
+        dataType = "Object",
+        paramType = "body")
+  })
   public Result create(UUID customerUUID) {
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    ObjectNode errorJson = configValidator.validateFormData(formData);
-    if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
-    }
+    CustomerConfig customerConfig = parseJson(CustomerConfig.class);
+    customerConfig.setCustomerUUID(customerUUID);
 
-    errorJson = configValidator.validateDataContent(formData);
-    if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
-    }
+    customerConfigService.create(customerConfig);
 
-    CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
-    auditService().createAuditEntry(ctx(), request(), formData);
-    return ApiResponse.success(customerConfig);
-  }
-
-  public Result delete(UUID customerUUID, UUID configUUID) {
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
-    if (customerConfig == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
-    }
-    if (!customerConfig.delete()) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR,
-          "Customer Configuration could not be deleted.");
-    }
-    alertManager.resolveAlerts(customerUUID, configUUID, "%");
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.withMessage("configUUID deleted");
+    return PlatformResults.withData(customerConfig);
   }
 
+  @ApiOperation(
+      value = "Delete a customer configuration",
+      response = YBPTask.class,
+      nickname = "deleteCustomerConfig")
+  public Result delete(UUID customerUUID, UUID configUUID, boolean isDeleteBackups) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    CustomerConfig customerConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
+    if (customerConfig.type == CustomerConfig.ConfigType.STORAGE) {
+      Boolean backupsInProgress = Backup.findIfBackupsRunningWithCustomerConfig(configUUID);
+      if (backupsInProgress) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Backup task associated with Configuration "
+                + configUUID.toString()
+                + " is in progress.");
+      }
+      if (isDeleteBackups) {
+        DeleteCustomerConfig.Params taskParams = new DeleteCustomerConfig.Params();
+        taskParams.customerUUID = customerUUID;
+        taskParams.configUUID = configUUID;
+        taskParams.isDeleteBackups = isDeleteBackups;
+        UUID taskUUID = commissioner.submit(TaskType.DeleteCustomerConfig, taskParams);
+        LOG.info(
+            "Saved task uuid {} in customer tasks for Customer Configuration {}.",
+            taskUUID,
+            configUUID);
+        CustomerTask.create(
+            customer,
+            configUUID,
+            taskUUID,
+            CustomerTask.TargetType.CustomerConfiguration,
+            CustomerTask.TaskType.Delete,
+            customerConfig.configName);
+        auditService().createAuditEntry(ctx(), request());
+        return new YBPTask(taskUUID, configUUID).asResult();
+      }
+    }
+    customerConfigService.delete(customerUUID, configUUID);
+
+    auditService().createAuditEntry(ctx(), request());
+    return YBPSuccess.withMessage("Config " + configUUID + " deleted");
+  }
+
+  @ApiOperation(
+      value = "List all customer configurations",
+      response = CustomerConfigUI.class,
+      responseContainer = "List",
+      nickname = "getListOfCustomerConfig")
   public Result list(UUID customerUUID) {
-    return ApiResponse.success(CustomerConfig.getAll(customerUUID));
+    return PlatformResults.withData(customerConfigService.listForUI(customerUUID));
   }
 
+  @ApiOperation(
+      value = "Update a customer configuration",
+      response = CustomerConfig.class,
+      nickname = "getCustomerConfig")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Config",
+        value = "Configuration data to be updated",
+        required = true,
+        dataType = "Object",
+        paramType = "body")
+  })
   public Result edit(UUID customerUUID, UUID configUUID) {
-    JsonNode formData =  request().body().asJson();
-    ObjectNode errorJson = configValidator.validateFormData(formData);
-    if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
-    }
+    CustomerConfig customerConfig = parseJson(CustomerConfig.class);
+    customerConfig.setConfigUUID(configUUID);
+    customerConfig.setCustomerUUID(customerUUID);
 
-    errorJson = configValidator.validateDataContent(formData);
-    if (errorJson.size() > 0) {
-      return ApiResponse.error(BAD_REQUEST, errorJson);
-    }
-    CustomerConfig customerConfig = CustomerConfig.get(customerUUID, configUUID);
-    if (customerConfig == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid configUUID: " + configUUID);
-    }
-    CustomerConfig config = CustomerConfig.get(configUUID);
-    JsonNode data = Json.toJson(formData.get("data"));
-    if (data != null && data.get("BACKUP_LOCATION") != null) {
-      ((ObjectNode)data).put("BACKUP_LOCATION", config.data.get("BACKUP_LOCATION"));
-    }
-    JsonNode updatedData = CommonUtils.unmaskConfig(config.data, data);
-    config.data = Json.toJson(updatedData);
-    config.update();
+    CustomerConfig existingConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
+    CustomerConfig unmaskedConfig = CommonUtils.unmaskObject(existingConfig, customerConfig);
+
+    customerConfigService.edit(unmaskedConfig);
+
     auditService().createAuditEntry(ctx(), request());
-    return ApiResponse.success(config);
+    return PlatformResults.withData(unmaskedConfig);
   }
 }

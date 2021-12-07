@@ -542,7 +542,6 @@ enum OpIdType {
   UNKNOWN_OPID_TYPE = 0;
   RECEIVED_OPID = 1;
   COMMITTED_OPID = 2;
-  SPLIT_OPID = 3;
 }
 
 message GetLastOpIdRequestPB {
@@ -554,6 +553,8 @@ message GetLastOpIdRequestPB {
 
   // Whether to return the last-received or last-committed OpId.
   optional OpIdType opid_type = 3 [ default = RECEIVED_OPID ];
+
+  optional OperationType op_type = 4;
 }
 
 message GetLastOpIdResponsePB {
@@ -589,6 +590,8 @@ message StartRemoteBootstrapRequestPB {
   optional bytes dest_uuid = 5;
 
   required bytes tablet_id = 1;
+
+  optional bytes split_parent_tablet_id = 8;
 
   // Identification for the host we are bootstrapping from.
   // TODO: Consider renaming these to bootstrap_source_*.

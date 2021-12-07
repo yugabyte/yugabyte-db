@@ -29,23 +29,25 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/messenger.h"
+
+#include "yb/tserver/tablet_server-test-base.h"
+
 #include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/thread.h"
 
 DEFINE_int32(num_inserter_threads, 8, "Number of inserter threads to run");
 DEFINE_int32(num_inserts_per_thread, 0, "Number of inserts from each thread");
 DECLARE_bool(enable_maintenance_manager);
 
-METRIC_DEFINE_histogram(test, insert_latency,
+METRIC_DEFINE_coarse_histogram(test, insert_latency,
                         "Insert Latency",
                         yb::MetricUnit::kMicroseconds,
-                        "TabletServer single threaded insert latency.",
-                        10000000,
-                        2);
+                        "TabletServer single threaded insert latency.");
 
 namespace yb {
 namespace tserver {

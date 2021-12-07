@@ -29,44 +29,53 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/yb-admin_client.h"
 
-#include <array>
-#include <iomanip>
 #include <sstream>
 #include <type_traits>
 
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
-#include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
 #include <boost/tti/has_member_function.hpp>
-
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/redis_constants_common.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
-#include "yb/client/table_alterer.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master_error.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/rpc/messenger.h"
 
-#include "yb/util/string_case.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/string_util.h"
-#include "yb/util/protobuf_util.h"
-#include "yb/util/random_util.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/numbers.h"
+#include "yb/common/json_util.h"
+#include "yb/common/redis_constants_common.h"
+#include "yb/common/transaction.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
+
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/split.h"
+
+#include "yb/master/master.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/sys_catalog.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/protobuf_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
+#include "yb/util/string_case.h"
+#include "yb/util/string_util.h"
 
 DEFINE_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
@@ -107,6 +116,9 @@ using rpc::MessengerBuilder;
 using rpc::RpcController;
 using strings::Substitute;
 using tserver::TabletServerServiceProxy;
+using tserver::TabletServerAdminServiceProxy;
+using tserver::UpgradeYsqlRequestPB;
+using tserver::UpgradeYsqlResponsePB;
 
 using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
@@ -121,6 +133,8 @@ using master::ListMasterRaftPeersRequestPB;
 using master::ListMasterRaftPeersResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
+using master::ListLiveTabletServersRequestPB;
+using master::ListLiveTabletServersResponsePB;
 using master::MasterServiceProxy;
 using master::TabletLocationsPB;
 using master::TSInfoPB;
@@ -525,15 +539,19 @@ Status ClusterAdminClient::Init() {
       .wait_for_leader_election_on_init(FLAGS_wait_if_no_leader_master)
       .Build(messenger_.get()));
 
-  // Find the leader master's socket info to set up the master proxy.
-  leader_addr_ = yb_client_->GetMasterLeaderAddress();
-  master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
-
-  rpc::ProxyCache proxy_cache(messenger_.get());
-  master_backup_proxy_.reset(new master::MasterBackupServiceProxy(&proxy_cache, leader_addr_));
+  ResetMasterProxy();
 
   initted_ = true;
   return Status::OK();
+}
+
+void ClusterAdminClient::ResetMasterProxy() {
+  // Find the leader master's socket info to set up the master proxy.
+  leader_addr_ = yb_client_->GetMasterLeaderAddress();
+  master_proxy_ = std::make_unique<MasterServiceProxy>(proxy_cache_.get(), leader_addr_);
+
+  master_backup_proxy_ = std::make_unique<master::MasterBackupServiceProxy>(
+      proxy_cache_.get(), leader_addr_);
 }
 
 Status ClusterAdminClient::MasterLeaderStepDown(
@@ -696,7 +714,7 @@ Status ClusterAdminClient::ChangeConfig(
           leader_uuid, tablet_id, /* new_leader_uuid */ std::string(), &consensus_proxy));
     sleep(5);  // TODO - election completion timing is not known accurately
     RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
-    if (leader_uuid != old_leader_uuid) {
+    if (leader_uuid == old_leader_uuid) {
       return STATUS(ConfigurationError,
                     "Old tablet server leader same as new even after re-election!");
     }
@@ -776,7 +794,7 @@ Status ClusterAdminClient::GetIsLoadBalancerIdle() {
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
-  unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
+  std::unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
   int total_leader_count = 0;
   for (const auto& lc : leader_counts) { total_leader_count += lc.second; }
 
@@ -817,7 +835,7 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   return Status::OK();
 }
 
-Result<unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
+Result<std::unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
     const client::YBTableName& table_name) {
   vector<string> tablet_ids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
@@ -828,7 +846,7 @@ Result<unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
   const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
       master_proxy_.get(), req));
 
-  unordered_map<string, int> leader_counts;
+  std::unordered_map<string, int> leader_counts;
   for (const auto& locs : resp.tablet_locations()) {
     for (const auto& replica : locs.replicas()) {
       const auto uuid = replica.ts_info().permanent_uuid();
@@ -1191,21 +1209,30 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_tablets) {
+Status ClusterAdminClient::ListTablets(
+    const YBTableName& table_name, int max_tablets, bool json) {
   vector<string> tablet_uuids, ranges;
   std::vector<master::TabletLocationsPB> locations;
   RETURN_NOT_OK(yb_client_->GetTablets(
       table_name, max_tablets, &tablet_uuids, &ranges, &locations));
-  cout << RightPadToUuidWidth("Tablet-UUID") << kColumnSep
-       << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
-       << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID" << endl;
+
+  rapidjson::Document document(rapidjson::kObjectType);
+  rapidjson::Value json_tablets(rapidjson::kArrayType);
+  CHECK(json_tablets.IsArray());
+
+  if (!json) {
+    cout << RightPadToUuidWidth("Tablet-UUID") << kColumnSep
+         << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
+         << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID" << endl;
+  }
+
   for (int i = 0; i < tablet_uuids.size(); i++) {
-    string tablet_uuid = tablet_uuids[i];
+    const string& tablet_uuid = tablet_uuids[i];
     string leader_host_port;
     string leader_uuid;
     const auto& locations_of_this_tablet = locations[i];
     for (const auto& replica : locations_of_this_tablet.replicas()) {
-      if (replica.role() == RaftPeerPB::Role::RaftPeerPB_Role_LEADER) {
+      if (replica.role() == RaftPeerPB::LEADER) {
         if (leader_host_port.empty()) {
           leader_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           leader_uuid = replica.ts_info().permanent_uuid();
@@ -1215,10 +1242,34 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_ta
         }
       }
     }
-    cout << tablet_uuid << kColumnSep << RightPadToWidth(ranges[i], kPartitionRangeColWidth)
-         << kColumnSep << RightPadToWidth(leader_host_port, kLongColWidth) << kColumnSep
-         << leader_uuid << endl;
+
+    if (json) {
+      rapidjson::Value json_tablet(rapidjson::kObjectType);
+      AddStringField("id", tablet_uuid, &json_tablet, &document.GetAllocator());
+      const auto& partition = locations_of_this_tablet.partition();
+      AddStringField("partition_key_start",
+                     Slice(partition.partition_key_start()).ToDebugHexString(), &json_tablet,
+                     &document.GetAllocator());
+      AddStringField("partition_key_end",
+                     Slice(partition.partition_key_end()).ToDebugHexString(), &json_tablet,
+                     &document.GetAllocator());
+      rapidjson::Value json_leader(rapidjson::kObjectType);
+      AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
+      AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
+      json_tablet.AddMember(rapidjson::StringRef("leader"), json_leader, document.GetAllocator());
+      json_tablets.PushBack(json_tablet, document.GetAllocator());
+    } else {
+      cout << tablet_uuid << kColumnSep << RightPadToWidth(ranges[i], kPartitionRangeColWidth)
+           << kColumnSep << RightPadToWidth(leader_host_port, kLongColWidth) << kColumnSep
+           << leader_uuid << endl;
+    }
   }
+
+  if (json) {
+    document.AddMember("tablets", json_tablets, document.GetAllocator());
+    std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
+  }
+
   return Status::OK();
 }
 
@@ -1581,7 +1632,7 @@ Status ClusterAdminClient::FillPlacementInfo(
       return STATUS(InvalidCommand, "Each placement info must be in format placement:rf");
     }
 
-    int min_num_replicas = boost::lexical_cast<int>(placement_block[1]);
+    int min_num_replicas = VERIFY_RESULT(CheckedStoInt<int>(placement_block[1]));
 
     std::vector<std::string> block = strings::Split(placement_block[0], ".",
                                                     strings::SkipEmpty());
@@ -1605,6 +1656,12 @@ Status ClusterAdminClient::FillPlacementInfo(
 Status ClusterAdminClient::ModifyTablePlacementInfo(
   const YBTableName& table_name, const std::string& placement_info, int replication_factor,
   const std::string& optional_uuid) {
+
+  YBTableName global_transactions(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  if (table_name == global_transactions) {
+    return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
+  }
 
   std::vector<std::string> placement_info_split = strings::Split(
       placement_info, ",", strings::SkipEmpty());
@@ -1639,32 +1696,7 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     live_replicas->set_placement_uuid(optional_uuid);
   }
 
-  master::ReplicationInfoPB replication_info;
-  // Merge the obtained info with the existing table replication info.
-  std::shared_ptr<client::YBTable> table;
-  RETURN_NOT_OK_PREPEND(yb_client_->OpenTable(table_name, &table),
-                        "Fetching table schema failed!");
-
-  // If it does not exist, fetch the cluster replication info.
-  if (!table->replication_info()) {
-    auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
-    master::SysClusterConfigEntryPB* sys_cluster_config_entry =
-      resp_cluster_config.mutable_cluster_config();
-    replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
-    // TODO(bogdan): Figure out how to handle read replias and leader affinity.
-    replication_info.clear_read_replicas();
-    replication_info.clear_affinitized_leaders();
-  } else {
-    // Table replication info exists, copy it over.
-    replication_info.CopyFrom(table->replication_info().get());
-  }
-
-  // Put in the new live placement info.
-  replication_info.set_allocated_live_replicas(live_replicas);
-
-  std::unique_ptr<yb::client::YBTableAlterer> table_alterer(
-    yb_client_->NewTableAlterer(table_name));
-  return table_alterer->replication_info(replication_info)->Alter();
+  return yb_client_->ModifyTablePlacementInfo(table_name, live_replicas);
 }
 
 Status ClusterAdminClient::ModifyPlacementInfo(
@@ -1773,6 +1805,71 @@ Status ClusterAdminClient::GetYsqlCatalogVersion() {
   return Status::OK();
 }
 
+Result<rapidjson::Document> ClusterAdminClient::DdlLog() {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::DdlLogRequestPB req;
+  master::DdlLogResponsePB resp;
+
+  RETURN_NOT_OK(master_proxy_->DdlLog(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document result;
+  result.SetObject();
+  rapidjson::Value json_entries(rapidjson::kArrayType);
+  for (const auto& entry : resp.entries()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("table_type", TableType_Name(entry.table_type()), &json_entry,
+                   &result.GetAllocator());
+    AddStringField("namespace", entry.namespace_name(), &json_entry, &result.GetAllocator());
+    AddStringField("table", entry.table_name(), &json_entry, &result.GetAllocator());
+    AddStringField("action", entry.action(), &json_entry, &result.GetAllocator());
+    AddStringField("time", HybridTimeToString(HybridTime(entry.time())),
+                   &json_entry, &result.GetAllocator());
+    json_entries.PushBack(json_entry, result.GetAllocator());
+  }
+  result.AddMember("log", json_entries, result.GetAllocator());
+  return result;
+}
+
+Status ClusterAdminClient::UpgradeYsql() {
+  // Pick some alive TServer.
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+  boost::optional<HostPortPB> ts_rpc_addr;
+  for (const ListTabletServersResponsePB::Entry& server : servers) {
+    if (!server.has_alive() || !server.alive()) {
+      continue;
+    }
+
+    if (!server.has_registration() ||
+        server.registration().common().private_rpc_addresses().empty()) {
+      continue;
+    }
+
+    ts_rpc_addr.emplace(server.registration().common().private_rpc_addresses(0));
+    break;
+  }
+  if (!ts_rpc_addr.has_value()) {
+    return STATUS(IllegalState, "Couldn't find alive tablet server to connect to");
+  }
+
+  TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
+
+  UpgradeYsqlRequestPB req;
+  const auto resp = VERIFY_RESULT(InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
+                                            &ts_admin_proxy, req));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "YSQL successfully upgraded to the latest version" << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
     bool blacklist_leader) {
   auto config = VERIFY_RESULT(GetMasterClusterConfig());
@@ -1835,6 +1932,10 @@ CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& table_name) {
+  return yb_client_->CreateTransactionsStatusTable(table_name);
+}
+
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
@@ -1882,6 +1983,17 @@ Result<TypedNamespaceName> ParseNamespaceName(const std::string& full_namespace_
                                               const YQLDatabase default_if_no_prefix) {
   const auto parts = SplitByDot(full_namespace_name);
   return ResolveNamespaceName(parts.prefix, parts.value, default_if_no_prefix);
+}
+
+void AddStringField(
+    const char* name, const std::string& value, rapidjson::Value* out,
+    rapidjson::Value::AllocatorType* allocator) {
+  rapidjson::Value json_value(value.c_str(), *allocator);
+  out->AddMember(rapidjson::StringRef(name), json_value, *allocator);
+}
+
+string HybridTimeToString(HybridTime ht) {
+  return Timestamp(ht.GetPhysicalValueMicros()).ToHumanReadableTime();
 }
 
 }  // namespace tools

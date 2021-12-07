@@ -30,7 +30,7 @@ fi
 readonly YB_COMMON_BUILD_ENV_SOURCED=1
 
 # -------------------------------------------------------------------------------------------------
-# Initialize submodules and load yugabyte-bash-common
+# Functions used during initialization
 # -------------------------------------------------------------------------------------------------
 
 set_yb_src_root() {
@@ -44,6 +44,54 @@ set_yb_src_root() {
   yb_java_project_dirs=( "$YB_SRC_ROOT/java" )
 }
 
+# Puts the current Git SHA1 in the current directory into the current_sha1 variable.
+# Remember, this variable could also be local to the calling function.
+get_current_sha1() {
+  current_sha1=$( git rev-parse HEAD )
+  if [[ ! $current_sha1 =~ ^[0-9a-f]{40}$ ]]; then
+    # We can't use the "fatal" function yet.
+    echo >&2 "Could not get current Git SHA1 in $PWD"
+    exit 1
+  fi
+}
+
+initialize_yugabyte_bash_common() {
+  local target_sha1
+  target_sha1=$(<"$YB_SRC_ROOT/build-support/yugabyte-bash-common-sha1.txt")
+  if [[ ! $target_sha1 =~ ^[0-9a-f]{40}$ ]]; then
+    echo >&2 "Invalid yugabyte-bash-common SHA1: $target_sha1"
+    exit 1
+  fi
+
+  # Put this submodule-like directory under "build".
+  YB_BASH_COMMON_DIR=$YB_SRC_ROOT/build/yugabyte-bash-common
+
+  if [[ ! -d $YB_BASH_COMMON_DIR ]]; then
+    mkdir -p "$YB_SRC_ROOT/build"
+    git clone https://github.com/yugabyte/yugabyte-bash-common.git "$YB_BASH_COMMON_DIR"
+  fi
+
+  pushd "$YB_BASH_COMMON_DIR" >/dev/null
+  local current_sha1
+  get_current_sha1
+  if [[ $current_sha1 != "$target_sha1" ]]; then
+    if ! ( set -x; git checkout "$target_sha1" ); then
+      (
+        set -x
+        git fetch
+        git checkout "$target_sha1"
+      )
+    fi
+    get_current_sha1
+    if [[ $current_sha1 != "$target_sha1" ]]; then
+      echo >&2 "Failed to check out target SHA1 $target_sha1 in directory $PWD." \
+                "Current SHA1: $current_sha1."
+      exit 1
+    fi
+  fi
+  popd >/dev/null
+}
+
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
 set_yb_src_root "$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. && pwd )"
 
@@ -51,16 +99,10 @@ if [[ $YB_SRC_ROOT == */ ]]; then
   fatal "YB_SRC_ROOT ends with '/' (not allowed): '$YB_SRC_ROOT'"
 fi
 
-YB_BASH_COMMON_DIR=$YB_SRC_ROOT/submodules/yugabyte-bash-common
+initialize_yugabyte_bash_common
 
-# Initialize submodules. Only do this when the source directory is a git directory.
-if [[ ! -d $YB_BASH_COMMON_DIR || -z "$( ls -A "$YB_BASH_COMMON_DIR" )" ]] &&
-   [[ -d $YB_SRC_ROOT/.git ]]; then
-  ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
-fi
-
-# shellcheck source=submodules/yugabyte-bash-common/src/yugabyte-bash-common.sh
-. "$YB_SRC_ROOT/submodules/yugabyte-bash-common/src/yugabyte-bash-common.sh"
+# shellcheck source=build/yugabyte-bash-common/src/yugabyte-bash-common.sh
+. "$YB_BASH_COMMON_DIR/src/yugabyte-bash-common.sh"
 
 # -------------------------------------------------------------------------------------------------
 # Constants
@@ -80,6 +122,8 @@ readonly SHARED_LINUXBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/linuxbrew"
 readonly OPT_YB_BUILD_DIR="/opt/yb-build"
 
 readonly LOCAL_THIRDPARTY_DIR_PARENT="$OPT_YB_BUILD_DIR/thirdparty"
+
+readonly YSQL_SNAPSHOTS_DIR_PARENT="$OPT_YB_BUILD_DIR/ysql-sys-catalog-snapshots"
 
 # Parent directories for different compiler toolchains that we know how to download and install.
 readonly TOOLCHAIN_PARENT_DIR_LINUXBREW="$OPT_YB_BUILD_DIR/brew"
@@ -132,12 +176,22 @@ readonly -a VALID_CMAKE_BUILD_TYPES=(
 make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
-  clang
   gcc
+  gcc5
+  gcc6
+  gcc7
   gcc8
   gcc9
+  gcc10
+  gcc11
+  gcc12
+  clang
+  clang7
+  clang8
+  clang9
   clang10
   clang11
+  clang12
   zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
@@ -148,10 +202,19 @@ readonly -a VALID_LINKING_TYPES=(
 )
 make_regex_from_list VALID_LINKING_TYPES "${VALID_LINKING_TYPES[@]}"
 
+readonly -a VALID_ARCHITECTURES=(
+  x86_64
+  aarch64
+  arm64
+  graviton2
+)
+make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
+
 readonly BUILD_ROOT_BASENAME_RE=\
 "^($VALID_BUILD_TYPES_RAW_RE)-\
 ($VALID_COMPILER_TYPES_RAW_RE)-\
 ($VALID_LINKING_TYPES_RAW_RE)\
+(-($VALID_ARCHITECTURES_RAW_RE))?\
 (-ninja)?\
 (-clion)?$"
 
@@ -169,7 +232,7 @@ if is_mac; then
     readonly FLOCK_MSG="File locked"
   else
     readonly FLOCK="/usr/bin/true"
-    readonly FLOCK_MSG="Skipped file lock"
+    readonly FLOCK_MSG="Skipped file lock on macOS"
   fi
 else
   readonly FLOCK="/usr/bin/flock"
@@ -216,32 +279,40 @@ readonly -a MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
 is_clean_build=false
 
 # A human-readable description of how we set the respective variables.
-yb_thirdparty_dir_where_from=""
+yb_thirdparty_dir_origin=""
+
 if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
-  yb_thirdparty_dir_where_from=" (from environment)"
+  yb_thirdparty_dir_origin=" (from environment)"
 fi
 
-yb_thirdparty_url_where_from=""
+yb_thirdparty_url_origin=""
 if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
-  yb_thirdparty_url_where_from=" (from environment)"
+  yb_thirdparty_url_origin=" (from environment)"
 fi
 
-yb_linuxbrew_dir_where_from=""
+yb_linuxbrew_dir_origin=""
 if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
-  yb_linuxbrew_dir_where_from=" (from environment)"
+  yb_linuxbrew_dir_origin=" (from environment)"
 fi
 
-yb_llvm_toolchain_dir_where_from=""
+yb_llvm_toolchain_dir_origin=""
 if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
-  yb_llvm_toolchain_dir_where_from=" (from environment)"
+  yb_llvm_toolchain_dir_origin=" (from environment)"
 fi
 
 # To deduplicate Maven arguments
 yb_mvn_parameters_already_set=false
 
+is_apple_silicon=""  # Will be set to true or false when necessary.
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
+
+yb_activate_debug_mode() {
+  PS4='[${BASH_SOURCE[0]}:${LINENO} ${FUNCNAME[0]:-}] '
+  set -x
+}
 
 normalize_build_type() {
   if [[ -z ${build_type:-} ]]; then
@@ -263,6 +334,8 @@ normalize_build_type() {
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
+  detect_architecture
+
   if [[ ${1:-} == "--no-readonly" ]]; then
     local -r make_build_root_readonly=false
     shift
@@ -279,10 +352,11 @@ set_build_root() {
   fi
   validate_compiler_type "$YB_COMPILER_TYPE"
 
-  # TODO: remove the "-dynamic" suffix. We only use dynamic linking and it would be very hard to
-  # produce any kind of a build that does not involve creation of shared libraries, although we
-  # might at some point want to produce a static build of yb-tserver with LTO enabled.
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE-dynamic
+  if is_apple_silicon; then
+    # Append the target architecture (x86_64 or arm64).
+    BUILD_ROOT+=-${YB_TARGET_ARCH}
+  fi
 
   if using_ninja; then
     BUILD_ROOT+="-ninja"
@@ -314,7 +388,8 @@ set_real_build_root_path() {
     real_build_root_path="$BUILD_ROOT"
   fi
 
-  readonly real_build_root_path=$( cd "$real_build_root_path" && pwd )
+  real_build_root_path=$( cd "$real_build_root_path" && pwd )
+  readonly real_build_root_path
 }
 
 ensure_build_root_is_set() {
@@ -541,7 +616,7 @@ set_cmake_build_type_and_compiler_type() {
   elif [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if [[ $build_type =~ ^(asan|tsan)$ ]]; then
       # Use Clang by default for ASAN/TSAN builds.
-      YB_COMPILER_TYPE=clang
+      YB_COMPILER_TYPE=clang7
     else
       # The default on Linux.
       YB_COMPILER_TYPE=gcc
@@ -602,10 +677,10 @@ set_mvn_parameters() {
   if "$yb_mvn_parameters_already_set"; then
     return
   fi
-  local should_use_shared_dirs=false
   if is_jenkins; then
-    if "$is_run_test_script" && [[ -d $BUILD_ROOT/m2_repository ]]; then
-      YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
+    local m2_repository_in_build_root=$BUILD_ROOT/m2_repository
+    if "$is_run_test_script" && [[ -d $m2_repository_in_build_root ]]; then
+      YB_MVN_LOCAL_REPO=$m2_repository_in_build_root
       # Do not use the "shared Maven settings" path even if it is available.
       YB_MVN_SETTINGS_PATH=$YB_DEFAULT_MVN_SETTINGS_PATH
       log "Will use Maven repository from build root ($YB_MVN_LOCAL_REPO) and the" \
@@ -872,42 +947,29 @@ find_compiler_by_type() {
       cc_executable+=${YB_GCC_SUFFIX:-}
       cxx_executable+=${YB_GCC_SUFFIX:-}
     ;;
-    # TODO mbautin: remove repetition in handling of various versions of GCC.
-    # TODO mbautin: do we actually need separate YB_GCC<n>_PREFIX environment variables?
-    gcc8)
-      if is_centos; then
-        cc_executable=/opt/rh/devtoolset-8/root/usr/bin/gcc
-        cxx_executable=/opt/rh/devtoolset-8/root/usr/bin/g++
-      elif [[ -n ${YB_GCC8_PREFIX:-} ]]; then
-        if [[ ! -d $YB_GCC8_PREFIX/bin ]]; then
-          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
+    gcc*)
+      local gcc_major_version=${YB_COMPILER_TYPE#gcc}
+      if [[ ! $gcc_major_version =~ ^[0-9]+$ ]]; then
+        fatal "Invalid GCC major version: '$gcc_major_version'" \
+              "(from compiler type '$YB_COMPILER_TYPE')."
+      fi
+      if is_redhat_family; then
+        local gcc_bin_dir
+        if [[ -d /opt/rh/gcc-toolset-$gcc_major_version ]]; then
+          gcc_bin_dir=/opt/rh/gcc-toolset-$gcc_major_version/root/usr/bin
+        else
+          gcc_bin_dir=/opt/rh/devtoolset-$gcc_major_version/root/usr/bin
         fi
-        cc_executable=$YB_GCC8_PREFIX/bin/gcc-8
-        cxx_executable=$YB_GCC8_PREFIX/bin/g++-8
+        cc_executable=$gcc_bin_dir/gcc
+        cxx_executable=$gcc_bin_dir/g++
       else
         # shellcheck disable=SC2230
-        cc_executable=$(which gcc-8)
+        cc_executable=$(which "gcc-$gcc_major_version")
         # shellcheck disable=SC2230
-        cxx_executable=$(which g++-8)
+        cxx_executable=$(which "g++-$gcc_major_version")
       fi
     ;;
-    gcc9)
-      if is_centos; then
-        cc_executable=/opt/rh/devtoolset-9/root/usr/bin/gcc
-        cxx_executable=/opt/rh/devtoolset-9/root/usr/bin/g++
-      elif [[ -n ${YB_GCC9_PREFIX:-} ]]; then
-        if [[ ! -d $YB_GCC9_PREFIX/bin ]]; then
-          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
-        fi
-        cc_executable=$YB_GCC9_PREFIX/bin/gcc-9
-        cxx_executable=$YB_GCC9_PREFIX/bin/g++-9
-      else
-        # shellcheck disable=SC2230
-        cc_executable=$(which gcc-9)
-        # shellcheck disable=SC2230
-        cxx_executable=$(which g++-9)
-      fi
-    ;;
+    # This is the old Linuxbrew-based Clang 7 build type.
     clang)
       if [[ -n ${YB_CLANG_PREFIX:-} ]]; then
         if [[ ! -d $YB_CLANG_PREFIX/bin ]]; then
@@ -943,7 +1005,7 @@ find_compiler_by_type() {
       cc_executable+=${YB_CLANG_SUFFIX:-}
       cxx_executable+=${YB_CLANG_SUFFIX:-}
     ;;
-    clang10|clang11)
+    clang*)
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
         cc_executable=$YB_LLVM_TOOLCHAIN_DIR/bin/clang
         cxx_executable=$YB_LLVM_TOOLCHAIN_DIR/bin/clang++
@@ -952,10 +1014,22 @@ find_compiler_by_type() {
         local clang_cc_compiler_basename=${YB_COMPILER_TYPE//clang/clang-}
         local clang_cxx_compiler_basename=${YB_COMPILER_TYPE//clang/clang++-}
         for clang_prefix_candidate in /usr/local/bin /usr/bin; do
-          if [[ -L $clang_prefix_candidate/$clang_cc_compiler_basename &&
-                -L $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
-            cc_executable=$( readlink "$clang_prefix_candidate/$clang_cc_compiler_basename" )
-            cxx_executable=$( readlink "$clang_prefix_candidate/$clang_cxx_compiler_basename" )
+          if [[ -e $clang_prefix_candidate/$clang_cc_compiler_basename &&
+                -e $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
+            cc_executable="$clang_prefix_candidate/$clang_cc_compiler_basename"
+            cxx_executable="$clang_prefix_candidate/$clang_cxx_compiler_basename"
+            if [[ -L $cc_executable ]]; then
+              cc_executable=$( readlink "$cc_executable" )
+              if [[ ! $cc_executable =~ ^/ ]]; then
+                cc_executable="$clang_prefix_candidate/$cc_executable"
+              fi
+            fi
+            if [[ -L $cxx_executable ]]; then
+              cxx_executable=$( readlink "$cxx_executable" )
+              if [[ ! $cxx_executable =~ ^/ ]]; then
+                cxx_executable="$clang_prefix_candidate/$cxx_executable"
+              fi
+            fi
             break
           fi
         done
@@ -1071,7 +1145,7 @@ download_and_extract_archive() {
       (
         "$FLOCK" -w "$YB_DOWNLOAD_LOCK_TIMEOUT_SEC" 200
         if [[ ! -d $dest_dir && ! -L $dest_dir ]]; then
-          log "[Host $(hostname)] $FLOCK_MSG $lock_path, proceeding with archive installation."
+          log "[Host $(hostname)] $FLOCK_MSG: $lock_path, proceeding with archive installation."
           (
             set -x
             "$YB_SRC_ROOT/python/yb/download_and_extract_archive.py" \
@@ -1108,18 +1182,22 @@ download_thirdparty() {
           "'$extracted_dir'"
   fi
   export YB_THIRDPARTY_DIR=$extracted_dir
-  yb_thirdparty_dir_where_from=" (downloaded from $YB_THIRDPARTY_URL)"
+  yb_thirdparty_dir_origin=" (downloaded from $YB_THIRDPARTY_URL)"
   save_thirdparty_info_to_build_dir
 
-  if ! is_centos; then
+  if ! is_redhat_family; then
     return
   fi
+  download_toolchain
+}
 
+download_toolchain() {
   local toolchain_url_path=""
   local toolchain_dir_parent=""
   local is_linuxbrew=false
 
-  if [[ ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ]]; then
+  if [[ -f $YB_THIRDPARTY_DIR/linuxbrew_url.txt ||
+        -n ${YB_THIRDPARTY_URL:-} && ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ]]; then
     # Only attempt to download Linuxbrew if the third-party tarball name explicitly mentions it.
     # Read a linuxbrew_url.txt file in the third-party directory that we downloaded, and follow that
     # link to download and install the appropriate Linuxbrew package.
@@ -1155,7 +1233,7 @@ download_thirdparty() {
                 "'$extracted_dir'"
         fi
         export YB_LINUXBREW_DIR=$extracted_dir
-        yb_linuxbrew_dir_where_from=" (downloaded from $toolchain_url)"
+        yb_linuxbrew_dir_origin=" (downloaded from $toolchain_url)"
         save_brew_path_to_build_dir
       fi
 
@@ -1167,7 +1245,7 @@ download_thirdparty() {
                 "to '$extracted_dir'"
         fi
         export YB_LLVM_TOOLCHAIN_DIR=$extracted_dir
-        yb_llvm_toolchain_dir_where_from=" (downloaded from $toolchain_url)"
+        yb_llvm_toolchain_dir_origin=" (downloaded from $toolchain_url)"
         save_llvm_toolchain_path_to_build_dir
       fi
     elif "$is_linuxbrew"; then
@@ -1208,7 +1286,13 @@ detect_brew() {
     return
   fi
   if is_linux; then
-    detect_linuxbrew
+    local cpu_type
+    cpu_type=$( uname --processor )
+    if [[ $cpu_type == "x86_64" ]]; then
+      detect_linuxbrew
+    else
+      disable_linuxbrew
+    fi
   fi
 }
 
@@ -1329,7 +1413,7 @@ detect_linuxbrew() {
   if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/linuxbrew_path.txt ]]; then
     YB_LINUXBREW_DIR=$(<"$BUILD_ROOT/linuxbrew_path.txt")
     export YB_LINUXBREW_DIR
-    yb_linuxbrew_dir_where_from=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
+    yb_linuxbrew_dir_origin=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
     return
   fi
 
@@ -1362,7 +1446,7 @@ detect_linuxbrew() {
     local linuxbrew_dir
     for linuxbrew_dir in "${candidates[@]}"; do
       if try_set_linuxbrew_dir "$linuxbrew_dir"; then
-        yb_linuxbrew_dir_where_from=" (from '$version_file')"
+        yb_linuxbrew_dir_origin=" (from '$version_file')"
         return
       fi
     done
@@ -1373,7 +1457,7 @@ detect_linuxbrew() {
     install_linuxbrew "$linuxbrew_version"
   fi
   if try_set_linuxbrew_dir "$linuxbrew_local_dir"; then
-    yb_linuxbrew_dir_where_from=" (local installation)"
+    yb_linuxbrew_dir_origin=" (local installation)"
   else
     if [[ ${#candidates[@]} -gt 0 ]]; then
       log "Could not find Linuxbrew in any of these directories: ${candidates[*]}."
@@ -1390,11 +1474,10 @@ detect_llvm_toolchain() {
     return
   fi
 
-  if ! "$is_clean_build" &&
-     [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/llvm_path.txt ]]; then
+  if [[ $is_clean_build != "true" && -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/llvm_path.txt ]]; then
     YB_LLVM_TOOLCHAIN_DIR=$(<"$BUILD_ROOT/llvm_path.txt")
     export YB_LLVM_TOOLCHAIN_DIR
-    yb_llvm_toolchain_dir_where_from=" (from file '$BUILD_ROOT/llvm_path.txt')"
+    yb_llvm_toolchain_dir_origin=" (from file '$BUILD_ROOT/llvm_path.txt')"
   fi
 }
 
@@ -1413,7 +1496,7 @@ decide_whether_to_use_ninja() {
       if [[ $BUILD_ROOT == *-ninja ]]; then
         export YB_USE_NINJA=1
       fi
-    elif command -v ninja || [[ -x /usr/local/bin/ninja ]]; then
+    elif command -v ninja >/dev/null || [[ -x /usr/local/bin/ninja ]]; then
       export YB_USE_NINJA=1
     elif using_linuxbrew; then
       local yb_ninja_path_candidate=$YB_LINUXBREW_DIR/bin/ninja
@@ -1482,6 +1565,18 @@ add_brew_bin_to_path() {
     # We need to add Linuxbrew's bin directory to PATH so that we can find the right compiler and
     # linker.
     put_path_entry_first "$YB_LINUXBREW_DIR/bin"
+  fi
+  # When building for arm64 on macOS, we need to make sure we find arm64 versions of various tools
+  # such as automake. This is especially relevant for Postgres build.
+  if is_mac; then
+    local homebrew_path=""
+    case "${YB_TARGET_ARCH:-}" in
+      x86_64) homebrew_path="/usr/local" ;;
+      arm64) homebrew_path="/opt/homebrew" ;;
+    esac
+    if [[ -n ${homebrew_path} ]]; then
+      put_path_entry_first "$homebrew_path/bin"
+    fi
   fi
 }
 
@@ -1760,11 +1855,61 @@ using_default_thirdparty_dir() {
   return 0
 }
 
+finalize_yb_thirdparty_dir() {
+  if [[ -d $YB_THIRDPARTY_DIR ]]; then
+    export YB_THIRDPARTY_DIR
+    if ! using_default_thirdparty_dir; then
+      export NO_REBUILD_THIRDPARTY=1
+    fi
+    # For local third-party builds we might need to download the toolchain referenced by the
+    # third-party directory.
+    download_toolchain
+  elif [[ ! $YB_THIRDPARTY_DIR == $OPT_YB_BUILD_DIR/* ]]; then
+    fatal "YB_THIRDPARTY_DIR is set to '$YB_THIRDPARTY_DIR' but it does not exist and is not" \
+          "within '$OPT_YB_BUILD_DIR' so we would not be able to download it."
+  fi
+}
+
+# This function can be called in the beginning of a build, but also by various scripts that
+# participate in the build, e.g. run-test.sh and compiler-wrapper.sh, so it is important to handle
+# the case where the third-party dependencies and toolchain are already downloaded efficiently.
 find_or_download_thirdparty() {
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     fatal "YB_COMPILER_TYPE is not set"
   fi
-  if ! "$is_clean_build"; then
+
+  # Fast path: YB_THIRDPARTY_DIR set and it exists.
+  if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
+    finalize_yb_thirdparty_dir
+    if [[ -d $YB_THIRDPARTY_DIR ]]; then
+      return
+    fi
+  fi
+
+  if [[ $is_clean_build == "true" ]]; then
+    log "This is a clean build, not loading thirdparty URL or path from files in the build" \
+        "directory."
+  else
+    if [[ -f $BUILD_ROOT/thirdparty_path.txt ]]; then
+      local thirdparty_dir_from_file
+      thirdparty_dir_from_file=$(<"$BUILD_ROOT/thirdparty_path.txt")
+      if [[ -n ${YB_THIRDPARTY_DIR:-} && "$YB_THIRDPARTY_DIR" != "$thirdparty_dir_from_file" ]]
+      then
+        fatal "YB_THIRDPARTY_DIR is explicitly set to '$YB_THIRDPARTY_DIR' but file" \
+              "'$BUILD_ROOT/thirdparty_path.txt' contains '$thirdparty_dir_from_file'"
+      fi
+      export YB_THIRDPARTY_DIR=$thirdparty_dir_from_file
+      yb_thirdparty_dir_origin=" (from file '$BUILD_ROOT/thirdparty_path.txt')"
+
+      # Check if we've succeeded in setting YB_THIRDPARTY_DIR now.
+      if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
+        finalize_yb_thirdparty_dir
+        if [[ -d $YB_THIRDPARTY_DIR ]]; then
+          return
+        fi
+      fi
+    fi
+
     if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
       local thirdparty_url_from_file
       thirdparty_url_from_file=$(<"$BUILD_ROOT/thirdparty_url.txt")
@@ -1774,40 +1919,20 @@ find_or_download_thirdparty() {
               "'$BUILD_ROOT/thirdparty_url.txt' contains '$thirdparty_url_from_file'"
       fi
       export YB_THIRDPARTY_URL=$thirdparty_url_from_file
-      yb_thirdparty_url_where_from=" (from file '$BUILD_ROOT/thirdparty_url.txt')"
+      yb_thirdparty_url_origin=" (from file '$BUILD_ROOT/thirdparty_url.txt')"
       if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "0" ]]; then
         fatal "YB_DOWNLOAD_THIRDPARTY is explicitly set to 0 but file" \
               "$BUILD_ROOT/thirdparty_url.txt exists"
       fi
       export YB_DOWNLOAD_THIRDPARTY=1
     fi
-
-    if [[ -f $BUILD_ROOT/thirdparty_path.txt ]]; then
-      local thirdparty_dir_from_file
-      thirdparty_dir_from_file=$(<"$BUILD_ROOT/thirdparty_path.txt")
-      if [[ -n ${YB_THIRDPARTY_DIR:-} &&
-            "$YB_THIRDPARTY_DIR" != "$thirdparty_dir_from_file" ]]; then
-        fatal "YB_THIRDPARTY_DIR is explicitly set to '$YB_THIRDPARTY_DIR' but file" \
-              "'$BUILD_ROOT/thirdparty_path.txt' contains '$thirdparty_dir_from_file'"
-      fi
-      export YB_THIRDPARTY_DIR=$thirdparty_dir_from_file
-      yb_thirdparty_dir_where_from=" (from file '$BUILD_ROOT/thirdparty_path.txt')"
-    fi
-  fi
-
-  if [[ -n ${YB_THIRDPARTY_DIR:-} && -d $YB_THIRDPARTY_DIR ]]; then
-    export YB_THIRDPARTY_DIR
-    if ! using_default_thirdparty_dir; then
-      export NO_REBUILD_THIRDPARTY=1
-    fi
-    return
   fi
 
   # Even if YB_THIRDPARTY_DIR is set but it does not exist, it is possible that we need to download
   # the third-party archive.
 
-  set_prebuilt_thirdparty_url
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
+    set_prebuilt_thirdparty_url
     download_thirdparty
     export NO_REBUILD_THIRDPARTY=1
     log "Using downloaded third-party directory: $YB_THIRDPARTY_DIR"
@@ -1818,23 +1943,43 @@ find_or_download_thirdparty() {
 
   if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then
     export YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
-    yb_thirdparty_dir_where_from=" (default)"
+    yb_thirdparty_dir_origin=" (default)"
   fi
   save_thirdparty_info_to_build_dir
+}
+
+find_or_download_ysql_snapshots() {
+  local repo_url="https://github.com/yugabyte/yugabyte-db-ysql-catalog-snapshots"
+  local prefix="initial_sys_catalog_snapshot"
+
+  mkdir -p "$YSQL_SNAPSHOTS_DIR_PARENT"
+
+  # Just one snapshot for now.
+  # (disabling a code checker error about a singular loop iteration)
+  # shellcheck disable=SC2043
+  for ver in "2.0.9.0"; do
+    for bt in "release" "debug"; do
+      local name="${prefix}_${ver}_${bt}"
+      if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
+        local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"
+        download_and_extract_archive "$url" "$YSQL_SNAPSHOTS_DIR_PARENT"
+      fi
+    done
+  done
 }
 
 log_thirdparty_and_toolchain_details() {
   (
     echo "Details of third-party dependencies:"
-    echo "    YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR:-undefined}$yb_thirdparty_dir_where_from"
+    echo "    YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR:-undefined}$yb_thirdparty_dir_origin"
     if is_linux && [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
-      echo "    YB_LINUXBREW_DIR: $YB_LINUXBREW_DIR$yb_linuxbrew_dir_where_from"
+      echo "    YB_LINUXBREW_DIR: $YB_LINUXBREW_DIR$yb_linuxbrew_dir_origin"
     fi
     if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
-      echo "    YB_LLVM_TOOLCHAIN_DIR: $YB_LLVM_TOOLCHAIN_DIR$yb_llvm_toolchain_dir_where_from"
+      echo "    YB_LLVM_TOOLCHAIN_DIR: $YB_LLVM_TOOLCHAIN_DIR$yb_llvm_toolchain_dir_origin"
     fi
     if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
-      echo "    YB_THIRDPARTY_URL: $YB_THIRDPARTY_URL$yb_thirdparty_url_where_from"
+      echo "    YB_THIRDPARTY_URL: $YB_THIRDPARTY_URL$yb_thirdparty_url_origin"
     fi
     if [[ -n ${YB_DOWNLOAD_THIRDPARTY:-} ]]; then
       echo "    YB_DOWNLOAD_THIRDPARTY: $YB_DOWNLOAD_THIRDPARTY"
@@ -1876,10 +2021,16 @@ handle_predefined_build_root() {
   if [[ $basename =~ $BUILD_ROOT_BASENAME_RE ]]; then
     local _build_type=${BASH_REMATCH[1]}
     local _compiler_type=${BASH_REMATCH[2]}
-    # _linking_type is unused. We always use dynamic linking. TODO: get rid of this parameter.
+
+    # _linking_type is unused. We always use dynamic linking, but we plan to support static linking.
     # shellcheck disable=SC2034
     local _linking_type=${BASH_REMATCH[3]}
-    local _dash_ninja=${BASH_REMATCH[4]}
+
+    # The architecture field is of the form (-(...))?, so it utilizes two capture groups (4 and 5).
+    # Group 4 has a leading dash and group 5 does not have it.
+    local _architecture=${BASH_REMATCH[5]}
+
+    local _dash_ninja=${BASH_REMATCH[6]}
   else
     fatal "Could not parse build root directory name '$basename'" \
           "(full path: '$predefined_build_root'). Expected to match '$BUILD_ROOT_BASENAME_RE'."
@@ -1905,6 +2056,19 @@ handle_predefined_build_root() {
   elif [[ $YB_COMPILER_TYPE != "$_compiler_type" ]]; then
     fatal "Compiler type from the build root ('$_compiler_type' from '$predefined_build_root') " \
           "does not match YB_COMPILER_TYPE ('$YB_COMPILER_TYPE')."
+  fi
+
+  if [[ -n $_architecture ]]; then
+    if [[ -z ${YB_TARGET_ARCH:-} ]]; then
+      export YB_TARGET_ARCH=$_architecture
+      if [[ ! $YB_TARGET_ARCH =~ $VALID_ARCHITECTURES_RE ]]; then
+        fatal "Invalid architecture '$YB_TARGET_ARCH' based on predefined build root " \
+              "('$basename')"
+      fi
+    elif [[ $YB_TARGET_ARCH != "$_architecture" ]]; then
+      fatal "YB_TARGET_ARCH is already set to $YB_TARGET_ARCH but the predefined build root " \
+            "('$basename') has '$_architecture'."
+    fi
   fi
 
   local should_use_ninja
@@ -2016,9 +2180,35 @@ check_python_script_syntax() {
   popd
 }
 
+run_shellcheck() {
+  local scripts_to_check=(
+    yb_build.sh
+    build-support/find_linuxbrew.sh
+    build-support/common-build-env.sh
+    build-support/common-test-env.sh
+    build-support/common-cli-env.sh
+    build-support/run-test.sh
+    build-support/compiler-wrappers/compiler-wrapper.sh
+  )
+  pushd "$YB_SRC_ROOT"
+  local script_path
+  for script_path in "${scripts_to_check[@]}"; do
+    # We skip errors 2030 and 2031 that say that a variable has been modified in a subshell and that
+    # the modification is local to the subshell. Seeing a lot of false positivies for these with
+    # the version 0.7.2 of Shellcheck.
+    ( set -x; shellcheck --external-sources --exclude=2030,2031 --shell=bash "$script_path" )
+  done
+  popd
+}
+
 activate_virtualenv() {
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
+
+  # On Apple Silicon, use separate virtualenv directories per architecture.
+  if is_apple_silicon && [[ -n ${YB_TARGET_ARCH:-} ]]; then
+    virtualenv_dir+="-${YB_TARGET_ARCH}"
+  fi
 
   if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]] && \
      ! "$yb_readonly_virtualenv"; then
@@ -2037,7 +2227,7 @@ activate_virtualenv() {
       # function might not even be present in our current shell. This is necessary because otherwise
       # the --user installation below will fail.
       set +eu
-      # shellcheck disable=SC1090
+      # shellcheck disable=SC1090,SC1091
       . "$VIRTUAL_ENV/bin/activate"
       deactivate
       set -eu
@@ -2046,15 +2236,19 @@ activate_virtualenv() {
     fi
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     (
-      set -x
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
-      python3 -m venv "$YB_VIRTUALENV_BASENAME"
+      local python3_interpreter=python3
+      if is_mac && [[ ${YB_TARGET_ARCH:-} == "arm64" ]]; then
+        python3_interpreter=/opt/homebrew/bin/python3
+      fi
+      set -x
+      "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
     )
   fi
 
   set +u
-  # shellcheck disable=SC1090
+  # shellcheck disable=SC1090,SC1091
   . "$virtualenv_dir"/bin/activate
   set -u
   local pip_no_cache=""
@@ -2180,11 +2374,13 @@ lint_java_code() {
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanAsan\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
-            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan " \
-            "nor YBTestRunnerNonSanitizersOrMac are being used in test"
+            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac " \
+            "nor YBTestRunnerReleaseOnly are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
@@ -2258,52 +2454,138 @@ set_java_home() {
   put_path_entry_first "$JAVA_HOME/bin"
 }
 
-update_submodules() {
-  if [[ -d $YB_SRC_ROOT/.git ]]; then
-    # This does NOT create any new commits in the top-level repository (the "superproject").
-    #
-    # From documentation on "update" from https://git-scm.com/docs/git-submodule:
-    # Update the registered submodules to match what the superproject expects by cloning missing
-    # submodules and updating the working tree of the submodules
-    ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
+set_prebuilt_thirdparty_url() {
+  expect_vars_to_be_set YB_COMPILER_TYPE build_type
+  if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
+    if [[ -z ${YB_THIRDPARTY_URL:-} ]]; then
+      local thirdparty_url_file_path="$BUILD_ROOT/thirdparty_url.txt"
+      if [[ -f $thirdparty_url_file_path ]]; then
+        rm -f "$thirdparty_url_file_path"
+      fi
+      "$YB_BUILD_SUPPORT_DIR/thirdparty_tool" \
+          --save-download-url-to-file "$thirdparty_url_file_path" \
+          --compiler-type "$YB_COMPILER_TYPE"
+      YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
+      export YB_THIRDPARTY_URL
+      yb_thirdparty_url_origin=" (determined automatically based on the OS and compiler type)"
+      if [[ -z $YB_THIRDPARTY_URL ]]; then
+        fatal "Could not automatically determine the third-party archive URL to download."
+      fi
+      log "Setting third-party URL to $YB_THIRDPARTY_URL"
+
+      save_var_to_file_in_build_dir "$YB_THIRDPARTY_URL" thirdparty_url.txt
+    else
+      log "YB_THIRDPARTY_URL is already set to '$YB_THIRDPARTY_URL', not trying to set it" \
+          "automatically."
+    fi
   fi
 }
 
-set_prebuilt_thirdparty_url() {
-  expect_vars_to_be_set YB_COMPILER_TYPE
-  if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
-    local auto_thirdparty_url=""
-    local thirdparty_url_file=$YB_BUILD_SUPPORT_DIR/thirdparty_url_${short_os_name}
-    if [[ ${YB_COMPILER_TYPE} =~ ^.*[0-9]+$ ]]; then
-      # For compiler types like gcc9 or clang11, append the compiler type to the file path.
-      thirdparty_url_file+="_${YB_COMPILER_TYPE}"
+check_arc_wrapper() {
+  if is_jenkins || [[ ${YB_SKIP_ARC_WRAPPER_CHECK:-0} == "1" ]]; then
+    return
+  fi
+  if [[ -f $HOME/.yb_build_env_bashrc ]]; then
+    # This is a Yugabyte workstation or dev server.
+    local arc_path
+    set +e
+    arc_path=$( which arc )
+    set -e
+    if [[ ! -f $arc_path ]]; then
+      # OK if arc is not found. Then people cannot "arc land" changes that do not pass tests.
+      return
     fi
-    thirdparty_url_file+=.txt
-    if [[ -f $thirdparty_url_file ]]; then
-      auto_thirdparty_url=$( read_file_and_trim "$thirdparty_url_file" )
-      if [[ $auto_thirdparty_url != http://* && $auto_thirdparty_url != https://* ]]; then
-        fatal "Invalid third-party URL: '$auto_thirdparty_url' (expected http:// or https://)." \
-              "From file: $thirdparty_url_file."
-      fi
-    elif [[ -z ${YB_THIRDPARTY_URL:-} ]]; then
-      log "$thirdparty_url_file file not found, and YB_THIRDPARTY_URL not set."
-      log "Cannot download pre-built third-party dependencies. Continuing without downloading."
-      export YB_THIRDPARTY_URL=""
-      export YB_DOWNLOAD_THIRDPARTY=0
+    local expected_arc_path=$HOME/tools/bin/arc
+    if [[ $arc_path == "$expected_arc_path" ]]; then
+      # OK, this is where we install the arc wrapper.
       return
     fi
 
-    if [[ -z ${YB_THIRDPARTY_URL:-} ]]; then
-      export YB_THIRDPARTY_URL=$auto_thirdparty_url
-      log "Setting third-party URL to $auto_thirdparty_url"
-      save_var_to_file_in_build_dir "$YB_THIRDPARTY_URL" thirdparty_url.txt
-    elif [[ -n $auto_thirdparty_url ]]; then
-      if [[ $auto_thirdparty_url != "$YB_THIRDPARTY_URL" ]]; then
-        log "YB_THIRDPARTY_URL is already set to $YB_THIRDPARTY_URL, not trying to set it to" \
-            "the default value of $auto_thirdparty_url"
-      fi
+    if grep -Eq "Wrapper for arcanist arc" "$arc_path"; then
+      # This seems to be a valid arc wrapper installed elsewhere.
+      return
+    fi
+
+    fatal "Not a valid arc wrapper: $arc_path (required for internal Yugabyte hosts)"
+  fi
+}
+
+# Re-executes the current script with the correct macOS architecture. The parameters are the
+# TODO: this currently partially duplicates a function from
+# https://github.com/yugabyte/yugabyte-db-thirdparty/blob/master/yb-thirdparty-common.sh
+# called ensure_correct_mac_architecture. We need to move both to
+# https://github.com/yugabyte/yugabyte-bash-common.
+rerun_script_with_arch_if_necessary() {
+  # The caller might be using "set +u", so turn undefined variable checking back on.
+  set -u
+
+  if [[ $OSTYPE != darwin* ]]; then
+    return
+  fi
+  local uname_m_output
+  uname_m_output=$( uname -m )
+  if [[ -z "${uname_m_output}" ]]; then
+    fatal "Empty output from 'uname -m'."
+  fi
+  if [[ -z ${YB_TARGET_ARCH:-} ]]; then
+    YB_TARGET_ARCH=${uname_m_output}
+  fi
+  if [[ $YB_TARGET_ARCH != "x86_64" && $YB_TARGET_ARCH != "arm64" ]]; then
+    fatal "Invalid value of YB_TARGET_ARCH on macOS (expected x86_64 or arm64): $YB_TARGET_ARCH." \
+          "Output of 'uname -m': ${uname_m_output}."
+  fi
+  if [[ "${uname_m_output}" != "$YB_TARGET_ARCH" ]]; then
+    if [[ -n ${YB_SWITCHED_ARCHITECTURE_FROM:-} &&
+          $YB_SWITCHED_ARCHITECTURE_FROM == "${uname_m_output}" ]]; then
+      fatal "Infinite architecture-switching loop detected: already switched from" \
+            "'${uname_m_output}' but could not switch to '${YB_TARGET_ARCH}'."
+    fi
+
+    echo "Switching architecture from '${uname_m_output}' to '$YB_TARGET_ARCH'"
+    local cmd_line
+    if [[ ${YB_TARGET_ARCH} == "arm64" ]]; then
+      # Use the arm64 specific version of Bash for added reliability.
+      cmd_line=( arch -arm64 /opt/homebrew/bin/bash "$@" )
+    else
+      cmd_line=( arch "-$YB_TARGET_ARCH" "$@" )
+    fi
+    export YB_SWITCHED_ARCHITECTURE_FROM=$uname_m_output
+    set -x
+    exec "${cmd_line[@]}"
+  fi
+}
+
+# Sets YB_TARGET_ARCH if they are not set.
+detect_architecture() {
+  if [[ -z ${YB_TARGET_ARCH:-} ]]; then
+    if is_apple_silicon; then
+      YB_TARGET_ARCH=arm64
+    else
+      YB_TARGET_ARCH=$( uname -m )
     fi
   fi
+  export YB_TARGET_ARCH
+}
+
+is_apple_silicon() {
+  if [[ -n "$is_apple_silicon" ]]; then
+    if [[ "$is_apple_silicon" == "true" ]]; then
+      return 0
+    fi
+    return 1
+  fi
+
+  is_apple_silicon=false
+  if ! is_mac; then
+    return 1
+  fi
+
+  if [[ $( uname -v ) == *ARM64* ]]; then
+    is_apple_silicon=true
+    return 0
+  fi
+
+  return 1
 }
 
 # -------------------------------------------------------------------------------------------------

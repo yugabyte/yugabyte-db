@@ -35,6 +35,10 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes. */
+#include "catalog/catalog.h"
+#include "pg_yb_utils.h"
+
 
 static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
 
@@ -124,6 +128,19 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 	 */
 	lockmode = replace ? AccessExclusiveLock : NoLock;
 	(void) RangeVarGetAndCheckCreationNamespace(relation, lockmode, &viewOid);
+
+	/*
+	 * In YB, system views can only be created during initdb and YSQL upgrade.
+	 */
+	if (IsYugaByteEnabled() &&
+		!IsYsqlUpgrade &&
+		!IsBootstrapProcessingMode() &&
+		!YBIsPreparingTemplates() &&
+		YbIsSystemNamespaceByName(relation->schemaname))
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("system views cannot be created outside of YSQL upgrade")));
+	}
 
 	if (OidIsValid(viewOid) && replace)
 	{

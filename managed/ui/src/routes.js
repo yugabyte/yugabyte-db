@@ -5,7 +5,6 @@ import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 import _ from 'lodash';
 import axios from 'axios';
-import { toast } from 'react-toastify';
 
 import {
   validateToken,
@@ -25,7 +24,7 @@ import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
 import { Tasks, TasksList, TaskDetail } from './pages/tasks';
 import Alerts from './pages/Alerts';
-import ListUniverse from './pages/ListUniverse';
+import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
 import DataCenterConfiguration from './pages/DataCenterConfiguration';
 import TableDetail from './pages/TableDetail';
@@ -39,6 +38,18 @@ import { CreateUniverse } from './redesign/universe/CreateUniverse';
 import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
+import { ReplicationDetails } from './components/xcluster';
+
+/**
+ * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
+ */
+const redirectToUrl = () => {
+  const searchParam = new URLSearchParams(window.location.search);
+  const pathToRedirect = searchParam.get('redirectUrl');
+  pathToRedirect
+    ? browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
+    : browserHistory.push('/');
+};
 
 export const clearCredentials = () => {
   localStorage.removeItem('authToken');
@@ -63,7 +74,7 @@ export const clearCredentials = () => {
   Cookies.remove('authToken');
   Cookies.remove('customerId');
   Cookies.remove('userId');
-  browserHistory.push('/');
+  redirectToUrl();
 };
 
 const autoLogin = (params) => {
@@ -71,19 +82,19 @@ const autoLogin = (params) => {
   localStorage.setItem('authToken', authToken);
   localStorage.setItem('customerId', customerUUID);
   localStorage.setItem('userId', userUUID);
-  Cookies.set('authToken',authToken)
-  Cookies.set('customerId',customerUUID)
-  Cookies.set('userId',userUUID);
+  Cookies.set('authToken', authToken);
+  Cookies.set('customerId', customerUUID);
+  Cookies.set('userId', userUUID);
   browserHistory.replace({
-    search: '',
-  })
+    search: ''
+  });
   browserHistory.push('/');
-}
+};
 
 /**
  * Checks that url query parameters contains only authToken, customerUUID,
  * and userUUID. If additional parameters are in url, returns false
- * @param {Object} params 
+ * @param {Object} params
  * @returns true if and only if all authentication parameters are in url
  */
 const checkAuthParamsInUrl = (params) => {
@@ -92,25 +103,16 @@ const checkAuthParamsInUrl = (params) => {
   return _.isEqual(urlParams, expectedParams);
 };
 
-let expirationToastVisible = false;
-
-// global interceptor catching all responses with unauthorised code
+// global interceptor catching all api responses with unauthorised code
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     // skip 403 response for "/login" and "/register" endpoints
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 403;
-
-    // make sure there's a single session expired toast visible at a time
-    if (isUnauthorised && !isAllowedUrl && !expirationToastVisible) {
-      expirationToastVisible = true;
-      toast.error('Your session has expired, please login again', {
-        onClose: () => expirationToastVisible = false
-      });
+    if (isUnauthorised && !isAllowedUrl) {
       browserHistory.push('/login');
     }
-
     return Promise.reject(error);
   }
 );
@@ -120,7 +122,9 @@ function validateSession(store, replacePath, callback) {
   // Otherwise, go to login/register.
   const userId = Cookies.get('userId') || localStorage.getItem('userId');
   const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
+  const searchParam = new URLSearchParams(window.location.search);
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
+    const location = searchParam.get('redirectUrl') || window.location.pathname;
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
         store.dispatch(insecureLoginResponse(response));
@@ -143,7 +147,9 @@ function validateSession(store, replacePath, callback) {
       }
     });
     store.dispatch(customerTokenError());
-    browserHistory.push('/login');
+    location && location !== '/'
+      ? browserHistory.push(`/login?redirectUrl=${location}`)
+      : browserHistory.push('/login');
   } else {
     store.dispatch(validateToken()).then((response) => {
       if (response.error) {
@@ -169,6 +175,10 @@ function validateSession(store, replacePath, callback) {
           localStorage.setItem('customerId', response.payload.data['uuid']);
         }
         localStorage.setItem('userId', userId);
+        if (searchParam.get('redirectUrl')) {
+          browserHistory.push(searchParam.get('redirectUrl'));
+          searchParam.delete('redirectUrl');
+        }
       } else {
         store.dispatch(resetCustomer());
         clearCredentials();
@@ -185,13 +195,10 @@ function validateSession(store, replacePath, callback) {
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
     const params = nextState?.location?.query;
-    if(!isNullOrEmpty(params) && checkAuthParamsInUrl(params)) {
+    if (!isNullOrEmpty(params) && checkAuthParamsInUrl(params)) {
       autoLogin(params);
-      validateSession(store, replace, callback);
     }
-    else {
-      validateSession(store, replace, callback);
-    }
+    validateSession(store, replace, callback);
   };
 
   const checkIfAuthenticated = (prevState, nextState, replace, callback) => {
@@ -211,7 +218,7 @@ export default (store) => {
       >
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
-          <IndexRoute component={ListUniverse} />
+          <IndexRoute component={UniverseConsole} />
           <Route path="/universes/import" component={Importer} />
           <Route path="/universes/create" component={UniverseDetail} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
@@ -220,6 +227,10 @@ export default (store) => {
           </Route>
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
+          <Route
+            path="/universes/:uuid/replication/:replicationUUID"
+            component={ReplicationDetails}
+          />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}
@@ -250,6 +261,7 @@ export default (store) => {
         <Route path="/logs" component={YugawareLogs} />
         <Route path="/releases" component={Releases} />
         <Route path="/admin" component={Administration}>
+          <Route path="/admin/:tab" component={Administration} />
           <Route path="/admin/:tab/:section" component={Administration} />
         </Route>
         <Route path="/features" component={ToggleFeaturesInTest} />

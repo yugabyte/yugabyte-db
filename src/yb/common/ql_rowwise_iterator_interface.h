@@ -16,26 +16,19 @@
 
 #include <memory>
 
+#include "yb/common/common_fwd.h"
+
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
-class HybridTime;
-class PgsqlReadRequestPB;
-class PgsqlResponsePB;
-class QLReadRequestPB;
-class QLResponsePB;
-class QLTableRow;
-class Schema;
-
-namespace common {
+class Slice;
 
 class YQLRowwiseIteratorIf {
  public:
-  typedef std::unique_ptr<common::YQLRowwiseIteratorIf> UniPtr;
+  typedef std::unique_ptr<YQLRowwiseIteratorIf> UniPtr;
   virtual ~YQLRowwiseIteratorIf() {}
 
   //------------------------------------------------------------------------------------------------
@@ -67,36 +60,26 @@ class YQLRowwiseIteratorIf {
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual CHECKED_STATUS GetNextReadSubDocKey(docdb::SubDocKey* sub_doc_key) const {
-    return Status::OK();
-  }
+  virtual CHECKED_STATUS GetNextReadSubDocKey(docdb::SubDocKey* sub_doc_key) const;
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
-  virtual Result<Slice> GetTupleId() const {
-    return STATUS(NotSupported, "This iterator does not provide tuple id");
-  }
+  virtual Result<Slice> GetTupleId() const;
 
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
-  virtual Result<bool> SeekTuple(const Slice& tuple_id) {
-    return STATUS(NotSupported, "This iterator cannot seek by tuple id");
-  }
+  virtual Result<bool> SeekTuple(const Slice& tuple_id);
 
   //------------------------------------------------------------------------------------------------
   // Common API methods.
   //------------------------------------------------------------------------------------------------
   // Read next row using the specified projection.
-  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row) {
-    return DoNextRow(projection, table_row);
-  }
+  CHECKED_STATUS NextRow(const Schema& projection, QLTableRow* table_row);
 
-  CHECKED_STATUS NextRow(QLTableRow* table_row) {
-    return DoNextRow(schema(), table_row);
-  }
+  CHECKED_STATUS NextRow(QLTableRow* table_row);
 
  private:
   virtual CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;
 };
 
-}  // namespace common
 }  // namespace yb
+
 #endif // YB_COMMON_QL_ROWWISE_ITERATOR_INTERFACE_H

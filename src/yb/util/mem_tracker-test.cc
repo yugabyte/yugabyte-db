@@ -41,7 +41,9 @@
 #include <gperftools/malloc_extension.h>
 #endif
 
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int32(memory_limit_soft_percentage);

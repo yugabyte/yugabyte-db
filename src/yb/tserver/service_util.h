@@ -30,6 +30,8 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tserver {
@@ -151,58 +153,22 @@ Result<TabletPeerTablet> LookupTabletPeerOrRespond(
   return result;
 }
 
-// A transaction completion callback that responds to the client when transactions
-// complete and sets the client error if there is one to set.
-template<class Response>
-class RpcOperationCompletionCallback : public tablet::OperationCompletionCallback {
- public:
-  RpcOperationCompletionCallback(
-      rpc::RpcContext context,
-      Response* const response,
-      const server::ClockPtr& clock)
-      : context_(std::move(context)), response_(response), clock_(clock) {}
-
-  void OperationCompleted() override {
-    bool expected = false;
-    if (!responded_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-      return;
-    }
-    if (clock_) {
-      response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
-    }
-    if (!status_.ok()) {
-      SetupErrorAndRespond(get_error(), status_, code_, &context_);
-    } else {
-      FillResponse();
-      context_.RespondSuccess();
-    }
-  }
-
-  virtual void FillResponse() {}
-
-  Response& response() {
-    return *response_;
-  }
-
- private:
-
-  TabletServerErrorPB* get_error() {
-    return response_->mutable_error();
-  }
-
-  rpc::RpcContext context_;
-  Response* const response_;
-  server::ClockPtr clock_;
-  std::atomic<bool> responded_{false};
-};
-
-template<class Response>
-std::unique_ptr<tablet::OperationCompletionCallback> MakeRpcOperationCompletionCallback(
+template <class Response>
+auto MakeRpcOperationCompletionCallback(
     rpc::RpcContext context,
     Response* response,
     const server::ClockPtr& clock) {
-  return std::make_unique<RpcOperationCompletionCallback<Response>>(
-      std::move(context), response, clock);
+  return [context = std::make_shared<rpc::RpcContext>(std::move(context)),
+          response, clock](const Status& status) {
+    if (clock) {
+      response->set_propagated_hybrid_time(clock->Now().ToUint64());
+    }
+    if (!status.ok()) {
+      SetupErrorAndRespond(response->mutable_error(), status, context.get());
+    } else {
+      context->RespondSuccess();
+    }
+  };
 }
 
 struct LeaderTabletPeer {
@@ -260,7 +226,6 @@ LeaderTabletPeer LookupLeaderTabletOrRespond(
     Status ss = s;                                             \
     if (PREDICT_FALSE(!ss.ok())) {                             \
       SetupErrorAndRespond((resp)->mutable_error(), ss,        \
-                           TabletServerErrorPB::UNKNOWN_ERROR, \
                            (context));                         \
       return;                                                  \
     }                                                          \

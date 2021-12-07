@@ -19,10 +19,12 @@
 #define YB_YQL_PGGATE_PG_TABLEDESC_H_
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/client/client.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/tserver/pg_client.pb.h"
+
 #include "yb/yql/pggate/pg_column.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -32,39 +34,20 @@ namespace pggate {
 // This class can be used to describe any reference of a column.
 class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  public:
-
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef scoped_refptr<PgTableDesc> ScopedRefPtr;
-
-  explicit PgTableDesc(std::shared_ptr<client::YBTable> pg_table);
+  explicit PgTableDesc(const client::YBTablePtr& table);
 
   const client::YBTableName& table_name() const;
 
-  const std::shared_ptr<client::YBTable> table() const {
-    return table_;
-  }
+  const PartitionSchema& partition_schema() const;
 
-  static int ToPgAttrNum(const string &attr_name, int attr_num);
-
-  std::vector<PgColumn>& columns() {
-    return columns_;
-  }
-
-  const size_t num_hash_key_columns() const;
-  const size_t num_key_columns() const;
-  const size_t num_columns() const;
-
-  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSelect();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlInsert();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlUpdate();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlDelete();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlTruncateColocated();
+  size_t num_hash_key_columns() const;
+  size_t num_key_columns() const;
+  size_t num_columns() const;
 
   // Find the column given the postgres attr number.
-  Result<PgColumn *> FindColumn(int attr_num);
+  Result<size_t> FindColumn(int attr_num) const;
 
-  CHECKED_STATUS GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const;
+  Result<YBCPgColumnInfo> GetColumnInfo(int16_t attr_number) const;
 
   bool IsHashPartitioned() const;
 
@@ -87,18 +70,29 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
                                  const string& partition_upper_bound,
                                  bool upper_bound_is_inclusive);
 
-  bool IsTransactional() const;
+  const Schema& schema() const;
+
   bool IsColocated() const;
 
+  uint32_t schema_version() const;
+
+  // TODO(PgClient) Remove those operations.
+  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlInsert();
+  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlUpdate();
+  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlDelete();
+  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlTruncateColocated();
+
+  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSelect();
+  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSample();
+
  private:
-  std::shared_ptr<client::YBTable> table_;
+  // TODO(PgClient) While we have YbOps on postgres side, we have to keep YBTable.
+  client::YBTablePtr table_;
+
   const std::shared_ptr<const client::VersionedTablePartitionList> table_partitions_;
 
-  std::vector<PgColumn> columns_;
-  std::unordered_map<int, size_t> attr_num_map_; // Attr number to column index map.
-
-  // Hidden columns.
-  PgColumn column_ybctid_;
+  // Attr number to column index map.
+  std::unordered_map<int, size_t> attr_num_map_;
 };
 
 }  // namespace pggate

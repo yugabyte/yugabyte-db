@@ -4,19 +4,17 @@ package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
-
 import java.util.UUID;
 
 public interface ITask extends Runnable {
 
-  /**
-   * Initialize the task by reading various parameters.
-   */
+  /** Initialize the task by reading various parameters. */
   public void initialize(ITaskParams taskParams);
 
-  /**
-   * A short name representing the task.
-   */
+  /** Clean up the initialization */
+  public void terminate();
+
+  /** A short name representing the task. */
   public String getName();
 
   /**
@@ -25,27 +23,33 @@ public interface ITask extends Runnable {
    */
   public JsonNode getTaskDetails();
 
-  /**
-   * Run the task. Can throw runtime exception on errors.
-   */
+  /** Run the task. Can throw runtime exception on errors. */
   @Override
   public void run();
 
   /**
    * A friendly string representation of the task used for logging.
+   *
    * @return string representation of the task.
    */
   @Override
   public String toString();
 
   /**
-   * Set the user-facing top-level task for the Task tree that this Task belongs to.
-   * E.g. CreateUniverse, EditUniverse, etc.
+   * Set the user-facing top-level task for the Task tree that this Task belongs to. E.g.
+   * CreateUniverse, EditUniverse, etc.
+   *
    * @param userTaskUUID UUID of the user-facing top-level task for this Task's Task tree.
    */
   public void setUserTaskUUID(UUID userTaskUUID);
 
-  public boolean shouldSendNotification();
+  /** Returns true if the task can be retried on failure or aborted state. */
+  public boolean isRetryable();
 
-  public void sendNotification();
+  /**
+   * Return true if the task can be aborted.
+   *
+   * @return
+   */
+  public boolean isAbortable();
 }

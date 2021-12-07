@@ -32,13 +32,15 @@ extern CatalogIndexState CatalogOpenIndexes(Relation heapRel);
 extern void CatalogCloseIndexes(CatalogIndexState indstate);
 extern Oid	CatalogTupleInsert(Relation heapRel, HeapTuple tup);
 extern Oid CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
-						   CatalogIndexState indstate);
+						   CatalogIndexState indstate, bool yb_shared_insert);
 extern void CatalogTupleUpdate(Relation heapRel, ItemPointer otid,
 				   HeapTuple tup);
 extern void CatalogTupleUpdateWithInfo(Relation heapRel,
 						   ItemPointer otid, HeapTuple tup,
 						   CatalogIndexState indstate);
 extern void CatalogTupleDelete(Relation heapRel, HeapTuple tup);
+
+extern Oid	YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert);
 
 
 /*
@@ -234,8 +236,8 @@ DECLARE_INDEX(pg_shdepend_reference_index, 1233, on pg_shdepend using btree(refc
 DECLARE_UNIQUE_INDEX(pg_statistic_relid_att_inh_index, 2696, on pg_statistic using btree(starelid oid_ops, staattnum int2_ops, stainherit bool_ops));
 #define StatisticRelidAttnumInhIndexId	2696
 
-DECLARE_UNIQUE_INDEX(pg_tablegroup_oid_index, 8001, on pg_tablegroup using btree(oid oid_ops));
-#define TablegroupOidIndexId  8001
+DECLARE_UNIQUE_INDEX(pg_yb_tablegroup_oid_index, 8037, on pg_yb_tablegroup using btree(oid oid_ops));
+#define YbTablegroupOidIndexId  8037
 
 DECLARE_UNIQUE_INDEX(pg_tablespace_oid_index, 2697, on pg_tablespace using btree(oid oid_ops));
 #define TablespaceOidIndexId  2697

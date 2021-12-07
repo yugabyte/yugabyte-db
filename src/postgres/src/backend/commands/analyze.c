@@ -23,6 +23,7 @@
 #include "access/tuptoaster.h"
 #include "access/visibilitymap.h"
 #include "access/xact.h"
+#include "access/yb_scan.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
@@ -33,8 +34,6 @@
 #include "commands/dbcommands.h"
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
-#include "commands/ybccmds.h"
-#include "common/pg_yb_common.h"
 #include "executor/executor.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
@@ -42,7 +41,6 @@
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "pgstat.h"
-#include "pg_yb_utils.h"
 #include "postmaster/autovacuum.h"
 #include "statistics/extended_stats_internal.h"
 #include "statistics/statistics.h"
@@ -101,6 +99,9 @@ static int	compare_rows(const void *a, const void *b);
 static int acquire_inherited_sample_rows(Relation onerel, int elevel,
 							  HeapTuple *rows, int targrows,
 							  double *totalrows, double *totaldeadrows);
+static int yb_acquire_sample_rows(Relation onerel, int elevel,
+					   HeapTuple *rows, int targrows,
+					   double *totalrows, double *totaldeadrows);
 static void update_attstats(Oid relid, bool inh,
 				int natts, VacAttrStats **vacattrstats);
 static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
@@ -248,8 +249,13 @@ analyze_rel(Oid relid, RangeVar *relation, int options,
 	/*
 	 * Check that it's of an analyzable relkind, and set up appropriately.
 	 */
-	if (onerel->rd_rel->relkind == RELKIND_RELATION ||
-		onerel->rd_rel->relkind == RELKIND_MATVIEW)
+	if (IsYBRelation(onerel))
+	{
+		acquirefunc = yb_acquire_sample_rows;
+		relpages = 0;
+	}
+	else if (onerel->rd_rel->relkind == RELKIND_RELATION ||
+			 onerel->rd_rel->relkind == RELKIND_MATVIEW)
 	{
 		/* Regular table, so we'll use the regular row acquisition function */
 		acquirefunc = acquire_sample_rows;
@@ -370,26 +376,6 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 	Oid			save_userid;
 	int			save_sec_context;
 	int			save_nestlevel;
-	bool		is_yb_relation;
-	bool		is_simple_yb_analyze;
-
-	is_yb_relation = IsYBRelation(onerel);
-	is_simple_yb_analyze = is_yb_relation && !va_cols && !(options & VACOPT_VACUUM);
-	/*
-	 * ANALYZE not supported for Yugabyte relations.
-	 */
-	if (is_yb_relation)
-	{
-		if (!is_simple_yb_analyze || !YBIsAnalyzeCmdEnabled()) {
-			ereport(WARNING,
-				(errmsg("analyzing non-temporary tables will be ignored")));
-			return;
-		}
-
-		nindexes = 0;
-		totaldeadrows = 0;
-		totalrows = YBCAnalyzeTable(onerel);
-	}
 
 	if (inh)
 		ereport(elevel,
@@ -429,229 +415,226 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 			starttime = GetCurrentTimestamp();
 	}
 
-	if (!is_yb_relation)
+	/*
+	 * Determine which columns to analyze
+	 *
+	 * Note that system attributes are never analyzed, so we just reject them
+	 * at the lookup stage.  We also reject duplicate column mentions.  (We
+	 * could alternatively ignore duplicates, but analyzing a column twice
+	 * won't work; we'd end up making a conflicting update in pg_statistic.)
+	 */
+	if (va_cols != NIL)
 	{
-		/*
-		* Determine which columns to analyze
-		*
-		* Note that system attributes are never analyzed, so we just reject them
-		* at the lookup stage.  We also reject duplicate column mentions.  (We
-		* could alternatively ignore duplicates, but analyzing a column twice
-		* won't work; we'd end up making a conflicting update in pg_statistic.)
-		*/
-		if (va_cols != NIL)
+		Bitmapset  *unique_cols = NULL;
+		ListCell   *le;
+
+		vacattrstats = (VacAttrStats **) palloc(list_length(va_cols) *
+												sizeof(VacAttrStats *));
+		tcnt = 0;
+		foreach(le, va_cols)
 		{
-			Bitmapset  *unique_cols = NULL;
-			ListCell   *le;
+			char	   *col = strVal(lfirst(le));
 
-			vacattrstats = (VacAttrStats **) palloc(list_length(va_cols) *
-													sizeof(VacAttrStats *));
-			tcnt = 0;
-			foreach(le, va_cols)
-			{
-				char	   *col = strVal(lfirst(le));
+			i = attnameAttNum(onerel, col, false);
+			if (i == InvalidAttrNumber)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								col, RelationGetRelationName(onerel))));
+			if (bms_is_member(i, unique_cols))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" appears more than once",
+								col, RelationGetRelationName(onerel))));
+			unique_cols = bms_add_member(unique_cols, i);
 
-				i = attnameAttNum(onerel, col, false);
-				if (i == InvalidAttrNumber)
-					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_COLUMN),
-							errmsg("column \"%s\" of relation \"%s\" does not exist",
-									col, RelationGetRelationName(onerel))));
-				if (bms_is_member(i, unique_cols))
-					ereport(ERROR,
-							(errcode(ERRCODE_DUPLICATE_COLUMN),
-							errmsg("column \"%s\" of relation \"%s\" appears more than once",
-									col, RelationGetRelationName(onerel))));
-				unique_cols = bms_add_member(unique_cols, i);
-
-				vacattrstats[tcnt] = examine_attribute(onerel, i, NULL);
-				if (vacattrstats[tcnt] != NULL)
-					tcnt++;
-			}
-			attr_cnt = tcnt;
+			vacattrstats[tcnt] = examine_attribute(onerel, i, NULL);
+			if (vacattrstats[tcnt] != NULL)
+				tcnt++;
 		}
-		else
+		attr_cnt = tcnt;
+	}
+	else
+	{
+		attr_cnt = onerel->rd_att->natts;
+		vacattrstats = (VacAttrStats **)
+			palloc(attr_cnt * sizeof(VacAttrStats *));
+		tcnt = 0;
+		for (i = 1; i <= attr_cnt; i++)
 		{
-			attr_cnt = onerel->rd_att->natts;
-			vacattrstats = (VacAttrStats **)
-				palloc(attr_cnt * sizeof(VacAttrStats *));
-			tcnt = 0;
-			for (i = 1; i <= attr_cnt; i++)
-			{
-				vacattrstats[tcnt] = examine_attribute(onerel, i, NULL);
-				if (vacattrstats[tcnt] != NULL)
-					tcnt++;
-			}
-			attr_cnt = tcnt;
+			vacattrstats[tcnt] = examine_attribute(onerel, i, NULL);
+			if (vacattrstats[tcnt] != NULL)
+				tcnt++;
 		}
+		attr_cnt = tcnt;
+	}
 
-		/*
-		* Open all indexes of the relation, and see if there are any analyzable
-		* columns in the indexes.  We do not analyze index columns if there was
-		* an explicit column list in the ANALYZE command, however.  If we are
-		* doing a recursive scan, we don't want to touch the parent's indexes at
-		* all.
-		*/
-		if (!inh)
-			vac_open_indexes(onerel, AccessShareLock, &nindexes, &Irel);
-		else
+	/*
+	 * Open all indexes of the relation, and see if there are any analyzable
+	 * columns in the indexes.  We do not analyze index columns if there was
+	 * an explicit column list in the ANALYZE command, however.  If we are
+	 * doing a recursive scan, we don't want to touch the parent's indexes at
+	 * all.
+	 */
+	if (!inh)
+		vac_open_indexes(onerel, AccessShareLock, &nindexes, &Irel);
+	else
+	{
+		Irel = NULL;
+		nindexes = 0;
+	}
+	hasindex = (nindexes > 0);
+	indexdata = NULL;
+	if (hasindex)
+	{
+		indexdata = (AnlIndexData *) palloc0(nindexes * sizeof(AnlIndexData));
+		for (ind = 0; ind < nindexes; ind++)
 		{
-			Irel = NULL;
-			nindexes = 0;
-		}
-		hasindex = (nindexes > 0);
-		indexdata = NULL;
-		if (hasindex)
-		{
-			indexdata = (AnlIndexData *) palloc0(nindexes * sizeof(AnlIndexData));
-			for (ind = 0; ind < nindexes; ind++)
+			AnlIndexData *thisdata = &indexdata[ind];
+			IndexInfo  *indexInfo;
+
+			thisdata->indexInfo = indexInfo = BuildIndexInfo(Irel[ind]);
+			thisdata->tupleFract = 1.0; /* fix later if partial */
+			if (indexInfo->ii_Expressions != NIL && va_cols == NIL)
 			{
-				AnlIndexData *thisdata = &indexdata[ind];
-				IndexInfo  *indexInfo;
+				ListCell   *indexpr_item = list_head(indexInfo->ii_Expressions);
 
-				thisdata->indexInfo = indexInfo = BuildIndexInfo(Irel[ind]);
-				thisdata->tupleFract = 1.0; /* fix later if partial */
-				if (indexInfo->ii_Expressions != NIL && va_cols == NIL)
+				thisdata->vacattrstats = (VacAttrStats **)
+					palloc(indexInfo->ii_NumIndexAttrs * sizeof(VacAttrStats *));
+				tcnt = 0;
+				for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
 				{
-					ListCell   *indexpr_item = list_head(indexInfo->ii_Expressions);
+					int			keycol = indexInfo->ii_IndexAttrNumbers[i];
 
-					thisdata->vacattrstats = (VacAttrStats **)
-						palloc(indexInfo->ii_NumIndexAttrs * sizeof(VacAttrStats *));
-					tcnt = 0;
-					for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+					if (keycol == 0)
 					{
-						int			keycol = indexInfo->ii_IndexAttrNumbers[i];
+						/* Found an index expression */
+						Node	   *indexkey;
 
-						if (keycol == 0)
-						{
-							/* Found an index expression */
-							Node	   *indexkey;
-
-							if (indexpr_item == NULL)	/* shouldn't happen */
-								elog(ERROR, "too few entries in indexprs list");
-							indexkey = (Node *) lfirst(indexpr_item);
-							indexpr_item = lnext(indexpr_item);
-							thisdata->vacattrstats[tcnt] =
-								examine_attribute(Irel[ind], i + 1, indexkey);
-							if (thisdata->vacattrstats[tcnt] != NULL)
-								tcnt++;
-						}
+						if (indexpr_item == NULL)	/* shouldn't happen */
+							elog(ERROR, "too few entries in indexprs list");
+						indexkey = (Node *) lfirst(indexpr_item);
+						indexpr_item = lnext(indexpr_item);
+						thisdata->vacattrstats[tcnt] =
+							examine_attribute(Irel[ind], i + 1, indexkey);
+						if (thisdata->vacattrstats[tcnt] != NULL)
+							tcnt++;
 					}
-					thisdata->attr_cnt = tcnt;
 				}
+				thisdata->attr_cnt = tcnt;
 			}
 		}
+	}
 
-		/*
-		* Determine how many rows we need to sample, using the worst case from
-		* all analyzable columns.  We use a lower bound of 100 rows to avoid
-		* possible overflow in Vitter's algorithm.  (Note: that will also be the
-		* target in the corner case where there are no analyzable columns.)
-		*/
-		targrows = 100;
+	/*
+	 * Determine how many rows we need to sample, using the worst case from
+	 * all analyzable columns.  We use a lower bound of 100 rows to avoid
+	 * possible overflow in Vitter's algorithm.  (Note: that will also be the
+	 * target in the corner case where there are no analyzable columns.)
+	 */
+	targrows = 100;
+	for (i = 0; i < attr_cnt; i++)
+	{
+		if (targrows < vacattrstats[i]->minrows)
+			targrows = vacattrstats[i]->minrows;
+	}
+	for (ind = 0; ind < nindexes; ind++)
+	{
+		AnlIndexData *thisdata = &indexdata[ind];
+
+		for (i = 0; i < thisdata->attr_cnt; i++)
+		{
+			if (targrows < thisdata->vacattrstats[i]->minrows)
+				targrows = thisdata->vacattrstats[i]->minrows;
+		}
+	}
+
+	/*
+	 * Acquire the sample rows
+	 */
+	rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
+	if (inh)
+		numrows = acquire_inherited_sample_rows(onerel, elevel,
+												rows, targrows,
+												&totalrows, &totaldeadrows);
+	else
+		numrows = (*acquirefunc) (onerel, elevel,
+								  rows, targrows,
+								  &totalrows, &totaldeadrows);
+
+	/*
+	 * Compute the statistics.  Temporary results during the calculations for
+	 * each column are stored in a child context.  The calc routines are
+	 * responsible to make sure that whatever they store into the VacAttrStats
+	 * structure is allocated in anl_context.
+	 */
+	if (numrows > 0)
+	{
+		MemoryContext col_context,
+					old_context;
+
+		col_context = AllocSetContextCreate(anl_context,
+											"Analyze Column",
+											ALLOCSET_DEFAULT_SIZES);
+		old_context = MemoryContextSwitchTo(col_context);
+
 		for (i = 0; i < attr_cnt; i++)
 		{
-			if (targrows < vacattrstats[i]->minrows)
-				targrows = vacattrstats[i]->minrows;
+			VacAttrStats *stats = vacattrstats[i];
+			AttributeOpts *aopt;
+
+			stats->rows = rows;
+			stats->tupDesc = onerel->rd_att;
+			stats->compute_stats(stats,
+								 std_fetch_func,
+								 numrows,
+								 totalrows);
+
+			/*
+			 * If the appropriate flavor of the n_distinct option is
+			 * specified, override with the corresponding value.
+			 */
+			aopt = get_attribute_options(onerel->rd_id, stats->attr->attnum);
+			if (aopt != NULL)
+			{
+				float8		n_distinct;
+
+				n_distinct = inh ? aopt->n_distinct_inherited : aopt->n_distinct;
+				if (n_distinct != 0.0)
+					stats->stadistinct = n_distinct;
+			}
+
+			MemoryContextResetAndDeleteChildren(col_context);
 		}
+
+		if (hasindex)
+			compute_index_stats(onerel, totalrows,
+								indexdata, nindexes,
+								rows, numrows,
+								col_context);
+
+		MemoryContextSwitchTo(old_context);
+		MemoryContextDelete(col_context);
+
+		/*
+		 * Emit the completed stats rows into pg_statistic, replacing any
+		 * previous statistics for the target columns. (If there are stats in
+		 * pg_statistic for columns we didn't process, we leave them alone.)
+		 */
+		update_attstats(RelationGetRelid(onerel), inh,
+						attr_cnt, vacattrstats);
+
 		for (ind = 0; ind < nindexes; ind++)
 		{
 			AnlIndexData *thisdata = &indexdata[ind];
 
-			for (i = 0; i < thisdata->attr_cnt; i++)
-			{
-				if (targrows < thisdata->vacattrstats[i]->minrows)
-					targrows = thisdata->vacattrstats[i]->minrows;
-			}
+			update_attstats(RelationGetRelid(Irel[ind]), false,
+							thisdata->attr_cnt, thisdata->vacattrstats);
 		}
 
-		/*
-		* Acquire the sample rows
-		*/
-		rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
-		if (inh)
-			numrows = acquire_inherited_sample_rows(onerel, elevel,
-													rows, targrows,
-													&totalrows, &totaldeadrows);
-		else
-			numrows = (*acquirefunc) (onerel, elevel,
-										rows, targrows,
-										&totalrows, &totaldeadrows);
-
-		/*
-		* Compute the statistics.  Temporary results during the calculations for
-		* each column are stored in a child context.  The calc routines are
-		* responsible to make sure that whatever they store into the VacAttrStats
-		* structure is allocated in anl_context.
-		*/
-		if (numrows > 0)
-		{
-			MemoryContext col_context,
-						old_context;
-
-			col_context = AllocSetContextCreate(anl_context,
-												"Analyze Column",
-												ALLOCSET_DEFAULT_SIZES);
-			old_context = MemoryContextSwitchTo(col_context);
-
-			for (i = 0; i < attr_cnt; i++)
-			{
-				VacAttrStats *stats = vacattrstats[i];
-				AttributeOpts *aopt;
-
-				stats->rows = rows;
-				stats->tupDesc = onerel->rd_att;
-				stats->compute_stats(stats,
-									std_fetch_func,
-									numrows,
-									totalrows);
-
-				/*
-				* If the appropriate flavor of the n_distinct option is
-				* specified, override with the corresponding value.
-				*/
-				aopt = get_attribute_options(onerel->rd_id, stats->attr->attnum);
-				if (aopt != NULL)
-				{
-					float8		n_distinct;
-
-					n_distinct = inh ? aopt->n_distinct_inherited : aopt->n_distinct;
-					if (n_distinct != 0.0)
-						stats->stadistinct = n_distinct;
-				}
-
-				MemoryContextResetAndDeleteChildren(col_context);
-			}
-
-			if (hasindex)
-				compute_index_stats(onerel, totalrows,
-									indexdata, nindexes,
-									rows, numrows,
-									col_context);
-
-			MemoryContextSwitchTo(old_context);
-			MemoryContextDelete(col_context);
-
-			/*
-			* Emit the completed stats rows into pg_statistic, replacing any
-			* previous statistics for the target columns.  (If there are stats in
-			* pg_statistic for columns we didn't process, we leave them alone.)
-			*/
-			update_attstats(RelationGetRelid(onerel), inh,
-							attr_cnt, vacattrstats);
-
-			for (ind = 0; ind < nindexes; ind++)
-			{
-				AnlIndexData *thisdata = &indexdata[ind];
-
-				update_attstats(RelationGetRelid(Irel[ind]), false,
-								thisdata->attr_cnt, thisdata->vacattrstats);
-			}
-
-			/* Build extended statistics (if there are any). */
-			BuildRelationExtStatistics(onerel, totalrows, numrows, rows, attr_cnt,
-										vacattrstats);
-		}
+		/* Build extended statistics (if there are any). */
+		BuildRelationExtStatistics(onerel, totalrows, numrows, rows, attr_cnt,
+								   vacattrstats);
 	}
 
 	/*
@@ -731,24 +714,21 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 		}
 	}
 
-	if (!is_yb_relation)
-	{
-		/* Done with indexes */
-		vac_close_indexes(nindexes, Irel, NoLock);
+	/* Done with indexes */
+	vac_close_indexes(nindexes, Irel, NoLock);
 
-		/* Log the action if appropriate */
-		if (IsAutoVacuumWorkerProcess() && params->log_min_duration >= 0)
-		{
-			if (params->log_min_duration == 0 ||
-				TimestampDifferenceExceeds(starttime, GetCurrentTimestamp(),
-											params->log_min_duration))
-				ereport(LOG,
-						(errmsg("automatic analyze of table \"%s.%s.%s\" system usage: %s",
-								get_database_name(MyDatabaseId),
-								get_namespace_name(RelationGetNamespace(onerel)),
-								RelationGetRelationName(onerel),
-								pg_rusage_show(&ru0))));
-		}
+	/* Log the action if appropriate */
+	if (IsAutoVacuumWorkerProcess() && params->log_min_duration >= 0)
+	{
+		if (params->log_min_duration == 0 ||
+			TimestampDifferenceExceeds(starttime, GetCurrentTimestamp(),
+									   params->log_min_duration))
+			ereport(LOG,
+					(errmsg("automatic analyze of table \"%s.%s.%s\" system usage: %s",
+							get_database_name(MyDatabaseId),
+							get_namespace_name(RelationGetNamespace(onerel)),
+							RelationGetRelationName(onerel),
+							pg_rusage_show(&ru0))));
 	}
 
 	/* Roll back any GUC changes executed by index functions */
@@ -1147,6 +1127,7 @@ acquire_sample_rows(Relation onerel, int elevel,
 			targtuple.t_tableOid = RelationGetRelid(onerel);
 			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
 			targtuple.t_len = ItemIdGetLength(itemid);
+			targtuple.t_ybctid = (Datum) NULL;
 
 			switch (HeapTupleSatisfiesVacuum(&targtuple,
 											 OldestXmin,
@@ -1574,6 +1555,44 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 	return numrows;
 }
 
+/*
+ * yb_acquire_sample_rows -- acquire a random sample of rows from the YB table
+ *
+ * This has the same API as acquire_sample_rows, and uses similar approach.
+ */
+static int
+yb_acquire_sample_rows(Relation onerel, int elevel,
+					   HeapTuple *rows, int targrows,
+					   double *totalrows, double *totaldeadrows)
+{
+	YbSample	ybSample;
+	int			numrows = 0;
+
+	Assert(targrows > 0);
+
+	/* Prepare to take sample */
+	ybSample = ybBeginSample(onerel, targrows);
+
+	/* Loop over the table blocks until sample is selected */
+	while (ybSampleNextBlock(ybSample)) {
+		vacuum_delay_point();
+	}
+
+	/* Fetch selected rows */
+	numrows = ybFetchSample(ybSample, rows);
+
+	/* Get row counters */
+	*totalrows = ybSample->liverows + ybSample->deadrows;
+	*totaldeadrows = ybSample->deadrows;
+
+	ereport(elevel,
+			(errmsg("\"%s\": scanned, "
+					"%d rows in sample, %.0f estimated total rows",
+					RelationGetRelationName(onerel),
+					numrows, *totalrows)));
+
+	return numrows;
+}
 
 /*
  *	update_attstats() -- update attribute statistics for one relation

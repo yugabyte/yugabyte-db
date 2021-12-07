@@ -30,16 +30,15 @@
 #include <utility>
 #include <vector>
 
-#include "yb/util/status.h"
-
 #include "yb/rocksdb/db/table_properties_collector.h"
-
-#include "yb/util/slice.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/util/statistics.h"
 
-#include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

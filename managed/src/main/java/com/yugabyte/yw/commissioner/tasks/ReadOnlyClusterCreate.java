@@ -10,30 +10,31 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Set;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Tracks the read only cluster create intent within an existing universe.
+@Slf4j
 public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(ReadOnlyClusterCreate.class);
+
+  @Inject
+  protected ReadOnlyClusterCreate(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   public void run() {
-    LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
       // Create the task list sequence.
@@ -42,11 +43,14 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      preTaskActions();
+
       // Set the correct node names for all to-be-added nodes.
-      setNodeNames(UniverseOpType.CREATE, universe);
+      setNodeNames(universe);
 
       // Update the user intent.
-      writeUserIntentToUniverse(true /* isReadOnly */, false);
+      universe = writeUserIntentToUniverse(true);
+      updateOnPremNodeUuids(universe);
 
       // Sanity checks for clusters list validity are performed in the controller.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);
@@ -55,52 +59,30 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // There should be no masters in read only clusters.
       if (!PlacementInfoUtil.getMastersToProvision(readOnlyNodes).isEmpty()) {
         String errMsg = "Cannot have master nodes in read-only cluster.";
-        LOG.error(errMsg + "Nodes : " + readOnlyNodes);
+        log.error(errMsg + "Nodes : " + readOnlyNodes);
         throw new IllegalArgumentException(errMsg);
       }
 
       Collection<NodeDetails> nodesToProvision =
-        PlacementInfoUtil.getNodesToProvision(readOnlyNodes);
+          PlacementInfoUtil.getNodesToProvision(readOnlyNodes);
 
       if (nodesToProvision.isEmpty()) {
         String errMsg = "Cannot have empty nodes to provision in read-only cluster.";
-        LOG.error(errMsg);
+        log.error(errMsg);
         throw new IllegalArgumentException(errMsg);
       }
 
-      // Check if nodes are able to be provisioned/configured properly.
-      Map<NodeInstance, String> failedNodes = new HashMap<>();
-      for (NodeDetails node: nodesToProvision) {
-        if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
-          continue;
-        }
-
-        NodeTaskParams nodeParams = new NodeTaskParams();
-        UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-        nodeParams.nodeName = node.nodeName;
-        nodeParams.deviceInfo = userIntent.deviceInfo;
-        nodeParams.azUuid = node.azUuid;
-        nodeParams.universeUUID = taskParams().universeUUID;
-        nodeParams.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
-
-        String preflightStatus = performPreflightCheck(node, nodeParams);
-        if (preflightStatus != null) {
-            failedNodes.put(NodeInstance.getByName(node.nodeName), preflightStatus);
-        }
-      }
-      if (!failedNodes.isEmpty()) {
-        createFailedPrecheckTask(failedNodes)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-      }
+      // perform preflight checks for only readonly cluster
+      performUniversePreflightChecks(Collections.singletonList(cluster));
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createCreateServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. for ex., private ip address.
-      createServerInfoTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createServerInfoTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      // Provision the nodes of the cluster so Yugabyte can be deployed.
+      createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
       createConfigureServerTasks(nodesToProvision, true /* isShell */)
@@ -114,8 +96,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       createGFlagsOverrideTasks(newTservers, ServerType.TSERVER);
 
       // Start the tservers in the clusters.
-      createStartTServersTasks(newTservers)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createStartTServersTasks(newTservers).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for all tablet servers to be responsive.
       createWaitForServersTasks(newTservers, ServerType.TSERVER)
@@ -139,13 +120,13 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

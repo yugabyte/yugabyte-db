@@ -2,8 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
+import io.swagger.annotations.ApiModelProperty;
+
 public class AbstractTaskParams implements ITaskParams {
 
+  @ApiModelProperty(value = "Error message")
   public String errorString = null;
 
   @Override

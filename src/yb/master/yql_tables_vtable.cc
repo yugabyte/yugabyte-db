@@ -13,8 +13,14 @@
 
 #include "yb/master/yql_tables_vtable.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -27,12 +33,12 @@ YQLTablesVTable::YQLTablesVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
 
-  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  auto tables = catalog_manager().GetTables(GetTablesMode::kVisibleToClient);
   for (const auto& table : tables) {
     // Skip non-YQL tables.
-    if (!CatalogManager::IsYcqlTable(*table)) {
+    if (!IsYcqlTable(*table)) {
       continue;
     }
 
@@ -42,8 +48,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     }
 
     // Get namespace for table.
-    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
-        table->namespace_id()));
+    auto ns_info = VERIFY_RESULT(catalog_manager().FindNamespaceById(table->namespace_id()));
 
     // Create appropriate row for the table;
     QLRow& row = vtable->Extend();
@@ -74,6 +79,11 @@ Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     int32_t cql_ttl = static_cast<int32_t>(
         schema.table_properties().DefaultTimeToLive() / MonoTime::kMillisecondsPerSecond);
     RETURN_NOT_OK(SetColumnValue(kDefaultTimeToLive, cql_ttl, &row));
+
+    if (schema.table_properties().HasNumTablets()) {
+      int32_t num_tablets = schema.table_properties().num_tablets();
+      RETURN_NOT_OK(SetColumnValue(kNumTablets, num_tablets, &row));
+    }
 
     QLValue txn;
     txn.set_map_value();
@@ -113,6 +123,7 @@ Schema YQLTablesVTable::CreateSchema() const {
   CHECK_OK(builder.AddColumn(kSpeculativeRetry, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kTransactions,
                              QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kNumTablets, QLType::Create(DataType::INT32)));
   return builder.Build();
 }
 

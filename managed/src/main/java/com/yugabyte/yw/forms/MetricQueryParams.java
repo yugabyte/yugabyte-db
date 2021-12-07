@@ -2,22 +2,28 @@
 
 package com.yugabyte.yw.forms;
 
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
 import play.data.validation.Constraints;
 
-import java.util.List;
-
-
+@ApiModel(description = "Metrics request data")
 public class MetricQueryParams {
   @Constraints.Required()
+  @ApiModelProperty(value = "Metrics", required = true)
   private List<String> metrics;
 
   @Constraints.Required()
+  @ApiModelProperty(value = "Start time", required = true)
   private Long start;
 
+  @ApiModelProperty(value = "End time")
   private Long end;
 
+  @ApiModelProperty(value = "Node prefix")
   private String nodePrefix;
 
+  @ApiModelProperty(value = "Node name")
   private String nodeName;
 
   public List<String> getMetrics() {

@@ -3,8 +3,10 @@
 *.tmp
 *.retry
 /python_virtual_env
+/python*_modules
 /third-party
 /unused
+/venv
 CMakeLists.txt
 .idea
 *.sw?

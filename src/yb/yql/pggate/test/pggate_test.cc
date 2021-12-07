@@ -15,11 +15,33 @@
 
 #include "yb/yql/pggate/test/pggate_test.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+
+#include <boost/optional.hpp>
 #include <gflags/gflags.h>
 
-#include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pg_memctx.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
+using namespace std::literals;
 
 DECLARE_string(pggate_master_addresses);
 DECLARE_string(test_leave_files);
@@ -56,7 +78,8 @@ const char* GetDebugQueryStringStub() {
 
 } // namespace
 
-PggateTest::PggateTest() {
+PggateTest::PggateTest()
+    : tserver_shared_object_(CHECK_RESULT(tserver::TServerSharedObject::Create())) {
 }
 
 PggateTest::~PggateTest() {
@@ -123,10 +146,20 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
-  YBCInitPgGate(type_table, count, callbacks);
 
-  // Don't try to connect to tserver shared memory in pggate tests.
-  FLAGS_TEST_pggate_ignore_tserver_shm = true;
+  {
+    auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(cluster_->tablet_server(0));
+    tserver::GetSharedDataRequestPB req;
+    tserver::GetSharedDataResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    CHECK_OK(proxy->GetSharedData(req, &resp, &controller));
+    CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object_));
+    memcpy(pointer_cast<char*>(&*tserver_shared_object_), resp.data().c_str(), resp.data().size());
+  }
+  FLAGS_pggate_tserver_shm_fd = tserver_shared_object_.GetFd();
+
+  YBCInitPgGate(type_table, count, callbacks);
 
   // Setup session.
   CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* pg_env */, nullptr /* database_name */));
@@ -176,7 +209,7 @@ void PggateTest::BeginDDLTransaction() {
 }
 
 void PggateTest::CommitDDLTransaction() {
-  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(true /* success */));
+  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode());
 }
 
 void PggateTest::BeginTransaction() {

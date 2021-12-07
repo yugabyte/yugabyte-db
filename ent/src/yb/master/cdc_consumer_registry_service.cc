@@ -13,13 +13,17 @@
 
 #include "yb/master/cdc_consumer_registry_service.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master_util.h"
 
 #include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace master {
@@ -99,6 +103,24 @@ Status CreateTabletMapping(
           tserver_addrs->insert(HostPortFromPB(addr));
         }
       }
+    }
+  }
+  return Status::OK();
+}
+
+Status UpdateTableMappingOnTabletSplit(
+    cdc::StreamEntryPB* stream_entry,
+    const SplitTabletIds& split_tablet_ids) {
+  auto* mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
+  auto producer_tablets = (*mutable_map)[split_tablet_ids.source];
+  mutable_map->erase(split_tablet_ids.source);
+  // TODO introduce a better mapping of tablets to improve locality (GH #10186).
+  // For now we just distribute the producer tablets between both children.
+  for (size_t i = 0; i < producer_tablets.tablets().size(); ++i) {
+    if (i % 2) {
+      *(*mutable_map)[split_tablet_ids.children.first].add_tablets() = producer_tablets.tablets(i);
+    } else {
+      *(*mutable_map)[split_tablet_ids.children.second].add_tablets() = producer_tablets.tablets(i);
     }
   }
   return Status::OK();

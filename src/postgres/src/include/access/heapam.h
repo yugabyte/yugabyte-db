@@ -168,7 +168,7 @@ extern HTSU_Result heap_lock_tuple(Relation relation, HeapTuple tuple,
 				CommandId cid, LockTupleMode mode, LockWaitPolicy wait_policy,
 				bool follow_update,
 				Buffer *buffer, HeapUpdateFailureData *hufd);
-extern void heap_inplace_update(Relation relation, HeapTuple tuple);
+extern void heap_inplace_update(Relation relation, HeapTuple tuple, bool yb_shared_update);
 extern bool heap_freeze_tuple(HeapTupleHeader tuple,
 				  TransactionId relfrozenxid, TransactionId relminmxid,
 				  TransactionId cutoff_xid, TransactionId cutoff_multi);

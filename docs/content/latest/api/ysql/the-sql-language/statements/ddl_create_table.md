@@ -108,7 +108,7 @@ By default, YugabyteDB presplits a table in `ysql_num_shards_per_tserver * num_o
 
 ### SPLIT AT VALUES
 
-For range-partitioned tables, you can use the `SPLIT AT VALUES` clause to set split points to presplit range-sharded tables.
+For range-sharded tables, you can use the `SPLIT AT VALUES` clause to set split points to presplit range-sharded tables.
 
 **Example**
 

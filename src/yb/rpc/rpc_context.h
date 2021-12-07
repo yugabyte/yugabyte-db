@@ -34,11 +34,12 @@
 
 #include <string>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
-#include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
 
 namespace google {
 namespace protobuf {
@@ -72,18 +73,10 @@ class RpcContext {
   // and is not a public API.
   RpcContext(std::shared_ptr<YBInboundCall> call,
              std::shared_ptr<google::protobuf::Message> request_pb,
-             std::shared_ptr<google::protobuf::Message> response_pb,
-             RpcMethodMetrics metrics);
-  RpcContext(std::shared_ptr<LocalYBInboundCall> call,
-             RpcMethodMetrics metrics);
+             std::shared_ptr<google::protobuf::Message> response_pb);
+  explicit RpcContext(std::shared_ptr<LocalYBInboundCall> call);
 
-  RpcContext(RpcContext&& rhs)
-      : call_(std::move(rhs.call_)),
-        request_pb_(std::move(rhs.request_pb_)),
-        response_pb_(std::move(rhs.response_pb_)),
-        metrics_(std::move(rhs.metrics_)),
-        responded_(rhs.responded_) {
-  }
+  RpcContext(RpcContext&& rhs) = default;
 
   RpcContext(const RpcContext&) = delete;
   void operator=(const RpcContext&) = delete;
@@ -220,7 +213,6 @@ class RpcContext {
   std::shared_ptr<YBInboundCall> call_;
   std::shared_ptr<const google::protobuf::Message> request_pb_;
   std::shared_ptr<google::protobuf::Message> response_pb_;
-  RpcMethodMetrics metrics_;
   bool responded_ = false;
 };
 

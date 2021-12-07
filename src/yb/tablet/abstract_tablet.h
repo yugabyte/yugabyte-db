@@ -14,13 +14,13 @@
 #ifndef YB_TABLET_ABSTRACT_TABLET_H
 #define YB_TABLET_ABSTRACT_TABLET_H
 
+#include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_storage_interface.h"
-#include "yb/common/redis_protocol.pb.h"
-#include "yb/common/schema.h"
 
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace tablet {
@@ -45,7 +45,7 @@ class AbstractTablet {
 
   virtual yb::SchemaPtr GetSchema(const std::string& table_id = "") const = 0;
 
-  virtual const common::YQLStorageIf& QLStorage() const = 0;
+  virtual const YQLStorageIf& QLStorage() const = 0;
 
   virtual TableType table_type() const = 0;
 
@@ -86,9 +86,7 @@ class AbstractTablet {
   // a timeout.
   Result<HybridTime> SafeTime(RequireLease require_lease = RequireLease::kTrue,
                               HybridTime min_allowed = HybridTime::kMin,
-                              CoarseTimePoint deadline = CoarseTimePoint::max()) const {
-    return DoGetSafeTime(require_lease, min_allowed, deadline);
-  }
+                              CoarseTimePoint deadline = CoarseTimePoint::max()) const;
 
   template <class PB>
   Result<IsolationLevel> GetIsolationLevelFromPB(const PB& pb) {
@@ -104,6 +102,7 @@ class AbstractTablet {
       bool is_explicit_request_read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
       PgsqlReadRequestResult* result,
       size_t* number_rows_read) = 0;
 
@@ -117,7 +116,7 @@ class AbstractTablet {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
-      const TransactionOperationContextOpt& txn_op_context,
+      const TransactionOperationContext& txn_op_context,
       QLReadRequestResult* result);
 
   virtual CHECKED_STATUS CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
@@ -128,7 +127,7 @@ class AbstractTablet {
                                         const ReadHybridTime& read_time,
                                         bool is_explicit_request_read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
-                                        const TransactionOperationContextOpt& txn_op_context,
+                                        const TransactionOperationContext& txn_op_context,
                                         PgsqlReadRequestResult* result,
                                         size_t* num_rows_read);
 

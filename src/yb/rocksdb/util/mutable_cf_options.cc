@@ -26,7 +26,6 @@
 
 #include <inttypes.h>
 #include <limits>
-#include <cassert>
 #include <string>
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
@@ -67,9 +66,17 @@ void MutableCFOptions::RefreshDerivedOptions(
 
 uint64_t MutableCFOptions::MaxFileSizeForLevel(int level) const {
   assert(level >= 0);
-  assert(level < (int)max_file_size.size());
+  assert(level < static_cast<int>(max_file_size.size()));
   return max_file_size[level];
 }
+
+uint64_t MutableCFOptions::MaxFileSizeForCompaction() const {
+  if (!max_file_size_for_compaction) {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  return (*max_file_size_for_compaction)();
+}
+
 uint64_t MutableCFOptions::MaxGrandParentOverlapBytes(int level) const {
   return MaxFileSizeForLevel(level) * max_grandparent_overlap_factor;
 }

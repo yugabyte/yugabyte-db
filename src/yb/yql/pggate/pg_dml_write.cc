@@ -14,7 +14,10 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_dml_write.h"
+
 #include "yb/client/yb_op.h"
+
+#include "yb/gutil/casts.h"
 
 namespace yb {
 namespace pggate {
@@ -49,7 +52,7 @@ PgDmlWrite::~PgDmlWrite() {
 
 Status PgDmlWrite::Prepare() {
   // Setup descriptors for target and bind columns.
-  target_desc_ = bind_desc_ = VERIFY_RESULT(pg_session_->LoadTable(table_id_));
+  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
 
   // Allocate either INSERT, UPDATE, DELETE, or TRUNCATE_COLOCATED request.
   AllocWriteRequest();
@@ -60,7 +63,7 @@ Status PgDmlWrite::Prepare() {
 void PgDmlWrite::PrepareColumns() {
   // Because DocDB API requires that primary columns must be listed in their created-order,
   // the slots for primary column bind expressions are allocated here in correct order.
-  for (PgColumn &col : target_desc_->columns()) {
+  for (auto& col : target_.columns()) {
     col.AllocPrimaryBindPB(write_req_);
   }
 }
@@ -152,7 +155,7 @@ void PgDmlWrite::AllocWriteRequest() {
   DCHECK(wop);
   wop->set_is_single_row_txn(is_single_row_txn_);
   write_req_ = wop->mutable_request();
-  doc_op_ = make_shared<PgDocWriteOp>(pg_session_, target_desc_, table_id_, std::move(wop));
+  doc_op_ = make_shared<PgDocWriteOp>(pg_session_, &target_, table_id_, std::move(wop));
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {

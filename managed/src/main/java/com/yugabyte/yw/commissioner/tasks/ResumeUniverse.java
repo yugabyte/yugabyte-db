@@ -10,30 +10,34 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class ResumeUniverse extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(ResumeUniverse.class);
+
+  @Inject
+  protected ResumeUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
   }
 
   public Params params() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -48,51 +52,45 @@ public class ResumeUniverse extends UniverseTaskBase {
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to resume the existing nodes.
-        createResumeServerTasks(universe.getNodes()).setSubTaskGroupType(
-            SubTaskGroupType.ResumeUniverse);
+        createResumeServerTasks(universe.getNodes())
+            .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       }
 
       Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
       Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
 
-      createStartMasterTasks(masterNodes).setSubTaskGroupType(
-          SubTaskGroupType.StartingNodeProcesses);
+      createStartMasterTasks(masterNodes)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       createWaitForServersTasks(masterNodes, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      
+
       for (NodeDetails node : tserverNodes) {
-        createTServerTaskForNode(node, "start").setSubTaskGroupType(
-            SubTaskGroupType.StartingNodeProcesses);
+        createTServerTaskForNode(node, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
       createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-  
+
       createSwamperTargetUpdateTask(false);
 
       // Mark universe task state to success.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       // Run all the tasks.
       subTaskGroupQueue.run();
-      
-      Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-        @Override
-        public void run(Universe universe) {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          universeDetails.universePaused = false;
-          universe.setUniverseDetails(universeDetails);
-        }
-      };
-      saveUniverseDetails(updater);
 
-      unlockUniverseForUpdate();
+      saveUniverseDetails(
+          u -> {
+            UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+            universeDetails.universePaused = false;
+            u.setUniverseDetails(universeDetails);
+          });
+
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      unlockUniverseForUpdate();
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
+    } finally {
+      unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

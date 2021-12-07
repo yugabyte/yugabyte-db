@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/server/server_base.h"
 
 #include <algorithm>
@@ -37,14 +38,18 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/generic_service.h"
 #include "yb/server/glog_metrics.h"
@@ -55,27 +60,27 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base_options.h"
 #include "yb/server/tcmalloc_metrics.h"
-#include "yb/server/skewed_clock.h"
 #include "yb/server/tracing-path-handlers.h"
 #include "yb/server/webserver.h"
+
 #include "yb/util/atomic.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/encryption_util.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
-#include "yb/util/user.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
 #include "yb/util/spinlock_profiling.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
-#include "yb/util/encryption_util.h"
-#include "yb/gutil/sysinfo.h"
 
 DEFINE_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");
@@ -104,6 +109,10 @@ DEFINE_test_flag(bool, simulate_port_conflict_error, false,
 
 DEFINE_test_flag(int32, nodes_per_cloud, 2,
                  "Number of nodes per cloud to test private and public addresses.");
+
+METRIC_DEFINE_lag(server, server_uptime_ms,
+                  "Server uptime",
+                  "The amount of time a server has been up for.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -210,6 +219,10 @@ RpcServerBase::~RpcServerBase() {
   }
 }
 
+const std::vector<Endpoint>& RpcServerBase::rpc_addresses() const {
+  return rpc_server_->GetBoundAddresses();
+}
+
 Endpoint RpcServerBase::first_rpc_address() const {
   const auto& addrs = rpc_server_->GetBoundAddresses();
   CHECK(!addrs.empty()) << "Not bound";
@@ -224,18 +237,6 @@ const std::string RpcServerBase::get_hostname() const {
   } else {
     YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current host name: " << hostname.status();
     return "unknown_hostname";
-  }
-}
-
-const std::string RpcServerBase::get_current_user() const {
-  string user_name;
-  auto s = GetLoggedInUser(&user_name);
-  if (s.ok()) {
-    YB_LOG_FIRST_N(INFO, 1) << "Logged in user: " << user_name;
-    return user_name;
-  } else {
-    YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current user";
-    return "unknown_user";
   }
 }
 
@@ -456,6 +457,9 @@ void RpcAndWebServerBase::GenerateInstanceID() {
   instance_pb_.reset(new NodeInstancePB);
   instance_pb_->set_permanent_uuid(fs_manager_->uuid());
   auto now = Env::Default()->NowMicros();
+
+  server_uptime_ms_metric_ = metric_entity_->FindOrCreateAtomicMillisLag(&METRIC_server_uptime_ms);
+
   // TODO: maybe actually bump a sequence number on local disk instead of
   // using time.
   instance_pb_->set_instance_seqno(now);
@@ -463,7 +467,7 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
-  yb::enterprise::InitOpenSSL();
+  yb::InitOpenSSL();
 
   Status s = fs_manager_->Open();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {

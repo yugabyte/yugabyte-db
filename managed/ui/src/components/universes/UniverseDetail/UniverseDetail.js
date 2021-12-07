@@ -16,7 +16,8 @@ import {
   UniverseConnectModal,
   UniverseOverviewContainerNew,
   EncryptionKeyModalContainer,
-  ToggleUniverseStateContainer
+  ToggleUniverseStateContainer,
+  ToggleBackupStateContainer
 } from '../../universes';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
@@ -26,10 +27,11 @@ import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import {
   isOnpremUniverse,
   isKubernetesUniverse,
-  isAWSUniverse,
+  isPausableUniverse,
   isUniverseType
 } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { UniverseHealthCheckList } from './compounds/UniverseHealthCheckList';
@@ -44,14 +46,14 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import './UniverseDetail.scss';
+import { SecurityMenu } from '../SecurityModal/SecurityMenu';
+import Replication from '../../xcluster/Replication';
 
-const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
-  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(
-    instanceType?.split?.('.')[0]
-  );
-}
+  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]);
+};
 
 class UniverseDetail extends Component {
   constructor(props) {
@@ -170,8 +172,7 @@ class UniverseDetail extends Component {
     this.props.router.push(currentLocation);
   };
 
-  handleSubmitManageKey = (response) => {
-    response.then((res) => {
+  handleSubmitManageKey = (res) => {
       if (res.payload.isAxiosError) {
         this.setState({
           showAlert: true,
@@ -182,11 +183,13 @@ class UniverseDetail extends Component {
         this.setState({
           showAlert: true,
           alertType: 'success',
-          alertMessage: 'Encryption key has been set!'
+          alertMessage:
+            JSON.parse(res.payload.config.data).key_op === 'ENABLE'
+              ? 'Encryption key has been set!'
+              : 'Encryption-at-Rest has been disabled!'
         });
       }
       setTimeout(() => this.setState({ showAlert: false }), 3000);
-    });
 
     this.props.closeModal();
   };
@@ -208,20 +211,29 @@ class UniverseDetail extends Component {
       showSoftwareUpgradesModal,
       showTLSConfigurationModal,
       showRollingRestartModal,
+      showUpgradeSystemdModal,
       showRunSampleAppsModal,
       showGFlagsModal,
       showManageKeyModal,
       showDeleteUniverseModal,
       showToggleUniverseStateModal,
+      showToggleBackupModal,
+      updateBackupState,
       closeModal,
       customer,
       customer: { currentCustomer },
       params: { tab },
-      featureFlags
+      featureFlags,
+      providers,
+      accessKeys
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
     const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
+    const primaryCluster = getPrimaryCluster(
+      universe?.currentUniverse?.data?.universeDetails?.clusters
+    );
+    const useSystemd = primaryCluster?.userIntent?.useSystemd;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -229,6 +241,17 @@ class UniverseDetail extends Component {
     const isProviderK8S =
       getPromiseState(currentUniverse).isSuccess() &&
       isUniverseType(currentUniverse.data, 'kubernetes');
+
+    const providerUUID = primaryCluster?.userIntent?.provider;
+    const provider = providers.data.find((provider) => provider.uuid === providerUUID);
+
+    var onPremSkipProvisioning = false;
+    if (provider && provider.code === 'onprem') {
+      const onPremKey = accessKeys.data.find(
+        (accessKey) => accessKey.idKey.providerUUID === provider.uuid
+      );
+      onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
+    }
 
     const type =
       pathname.indexOf('edit') < 0
@@ -280,6 +303,11 @@ class UniverseDetail extends Component {
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
+    let manageKeyAvailability = getFeatureState(
+      currentCustomer.data.features,
+      'universes.details.overview.manageEncryption'
+    );
+
     // enable edit TLS menu item for onprem universes with rootCA of a "CustomCertHostPath" type
     if (isEnabled(editTLSAvailability)) {
       if (isOnpremUniverse(currentUniverse.data) && Array.isArray(customer.userCertificates.data)) {
@@ -388,7 +416,13 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
-            <ReplicationContainer />
+            {
+              featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+                <Replication currentUniverseUUID={currentUniverse.data.universeUUID}/>
+              ): (
+                <ReplicationContainer />
+              )
+            }
           </Tab.Pane>
         ),
 
@@ -406,6 +440,7 @@ class UniverseDetail extends Component {
               tasks={tasks}
               isCommunityEdition={!!customer.INSECURE_apiToken}
               fetchCustomerTasks={this.props.fetchCustomerTasks}
+              refreshUniverseData={this.getUniverseInfo}
             />
           </Tab.Pane>
         )
@@ -466,10 +501,19 @@ class UniverseDetail extends Component {
         return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
       }) !== undefined;
 
-
-
-
-    
+    /**
+     * Handle the backup state toggle.
+     * i.e open the confirmation model if backup is to be disabled.
+     * else, Enable the backups.
+     */
+    const handleBackupToggle = () => {
+      const takeBackups =
+        currentUniverse.data.universeConfig &&
+        currentUniverse.data.universeConfig?.takeBackups === 'true';
+      takeBackups
+        ? showToggleBackupModal()
+        : updateBackupState(currentUniverse.data.universeUUID, !takeBackups);
+    };
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -523,6 +567,20 @@ class UniverseDetail extends Component {
                               {updateAvailable}
                             </span>
                           )}
+                        </YBMenuItem>
+                      )}
+                      {!universePaused && !useSystemd && (
+                        <YBMenuItem
+                          disabled={updateInProgress || onPremSkipProvisioning}
+                          onClick={showUpgradeSystemdModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.systemdUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade To Systemd
+                          </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
 
@@ -620,6 +678,30 @@ class UniverseDetail extends Component {
                         />
                       )}
 
+                      {!universePaused && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={handleBackupToggle}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.backup'
+                          )}
+                        >
+                          <YBLabelWithIcon
+                            icon={
+                              currentUniverse.data.universeConfig.takeBackups === 'true'
+                                ? 'fa fa-pause'
+                                : 'fa fa-play'
+                            }
+                          >
+                            {currentUniverse.data.universeConfig &&
+                            currentUniverse.data.universeConfig.takeBackups === 'true'
+                              ? 'Disable Backup'
+                              : 'Enable Backup'}
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
+
                       <MenuItem divider />
 
                       {/* TODO:
@@ -629,13 +711,25 @@ class UniverseDetail extends Component {
                       2. One more condition needs to be added which specifies the
                       current status of the universe. */}
 
-                      {isAWSUniverse(currentUniverse?.data) &&
+                      {/*
+                      Read-only users should not be given the rights to "Pause Universe"
+                      */}
+
+                      {isPausableUniverse(currentUniverse?.data) &&
                         !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
                           featureFlags.released['pausedUniverse']) && (
-                          <YBMenuItem onClick={showToggleUniverseStateModal}>
-                            <YBLabelWithIcon icon="fa fa-pause-circle-o">
-                              {!universePaused ? 'Pause Universe' : 'Resume Universe'}
+                          <YBMenuItem
+                            onClick={showToggleUniverseStateModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.pausedUniverse'
+                            )}
+                          >
+                            <YBLabelWithIcon
+                              icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                            >
+                              {universePaused ? 'Resume Universe' : 'Pause Universe'}
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         )}
@@ -656,25 +750,14 @@ class UniverseDetail extends Component {
                   subMenus={{
                     security: (backToMainMenu) => (
                       <>
-                        <MenuItem onClick={backToMainMenu}>
-                          <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
-                        </MenuItem>
-                        <MenuItem divider />
-                        <YBMenuItem
-                          onClick={showTLSConfigurationModal}
-                          availability={editTLSAvailability}
-                        >
-                          Encryption in-Transit
-                        </YBMenuItem>
-                        <YBMenuItem
-                          onClick={showManageKeyModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.manageEncryption'
-                          )}
-                        >
-                          Encryption at-Rest
-                        </YBMenuItem>
+                        <SecurityMenu
+                          backToMainMenu={backToMainMenu}
+                          showTLSConfigurationModal={showTLSConfigurationModal}
+                          editTLSAvailability={editTLSAvailability}
+                          showManageKeyModal={showManageKeyModal}
+                          manageKeyAvailability={manageKeyAvailability}
+                          isItKubernetesUniverse={isItKubernetesUniverse}
+                        />
                       </>
                     )
                   }}
@@ -689,7 +772,8 @@ class UniverseDetail extends Component {
             (visibleModal === 'gFlagsModal' ||
               visibleModal === 'softwareUpgradesModal' ||
               visibleModal === 'tlsConfigurationModal' ||
-              visibleModal === 'rollingRestart')
+              visibleModal === 'rollingRestart' ||
+              visibleModal === 'systemdUpgrade')
           }
           onHide={closeModal}
         />
@@ -708,7 +792,12 @@ class UniverseDetail extends Component {
           type="primary"
           universePaused={universePaused}
         />
-
+        <ToggleBackupStateContainer
+          visible={showModal && visibleModal === 'toggleBackupModalForm'}
+          onHide={closeModal}
+          universe={currentUniverse.data}
+          type="primary"
+        />
         <EncryptionKeyModalContainer
           modalVisible={showModal && visibleModal === 'manageKeyModal'}
           onHide={closeModal}

@@ -13,18 +13,18 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 public abstract class DevopsBase {
   public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
@@ -34,49 +34,82 @@ public abstract class DevopsBase {
   // Command that we would need to execute eg: instance, network, access.
   protected abstract String getCommandType();
 
-  @Inject
-  ShellProcessHandler shellProcessHandler;
+  @Inject ShellProcessHandler shellProcessHandler;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   protected JsonNode parseShellResponse(ShellResponse response, String command) {
     if (response.code == 0) {
       return Json.parse(response.message);
     } else {
-      String errorMsg = "YBCloud command " + getCommandType() +
-                        " (" + command + ") failed to execute.";
+      String errorMsg =
+          "YBCloud command " + getCommandType() + " (" + command + ") failed to execute.";
       LOG.error((response.message != null) ? response.message : errorMsg);
       return ApiResponse.errorJSON(errorMsg);
     }
   }
 
-  protected JsonNode execAndParseCommandCloud(UUID providerUUID, String command, List<String> commandArgs) {
-    ShellResponse response = execCommand(null, providerUUID, null, command,
-        commandArgs, Collections.emptyList());
+  protected JsonNode execAndParseCommandCloud(
+      UUID providerUUID, String command, List<String> commandArgs) {
+    ShellResponse response =
+        execCommand(null, providerUUID, null, command, commandArgs, Collections.emptyList());
     return parseShellResponse(response, command);
   }
 
-  protected JsonNode execAndParseCommandRegion(UUID regionUUID, String command, List<String> commandArgs) {
-    ShellResponse response = execCommand(regionUUID, null, null, command,
-        commandArgs, Collections.emptyList());
+  protected JsonNode execAndParseCommandRegion(
+      UUID regionUUID, String command, List<String> commandArgs) {
+    ShellResponse response =
+        execCommand(regionUUID, null, null, command, commandArgs, Collections.emptyList());
     return parseShellResponse(response, command);
   }
 
-  protected ShellResponse execCommand(UUID regionUUID,
-                                                          UUID providerUUID,
-                                                          String command,
-                                                          List<String> commandArgs,
-                                                          List<String> cloudArgs) {
-    return execCommand(regionUUID, providerUUID, null, command, commandArgs, cloudArgs);
+  protected ShellResponse execCommand(
+      UUID regionUUID,
+      UUID providerUUID,
+      String command,
+      List<String> commandArgs,
+      List<String> cloudArgs) {
+    return execCommand(
+        regionUUID, providerUUID, null /*cloudType*/, command, commandArgs, cloudArgs);
   }
 
-  protected ShellResponse execCommand(UUID regionUUID,
-                                                          UUID providerUUID,
-                                                          Common.CloudType cloudType,
-                                                          String command,
-                                                          List<String> commandArgs,
-                                                          List<String> cloudArgs) {
+  protected ShellResponse execCommand(
+      UUID regionUUID,
+      UUID providerUUID,
+      Common.CloudType cloudType,
+      String command,
+      List<String> commandArgs,
+      List<String> cloudArgs) {
+    return execCommand(regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, null);
+  }
+
+  protected ShellResponse execCommand(
+      UUID regionUUID,
+      UUID providerUUID,
+      Common.CloudType cloudType,
+      String command,
+      List<String> commandArgs,
+      List<String> cloudArgs,
+      Map<String, String> envVars) {
+    return execCommand(
+        regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, envVars, null);
+  }
+
+  protected ShellResponse execCommand(
+      UUID regionUUID,
+      UUID providerUUID,
+      Common.CloudType cloudType,
+      String command,
+      List<String> commandArgs,
+      List<String> cloudArgs,
+      Map<String, String> envVars,
+      Map<String, String> sensitiveData) {
     List<String> commandList = new ArrayList<>();
     commandList.add(YBCLOUD_SCRIPT);
     Map<String, String> extraVars = new HashMap<>();
+    if (envVars != null) {
+      extraVars.putAll(envVars);
+    }
     Region region = null;
     if (regionUUID != null) {
       region = Region.get(regionUUID);
@@ -87,11 +120,11 @@ public abstract class DevopsBase {
       commandList.add(region.provider.code);
       commandList.add("--region");
       commandList.add(region.code);
-      extraVars = region.provider.getConfig();
+      extraVars.putAll(region.provider.getUnmaskedConfig());
     } else if (providerUUID != null) {
       provider = Provider.get(providerUUID);
       commandList.add(provider.code);
-      extraVars = provider.getConfig();
+      extraVars.putAll(provider.getUnmaskedConfig());
     } else if (cloudType != null) {
       commandList.add(cloudType.toString());
     } else {
@@ -108,6 +141,8 @@ public abstract class DevopsBase {
     commandList.add(getCommandType().toLowerCase());
     commandList.add(command);
     commandList.addAll(commandArgs);
-    return shellProcessHandler.run(commandList, extraVars, description);
+    return (sensitiveData != null && !sensitiveData.isEmpty())
+        ? shellProcessHandler.run(commandList, extraVars, description, sensitiveData)
+        : shellProcessHandler.run(commandList, extraVars, description);
   }
 }

@@ -1242,6 +1242,17 @@ _copyPartitionPruneStepCombine(const PartitionPruneStepCombine *from)
 	return newnode;
 }
 
+static PartitionPruneStepFuncOp *
+_copyPartitionPruneStepFuncOp(const PartitionPruneStepFuncOp *from)
+{
+	PartitionPruneStepFuncOp *newnode = makeNode(PartitionPruneStepFuncOp);
+
+	COPY_SCALAR_FIELD(step.step_id);
+	COPY_NODE_FIELD(exprs);
+
+	return newnode;
+}
+
 /*
  * _copyPlanInvalItem
  */
@@ -2862,7 +2873,6 @@ _copyIndexElem(const IndexElem *from)
 	COPY_NODE_FIELD(opclass);
 	COPY_SCALAR_FIELD(ordering);
 	COPY_SCALAR_FIELD(nulls_ordering);
-	COPY_NODE_FIELD(yb_name_list);
 
 	return newnode;
 }
@@ -4811,6 +4821,40 @@ _copyForeignKeyCacheInfo(const ForeignKeyCacheInfo *from)
 	return newnode;
 }
 
+static BackfillIndexStmt *
+_copyBackfillIndexStmt(const BackfillIndexStmt *from)
+{
+	BackfillIndexStmt *newnode = makeNode(BackfillIndexStmt);
+
+	COPY_SCALAR_FIELD(oid_list);
+	COPY_NODE_FIELD(bfinfo);
+
+	return newnode;
+}
+
+static YbBackfillInfo *
+_copyYbBackfillInfo(const YbBackfillInfo *from)
+{
+	YbBackfillInfo *newnode = makeNode(YbBackfillInfo);
+
+	COPY_STRING_FIELD(bfinstr);
+	COPY_SCALAR_FIELD(read_time);
+	COPY_NODE_FIELD(row_bounds);
+
+	return newnode;
+}
+
+static RowBounds *
+_copyRowBounds(const RowBounds *from)
+{
+	RowBounds *newnode = makeNode(RowBounds);
+
+	COPY_STRING_FIELD(partition_key);
+	COPY_STRING_FIELD(row_key_start);
+	COPY_STRING_FIELD(row_key_end);
+
+	return newnode;
+}
 
 /*
  * copyObjectImpl -- implementation of copyObject(); see nodes/nodes.h
@@ -5714,6 +5758,18 @@ copyObjectImpl(const void *from)
 			 */
 		case T_ForeignKeyCacheInfo:
 			retval = _copyForeignKeyCacheInfo(from);
+			break;
+
+		case T_BackfillIndexStmt:
+			retval = _copyBackfillIndexStmt(from);
+			break;
+
+		case T_YbBackfillInfo:
+			retval = _copyYbBackfillInfo(from);
+			break;
+
+		case T_RowBounds:
+			retval = _copyRowBounds(from);
 			break;
 
 		default:

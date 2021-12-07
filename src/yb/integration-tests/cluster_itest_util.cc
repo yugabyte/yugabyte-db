@@ -29,43 +29,60 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/integration-tests/cluster_itest_util.h"
+
+#include <stdint.h>
 
 #include <algorithm>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <boost/optional.hpp>
-
 #include <glog/stl_logging.h>
-
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
 
+#include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
-#include "yb/common/wire_protocol-test-util.h"
 
-#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 
-#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -133,49 +150,34 @@ client::YBSchema SimpleIntKeyYBSchema() {
   return s;
 }
 
-Status GetLastOpIdForEachReplica(const string& tablet_id,
-                                 const vector<TServerDetails*>& replicas,
-                                 consensus::OpIdType opid_type,
-                                 const MonoDelta& timeout,
-                                 vector<OpIdPB>* op_ids) {
-  GetLastOpIdRequestPB opid_req;
-  GetLastOpIdResponsePB opid_resp;
-  opid_req.set_tablet_id(tablet_id);
-  RpcController controller;
+Result<std::vector<OpId>> GetLastOpIdForEachReplica(
+    const TabletId& tablet_id,
+    const std::vector<TServerDetails*>& replicas,
+    consensus::OpIdType opid_type,
+    const MonoDelta& timeout,
+    consensus::OperationType op_type) {
+  struct Getter {
+    const TabletId& tablet_id;
+    consensus::OpIdType opid_type;
+    consensus::OperationType op_type;
 
-  op_ids->clear();
-  for (TServerDetails* ts : replicas) {
-    controller.Reset();
-    controller.set_timeout(timeout);
-    opid_resp.Clear();
-    opid_req.set_dest_uuid(ts->uuid());
-    opid_req.set_tablet_id(tablet_id);
-    opid_req.set_opid_type(opid_type);
-    RETURN_NOT_OK_PREPEND(
-      ts->consensus_proxy->GetLastOpId(opid_req, &opid_resp, &controller),
-      Substitute("Failed to fetch last op id from $0",
-                 ts->instance_id.ShortDebugString()));
-    if (!opid_resp.has_opid()) {
-      LOG(WARNING) << "Received uninitialized op id from " << ts->instance_id.ShortDebugString();
+    Result<OpId> operator()(TServerDetails* ts, rpc::RpcController* controller) const {
+      GetLastOpIdRequestPB opid_req;
+      GetLastOpIdResponsePB opid_resp;
+      opid_req.set_tablet_id(tablet_id);
+      opid_req.set_dest_uuid(ts->uuid());
+      opid_req.set_opid_type(opid_type);
+      if (op_type != consensus::OperationType::UNKNOWN_OP) {
+        opid_req.set_op_type(op_type);
+      }
+      RETURN_NOT_OK(ts->consensus_proxy->GetLastOpId(opid_req, &opid_resp, controller));
+      return OpId::FromPB(opid_resp.opid());
     }
-    op_ids->push_back(opid_resp.opid());
-  }
+  };
 
-  return Status::OK();
-}
-
-Status GetLastOpIdForReplica(const std::string& tablet_id,
-                             TServerDetails* replica,
-                             consensus::OpIdType opid_type,
-                             const MonoDelta& timeout,
-                             OpIdPB* op_id) {
-  vector<TServerDetails*> replicas;
-  replicas.push_back(replica);
-  vector<OpIdPB> op_ids;
-  RETURN_NOT_OK(GetLastOpIdForEachReplica(tablet_id, replicas, opid_type, timeout, &op_ids));
-  CHECK_EQ(1, op_ids.size());
-  *op_id = op_ids[0];
-  return Status::OK();
+  return GetForEachReplica(
+      replicas, timeout,
+      Getter{.tablet_id = tablet_id, .opid_type = opid_type, .op_type = op_type});
 }
 
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers) {
@@ -252,41 +254,40 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
   }
 
   Status last_non_ok_status;
-  vector<OpIdPB> received_ids;
-  vector<OpIdPB> committed_ids;
+  vector<OpId> received_ids;
+  vector<OpId> committed_ids;
 
   for (int attempt = 1; CoarseMonoClock::Now() < deadline; attempt++) {
-    vector<OpIdPB> ids;
+    vector<OpId> ids;
 
     Status s;
     for (auto opid_type : opid_types) {
-      vector<OpIdPB> ids_of_this_type;
-      s = GetLastOpIdForEachReplica(tablet_id, servers, opid_type, timeout, &ids_of_this_type);
-      if (opid_type == consensus::OpIdType::RECEIVED_OPID) {
-        received_ids = ids_of_this_type;
-      } else {
-        committed_ids = ids_of_this_type;
-      }
-      if (s.ok()) {
-        std::copy(ids_of_this_type.begin(), ids_of_this_type.end(), std::back_inserter(ids));
-      } else {
+      auto ids_of_this_type = GetLastOpIdForEachReplica(tablet_id, servers, opid_type, timeout);
+      if (!ids_of_this_type.ok()) {
+        s = ids_of_this_type.status();
         break;
       }
+      if (opid_type == consensus::OpIdType::RECEIVED_OPID) {
+        received_ids = *ids_of_this_type;
+      } else {
+        committed_ids = *ids_of_this_type;
+      }
+      std::copy(ids_of_this_type->begin(), ids_of_this_type->end(), std::back_inserter(ids));
     }
 
     if (s.ok()) {
       int64_t cur_index = kInvalidOpIdIndex;
       bool any_behind = false;
       bool any_disagree = false;
-      for (const OpIdPB& id : ids) {
+      for (const OpId& id : ids) {
         if (cur_index == kInvalidOpIdIndex) {
-          cur_index = id.index();
+          cur_index = id.index;
         }
-        if (id.index() != cur_index) {
+        if (id.index != cur_index) {
           any_disagree = true;
           break;
         }
-        if (id.index() < minimum_index) {
+        if (id.index < minimum_index) {
           any_behind = true;
           break;
         }
@@ -322,28 +323,26 @@ Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
   MonoTime start = MonoTime::Now();
   MonoDelta passed = MonoDelta::FromMilliseconds(0);
   while (true) {
-    vector<OpIdPB> op_ids;
-    Status s = GetLastOpIdForEachReplica(tablet_id, replicas, consensus::RECEIVED_OPID, timeout,
-                                         &op_ids);
-    if (s.ok()) {
+    auto op_ids = GetLastOpIdForEachReplica(tablet_id, replicas, consensus::RECEIVED_OPID, timeout);
+    if (op_ids.ok()) {
       if (actual_minimum_index != nullptr) {
         *actual_minimum_index = std::numeric_limits<int64_t>::max();
       }
 
       bool any_behind = false;
-      for (const OpIdPB& op_id : op_ids) {
+      for (const OpId& op_id : *op_ids) {
         if (actual_minimum_index != nullptr) {
-          *actual_minimum_index = std::min(*actual_minimum_index, op_id.index());
+          *actual_minimum_index = std::min(*actual_minimum_index, op_id.index);
         }
 
-        if (op_id.index() < log_index) {
+        if (op_id.index < log_index) {
           any_behind = true;
           break;
         }
       }
       if (!any_behind) return Status::OK();
     } else {
-      LOG(WARNING) << "Got error getting last opid for each replica: " << s.ToString();
+      LOG(WARNING) << "Got error getting last opid for each replica: " << op_ids.ToString();
     }
     passed = MonoTime::Now().GetDeltaSince(start);
     if (passed.MoreThan(timeout)) {
@@ -528,7 +527,7 @@ Status WaitUntilCommittedOpIdIndex(TServerDetails* replica,
 
   bool config = type == CommittedEntryType::CONFIG;
   Status s;
-  OpIdPB op_id;
+  OpId op_id;
   ConsensusStatePB cstate;
   while (true) {
     MonoDelta remaining_timeout = deadline.GetDeltaSince(MonoTime::Now());
@@ -541,10 +540,13 @@ Status WaitUntilCommittedOpIdIndex(TServerDetails* replica,
         op_index = cstate.config().opid_index();
       }
     } else {
-      s = GetLastOpIdForReplica(tablet_id, replica, consensus::COMMITTED_OPID, remaining_timeout,
-          &op_id);
-      if (s.ok()) {
-        op_index = op_id.index();
+      auto last_op_id_result = GetLastOpIdForReplica(
+          tablet_id, replica, consensus::COMMITTED_OPID, remaining_timeout);
+      if (last_op_id_result.ok()) {
+        op_id = *last_op_id_result;
+        op_index = op_id.index;
+      } else {
+        s = last_op_id_result.status();
       }
     }
 
@@ -561,7 +563,7 @@ Status WaitUntilCommittedOpIdIndex(TServerDetails* replica,
     auto passed = MonoTime::Now().GetDeltaSince(start);
     if (passed.MoreThan(timeout)) {
       auto name = config ? "config" : "consensus";
-      auto last_value = config ? cstate.ShortDebugString() : consensus::OpIdToString(op_id);
+      auto last_value = config ? cstate.ShortDebugString() : AsString(op_id);
       return STATUS(TimedOut,
                     Substitute("Committed $0 opid_index does not equal $1 "
                                "after waiting for $2. Last value: $3, Last status: $4",
@@ -572,7 +574,7 @@ Status WaitUntilCommittedOpIdIndex(TServerDetails* replica,
                                s.ToString()));
     }
     if (!config) {
-      LOG(INFO) << "Committed index is at: " << op_id.index() << " and not yet at "
+      LOG(INFO) << "Committed index is at: " << op_id.index << " and not yet at "
                 << context.Desired();
     }
     SleepFor(MonoDelta::FromMilliseconds(100));
@@ -1011,10 +1013,12 @@ Status GetTabletLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
 Status GetTableLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
                          const YBTableName& table_name,
                          const MonoDelta& timeout,
+                         const RequireTabletsRunning require_tablets_running,
                          master::GetTableLocationsResponsePB* table_locations) {
   master::GetTableLocationsRequestPB req;
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
-  req.set_max_returned_locations(1000);
+  req.set_require_tablets_running(require_tablets_running);
+  req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   RETURN_NOT_OK(master_proxy->GetTableLocations(req, table_locations, &rpc));
@@ -1206,6 +1210,14 @@ Status GetLastOpIdForMasterReplica(const shared_ptr<ConsensusServiceProxy>& cons
   *opid = opid_resp.opid();
 
   return Status::OK();
+}
+
+Result<OpId> GetLastOpIdForReplica(
+    const TabletId& tablet_id,
+    TServerDetails* replica,
+    consensus::OpIdType opid_type,
+    const MonoDelta& timeout) {
+  return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
 }
 
 } // namespace itest

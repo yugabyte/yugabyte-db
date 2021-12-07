@@ -30,6 +30,9 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 + 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - 1) WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 * 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1;
@@ -38,9 +41,6 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v2 + 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = v1 + v2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v2 + 1, v2 = 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 and v2 = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k > 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k != 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k IN (1, 2);
@@ -211,9 +211,22 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 =
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 - k WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 - k WHERE k = 1;
 
--- Random is not a stable function so it should NOT USE single-row.
--- TODO However it technically does not read/write data so later on it could be allowed.
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = ceil(random()) WHERE k = 1;
+-- Test the impact of functions on single row optimization.
+CREATE TABLE single_row_function_test (k INTEGER NOT NULL, date_pk TIMESTAMPTZ, random_field INTEGER, v varchar, created_at TIMESTAMP, PRIMARY KEY(k, date_pk));
+
+-- Verify that using unsupported non-immutable functions in the WHERE clause disables the use of fast path.
+EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET random_field = 2 WHERE k = 1 AND date_pk = timeofday()::TIMESTAMP;
+
+-- Verify that using unsupported non-immutable functions to assign values disables the use of fast path.
+EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET v=getpgusername() WHERE k = 1 AND date_pk = NOW();
+
+-- Verify that using supported non-immutable functions (like random(), NOW(), timestamp, timestampz etc) which do not perform reads or writes to the database
+-- to assign values/WHERE clause does not prevent the use of fast-path.
+EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01 00:00:00'::TIMESTAMP WITH TIME ZONE, random_field = ceil(random())::int  WHERE date_pk = NOW() AND k = 1;
+
+-- Verify that even if the function used in the WHERE clause is a supported but volatile function, the fast path is still disabled.
+EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01 00:00:00'::TIMESTAMP WITH TIME ZONE, random_field = ceil(random())::int  WHERE date_pk = NOW() AND k = random()::int;
+DROP TABLE single_row_function_test;
 
 -- Test execution.
 INSERT INTO single_row_comp_key VALUES (1, 2, 3);
@@ -287,6 +300,76 @@ INSERT INTO single_row_array VALUES (1, ARRAY [1, 2, 3]);
 
 DELETE FROM single_row_array WHERE k = 1;
 SELECT * FROM single_row_array;
+
+--
+-- Test update with complex returning clause expressions
+--
+CREATE TYPE two_int AS (first integer, second integer);
+CREATE TYPE two_text AS (first_text text, second_text text);
+CREATE TABLE single_row_complex_returning (k int primary key, v1 int, v2 text, v3 two_text, array_int int[], v5 int);
+CREATE FUNCTION assign_one_plus_param_to_v1(integer) RETURNS integer
+   AS 'UPDATE single_row_complex_returning SET v1 = $1 + 1 WHERE k = 1 RETURNING $1 * 2;'
+   LANGUAGE SQL;
+CREATE FUNCTION assign_one_plus_param_to_v1_hard(integer) RETURNS two_int
+   AS 'UPDATE single_row_complex_returning SET v1 = $1 + 1 WHERE k = 1 RETURNING $1 * 2, v5 + 1;'
+   LANGUAGE SQL;
+
+-- Below statements should all USE single-row.
+-- (1) Constant
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING 1;
+-- (2) Column reference
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2, v3, array_int;
+-- (3) Subscript
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING array_int[1];
+-- (4) Field selection
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (v3).first_text;
+-- (5) Immutable Operator Invocation
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2||'abc';
+-- (6) Immutable Function Call
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING power(v5, 2);
+-- (7) Type Cast
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v5::text;
+-- (8) Collation Expression
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2 COLLATE "C";
+-- (9) Array Constructor
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ARRAY[[v1,2,v5], [2,3,v5+1]];
+-- (10) Row Constructor
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ROW(1,v2,v3,v5);
+
+-- Below statements should all NOT USE single-row.
+-- (1) Scalar Subquery
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (SELECT MAX(v5)+1 from single_row_complex_returning);
+-- (2) Mutable function
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(v1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1_hard(v1);
+
+-- Test execution
+INSERT INTO single_row_complex_returning VALUES (1, 1, 'xyz', ('a','b'), '{11, 11, 11}', 1);
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING 1, v2, array_int[1], (v3).first_text;
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2||'abc', power(v5, 2), v5::text, v2 COLLATE "C";
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ARRAY[[v1,2,v5], [2,3,v5+1]];
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ROW(1,v2,v3,v5);
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (SELECT MAX(v5)+1 from single_row_complex_returning);
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(v1);
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1_hard(v1);
+SELECT * FROM single_row_complex_returning;
 
 --
 -- Test table without a primary key.
@@ -757,3 +840,14 @@ UPDATE array_t4 SET arr1 = array_remove(arr1, 3::int2),
                     arr2 = array_remove(arr2, 3.25::double precision),
                     arr3 = array_remove(arr3, 'c'::char) WHERE k = 1;
 SELECT * FROM array_t4 ORDER BY k;
+
+-----------------------------------
+-- Test json types.
+
+CREATE TABLE json_t1(k int PRIMARY KEY, json1 json, json2 jsonb);
+
+INSERT INTO json_t1 (k, json1, json2) VALUES (1, '["a", 1]'::json, '["b", 2]'::jsonb);
+SELECT * FROM json_t1;
+
+UPDATE json_t1 SET json1 = json1 -> 0, json2 = json2||'["c", 3]'::jsonb WHERE k = 1;
+SELECT * FROM json_t1;

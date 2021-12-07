@@ -34,7 +34,7 @@
 
 #include <functional>
 #include <map>
-#include <string>
+#include <sstream>
 
 namespace yb {
 

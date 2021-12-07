@@ -39,8 +39,7 @@
 
 #include <rapidjson/document.h>
 
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace client {
@@ -102,6 +101,8 @@ Result<client::YBTableName> ResolveSingleTableName(
     CLIArgumentsIterator i,
     const CLIArgumentsIterator& end,
     TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
+
+CHECKED_STATUS CheckArgumentsCount(int count, int min, int max);
 
 }  // namespace tools
 }  // namespace yb

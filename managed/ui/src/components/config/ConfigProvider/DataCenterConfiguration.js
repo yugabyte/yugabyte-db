@@ -89,6 +89,7 @@ class DataCenterConfiguration extends Component {
       ? 'cloud'
       : 'backup';
     const activeTab = tab || defaultTab;
+    const defaultConfig = section || "s3";
 
     return (
       <div>
@@ -170,7 +171,7 @@ class DataCenterConfiguration extends Component {
           )}
           {isAvailable(currentCustomer.data.features, 'config.backup') && (
             <Tab eventKey="backup" title="Backup" key="storage-config">
-              <StorageConfigurationContainer activeTab={section} />
+              <StorageConfigurationContainer activeTab={defaultConfig} />
             </Tab>
           )}
           {isAvailable(currentCustomer.data.features, 'config.security') && (

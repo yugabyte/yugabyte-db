@@ -41,16 +41,15 @@
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <atomic>
-#include <stack>
 #include <string>
 #include <vector>
-#include <algorithm>
+
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/write_batch_base.h"
 
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
-#include "yb/rocksdb/types.h"
-#include "yb/rocksdb/write_batch_base.h"
 
 namespace rocksdb {
 

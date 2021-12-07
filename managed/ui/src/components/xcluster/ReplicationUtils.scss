@@ -1,0 +1,21 @@
+@import '../../_style/colors.scss';
+
+.replication-status-text {
+  margin-left: 10px;
+  i {
+    margin-right: 5px;
+  }
+  &.success {
+    color: green;
+  }
+  &.failed {
+    color: #f00000;
+  }
+  &.paused {
+    color: #ff9933;
+  }
+}
+
+.yb-spinner {
+  color: $YB_ORANGE;
+}

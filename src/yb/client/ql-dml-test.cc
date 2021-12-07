@@ -11,14 +11,15 @@
 // under the License.
 //
 
-#include <thread>
-
 #include <boost/circular_buffer.hpp>
 
+#include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
 
@@ -33,10 +34,11 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/curl_util.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/format.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
 
@@ -160,7 +162,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
     QLAddStringRangeValue(req, r2);
     table_.AddInt32ColumnValue(req, "c1", c1);
     table_.AddStringColumnValue(req, "c2", c2);
-    CHECK_OK(session->Apply(op));
+    session->Apply(op);
     return op;
   }
 
@@ -205,7 +207,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
     table_.AddInt32Condition(condition, "r1", QL_OP_EQUAL, r1);
     table_.AddStringCondition(condition, "r2", QL_OP_EQUAL, r2);
     table_.AddColumns(columns, req);
-    EXPECT_OK(session->Apply(op));
+    session->Apply(op);
     return op;
   }
 
@@ -360,8 +362,7 @@ size_t CountIterators(MiniCluster* cluster) {
   size_t result = 0;
 
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    std::vector<std::shared_ptr<tablet::TabletPeer>> peers;
-    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       auto statistics = peer->tablet()->regulardb_statistics();
       auto value = statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
@@ -1225,7 +1226,7 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, k);
       table.AddInt32ColumnValue(req, "v", -k);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
     }
     ASSERT_OK(session->Flush());
     table_creation_thread.join();

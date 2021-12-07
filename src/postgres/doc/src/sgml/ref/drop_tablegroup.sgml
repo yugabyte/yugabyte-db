@@ -1,0 +1,85 @@
+<!--
+doc/src/sgml/ref/drop_tablegroup.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-droptablegroup">
+  <indexterm zone="sql-droptablegroup">
+    <primary>DROP TABLEGROUP</primary>
+  </indexterm>
+
+  <refmeta>
+    <refentrytitle>DROP TABLEGROUP</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>SQL - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>DROP TABLEGROUP</refname>
+    <refpurpose>remove a tablegroup</refpurpose>
+  </refnamediv>
+
+  <refsynopsisdiv>
+    <synopsis>
+      DROP TABLEGROUP <replaceable class="parameter">name</replaceable>
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      <command>DROP TABLEGROUP</command> removes a tablegroup from the system.
+    </para>
+
+    <para>
+      A tablegroup can only be dropped by its owner or a superuser.
+      The tablegroup must be empty of all database objects before it can be
+      dropped.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term><replaceable class="parameter">name</replaceable></term>
+        <listitem>
+          <para>
+            The name of a tablegroup.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      To remove tablegroup <literal>tblgrp</literal> from the system:
+      <programlisting>
+        DROP TABLEGROUP tblgrp;
+      </programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Compatibility</title>
+
+    <para>
+      There is no <command>DROP TABLEGROUP</command> statement in
+      the SQL standard.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="sql-createtablegroup"/></member>
+      <member><xref linkend="sql-altertablegroup"/></member>
+    </simplelist>
+  </refsect1>
+</refentry>

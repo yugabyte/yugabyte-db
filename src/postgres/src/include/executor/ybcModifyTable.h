@@ -26,16 +26,36 @@
 #include "nodes/execnodes.h"
 #include "executor/tuptable.h"
 
+/**
+ * YSQL guc variables that can be used to enable non transactional writes.
+ * e.g. 'SET yb_force_non_transactional_writes=true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_force_non_transactional_writes;
+
 //------------------------------------------------------------------------------
 // YugaByte modify table API.
+
+typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
+											void *indexstate,
+											Relation index,
+											Datum *values,
+											bool *isnull,
+											int natts,
+											Datum ybbasectid,
+											bool ybctid_as_value);
 
 /*
  * Insert data into YugaByte table.
  * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
  */
 extern Oid YBCHeapInsert(TupleTableSlot *slot,
-												 HeapTuple tuple,
-												 EState *estate);
+                         HeapTuple tuple,
+                         EState *estate);
+extern Oid YBCHeapInsertForDb(Oid dboid,
+                              TupleTableSlot *slot,
+                              HeapTuple tuple,
+                              EState *estate);
 
 /*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
@@ -44,14 +64,22 @@ extern Oid YBCHeapInsert(TupleTableSlot *slot,
 extern Oid YBCExecuteInsert(Relation rel,
                             TupleDesc tupleDesc,
                             HeapTuple tuple);
+extern Oid YBCExecuteInsertForDb(Oid dboid,
+                                 Relation rel,
+                                 TupleDesc tupleDesc,
+                                 HeapTuple tuple);
 
 /*
  * Execute the insert outside of a transaction.
  * Assumes the caller checked that it is safe to do so.
  */
 extern Oid YBCExecuteNonTxnInsert(Relation rel,
-								  TupleDesc tupleDesc,
-								  HeapTuple tuple);
+                                  TupleDesc tupleDesc,
+                                  HeapTuple tuple);
+extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
+                                       Relation rel,
+                                       TupleDesc tupleDesc,
+                                       HeapTuple tuple);
 
 /*
  * Insert a tuple into the an index's backing YugaByte index table.
@@ -60,27 +88,41 @@ extern void YBCExecuteInsertIndex(Relation rel,
 								  Datum *values,
 								  bool *isnull,
 								  Datum ybctid,
-								  bool is_backfill,
-								  uint64_t *write_time);
+								  const uint64_t* backfill_write_time,
+								  yb_bind_for_write_function callback,
+								  void *indexstate);
+extern void YBCExecuteInsertIndexForDb(Oid dboid,
+									   Relation rel,
+									   Datum* values,
+									   bool* isnull,
+									   Datum ybctid,
+									   const uint64_t* backfill_write_time,
+									   yb_bind_for_write_function callback,
+									   void *indexstate);
 
 /*
  * Delete a tuple (identified by ybctid) from a YugaByte table.
  * If this is a single row op we will return false in the case that there was
  * no row to delete. This can occur because we do not first perform a scan if
- * it is a single row op.
+ * it is a single row op. 'changingPart' indicates if this delete is part of an
+ * UPDATE operation on a partitioned table that moves a row from one partition
+ * to anoter.
  */
 extern bool YBCExecuteDelete(Relation rel,
 							 TupleTableSlot *slot,
 							 EState *estate,
-							 ModifyTableState *mtstate);
+							 ModifyTableState *mtstate,
+							 bool changingPart);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
  */
 extern void YBCExecuteDeleteIndex(Relation index,
-                                  Datum *values,
-                                  bool *isnull,
-                                  Datum ybctid);
+								  Datum *values,
+								  bool *isnull,
+								  Datum ybctid,
+								  yb_bind_for_write_function callback,
+								  void *indexstate);
 
 /*
  * Update a row (identified by ybctid) in a YugaByte table.
@@ -117,8 +159,12 @@ extern Oid YBCExecuteUpdateReplace(Relation rel,
 extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple);
 
 extern void YBCUpdateSysCatalogTuple(Relation rel,
-									 HeapTuple oldtuple,
-									 HeapTuple tuple);
+                                     HeapTuple oldtuple,
+                                     HeapTuple tuple);
+extern void YBCUpdateSysCatalogTupleForDb(Oid dboid,
+                                          Relation rel,
+                                          HeapTuple oldtuple,
+                                          HeapTuple tuple);
 
 //------------------------------------------------------------------------------
 // Utility methods.

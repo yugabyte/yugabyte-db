@@ -43,7 +43,7 @@ class PgSelectIndex : public PgDmlRead {
   CHECKED_STATUS PrepareQuery(PgsqlReadRequestPB *read_req);
 
   // The output parameter "ybctids" are pointer to the data buffer in "ybctid_batch_".
-  Result<bool> FetchYbctidBatch(const vector<Slice> **ybctids);
+  virtual Result<bool> FetchYbctidBatch(const vector<Slice> **ybctids);
 
   // Get next batch of ybctids from either PgGate::cache or server.
   Result<bool> GetNextYbctidBatch();
@@ -57,9 +57,6 @@ class PgSelectIndex : public PgDmlRead {
   }
 
  private:
-  // Collect ybctids from IndexTable.
-  CHECKED_STATUS FetchYbctids();
-
   // This secondary query should be executed just one time.
   bool is_executed_ = false;
 };

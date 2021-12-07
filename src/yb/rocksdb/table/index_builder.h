@@ -14,13 +14,11 @@
 #ifndef YB_ROCKSDB_TABLE_INDEX_BUILDER_H
 #define YB_ROCKSDB_TABLE_INDEX_BUILDER_H
 
-#include <list>
-
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/util/result.h"
+
 #include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
@@ -95,10 +93,7 @@ class IndexBuilder {
   // Returns true when it actually flushed entries into index_blocks.
   // Returns false when everything was already flushed by previous call to FlushNextBlock.
   virtual Result<bool> FlushNextBlock(
-      IndexBlocks* index_blocks, const BlockHandle& last_partition_block_handle) {
-    RETURN_NOT_OK(Finish(index_blocks));
-    return true;
-  }
+      IndexBlocks* index_blocks, const BlockHandle& last_partition_block_handle);
 
   // Get the estimated size for index block.
   virtual size_t EstimatedSize() const = 0;
@@ -126,7 +121,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
   explicit ShortenedIndexBuilder(const Comparator* comparator,
                                  int index_block_restart_interval)
       : IndexBuilder(comparator),
-        index_block_builder_(index_block_restart_interval) {}
+        index_block_builder_(index_block_restart_interval, kIndexBlockKeyValueEncodingFormat) {}
 
   void AddIndexEntry(
       std::string* last_key_in_current_block,

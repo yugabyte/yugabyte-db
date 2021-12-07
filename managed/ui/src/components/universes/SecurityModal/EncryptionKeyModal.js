@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Row, Col } from 'react-bootstrap';
+import { Row, Col, Alert } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
 import * as Yup from 'yup';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
@@ -9,6 +9,13 @@ import { YBModal, YBFormToggle, YBFormSelect } from '../../common/forms/fields';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 
 export default class EncryptionKeyModal extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      alertMessage: null
+    };
+  }
+
   componentDidMount() {
     const { configList, fetchKMSConfigList } = this.props;
     if (!configList.data.length) {
@@ -22,29 +29,35 @@ export default class EncryptionKeyModal extends Component {
         data: { universeUUID, universeDetails }
       },
       setEncryptionKey,
-      handleSubmitKey
+      handleSubmitKey,
+      fetchCurrentUniverse
     } = this.props;
     const encryptionAtRestEnabled =
       universeDetails.encryptionAtRestConfig &&
       universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
 
-    // When the both the encryption enabled and rotate key values didn't change
-    // we don't submit the form.
-    if (encryptionAtRestEnabled === values.enableEncryptionAtRest && !values.rotateKey) {
+    // When both the encryption enabled and key values didn't change
+    // we don't submit the form
+    if (values.enableEncryptionAtRest === false && encryptionAtRestEnabled === false) {
+      this.setState({ alertMessage: 'Note! No changes in configuration to submit.' });
       return false;
     }
-    // When the form is submitted without changing the KMS provider select,
-    // we would have the value as string otherwise it would be an object.
-    const kmsConfigUUID = isNonEmptyObject(values.selectKMSProvider)
-      ? values.selectKMSProvider.value
-      : values.selectKMSProvider;
+    if (
+      encryptionAtRestEnabled === values.enableEncryptionAtRest &&
+      universeDetails.encryptionAtRestConfig.kmsConfigUUID === values.selectKMSProvider.value
+    ) {
+      this.setState({ alertMessage: 'Note! No changes in configuration to submit.' });
+      return false;
+    }
 
     const data = {
       key_op: values.enableEncryptionAtRest ? 'ENABLE' : 'DISABLE',
-      kmsConfigUUID: kmsConfigUUID
+      kmsConfigUUID: values.enableEncryptionAtRest ? values.selectKMSProvider.value : null
     };
-
-    handleSubmitKey(setEncryptionKey(universeUUID, data));
+    setEncryptionKey(universeUUID, data).then((resp) => {
+      fetchCurrentUniverse(universeDetails.universeUUID);
+      handleSubmitKey(resp);
+    });
   };
 
   render() {
@@ -65,9 +78,10 @@ export default class EncryptionKeyModal extends Component {
 
     const initialValues = {
       enableEncryptionAtRest: encryptionAtRestEnabled,
-      selectKMSProvider: null,
+      selectKMSProvider: isNonEmptyObject(encryptionAtRestConfig)
+        ? kmsOptions.filter((option) => option.value === encryptionAtRestConfig.kmsConfigUUID)[0]
+        : null,
       awsCmkPolicy: null,
-      rotateKey: false,
       key_type: 'DATA_KEY'
     };
 
@@ -79,13 +93,10 @@ export default class EncryptionKeyModal extends Component {
       })
     });
 
-    if (isNonEmptyObject(encryptionAtRestConfig) && encryptionAtRestConfig.kmsConfigUUID) {
-      initialValues.selectKMSProvider = encryptionAtRestConfig.kmsConfigUUID;
-    }
-
     return (
       <Formik
         initialValues={initialValues}
+        enableReinitialize
         validationSchema={validationSchema}
         onSubmit={(values) => {
           this.handleSubmitForm(values);
@@ -108,7 +119,23 @@ export default class EncryptionKeyModal extends Component {
                   <div className="form-item-custom-label">{labelText}</div>
                 </Col>
                 <Col lg={3}>
-                  <Field name="enableEncryptionAtRest" component={YBFormToggle} />
+                  <Field
+                    name="enableEncryptionAtRest"
+                    component={YBFormToggle}
+                    onChange={({ form }, event) => {
+                      let alertMessage = null;
+                      if (
+                        event.target.checked &&
+                        encryptionAtRestEnabled &&
+                        form.values.selectKMSProvider.value !== encryptionAtRestConfig.kmsConfigUUID
+                      ) {
+                        alertMessage = 'Note! You are rotating the KMS config key.';
+                      }
+                      this.setState({
+                        alertMessage
+                      });
+                    }}
+                  />
                 </Col>
               </Row>
               {props.values.enableEncryptionAtRest && (
@@ -117,17 +144,33 @@ export default class EncryptionKeyModal extends Component {
                     <div className="form-item-custom-label">Key Management Service Config</div>
                   </Col>
                   <Col lg={7}>
-                    <Field name="selectKMSProvider" component={YBFormSelect} options={kmsOptions} />
+                    <Field
+                      name="selectKMSProvider"
+                      component={YBFormSelect}
+                      options={kmsOptions}
+                      onChange={({ form, field, onChange }, option) => {
+                        form.setFieldValue(field.name, option);
+                        let alertMessage = null;
+                        if (
+                          encryptionAtRestEnabled &&
+                          option.value !== encryptionAtRestConfig.kmsConfigUUID
+                        ) {
+                          alertMessage = 'Note! You are rotating the KMS config key.';
+                        }
+                        this.setState({
+                          alertMessage
+                        });
+                      }}
+                    />
                   </Col>
                 </Row>
               )}
-              {encryptionAtRestEnabled && (
+              {this.state.alertMessage && (
                 <Row>
-                  <Col lg={7}>
-                    <div className="form-item-custom-label">{'Rotate Key?'}</div>
-                  </Col>
-                  <Col lg={3}>
-                    <Field name="rotateKey" component={YBFormToggle} />
+                  <Col lg={11}>
+                    <Alert key={this.state.alertMessage} variant="warning" bsStyle="warning">
+                      {this.state.alertMessage}
+                    </Alert>
                   </Col>
                 </Row>
               )}

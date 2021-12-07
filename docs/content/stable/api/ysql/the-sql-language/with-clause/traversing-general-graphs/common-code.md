@@ -16,7 +16,7 @@ Make sure that you have run [`cr-edges.sql`](../graph-representation/#cr-edges-s
 
 ## Create wrapper functions to return the start and the terminal node of a path
 
-The main value of this function is to bring readability. Without it, all of the SQL implementations described in the following sections would otherwise be cluttered with, in some cases, three occurrences of this expression:
+The main value of this function is to bring readability. Without it, all of the SQL implementations described in the following sections would be cluttered with, in some cases, three occurrences of this expression:
 
 ```
 a.path[cardinality(a.path)]
@@ -81,7 +81,7 @@ $body$;
 
 ## Create a procedure to create the set of tables into which to insert paths and filtered paths
 
-It will be useful to insert the paths that the code examples for the various kinds of graph generate so that subsequent ad _hoc_ queries can be run on these results. For example (see _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_), it is interesting to generate the set of shortest paths to the distinct reachable nodes. Because all these tables have the same shape and constraints, it is best to use dynamic SQL issued from a procedure to create them.
+It will be useful to insert the paths that the code examples for the various kinds of graph generate into a table so that subsequent ad _hoc_ queries can be run on these results. For example, it is interesting to generate the set of shortest paths to the distinct reachable nodes (see _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_). Because all these tables have the same shape and constraints, it is best to use dynamic SQL issued from a procedure to create them.
 
 Notice that, in order to ensure that every computed path is unique, a unique index is created on the _"path"_ column. However, [GitHub Issue #6606](https://github.com/yugabyte/yugabyte-db/issues/6606) currently prevents the direct creation of an index on an array. The workaround is to create the index on the `text` typecast of the array. However,  the naïve attempt:
 
@@ -151,11 +151,11 @@ You'll use the procedure _["create_path_table()"](#cr-cr-path-table-sql)_ to cre
 - _"raw_paths"_. This is the target table for the paths that each of the code examples for the various kinds of graph generates.
 - _"shortest_paths"_. This is the target table for the paths produced by procedure _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_.
 - _"unq_containing_paths"_. This is the target table for the paths produced by procedure _["restrict_to_unq_containing_paths()"](#cr-restrict-to-unq-containing-paths-sql)_.
-- _"temp_paths"_, and _"working_paths"_. These tables are used by the approach that uses direct SQL that implements what the recursive CTE does rather than an actual `WITH` clause. See the section [How to implement early path pruning](../undirected-cyclic-graph/#how-to-implement-early-path-pruning).
+- _"temp_paths"_, and _"previous_paths"_. These tables are used by the approach that uses direct SQL, issued from a PL/pgsql stored procedure, that implements what the recursive CTE does rather than an actual `WITH` clause. See the section [How to implement early path pruning](../undirected-cyclic-graph/#how-to-implement-early-path-pruning).
 
-First create the _"raw_paths"_ and optionally adds a column and creates a trigger on the table so that the outcome of each successive repeat of the code that implements the _recursive term_ can be be traced to help the developer see how the code works. (It has this effect only for the implementations of the _"find_paths()"_ procedure that implements early-path-pruning.) 
+First create the _"raw_paths"_ table and optionally add a column and create a trigger on the table so that the outcome of each successive repeat of the code that implements the _recursive term_ can be traced to help the developer see how the code works. (It has this effect only for the implementation of the _"find_paths()"_ procedure that implements early-path-pruning.) 
 
-Because the purpose of the trigger is entirely pedagogical, because is not needed by the substantive _"find_paths()"_ logic, and because its presence brings a theoretical performance drag, you should _either_ use the script that adds the extra tracing column and trigger for the _"raw_paths"_ table _or_ use the script that simply creates the _"raw_paths"_ table bare.
+Because the purpose of the trigger is entirely pedagogical, because it is not needed by the substantive _"find_paths()"_ logic, and because its presence brings a theoretical performance drag, you should _either_ use the script that adds the extra tracing column and trigger for the _"raw_paths"_ table _or_ use the script that simply creates the _"raw_paths"_ table bare—according to your purpose.
 
 **EITHER:**
 
@@ -194,7 +194,7 @@ call create_path_table('raw_paths', false);
 drop function if exists raw_paths_trg_f() cascade;
 ```
 
-You can see that you can run either one of `cr-raw-paths-with-tracing.sql` or `cr-raw-paths-no-tracing.sql` at any time to get the regime that you need. Normally, you'll set up the _"raw_paths"_ table for tracing. But when your purpose is to compare the times for different approaches, you'll you'll set it up without tracing code.
+You can see that you can run either one of `cr-raw-paths-with-tracing.sql` or `cr-raw-paths-no-tracing.sql` at any time to get the regime that you need. Normally, you'll set up the _"raw_paths"_ table for tracing. But when your purpose is to compare the times for different approaches, you'll set it up without tracing code.
 
 Now create the other tables:
 
@@ -204,7 +204,7 @@ Now create the other tables:
 call create_path_table('shortest_paths',        false);
 call create_path_table('unq_containing_paths',  false);
 call create_path_table('temp_paths',            true);
-call create_path_table('working_paths',         true);
+call create_path_table('previous_paths',        true);
 
 create unique index shortest_paths_start_terminal_unq on shortest_paths(start(path), terminal(path));
 ```
@@ -222,7 +222,8 @@ Notice how ordinary (non-recursive) CTEs are used, just as functions and procedu
 ```plpgsql
 drop procedure if exists restrict_to_shortest_paths(text, text, boolean) cascade;
 
--- Filter raw_paths to shortest path to each non-seed node.
+-- Restrict the paths from the start node to every other node
+-- to just the shortest path to each distinct node.
 create procedure restrict_to_shortest_paths(
   in_tab in text, out_tab in text, append in boolean default false)
   language plpgsql
@@ -293,7 +294,8 @@ This procedure is derived trivially from the procedure _["restrict_to_shortest_p
 ```plpgsql
 drop procedure if exists restrict_to_longest_paths(text, text, boolean) cascade;
 
--- Filter raw_paths to shortest path to each non-seed node.
+-- Restrict the paths from the start node to every other node
+-- to just the longest path to each distinct node.
 create procedure restrict_to_longest_paths(
   in_tab in text, out_tab in text, append in boolean default false)
   language plpgsql
@@ -360,17 +362,18 @@ $body$;
 Suppose that the paths _"n1 > n2"_, _"n1 > n2 > n3"_, _"n1 > n2 > n3 > n4"_, and _"n1 > n2 > n3 > n4 > n5"_ were all found by a call like this:
 
 ```
-call find_paths(seed => 'n1');
+call find_paths(start_node => 'n1');
 ```
 
-See, for example, [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql). By construction, all of the paths that it finds start at the node _"n1"_. You can see that the path _"n1 > n2 > n3 > n4 > n5"_ contains each of the shorter paths  _"n1 > n2"_, _"n1 > n2 > n3"_, and _"n1 > n2 > n3 > n4"_. This means that all of the useful information about the paths that have been found, in this example, is conveyed by just the longest containing path. It can sometimes be useful, therefore, to summarize the many results produced by a call to `find_paths()` by listing only the set of unique longest containing paths. The procedure `restrict_to_unq_containing_paths()` finds this set. It relies on the [`@>` built-in array containment operator](../../../../datatypes/type_array/functions-operators/comparison/#the-160-160-160-160-and-160-160-160-160-operators-1).
+See, for example, [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql). By construction, all of the paths that it finds start at the node _"n1"_. You can see that the path _"n1 > n2 > n3 > n4 > n5"_ contains each of the shorter paths  _"n1 > n2"_, _"n1 > n2 > n3"_, and _"n1 > n2 > n3 > n4"_. This means that all of the useful information about the paths that have been found, in this example, is conveyed by just the longest containing path. It can sometimes be useful, therefore, to summarize the many results produced by a call to `find_paths()` by listing only the set of unique longest containing paths. The procedure `restrict_to_unq_containing_paths()` finds this set. It relies on the [`@>` built-in array "contains" operator](../../../../datatypes/type_array/functions-operators/comparison/#the-160-160-160-160-and-160-160-160-160-operators-1).
 
 ##### `cr-restrict-to-unq-containing-paths.sql`
 
 ```plpgsql
 drop procedure if exists restrict_to_unq_containing_paths(text, text, boolean) cascade;
 
--- Filter raw_paths to shortest path to each non-seed node.
+-- Filter the input set of paths to set of longest paths
+-- that jointly contain all the other paths.
 create procedure restrict_to_unq_containing_paths(
   in_tab in text, out_tab in text, append in boolean default false)
   language plpgsql
@@ -410,7 +413,7 @@ end;
 $body$;
 ```
 
-## Create a table function to to list paths from the table of interest
+## Create a table function to list paths from the table of interest
 
 The table function _"list_paths()"_ achieves what you could achieve with an ordinary top-level SQL statement if you edited it before each execution to  use the name of the target table of interest. This is a canonical use case for dynamic SQL.
 
@@ -465,7 +468,7 @@ $body$;
 
 ## Create a procedure to assert that the contents of the "shortest_paths" and the "raw_paths" tables are identical.
 
-In some cases, the result from one of the implementations of the procedure that finds all the paths from a specified starting node finds only the shortest paths. In these cases, the output of the procedure _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_ is identical to its input. The following procedure tests that this is the case.
+In some cases, the result from one of the implementations of the procedure that finds all the paths from a specified start node finds only the shortest paths. In these cases, the output of the procedure _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_ is identical to its input. The following procedure tests that this is the case.
 
 ##### `cr_assert-shortest-paths-same-as-raw-paths.sql`
 
@@ -511,162 +514,8 @@ $body$;
 
 ## Create a procedure and a function for measuring elapsed wall-clock time
 
-Create the script `t.sql` with this content:
+The code that the section [Stress testing different _find_paths()_ implementations on maximally connected graphs](../stress-test/) presents needs to compare the times that alternative implementations take to complete. The \\_timing on_ metacommand doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The \\_o_ metacommand doesn't redirect _stderr_ to the spool file. So you need a SQL scheme to start a stopwatch and later to read it.
 
-```plain
-\o t-o.txt
+The section [Case study—implementing a stopwatch with SQL](../../../../datatypes/type_datetime/stopwatch/) within the overall [Date and time data types](../../../../datatypes/type_datetime/) major section shows you how to implement a SQL stopwatch that allows you to start it with the procedure _start_stopwatch()_ before starting what you want to time and to read it with the function _stopwatch_reading()_ when what you want to time finishes. The result of selecting this function goes to the spool file along with all other query results.
 
-select 'Selecting some text';
-
-\timing on
-
-do $body$
-begin
-  perform pg_sleep(1.0);
-  raise info 'done sleeping';
-end;
-$body$;
-
-\timing off
-\echo Echoing some text
-
-\o
-\q
-```
-
-Now invoke it from the operating system prompt like this (replacing _"demo"_ and _"u1"_ with the names of your test database and test user):
-
-```plain
-ysqlsh -h localhost -p 5433 -d demo -U u1 < t.sql 1> t-1.txt 2> t-2.txt
-```
-
-This invokes `t.sql` and sends the output from the `SELECT` statement to the `t-o.txt` spool file, the output from the `timing off` and `\echo` metacommands to `t-1.txt`, and the output from `raise info` to `t-2.txt`.
-
-This outcome is no good when you want a coherent report. Moreover, it turns out that if you send the `1>` and `2>` redirects to the `t-o.txt` spool file, then you get a surprising outcome: the three streams are interleaved in an unhelpful order, thus:
-
-```
-INFO:  done sleeping
-     
---------------------------
- Selecting some text
-
-Time: 1006.902 ms (00:01.007)
-Echoing some text
-```
-
-Notice, too, that the caption for the `SELECT` output has vanished.
-
-Here is the best practical approach to producing a coherent report:
-
--  Program your own stopwatch explicitly when you do systematic timing tests.
-- Program a function (and especially a table function) from which you can `SELECT` to produce output from a PL/pgSQL execution.
-
-The explicitly programmed stopwatch needs to implement a memo for noting the wall-clock time when it's started. While a (temporary) table would work, this would bring an installation-time nuisance cost and a Heisenberg effect. It's better, therefore, to use this device to start the stopwatch:
-
-```plpgsql
-do $body$
-begin
-  execute 'set stopwatch.start_time to '''||clock_timestamp()::text||'''';
-end;
-$body$;
-```
-
-This looks rather cumbersome. But the operand of the `SET` statement's `TO` keyword can only be a literal.
-
-It's up to you to adopt a naming convention so that no other components of your overall application interfere with the _"stopwatch"_ memo.
-
-Then, later, you can read the stopwatch like this:
-
-```plpgsql
-select (clock_timestamp() - current_setting('stopwatch.start_time')::timestamptz)::interval;
-```
-
-**Note:** Try `select pg_typeof(clock_timestamp())`. The result is `timestamp with time zone`. The overload of the subtraction operator for a pair of `timestamptz	` values takes proper account of the time zone of each value. In other words, it returns the right result even if the session time zone is changed between  when the stopwatch is started and when it is read.
-
-Of course, it's best to encapsulate starting and reading the stopwatch. The bulk of the code formats the elapsed time for best human readability by taking account of the magnitude of the value—just as the output from `\timing off` is formatted.
-
-##### `cr-stopwatch.sql`
-
-```plpgsql
-drop procedure if exists start_stopwatch() cascade;
-drop function if exists stopwatch_reading() cascade;
-
-create procedure start_stopwatch()
-language plpgsql
-as $body$
-declare
-  -- Make a memo of the current wall-clock time.
-  start_time constant text not null := clock_timestamp()::text;
-begin
-  execute 'set stopwatch.start_time to '''||start_time||'''';
-end;
-$body$;
-
-create function stopwatch_reading()
-  returns text
-  -- It's critical to use "volatile". Else wrong results.
-  volatile
-language plpgsql
-as $body$
-declare
-  -- Read the starting wall-clock time from the memo.
-  start_time constant timestamptz not null := current_setting('stopwatch.start_time');
-
-  -- Read the current wall-clock time.
-  curr_time constant timestamptz not null := clock_timestamp();
-  diff constant interval not null := curr_time - start_time;
-
-  hours    constant numeric := extract(hours   from diff);
-  minutes  constant numeric := extract(minutes from diff);
-  seconds  constant numeric := extract(seconds from diff);
-begin
-  return
-    case
-      when seconds < 0.020
-        and minutes < 1
-        and hours < 1                               then 'less than ~20 ms.'
-
-      when seconds between 0.020 and 2.0
-        and minutes < 1
-        and hours < 1                               then ltrim(to_char(round(seconds*1000), '999999'))||' ms.'
-
-      when seconds between 2.0 and  59.999
-        and minutes < 1
-        and hours < 1                               then ltrim(to_char(seconds, '99.9'))||' sec.'
-
-      when minutes between 1 and 59
-        and hours < 1                               then ltrim(to_char(minutes, '99'))||':'||
-                                                         ltrim(to_char(seconds, '09'))||' min.'
-
-      else                                               ltrim(to_char(hours,   '09'))||':'||
-                                                         ltrim(to_char(minutes, '09'))||':'||
-                                                         ltrim(to_char(seconds, '09'))||' hours'
-    end;
-end;
-$body$;
-```
-
-Test the stopwatch like this:
-
-```plpgsl
-set session time zone 'US/Eastern';
-show timezone;
-
-call start_stopwatch();
-select pg_sleep(1.234);
-set session time zone 'US/Pacific';
-select stopwatch_reading();
-
-show timezone;
-```
-
-Here is a typical result:
-
-```
- stopwatch_reading 
--------------------
- 1241 ms.
-```
-
-The reported value inevitably suffers from a small client-server round trip delay and from noise. But this is unimportant for readings of a few seconds or longer.
-
+The dedicated [stopwatch](../../../../datatypes/type_datetime/stopwatch/) section links to a _.zip_ of all of the code so that you can install it for any purpose. However, so that the downloadable code for the overall [Using a recursive CTE to traverse graphs of all kinds](../../traversing-general-graphs/) section, _[recursive-cte-code-examples.zip](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip)_, is self-contained, the necessary stopwatch code is simply reproduced verbatim within that.

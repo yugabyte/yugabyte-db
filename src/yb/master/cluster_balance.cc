@@ -18,22 +18,22 @@
 #include <utility>
 
 #include <boost/algorithm/string/join.hpp>
-#include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
-#include <boost/thread/locks.hpp>
 
 #include "yb/common/common.pb.h"
+
 #include "yb/consensus/quorum_util.h"
-#include "yb/master/catalog_manager.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master_fwd.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/random_util.h"
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/util/shared_lock.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_bool(enable_load_balancing,
             true,
@@ -124,6 +124,15 @@ DEFINE_bool(load_balancer_count_move_as_add, true,
             "Should we enable state change to count add server triggered by load move as just an "
             "add instead of both an add and remove.");
 
+DEFINE_bool(load_balancer_drive_aware, true,
+            "When LB decides to move a tablet from server A to B, on the target LB "
+            "should select the tablet to move from most loaded drive.");
+
+// TODO(tsplit): make false by default or even remove flag after
+// https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
+DEFINE_test_flag(
+    bool, load_balancer_skip_inactive_tablets, true, "Don't move inactive (hidden) tablets");
+
 namespace yb {
 namespace master {
 
@@ -133,6 +142,36 @@ using std::string;
 using std::set;
 using std::vector;
 using strings::Substitute;
+
+namespace {
+
+std::list<TabletId> GetTabletsOnTSToMove(bool drive_aware,
+                                         const CBTabletServerMetadata& from_ts_meta) {
+  std::list<TabletId> all_tablets;
+  if (drive_aware) {
+  for (const auto& path : from_ts_meta.sorted_path_load) {
+    auto path_list = from_ts_meta.path_to_tablets.find(path);
+    if (path_list == from_ts_meta.path_to_tablets.end()) {
+      LOG(INFO) << "Found uninitialized path "<< path;
+      continue;
+    }
+    const std::set<TabletId>& drive_tablets = path_list->second;
+    std::merge(
+        drive_tablets.begin(), drive_tablets.end(),
+        from_ts_meta.starting_tablets.begin(), from_ts_meta.starting_tablets.end(),
+        std::inserter(all_tablets, all_tablets.end()));
+  }
+  } else {
+    std::merge(
+        from_ts_meta.running_tablets.begin(), from_ts_meta.running_tablets.end(),
+        from_ts_meta.starting_tablets.begin(), from_ts_meta.starting_tablets.end(),
+        std::inserter(all_tablets, all_tablets.begin()));
+  }
+
+  return all_tablets;
+}
+
+} // namespace
 
 Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
     const scoped_refptr<TableInfo>& table) const {
@@ -146,30 +185,19 @@ Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
   }
 
   // Custom placement policy does not exist. Check whether this table
-  // has a tablespace associated with it, and if so, return the
-  // placement policy corresponding to that tablespace.
-  if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) &&
-      table->UsesTablespacesForPlacement()) {
-    // Lookup the tablespace for this table.
-    const auto& iter = table_to_tablespace_map_->find(table->id());
-    if (iter == table_to_tablespace_map_->end()) {
-      return STATUS(InternalError, "Tablespace information not found for table " + table->id());
-    }
-    // Lookup the placement info associated with the above tablespace.
-    if (iter->second) {
-      const TablespaceId& tablespace_id = iter->second.value();
-      const auto tablespace_iter = tablespace_placement_map_->find(tablespace_id);
-      if (tablespace_iter == tablespace_placement_map_->end()) {
-        return STATUS(InternalError, "Placement policy not found for " + tablespace_id);
-      }
-      if (tablespace_iter->second) {
-        return tablespace_iter->second.value();
-      }
-    }
+  // has a tablespace associated with it, if so, return the placement info
+  // for that tablespace.
+  auto replication_info = VERIFY_RESULT(tablespace_manager_->GetTableReplicationInfo(table));
+  if (replication_info) {
+    return replication_info.value();
   }
 
-  // No custom policy specified for table.
+  // No custom policy or tablespace specified for table.
   return GetClusterReplicationInfo();
+}
+
+void ClusterLoadBalancer::InitTablespaceManager() {
+  tablespace_manager_ = catalog_manager_->GetTablespaceManager();
 }
 
 Status ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
@@ -282,8 +310,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     options = options_unique_ptr.get();
   }
 
-  // Fetch the tablespace information cached in the catalog manager for all YSQL tables.
-  InitTablespaceInfo();
+  InitTablespaceManager();
 
   // Lock the CatalogManager maps for the duration of the load balancer run.
   CatalogManager::SharedLock lock(catalog_manager_->mutex_);
@@ -305,20 +332,17 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       continue;
     }
     const TableId& table_id = table.first;
-    if (table.second->UsesTablespacesForPlacement()) {
-      // This table uses tablespaces for placment policies. Check whether its tablespace
-      // information is found.
-      if (!TablespacePlacementInformationFound(table_id)) {
-        // Placement information was not present in catalog manager cache. This is probably a
-        // recently created table, skip load balancing for now, hopefully by the next run,
-        // the background task in the catalog manager will pick up the placement information
-        // for this table from the PG catalog tables.
-        // TODO(deepthi) Keep track of the number of times this happens, take appropriate action
-        // if placement stays missing over period of time.
-        YB_LOG_EVERY_N(INFO, 10) << "Skipping load balancing for table " << table.second->name()
-                                 << " as its placement information is not available yet";
-        continue;
-      }
+    if (tablespace_manager_->NeedsRefreshToFindTablePlacement(table.second)) {
+      // Placement information was not present in catalog manager cache. This is probably a
+      // recently created table, skip load balancing for now, hopefully by the next run,
+      // the background task in the catalog manager will pick up the placement information
+      // for this table from the PG catalog tables.
+      // TODO(deepthi) Keep track of the number of times this happens, take appropriate action
+      // if placement stays missing over period of time.
+      YB_LOG_EVERY_N(INFO, 10) << "Skipping load balancing for table " << table.second->name()
+                               << " as its placement information is not available yet";
+      master_errors++;
+      continue;
     }
     ResetTableStatePtr(table_id, options);
 
@@ -580,6 +604,7 @@ void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
 void ClusterLoadBalancer::ResetGlobalState(bool initialize_ts_descs) {
   per_table_states_.clear();
   global_state_ = std::make_unique<GlobalLoadState>();
+  global_state_->drive_aware_ = FLAGS_load_balancer_drive_aware;
   if (initialize_ts_descs) {
     // Only call GetAllDescriptors once for a LB run, and then cache it in global_state_.
     GetAllDescriptors(&global_state_->ts_descs_);
@@ -597,9 +622,8 @@ void ClusterLoadBalancer::ResetTableStatePtr(const TableId& table_id, Options* o
 }
 
 Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  Status s = GetTabletsForTable(table_uuid, &tablets);
-  YB_RETURN_NOT_OK_PREPEND(s, "Skipping table " + table_uuid + "due to error: ");
+  auto tablets = VERIFY_RESULT_PREPEND(
+      GetTabletsForTable(table_uuid), "Skipping table " + table_uuid + "due to error: ");
 
   // Loop over tablet map to register the load that is already live in the cluster.
   for (const auto& tablet : tablets) {
@@ -639,12 +663,16 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
   // Since leader load is only needed to rebalance leaders, we keep the sorting separate.
   state_->SortLeaderLoad();
 
+  if (global_state_->drive_aware_) {
+    state_->SortTabletServerDriveLoad();
+  }
+
   VLOG(1) << Substitute(
-      "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
-      "Wrong placement: $3. BlackListed: $4. Total underreplication: $5, Leader BlackListed: $6",
-      get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
-      get_total_wrong_placement(), get_total_blacklisted_servers(), get_total_under_replication(),
-      get_total_leader_blacklisted_servers());
+      "Table: $0. Total running tablets: $1. Total overreplication: $2. Total starting tablets: $3."
+      " Wrong placement: $4. BlackListed: $5. Total underreplication: $6, Leader BlackListed: $7",
+      table_uuid, get_total_running_tablets(), get_total_over_replication(),
+      get_total_starting_tablets(), get_total_wrong_placement(), get_total_blacklisted_servers(),
+      get_total_under_replication(), get_total_leader_blacklisted_servers());
 
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet->id();
@@ -896,12 +924,8 @@ Result<bool> ClusterLoadBalancer::ShouldSkipLeaderAsVictim(const TabletId& table
 Result<bool> ClusterLoadBalancer::GetTabletToMove(
     const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id) {
   const auto& from_ts_meta = state_->per_ts_meta_[from_ts];
-  set<TabletId> non_over_replicated_tablets;
-  set<TabletId> all_tablets;
-  std::merge(
-      from_ts_meta.running_tablets.begin(), from_ts_meta.running_tablets.end(),
-      from_ts_meta.starting_tablets.begin(), from_ts_meta.starting_tablets.end(),
-      std::inserter(all_tablets, all_tablets.begin()));
+  std::list<TabletId> all_tablets = GetTabletsOnTSToMove(global_state_->drive_aware_, from_ts_meta);
+  std::list<TabletId> non_over_replicated_tablets;
   for (const TabletId& tablet_id : all_tablets) {
     // We don't want to add a new replica to an already over-replicated tablet.
     //
@@ -912,13 +936,13 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
     }
 
      // Don't move a replica right after split
-    if (ContainsKey(from_ts_meta.parent_data_tablets, tablet_id)) {
+    if (ContainsKey(from_ts_meta.disabled_by_ts_tablets, tablet_id)) {
       continue;
     }
 
     if (VERIFY_RESULT(
         state_->CanAddTabletToTabletServer(tablet_id, to_ts, &GetPlacementByTablet(tablet_id)))) {
-      non_over_replicated_tablets.insert(tablet_id);
+      non_over_replicated_tablets.push_back(tablet_id);
     }
   }
 
@@ -1358,19 +1382,16 @@ const scoped_refptr<TableInfo> ClusterLoadBalancer::GetTableInfo(const TableId& 
   return catalog_manager_->GetTableInfoUnlocked(table_uuid);
 }
 
-const Status ClusterLoadBalancer::GetTabletsForTable(
-    const TableId& table_uuid, vector<scoped_refptr<TabletInfo>>* tablets) const {
-  scoped_refptr<TableInfo> table_info = GetTableInfo(table_uuid);
+Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table_uuid) const {
+  auto table_info = GetTableInfo(table_uuid);
 
   if (table_info == nullptr) {
-    return STATUS(InvalidArgument,
-                  Substitute("Invalid UUID '$0' - no entry found in catalog manager table map.",
-                             table_uuid));
+    return STATUS_FORMAT(
+        InvalidArgument, "Invalid UUID '$0' - no entry found in catalog manager table map",
+        table_uuid);
   }
 
-  table_info->GetAllTablets(tablets);
-
-  return Status::OK();
+  return table_info->GetTablets(IncludeInactive(!FLAGS_TEST_load_balancer_skip_inactive_tablets));
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
@@ -1389,12 +1410,6 @@ const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
   } else {
     return GetReadOnlyPlacementFromUuid(l->pb.replication_info());
   }
-}
-
-void ClusterLoadBalancer::InitTablespaceInfo() {
-  // Get the tablespace information.
-  catalog_manager_->GetTablespaceInfo(&tablespace_placement_map_,
-                                      &table_to_tablespace_map_);
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
@@ -1496,54 +1511,6 @@ Result<bool> ClusterLoadBalancer::IsConfigMemberInTransitionMode(const TabletId 
   auto l = tablet->LockForRead();
   auto config = l->pb.committed_consensus_state().config();
   return CountVotersInTransition(config) != 0;
-}
-
-bool ClusterLoadBalancer::TablespacePlacementInformationFound(const TableId& table_id) {
-  // This function returns whether the catalog manager's periodic background task picked
-  // up the tablespace information for table 'table_id' from the PG catalog tables.
-  // 'table_to_tablespace_map_' and 'tablespace_placement_map_' contain the cached results
-  // from the last known run.
-
-  // First check whether tablespace feature has been disabled. If so, nothing to do.
-  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
-    // Tablespaces feature disabled. This is the same as using the default tablespace
-    // for all tables. Return true.
-    return true;
-  }
-
-  // The tablespace maps itself have not been initialized yet, which means the background
-  // task has not run even once since startup.
-  if (!table_to_tablespace_map_ || !tablespace_placement_map_) {
-    return false;
-  }
-
-  // First find the tablespace id for the table.
-  const auto& iter = table_to_tablespace_map_->find(table_id);
-  if (iter == table_to_tablespace_map_->end()) {
-    // No entry found for this table. The background task has not picked up the info
-    // for this table yet, maybe this is a recently created table. Need to wait for
-    // the next run of the background task to get the placement info for this table.
-    return false;
-  }
-
-  if (!iter->second) {
-    // This is a boost::none value, which indicates that this table does not have a custom
-    // tablespace specified for it. It defaults to the cluster placement policy. Nothing
-    // more to do for this table.
-    return true;
-  }
-
-  // The table was associated with a custom tablespace. Now find the placement policy
-  // corresponding to this tablespace.
-  const auto tablespace_iter = tablespace_placement_map_->find(iter->second.value());
-  if (tablespace_iter == tablespace_placement_map_->end()) {
-    // No entry found for this tablespace. This was not picked up by the background task,
-    // probably a recently created tablespace. Need to wait for the next run of the
-    // background task to get the placement info for this table.
-    return false;
-  }
-  // Entry found for the tablespace. Placement information for this table is present in memory.
-  return true;
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(

@@ -1,0 +1,13 @@
+[Unit]
+Description=Yugabyte logs
+Requires=yb-zip_purge_yb_logs.service
+
+[Timer]
+User=yugabyte
+Group=yugabyte
+Unit=yb-zip_purge_yb_logs.service
+# Run hourly at minute 0 (beginning) of every hour
+OnCalendar=00/1:00
+
+[Install]
+WantedBy=timers.target

@@ -26,11 +26,12 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-#include <cctype>
-#include <cstring>
+#include <string>
 #include <unordered_map>
 
 #include <boost/preprocessor/stringize.hpp>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/convenience.h"
@@ -40,7 +41,8 @@
 #include "yb/rocksdb/util/options_parser.h"
 #include "yb/rocksdb/util/options_sanity_check.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/env.h"
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/util/format.h"
 
@@ -1890,6 +1892,7 @@ TEST_F(OptionsParserTest, BlockBasedTableOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(BlockBasedTableOptions, flush_block_policy_factory),
       BLACKLIST_ENTRY(BlockBasedTableOptions, block_cache),
       BLACKLIST_ENTRY(BlockBasedTableOptions, block_cache_compressed),
+      BLACKLIST_ENTRY(BlockBasedTableOptions, data_block_key_value_encoding_format),
       BLACKLIST_ENTRY(BlockBasedTableOptions, filter_policy),
       BLACKLIST_ENTRY(BlockBasedTableOptions, supported_filter_policies),
   };
@@ -1927,11 +1930,13 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, row_cache),
       BLACKLIST_ENTRY(DBOptions, wal_filter),
       BLACKLIST_ENTRY(DBOptions, boundary_extractor),
+      BLACKLIST_ENTRY(DBOptions, max_file_size_for_compaction),
       BLACKLIST_ENTRY(DBOptions, mem_table_flush_filter_factory),
       BLACKLIST_ENTRY(DBOptions, log_prefix),
       BLACKLIST_ENTRY(DBOptions, mem_tracker),
       BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
       BLACKLIST_ENTRY(DBOptions, iterator_replacer),
+      BLACKLIST_ENTRY(DBOptions, compaction_file_filter_factory),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);

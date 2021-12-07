@@ -12,20 +12,20 @@ import getpass
 import glob
 import json
 import logging
-import boto3
 import os
+import random
+import re
+import string
 import sys
 import time
 
-from dateutil.parser import parse
-from texttable import Texttable
-
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-    YB_HOME_DIR, YB_SUDO_PASS
+  generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
+  YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
+  DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
 from ansible_vault import Vault
-from ybops.utils import generate_rsa_keypair, get_datafile_path, scp_to_tmp
+from ybops.utils import generate_rsa_keypair, scp_to_tmp
 
 
 class AbstractMethod(object):
@@ -88,6 +88,7 @@ class AbstractInstancesMethod(AbstractMethod):
     """
     YB_SERVER_TYPE = "cluster-server"
     SSH_USER = "centos"
+    INSTANCE_LOOKUP_RETRY_LIMIT = 120
 
     def __init__(self, base_command, name, required_host=True):
         super(AbstractInstancesMethod, self).__init__(base_command, name)
@@ -101,6 +102,10 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--cloud_subnet",
                                  required=False,
                                  help="The VPC subnet id into which we want to provision")
+        self.parser.add_argument("--cloud_subnet_secondary",
+                                 required=False,
+                                 help="The VPC subnet id into which we want to provision "
+                                 "the secondary network interface")
         if self.required_host:
             self.parser.add_argument("search_pattern", default=None)
         else:
@@ -118,10 +123,6 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--private_key_file", default=default_key_pair)
         self.parser.add_argument("--volume_size", type=int, default=250,
                                  help="desired size (gb) of each volume mounted on instance")
-        self.parser.add_argument("--disk_iops", type=int, default=1000,
-                                 help="desired iops for aws v4 instance volumes")
-        self.parser.add_argument("--disk_throughput", type=int, default=125,
-                                 help="desired throughput for aws gp3 instance volumes")
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")
@@ -134,8 +135,14 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--instance_tags",
                                  required=False,
                                  help="Tags for instances being created.")
-        self.parser.add_argument("--vpcId", required=False,
-                                 help="name of the virtual network associated with the subnet")
+        self.parser.add_argument("--systemd_services",
+                                 action="store_true",
+                                 default=False,
+                                 help="check if systemd services is set")
+        self.parser.add_argument("--machine_image",
+                                 required=False,
+                                 help="The machine image (e.g. an AMI on AWS) to install, "
+                                      "this depends on the region.")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -203,9 +210,88 @@ class AbstractInstancesMethod(AbstractMethod):
         })
         self.extra_vars.update(get_ssh_host_port(host_info, custom_ssh_port))
 
+    def wait_for_host(self, args, default_port=True):
+        logging.info("Waiting for instance {}".format(args.search_pattern))
+        host_lookup_count = 0
+        # Cache the result of the cloud call outside of the loop.
+        host_info = None
+
+        while host_lookup_count < self.INSTANCE_LOOKUP_RETRY_LIMIT:
+            if not host_info:
+                host_info = self.cloud.get_host_info(args)
+
+            if host_info:
+                self.extra_vars.update(
+                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
+                if wait_for_ssh(self.extra_vars["ssh_host"],
+                                self.extra_vars["ssh_port"],
+                                self.extra_vars["ssh_user"],
+                                args.private_key_file):
+                    return host_info
+
+            sys.stdout.write('.')
+            sys.stdout.flush()
+            time.sleep(1)
+            host_lookup_count += 1
+
+        raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
+            args.search_pattern))
+
+    # Find the open ssh port and update the dictionary.
+    def update_open_ssh_port(self, args):
+        ssh_port_updated = False
+        ssh_ports = [self.extra_vars["ssh_port"], args.custom_ssh_port]
+        ssh_port = self.cloud.wait_for_ssh_ports(
+            self.extra_vars["ssh_host"], args.search_pattern, ssh_ports)
+        if self.extra_vars["ssh_port"] != ssh_port:
+            self.extra_vars["ssh_port"] = ssh_port
+            ssh_port_updated = True
+        return ssh_port_updated
+
+
+class ReplaceRootVolumeMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(ReplaceRootVolumeMethod, self).__init__(base_command, "replace_root_volume")
+
+    def add_extra_args(self):
+        super(ReplaceRootVolumeMethod, self).add_extra_args()
+        self.parser.add_argument("--replacement_disk",
+                                 required=True,
+                                 help="The new boot disk to attach to the instance")
+
+    def _replace_root_volume(self, args, host_info, current_root_volume):
+        unmounted = False
+
+        try:
+            id = args.search_pattern
+            logging.info("==> Stopping instance {}".format(id))
+            self.cloud.stop_instance(host_info)
+            self.cloud.unmount_disk(host_info, current_root_volume)
+            logging.info("==> Root volume {} unmounted from {}".format(
+                current_root_volume, id))
+            unmounted = True
+            logging.info("==> Mounting {} as the new root volume on {}".format(
+                args.replacement_disk, id))
+            self._mount_root_volume(host_info, args.replacement_disk)
+        except Exception as e:
+            logging.exception(e)
+            if unmounted:
+                self._mount_root_volume(host_info, current_root_volume)
+        finally:
+            self.cloud.start_instance(host_info, 22)
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+
+        if not host_info:
+            raise YBOpsRuntimeError(
+                "Instance {} not found, was it stopped?".format(args.search_pattern))
+
+        self._replace_root_volume(args, *self._host_info_with_current_root_volume(args, host_info))
+
 
 class DestroyInstancesMethod(AbstractInstancesMethod):
-    """Superclass for destroying an instnace.
+    """Superclass for destroying an instance.
     """
 
     def __init__(self, base_command):
@@ -215,6 +301,11 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
         super(DestroyInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
                                  help="The ip of the instance to delete.")
+        self.parser.add_argument(
+            "--delete_static_public_ip",
+            action="store_true",
+            default=False,
+            help="Delete the static public ip.")
 
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
@@ -225,11 +316,8 @@ class CreateInstancesMethod(AbstractInstancesMethod):
     """Superclass for creating an instance.
 
     This class will create an instance, if one does not already exist with the same conditions,
-    such as name, region or zone, etc. It will also wait for this instance to become SSHable on
-    any of the valid YugaByte ports.
+    such as name, region or zone, etc.
     """
-    INSTANCE_LOOKUP_RETRY_LIMIT = 120
-    DEFAULT_OS_NAME = "centos"
 
     def __init__(self, base_command):
         super(CreateInstancesMethod, self).__init__(base_command, "create")
@@ -239,29 +327,28 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         """Setup the CLI options for creating instances.
         """
         super(CreateInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--machine_image",
-                                 required=False,
-                                 help="The machine image (e.g. an AMI on AWS) to install, "
-                                      "this depends on the region.")
-
         self.parser.add_argument("--assign_public_ip",
                                  action="store_true",
                                  default=False,
                                  help="The ip of the instance to provision")
+
+        self.parser.add_argument("--assign_static_public_ip",
+                                 action="store_true",
+                                 default=False,
+                                 help="Assign a static public ip to the instance")
 
         self.parser.add_argument("--boot_disk_size_gb",
                                  type=int,
                                  default=40,
                                  help="Size of the boot disk in GBs. Currently only works on GCP.")
 
-        self.parser.add_argument("--os_name",
-                                 required=False,
-                                 help="The os name to provision the universe in.",
-                                 default=self.DEFAULT_OS_NAME,
-                                 type=str.lower)
+        self.parser.add_argument("--auto_delete_boot_disk",
+                                 action="store_true",
+                                 default=True,
+                                 help="Delete the root volume on VM termination")
 
-        self.parser.add_argument("--disable_custom_ssh", action="store_true",
-                                 help="Disable running the ansible task for using custom SSH.")
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -271,21 +358,89 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({
             "volume_type": args.volume_type
         })
-
+        self.update_ansible_vars_with_args(args)
         self.run_ansible_create(args)
 
-        if self.can_ssh:
-            self.update_ansible_vars(args)
-            host_info = self.wait_for_host(args)
-            ansible = self.cloud.setup_ansible(args)
-            ansible.run("preprovision.yml", self.extra_vars, host_info)
 
-            if not args.disable_custom_ssh:
-                ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
+class ProvisionInstancesMethod(AbstractInstancesMethod):
+    """Superclass for provisioning an instance.
 
-    def run_ansible_create(self, args):
-        self.update_ansible_vars(args)
-        # TODO: this no longer needs to do anything...
+    This will create an instance, if needed, hence a reference to a Create method.
+    """
+    DEFAULT_OS_NAME = "centos"
+
+    def __init__(self, base_command):
+        self.create_method = None
+        super(ProvisionInstancesMethod, self).__init__(base_command, "provision")
+
+    def preprocess_args(self, args):
+        super(ProvisionInstancesMethod, self).preprocess_args(args)
+
+    def add_extra_args(self):
+        """Override to be able to prepare the same arguments as a Create, as well as all the extra
+        arguments specific to this class.
+        """
+        super(ProvisionInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--air_gap", action="store_true", help="Run airgapped install.")
+        self.parser.add_argument("--skip_preprovision", action="store_true", default=False)
+        self.parser.add_argument("--local_package_path",
+                                 required=False,
+                                 help="Path to local directory with the prometheus tarball.")
+        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
+                                 help="The port for node_exporter to bind to")
+        self.parser.add_argument("--node_exporter_user", default="prometheus")
+        self.parser.add_argument("--install_node_exporter", action="store_true")
+        self.parser.add_argument('--remote_package_path', default=None,
+                                 help="Path to download thirdparty packages "
+                                      "for itest. Only for AWS/onprem")
+        self.parser.add_argument("--os_name",
+                                 required=False,
+                                 help="The os name to provision the universe in.",
+                                 default=self.DEFAULT_OS_NAME,
+                                 type=str.lower)
+        self.parser.add_argument("--disable_custom_ssh", action="store_true",
+                                 help="Disable running the ansible task for using custom SSH.")
+        self.parser.add_argument("--install_python", action="store_true", default=False,
+                                 help="Flag to set if host OS needs python installed for Ansible.")
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find host {} to provision!".format(
+                args.search_pattern))
+
+        self.update_ansible_vars_with_args(args)
+
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
+                                                 default_port=True))
+
+        # Check if secondary subnet is present. If so, configure it.
+        if host_info.get('secondary_subnet'):
+            self.cloud.configure_secondary_interface(
+                args, self.extra_vars, self.cloud.get_subnet_cidr(args,
+                                                                  host_info['secondary_subnet']))
+
+        if not args.skip_preprovision:
+            self.preprovision(args)
+
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        if args.local_package_path:
+            self.extra_vars.update({"local_package_path": args.local_package_path})
+        if args.air_gap:
+            self.extra_vars.update({"air_gap": args.air_gap})
+        if args.node_exporter_port:
+            self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
+        if args.install_node_exporter:
+            self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
+        if args.node_exporter_user:
+            self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
+        if args.remote_package_path:
+            self.extra_vars.update({"remote_package_path": args.remote_package_path})
+        self.extra_vars.update({"systemd_option": args.systemd_services})
+        self.extra_vars.update({"instance_type": args.instance_type})
+        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+
+        self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",
@@ -302,109 +457,50 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         if args.network is not None:
             self.extra_vars["network_name"] = args.network
 
-        self.extra_vars["assign_public_ip"] = "yes" if args.assign_public_ip else "no"
-        self.update_ansible_vars_with_args(args)
+    def preprovision(self, args):
+        self.update_ansible_vars(args)
+        ssh_port_updated = self.update_open_ssh_port(args,)
+        use_default_port = not ssh_port_updated
+        host_info = self.wait_for_host(args, default_port=use_default_port)
+        ansible = self.cloud.setup_ansible(args)
+        if (args.install_python):
+            self.extra_vars["install_python"] = True
+        ansible.run("preprovision.yml", self.extra_vars, host_info)
 
-    def wait_for_host(self, args, default_port=True):
-        logging.info("Waiting for instance {}".format(args.search_pattern))
-        host_lookup_count = 0
-        # Cache the result of the cloud call outside of the loop.
-        host_info = None
-        while True:
-            host_lookup_count += 1
-            if not host_info:
-                host_info = self.cloud.get_host_info(args)
-            if host_info:
-                self.extra_vars.update(
-                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
-                if wait_for_ssh(self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.extra_vars["ssh_user"],
-                                args.private_key_file):
-                    return host_info
-            sys.stdout.write('.')
-            sys.stdout.flush()
-            time.sleep(1)
-            if host_lookup_count > self.INSTANCE_LOOKUP_RETRY_LIMIT:
-                raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
-                    args.search_pattern))
+        if not args.disable_custom_ssh and use_default_port:
+            ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
 
-class ProvisionInstancesMethod(AbstractInstancesMethod):
-    """Superclass for provisioning an instance.
-
-    This will create an instance, if needed, hence a reference to a Create method.
-    """
-
+class CreateRootVolumesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
-        self.create_method = None
-        super(ProvisionInstancesMethod, self).__init__(base_command, "provision")
-
-    def setup_create_method(self):
-        """Hook for subclasses to provide the specific Create method required (can be different
-        from cloud to cloud).
-        """
+        super(CreateRootVolumesMethod, self).__init__(base_command, "create_root_volumes")
         self.create_method = CreateInstancesMethod(self.base_command)
 
+    def add_extra_args(self):
+        self.create_method.parser = self.parser
+        self.create_method.add_extra_args()
+
+        self.parser.add_argument("--num_disks",
+                                 required=False,
+                                 default=1,
+                                 help="The number of boot disks to allocate in the zone")
+
     def preprocess_args(self, args):
-        super(ProvisionInstancesMethod, self).preprocess_args(args)
+        super(CreateRootVolumesMethod, self).preprocess_args(args)
         self.create_method.preprocess_args(args)
 
-    def add_extra_args(self):
-        """Override to be able to prepare the same arguments as a Create, as well as all the extra
-        arguments specific to this class.
-        """
-        # Generate the create method.
-        self.setup_create_method()
-        # Bind the parser of this extra method, to the one of the provision method so all new
-        # options are properly setup for provisioning.
-        self.create_method.parser = self.parser
-        # Actually call the Create method function for setting up extra options.
-        self.create_method.add_extra_args()
-        # Add extra options on top of the Create method ones.
-        self.parser.add_argument("--air_gap", action="store_true", help="Run airgapped install.")
-        self.parser.add_argument("--reuse_host", action="store_true", default=False)
-        self.parser.add_argument("--local_package_path",
-                                 required=False,
-                                 help="Path to local directory with the prometheus tarball.")
-        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
-                                 help="The port for node_exporter to bind to")
-        self.parser.add_argument("--node_exporter_user", default="prometheus")
-        self.parser.add_argument("--install_node_exporter", action="store_true")
-        self.parser.add_argument('--remote_package_path', default=None,
-                                 help="Path to download thirdparty packages "
-                                      "for itest. Only for AWS/onprem")
-
     def callback(self, args):
-        host_info = self.cloud.get_host_info(args)
-        if host_info:
-            if not args.reuse_host:
-                raise YBOpsRuntimeError("Found host {} but was asked to not reuse host!".format(
-                    args.search_pattern))
-            else:
-                logging.info("Host {} already created.".format(args.search_pattern))
-        elif args.search_pattern != 'localhost':
-            self.create_method.callback(args)
-            host_info = self.cloud.get_host_info(args)
-        self.update_ansible_vars_with_args(args)
+        unique_string = ''.join(random.choice(string.ascii_lowercase) for i in range(6))
+        args.search_pattern = "{}-".format(unique_string) + args.search_pattern
+        vid = self.create_master_volume(args)
+        output = [vid]
+        num_disks = int(args.num_disks) - 1
 
-        if host_info:
-            self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
-        if args.local_package_path:
-            self.extra_vars.update({"local_package_path": args.local_package_path})
-        if args.air_gap:
-            self.extra_vars.update({"air_gap": args.air_gap})
-        if args.node_exporter_port:
-            self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
-        if args.install_node_exporter:
-            self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
-        if args.node_exporter_user:
-            self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
-        if args.remote_package_path:
-            self.extra_vars.update({"remote_package_path": args.remote_package_path})
-        self.extra_vars.update({"instance_type": args.instance_type})
-        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
-        self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
+        if num_disks > 0:
+            output.extend(self.cloud.clone_disk(args, vid, num_disks))
+
+        logging.info("==> Created volumes {}".format(output))
+        print(json.dumps(output))
 
 
 class ListInstancesMethod(AbstractInstancesMethod):
@@ -451,18 +547,62 @@ class UpdateDiskMethod(AbstractInstancesMethod):
     def callback(self, args):
         self.cloud.update_disk(args)
         host_info = self.cloud.get_host_info(args)
+        self.update_ansible_vars_with_args(args)
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
-            "ssh_user": self.SSH_USER,
+            "ssh_user": self.extra_vars["ssh_user"],
             "private_key_file": args.private_key_file
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, ssh_options)
 
 
+class ChangeInstanceTypeMethod(AbstractInstancesMethod):
+    """Superclass for resizing the instances (instance type) in the given pattern.
+    """
+
+    def __init__(self, base_command):
+        super(ChangeInstanceTypeMethod, self).__init__(base_command, "change_instance_type")
+
+    def prepare(self):
+        super(ChangeInstanceTypeMethod, self).prepare()
+
+    def callback(self, args):
+        self._validate_args(args)
+        host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Instance {} not found".format(args.search_pattern))
+
+        self._resize_instance(args, self._host_info(args, host_info))
+
+    def _validate_args(self, args):
+        # Make sure "instance_type" exists in args
+        if args.instance_type is None:
+            raise YBOpsRuntimeError("instance_type not defined. Please define your intended type"
+                                    " using --instance_type argument")
+
+    def _resize_instance(self, args, host_info):
+        logging.info("Stopping instance {}".format(args.search_pattern))
+        self.cloud.stop_instance(host_info)
+        logging.info('Instance {} is stopped'.format(args.search_pattern))
+
+        try:
+            # Change instance type
+            self._change_instance_type(args, host_info)
+            logging.info('Instance {}\'s type changed to {}'
+                         .format(args.search_pattern, args.instance_type))
+        except Exception as e:
+            raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
+                                    .format(repr(e)))
+        finally:
+            self.cloud.start_instance(host_info, int(args.custom_ssh_port))
+            logging.info('Instance {} is started'.format(args.search_pattern))
+
+
 class CronCheckMethod(AbstractInstancesMethod):
     """Superclass for checking cronjob status on specified node.
     """
+
     def __init__(self, base_command):
         super(CronCheckMethod, self).__init__(base_command, "croncheck")
 
@@ -477,7 +617,7 @@ class CronCheckMethod(AbstractInstancesMethod):
             "private_key_file": args.private_key_file
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
-        if not validate_cron_status(
+        if not args.systemd_services and not validate_cron_status(
                 ssh_options['ssh_host'], ssh_options['ssh_port'], ssh_options['ssh_user'],
                 ssh_options['private_key_file']):
             raise YBOpsRuntimeError(
@@ -486,6 +626,9 @@ class CronCheckMethod(AbstractInstancesMethod):
 
 class ConfigureInstancesMethod(AbstractInstancesMethod):
     VALID_PROCESS_TYPES = ['master', 'tserver']
+    CERT_ROTATE_ACTIONS = ['APPEND_NEW_ROOT_CERT', 'ROTATE_CERTS',
+                           'REMOVE_OLD_ROOT_CERT', 'UPDATE_CERT_DIRS']
+    SKIP_CERT_VALIDATION_OPTIONS = ['ALL', 'HOSTNAME']
 
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
@@ -500,35 +643,48 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--extra_gflags', default=None)
         self.parser.add_argument('--gflags', default=None)
         self.parser.add_argument('--replace_gflags', action="store_true")
+        self.parser.add_argument('--add_default_gflags', default=None)
         self.parser.add_argument('--gflags_to_remove', default=None)
         self.parser.add_argument('--master_addresses_for_tserver')
         self.parser.add_argument('--master_addresses_for_master')
         self.parser.add_argument('--server_broadcast_addresses')
-        self.parser.add_argument('--rootCA_cert')
-        self.parser.add_argument('--rootCA_key')
-        self.parser.add_argument('--client_key')
-        self.parser.add_argument('--client_cert')
-        self.parser.add_argument('--use_custom_certs', action="store_true")
-        self.parser.add_argument('--rotating_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
-        self.parser.add_argument('--node_cert_path')
-        self.parser.add_argument('--node_key_path')
+        self.parser.add_argument('--server_cert_path')
+        self.parser.add_argument('--server_key_path')
+        self.parser.add_argument('--certs_location')
+        self.parser.add_argument('--certs_node_dir')
+        self.parser.add_argument('--root_cert_path_client_to_server')
+        self.parser.add_argument('--server_cert_path_client_to_server')
+        self.parser.add_argument('--server_key_path_client_to_server')
+        self.parser.add_argument('--certs_location_client_to_server')
+        self.parser.add_argument('--certs_client_dir')
         self.parser.add_argument('--client_cert_path')
         self.parser.add_argument('--client_key_path')
+        self.parser.add_argument('--cert_rotate_action', default=None,
+                                 choices=self.CERT_ROTATE_ACTIONS)
+        self.parser.add_argument('--skip_cert_validation',
+                                 default=None, choices=self.SKIP_CERT_VALIDATION_OPTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
-        self.parser.add_argument('--certs_node_dir',
-                                 default=os.path.join(YB_HOME_DIR, "yugabyte-tls-config"))
         self.parser.add_argument('--encryption_key_source_file')
         self.parser.add_argument('--encryption_key_target_dir',
                                  default="yugabyte-encryption-files")
 
-        self.parser.add_argument('--master_http_port', default=7000)
-        self.parser.add_argument('--master_rpc_port', default=7100)
-        self.parser.add_argument('--tserver_http_port', default=9000)
-        self.parser.add_argument('--tserver_rpc_port', default=9100)
-        self.parser.add_argument('--cql_proxy_rpc_port', default=9042)
-        self.parser.add_argument('--redis_proxy_rpc_port', default=6379)
+        self.parser.add_argument('--master_http_port', default=DEFAULT_MASTER_HTTP_PORT)
+        self.parser.add_argument('--master_rpc_port', default=DEFAULT_MASTER_RPC_PORT)
+        self.parser.add_argument('--tserver_http_port', default=DEFAULT_TSERVER_HTTP_PORT)
+        self.parser.add_argument('--tserver_rpc_port', default=DEFAULT_TSERVER_RPC_PORT)
+        self.parser.add_argument('--cql_proxy_rpc_port', default=DEFAULT_CQL_PROXY_RPC_PORT)
+        self.parser.add_argument('--redis_proxy_rpc_port', default=DEFAULT_REDIS_PROXY_RPC_PORT)
+
+        # Parameters for downloading YB package directly on DB nodes.
+        self.parser.add_argument('--s3_remote_download', action="store_true")
+        self.parser.add_argument('--aws_access_key')
+        self.parser.add_argument('--aws_secret_key')
+        self.parser.add_argument('--gcs_remote_download', action="store_true")
+        self.parser.add_argument('--gcs_credentials_json')
+        self.parser.add_argument('--http_remote_download', action="store_true")
+        self.parser.add_argument('--http_package_checksum', default='')
 
         # Development flag for itests.
         self.parser.add_argument('--itest_s3_package_path',
@@ -556,6 +712,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 "redis_proxy_rpc_port": args.redis_proxy_rpc_port,
                 "cert_valid_duration": args.cert_valid_duration,
                 "org_name": args.org_name,
+                "certs_client_dir": args.certs_client_dir,
                 "certs_node_dir": args.certs_node_dir,
                 "encryption_key_dir": args.encryption_key_target_dir
             })
@@ -572,6 +729,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError("Supported types for this command are only: {}".format(
                 self.supported_types))
 
+        self.extra_vars["systemd_option"] = args.systemd_services
+
         # Make sure we set server_type so we pick the right configure.
         self.update_ansible_vars_with_args(args)
 
@@ -583,38 +742,23 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.package is not None:
             self.extra_vars["package"] = args.package
 
+        if args.add_default_gflags is not None:
+            self.extra_vars["add_default_gflags"] = args.add_default_gflags.strip()
+
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)
 
         if args.gflags_to_remove is not None:
             self.extra_vars["gflags_to_remove"] = json.loads(args.gflags_to_remove)
 
-        if args.rootCA_cert is not None:
-            self.extra_vars["rootCA_cert"] = args.rootCA_cert.strip()
-
-        if args.rootCA_key is not None:
-            self.extra_vars["rootCA_key"] = args.rootCA_key.strip()
-
-        if args.client_cert is not None:
-            self.extra_vars["client_cert"] = args.client_cert.strip()
-
-        if args.client_key is not None:
-            self.extra_vars["client_key"] = args.client_key.strip()
-
         if args.root_cert_path is not None:
             self.extra_vars["root_cert_path"] = args.root_cert_path.strip()
 
-        if args.node_cert_path is not None:
-            self.extra_vars["node_cert_path"] = args.node_cert_path.strip()
-
-        if args.node_key_path is not None:
-            self.extra_vars["node_key_path"] = args.node_key_path.strip()
-
-        if args.client_cert_path is not None:
-            self.extra_vars["client_cert_path"] = args.client_cert_path.strip()
-
-        if args.client_key_path is not None:
-            self.extra_vars["client_key_path"] = args.client_key_path.strip()
+        if args.cert_rotate_action is not None:
+            if args.cert_rotate_action not in self.CERT_ROTATE_ACTIONS:
+                raise YBOpsRuntimeError(
+                    "Supported actions for this command are only: {}".format(
+                        self.CERT_ROTATE_ACTIONS))
 
         host_info = None
         if args.search_pattern != 'localhost':
@@ -638,7 +782,64 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             # TODO: Add a variable to specify itest ssh_user depending on VM users.
             start_time = time.time()
             if args.package and (args.tags is None or args.tags == "download-software"):
-                if args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
+                if args.s3_remote_download:
+                    aws_access_key = args.aws_access_key or os.getenv('AWS_ACCESS_KEY_ID')
+                    aws_secret_key = args.aws_secret_key or os.getenv('AWS_SECRET_ACCESS_KEY')
+
+                    if aws_access_key is None or aws_secret_key is None:
+                        raise YBOpsRuntimeError("Aws credentials are not specified, nor found in " +
+                                                "the environment to download YB package from {}"
+                                                .format(args.package))
+
+                    s3_uri_pattern = r"^s3:\/\/(?:[^\/]+)\/(?:.+)$"
+                    match = re.match(s3_uri_pattern, args.package)
+                    if not match:
+                        raise YBOpsRuntimeError("{} is not a valid s3 URI. Must match {}"
+                                                .format(args.package, s3_uri_pattern))
+
+                    self.extra_vars['s3_package_path'] = args.package
+                    self.extra_vars['aws_access_key'] = aws_access_key
+                    self.extra_vars['aws_secret_key'] = aws_secret_key
+                    logging.info(
+                        "Variables to download {} directly on the remote host added."
+                        .format(args.package))
+                elif args.gcs_remote_download:
+                    gcs_credentials_json = args.gcs_credentials_json or \
+                        os.getenv('GCS_CREDENTIALS_JSON')
+
+                    if gcs_credentials_json is None:
+                        raise YBOpsRuntimeError("GCS credentials are not specified, nor found in " +
+                                                "the environment to download YB package from {}"
+                                                .format(args.package))
+
+                    gcs_uri_pattern = r"^gs:\/\/(?:[^\/]+)\/(?:.+)$"
+                    match = re.match(gcs_uri_pattern, args.package)
+                    if not match:
+                        raise YBOpsRuntimeError("{} is not a valid gs URI. Must match {}"
+                                                .format(args.package, gcs_uri_pattern))
+
+                    self.extra_vars['gcs_package_path'] = args.package
+                    self.extra_vars['gcs_credentials_json'] = gcs_credentials_json
+                    logging.info(
+                        "Variables to download {} directly on the remote host added."
+                        .format(args.package))
+                elif args.http_remote_download:
+                    http_url_pattern = r"^((?:https?):\/\/(?:www\.)?[a-z0-9\.:].*?)(?:\?.*)?$"
+                    match = re.match(http_url_pattern, args.package)
+                    if not match:
+                        raise YBOpsRuntimeError("{} is not a valid HTTP URL. Must match {}"
+                                                .format(args.package, http_url_pattern))
+
+                    # Remove query string part from http url.
+                    self.extra_vars["package"] = match.group(1)
+
+                    # Pass the complete http url to download the package.
+                    self.extra_vars['http_package_path'] = match.group(0)
+                    self.extra_vars['http_package_checksum'] = args.http_package_checksum
+                    logging.info(
+                        "Variables to download {} directly on the remote host added."
+                        .format(args.package))
+                elif args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
                     itest_extra_vars = self.extra_vars.copy()
                     itest_extra_vars["itest_s3_package_path"] = args.itest_s3_package_path
                     itest_extra_vars["ssh_user"] = "centos"
@@ -648,8 +849,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         "configure-{}.yml".format(args.type), itest_extra_vars, host_info)
                     logging.info(("[app] Running itest tasks including S3 " +
                                   "package download {} to {} took {:.3f} sec").format(
-                                args.itest_s3_package_path,
-                                args.search_pattern, time.time() - start_time))
+                        args.itest_s3_package_path,
+                        args.search_pattern, time.time() - start_time))
                 else:
                     scp_to_tmp(
                         args.package,
@@ -668,17 +869,72 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
-        if args.use_custom_certs:
-            if args.rotating_certs:
-                logging.info("Verifying root certs are the same.")
-                self.cloud.compare_root_certs(self.extra_vars, ssh_options)
-            logging.info("Copying custom certificates to {}.".format(args.search_pattern))
-            self.cloud.copy_certs(self.extra_vars, ssh_options)
-        else:
-            if args.rootCA_cert and args.rootCA_key is not None:
-                logging.info("Creating and copying over client TLS certificate to {}".format(
-                    args.search_pattern))
-                self.cloud.generate_client_cert(self.extra_vars, ssh_options)
+        rotate_certs = False
+        if args.cert_rotate_action is not None:
+            if args.cert_rotate_action == "APPEND_NEW_ROOT_CERT":
+                self.cloud.append_new_root_cert(
+                    ssh_options,
+                    args.root_cert_path,
+                    args.certs_location,
+                    args.certs_node_dir
+                )
+                return
+            if args.cert_rotate_action == "REMOVE_OLD_ROOT_CERT":
+                self.cloud.remove_old_root_cert(
+                    ssh_options,
+                    args.certs_node_dir
+                )
+                return
+            if args.cert_rotate_action == "ROTATE_CERTS":
+                rotate_certs = True
+
+        # Copying Server Certs
+        logging.info("Copying certificates to {}.".format(args.search_pattern))
+        if args.root_cert_path is not None:
+            logging.info("Server RootCA Certificate Exists: {}.".format(args.root_cert_path))
+            self.cloud.copy_server_certs(
+                ssh_options,
+                args.root_cert_path,
+                args.server_cert_path,
+                args.server_key_path,
+                args.certs_location,
+                args.certs_node_dir,
+                rotate_certs,
+                args.skip_cert_validation)
+
+        if args.root_cert_path_client_to_server is not None:
+            logging.info("Server clientRootCA Certificate Exists: {}.".format(
+                args.root_cert_path_client_to_server))
+            self.cloud.copy_server_certs(
+                ssh_options,
+                args.root_cert_path_client_to_server,
+                args.server_cert_path_client_to_server,
+                args.server_key_path_client_to_server,
+                args.certs_location_client_to_server,
+                args.certs_client_dir,
+                rotate_certs,
+                args.skip_cert_validation)
+
+        # Copying client certs
+        if args.client_cert_path is not None:
+            logging.info("Client Certificate Exists: {}.".format(args.client_cert_path))
+            if args.root_cert_path_client_to_server is not None:
+                self.cloud.copy_client_certs(
+                    ssh_options,
+                    args.root_cert_path_client_to_server,
+                    args.client_cert_path,
+                    args.client_key_path,
+                    args.certs_location_client_to_server
+                )
+            else:
+                self.cloud.copy_client_certs(
+                    ssh_options,
+                    args.root_cert_path,
+                    args.client_cert_path,
+                    args.client_key_path,
+                    args.certs_location
+                )
+
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
             logging.info("Copying over encryption-at-rest certificate from {} to {}".format(
@@ -686,7 +942,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
         # If we are just rotating certs, we don't need to do any configuration changes.
-        if not args.rotating_certs:
+        if not rotate_certs:
             self.cloud.setup_ansible(args).run(
                 "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 

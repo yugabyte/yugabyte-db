@@ -16,9 +16,12 @@
 
 #include <memory>
 
-#include "yb/util/locks.h"
+#include <gflags/gflags_declare.h>
+
+#include "yb/gutil/casts.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/status.h"
-#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -41,8 +44,8 @@ class PriorityThreadPoolTask {
   virtual void Run(const Status& status, PriorityThreadPoolSuspender* suspender) = 0;
 
   // Returns true if the task belongs to specified key, which was passed to
-  // PriorityThreadPool::Remove.
-  virtual bool BelongsTo(void* key) = 0;
+  // PriorityThreadPool::Remove and and should be removed when we remove key.
+  virtual bool ShouldRemoveWithKey(void* key) = 0;
 
   virtual std::string ToString() const = 0;
 
@@ -72,7 +75,8 @@ class PriorityThreadPool {
     return result;
   }
 
-  // Remove all tasks with provided key from the pool.
+  // Remove all removable (see PriorityThreadPoolTask::ShouldRemoveWithKey) tasks with provided key
+  // from the pool.
   void Remove(void* key);
 
   // Change priority of task with specified serial no.
@@ -100,6 +104,8 @@ class PriorityThreadPool {
   std::string StateToString();
 
   void TEST_SetThreadCreationFailureProbability(double probability);
+
+  size_t TEST_num_tasks_pending();
 
  private:
   class Impl;

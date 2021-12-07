@@ -16,7 +16,6 @@
 
 #include <bitset>
 #include "yb/util/slice.h"
-#include "yb/client/client.h"
 
 namespace yb {
 namespace pggate {
@@ -50,6 +49,7 @@ class PgWire {
 
   // Read Text Data
   static size_t ReadBytes(Slice *cursor, char *value, int64_t bytes);
+  static size_t ReadString(Slice *cursor, std::string *value, int64_t bytes);
 
   //------------------------------------------------------------------------------------------------
   // Write Numeric Data
@@ -73,10 +73,10 @@ class PgWire {
   static void WriteDouble(double value, faststring *buffer);
 
   // Write Text Data
-  static void WriteText(const string& value, faststring *buffer);
+  static void WriteText(const std::string& value, faststring *buffer);
 
   // Write Text Data
-  static void WriteBinary(const string& value, faststring *buffer);
+  static void WriteBinary(const std::string& value, faststring *buffer);
 };
 
 // Just in case we change the serialization format. Different versions of DocDB and Postgres

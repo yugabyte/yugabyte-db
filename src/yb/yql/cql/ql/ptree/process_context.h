@@ -23,10 +23,12 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_
 #define YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_
 
-#include "yb/yql/cql/ql/ptree/parse_tree.h"
-#include "yb/yql/cql/ql/ptree/yb_location.h"
-#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/memory/mc_types.h"
+
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/util/util_fwd.h"
 
 namespace yb {
 namespace ql {
@@ -70,12 +72,10 @@ class ProcessContextBase {
   CHECKED_STATUS Error(const TreeNode *tnode, const char *msg, ErrorCode error_code);
   CHECKED_STATUS Error(const TreeNode *tnode, const Status& s, ErrorCode error_code);
 
-  CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, ErrorCode error_code);
-  CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode,
-                       const std::string& msg,
-                       ErrorCode error_code);
-  CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, const char *msg, ErrorCode error_code);
-  CHECKED_STATUS Error(const TreeNode::SharedPtr& tnode, const Status& s, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNodePtr& tnode, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNodePtr& tnode, const std::string& msg, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNodePtr& tnode, const char *msg, ErrorCode error_code);
+  CHECKED_STATUS Error(const TreeNodePtr& tnode, const Status& s, ErrorCode error_code);
 
   // Memory pool for allocating and deallocating operating memory spaces during a process.
   MemoryContext *PTempMem() const {
@@ -102,7 +102,7 @@ class ProcessContextBase {
   mutable std::unique_ptr<Arena> ptemp_mem_;
 
   // Latest error code.
-  ErrorCode error_code_ = ErrorCode::SUCCESS;
+  ErrorCode error_code_;
 
   // Error messages. All reported error messages will be concatenated to the end.
   std::unique_ptr<MCString> error_msgs_;
@@ -119,34 +119,28 @@ class ProcessContext : public ProcessContextBase {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  explicit ProcessContext(ParseTree::UniPtr parse_tree);
+  explicit ProcessContext(ParseTreePtr parse_tree);
   virtual ~ProcessContext();
 
   // Saves the generated parse tree from the parsing process to this context.
-  void SaveGeneratedParseTree(TreeNode::SharedPtr generated_parse_tree);
+  void SaveGeneratedParseTree(TreeNodePtr generated_parse_tree);
 
   // Returns the generated parse tree and release the ownership from this context.
-  ParseTree::UniPtr AcquireParseTree() {
-    return std::move(parse_tree_);
-  }
+  ParseTreePtr AcquireParseTree();
 
-  const std::string& stmt() const override {
-    return parse_tree_->stmt();
-  }
+  const std::string& stmt() const override;
 
   ParseTree *parse_tree() {
     return parse_tree_.get();
   }
 
   // Memory pool for constructing the parse tree of a statement.
-  MemoryContext *PTreeMem() const {
-    return parse_tree_->PTreeMem();
-  }
+  MemoryContext *PTreeMem() const;
 
  protected:
   //------------------------------------------------------------------------------------------------
   // Generated parse tree (output).
-  ParseTree::UniPtr parse_tree_;
+  ParseTreePtr parse_tree_;
 };
 
 }  // namespace ql

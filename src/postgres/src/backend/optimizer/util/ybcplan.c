@@ -90,16 +90,14 @@ bool YBCIsSupportedSingleRowModifyWhereExpr(Expr *expr)
 				funcid = op_expr->opfuncid;
 			}
 
-			/*
-			 * Only allow immutable functions as they cannot modify the
-			 * database or do lookups.
-			 */
 			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for function %u", funcid);
 			char provolatile = ((Form_pg_proc) GETSTRUCT(tuple))->provolatile;
 			ReleaseSysCache(tuple);
-			if (provolatile != PROVOLATILE_IMMUTABLE)
+
+			if (provolatile != PROVOLATILE_IMMUTABLE &&
+				!YbIsFuncIdSupportedForSingleRowModifyOpt(funcid))
 			{
 				return false;
 			}
@@ -117,6 +115,21 @@ bool YBCIsSupportedSingleRowModifyWhereExpr(Expr *expr)
 			break;
 	}
 
+	return false;
+}
+
+bool YbIsFuncIdSupportedForSingleRowModifyOpt(Oid funcid)
+{
+	/*
+	 * Check whether this non-immutable function is safe for single row modify
+	 * optimization - i.e. it does not perform any lookups or writes to the
+	 * database that will convert this to a cross-shard operation.
+	 */
+	for (int i = 0; i < yb_funcs_safe_for_modify_fast_path_count; ++i)
+	{
+		if (funcid == yb_funcs_safe_for_modify_fast_path[i])
+			return true;
+	}
 	return false;
 }
 
@@ -292,6 +305,7 @@ static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has
 			ListCell     *lc = NULL;
 			Oid          funcid = InvalidOid;
 			HeapTuple    tuple = NULL;
+			Oid          inputcollid = InvalidOid;
 
 			/* Get the function info. */
 			if (IsA(expr, FuncExpr))
@@ -299,24 +313,27 @@ static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has
 				FuncExpr *func_expr = castNode(FuncExpr, expr);
 				args = func_expr->args;
 				funcid = func_expr->funcid;
+				inputcollid = func_expr->inputcollid;
 			}
 			else if (IsA(expr, OpExpr))
 			{
 				OpExpr *op_expr = castNode(OpExpr, expr);
 				args = op_expr->args;
 				funcid = op_expr->opfuncid;
+				inputcollid = op_expr->inputcollid;
 			}
 
 			/*
-			 * Only allow immutable functions as they cannot modify the
-			 * database or do lookups.
+			 * Only allow functions that cannot modify the database or do
+			 * lookups.
 			 */
 			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for function %u", funcid);
 			Form_pg_proc pg_proc = ((Form_pg_proc) GETSTRUCT(tuple));
 
-			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
+			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE &&
+				!YbIsFuncIdSupportedForSingleRowModifyOpt(funcid))
 			{
 				ReleaseSysCache(tuple);
 				return false;
@@ -334,6 +351,24 @@ static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has
 				    return false;
 				}
 			}
+
+			/*
+			 * Only allow C collation. Because Form_pg_proc does not indicate
+			 * whether the proc involves comparison, we are rather pessimistic
+			 * here and reject pushdown for non-C collation. However, we do
+			 * not really need to reject pushdown for non-comparison procs.
+			 * There are two ways to improve pushdown here:
+			 * (1) expand Form_pg_proc to have a new field that indicates a
+			 * proc does not involve comparison and thus is "collation-safe"
+			 * (PROCOLLATION_SAFE).
+			 * (2) build a list/hashtable of hot collation-safe builtin procs
+			 * that we want to pushdown.
+			 * No need to check collation of result (opcollid) because nested
+			 * expression results become the inputs of an outer expression.
+			 */
+			if (YBIsCollationValidNonC(inputcollid))
+				return false;
+
 			return true;
 		}
 		default:
@@ -521,4 +556,118 @@ bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs)
 
 	/* Verify the sets are the same. */
 	return bms_equal(attrs, primary_key_attrs);
+}
+
+/*
+ * Check to see whether a returning expression is supported for single-row modification.
+ * For function, only immutable expression is supported.
+ */
+bool YBCIsSupportedSingleRowModifyReturningExpr(Expr *expr) {
+	switch (nodeTag(expr))
+	{
+		case T_Const:
+		case T_Var:
+		{
+			return true;
+		}
+		case T_RelabelType:
+		{
+			/*
+			 * RelabelType is a "dummy" type coercion between two binary-
+			 * compatible datatypes so we just recurse into its argument.
+			 */
+			RelabelType *rt = castNode(RelabelType, expr);
+			return YBCIsSupportedSingleRowModifyReturningExpr(rt->arg);
+		}
+		case T_ArrayRef:
+		{
+			ArrayRef *array_ref = castNode(ArrayRef, expr);
+			return YBCIsSupportedSingleRowModifyReturningExpr(array_ref->refexpr);
+		}
+		case T_FuncExpr:
+		case T_OpExpr:
+		{
+			List         *args = NULL;
+			ListCell     *lc = NULL;
+			Oid          funcid = InvalidOid;
+			HeapTuple    tuple = NULL;
+
+			/* Get the function info. */
+			if (IsA(expr, FuncExpr))
+			{
+				FuncExpr *func_expr = castNode(FuncExpr, expr);
+				args = func_expr->args;
+				funcid = func_expr->funcid;
+			}
+			else if (IsA(expr, OpExpr))
+			{
+				OpExpr *op_expr = castNode(OpExpr, expr);
+				args = op_expr->args;
+				funcid = op_expr->opfuncid;
+			}
+
+			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+			if (!HeapTupleIsValid(tuple))
+				elog(ERROR, "cache lookup failed for function %u", funcid);
+			Form_pg_proc pg_proc = ((Form_pg_proc) GETSTRUCT(tuple));
+
+			/*
+			 * Only allow functions that cannot modify the database or do
+			 * lookups.
+			 */
+			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE &&
+				!YbIsFuncIdSupportedForSingleRowModifyOpt(funcid))
+			{
+				ReleaseSysCache(tuple);
+				return false;
+			}
+			ReleaseSysCache(tuple);
+
+			/* Checking all arguments are valid (stable). */
+			foreach (lc, args) {
+				Expr* expr = (Expr *) lfirst(lc);
+				if (!YBCIsSupportedSingleRowModifyReturningExpr(expr))
+					return false;
+			}
+			return true;
+		}
+		case T_CoerceViaIO:
+		{
+			CoerceViaIO *coerce_via_IO = castNode(CoerceViaIO, expr);
+			return YBCIsSupportedSingleRowModifyReturningExpr(coerce_via_IO->arg);
+		}
+		case T_FieldSelect:
+		{
+			FieldSelect *field_select = castNode(FieldSelect, expr);
+			return YBCIsSupportedSingleRowModifyReturningExpr(field_select->arg);
+		}
+		case T_RowExpr:
+		{
+			ListCell     *lc = NULL;
+
+			RowExpr *row_expr = castNode(RowExpr, expr);
+			foreach (lc, row_expr->args) {
+				Expr* expr = (Expr *) lfirst(lc);
+				if (!YBCIsSupportedSingleRowModifyReturningExpr(expr))
+					return false;
+			}
+			return true;
+		}
+		case T_ArrayExpr:
+		{
+			ArrayExpr *array_expr = castNode(ArrayExpr, expr);
+			ListCell     *lc = NULL;
+
+			foreach (lc, array_expr->elements) {
+				Expr* expr = (Expr *) lfirst(lc);
+				if (!YBCIsSupportedSingleRowModifyReturningExpr(expr))
+					return false;
+			}
+			return true;
+		}
+		default:
+			break;
+	}
+
+	return false;
 }

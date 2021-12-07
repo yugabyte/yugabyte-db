@@ -11,28 +11,50 @@
 // under the License.
 //
 
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <boost/optional/optional_fwd.hpp>
+
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/txn-test-base.h"
+#include "yb/client/yb_op.h"
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
 
-#include "yb/rpc/messenger.h"
+#include "yb/gutil/casts.h"
+
+#include "yb/rocksdb/db.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
-#include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/opid.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -43,6 +65,7 @@ DECLARE_bool(TEST_disallow_lmp_failures);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
+DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(txn_max_apply_batch_records);
@@ -364,6 +387,12 @@ TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
 
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */,
                    0.0 /* select_update_probability */);
+}
+
+TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
+  FLAGS_TEST_disallow_lmp_failures = true;
+  FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms = 20;
+  TestBankAccounts({}, 30s, RegularBuildVsSanitizers(5, 1) /* minimal_updates_per_second */);
 }
 
 struct PagingReadCounts {

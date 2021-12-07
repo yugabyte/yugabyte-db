@@ -32,16 +32,15 @@
 #ifndef YB_UTIL_TEST_MACROS_H
 #define YB_UTIL_TEST_MACROS_H
 
-#include <string>
-#include <sstream>
 #include <set>
+#include <sstream>
+#include <string>
 
 #include <boost/preprocessor/cat.hpp>
 
-#include "yb/util/string_trim.h"
-#include "yb/util/debug-util.h"
+#include <gtest/gtest.h> // For SUCCEED/FAIL
+
 #include "yb/util/tostring.h"
-#include "yb/util/tsan_util.h"
 
 namespace yb {
 namespace util {
@@ -96,22 +95,22 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 // RocksDB's Status types.
 
 #define ASSERT_OK(status) do { \
-    auto&& _s = (status); \
-    if (_s.ok()) { \
+    auto&& _assert_status = (status); \
+    if (_assert_status.ok()) { \
       SUCCEED(); \
     } else { \
-      FAIL() << "Bad status: " << StatusToString(_s);  \
+      FAIL() << "Bad status: " << StatusToString(_assert_status);  \
     } \
   } while (0)
 
 #define ASSERT_NOK(s) ASSERT_FALSE((s).ok())
 
 #define ASSERT_OK_PREPEND(status, msg) do { \
-  auto&& _s = (status); \
-  if (_s.ok()) { \
+  auto&& _assert_status = (status); \
+  if (_assert_status.ok()) { \
     SUCCEED(); \
   } else { \
-    FAIL() << (msg) << " - status: " << StatusToString(_s);  \
+    FAIL() << (msg) << " - status: " << StatusToString(_assert_status);  \
   } \
 } while (0)
 
@@ -133,9 +132,9 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 // Like the above, but doesn't record successful
 // tests.
 #define ASSERT_OK_FAST(status) do {      \
-    auto&& _s = (status); \
-    if (!_s.ok()) { \
-      FAIL() << "Bad status: " << StatusToString(_s);  \
+    auto&& _assert_status = (status); \
+    if (!_assert_status.ok()) { \
+      FAIL() << "Bad status: " << StatusToString(_assert_status);  \
     } \
   } while (0)
 
@@ -171,6 +170,14 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
   std::string _s = (str); \
   if (_s.find((substr)) == std::string::npos) { \
     FAIL() << "Expected to find substring '" << (substr) \
+    << "'. Got: '" << _s << "'"; \
+  } \
+  } while (0)
+
+#define ASSERT_STR_NOT_CONTAINS(str, substr) do { \
+  std::string _s = (str); \
+  if (_s.find((substr)) != std::string::npos) { \
+    FAIL() << "Expected not to find substring '" << (substr) \
     << "'. Got: '" << _s << "'"; \
   } \
   } while (0)

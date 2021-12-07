@@ -42,6 +42,7 @@
 #include "commands/vacuum.h"
 #include "commands/variable.h"
 #include "commands/trigger.h"
+#include "executor/ybcModifyTable.h"
 #include "funcapi.h"
 #include "jit/jit.h"
 #include "libpq/auth.h"
@@ -206,6 +207,8 @@ static bool check_transaction_priority_lower_bound(double *newval, void **extra,
 extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
+
+static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
 static bool check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source);
 static bool check_min_backoff(int *min_backoff_msecs, void **extra, GucSource source);
@@ -1958,6 +1961,73 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+	{
+		{"yb_enable_geolocation_costing", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Allow the optimizer to cost and choose between duplicate indexes based on locality"),
+			NULL
+		},
+		&yb_enable_geolocation_costing,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
+						 "Allows creating new system tables with given relation and type OID. "
+						 "Do NOT use this unless you know exactly what you're doing, consequences "
+						 "may be dire!"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&IsYsqlUpgrade,
+		false,
+		NULL, assign_ysql_upgrade_mode, NULL
+	},
+
+	{
+		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Relaxes some internal sanity checks for system catalogs to "
+						 "allow creating them."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_system_catalogs_creation,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_fail_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the next DDL (only CREATE TABLE for now) "
+						 "will fail right after DocDB processes the actual database structure change."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_next_ddl,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"force_global_transaction", PGC_USERSET, UNGROUPED,
+			gettext_noop("Forces use of global transaction table."),
+			NULL
+		},
+		&yb_force_global_transaction,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_force_non_transactional_writes", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the boolean flag to enable or disable non transaction writes."),
+			NULL
+		},
+		&yb_force_non_transactional_writes,
+		false,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -3226,6 +3296,17 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_follower_read_staleness_ms", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the staleness (in ms) to be used for performing follower reads."),
+			NULL,
+			0
+		},
+		&yb_follower_read_staleness_ms,
+		30000, 0, INT_MAX,
+		check_follower_read_staleness_ms, NULL, NULL
+	},
+
 	/*
 	 * Default to a 1s delay because commits currently aren't guaranteed to be
 	 * visible across tservers.  Commits cause master to update catalog
@@ -4164,7 +4245,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&DefaultXactIsoLevel,
 		XACT_READ_COMMITTED, isolation_level_options,
-		check_default_XactIsoLevel, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -10979,7 +11060,7 @@ check_effective_io_concurrency(int *newval, void **extra, GucSource source)
 #else
 	if (*newval != 0)
 	{
-		GUC_check_errdetail("effective_io_concurrency must be set to 0 on platforms that lack posix_fadvise()");
+		GUC_check_errdetail("effective_io_concurrency must be set to 0 on platforms that lack posix_fadvise().");
 		return false;
 	}
 	return true;
@@ -11091,7 +11172,7 @@ static bool
 check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source)
 {
 	if (*newval > yb_transaction_priority_upper_bound) {
-		GUC_check_errdetail("must be less than or equal to yb_transaction_priority_upper_bound (%f)",
+		GUC_check_errdetail("must be less than or equal to yb_transaction_priority_upper_bound (%f).",
 		                    yb_transaction_priority_upper_bound);
 		return false;
 	}
@@ -11103,7 +11184,7 @@ static bool
 check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source)
 {
 	if (*newval < yb_transaction_priority_lower_bound) {
-		GUC_check_errdetail("must be greater than or equal to yb_transaction_priority_lower_bound (%f)",
+		GUC_check_errdetail("must be greater than or equal to yb_transaction_priority_lower_bound (%f).",
 		                    yb_transaction_priority_lower_bound);
 		return false;
 	}
@@ -11111,12 +11192,26 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	return true;
 }
 
+static void
+assign_ysql_upgrade_mode(bool newval, void *extra)
+{
+	/*
+	 * YSQL upgrade mode also enables/disables allowSystemTableMods.
+	 * Note that PG doesn't allow user to change it at runtime.
+	 *
+	 * While we reuse allowSystemTableMods to cut some corners for
+	 * YSQL upgrade, we do alter the semantics of it to imitate tables
+	 * created by initdb rather than by user.
+	 */
+	allowSystemTableMods = newval;
+}
+
 static bool
 check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source)
 {
 	if (*max_backoff_msecs < 0)
 	{
-		GUC_check_errdetail("must be greater than or equal to 0");
+		GUC_check_errdetail("must be greater than or equal to 0.");
 		return false;
 	}
 
@@ -11128,7 +11223,7 @@ check_min_backoff(int *min_backoff_msecs, void **extra, GucSource source)
 {
 	if (*min_backoff_msecs < 0)
 	{
-		GUC_check_errdetail("must be greater than or equal to 0");
+		GUC_check_errdetail("must be greater than or equal to 0.");
 		return false;
 	}
 
@@ -11140,7 +11235,7 @@ check_backoff_multiplier(double *multiplier, void **extra, GucSource source)
 {
 	if (*multiplier < 1)
 	{
-		GUC_check_errdetail("must be greater than or equal to 1");
+		GUC_check_errdetail("must be greater than or equal to 1.");
 		return false;
 	}
 	return true;

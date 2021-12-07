@@ -40,6 +40,7 @@ set(INTEGRATION_TESTS_SRCS
   load_balancer_test_util.cc
   load_generator.cc
   mini_cluster.cc
+  mini_cluster_base.cc
   mini_cluster_utils.cc
   redis_table_test_base.cc
   test_workload.cc
@@ -79,7 +80,9 @@ target_link_libraries(cql_test_util cassandra integration-tests yb-cql yb_test_u
 
 # Tests
 set(YB_TEST_LINK_LIBS
-    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util ${YB_MIN_TEST_LIBS})
+    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util master_test_common
+    yb_common_test_util
+    ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
@@ -97,6 +100,7 @@ ADD_YB_TEST(tablet-split-itest)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
 ADD_YB_TEST(compaction-test)
+ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)
@@ -135,6 +139,10 @@ ADD_YB_TEST(load_balancer_colocated_tables-test)
 ADD_YB_TEST(load_balancer_respect_affinity-test)
 ADD_YB_TEST(load_balancer_placement_policy-test)
 ADD_YB_TEST(sys_catalog_respect_affinity-test)
+ADD_YB_TEST(restart-test)
+ADD_YB_TEST(yb-ts-cli-itest)
+ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-itest
+  yb-ts-cli)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra cql_test_util)
@@ -160,6 +168,7 @@ endfunction()
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)
+ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 

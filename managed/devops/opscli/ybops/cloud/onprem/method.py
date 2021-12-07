@@ -17,13 +17,14 @@ from ybops.cloud.common.method import DestroyInstancesMethod
 from ybops.cloud.common.method import ProvisionInstancesMethod, ListInstancesMethod
 from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR, \
                         get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp, \
-                        SSH_RETRY_LIMIT_PRECHECK
+                        SSH_RETRY_LIMIT_PRECHECK, DEFAULT_MASTER_HTTP_PORT, \
+                        DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
+                        DEFAULT_TSERVER_RPC_PORT
 
 
 import json
 import logging
 import os
-import subprocess
 import stat
 import ybops.utils as ybutils
 
@@ -43,6 +44,7 @@ class OnPremCreateInstancesMethod(CreateInstancesMethod):
         # step purely to validate that we can access the host.
         #
         # TODO: do we still want/need to change to the custom ssh port?
+        self.update_ansible_vars_with_args(args)
         self.wait_for_host(args)
 
 
@@ -54,14 +56,9 @@ class OnPremProvisionInstancesMethod(ProvisionInstancesMethod):
     def __init__(self, base_command):
         super(OnPremProvisionInstancesMethod, self).__init__(base_command)
 
-    def setup_create_method(self):
-        """Override to get the wiring to the proper method.
-        """
-        self.create_method = OnPremCreateInstancesMethod(self.base_command)
-
     def callback(self, args):
         # For onprem, we are always using pre-existing hosts!
-        args.reuse_host = True
+        args.skip_preprovision = True
         super(OnPremProvisionInstancesMethod, self).callback(args)
 
 
@@ -151,6 +148,9 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
             self.cloud.run_control_script(
                 "thirdparty", "stop-services", args, self.extra_vars, host_info)
 
+        self.cloud.run_control_script(
+            "platform-services", "stop-services", args, self.extra_vars, host_info)
+
         # Force db-related commands to use the "yugabyte" user.
         args.ssh_user = "yugabyte"
         self.update_ansible_vars_with_args(args)
@@ -199,6 +199,17 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
     def add_extra_args(self):
         super(OnPremPrecheckInstanceMethod, self).add_extra_args()
+        self.parser.add_argument('--master_http_port', default=DEFAULT_MASTER_HTTP_PORT)
+        self.parser.add_argument('--master_rpc_port', default=DEFAULT_MASTER_RPC_PORT)
+        self.parser.add_argument('--tserver_http_port', default=DEFAULT_TSERVER_HTTP_PORT)
+        self.parser.add_argument('--tserver_rpc_port', default=DEFAULT_TSERVER_RPC_PORT)
+        self.parser.add_argument('--cql_proxy_http_port', default=None)
+        self.parser.add_argument('--cql_proxy_rpc_port', default=None)
+        self.parser.add_argument('--ysql_proxy_http_port', default=None)
+        self.parser.add_argument('--ysql_proxy_rpc_port', default=None)
+        self.parser.add_argument('--redis_proxy_http_port', default=None)
+        self.parser.add_argument('--redis_proxy_rpc_port', default=None)
+        self.parser.add_argument('--node_exporter_http_port', default=None)
         self.parser.add_argument("--precheck_type", required=True,
                                  choices=['provision', 'configure'],
                                  help="Preflight check to determine if instance is ready.")
@@ -242,10 +253,22 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                                             print_output=False)
         results["Try Ansible Command"] = ansible_status == 0
 
+        ports_to_check = ",".join([str(p) for p in [args.master_http_port,
+                                                    args.master_rpc_port,
+                                                    args.tserver_http_port,
+                                                    args.tserver_rpc_port,
+                                                    args.cql_proxy_http_port,
+                                                    args.cql_proxy_rpc_port,
+                                                    args.ysql_proxy_http_port,
+                                                    args.ysql_proxy_rpc_port,
+                                                    args.redis_proxy_http_port,
+                                                    args.redis_proxy_rpc_port,
+                                                    args.node_exporter_http_port] if p is not None])
+
         cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
-              "--sudo_pass_file {} --cleanup".format(
+              "--ports_to_check {} --sudo_pass_file {} --cleanup".format(
                 args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args),
-                sudo_pass_file)
+                ports_to_check, sudo_pass_file)
         if args.install_node_exporter:
             cmd += " --install_node_exporter"
         if args.air_gap:
@@ -262,7 +285,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         else:
             # stdout will be returned as a list of lines, which should just be one line of json.
             stdout = json.loads(stdout[0])
-            stdout = {k: v == "true" for k, v in stdout.iteritems()}
+            stdout = {k: v == "true" for k, v in iteritems(stdout)}
             results.update(stdout)
 
         output = json.dumps(results, indent=2)

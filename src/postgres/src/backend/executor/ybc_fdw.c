@@ -27,12 +27,11 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "executor/ybc_fdw.h"
-
 /*  TODO see which includes of this block are still needed. */
 #include "access/htup_details.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_foreign_table.h"
 #include "commands/copy.h"
@@ -56,14 +55,15 @@
 /*  YB includes. */
 #include "commands/dbcommands.h"
 #include "catalog/pg_operator.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
-#include "access/ybcam.h"
+#include "access/yb_scan.h"
 #include "executor/ybcExpr.h"
+#include "executor/ybc_fdw.h"
 
 #include "utils/resowner_private.h"
 
@@ -125,22 +125,25 @@ ybcGetForeignPaths(PlannerInfo *root,
 
 	/* Estimate costs */
 	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
-	                false /* is_backwards scan */,
-	                false /* is_uncovered_idx_scan */,
-	                &startup_cost, &total_cost);
+					false /* is_backwards scan */,
+					true /* is_seq_scan */,
+					false /* is_uncovered_idx_scan */,
+					&startup_cost,
+					&total_cost,
+					baserel->reltablespace /* index_tablespace_oid */);
 
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,
-	         (Path *) create_foreignscan_path(root,
-	                                          baserel,
-	                                          NULL, /* default pathtarget */
-	                                          baserel->rows,
-	                                          startup_cost,
-	                                          total_cost,
-	                                          NIL,  /* no pathkeys */
-	                                          NULL, /* no outer rel either */
-	                                          NULL, /* no extra plan */
-	                                          NULL  /* no options yet */ ));
+			 (Path *) create_foreignscan_path(root,
+											  baserel,
+											  NULL, /* default pathtarget */
+											  baserel->rows,
+											  startup_cost,
+											  total_cost,
+											  NIL,  /* no pathkeys */
+											  NULL, /* no outer rel either */
+											  NULL, /* no extra plan */
+											  NULL  /* no options yet */ ));
 
 	/* Add primary key and secondary index paths also */
 	create_index_paths(root, baserel);
@@ -278,18 +281,30 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->exec_params = &estate->yb_exec_params;
 
 	ybc_state->exec_params->rowmark = -1;
-	ybc_state->exec_params->read_from_followers = YBReadFromFollowersEnabled();
 	if (YBReadFromFollowersEnabled()) {
 		ereport(DEBUG2, (errmsg("Doing read from followers")));
 	}
-	ListCell   *l;
-	foreach(l, estate->es_rowMarks) {
-		ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-		// Do not propagate non-row-locking row marks.
-		if (erm->markType != ROW_MARK_REFERENCE &&
-			erm->markType != ROW_MARK_COPY)
-			ybc_state->exec_params->rowmark = erm->markType;
-		break;
+	if (XactIsoLevel == XACT_SERIALIZABLE)
+	{
+		/*
+		 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
+		 * INSERTion of new rows that satisfy the query predicate. So, we set the rowmark on all
+		 * read requests sent to tserver instead of locking each tuple one by one in LockRows node.
+		 */
+		ListCell   *l;
+		foreach(l, estate->es_rowMarks) {
+			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+			// Do not propagate non-row-locking row marks.
+			if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
+			{
+				ybc_state->exec_params->rowmark = erm->markType;
+				/*
+				 * TODO(Piyush): We don't honour SKIP LOCKED yet in serializable isolation level.
+				 */
+				ybc_state->exec_params->wait_policy = LockWaitError;
+			}
+			break;
+		}
 	}
 
 	ybc_state->is_exec_done = false;
@@ -328,6 +343,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 
 			/* For regular (non-system) attribute check if they were deleted */
 			Oid   attr_typid  = InvalidOid;
+			Oid   attr_collation = InvalidOid;
 			int32 attr_typmod = 0;
 			if (target->resno > 0)
 			{
@@ -340,12 +356,14 @@ ybcSetupScanTargets(ForeignScanState *node)
 				}
 				attr_typid  = attr->atttypid;
 				attr_typmod = attr->atttypmod;
+				attr_collation = attr->attcollation;
 			}
 
 			YBCPgTypeAttrs type_attrs = {attr_typmod};
 			YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
 														target->resno,
 														attr_typid,
+														attr_collation,
 														&type_attrs);
 			HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
 			has_targets = true;
@@ -370,6 +388,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 				YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
 															i + 1,
 															TupleDescAttr(tupdesc, i)->atttypid,
+															TupleDescAttr(tupdesc, i)->attcollation,
 															&type_attrs);
 				HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
 				break;
@@ -388,10 +407,10 @@ ybcSetupScanTargets(ForeignScanState *node)
 			const YBCPgTypeEntity *type_entity;
 
 			/* Get type entity for the operator from the aggref. */
-			type_entity = YBCPgFindTypeEntity(aggref->aggtranstype);
+			type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
 
 			/* Create operator. */
-			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, &op_handle));
+			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, aggref->aggcollid, &op_handle));
 
 			/* Handle arguments. */
 			if (aggref->aggstar) {
@@ -403,6 +422,8 @@ ybcSetupScanTargets(ForeignScanState *node)
 				YBCPgExpr const_handle;
 				YBCPgNewConstant(ybc_state->handle,
 								 type_entity,
+								 false /* collate_is_valid_non_c */,
+								 NULL /* collation_sortkey */,
 								 0 /* datum */,
 								 false /* is_null */,
 								 &const_handle);
@@ -421,6 +442,8 @@ ybcSetupScanTargets(ForeignScanState *node)
 						YBCPgExpr const_handle;
 						YBCPgNewConstant(ybc_state->handle,
 										 type_entity,
+										 false /* collate_is_valid_non_c */,
+										 NULL /* collation_sortkey */,
 										 const_node->constvalue,
 										 const_node->constisnull,
 										 &const_handle);
@@ -439,6 +462,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 						YBCPgExpr arg = YBCNewColumnRef(ybc_state->handle,
 														attno,
 														attr->atttypid,
+														attr->attcollation,
 														&type_attrs);
 						HandleYBStatus(YBCPgOperatorAppendArg(op_handle, arg));
 					}

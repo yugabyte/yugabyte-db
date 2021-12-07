@@ -13,10 +13,9 @@
 
 #include "yb/master/catalog_manager_util.h"
 
-#include <gflags/gflags.h>
+#include "yb/master/catalog_entity_info.h"
 
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
 
@@ -138,8 +137,7 @@ void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_m
     if (!is_txn_table) {
       continue;
     }
-    TabletInfos tablets;
-    table->GetAllTablets(&tablets);
+    TabletInfos tablets = table->GetTablets();
     (*num_txn_tablets) += tablets.size();
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
@@ -300,7 +298,7 @@ bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudIn
 
 CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
   // Check for duplicates.
-  unordered_set<string> cloud_info_string;
+  std::unordered_set<string> cloud_info_string;
 
   for (int i = 0; i < placement_info.placement_blocks_size(); i++) {
     if (!placement_info.placement_blocks(i).has_cloud_info()) {

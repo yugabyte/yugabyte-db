@@ -150,6 +150,8 @@ extern PGDLLIMPORT bool IsUnderPostmaster;
 extern PGDLLIMPORT bool IsBackgroundWorker;
 extern PGDLLIMPORT bool IsBinaryUpgrade;
 
+extern bool IsYsqlUpgrade;
+
 extern PGDLLIMPORT bool ExitOnAnyError;
 
 extern PGDLLIMPORT char *DataDir;
@@ -187,7 +189,7 @@ extern PGDLLIMPORT Oid MyDatabaseTableSpace;
 
 extern PGDLLIMPORT bool MyDatabaseColocated;
 
-extern PGDLLIMPORT bool TablegroupCatalogExists;
+extern PGDLLIMPORT bool YbTablegroupCatalogExists;
 
 /*
  * Date/Time Configuration

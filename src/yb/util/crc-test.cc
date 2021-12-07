@@ -30,9 +30,8 @@
 // under the License.
 //
 
-#include "yb/gutil/gscoped_ptr.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/crc.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
@@ -76,7 +75,7 @@ TEST_F(CrcTest, TestCRC32C) {
 // Simple benchmark of CRC32C throughput.
 // We should expect about 8 bytes per cycle in throughput on a single core.
 TEST_F(CrcTest, BenchmarkCRC32C) {
-  gscoped_ptr<const uint8_t[]> data;
+  std::unique_ptr<const uint8_t[]> data;
   const uint8_t* buf;
   size_t buflen;
   GenerateBenchmarkData(&buf, &buflen);

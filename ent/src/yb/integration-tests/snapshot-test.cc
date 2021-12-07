@@ -17,19 +17,30 @@
 
 #include "yb/common/ql_value.h"
 
+#include "yb/consensus/consensus.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/rpc/messenger.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
 
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
+
+#include "yb/tools/yb-admin_util.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -38,6 +49,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -62,6 +74,8 @@ using client::YBTableName;
 using master::MasterBackupServiceProxy;
 using master::MasterServiceProxy;
 using master::SysRowEntry;
+using master::SysRowEntryType;
+using master::BackupRowEntryPB;
 using master::TableInfo;
 using master::TabletInfo;
 using rpc::Messenger;
@@ -70,7 +84,6 @@ using rpc::RpcController;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
-using util::to_uchar_ptr;
 
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
@@ -82,6 +95,8 @@ using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
+using master::ListSnapshotRestorationsRequestPB;
+using master::ListSnapshotRestorationsResponsePB;
 using master::MasterServiceProxy;
 using master::RestoreSnapshotRequestPB;
 using master::RestoreSnapshotResponsePB;
@@ -104,7 +119,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     messenger_ = ASSERT_RESULT(
@@ -162,13 +177,8 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Number of snapshots: " << list_resp.snapshots_size();
     ASSERT_EQ(list_resp.snapshots_size(), snapshot_info.size());
 
-    if (cur_id.empty()) {
-      ASSERT_FALSE(list_resp.has_current_snapshot_id());
-    } else {
-      ASSERT_TRUE(list_resp.has_current_snapshot_id());
-      ASSERT_EQ(list_resp.current_snapshot_id(), cur_id);
-      LOG(INFO) << "Current snapshot: " << list_resp.current_snapshot_id();
-    }
+    // Current snapshot is available for non-transaction aware snapshots only.
+    ASSERT_FALSE(list_resp.has_current_snapshot_id());
 
     for (int i = 0; i < list_resp.snapshots_size(); ++i) {
       LOG(INFO) << "Snapshot " << i << ": " << list_resp.snapshots(i).DebugString();
@@ -182,36 +192,63 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   template <typename THandler>
-  void WaitTillComplete(const string& handler_name, THandler handler) {
-    ASSERT_OK(WaitFor(handler, 30s, handler_name, 100ms, 1.5));
+  Status WaitTillComplete(const string& handler_name, THandler handler) {
+    return LoggedWaitFor(handler, 30s, handler_name, 100ms, 1.5);
   }
 
-  void WaitForSnapshotOpDone(const string& op_name, const string& snapshot_id) {
-    WaitTillComplete(
+  Status WaitForSnapshotOpDone(const string& op_name, const string& snapshot_id) {
+    return WaitTillComplete(
         op_name,
-        [this, &snapshot_id]() -> bool {
+        [this, &snapshot_id]() -> Result<bool> {
           ListSnapshotsRequestPB list_req;
           ListSnapshotsResponsePB list_resp;
           list_req.set_snapshot_id(snapshot_id);
 
-          EXPECT_OK(proxy_backup_->ListSnapshots(list_req, &list_resp, ResetAndGetController()));
-          EXPECT_FALSE(list_resp.has_error());
-          EXPECT_EQ(list_resp.snapshots_size(), 1);
+          RETURN_NOT_OK(proxy_backup_->ListSnapshots(
+              list_req, &list_resp, ResetAndGetController()));
+          SCHECK(!list_resp.has_error(), IllegalState, "Expected response without error");
+          SCHECK_FORMAT(list_resp.snapshots_size() == 1, IllegalState,
+              "Wrong number of snapshots: ", list_resp.snapshots_size());
           return list_resp.snapshots(0).entry().state() == SysSnapshotEntryPB::COMPLETE;
         });
   }
 
-  void WaitForCreateTableDone(const YBTableName& table_name) {
-    WaitTillComplete(
+  Status WaitForSnapshotRestorationDone(const TxnSnapshotRestorationId& restoration_id) {
+    return WaitTillComplete(
+        "IsRestorationDone",
+        [this, &restoration_id]() -> Result<bool> {
+          SCHECK(restoration_id, InvalidArgument, "Invalid restoration id");
+          ListSnapshotRestorationsRequestPB list_req;
+          ListSnapshotRestorationsResponsePB list_resp;
+          list_req.set_restoration_id(restoration_id.data(), restoration_id.size());
+
+          RETURN_NOT_OK(proxy_backup_->ListSnapshotRestorations(
+              list_req, &list_resp, ResetAndGetController()));
+          if (list_resp.has_status()) {
+            auto status = StatusFromPB(list_resp.status());
+            // If master is not yet ready, just wait and try another one.
+            if (status.IsServiceUnavailable()) {
+              return false;
+            }
+            RETURN_NOT_OK(status);
+          }
+          SCHECK_FORMAT(list_resp.restorations_size() == 1, IllegalState,
+              "Wrong number of restorations: ", list_resp.restorations_size());
+          return list_resp.restorations(0).entry().state() == SysSnapshotEntryPB::RESTORED;
+        });
+  }
+
+  Status WaitForCreateTableDone(const YBTableName& table_name) {
+    return WaitTillComplete(
         "IsCreateTableDone",
-        [this, &table_name]() -> bool {
+        [this, &table_name]() -> Result<bool> {
           IsCreateTableDoneRequestPB req;
           IsCreateTableDoneResponsePB resp;
           table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
-          EXPECT_OK(proxy_->IsCreateTableDone(req, &resp, ResetAndGetController()));
-          EXPECT_FALSE(resp.has_error());
-          EXPECT_TRUE(resp.has_done());
+          RETURN_NOT_OK(proxy_->IsCreateTableDone(req, &resp, ResetAndGetController()));
+          SCHECK(!resp.has_error(), IllegalState, "Expected response without error");
+          SCHECK(resp.has_done(), IllegalState, "Response must have 'done'");
           return resp.done();
         });
   }
@@ -219,6 +256,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   SnapshotId CreateSnapshot() {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
+    req.set_transaction_aware(true);
     TableIdentifierPB* const table = req.mutable_tables()->Add();
     table->set_table_name(kTableName.table_name());
     table->mutable_namespace_()->set_name(kTableName.namespace_name());
@@ -239,7 +277,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         }, snapshot_id);
 
     // Check the snapshot creation is complete.
-    WaitForSnapshotOpDone("IsCreateSnapshotDone", snapshot_id);
+    EXPECT_OK(WaitForSnapshotOpDone("IsCreateSnapshotDone", snapshot_id));
 
     CheckAllSnapshots(
         {
@@ -293,7 +331,8 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         FsManager* const fs = tablet_peer->tablet_metadata()->fs_manager();
         const auto rocksdb_dir = tablet_peer->tablet_metadata()->rocksdb_dir();
         const auto top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
-        const auto snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
+        const auto snapshot_dir = JoinPathSegments(
+            top_snapshots_dir, tools::SnapshotIdToString(snapshot_id));
 
         LOG(INFO) << "Checking tablet snapshot folder: " << snapshot_dir;
         ASSERT_TRUE(fs->Exists(rocksdb_dir));
@@ -348,8 +387,7 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   // Check tablet folders before the snapshot creation.
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
     MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
-    vector<std::shared_ptr<TabletPeer> > ts_tablet_peers;
-    ts->server()->tablet_manager()->GetTabletPeers(&ts_tablet_peers);
+    auto ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
 
     // Iterate through all available tablets (on this TabletServer).
     // There is only one table here (testtb).
@@ -391,6 +429,7 @@ TEST_F(SnapshotTest, RestoreSnapshot) {
   workload.StopAndJoin();
 
   // Check RestoreSnapshot().
+  TxnSnapshotRestorationId restoration_id = TxnSnapshotRestorationId::Nil();
   {
     RestoreSnapshotRequestPB req;
     RestoreSnapshotResponsePB resp;
@@ -402,16 +441,14 @@ TEST_F(SnapshotTest, RestoreSnapshot) {
     // Check the response.
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
-    LOG(INFO) << "Started snapshot restoring: ID=" << snapshot_id;
+    ASSERT_TRUE(resp.has_restoration_id());
+    restoration_id = TryFullyDecodeTxnSnapshotRestorationId(resp.restoration_id());
+    LOG(INFO) << "Started snapshot restoring: ID=" << snapshot_id
+              << " Restoration ID=" << restoration_id;
   }
 
-  CheckAllSnapshots(
-      {
-          std::make_tuple(snapshot_id, SysSnapshotEntryPB::RESTORING)
-      }, snapshot_id);
-
   // Check the snapshot restoring is complete.
-  WaitForSnapshotOpDone("IsRestoreSnapshotDone", snapshot_id);
+  ASSERT_OK(WaitForSnapshotRestorationDone(restoration_id));
 
   CheckAllSnapshots(
       {
@@ -493,7 +530,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   workload.StopAndJoin();
 
   // Check the snapshot creating is complete.
-  WaitForSnapshotOpDone("IsCreateSnapshotDone", snapshot_id);
+  ASSERT_OK(WaitForSnapshotOpDone("IsCreateSnapshotDone", snapshot_id));
 
   CheckAllSnapshots(
       {
@@ -503,6 +540,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   ListSnapshotsRequestPB list_req;
   ListSnapshotsResponsePB list_resp;
   list_req.set_snapshot_id(snapshot_id);
+  list_req.set_prepare_for_backup(true);
   ASSERT_OK(proxy_backup_->ListSnapshots(list_req, &list_resp, ResetAndGetController()));
   LOG(INFO) << "Requested available snapshots.";
   SCOPED_TRACE(list_resp.DebugString());
@@ -516,9 +554,10 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   const int old_table_num_tablets = snapshot_pb.tablet_snapshots_size();
   string old_table_name, old_namespace_name;
 
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
-      case SysRowEntry::NAMESPACE: { // Get NAMESPACE name.
+      case SysRowEntryType::NAMESPACE: { // Get NAMESPACE name.
         SysNamespaceEntryPB meta;
         const string& data = entry.data();
         ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
@@ -526,7 +565,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_namespace_name = meta.name();
         break;
       }
-      case SysRowEntry::TABLE: { // Recreate TABLE.
+      case SysRowEntryType::TABLE: { // Recreate TABLE.
         SysTablesEntryPB meta;
         const string& data = entry.data();
         ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
@@ -534,7 +573,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_table_name = meta.name();
         break;
       }
-      case SysRowEntry::TABLET: // No need to get tablet info. Ignore.
+      case SysRowEntryType::TABLET: // No need to get tablet info. Ignore.
         break;
       default:
         ASSERT_OK(STATUS_SUBSTITUTE(
@@ -578,18 +617,17 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       LOG(INFO) << "Keyspace: " << ns_pair.old_id() << " -> " << ns_pair.new_id();
       ASSERT_NE(ns_pair.old_id(), ns_pair.new_id());
 
-      const string new_namespace_name = cluster_->mini_master()->master()->catalog_manager()->
+      const string new_namespace_name = cluster_->mini_master()->catalog_manager().
           GetNamespaceName(ns_pair.new_id());
       ASSERT_EQ(old_namespace_name, new_namespace_name);
 
       const IdPairPB& table_pair = table_meta.table_ids();
       LOG(INFO) << "Table: " << table_pair.old_id() << " -> " << table_pair.new_id();
       ASSERT_NE(table_pair.old_id(), table_pair.new_id());
-      scoped_refptr<TableInfo> info = cluster_->mini_master()->master()->catalog_manager()->
+      scoped_refptr<TableInfo> info = cluster_->mini_master()->catalog_manager().
           GetTableInfo(table_pair.new_id());
       ASSERT_EQ(old_table_name, info->name());
-      vector<scoped_refptr<TabletInfo>> tablets;
-      info->GetAllTablets(&tablets);
+      auto tablets = info->GetTablets();
       ASSERT_EQ(old_table_num_tablets, tablets.size());
 
       const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();
@@ -602,7 +640,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   }
 
   // Check imported table creating is complete.
-  WaitForCreateTableDone(kTableName);
+  ASSERT_OK(WaitForCreateTableDone(kTableName));
 
   result_exist = client_->TableExists(kTableName);
   ASSERT_OK(result_exist);

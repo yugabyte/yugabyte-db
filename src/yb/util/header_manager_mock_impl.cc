@@ -11,15 +11,12 @@
 // under the License.
 //
 
-#include <openssl/rand.h>
 
-#include <boost/pointer_cast.hpp>
 
 #include "yb/util/header_manager_mock_impl.h"
 #include "yb/util/encryption_util.h"
 
 namespace yb {
-namespace enterprise {
 
 constexpr uint32_t kDefaultHeaderSize = 32;
 constexpr uint32_t kEncryptionMetaStart = 16;
@@ -65,5 +62,4 @@ bool HeaderManagerMockImpl::IsEncryptionEnabled() {
   return file_encrypted_;
 }
 
-} // namespace enterprise
 } // namespace yb

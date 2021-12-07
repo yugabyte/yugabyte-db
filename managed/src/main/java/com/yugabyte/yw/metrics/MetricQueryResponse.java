@@ -1,26 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-
 import com.yugabyte.yw.models.MetricConfig;
-
-import play.libs.Json;
-
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MetricQueryResponse {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryResponse.class);
@@ -48,21 +40,16 @@ public class MetricQueryResponse {
         return "ResultEntry: [invalid]";
       }
     }
-
   }
-
-
 
   /**
    * Format MetricQueryResponse object as a json for graph(plot.ly) consumption.
+   *
    * @param layout, MetricConfig.Layout object
    * @return JsonNode, Json data that plot.ly can understand
    */
-  public ArrayList<MetricGraphData> getGraphData(
-      String metricName,
-      MetricConfig.Layout layout) {
+  public ArrayList<MetricGraphData> getGraphData(String metricName, MetricConfig.Layout layout) {
     ArrayList<MetricGraphData> metricGraphDataList = new ArrayList<>();
-    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     for (final JsonNode objNode : data.result) {
       MetricGraphData metricGraphData = new MetricGraphData();
@@ -96,15 +83,15 @@ public class MetricQueryResponse {
             for (String key : entry.getKey().split(",")) {
               validLabels = false;
               // Java conversion from Iterator to Iterable...
-              for (JsonNode metricEntry : (Iterable<JsonNode>)() -> metricInfo.elements()) {
+              for (JsonNode metricEntry : (Iterable<JsonNode>) () -> metricInfo.elements()) {
                 // In case we want to graph per server, we want to display the node name.
                 if (layout.yaxis.alias.containsKey("useInstanceName")) {
                   metricGraphData.name = metricInfo.get("exported_instance").asText();
                   // If the alias contains more entries, we want to highlight it via the
                   // saved name of the metric.
                   if (layout.yaxis.alias.entrySet().size() > 1) {
-                    metricGraphData.name = metricGraphData.name + "-" +
-                                           metricInfo.get("saved_name").asText();
+                    metricGraphData.name =
+                        metricGraphData.name + "-" + metricInfo.get("saved_name").asText();
                   }
                   validLabels = false;
                   break;
@@ -124,14 +111,17 @@ public class MetricQueryResponse {
           }
         } else {
           metricGraphData.labels = new HashMap<String, String>();
-          metricInfo.fields().forEachRemaining(handler -> {
-            metricGraphData.labels.put(handler.getKey(), handler.getValue().asText());
-          });
+          metricInfo
+              .fields()
+              .forEachRemaining(
+                  handler -> {
+                    metricGraphData.labels.put(handler.getKey(), handler.getValue().asText());
+                  });
         }
       }
 
       if (objNode.has("values")) {
-        for (final JsonNode valueNode: objNode.get("values")) {
+        for (final JsonNode valueNode : objNode.get("values")) {
           metricGraphData.x.add(valueNode.get(0).asLong() * 1000);
           JsonNode val = valueNode.get(1);
           if (val.asText().equals("NaN")) {
@@ -156,8 +146,8 @@ public class MetricQueryResponse {
   }
 
   /**
-   * Converts the JSON result of a prometheus HTTP query call to
-   * the MetricQueryResponse.Entry format.
+   * Converts the JSON result of a prometheus HTTP query call to the MetricQueryResponse.Entry
+   * format.
    */
   public ArrayList<MetricQueryResponse.Entry> getValues() {
     if (this.data == null || this.data.result == null) {
@@ -178,19 +168,21 @@ public class MetricQueryResponse {
         entry.labels = objMapper.convertValue(metricNode, HashMap.class);
         entry.values = new ArrayList<>();
         if (valueNode != null) {
-          entry.values.add(new ImmutablePair<>(
-            new Double(valueNode.get(0).asText()), // timestamp
-            new Double(valueNode.get(1).asText()) // value
-          ));
+          entry.values.add(
+              new ImmutablePair<>(
+                  new Double(valueNode.get(0).asText()), // timestamp
+                  new Double(valueNode.get(1).asText()) // value
+                  ));
         } else if (valuesNode != null) {
           entry.values = new ArrayList<>();
           Iterator<JsonNode> elements = valuesNode.elements();
           while (elements.hasNext()) {
             final JsonNode eachValueNode = elements.next();
-            entry.values.add(new ImmutablePair<>(
-              new Double(eachValueNode.get(0).asText()), // timestamp
-              new Double(eachValueNode.get(1).asText()) // value
-            ));
+            entry.values.add(
+                new ImmutablePair<>(
+                    new Double(eachValueNode.get(0).asText()), // timestamp
+                    new Double(eachValueNode.get(1).asText()) // value
+                    ));
           }
         }
         result.add(entry);
@@ -200,6 +192,4 @@ public class MetricQueryResponse {
     }
     return result;
   }
-
-
 }

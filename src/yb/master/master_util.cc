@@ -17,12 +17,20 @@
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/metadata.pb.h"
-#include "yb/master/master_defaults.h"
+
+#include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/master/master.service.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_error.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace master {
@@ -99,9 +107,9 @@ void TakeRegistration(consensus::RaftPeerPB* source, TSInfoPB* dest) {
 }
 
 void CopyRegistration(const consensus::RaftPeerPB& source, TSInfoPB* dest) {
-  dest->mutable_private_rpc_addresses()->CopyFrom(source.last_known_private_addr());
-  dest->mutable_broadcast_addresses()->CopyFrom(source.last_known_broadcast_addr());
-  dest->mutable_cloud_info()->CopyFrom(source.cloud_info());
+  *dest->mutable_private_rpc_addresses() = source.last_known_private_addr();
+  *dest->mutable_broadcast_addresses() = source.last_known_broadcast_addr();
+  *dest->mutable_cloud_info() = source.cloud_info();
 }
 
 void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest) {
@@ -156,6 +164,45 @@ TableType GetTableTypeForDatabase(const YQLDatabase database_type) {
       DCHECK_EQ(database_type, YQLDatabase::YQL_DATABASE_UNKNOWN);
       return TableType::DEFAULT_TABLE_TYPE;
   }
+}
+
+Result<bool> NamespaceMatchesIdentifier(
+    const NamespaceId& namespace_id, YQLDatabase db_type, const NamespaceName& namespace_name,
+    const NamespaceIdentifierPB& ns_identifier) {
+  if (ns_identifier.has_id()) {
+    return namespace_id == ns_identifier.id();
+  }
+  if (ns_identifier.has_database_type() && ns_identifier.database_type() != db_type) {
+    return false;
+  }
+  if (ns_identifier.has_name()) {
+    return namespace_name == ns_identifier.name();
+  }
+  return STATUS_FORMAT(
+    InvalidArgument, "Wrong namespace identifier format: $0", ns_identifier);
+}
+
+Result<bool> TableMatchesIdentifier(
+    const TableId& id, const SysTablesEntryPB& table, const TableIdentifierPB& table_identifier) {
+  if (table_identifier.has_table_id()) {
+    return id == table_identifier.table_id();
+  }
+  if (!table_identifier.table_name().empty() && table_identifier.table_name() != table.name()) {
+    return false;
+  }
+  if (table_identifier.has_namespace_()) {
+    return NamespaceMatchesIdentifier(
+        table.namespace_id(), master::GetDatabaseTypeForTable(table.table_type()),
+        table.namespace_name(), table_identifier.namespace_());
+  }
+  return STATUS_FORMAT(
+    InvalidArgument, "Wrong table identifier format: $0", table_identifier);
+}
+
+CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s) {
+  StatusToPB(s, error->mutable_status());
+  error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
+  return s;
 }
 
 } // namespace master

@@ -41,11 +41,12 @@
 
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/opid_util.h"
-#include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
+
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 
@@ -55,9 +56,6 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 }
 
 namespace log {
-class Log;
-class LogIndex;
-struct LogIndexEntry;
 
 // Reads a set of segments from a given path. Segment headers and footers
 // are read and parsed, but entries are not.
@@ -126,7 +124,8 @@ class LogReader {
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
-      ReplicateMsgs* replicates) const;
+      ReplicateMsgs* replicates,
+      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
   static const int64_t kNoSizeLimit;
 
   // Look up the OpId for the given operation index.

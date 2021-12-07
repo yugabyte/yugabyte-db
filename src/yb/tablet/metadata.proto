@@ -37,7 +37,6 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/util/opid.proto";
-import "yb/fs/fs.proto";
 
 // ============================================================================
 //  Tablet Metadata
@@ -220,6 +219,14 @@ message RaftGroupReplicaSuperBlockPB {
 
   // Reject client queries (read and write) to this tablet like it does not present.
   optional bool hidden = 28;
+
+  // Picked at master while enabling writes after restoration.
+  optional fixed64 restoration_hybrid_time = 32;
+
+  optional OpIdPB split_op_id = 29;
+  repeated bytes split_child_tablet_ids = 30;
+
+  repeated bytes active_restorations = 31;
 }
 
 message FilePB {

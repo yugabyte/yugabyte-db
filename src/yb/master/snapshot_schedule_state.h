@@ -22,14 +22,25 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_backup.pb.h"
 
+#include "yb/util/async_task_tracker.h"
+#include "yb/util/tostring.h"
+
 namespace yb {
 namespace master {
 
+YB_DEFINE_ENUM(SnapshotScheduleOperationType, (kCreateSnapshot)(kCleanup));
+
 struct SnapshotScheduleOperation {
+  SnapshotScheduleOperationType type;
   SnapshotScheduleId schedule_id;
-  SnapshotScheduleFilterPB filter;
   TxnSnapshotId snapshot_id;
+  SnapshotScheduleFilterPB filter;
   HybridTime previous_snapshot_hybrid_time;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        type, schedule_id, snapshot_id, filter, previous_snapshot_hybrid_time);
+  }
 };
 
 using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
@@ -55,16 +66,28 @@ class SnapshotScheduleState {
     return options_;
   }
 
+  AsyncTaskTracker& CleanupTracker() {
+    return cleanup_tracker_;
+  }
+
+  bool deleted() const;
+
   void PrepareOperations(
       HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations);
   Result<SnapshotScheduleOperation> ForceCreateSnapshot(HybridTime last_snapshot_time);
   void SnapshotFinished(const TxnSnapshotId& snapshot_id, const Status& status);
 
-  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
+  Result<docdb::KeyBytes> EncodedKey() const;
+  static Result<docdb::KeyBytes> EncodedKey(
+      const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context);
+
+  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;
   CHECKED_STATUS ToPB(SnapshotScheduleInfoPB* pb) const;
   std::string ToString() const;
 
  private:
+  std::string LogPrefix() const;
+
   SnapshotScheduleOperation MakeCreateSnapshotOperation(HybridTime last_snapshot_time);
 
   SnapshotCoordinatorContext& context_;
@@ -74,6 +97,8 @@ class SnapshotScheduleState {
   // When snapshot is being created for this schedule, this field contains id of this snapshot.
   // To prevent creating other snapshots during that time.
   TxnSnapshotId creating_snapshot_id_ = TxnSnapshotId::Nil();
+
+  AsyncTaskTracker cleanup_tracker_;
 };
 
 } // namespace master

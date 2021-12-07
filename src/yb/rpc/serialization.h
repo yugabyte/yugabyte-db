@@ -36,6 +36,12 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include <string>
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/util/slice.h"
+
 namespace google {
 namespace protobuf {
 class MessageLite;
@@ -86,17 +92,38 @@ Status SerializeHeader(const google::protobuf::MessageLite& header,
                        size_t reserve_for_param = 0,
                        size_t* header_size = nullptr);
 
+struct ParsedRequestHeader {
+  Slice remote_method;
+  int32_t call_id = 0;
+  uint32_t timeout_ms = 0;
+
+  std::string RemoteMethodAsString() const;
+  void ToPB(RequestHeader* out) const;
+};
+
 // Deserialize the request.
 // In: data buffer Slice.
 // Out: parsed_header PB initialized,
 //      parsed_main_message pointing to offset in original buffer containing
 //      the main payload.
-Status ParseYBMessage(const Slice& buf,
-                      google::protobuf::MessageLite* parsed_header,
-                      Slice* parsed_main_message);
+CHECKED_STATUS ParseYBMessage(const Slice& buf,
+                              google::protobuf::MessageLite* parsed_header,
+                              Slice* parsed_main_message);
 
+
+CHECKED_STATUS ParseYBMessage(const Slice& buf,
+                              ParsedRequestHeader* parsed_header,
+                              Slice* parsed_main_message);
+
+struct ParsedRemoteMethod {
+  Slice service;
+  Slice method;
+};
+
+Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 
 }  // namespace serialization
 }  // namespace rpc
 }  // namespace yb
+
 #endif  // YB_RPC_SERIALIZATION_H_

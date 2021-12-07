@@ -23,6 +23,7 @@
 
 #include "access/htup_details.h"
 #include "access/xact.h"
+#include "access/yb_scan.h"
 #include "executor/executor.h"
 #include "executor/nodeLockRows.h"
 #include "foreign/fdwapi.h"
@@ -73,14 +74,19 @@ lnext:
 		n_relations++;
 	}
 
-	if (n_yb_relations == n_relations)
-		return slot;
-
-	if (n_yb_relations > 0)
+	if (n_yb_relations > 0 && n_yb_relations != n_relations)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Mixing Yugabyte relations and not Yugabyte relations with "
 						"row locks is not supported")));
+
+	if (n_yb_relations > 0 && XactIsoLevel == XACT_SERIALIZABLE) {
+		/*
+		 * For YB relations, we don't lock tuples using this node in SERIALIZABLE level. Instead we take
+		 * predicate locks by setting the row mark in read requests sent to txn participants.
+		 */
+		return slot;
+	}
 
 	if (TupIsNull(slot))
 		return NULL;
@@ -202,11 +208,18 @@ lnext:
 				break;
 		}
 
-		test = heap_lock_tuple(erm->relation, &tuple,
+		if (IsYBBackedRelation(erm->relation)) {
+			test = YBCLockTuple(erm->relation, datum, erm->markType, erm->waitPolicy,
+													estate);
+		}
+		else {
+			test = heap_lock_tuple(erm->relation, &tuple,
 							   estate->es_output_cid,
 							   lockmode, erm->waitPolicy, true,
 							   &buffer, &hufd);
-		ReleaseBuffer(buffer);
+			ReleaseBuffer(buffer);
+		}
+
 		switch (test)
 		{
 			case HeapTupleWouldBlock:
@@ -216,19 +229,19 @@ lnext:
 			case HeapTupleSelfUpdated:
 
 				/*
-				 * The target tuple was already updated or deleted by the
-				 * current command, or by a later command in the current
-				 * transaction.  We *must* ignore the tuple in the former
-				 * case, so as to avoid the "Halloween problem" of repeated
-				 * update attempts.  In the latter case it might be sensible
-				 * to fetch the updated tuple instead, but doing so would
-				 * require changing heap_update and heap_delete to not
-				 * complain about updating "invisible" tuples, which seems
-				 * pretty scary (heap_lock_tuple will not complain, but few
-				 * callers expect HeapTupleInvisible, and we're not one of
-				 * them).  So for now, treat the tuple as deleted and do not
-				 * process.
-				 */
+				* The target tuple was already updated or deleted by the
+				* current command, or by a later command in the current
+				* transaction.  We *must* ignore the tuple in the former
+				* case, so as to avoid the "Halloween problem" of repeated
+				* update attempts.  In the latter case it might be sensible
+				* to fetch the updated tuple instead, but doing so would
+				* require changing heap_update and heap_delete to not
+				* complain about updating "invisible" tuples, which seems
+				* pretty scary (heap_lock_tuple will not complain, but few
+				* callers expect HeapTupleInvisible, and we're not one of
+				* them).  So for now, treat the tuple as deleted and do not
+				* process.
+				*/
 				goto lnext;
 
 			case HeapTupleMayBeUpdated:
@@ -236,14 +249,20 @@ lnext:
 				break;
 
 			case HeapTupleUpdated:
-				if (IsolationUsesXactSnapshot())
+				/*
+				 * TODO(Piyush): Right now in YB, READ COMMITTED isolation level maps to REPEATABLE READ and
+				 * hence we should error out always. Once we implement READ COMMITTED in YB, we will have to
+				 * add EvalQualPlan related handling specific to YB.
+				 */
+				if (true) // Replace with IsolationUsesXactSnapshot() once we truly support READ COMMITTED.
 					ereport(ERROR,
 							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-							 errmsg("could not serialize access due to concurrent update")));
+							errmsg("could not serialize access due to concurrent update")));
 				if (ItemPointerIndicatesMovedPartitions(&hufd.ctid))
 					ereport(ERROR,
 							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-							 errmsg("tuple to be locked was already moved to another partition due to concurrent update")));
+							errmsg("tuple to be locked was already moved to another partition due to "
+											"concurrent update")));
 
 				if (ItemPointerEquals(&hufd.ctid, &tuple.t_self))
 				{
@@ -253,15 +272,15 @@ lnext:
 
 				/* updated, so fetch and lock the updated version */
 				copyTuple = EvalPlanQualFetch(estate, erm->relation,
-											  lockmode, erm->waitPolicy,
-											  &hufd.ctid, hufd.xmax);
+												lockmode, erm->waitPolicy,
+												&hufd.ctid, hufd.xmax);
 
 				if (copyTuple == NULL)
 				{
 					/*
-					 * Tuple was deleted; or it's locked and we're under SKIP
-					 * LOCKED policy, so don't return it
-					 */
+					* Tuple was deleted; or it's locked and we're under SKIP
+					* LOCKED policy, so don't return it
+					*/
 					goto lnext;
 				}
 				/* remember the actually locked tuple's TID */
@@ -282,11 +301,14 @@ lnext:
 
 			default:
 				elog(ERROR, "unrecognized heap_lock_tuple status: %u",
-					 test);
+					test);
 		}
 
-		/* Remember locked tuple's TID for EPQ testing and WHERE CURRENT OF */
-		erm->curCtid = tuple.t_self;
+		if (!IsYBBackedRelation(erm->relation))
+		{
+			/* Remember locked tuple's TID for EPQ testing and WHERE CURRENT OF */
+			erm->curCtid = tuple.t_self;
+		}
 	}
 
 	/*

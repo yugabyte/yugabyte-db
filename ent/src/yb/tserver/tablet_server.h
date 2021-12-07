@@ -18,12 +18,7 @@
 namespace yb {
 
 class UniverseKeyRegistryPB;
-
-namespace enterprise {
-
 class UniverseKeyManager;
-
-}
 
 namespace rpc {
 
@@ -44,11 +39,9 @@ class TabletServer : public yb::tserver::TabletServer {
   void operator=(const TabletServer&) = delete;
   ~TabletServer();
 
-  Env* GetEnv() override;
-  rocksdb::Env* GetRocksDBEnv() override;
   void Shutdown() override;
 
-  yb::enterprise::UniverseKeyManager* GetUniverseKeyManager();
+  yb::UniverseKeyManager* GetUniverseKeyManager();
   CHECKED_STATUS SetUniverseKeyRegistry(
       const yb::UniverseKeyRegistryPB& universe_key_registry) override;
   CHECKED_STATUS SetConfigVersionAndConsumerRegistry(int32_t cluster_config_version,
@@ -67,13 +60,7 @@ class TabletServer : public yb::tserver::TabletServer {
   CHECKED_STATUS CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
-  // Object that manages the universe key registry used for encrypting and decrypting data keys.
-  // Copies are given to each Env.
-  std::shared_ptr<yb::enterprise::UniverseKeyManager> universe_key_manager_;
-  // Encrypted env for all non-rocksdb file i/o operations.
-  std::unique_ptr<yb::Env> env_;
-  // Encrypted env for all rocksdb file i/o operations.
-  std::unique_ptr<rocksdb::Env> rocksdb_env_;
+
   // CDC consumer.
   mutable std::mutex cdc_consumer_mutex_;
   std::unique_ptr<CDCConsumer> cdc_consumer_ GUARDED_BY(cdc_consumer_mutex_);

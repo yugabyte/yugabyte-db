@@ -23,11 +23,15 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
-#include "yb/util/encryption_util.h"
-#include "yb/util/random_util.h"
-#include "yb/util/header_manager_impl.h"
-#include "yb/util/universe_key_manager.h"
+#include "yb/rocksdb/util/logging.h"
+
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/header_manager_impl.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/universe_key_manager.h"
 
 namespace rocksdb {
 
@@ -108,13 +112,13 @@ void DBTestBase::CreateEncryptedEnv() {
     LOG(FATAL) << "Could not write slice to file:" << status.ToString();
   }
 
-  auto res = yb::enterprise::UniverseKeyManager::FromKey(kKeyId, key);
+  auto res = yb::UniverseKeyManager::FromKey(kKeyId, key);
   if (!res.ok()) {
     LOG(FATAL) << "Could not get key from bytes:" << res.status().ToString();
   }
   universe_key_manager_ = std::move(*res);
-  encrypted_env_ = yb::enterprise::NewRocksDBEncryptedEnv(
-      yb::enterprise::DefaultHeaderManager(universe_key_manager_.get()));
+  encrypted_env_ = yb::NewRocksDBEncryptedEnv(
+      yb::DefaultHeaderManager(universe_key_manager_.get()));
   delete env_;
   env_ = new rocksdb::SpecialEnv(encrypted_env_.get());
 }
@@ -411,6 +415,12 @@ Options DBTestBase::CurrentOptions(
     case kConcurrentSkipList: {
       options.allow_concurrent_memtable_write = true;
       options.enable_write_thread_adaptive_yield = true;
+      break;
+    }
+    case kBlockBasedTableWithThreeSharedPartsKeyDeltaEncoding: {
+      table_options.use_delta_encoding = true;
+      table_options.data_block_key_value_encoding_format =
+          KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
       break;
     }
 
@@ -1083,6 +1093,12 @@ std::unordered_map<std::string, uint64_t> DBTestBase::GetAllSSTFiles(
     }
   }
   return res;
+}
+
+void ConfigureLoggingToGlog(Options* options, const std::string& log_prefix) {
+  options->log_prefix = log_prefix;
+  options->info_log_level = InfoLogLevel::INFO_LEVEL;
+  options->info_log = std::make_shared<yb::YBRocksDBLogger>(options->log_prefix);
 }
 
 }  // namespace rocksdb

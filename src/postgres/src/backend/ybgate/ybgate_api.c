@@ -20,7 +20,7 @@
 
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "common/int.h"
 #include "executor/execExpr.h"
 #include "executor/executor.h"
@@ -29,6 +29,7 @@
 #include "nodes/primnodes.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
+#include "utils/sampling.h"
 
 //-----------------------------------------------------------------------------
 // Memory Context
@@ -70,7 +71,7 @@ YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count)
 {
 	PG_SETUP_ERROR_REPORTING();
 
-	YBCGetTypeTable(type_table, count);
+	YbGetTypeTable(type_table, count);
 
 	return PG_STATUS_OK;
 }
@@ -126,10 +127,10 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			}
 
 			FmgrInfo *flinfo = palloc0(sizeof(FmgrInfo));
-			FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(args->length));
+			FunctionCallInfoData fcinfo;
 
 			fmgr_info(funcid, flinfo);
-			InitFunctionCallInfoData(*fcinfo,
+			InitFunctionCallInfoData(fcinfo,
 			                         flinfo,
 			                         args->length,
 			                         InvalidOid,
@@ -139,19 +140,19 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			foreach(lc, args)
 			{
 				Expr *arg = (Expr *) lfirst(lc);
-				fcinfo->args[i].value = evalExpr(ctx, arg, &fcinfo->args[i].isnull);
+				fcinfo.arg[i] = evalExpr(ctx, arg, &fcinfo.argnull[i]);
 				/*
 				 * Strict functions are guaranteed to return NULL if any of
 				 * their arguments are NULL.
 				 */
-				if (flinfo->fn_strict && fcinfo->args[i].isnull) {
+				if (flinfo->fn_strict && fcinfo.argnull[i]) {
 					*is_null = true;
 					return (Datum) 0;
 				}
 				i++;
 			}
-			Datum result = FunctionCallInvoke(fcinfo);
-			*is_null = fcinfo->isnull;
+			Datum result = FunctionCallInvoke(&fcinfo);
+			*is_null = fcinfo.isnull;
 			return result;
 		}
 		case T_RelabelType:
@@ -258,3 +259,43 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	return PG_STATUS_OK;
 }
 
+//-----------------------------------------------------------------------------
+// Relation sampling
+//-----------------------------------------------------------------------------
+
+struct YbgReservoirStateData {
+	ReservoirStateData rs;
+};
+
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs) 
+{
+	PG_SETUP_ERROR_REPORTING();
+	YbgReservoirState rstate = (YbgReservoirState) palloc0(sizeof(struct YbgReservoirStateData));
+	rstate->rs.W = rstate_w;
+	Uint64ToSamplerRandomState(rstate->rs.randstate, randstate);
+	*yb_rs = rstate;
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*rstate_w = yb_rs->rs.W;
+	*randstate = SamplerRandomStateToUint64(yb_rs->rs.randstate);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
+{
+	PG_SETUP_ERROR_REPORTING();
+	ReservoirState rs = &yb_rs->rs;
+	*value = sampler_random_fract(rs->randstate);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double *s)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*s = reservoir_get_next_S(&yb_rs->rs, t, n);
+	return PG_STATUS_OK;
+}

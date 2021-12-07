@@ -25,10 +25,8 @@
 #define YB_ROCKSDB_UTIL_TESTHARNESS_H
 
 #include <string>
-#include <gtest/gtest.h>
 
 #include "yb/rocksdb/env.h"
-#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 namespace test {

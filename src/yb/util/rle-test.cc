@@ -47,7 +47,7 @@
 #include <string>
 #include <vector>
 
-#include <boost/utility.hpp>
+#include <boost/utility/binary.hpp>
 
 // Must come before gtest.h.
 #include "yb/gutil/mathlimits.h"
@@ -58,6 +58,7 @@
 #include "yb/util/bit-stream-utils.h"
 #include "yb/util/hexdump.h"
 #include "yb/util/test_util.h"
+#include <glog/logging.h>
 
 using std::string;
 using std::vector;

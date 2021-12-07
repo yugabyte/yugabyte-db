@@ -54,8 +54,8 @@
 #define YB_GUTIL_SPINLOCK_H
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
 // This isn't originally in the base:: namespace in tcmalloc,
@@ -89,6 +89,9 @@ class CAPABILITY("mutex") SpinLock {
       SlowLock();
     }
     ANNOTATE_RWLOCK_ACQUIRED(this, 1);
+#ifdef __aarch64__
+    __asm__ __volatile__ ("dmb ish" ::: "memory");
+#endif
   }
 
   // Try to acquire this SpinLock without blocking and return true if the
@@ -102,6 +105,9 @@ class CAPABILITY("mutex") SpinLock {
     if (res) {
       ANNOTATE_RWLOCK_ACQUIRED(this, 1);
     }
+#ifdef __aarch64__
+    __asm__ __volatile__ ("dmb ish" ::: "memory");
+#endif
     return res;
   }
 
@@ -118,6 +124,9 @@ class CAPABILITY("mutex") SpinLock {
       // for the lock.
       SlowUnlock(wait_cycles);
     }
+#ifdef __aarch64__
+    __asm__ __volatile__ ("dmb ish" ::: "memory");
+#endif
   }
 
   // Determine if the lock is held.  When the lock is held by the invoking

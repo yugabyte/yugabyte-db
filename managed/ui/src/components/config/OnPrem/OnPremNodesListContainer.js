@@ -14,9 +14,16 @@ import {
   createNodeInstancesResponse,
   getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse,
+  precheckInstance,
+  precheckInstanceResponse,
   deleteInstance,
   deleteInstanceResponse
 } from '../../../actions/cloud';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../actions/tasks';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import { reduxForm } from 'redux-form';
 import { closeUniverseDialog } from '../../../actions/universe';
@@ -25,6 +32,7 @@ import { openDialog, closeDialog } from '../../../actions/modal';
 const mapStateToProps = (state) => {
   return {
     cloud: state.cloud,
+    tasks: state.tasks,
     universeList: state.universe.universeList,
     visibleModal: state.modal.visibleModal
   };
@@ -90,6 +98,22 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       });
     },
 
+    fetchCustomerTasks: () => {
+      dispatch(fetchCustomerTasks()).then((response) => {
+        if (!response.error) {
+          dispatch(fetchCustomerTasksSuccess(response.payload));
+        } else {
+          dispatch(fetchCustomerTasksFailure(response.payload));
+        }
+      });
+    },
+
+    precheckInstance: (providerUUID, instanceIP) => {
+      dispatch(precheckInstance(providerUUID, instanceIP)).then((response) => {
+        dispatch(precheckInstanceResponse(response.payload));
+      });
+    },
+
     deleteInstance: (providerUUID, instanceIP) => {
       dispatch(deleteInstance(providerUUID, instanceIP)).then((response) => {
         dispatch(deleteInstanceResponse(response.payload));
@@ -105,6 +129,10 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       dispatch(openDialog('confirmDeleteNodeInstance'));
     },
 
+    showConfirmPrecheckModal: () => {
+      dispatch(openDialog('confirmPrecheckNodeInstance'));
+    },
+
     hideDialog: () => {
       dispatch(closeDialog());
       dispatch(closeUniverseDialog());
@@ -115,20 +143,30 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 const validate = (values) => {
   const errors = { instances: {} };
   if (isNonEmptyObject(values.instances)) {
-    Object.keys(values.instances).forEach(function (instanceRowKey) {
+    Object.keys(values.instances).forEach((instanceRowKey) => {
       const instanceRowArray = values.instances[instanceRowKey];
       errors.instances[instanceRowKey] = [];
       if (isNonEmptyArray(instanceRowArray)) {
-        instanceRowArray.forEach(function (instanceRowItem, instanceRowIdx) {
-          errors.instances[instanceRowKey][instanceRowIdx] = {};
-          if (
-            isNonEmptyString(instanceRowItem.instanceTypeIP) &&
-            instanceRowItem.instanceTypeIP.length > 75
-          ) {
-            errors.instances[instanceRowKey][instanceRowIdx] = {
-              instanceTypeIP: 'Address Too Long'
-            };
-          }
+        instanceRowArray.forEach((instanceRowItem, instanceRowIdx) => {
+          const instanceErrors = {};
+          if (Object.keys(instanceRowItem).length) {
+            if (!instanceRowItem.zone) {
+              instanceErrors.zone = 'Zone is required';
+            }
+            if (!instanceRowItem.instanceTypeIP) {
+              instanceErrors.instanceTypeIP = 'IP address or DNS is required';
+            }
+            if (!instanceRowItem.machineType) {
+              instanceErrors.machineType = 'Type is required';
+            }
+            if (
+              isNonEmptyString(instanceRowItem.instanceTypeIP) &&
+              instanceRowItem.instanceTypeIP.length > 75
+            ) {
+              instanceErrors.instanceTypeIP = 'Address Too Long';
+            }
+          }          
+          errors.instances[instanceRowKey][instanceRowIdx] = instanceErrors;
         });
       }
     });

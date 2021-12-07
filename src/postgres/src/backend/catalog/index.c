@@ -116,7 +116,7 @@ static TupleDesc ConstructTupleDescriptor(Relation heapRelation,
 						 Oid *classObjectId);
 static void InitializeAttributeOids(Relation indexRelation,
 						int numatts, Oid indexoid);
-static void AppendAttributeTuples(Relation indexRelation, int numatts);
+static void AppendAttributeTuples(Relation indexRelation, int numatts, bool yb_relisshared);
 static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
 					Oid parentIndexId,
 					IndexInfo *indexInfo,
@@ -127,7 +127,8 @@ static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
 					bool isexclusion,
 					bool immediate,
 					bool isvalid,
-					bool isready);
+					bool isready,
+					bool yb_relisshared);
 static void index_update_stats(Relation rel,
 				   bool hasindex,
 				   double reltuples);
@@ -141,8 +142,8 @@ static double IndexBuildHeapRangeScanInternal(Relation heapRelation,
 											  IndexBuildCallback callback,
 											  void *callback_state,
 											  HeapScanDesc scan,
-											  uint64_t *read_time,
-											  RowBounds *row_bounds);
+											  YbBackfillInfo *bfinfo,
+											  YbPgExecOutParam *bfresult);
 static void IndexCheckExclusion(Relation heapRelation,
 					Relation indexRelation,
 					IndexInfo *indexInfo);
@@ -555,7 +556,7 @@ InitializeAttributeOids(Relation indexRelation,
  * ----------------------------------------------------------------
  */
 static void
-AppendAttributeTuples(Relation indexRelation, int numatts)
+AppendAttributeTuples(Relation indexRelation, int numatts, bool yb_relisshared)
 {
 	Relation	pg_attribute;
 	CatalogIndexState indstate;
@@ -585,7 +586,7 @@ AppendAttributeTuples(Relation indexRelation, int numatts)
 		Assert(attr->attnum == i + 1);
 		Assert(attr->attcacheoff == -1);
 
-		InsertPgAttributeTuple(pg_attribute, attr, indstate);
+		InsertPgAttributeTuple(pg_attribute, attr, indstate, yb_relisshared);
 	}
 
 	CatalogCloseIndexes(indstate);
@@ -611,7 +612,8 @@ UpdateIndexRelation(Oid indexoid,
 					bool isexclusion,
 					bool immediate,
 					bool isvalid,
-					bool isready)
+					bool isready,
+					bool yb_relisshared)
 {
 	int2vector *indkey;
 	oidvector  *indcollation;
@@ -705,7 +707,7 @@ UpdateIndexRelation(Oid indexoid,
 	/*
 	 * insert the tuple into the pg_index catalog
 	 */
-	CatalogTupleInsert(pg_index, tuple);
+	YBCatalogTupleInsert(pg_index, tuple, yb_relisshared && !IsBootstrapProcessingMode());
 
 	/*
 	 * close the relation and free the tuple
@@ -859,8 +861,11 @@ index_create(Relation heapRelation,
 	/*
 	 * We cannot allow indexing a shared relation after initdb (because
 	 * there's no way to make the entry in other databases' pg_class).
+	 *
+	 * YB NOTE:
+	 * Not totally true anymore, we're using a hacky way to do that.
 	 */
-	if (shared_relation && !IsBootstrapProcessingMode())
+	if (shared_relation && !IsBootstrapProcessingMode() && !IsYsqlUpgrade)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("shared indexes cannot be created after initdb")));
@@ -946,6 +951,12 @@ index_create(Relation heapRelation,
 			indexRelationId = binary_upgrade_next_index_pg_class_oid;
 			binary_upgrade_next_index_pg_class_oid = InvalidOid;
 		}
+		else if (IsYBRelation(heapRelation) && IsCatalogRelation(heapRelation))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("system index must have an explicit OID")));
+		}
 		else
 		{
 			indexRelationId =
@@ -1010,6 +1021,28 @@ index_create(Relation heapRelation,
 	indexRelation->rd_rel->relispartition = OidIsValid(parentIndexRelid);
 
 	/*
+	 * YSQL upgrade notes:
+	 * -------------------
+	 * At this point, reloptions no longer affects the index
+	 * creation process, the only remaining use for them is to be
+	 * stored in pg_class. ybTransformRelOptions has already
+	 * removed all temporary reloptions.
+	 *
+	 * We want system tables and indexes to not have any reloptions
+	 * stored to imitate BKI processing, so we don't allow any reloption
+	 * not removed by ybTransformRelOptions.
+	 */
+	if (IsYsqlUpgrade && IsCatalogRelation(heapRelation) &&
+		reloptions != (Datum) 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("unsuppored reloptions were used for a system index "
+				        "during YSQL upgrade"),
+				 errhint("Only a small subset is allowed due to BKI restrictions.")));
+	}
+
+	/*
 	 * store index's pg_class entry
 	 */
 	InsertPgClassTuple(pg_class, indexRelation,
@@ -1031,7 +1064,7 @@ index_create(Relation heapRelation,
 	/*
 	 * append ATTRIBUTE tuples for the index
 	 */
-	AppendAttributeTuples(indexRelation, indexInfo->ii_NumIndexAttrs);
+	AppendAttributeTuples(indexRelation, indexInfo->ii_NumIndexAttrs, shared_relation);
 
 	/* ----------------
 	 *	  update pg_index
@@ -1047,7 +1080,8 @@ index_create(Relation heapRelation,
 						isprimary, is_exclusion,
 						(constr_flags & INDEX_CONSTR_CREATE_DEFERRABLE) == 0,
 						!concurrent && !invalid,
-						!concurrent);
+						!concurrent,
+						shared_relation);
 
 	/*
 	 * Register relcache invalidation on the indexes' heap relation, to
@@ -1072,6 +1106,10 @@ index_create(Relation heapRelation,
 	 *
 	 * During bootstrap we can't register any dependencies, and we don't try
 	 * to make a constraint either.
+	 *
+	 * YB NOTE:
+	 * For system relations, we only need to record a pin dependency,
+	 * nothing else.
 	 */
 	if (!IsBootstrapProcessingMode())
 	{
@@ -1082,130 +1120,134 @@ index_create(Relation heapRelation,
 		myself.objectId = indexRelationId;
 		myself.objectSubId = 0;
 
-		if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0)
+		if (IsYBRelation(heapRelation) && IsCatalogRelation(heapRelation))
 		{
-			char		constraintType;
-			ObjectAddress localaddr;
-
-			if (isprimary)
-				constraintType = CONSTRAINT_PRIMARY;
-			else if (indexInfo->ii_Unique)
-				constraintType = CONSTRAINT_UNIQUE;
-			else if (is_exclusion)
-				constraintType = CONSTRAINT_EXCLUSION;
-			else
-			{
-				elog(ERROR, "constraint must be PRIMARY, UNIQUE or EXCLUDE");
-				constraintType = 0; /* keep compiler quiet */
-			}
-
-			localaddr = index_constraint_create(heapRelation,
-												indexRelationId,
-												parentConstraintId,
-												indexInfo,
-												indexRelationName,
-												constraintType,
-												constr_flags,
-												allow_system_table_mods,
-												is_internal);
-			if (constraintId)
-				*constraintId = localaddr.objectId;
+			YBRecordPinDependency(&myself, shared_relation);
 		}
 		else
 		{
-			bool		have_simple_col = false;
-			DependencyType deptype;
-
-			deptype = OidIsValid(parentIndexRelid) ? DEPENDENCY_INTERNAL_AUTO : DEPENDENCY_AUTO;
-
-			/* Create auto dependencies on simply-referenced columns */
-			for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+			if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0)
 			{
-				if (indexInfo->ii_IndexAttrNumbers[i] != 0)
+				char		constraintType;
+				ObjectAddress localaddr;
+
+				if (isprimary)
+					constraintType = CONSTRAINT_PRIMARY;
+				else if (indexInfo->ii_Unique)
+					constraintType = CONSTRAINT_UNIQUE;
+				else if (is_exclusion)
+					constraintType = CONSTRAINT_EXCLUSION;
+				else
+				{
+					elog(ERROR, "constraint must be PRIMARY, UNIQUE or EXCLUDE");
+					constraintType = 0; /* keep compiler quiet */
+				}
+
+				localaddr = index_constraint_create(heapRelation,
+													indexRelationId,
+													parentConstraintId,
+													indexInfo,
+													indexRelationName,
+													constraintType,
+													constr_flags,
+													allow_system_table_mods,
+													is_internal);
+				if (constraintId)
+					*constraintId = localaddr.objectId;
+			}
+			else
+			{
+				bool		have_simple_col = false;
+				DependencyType deptype;
+
+				deptype = OidIsValid(parentIndexRelid) ? DEPENDENCY_INTERNAL_AUTO : DEPENDENCY_AUTO;
+
+				/* Create auto dependencies on simply-referenced columns */
+				for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+				{
+					if (indexInfo->ii_IndexAttrNumbers[i] != 0)
+					{
+						referenced.classId = RelationRelationId;
+						referenced.objectId = heapRelationId;
+						referenced.objectSubId = indexInfo->ii_IndexAttrNumbers[i];
+
+						recordDependencyOn(&myself, &referenced, deptype);
+
+						have_simple_col = true;
+					}
+				}
+
+				/*
+				 * If there are no simply-referenced columns, give the index an
+				 * auto dependency on the whole table.  In most cases, this will
+				 * be redundant, but it might not be if the index expressions and
+				 * predicate contain no Vars or only whole-row Vars.
+				 */
+				if (!have_simple_col)
 				{
 					referenced.classId = RelationRelationId;
 					referenced.objectId = heapRelationId;
-					referenced.objectSubId = indexInfo->ii_IndexAttrNumbers[i];
+					referenced.objectSubId = 0;
 
 					recordDependencyOn(&myself, &referenced, deptype);
-
-					have_simple_col = true;
 				}
 			}
 
-			/*
-			 * If there are no simply-referenced columns, give the index an
-			 * auto dependency on the whole table.  In most cases, this will
-			 * be redundant, but it might not be if the index expressions and
-			 * predicate contain no Vars or only whole-row Vars.
-			 */
-			if (!have_simple_col)
+			/* Store dependency on parent index, if any */
+			if (OidIsValid(parentIndexRelid))
 			{
 				referenced.classId = RelationRelationId;
-				referenced.objectId = heapRelationId;
+				referenced.objectId = parentIndexRelid;
 				referenced.objectSubId = 0;
 
-				recordDependencyOn(&myself, &referenced, deptype);
+				recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL_AUTO);
 			}
-		}
 
-		/* Store dependency on parent index, if any */
-		if (OidIsValid(parentIndexRelid))
-		{
-			referenced.classId = RelationRelationId;
-			referenced.objectId = parentIndexRelid;
-			referenced.objectSubId = 0;
-
-			recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL_AUTO);
-		}
-
-		/* Store dependency on collations */
-		/* The default collation is pinned, so don't bother recording it */
-		for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
-		{
-			if (OidIsValid(collationObjectId[i]) &&
-				collationObjectId[i] != DEFAULT_COLLATION_OID)
+			/* Store dependency on collations */
+			/* The default collation is pinned, so don't bother recording it */
+			for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
 			{
-				referenced.classId = CollationRelationId;
-				referenced.objectId = collationObjectId[i];
+				if (OidIsValid(collationObjectId[i]) &&
+					collationObjectId[i] != DEFAULT_COLLATION_OID)
+				{
+					referenced.classId = CollationRelationId;
+					referenced.objectId = collationObjectId[i];
+					referenced.objectSubId = 0;
+
+					recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+				}
+			}
+
+			/* Store dependency on operator classes */
+			for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
+			{
+				referenced.classId = OperatorClassRelationId;
+				referenced.objectId = classObjectId[i];
 				referenced.objectSubId = 0;
 
 				recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 			}
+
+			/* Store dependencies on anything mentioned in index expressions */
+			if (indexInfo->ii_Expressions)
+			{
+				recordDependencyOnSingleRelExpr(&myself,
+												(Node *) indexInfo->ii_Expressions,
+												heapRelationId,
+												DEPENDENCY_NORMAL,
+												DEPENDENCY_AUTO, false);
+			}
+
+			/* Store dependencies on anything mentioned in predicate */
+			if (indexInfo->ii_Predicate)
+			{
+				recordDependencyOnSingleRelExpr(&myself,
+												(Node *) indexInfo->ii_Predicate,
+												heapRelationId,
+												DEPENDENCY_NORMAL,
+												DEPENDENCY_AUTO, false);
+			}
 		}
-
-		/* Store dependency on operator classes */
-		for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
-		{
-			referenced.classId = OperatorClassRelationId;
-			referenced.objectId = classObjectId[i];
-			referenced.objectSubId = 0;
-
-			recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
-		}
-
-		/* Store dependencies on anything mentioned in index expressions */
-		if (indexInfo->ii_Expressions)
-		{
-			recordDependencyOnSingleRelExpr(&myself,
-											(Node *) indexInfo->ii_Expressions,
-											heapRelationId,
-											DEPENDENCY_NORMAL,
-											DEPENDENCY_AUTO, false);
-		}
-
-		/* Store dependencies on anything mentioned in predicate */
-		if (indexInfo->ii_Predicate)
-		{
-			recordDependencyOnSingleRelExpr(&myself,
-											(Node *) indexInfo->ii_Predicate,
-											heapRelationId,
-											DEPENDENCY_NORMAL,
-											DEPENDENCY_AUTO, false);
-		}
-
-		/* Store dependency on tablespace */
-		recordDependencyOnTablespace(RelationRelationId, indexRelationId, tableSpaceId);
 	}
 	else
 	{
@@ -2274,7 +2316,8 @@ index_update_stats(Relation rel,
 	 */
 	if (dirty)
 	{
-		heap_inplace_update(pg_class, tuple);
+		heap_inplace_update(pg_class, tuple,
+							rd_rel->relisshared && !IsBootstrapProcessingMode());
 		/* the above sends a cache inval message */
 	}
 	else
@@ -2486,8 +2529,8 @@ index_backfill(Relation heapRelation,
 			   Relation indexRelation,
 			   IndexInfo *indexInfo,
 			   bool isprimary,
-			   uint64_t *read_time,
-			   RowBounds *row_bounds)
+			   YbBackfillInfo *bfinfo,
+			   YbPgExecOutParam *bfresult)
 {
 	Oid			save_userid;
 	int			save_sec_context;
@@ -2521,8 +2564,8 @@ index_backfill(Relation heapRelation,
 	indexRelation->rd_amroutine->yb_ambackfill(heapRelation,
 											   indexRelation,
 											   indexInfo,
-											   read_time,
-											   row_bounds);
+											   bfinfo,
+											   bfresult);
 
 	/*
 	 * I don't think we should be backfilling unlogged indexes.
@@ -2616,8 +2659,8 @@ IndexBuildHeapRangeScan(Relation heapRelation,
 										   callback,
 										   callback_state,
 										   scan,
-										   NULL /* read_time */,
-										   NULL /* row_bounds */);
+										   NULL, /* bfinfo */
+										   NULL /* bfresult */);
 }
 
 double
@@ -2626,8 +2669,8 @@ IndexBackfillHeapRangeScan(Relation heapRelation,
 						   IndexInfo *indexInfo,
 						   IndexBuildCallback callback,
 						   void *callback_state,
-						   uint64_t *read_time,
-						   RowBounds *row_bounds)
+						   YbBackfillInfo *bfinfo,
+						   YbPgExecOutParam *bfresult)
 {
 	return IndexBuildHeapRangeScanInternal(heapRelation,
 										   indexRelation,
@@ -2639,8 +2682,8 @@ IndexBackfillHeapRangeScan(Relation heapRelation,
 										   callback,
 										   callback_state,
 										   NULL /* scan */,
-										   read_time,
-										   row_bounds);
+										   bfinfo,
+										   bfresult);
 }
 
 /*
@@ -2664,8 +2707,8 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 								IndexBuildCallback callback,
 								void *callback_state,
 								HeapScanDesc scan,
-								uint64_t *read_time,
-								RowBounds *row_bounds)
+								YbBackfillInfo *bfinfo,
+								YbPgExecOutParam *bfresult)
 {
 	bool		is_system_catalog;
 	bool		checking_uniqueness;
@@ -2710,15 +2753,6 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 	econtext = GetPerTupleExprContext(estate);
 	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
 
-	/*
-	 * Set some exec params.
-	 */
-	YBCPgExecParameters *exec_params = &estate->yb_exec_params;
-	if (read_time)
-		exec_params->read_time = *read_time;
-	if (row_bounds)
-		exec_params->partition_key = pstrdup(row_bounds->partition_key);
-
 	/* Arrange for econtext's scan tuple to be the tuple under test */
 	econtext->ecxt_scantuple = slot;
 
@@ -2761,7 +2795,20 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 									true,	/* buffer access strategy OK */
 									allow_sync);	/* syncscan OK? */
 		if (IsYBRelation(heapRelation))
+		{
+			YBCPgExecParameters *exec_params = &estate->yb_exec_params;
+			if (bfinfo)
+			{
+				if (bfinfo->bfinstr)
+					exec_params->bfinstr = pstrdup(bfinfo->bfinstr);
+				*exec_params->statement_read_time = bfinfo->read_time;
+				exec_params->partition_key = pstrdup(bfinfo->row_bounds->partition_key);
+				exec_params->out_param = bfresult;
+				exec_params->is_index_backfill = true;
+			}
+
 			scan->ybscan->exec_params = exec_params;
+		}
 	}
 	else
 	{
@@ -3611,7 +3658,8 @@ validate_index_heapscan(Relation heapRelation,
 						 heapRelation,
 						 indexInfo->ii_Unique ?
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
-						 indexInfo);
+						 indexInfo,
+						 false /* yb_shared_insert */);
 
 			state->tups_inserted += 1;
 			continue;
@@ -3769,7 +3817,8 @@ validate_index_heapscan(Relation heapRelation,
 						 heapRelation,
 						 indexInfo->ii_Unique ?
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
-						 indexInfo);
+						 indexInfo,
+						 false /* yb_shared_insert */);
 
 			state->tups_inserted += 1;
 		}
@@ -3791,18 +3840,10 @@ validate_index_heapscan(Relation heapRelation,
  * index_set_state_flags - adjust pg_index state flags
  *
  * This is used during CREATE/DROP INDEX CONCURRENTLY to adjust the pg_index
- * flags that denote the index's state.  Because the update is not
- * transactional and will not roll back on error, this must only be used as
- * the last step in a transaction that has not made any transactional catalog
- * updates!
+ * flags that denote the index's state.
  *
- * Note that heap_inplace_update does send a cache inval message for the
+ * Note that CatalogTupleUpdate() sends a cache invalidation message for the
  * tuple, so other sessions will hear about the update as soon as we commit.
- *
- * NB: In releases prior to PostgreSQL 9.4, the use of a non-transactional
- * update here would have been unsafe; now that MVCC rules apply even for
- * system catalog scans, we could potentially use a transactional update here
- * instead.
  */
 void
 index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
@@ -3810,9 +3851,6 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 	Relation	pg_index;
 	HeapTuple	indexTuple;
 	Form_pg_index indexForm;
-
-	/* Assert that current xact hasn't done any transactional updates */
-	Assert(GetTopTransactionIdIfAny() == InvalidTransactionId);
 
 	/* Open pg_index and fetch a writable copy of the index's tuple */
 	pg_index = heap_open(IndexRelationId, RowExclusiveLock);
@@ -3872,8 +3910,8 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 			break;
 	}
 
-	/* ... and write it back in-place */
-	heap_inplace_update(pg_index, indexTuple);
+ 	/* ... and update it */
+ 	CatalogTupleUpdate(pg_index, &indexTuple->t_self, indexTuple);
 
 	heap_close(pg_index, RowExclusiveLock);
 }

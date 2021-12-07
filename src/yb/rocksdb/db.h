@@ -26,19 +26,18 @@
 
 #include <stdint.h>
 #include <stdio.h>
+
 #include <memory>
-#include <vector>
 #include <string>
 #include <unordered_map>
-#include "yb/rocksdb/immutable_options.h"
+#include <vector>
+
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/snapshot.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
-#include "yb/util/result.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -620,15 +619,17 @@ class DB {
 
   virtual Status SetOptions(
       ColumnFamilyHandle* /*column_family*/,
-      const std::unordered_map<std::string, std::string>& /*new_options*/) {
+      const std::unordered_map<std::string, std::string>& /*new_options*/,
+      bool dump_options = true) {
     return STATUS(NotSupported, "Not implemented");
   }
   virtual Status SetOptions(
-      const std::unordered_map<std::string, std::string>& new_options) {
-    return SetOptions(DefaultColumnFamily(), new_options);
+      const std::unordered_map<std::string, std::string>& new_options, bool dump_options = true) {
+    return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
   virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
   // compacts them to the specified level. Note that the behavior is different

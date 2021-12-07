@@ -14,22 +14,19 @@
 #ifndef YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 #define YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_types.pb.h"
 
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 
-#include "yb/tserver/backup.pb.h"
-
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/opid.h"
 
 namespace yb {
 namespace master {
@@ -41,10 +38,12 @@ struct SnapshotScheduleRestoration {
   OpId op_id;
   HybridTime write_time;
   int64_t term;
-  SnapshotScheduleFilterPB filter;
-  std::vector<TabletId> obsolete_tablets;
-  std::vector<TableId> obsolete_tables;
-  std::unordered_map<std::string, SysRowEntry::Type> objects_to_restore;
+  std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
+  std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
+  std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
+  std::unordered_map<std::string, SysRowEntryType> non_system_objects_to_restore;
+  // pg_catalog_tables to restore for YSQL tables.
+  std::unordered_map<TableId, TableName> system_tables_to_restore;
 };
 
 // Class that coordinates transaction aware snapshots at master.
@@ -64,13 +63,14 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   // As usual negative leader_term means that this operation was replicated at the follower.
   CHECKED_STATUS CreateReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS DeleteReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation,
+      Status* complete_status) override;
 
   CHECKED_STATUS ListSnapshots(
       const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);
@@ -89,6 +89,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   CHECKED_STATUS ListSnapshotSchedules(
       const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp);
 
+  CHECKED_STATUS DeleteSnapshotSchedule(
+      const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term,
+      CoarseTimePoint deadline);
+
   // Load snapshots data from system catalog.
   CHECKED_STATUS Load(tablet::Tablet* tablet) override;
 
@@ -103,7 +107,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntry::Type type);
+      SysRowEntryType type);
+
+  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
 
   void Start();
 

@@ -4,3 +4,4 @@
 # This testsuite contains testcases pertinent to YB Tablespaces.
 ####################################################################################################
 test: yb_tablespaces
+test: yb_is_local_table

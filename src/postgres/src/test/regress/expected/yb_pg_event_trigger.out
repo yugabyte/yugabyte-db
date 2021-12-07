@@ -129,22 +129,13 @@ revoke all on table event_trigger_fire1 from public;
 NOTICE:  test_event_trigger: ddl_command_end REVOKE
 drop table event_trigger_fire1;
 NOTICE:  test_event_trigger: ddl_command_end DROP TABLE
--- foreign data wrapper not supported by YB
+-- create  FDW
 create foreign data wrapper useless;
-ERROR:  CREATE FOREIGN DATA WRAPPER not supported yet
-LINE 1: create foreign data wrapper useless;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+NOTICE:  test_event_trigger: ddl_command_end CREATE FOREIGN DATA WRAPPER
 create server useless_server foreign data wrapper useless;
-ERROR:  CREATE SERVER not supported yet
-LINE 1: create server useless_server foreign data wrapper useless;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+NOTICE:  test_event_trigger: ddl_command_end CREATE SERVER
 create user mapping for regress_evt_user server useless_server;
-ERROR:  CREATE USER MAPPING not supported yet
-LINE 1: create user mapping for regress_evt_user server useless_serv...
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+NOTICE:  test_event_trigger: ddl_command_end CREATE USER MAPPING
 alter default privileges for role regress_evt_user
  revoke delete on tables from regress_evt_user;
 NOTICE:  test_event_trigger: ddl_command_end ALTER DEFAULT PRIVILEGES

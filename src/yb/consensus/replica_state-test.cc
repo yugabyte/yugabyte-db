@@ -29,15 +29,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/consensus/replica_state.h"
 
 #include <vector>
 
 #include <gtest/gtest.h>
+
+#include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/consensus-test-util.h"
+#include "yb/consensus/replica_state.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -73,7 +76,7 @@ class RaftConsensusStateTest : public YBTest {
     state_.reset(new ReplicaState(
         ConsensusOptions(), fs_manager_.uuid(), std::move(cmeta), operation_factory_.get(),
         nullptr /* safe_op_id_waiter */, nullptr /* retryable_requests */,
-        SplitOpInfo(), [](const OpIds&) {} /* applied_ops_tracker */));
+        [](const OpIds&) {} /* applied_ops_tracker */));
 
     // Start up the ReplicaState.
     ReplicaState::UniqueLock lock;
@@ -84,8 +87,8 @@ class RaftConsensusStateTest : public YBTest {
  protected:
   FsManager fs_manager_;
   RaftConfigPB config_;
-  gscoped_ptr<MockOperationFactory> operation_factory_;
-  gscoped_ptr<ReplicaState> state_;
+  std::unique_ptr<MockOperationFactory> operation_factory_;
+  std::unique_ptr<ReplicaState> state_;
 };
 
 // Test that we can transition a new configuration from a pending state into a

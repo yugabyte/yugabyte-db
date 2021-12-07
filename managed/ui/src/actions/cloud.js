@@ -36,6 +36,9 @@ export const CREATE_INSTANCE_TYPE_RESPONSE = 'CREATE_INSTANCE_TYPE_RESPONSE';
 export const CREATE_REGION = 'CREATE_REGION';
 export const CREATE_REGION_RESPONSE = 'CREATE_REGION_RESPONSE';
 
+export const DELETE_REGION = 'DELETE_REGION';
+export const DELETE_REGION_RESPONSE = 'DELETE_REGION_RESPONSE';
+
 export const CREATE_ZONES = 'CREATE_ZONES';
 export const CREATE_ZONES_RESPONSE = 'CREATE_ZONES_RESPONSE';
 
@@ -49,6 +52,7 @@ export const CREATE_ACCESS_KEY_FAILURE = 'CREATE_ACCESS_KEY_FAILURE';
 export const INITIALIZE_PROVIDER = 'INITIALIZE_PROVIDER';
 export const INITIALIZE_PROVIDER_SUCCESS = 'INITIALIZE_PROVIDER_SUCCESS';
 export const INITIALIZE_PROVIDER_FAILURE = 'INITIALIZE_PROVIDER_FAILURE';
+export const EDIT_PROVIDER_FAILURE = 'EDIT_PROVIDER_FAILURE';
 
 export const DELETE_PROVIDER = 'DELETE_PROVIDER';
 export const DELETE_PROVIDER_SUCCESS = 'DELETE_PROVIDER_SUCCESS';
@@ -90,6 +94,9 @@ export const BOOTSTRAP_PROVIDER_RESPONSE = 'BOOTSTRAP_PROVIDER_RESPONSE';
 
 export const DELETE_INSTANCE = 'DELETE_INSTANCE';
 export const DELETE_INSTANCE_RESPONSE = 'DELETE_INSTANCE_RESPONSE';
+
+export const PRECHECK_INSTANCE = 'PRECHECK_INSTANCE';
+export const PRECHECK_INSTANCE_RESPONSE = 'PRECHECK_INSTANCE_RESPONSE';
 
 export const EDIT_PROVIDER = 'EDIT_PROVIDER';
 export const EDIT_PROVIDER_RESPONSE = 'EDIT_PROVIDER_RESPONSE';
@@ -142,7 +149,7 @@ export const getInstanceTypeListLoading = () => ({
 export function getInstanceTypeList(providerUUID, zones = []) {
   let url = getProviderEndpoint(providerUUID) + '/instance_types';
   if (zones.length) {
-    url = url + '?' + zones.map(item => `zone=${encodeURIComponent(item)}`).join('&');
+    url = url + '?' + zones.map((item) => `zone=${encodeURIComponent(item)}`).join('&');
   }
   const request = axios.get(url);
   return {
@@ -213,13 +220,13 @@ export function createProvider(type, name, config, regionFormVals = null) {
   const formValues = {
     code: provider.code,
     name: name,
-    config: config,
+    config: config
   };
   if (regionFormVals) {
     const region = Object.keys(regionFormVals.perRegionMetadata)[0] || '';
     formValues['region'] = region;
   }
-  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers`, formValues);
+  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers/ui`, formValues);
   return {
     type: CREATE_PROVIDER,
     payload: request
@@ -267,6 +274,22 @@ export function createRegion(providerUUID, formValues) {
 export function createRegionResponse(result) {
   return {
     type: CREATE_REGION_RESPONSE,
+    payload: result
+  };
+}
+
+export function deleteRegion(providerUUID, regionId) {
+  const url = getProviderEndpoint(providerUUID) + '/regions/' + regionId;
+  const request = axios.delete(url);
+  return {
+    type: DELETE_REGION,
+    payload: request
+  };
+}
+
+export function deleteRegionResponse(result) {
+  return {
+    type: DELETE_REGION_RESPONSE,
     payload: result
   };
 }
@@ -414,6 +437,13 @@ export function initializeProviderSuccess(result) {
 export function initializeProviderFailure(error) {
   return {
     type: INITIALIZE_PROVIDER_FAILURE,
+    payload: error
+  };
+}
+
+export function editProviderFailure(error) {
+  return {
+    type: EDIT_PROVIDER_FAILURE,
     payload: error
   };
 }
@@ -603,7 +633,7 @@ export function createOnPremProvider(type, name, config) {
     name: name,
     config: config
   };
-  const request = axios.post(`${getCustomerEndpoint()}/providers`, formValues);
+  const request = axios.post(`${getCustomerEndpoint()}/providers/ui`, formValues);
   return {
     type: CREATE_ONPREM_PROVIDER,
     payload: request
@@ -629,6 +659,22 @@ export function deleteInstance(providerUUID, instanceIP) {
 export function deleteInstanceResponse(response) {
   return {
     type: DELETE_INSTANCE_RESPONSE,
+    payload: response
+  };
+}
+
+export function precheckInstance(providerUUID, instanceIP) {
+  const uri = `${getProviderEndpoint(providerUUID)}/instances/${instanceIP}`;
+  const request = axios.post(uri, { nodeAction: 'PRECHECK_DETACHED' });
+  return {
+    type: PRECHECK_INSTANCE,
+    payload: request
+  };
+}
+
+export function precheckInstanceResponse(response) {
+  return {
+    type: PRECHECK_INSTANCE_RESPONSE,
     payload: response
   };
 }

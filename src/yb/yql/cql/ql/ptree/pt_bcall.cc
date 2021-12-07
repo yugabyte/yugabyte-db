@@ -17,12 +17,16 @@
 
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 
-#include "yb/client/client.h"
+#include "yb/bfql/bfql.h"
+
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
+#include "yb/common/types.h"
+
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
-#include "yb/util/bfql/bfql.h"
-#include "yb/common/ql_bfunc.h"
 
 namespace yb {
 namespace ql {
@@ -44,7 +48,7 @@ using BfuncCompile = yb::bfql::BFCompileApi<PTExpr, PTExpr>;
 //--------------------------------------------------------------------------------------------------
 
 PTBcall::PTBcall(MemoryContext *memctx,
-                 YBLocation::SharedPtr loc,
+                 YBLocationPtr loc,
                  const MCSharedPtr<MCString>& name,
                  PTExprListNode::SharedPtr args)
   : PTExpr(memctx, loc, ExprOperator::kBcall, QLOperator::QL_OP_NOOP),
@@ -418,6 +422,22 @@ CHECKED_STATUS PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
   }
 
   return Status::OK();
+}
+
+void PTBcall::rscol_type_PB(QLTypePB *pb_type) const {
+  if (aggregate_opcode() == bfql::TSOpcode::kAvg) {
+    // Tablets return a map of (count, sum),
+    // so that the average can be calculated across all tablets.
+    QLType::CreateTypeMap(INT64, args_->node_list().front()->ql_type()->main())
+        ->ToQLTypePB(pb_type);
+    return;
+  }
+  ql_type()->ToQLTypePB(pb_type);
+}
+
+yb::bfql::TSOpcode PTBcall::aggregate_opcode() const {
+  return is_server_operator_ ? static_cast<yb::bfql::TSOpcode>(bfopcode_)
+                             : yb::bfql::TSOpcode::kNoOp;
 }
 
 //--------------------------------------------------------------------------------------------------

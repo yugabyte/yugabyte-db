@@ -10,7 +10,7 @@ menu:
   latest:
     identifier: edit-config-flags
     parent: manage-deployments
-    weight: 60
+    weight: 50
 isTocNested: true
 showAsideToc: true
 ---

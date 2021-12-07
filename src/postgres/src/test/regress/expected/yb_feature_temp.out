@@ -117,7 +117,7 @@ SELECT * FROM temptest;
 COMMIT;
 ERROR:  Illegal state: Transaction for catalog table write operation 'pg_type' not found
 SELECT * FROM temptest;
-ERROR:  could not open file "base/12463/t2_16950": No such file or directory
+ERROR:  could not open file "base/13281/t2_16959": No such file or directory
 BEGIN;
 CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
 ERROR:  relation "temptest" already exists
@@ -125,7 +125,7 @@ SELECT * FROM temptest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
 SELECT * FROM temptest;
-ERROR:  could not open file "base/12463/t2_16950": No such file or directory
+ERROR:  could not open file "base/13281/t2_16959": No such file or directory
 -- ON COMMIT is only allowed for TEMP
 CREATE TABLE temptest(col int) ON COMMIT DELETE ROWS;
 ERROR:  ON COMMIT can only be used on temporary tables
@@ -153,6 +153,20 @@ SELECT * FROM test;
 (0 rows)
 
 -- test ALTER TABLE on a temp table
+ALTER TABLE test ADD COLUMN d int;
+ALTER TABLE test ADD CONSTRAINT uniq UNIQUE(d);
+INSERT INTO test (d) VALUES (1);
+INSERT INTO test (d) VALUES (1); -- should fail
+ERROR:  duplicate key value violates unique constraint "uniq"
+DETAIL:  Key (d)=(1) already exists.
+SELECT * FROM test;
+ a | d
+---+---
+   | 1
+(1 row)
+
+ALTER TABLE test DROP COLUMN d;
+DELETE FROM test;
 ALTER TABLE test ADD COLUMN b int;
 SELECT * FROM test;
  a | b
@@ -367,3 +381,22 @@ INSERT INTO temptest VALUES (101, 201, 301), (101, 201, 301);
 ERROR:  duplicate key value violates unique constraint "temptest_pkey"
 DETAIL:  Key (k)=(101) already exists.
 DROP TABLE temptest;
+-- test temp table with primary index scan.
+CREATE TEMP TABLE temptest (a INT PRIMARY KEY);
+EXPLAIN (COSTS OFF) SELECT a FROM temptest WHERE a = 1;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Only Scan using temptest_pkey on temptest
+   Index Cond: (a = 1)
+(2 rows)
+
+-- test temp table being used to update YB table.
+CREATE TABLE test1 (x int, y int, z int);
+INSERT INTO test1 VALUES (1, 2, 3);
+CREATE TEMP TABLE test2 as table test1;
+UPDATE test1 SET z = 2 FROM test2 WHERE test1.x = test2.x;
+SELECT * FROM test1;
+ x | y | z
+---+---+---
+ 1 | 2 | 2
+(1 row)

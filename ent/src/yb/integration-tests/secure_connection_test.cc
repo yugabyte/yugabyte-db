@@ -12,8 +12,10 @@
 //
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
 
@@ -30,12 +32,14 @@
 
 DECLARE_bool(TEST_private_broadcast_address);
 DECLARE_bool(allow_insecure_connections);
+DECLARE_bool(enable_stream_compression);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(verify_client_endpoint);
 DECLARE_bool(verify_server_endpoint);
 DECLARE_int32(TEST_nodes_per_cloud);
+DECLARE_int32(stream_compression_algo);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_string(TEST_public_hostname_suffix);
 DECLARE_string(cert_file_pattern);
@@ -208,7 +212,7 @@ TEST_F_EX(SecureConnectionTest, VerifyNameOnly, SecureConnectionVerifyNameOnlyTe
   TestSimpleOps();
 }
 
-class SecureConnectionCipherList : public SecureConnectionTest {
+class SecureConnectionCipherListTest : public SecureConnectionTest {
   void SetUp() override {
     FLAGS_cipher_list = "HIGH";
     FLAGS_ssl_protocols = "tls12";
@@ -216,11 +220,11 @@ class SecureConnectionCipherList : public SecureConnectionTest {
   }
 };
 
-TEST_F_EX(SecureConnectionTest, CipherList, SecureConnectionCipherList) {
+TEST_F_EX(SecureConnectionTest, CipherList, SecureConnectionCipherListTest) {
   TestSimpleOps();
 }
 
-class SecureConnectionCipherSuites : public SecureConnectionTest {
+class SecureConnectionCipherSuitesTest : public SecureConnectionTest {
   void SetUp() override {
     FLAGS_ciphersuites = "TLS_AES_128_CCM_8_SHA256";
     FLAGS_ssl_protocols = "tls13";
@@ -228,7 +232,19 @@ class SecureConnectionCipherSuites : public SecureConnectionTest {
   }
 };
 
-TEST_F_EX(SecureConnectionTest, CipherSuites, SecureConnectionCipherSuites) {
+TEST_F_EX(SecureConnectionTest, CipherSuites, SecureConnectionCipherSuitesTest) {
+  TestSimpleOps();
+}
+
+class SecureConnectionCompressionTest : public SecureConnectionTest {
+  void SetUp() override {
+    FLAGS_enable_stream_compression = true;
+    FLAGS_stream_compression_algo = 1;
+    SecureConnectionTest::SetUp();
+  }
+};
+
+TEST_F_EX(SecureConnectionTest, Compression, SecureConnectionCompressionTest) {
   TestSimpleOps();
 }
 

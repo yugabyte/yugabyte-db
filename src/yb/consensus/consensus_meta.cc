@@ -29,18 +29,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/consensus_meta.h"
 
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_util.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
 
 namespace yb {
@@ -112,7 +116,7 @@ Status ConsensusMetadata::DeleteOnDiskData(FsManager* fs_manager, const string& 
   return Status::OK();
 }
 
-const int64_t ConsensusMetadata::current_term() const {
+int64_t ConsensusMetadata::current_term() const {
   DCHECK(pb_.has_current_term());
   return pb_.current_term();
 }
@@ -121,6 +125,21 @@ void ConsensusMetadata::set_current_term(int64_t term) {
   DCHECK_GE(term, kMinimumTerm);
   pb_.set_current_term(term);
   UpdateRoleAndTermCache();
+}
+
+
+bool ConsensusMetadata::has_split_parent_tablet_id() const {
+  return pb_.has_split_parent_tablet_id();
+}
+
+const TabletId& ConsensusMetadata::split_parent_tablet_id() const {
+  DCHECK(pb_.has_split_parent_tablet_id());
+  return pb_.split_parent_tablet_id();
+}
+
+void ConsensusMetadata::set_split_parent_tablet_id(const TabletId& split_parent_tablet_id) {
+  DCHECK(!split_parent_tablet_id.empty());
+  pb_.set_split_parent_tablet_id(split_parent_tablet_id);
 }
 
 bool ConsensusMetadata::has_voted_for() const {

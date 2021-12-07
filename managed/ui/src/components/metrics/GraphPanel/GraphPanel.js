@@ -141,10 +141,7 @@ const panelTypes = {
 
   sql: {
     title: 'YSQL Advanced',
-    metrics: [
-      'ysql_server_advanced_rpc_per_second',
-      'ysql_sql_advanced_latency'
-    ]
+    metrics: ['ysql_server_advanced_rpc_per_second', 'ysql_sql_advanced_latency']
   },
 
   cql: {
@@ -272,7 +269,8 @@ class GraphPanel extends Component {
       type,
       selectedUniverse,
       insecureLoginToken,
-      graph: { metrics }
+      graph: { metrics, prometheusQueryEnabled },
+      customer: { currentUser }
     } = this.props;
 
     let panelData = <YBLoading />;
@@ -296,11 +294,13 @@ class GraphPanel extends Component {
           .map(function (metricKey, idx) {
             return isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error ? (
               <MetricsPanel
+                currentUser={currentUser}
                 metricKey={metricKey}
                 key={idx}
                 metric={metrics[type][metricKey]}
                 className={'metrics-panel-container'}
                 containerWidth={width}
+                prometheusQueryEnabled={prometheusQueryEnabled}
               />
             ) : null;
           })

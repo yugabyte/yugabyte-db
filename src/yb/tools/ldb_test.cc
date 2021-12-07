@@ -11,37 +11,30 @@
 // under the License.
 //
 
-#include <string>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-#include "yb/common/ql_value.h"
-#include "yb/docdb/docdb_test_util.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/master.proxy.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/mini_master.h"
-#include "yb/rpc/messenger.h"
+
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tools/data_gen_util.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/util/date_time.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
-
 
 using namespace std::literals;
 
@@ -73,7 +66,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
     opts.num_tablet_servers = kNumTabletServers;
 
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     YBSchema schema;
@@ -115,7 +108,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
     auto req = insert->mutable_request();
     GenerateDataForRow(table_->schema(), 17 /* record_id */, &random_, req);
 
-    RETURN_NOT_OK(session->Apply(insert));
+    session->Apply(insert);
     RETURN_NOT_OK(session->Flush());
     return Status::OK();
   }
@@ -147,7 +140,7 @@ TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
     "--compression_type=snappy",
     "--db=" + db_path
   };
-  ASSERT_OK(Subprocess::Call(argv, &output, false /* read_stderr */));
+  ASSERT_OK(Subprocess::Call(argv, &output));
 
   ASSERT_NE(output.find("Keys in range: 1"), string::npos);
 }

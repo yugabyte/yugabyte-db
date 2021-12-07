@@ -16,11 +16,11 @@
 
 #include <boost/function.hpp>
 
+#include "yb/common/common_fwd.h"
+
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/value_type.h"
-
-#include "yb/util/result.h"
 
 namespace rocksdb {
 
@@ -32,8 +32,6 @@ class Iterator;
 namespace yb {
 
 class Counter;
-class HybridTime;
-class TransactionStatusManager;
 
 namespace docdb {
 

@@ -95,6 +95,10 @@
 //         have any effect, you must be sure to use the FLAGS_foo_bar variable directly
 //         rather than initializing some instance variable during program startup.
 //
+// - "sensitive_info":
+//         These flags contain sensitive information. Avoid displaying their values anywhere.
+//
+//
 // A given flag may have zero or more tags associated with it. The system does
 // not make any attempt to check integrity of the tags - for example, it allows
 // you to mark a flag as both stable and unstable, even though this makes no
@@ -119,9 +123,7 @@
 #ifndef YB_UTIL_FLAG_TAGS_H
 #define YB_UTIL_FLAG_TAGS_H
 
-#include <string>
 #include <unordered_set>
-#include <vector>
 
 #include <boost/preprocessor/cat.hpp>
 
@@ -137,7 +139,8 @@ struct FlagTags {
     hidden,
     advanced,
     unsafe,
-    runtime
+    runtime,
+    sensitive_info
   };
 };
 

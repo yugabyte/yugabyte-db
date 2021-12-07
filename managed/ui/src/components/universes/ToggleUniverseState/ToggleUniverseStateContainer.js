@@ -1,4 +1,6 @@
 import { connect } from 'react-redux';
+import { withRouter } from 'react-router';
+
 import { ToggleUniverseState } from '../';
 import {
   fetchUniverseMetadata,
@@ -35,5 +37,4 @@ const mapStateToProps = (state) => {
     universe: state.universe
   };
 };
-
-export default connect(mapStateToProps, mapDispatchToProps)(ToggleUniverseState);
+export default withRouter(connect(mapStateToProps, mapDispatchToProps)(ToggleUniverseState));

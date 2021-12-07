@@ -13,24 +13,22 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <bitset>
-
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
 #include "yb/client/permissions.h"
 
 #include "yb/common/ql_value.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/mini_master.h"
 
-#include "yb/rpc/messenger.h"
+#include "yb/util/crypt.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
-#include "yb/gutil/strings/substitute.h"
 
 DECLARE_bool(use_cassandra_authentication);
 

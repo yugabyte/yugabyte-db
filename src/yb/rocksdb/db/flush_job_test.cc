@@ -22,19 +22,20 @@
 #include <map>
 #include <string>
 
-#include <boost/functional/hash.hpp>
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/flush_job.h"
-#include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/table/mock_table.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/table/mock_table.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
@@ -99,6 +100,7 @@ class FlushJobTest : public testing::Test {
   std::unique_ptr<VersionSet> versions_;
   InstrumentedMutex mutex_;
   std::atomic<bool> shutting_down_;
+  std::atomic<bool> disable_flush_on_shutdown_{false};
   std::shared_ptr<mock::MockTableFactory> mock_table_factory_;
 };
 
@@ -107,12 +109,11 @@ TEST_F(FlushJobTest, Empty) {
   auto cfd = versions_->GetColumnFamilySet()->GetDefault();
   EventLogger event_logger(db_options_.info_log.get());
   FileNumbersProvider file_numbers_provider(versions_.get());
-  FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
-                     db_options_, *cfd->GetLatestMutableCFOptions(),
-                     env_options_, versions_.get(), &mutex_, &shutting_down_,
-                     {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
-                     &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
-                     &event_logger);
+  FlushJob flush_job(
+      dbname_, versions_->GetColumnFamilySet()->GetDefault(), db_options_,
+      *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
+      &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
+      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
   ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
   job_context.Clean();
 }
@@ -154,12 +155,11 @@ TEST_F(FlushJobTest, NonEmpty) {
 
   EventLogger event_logger(db_options_.info_log.get());
   FileNumbersProvider file_numbers_provider(versions_.get());
-  FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
-                     db_options_, *cfd->GetLatestMutableCFOptions(),
-                     env_options_, versions_.get(), &mutex_, &shutting_down_,
-                     {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
-                     &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
-                     &event_logger);
+  FlushJob flush_job(
+      dbname_, versions_->GetColumnFamilySet()->GetDefault(), db_options_,
+      *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
+      &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
+      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
   FileMetaData fd;
   mutex_.Lock();
   ASSERT_OK(yb::ResultToStatus(flush_job.Run(&fd)));
@@ -223,12 +223,12 @@ TEST_F(FlushJobTest, Snapshots) {
 
   EventLogger event_logger(db_options_.info_log.get());
   FileNumbersProvider file_numbers_provider(versions_.get());
-  FlushJob flush_job(dbname_, versions_->GetColumnFamilySet()->GetDefault(),
-                     db_options_, *cfd->GetLatestMutableCFOptions(),
-                     env_options_, versions_.get(), &mutex_, &shutting_down_,
-                     snapshots, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
-                     &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
-                     &event_logger);
+  FlushJob flush_job(
+      dbname_, versions_->GetColumnFamilySet()->GetDefault(), db_options_,
+      *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
+      &disable_flush_on_shutdown_, snapshots, kMaxSequenceNumber, MemTableFilter(),
+      &file_numbers_provider, &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
+      &event_logger);
   mutex_.Lock();
   ASSERT_OK(ResultToStatus(flush_job.Run()));
   mutex_.Unlock();

@@ -9,6 +9,7 @@
  */
 
 package com.yugabyte.yw.cloud;
+
 import com.yugabyte.yw.commissioner.Common;
 
 public class PublicCloudConstants {
@@ -42,9 +43,8 @@ public class PublicCloudConstants {
   }
 
   /**
-   * Tracks the supported storage options for each cloud provider.
-   * Options in the UI will be ordered alphabetically
-   * e.g. Persistent will be the default value for GCP, not Scratch
+   * Tracks the supported storage options for each cloud provider. Options in the UI will be ordered
+   * alphabetically e.g. Persistent will be the default value for GCP, not Scratch
    */
   public enum StorageType {
     IO1(Common.CloudType.aws, true, false),
@@ -60,9 +60,8 @@ public class PublicCloudConstants {
     private final boolean iopsProvisioning;
     private final boolean throughputProvisioning;
 
-    StorageType(Common.CloudType cloudType,
-                boolean iopsProvisioning,
-                boolean throughputProvisioning) {
+    StorageType(
+        Common.CloudType cloudType, boolean iopsProvisioning, boolean throughputProvisioning) {
       this.cloudType = cloudType;
       this.iopsProvisioning = iopsProvisioning;
       this.throughputProvisioning = throughputProvisioning;
@@ -80,5 +79,4 @@ public class PublicCloudConstants {
       return throughputProvisioning;
     }
   }
-
 }

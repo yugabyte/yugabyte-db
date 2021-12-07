@@ -32,28 +32,34 @@
 #ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 #define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 
+#include <string.h>
 #include <sys/types.h>
 
+#include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 #include <thread>
+#include <vector>
+
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/stringprintf.h"
+
 #include "yb/integration-tests/mini_cluster_base.h"
+
 #include "yb/server/server_base.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
-#include "yb/util/env.h"
 
 namespace yb {
 
@@ -78,8 +84,6 @@ using yb::consensus::ChangeConfigType;
 using yb::consensus::ConsensusServiceProxy;
 
 struct ExternalMiniClusterOptions {
-  ExternalMiniClusterOptions();
-  ~ExternalMiniClusterOptions();
 
   // Number of masters to start.
   int num_masters = 1;
@@ -87,9 +91,27 @@ struct ExternalMiniClusterOptions {
   // Number of TS to start.
   int num_tablet_servers = 1;
 
+  // Number of drives to use on TS.
+  int num_drives = 1;
+
+  // If more than one master is specified, list of ports for the masters in a consensus
+  // configuration. Port at index 0 is used for the leader master.
+  // Default: one entry as num_masters defaults to 1. Value 0 implies, a free port
+  //          is picked at runtime.
+  std::vector<uint16_t> master_rpc_ports = { 0 };
+
+  static constexpr bool kDefaultStartCqlProxy = true;
+#if defined(__APPLE__)
+  static constexpr bool kBindToUniqueLoopbackAddress = false;
+#else
+  static constexpr bool kBindToUniqueLoopbackAddress = true;
+#endif
+
+  bool enable_ysql = false;
+
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
-  std::string data_root;
+  std::string data_root{};
 
   // Set data_root_counter to non-negative number if your test run need to create an new and empty
   // cluster every time ExternalMiniCluster() is constructed.
@@ -116,7 +138,7 @@ struct ExternalMiniClusterOptions {
   //
   // This option is disabled by default on OS X.
   // Enabling of this option on OS X means usage of default IPs: 127.0.0.x.
-  bool bind_to_unique_loopback_addresses = true;
+  bool bind_to_unique_loopback_addresses = kBindToUniqueLoopbackAddress;
 
   // If true, second and other TSes will use the same ports as the first TS uses.
   // Else every TS will allocate unique ports for itself.
@@ -126,7 +148,7 @@ struct ExternalMiniClusterOptions {
   // The path where the yb daemons should be run from.
   // Default: "../bin", which points to the path where non-test executables are located.
   // This works for unit tests, since they all end up in build/latest/test-<subproject_name>.
-  std::string daemon_bin_path;
+  std::string daemon_bin_path{};
 
   // Extra flags for tablet servers and masters respectively.
   //
@@ -135,20 +157,9 @@ struct ExternalMiniClusterOptions {
   std::vector<std::string> extra_tserver_flags;
   std::vector<std::string> extra_master_flags;
 
-  // If more than one master is specified, list of ports for the masters in a consensus
-  // configuration. Port at index 0 is used for the leader master.
-  // Default: one entry as num_masters defaults to 1. Value 0 implies, a free port
-  //          is picked at runtime.
-  std::vector<uint16_t> master_rpc_ports = { 0 };
-
   // Default timeout for operations involving RPC's, when none provided in the API.
   // Default : 10sec
   MonoDelta timeout = MonoDelta::FromSeconds(10);
-
-  static constexpr bool kDefaultEnableYsql = false;
-  static constexpr bool kDefaultStartCqlProxy = true;
-
-  bool enable_ysql = kDefaultEnableYsql;
 
   // If true logs will be written in both stderr and file
   bool log_to_file = false;
@@ -158,7 +169,7 @@ struct ExternalMiniClusterOptions {
   bool use_even_ips = false;
 
   // Cluster id used to create fs path when we create tests with multiple clusters.
-  std::string cluster_id = "";
+  std::string cluster_id;
 
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
@@ -202,7 +213,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // running.
   CHECKED_STATUS AddTabletServer(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      const std::vector<std::string>& extra_flags = {});
+      const std::vector<std::string>& extra_flags = {},
+      int num_drives = -1);
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
@@ -218,6 +230,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Return a pointer to the running leader master. This may be NULL
   // if the cluster is not started.
+  // WARNING: If leader master is not elected after kMaxRetryIterations, first available master
+  // will be returned.
   ExternalMaster* GetLeaderMaster();
 
   // Perform an RPC to determine the leader of the external mini cluster.  Set 'index' to the leader
@@ -255,7 +269,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
   // Empty blacklist.
-  CHECKED_STATUS EmptyBlacklist(ExternalMaster* master);
+  CHECKED_STATUS ClearBlacklist(ExternalMaster* master);
 
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
@@ -286,25 +300,12 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // If this cluster is configured for a single non-distributed master, return the single master or
   // NULL if the master is not started. Exits with a CHECK failure if there are multiple masters.
-  ExternalMaster* master() const {
-    if (masters_.empty())
-      return nullptr;
-
-    CHECK_EQ(masters_.size(), 1)
-        << "master() should not be used with multiple masters, use GetLeaderMaster() instead.";
-    return master(0);
-  }
+  ExternalMaster* master() const;
 
   // Return master at 'idx' or NULL if the master at 'idx' has not been started.
-  ExternalMaster* master(int idx) const {
-    CHECK_LT(idx, masters_.size());
-    return masters_[idx].get();
-  }
+  ExternalMaster* master(int idx) const;
 
-  ExternalTabletServer* tablet_server(int idx) const {
-    CHECK_LT(idx, tablet_servers_.size());
-    return tablet_servers_[idx].get();
-  }
+  ExternalTabletServer* tablet_server(int idx) const;
 
   // Return ExternalTabletServer given its UUID. If not found, returns NULL.
   ExternalTabletServer* tablet_server_by_uuid(const std::string& uuid) const;
@@ -392,10 +393,18 @@ class ExternalMiniCluster : public MiniClusterBase {
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
+  Result<tserver::ListTabletsResponsePB> ListTablets(ExternalTabletServer* ts);
+
   Result<std::vector<tserver::ListTabletsForTabletServerResponsePB::Entry>> GetTablets(
       ExternalTabletServer* ts);
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
+
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
+
+  CHECKED_STATUS FlushTabletsOnSingleTServer(
+      ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
+      bool is_compaction);
 
   CHECKED_STATUS WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
@@ -440,12 +449,15 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   string data_root() const { return data_root_; }
 
+  // Return true if the tserver has been marked as DEAD by master leader.
+  Result<bool> is_ts_stale(int ts_idx);
+
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  HostPort DoGetLeaderMasterBoundRpcAddr() override;
+  Result<HostPort> DoGetLeaderMasterBoundRpcAddr() override;
 
   CHECKED_STATUS StartMasters();
 
@@ -523,10 +535,10 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
       std::string daemon_id,
       rpc::Messenger* messenger,
       rpc::ProxyCache* proxy_cache,
-      std::string exe,
-      std::string data_dir,
-      std::string server_type,
-      std::vector<std::string> extra_flags);
+      const std::string& exe,
+      const std::string& root_dir,
+      const std::vector<std::string>& data_dirs,
+      const std::vector<std::string>& extra_flags);
 
   HostPort bound_rpc_hostport() const;
   HostPort bound_rpc_addr() const;
@@ -545,6 +557,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Sends a SIGCONT signal to the daemon.
   CHECKED_STATUS Resume();
 
+  CHECKED_STATUS Kill(int signal);
+
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
 
@@ -554,11 +568,11 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   virtual void Shutdown();
 
-  const std::string& GetFullDataDir() const { return full_data_dir_; }
+  std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 
   const std::string& exe() const { return exe_; }
 
-  const std::string& GetDataDir() const { return data_dir_; }
+  const std::string& GetRootDir() const { return root_dir_; }
 
   // Return a pointer to the flags used for this server on restart.  Modifying these flags will only
   // take effect on the next restart.
@@ -574,18 +588,12 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   Result<int64_t> GetInt64Metric(const MetricEntityPrototype* entity_proto,
                                  const char* entity_id,
                                  const MetricPrototype* metric_proto,
-                                 const char* value_field) const {
-    return GetInt64MetricFromHost(
-        bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
-  }
+                                 const char* value_field) const;
 
   Result<int64_t> GetInt64Metric(const char* entity_proto_name,
                                  const char* entity_id,
                                  const char* metric_proto_name,
-                                 const char* value_field) const {
-    return GetInt64MetricFromHost(
-        bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
-  }
+                                 const char* value_field) const;
 
   std::string LogPrefix();
 
@@ -636,11 +644,11 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   rpc::Messenger* messenger_;
   rpc::ProxyCache* proxy_cache_;
   const std::string exe_;
-  const std::string data_dir_;
-  const std::string full_data_dir_;
+  const std::string root_dir_;
+  std::vector<std::string> data_dirs_;
   std::vector<std::string> extra_flags_;
 
-  gscoped_ptr<Subprocess> process_;
+  std::unique_ptr<Subprocess> process_;
 
   std::unique_ptr<server::ServerStatusPB> status_;
 
@@ -725,20 +733,24 @@ class ExternalTabletServer : public ExternalDaemon {
  public:
   ExternalTabletServer(
       int tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
-      const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
-      uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
-      uint16_t cql_rpc_port, uint16_t cql_http_port,
+      const std::string& exe, const std::string& data_dir, uint16_t num_drives,
+      std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
+      uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,
       uint16_t pgsql_rpc_port, uint16_t pgsql_http_port,
       const std::vector<HostPort>& master_addrs,
       const std::vector<std::string>& extra_flags);
 
   CHECKED_STATUS Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool set_proxy_addrs = true);
+      bool set_proxy_addrs = true,
+      std::vector<std::pair<string, string>> extra_flags = {});
 
   // Restarts the daemon. Requires that it has previously been shutdown.
   CHECKED_STATUS Restart(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      std::vector<std::pair<string, string>> flags = {});
+
+  CHECKED_STATUS SetNumDrives(uint16_t num_drives);
 
   // IP addresses to bind to.
   const std::string& bind_host() const {
@@ -777,11 +789,7 @@ class ExternalTabletServer : public ExternalDaemon {
   Result<int64_t> GetInt64CQLMetric(const MetricEntityPrototype* entity_proto,
                                     const char* entity_id,
                                     const MetricPrototype* metric_proto,
-                                    const char* value_field) const {
-    return GetInt64MetricFromHost(
-        HostPort(bind_host(), cql_http_port()),
-        entity_proto, entity_id, metric_proto, value_field);
-  }
+                                    const char* value_field) const;
 
  protected:
   CHECKED_STATUS DeleteServerInfoPaths() override;
@@ -802,6 +810,7 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t pgsql_http_port_;
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
+  uint16_t num_drives_;
   bool start_cql_proxy_ = true;
   std::unique_ptr<server::ServerStatusPB> cqlserver_status_;
 

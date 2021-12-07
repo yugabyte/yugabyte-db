@@ -15,6 +15,7 @@
 #include <chrono>
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/tserver/cdc_consumer.h"
@@ -28,9 +29,18 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/server/secure.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
+
+DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
+             "Override the max thread pool size for CDCConsumerHandler, which is used by "
+             "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
+             "cpus on the system).");
+TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
@@ -90,7 +100,11 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
   RETURN_NOT_OK(yb::Thread::Create(
       "CDCConsumer", "Poll", &CDCConsumer::RunThread, cdc_consumer.get(),
       &cdc_consumer->run_trigger_poll_thread_));
-  RETURN_NOT_OK(ThreadPoolBuilder("CDCConsumerHandler").Build(&cdc_consumer->thread_pool_));
+  ThreadPoolBuilder cdc_consumer_thread_pool_builder("CDCConsumerHandler");
+  if (FLAGS_cdc_consumer_handler_thread_pool_size > 0) {
+    cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
+  }
+  RETURN_NOT_OK(cdc_consumer_thread_pool_builder.Build(&cdc_consumer->thread_pool_));
   return cdc_consumer;
 }
 
@@ -191,6 +205,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 
   LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
 
+  streams_with_same_num_producer_consumer_tablets_.clear();
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
     if (producer_entry_pb.disable_stream()) {
@@ -303,7 +318,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
             return; // Don't finish creation.  Try again on the next heartbeat.
           }
 
-          remote_client->client = CHECK_RESULT(client_result);
+          remote_client->client = std::move(*client_result);
           remote_clients_[uuid] = std::move(remote_client);
         }
 

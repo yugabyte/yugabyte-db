@@ -1,11 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Row, Col } from 'react-bootstrap';
 import { connect } from 'react-redux';
 import moment from 'moment';
 
-import { YBModalForm } from '../../../components/common/forms';
 import { YBButton } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { AlertSnoozeModal } from '../../universes';
@@ -13,8 +11,6 @@ import { AlertSnoozeModal } from '../../universes';
 import {
   setAlertsConfig,
   setAlertsConfigResponse,
-  updateBackupState,
-  updateBackupStateResponse,
   fetchUniverseInfo,
   fetchUniverseInfoResponse
 } from '../../../actions/universe';
@@ -51,13 +47,8 @@ class UniverseAction extends Component {
   }
 
   performAction = (values) => {
-    const { universe, actionType, updateBackupState, setAlertsConfig } = this.props;
+    const { universe, actionType, setAlertsConfig } = this.props;
     switch (actionType) {
-      case 'toggle-backup':
-        const takeBackups =
-          universe.universeConfig && universe.universeConfig.takeBackups === 'true';
-        updateBackupState(universe.universeUUID, !takeBackups);
-        break;
       case 'alert-config':
         setAlertsConfig(universe.universeUUID, values);
         break;
@@ -78,31 +69,8 @@ class UniverseAction extends Component {
     const universePaused = universe?.universeDetails?.universePaused;
     let btnLabel = null;
     let btnIcon = null;
-    let modalTitle = null;
     let modalForm = null;
     switch (actionType) {
-      case 'toggle-backup':
-        const takeBackups = universeConfig && universeConfig.takeBackups === 'true';
-        btnLabel = takeBackups ? 'Disable Backup' : 'Enable Backup';
-        btnIcon = takeBackups ? 'fa fa-pause' : 'fa fa-play';
-        modalTitle = `${btnLabel} for: ${this.props.universe.name}?`;
-        modalForm = (
-          <YBModalForm
-            title={modalTitle}
-            visible={this.state.showModal}
-            onHide={this.closeModal}
-            showCancelButton={true}
-            cancelLabel={'Cancel'}
-            submitLabel={'Yes'}
-            className="universe-action-modal"
-            onFormSubmit={this.performAction}
-          >
-            <Row>
-              <Col lg={12}>Are you sure you want to perform this action?</Col>
-            </Row>
-          </YBModalForm>
-        );
-        break;
       case 'alert-config':
         let disablePeriodSecs = null;
         let alertsSnoozed = false;
@@ -165,11 +133,6 @@ const mapDispatchToProps = (dispatch) => {
     setAlertsConfig: (uuid, payload) => {
       dispatch(setAlertsConfig(uuid, payload)).then((response) => {
         dispatch(setAlertsConfigResponse(response.payload));
-      });
-    },
-    updateBackupState: (uuid, flag) => {
-      dispatch(updateBackupState(uuid, flag)).then((response) => {
-        dispatch(updateBackupStateResponse(response.payload));
       });
     },
 

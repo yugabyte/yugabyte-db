@@ -15,11 +15,9 @@
 #ifndef YB_UTIL_OPID_H
 #define YB_UTIL_OPID_H
 
-#include <cstdint>
 #include <iosfwd>
 #include <vector>
 
-#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 namespace yb {

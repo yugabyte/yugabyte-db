@@ -15,6 +15,10 @@
 
 #include "yb/yql/pggate/pg_memctx.h"
 
+#include "yb/util/status.h"
+
+#include "yb/yql/pggate/pg_tabledesc.h"
+
 namespace yb {
 namespace pggate {
 
@@ -76,7 +80,7 @@ void PgMemctx::Clear() {
   registered_objects_.clear_and_dispose(std::default_delete<Registrable>());
 }
 
-void PgMemctx::Cache(size_t hash_id, const PgTableDesc::ScopedRefPtr &table_desc) {
+void PgMemctx::Cache(size_t hash_id, const PgTableDescPtr &table_desc) {
   // Add table descriptor to table.
   tabledesc_map_[hash_id] = table_desc;
 }

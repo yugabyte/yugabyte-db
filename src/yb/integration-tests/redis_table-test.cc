@@ -14,17 +14,14 @@
 #include <chrono>
 #include <thread>
 
-#include "yb/integration-tests/redis_table_test_base.h"
-
 #include <glog/logging.h>
 
-#include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
+
 #include "yb/common/redis_protocol.pb.h"
+
+#include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-#include "yb/yql/redis/redisserver/redis_parser.h"
 
 using std::string;
 using std::vector;

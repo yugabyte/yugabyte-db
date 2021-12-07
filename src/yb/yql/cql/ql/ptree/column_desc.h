@@ -18,9 +18,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_
 #define YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_
 
-#include "yb/common/types.h"
-#include "yb/yql/cql/ql/ptree/pt_type.h"
-#include "yb/util/memory/mc_types.h"
+#include "yb/client/schema.h"
 
 namespace yb {
 namespace ql {
@@ -61,23 +59,10 @@ class ColumnDesc {
   }
 
   // User name (not mangled).
-  std::string name() const {
-    // Demangle "name_" if it was previous mangled (IndexTable has mangled column names).
-    if (has_mangled_name_) {
-      return YcqlName::DemangleName(name_);
-    }
-    return name_;
-  }
+  std::string name() const;
 
   // Index column name (mangled).
-  std::string MangledName() const {
-    // Mangle "name_" if it was not previous mangled.
-    // When we load INDEX, the column name is already mangled (Except for older INDEX).
-    if (has_mangled_name_) {
-      return name_;
-    }
-    return YcqlName::MangleColumnName(name_);
-  }
+  std::string MangledName() const;
 
   // Return the name that is kept in catalog.
   // - For Catalog::Table, user-defined-column name is not mangled.
@@ -108,6 +93,10 @@ class ColumnDesc {
 
   InternalType internal_type() const {
     return internal_type_;
+  }
+
+  void set_id(int id) {
+    id_ = id;
   }
 
  private:

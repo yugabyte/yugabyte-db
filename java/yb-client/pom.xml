@@ -25,12 +25,12 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.3-SNAPSHOT</version>
+    <version>0.8.11-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-client</artifactId>
   <name>YB Java Client</name>
-  <version>0.8.3-SNAPSHOT</version>
+  <version>0.8.11-SNAPSHOT</version>
   <properties>
     <yb.thirdparty.dir>${project.basedir}/../../thirdparty</yb.thirdparty.dir>
   </properties>
@@ -39,7 +39,6 @@
     <dependency>
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcpkix-jdk15on</artifactId>
-      <version>1.61</version>
     </dependency>
     <dependency>
       <groupId>com.google.code.gson</groupId>
@@ -119,6 +118,10 @@
           <version>20180130</version>
           <scope>test</scope>
       </dependency>
+    <dependency>
+      <groupId>joda-time</groupId>
+      <artifactId>joda-time</artifactId>
+    </dependency>
   </dependencies>
 
   <build>

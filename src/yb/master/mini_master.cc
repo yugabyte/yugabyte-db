@@ -36,14 +36,12 @@
 
 #include <glog/logging.h>
 
-#include "yb/fs/fs_manager.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/server/rpc_server.h"
-#include "yb/server/webserver.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+
 #include "yb/rpc/messenger.h"
-#include "yb/util/flag_tags.h"
+
+#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/status.h"
@@ -137,7 +135,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
         Format("rack$0", index_), "zone");
   }
 
-  gscoped_ptr<Master> server(new enterprise::Master(*opts));
+  std::unique_ptr<Master> server(new enterprise::Master(*opts));
   RETURN_NOT_OK(server->Init());
 
   server::TEST_SetupConnectivity(server->messenger(), index_);
@@ -220,7 +218,35 @@ std::string MiniMaster::permanent_uuid() const {
 }
 
 std::string MiniMaster::bound_rpc_addr_str() const {
-  return yb::ToString(bound_rpc_addr());
+  return bound_rpc_addr().ToString();
+}
+
+CatalogManagerIf& MiniMaster::catalog_manager() const {
+  return *master_->catalog_manager();
+}
+
+CatalogManager& MiniMaster::catalog_manager_impl() const {
+  return *master_->catalog_manager_impl();
+}
+
+tablet::TabletPeerPtr MiniMaster::tablet_peer() const {
+  return catalog_manager().tablet_peer();
+}
+
+rpc::Messenger& MiniMaster::messenger() const {
+  return *master_->messenger();
+}
+
+master::SysCatalogTable& MiniMaster::sys_catalog() const {
+  return *catalog_manager().sys_catalog();
+}
+
+master::TSManager& MiniMaster::ts_manager() const {
+  return *master_->ts_manager();
+}
+
+master::FlushManager& MiniMaster::flush_manager() const {
+  return *master_->flush_manager();
 }
 
 } // namespace master

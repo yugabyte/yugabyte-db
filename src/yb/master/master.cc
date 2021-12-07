@@ -37,41 +37,48 @@
 #include <memory>
 #include <vector>
 
-#include <boost/bind.hpp>
 #include <glog/logging.h>
 
+#include "yb/client/async_initializer.h"
+#include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/raft_consensus.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
+
+#include "yb/consensus/consensus_meta.h"
+
+#include "yb/gutil/bind.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_rpc.h"
-#include "yb/master/master_util.h"
+#include "yb/master/master-path-handlers.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.service.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
-#include "yb/master/master-path-handlers.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/ts_manager.h"
+#include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/server/rpc_server.h"
+
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/server/default-path-handlers.h"
-#include "yb/tserver/tablet_service.h"
+
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/tablet_service.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/shared_lock.h"
-#include "yb/client/async_initializer.h"
 
 DEFINE_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
@@ -129,13 +136,13 @@ namespace yb {
 namespace master {
 
 Master::Master(const MasterOptions& opts)
-  : RpcAndWebServerBase(
-        "Master", opts, "yb.master", server::CreateMemTrackerForServer()),
+  : DbServerBase("Master", opts, "yb.master", server::CreateMemTrackerForServer()),
     state_(kStopped),
     ts_manager_(new TSManager()),
     catalog_manager_(new enterprise::CatalogManager(this)),
     path_handlers_(new MasterPathHandlers(this)),
     flush_manager_(new FlushManager(this, catalog_manager())),
+    init_future_(init_status_.get_future()),
     opts_(opts),
     registration_initialized_(false),
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -170,6 +177,11 @@ Status Master::Init() {
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
+
+  auto bound_addresses = rpc_server()->GetBoundAddresses();
+  if (!bound_addresses.empty()) {
+    shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
+  }
 
   async_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
       "master_client", 0 /* num_reactors */,
@@ -238,6 +250,14 @@ Status Master::RegisterServices() {
           fs_manager_.get(), catalog_manager_.get(), metric_entity()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
+
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+      FLAGS_master_svc_queue_length,
+      std::make_unique<tserver::PgClientServiceImpl>(
+          client_future(), std::bind(&Master::TransactionPool, this),
+          metric_entity(),
+          &messenger()->scheduler())));
+
   return Status::OK();
 }
 
@@ -247,7 +267,6 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-check", "Tasks", "/tasks");
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
   DisplayIconTile(output, "fa-check", "TServer Clocks", "/tablet-server-clocks");
-  DisplayIconTile(output, "fa-clone", "Load Balancer Info", "/lb-statistics");
 }
 
 Status Master::StartAsync() {
@@ -273,7 +292,7 @@ void Master::InitCatalogManagerTask() {
   if (!s.ok()) {
     LOG(ERROR) << ToString() << ": Unable to init master catalog manager: " << s.ToString();
   }
-  init_status_.Set(s);
+  init_status_.set_value(s);
 }
 
 Status Master::InitCatalogManager() {
@@ -288,7 +307,7 @@ Status Master::InitCatalogManager() {
 Status Master::WaitForCatalogManagerInit() {
   CHECK_EQ(state_, kRunning);
 
-  return init_status_.Get();
+  return init_future_.get();
 }
 
 Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& timeout) {
@@ -470,10 +489,60 @@ Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   return Status::OK();
 }
 
+scoped_refptr<Histogram> Master::GetMetric(
+    const std::string& metric_identifier, MasterMetricType type, const std::string& description) {
+  std::string temp_metric_identifier = Format("$0_$1", metric_identifier,
+      (type == TaskMetric ? "Task" : "Attempt"));
+  EscapeMetricNameForPrometheus(&temp_metric_identifier);
+  {
+    std::lock_guard<std::mutex> lock(master_metrics_mutex_);
+    std::map<std::string, scoped_refptr<Histogram>>* master_metrics_ptr = master_metrics();
+    auto it = master_metrics_ptr->find(temp_metric_identifier);
+    if (it == master_metrics_ptr->end()) {
+      std::unique_ptr<HistogramPrototype> histogram = std::make_unique<OwningHistogramPrototype>(
+          "server", temp_metric_identifier, description, yb::MetricUnit::kMicroseconds,
+          description, yb::MetricLevel::kInfo, 0, 10000000, 2);
+      scoped_refptr<Histogram> temp =
+          metric_entity()->FindOrCreateHistogram(std::move(histogram));
+      (*master_metrics_ptr)[temp_metric_identifier] = temp;
+      return temp;
+    }
+    return it->second;
+  }
+}
+
 Status Master::GoIntoShellMode() {
   maintenance_manager_->Shutdown();
-  RETURN_NOT_OK(catalog_manager()->GoIntoShellMode());
+  RETURN_NOT_OK(catalog_manager_impl()->GoIntoShellMode());
   return Status::OK();
+}
+
+const std::shared_future<client::YBClient*>& Master::client_future() const {
+  return async_client_init_->get_client_future();
+}
+
+scoped_refptr<MetricEntity> Master::metric_entity_cluster() {
+  return metric_entity_cluster_;
+}
+
+client::LocalTabletFilter Master::CreateLocalTabletFilter() {
+  return client::LocalTabletFilter();
+}
+
+CatalogManagerIf* Master::catalog_manager() const {
+  return catalog_manager_.get();
+}
+
+SysCatalogTable& Master::sys_catalog() const {
+  return *catalog_manager_->sys_catalog();
+}
+
+PermissionsManager& Master::permissions_manager() {
+  return *catalog_manager_->permissions_manager();
+}
+
+EncryptionManager& Master::encryption_manager() {
+  return catalog_manager_->encryption_manager();
 }
 
 } // namespace master

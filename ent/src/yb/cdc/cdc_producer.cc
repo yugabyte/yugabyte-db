@@ -13,14 +13,17 @@
 #include "yb/cdc/cdc_producer.h"
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -406,14 +409,15 @@ Status GetChanges(const std::string& stream_id,
                   const MemTrackerPtr& mem_tracker,
                   consensus::ReplicateMsgsHolder* msgs_holder,
                   GetChangesResponsePB* resp,
-                  int64_t* last_readable_opid_index) {
+                  int64_t* last_readable_opid_index,
+                  const CoarseTimePoint deadline) {
   auto replicate_intents = ReplicateIntents(GetAtomicFlag(&FLAGS_cdc_enable_replicate_intents));
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
   RequestScope request_scope;
 
   auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->
-    ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index));
+    ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index, deadline));
   ScopedTrackedConsumption consumption;
   if (read_ops.read_from_disk_size && mem_tracker) {
     consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);

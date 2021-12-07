@@ -12,6 +12,7 @@
 //
 
 #include "yb/integration-tests/cql_test_util.h"
+
 #include <cassandra.h>
 
 #include <thread>
@@ -19,6 +20,7 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -90,8 +92,15 @@ CassError GetCassandraValue<CassInet>::Apply(const CassValue* val, CassInet* v) 
   return cass_value_get_inet(val, v);
 }
 
+bool CassandraValue::IsNull() const {
+  return cass_value_is_null(value_);
+}
+
 std::string CassandraValue::ToString() const {
   auto value_type = cass_value_type(value_);
+  if (IsNull()) {
+    return "NULL";
+  }
   switch (value_type) {
     case CASS_VALUE_TYPE_BLOB:
       return As<Slice>().ToDebugHexString();
@@ -163,6 +172,18 @@ CassandraRowIterator CassandraRow::CreateIterator() const {
   return CassandraRowIterator(cass_iterator_from_row(cass_row_));
 }
 
+std::string CassandraRow::RenderToString(const std::string& separator) {
+  std::string result;
+  auto iter = CreateIterator();
+  while (iter.Next()) {
+    if (!result.empty()) {
+      result += separator;
+    }
+    result += iter.Value().ToString();
+  }
+  return result;
+}
+
 void CassandraRow::TakeIterator(CassIteratorPtr iterator) {
   cass_iterator_ = std::move(iterator);
 }
@@ -181,6 +202,20 @@ void CassandraIterator::MoveToRow(CassandraRow* row) {
 
 CassandraIterator CassandraResult::CreateIterator() const {
   return CassandraIterator(cass_iterator_from_result(cass_result_.get()));
+}
+
+std::string CassandraResult::RenderToString(
+    const std::string& line_separator, const std::string& value_separator) const {
+  std::string result;
+  auto iter = CreateIterator();
+  while (iter.Next()) {
+    auto row = iter.Row();
+    if (!result.empty()) {
+      result += ";";
+    }
+    result += row.RenderToString();
+  }
+  return result;
 }
 
 bool CassandraFuture::Ready() const {
@@ -245,6 +280,10 @@ void CheckErrorCode(const CassError& error_code) {
 }
 
 } // namespace
+
+void CassandraStatement::SetKeyspace(const string& keyspace) {
+  CheckErrorCode(cass_statement_set_keyspace(cass_statement_.get(), keyspace.c_str()));
+}
 
 void CassandraStatement::Bind(size_t index, const string& v) {
   CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
@@ -315,6 +354,10 @@ Result<CassandraResult> CassandraSession::ExecuteWithResult(const CassandraState
   return future.Result();
 }
 
+Result<std::string> CassandraSession::ExecuteAndRenderToString(const std::string& statement) {
+  return VERIFY_RESULT(ExecuteWithResult(statement)).RenderToString();
+}
+
 CassandraFuture CassandraSession::ExecuteGetFuture(const CassandraStatement& statement) {
   return CassandraFuture(
       cass_session_execute(cass_session_.get(), statement.cass_statement_.get()));
@@ -345,11 +388,21 @@ CassandraFuture CassandraSession::SubmitBatch(const CassandraBatch& batch) {
 }
 
 Result<CassandraPrepared> CassandraSession::Prepare(
-    const string& prepare_query, MonoDelta timeout) {
-  VLOG(2) << "Execute prepare request: " << prepare_query << ", timeout: " << timeout;
+    const string& prepare_query, MonoDelta timeout, const string& local_keyspace) {
+  VLOG(2) << "Execute prepare request: " << prepare_query << ", timeout: " << timeout
+          << ", keyspace: " << local_keyspace;
   auto deadline = CoarseMonoClock::now() + timeout;
   for (;;) {
-    CassandraFuture future(cass_session_prepare(cass_session_.get(), prepare_query.c_str()));
+    CassFuture* cass_future_ptr = nullptr;
+    if (local_keyspace.empty()) {
+        cass_future_ptr = cass_session_prepare(cass_session_.get(), prepare_query.c_str());
+    } else {
+        CassandraStatement statement(prepare_query);
+        statement.SetKeyspace(local_keyspace);
+        cass_future_ptr = cass_session_prepare_from_existing(cass_session_.get(), statement.get());
+    }
+
+    CassandraFuture future(cass_future_ptr);
     auto wait_result = future.Wait();
     if (wait_result.ok()) {
       return future.Prepared();
@@ -370,14 +423,22 @@ CassandraStatement CassandraPrepared::Bind() {
   return CassandraStatement(cass_prepared_bind(prepared_.get()));
 }
 
-const MonoDelta kCassandraTimeOut = RegularBuildVsSanitizers(12s, 60s);
+const MonoDelta kCassandraTimeOut = 20s * kTimeMultiplier;
+const std::string kCqlTestKeyspace = "test";
 
 CppCassandraDriver::CppCassandraDriver(
-    const std::vector<std::string>& hosts, uint16_t port, bool use_partition_aware_routing) {
+    const std::vector<std::string>& hosts, uint16_t port,
+    UsePartitionAwareRouting use_partition_aware_routing) {
 
   // Enable detailed tracing inside driver.
   if (VLOG_IS_ON(4)) {
     cass_log_set_level(CASS_LOG_TRACE);
+  } else if (VLOG_IS_ON(3)) {
+    cass_log_set_level(CASS_LOG_DEBUG);
+  } else if (VLOG_IS_ON(2)) {
+    cass_log_set_level(CASS_LOG_INFO);
+  } else if (VLOG_IS_ON(1)) {
+    cass_log_set_level(CASS_LOG_WARN);
   }
 
   auto hosts_str = JoinStrings(hosts, ",");
@@ -409,8 +470,9 @@ Result<CassandraSession> CppCassandraDriver::CreateSession() {
 
 Result<CassandraSession> EstablishSession(CppCassandraDriver* driver) {
   auto session = VERIFY_RESULT(driver->CreateSession());
-  RETURN_NOT_OK(session.ExecuteQuery("CREATE KEYSPACE IF NOT EXISTS test;"));
-  RETURN_NOT_OK(session.ExecuteQuery("USE test;"));
+  RETURN_NOT_OK(
+      session.ExecuteQuery(Format("CREATE KEYSPACE IF NOT EXISTS $0;", kCqlTestKeyspace)));
+  RETURN_NOT_OK(session.ExecuteQuery(Format("USE $0;", kCqlTestKeyspace)));
   return session;
 }
 

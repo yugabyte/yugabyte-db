@@ -2,9 +2,25 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+import static com.yugabyte.yw.common.DevopsBase.YBCLOUD_SCRIPT;
+import static com.yugabyte.yw.common.TemplateManager.PROVISION_SCRIPT;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -15,25 +31,6 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
-
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
-import static com.yugabyte.yw.common.DevopsBase.YBCLOUD_SCRIPT;
-import com.yugabyte.yw.common.ShellResponse;
-import static com.yugabyte.yw.common.TemplateManager.PROVISION_SCRIPT;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TemplateManagerTest extends FakeDBApplication {
@@ -47,14 +44,11 @@ public class TemplateManagerTest extends FakeDBApplication {
   private Customer testCustomer;
   private Provider testProvider;
 
-  @Mock
-  ShellProcessHandler shellProcessHandler;
+  @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock
-  play.Configuration mockAppConfig;
+  @Mock play.Configuration mockAppConfig;
 
-  @InjectMocks
-  TemplateManager templateManager;
+  @InjectMocks TemplateManager templateManager;
 
   private AccessKey setupTestAccessKey() {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
@@ -92,9 +86,7 @@ public class TemplateManagerTest extends FakeDBApplication {
     return cmd;
   }
 
-  @Rule
-  public ExpectedException expectedException = ExpectedException.none();
-
+  @Rule public ExpectedException expectedException = ExpectedException.none();
 
   @Before
   public void setUp() {
@@ -110,18 +102,18 @@ public class TemplateManagerTest extends FakeDBApplication {
   }
 
   private void assertAccessKeyInfo(
-    AccessKey accessKey,
-    boolean airGapInstall,
-    boolean passwordlessSudo,
-    boolean installNodeExporter
-  ) {
+      AccessKey accessKey,
+      boolean airGapInstall,
+      boolean passwordlessSudo,
+      boolean installNodeExporter) {
     assertEquals(airGapInstall, accessKey.getKeyInfo().airGapInstall);
     assertEquals(passwordlessSudo, accessKey.getKeyInfo().passwordlessSudoAccess);
     assertEquals(installNodeExporter, accessKey.getKeyInfo().installNodeExporter);
     if (airGapInstall || passwordlessSudo) {
-      String expectedProvisionScript = String.format("%s/provision/%s/%s",
-          YB_STORAGE_PATH_VALUE, accessKey.getProviderUUID(), PROVISION_SCRIPT
-      );
+      String expectedProvisionScript =
+          String.format(
+              "%s/provision/%s/%s",
+              YB_STORAGE_PATH_VALUE, accessKey.getProviderUUID(), PROVISION_SCRIPT);
       assertEquals(expectedProvisionScript, accessKey.getKeyInfo().provisionInstanceScript);
     } else {
       assertNull(accessKey.getKeyInfo().provisionInstanceScript);
@@ -138,9 +130,11 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("9300");
     expectedCommand.add("--node_exporter_user");
     expectedCommand.add("prometheus");
-    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString())).thenReturn(ShellResponse.create(0, "{}"));
+    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
+        .thenReturn(ShellResponse.create(0, "{}"));
     templateManager.createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus");
-    verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(new HashMap<>()), anyString());
+    verify(shellProcessHandler, times(1))
+        .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
     assertAccessKeyInfo(accessKey, true, false, true);
   }
 
@@ -155,9 +149,11 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("9300");
     expectedCommand.add("--node_exporter_user");
     expectedCommand.add("prometheus");
-    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString())).thenReturn(ShellResponse.create(0, "{}"));
+    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
+        .thenReturn(ShellResponse.create(0, "{}"));
     templateManager.createProvisionTemplate(accessKey, true, true, true, 9300, "prometheus");
-    verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(new HashMap<>()), anyString());
+    verify(shellProcessHandler, times(1))
+        .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
     assertAccessKeyInfo(accessKey, true, true, true);
   }
 
@@ -171,9 +167,11 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("9300");
     expectedCommand.add("--node_exporter_user");
     expectedCommand.add("prometheus");
-    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString())).thenReturn(ShellResponse.create(0, "{}"));
+    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
+        .thenReturn(ShellResponse.create(0, "{}"));
     templateManager.createProvisionTemplate(accessKey, false, true, true, 9300, "prometheus");
-    verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(new HashMap<>()), anyString());
+    verify(shellProcessHandler, times(1))
+        .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
     assertAccessKeyInfo(accessKey, false, true, true);
   }
 
@@ -183,9 +181,10 @@ public class TemplateManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
     expectedCommand.add("--passwordless_sudo");
     when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
-      .thenReturn(ShellResponse.create(0, "{}"));
+        .thenReturn(ShellResponse.create(0, "{}"));
     templateManager.createProvisionTemplate(accessKey, false, true, false, 9300, "prometheus");
-    verify(shellProcessHandler, times(1)).run(eq(expectedCommand), eq(new HashMap<>()), anyString());
+    verify(shellProcessHandler, times(1))
+        .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
     assertAccessKeyInfo(accessKey, false, true, false);
   }
 
@@ -200,10 +199,10 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("9300");
     expectedCommand.add("--node_exporter_user");
     expectedCommand.add("prometheus");
-    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString())).thenReturn(ShellResponse.create(1, "foobar"));
-    expectedException.expect(RuntimeException.class);
+    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
+        .thenReturn(ShellResponse.create(1, "foobar"));
+    expectedException.expect(PlatformServiceException.class);
     expectedException.expectMessage("YBCloud command instance (template) failed to execute.");
     templateManager.createProvisionTemplate(accessKey, true, true, true, 9300, "prometheus");
-    assertAccessKeyInfo(accessKey, false, false, true);
   }
 }

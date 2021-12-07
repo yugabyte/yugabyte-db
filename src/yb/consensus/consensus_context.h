@@ -17,8 +17,9 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus.pb.h"
 
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace consensus {
@@ -68,6 +69,10 @@ class ConsensusContext {
   // Register listener that will be invoked when number of SST files changed.
   // Listener could be set only once and then reset.
   virtual void ListenNumSSTFilesChanged(std::function<void()> listener) = 0;
+
+  // Checks whether operation with provided op id and type could be added to the log.
+  virtual CHECKED_STATUS CheckOperationAllowed(
+      const OpId& op_id, consensus::OperationType op_type) = 0;
 
   virtual ~ConsensusContext() = default;
 };

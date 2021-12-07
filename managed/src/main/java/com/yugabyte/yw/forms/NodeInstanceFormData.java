@@ -2,37 +2,50 @@
 
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
-
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 
-/**
- * This class will be used by the API validate constraints for NodeInstance data.
- */
+/** This class will be used by the API validate constraints for NodeInstance data. */
 public class NodeInstanceFormData {
 
-  @Constraints.Required
+  @NotNull
+  @Size(min = 1)
+  @ApiModelProperty(value = "Node instances", required = true)
   public List<NodeInstanceData> nodes;
 
+  @ApiModel(
+      description =
+          "Details of a node instance. Used by the API to validate data against input constraints.")
   public static class NodeInstanceData {
-    @Constraints.Required()
+
+    @NotNull
+    @ApiModelProperty(value = "IP address", example = "1.1.1.1", required = true)
     public String ip;
 
-    @Constraints.Required()
+    @NotNull
+    @ApiModelProperty(value = "SSH user", example = "centos", required = true)
     public String sshUser;
 
-    @Constraints.Required()
+    @NotNull
+    @ApiModelProperty(value = "Region", example = "south-east", required = true)
     public String region;
 
-    @Constraints.Required()
+    @NotNull
+    @ApiModelProperty(value = "Zone", example = "south-east", required = true)
     public String zone;
 
-    @Constraints.Required()
+    @NotNull
+    @ApiModelProperty(value = "Node instance type", example = "c5large", required = true)
     public String instanceType;
 
-    @Constraints.Required()
+    @NotNull
+    @ApiModelProperty(value = "Node instance name", example = "Mumbai instance", required = true)
     public String instanceName;
 
+    @ApiModelProperty(value = "Node name", example = "India node")
     public String nodeName;
   }
 }

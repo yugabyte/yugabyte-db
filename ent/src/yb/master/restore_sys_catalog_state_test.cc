@@ -13,10 +13,12 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/restore_sys_catalog_state.h"
 
 #include "yb/util/oid_generator.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {
@@ -30,14 +32,12 @@ void CheckMatch(
 }
 
 TEST(RestoreSysCatalogStateTest, Filter) {
-  ObjectIdGenerator oid_generator;
-
-  const NamespaceId kNamespaceId = oid_generator.Next();
-  const NamespaceId kWrongNamespaceId = oid_generator.Next();
+  const NamespaceId kNamespaceId = GenerateObjectId();
+  const NamespaceId kWrongNamespaceId = GenerateObjectId();
   const std::string kNamespaceName = "namespace";
   const std::string kWrongNamespaceName = "wrong namespace";
-  const TableId kTableId = oid_generator.Next();
-  const TableId kWrongTableId = oid_generator.Next();
+  const TableId kTableId = GenerateObjectId();
+  const TableId kWrongTableId = GenerateObjectId();
   const std::string kTableName = "table";
   const std::string kWrongTableName = "wrong table";
 
@@ -57,7 +57,8 @@ TEST(RestoreSysCatalogStateTest, Filter) {
   table_entry.set_namespace_id(kNamespaceId);
   table_entry.set_namespace_name(kNamespaceName);
 
-  TableIdentifierPB& table_identifier = *restoration.filter.mutable_tables()->add_tables();
+  restoration.schedules.emplace_back(SnapshotScheduleId::Nil(), SnapshotScheduleFilterPB());
+  auto& table_identifier = *restoration.schedules[0].second.mutable_tables()->add_tables();
 
   for (bool use_table_id : {true, false}) {
     SCOPED_TRACE(Format("use_table_id: $0", use_table_id));

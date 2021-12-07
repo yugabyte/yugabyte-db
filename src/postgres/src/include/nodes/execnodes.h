@@ -599,8 +599,15 @@ typedef struct EState
 	 * Currently only enabled for PGSQL functions / procedures.
 	 */
 	bool yb_can_batch_updates;
-} EState;
 
+	/*
+	 *  The read hybrid time used for this query. This value is initialized
+	 *  to 0, and later updated by the first read operation initiated for this
+	 *  query. All later read operations are then ensured that they will never
+	 *  read any data written past this time.
+	 */
+	uint64_t yb_es_read_ht;
+} EState;
 
 /*
  * ExecRowMark -
@@ -653,6 +660,24 @@ typedef struct ExecAuxRowMark
 	AttrNumber	toidAttNo;		/* resno of tableoid junk attribute, if any */
 	AttrNumber	wholeAttNo;		/* resno of whole-row junk attribute, if any */
 } ExecAuxRowMark;
+
+/*
+ * Yugabyte output parameter.
+ * The following parameters are not yet used.
+ * - Execution status in text. Currently, details are lost when reporting status. This OUT param
+ *   value can be used for that purpose.
+ * - Execution status code in yugabyte (This code might be different from Postgres).
+ */
+typedef struct YbPgExecOutParam {
+	NodeTag type;
+
+	/* BACKFILL output */
+	StringInfo bfoutput;
+
+	/* Not yet used */
+	StringInfo status;
+	int64_t status_code;
+} YbPgExecOutParam;
 
 
 /* ----------------------------------------------------------------
@@ -835,7 +860,7 @@ typedef struct SetExprState
 	 * (by InitFunctionCallInfoData) if func.fn_oid is valid.  It also saves
 	 * argument values between calls, when setArgsValid is true.
 	 */
-	FunctionCallInfo fcinfo;
+	FunctionCallInfoData fcinfo_data;
 } SetExprState;
 
 /* ----------------

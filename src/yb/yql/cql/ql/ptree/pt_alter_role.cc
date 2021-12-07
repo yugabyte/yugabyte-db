@@ -16,9 +16,12 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/crypt.h"
+
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 DECLARE_bool(use_cassandra_authentication);
 
@@ -110,7 +113,6 @@ CHECKED_STATUS PTAlterRole::Analyze(SemContext* sem_context) {
 }
 
 void PTAlterRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
-
   MCString sem_output("\tAlter Role ", sem_context->PTempMem());
   sem_output = sem_output + " role_name  " + role_name() + " salted_hash = " + *salted_hash_;
   sem_output = sem_output + " login = " + (login() ? "true" : "false");

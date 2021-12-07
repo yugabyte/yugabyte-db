@@ -14,15 +14,17 @@
 #ifndef YB_UTIL_ENCRYPTED_FILE_H
 #define YB_UTIL_ENCRYPTED_FILE_H
 
+#include <string.h>
+
 #include <atomic>
+#include <cstdarg>
 #include <memory>
 
-#include "yb/util/env.h"
 #include "yb/util/cipher_stream_fwd.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 
 namespace yb {
-
-namespace enterprise {
 
 class HeaderManager;
 
@@ -34,7 +36,7 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
                        std::unique_ptr<RandomAccessFile> underlying);
 
   EncryptedRandomAccessFile(std::unique_ptr<RandomAccessFile> file,
-                            std::unique_ptr<yb::enterprise::BlockAccessCipherStream> stream,
+                            std::unique_ptr<yb::BlockAccessCipherStream> stream,
                             uint64_t header_size)
       : RandomAccessFileWrapper(std::move(file)), stream_(std::move(stream)),
         header_size_(header_size) {}
@@ -47,9 +49,7 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
     return header_size_;
   }
 
-  Result<uint64_t> Size() const override {
-    return VERIFY_RESULT(RandomAccessFileWrapper::Size()) - header_size_;
-  }
+  Result<uint64_t> Size() const override;
 
   virtual bool IsEncrypted() const override {
     return true;
@@ -73,7 +73,6 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
   std::atomic<int64_t> num_overflow_workarounds_{0};
 };
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_ENCRYPTED_FILE_H

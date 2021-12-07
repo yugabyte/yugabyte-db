@@ -32,38 +32,48 @@
 
 #include <functional>
 #include <string>
-#include <system_error>
 #include <vector>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
-
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/tools/yb-admin_client.h"
+
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/stopwatch.h"
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
-#include "yb/tools/yb-admin_client.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
-DECLARE_int32(TEST_yb_num_total_tablets);
+DECLARE_int32(ycql_num_tablets);
+DECLARE_int32(ysql_num_tablets);
 DECLARE_int32(heartbeat_interval_ms);
 
 namespace yb {
@@ -204,7 +214,7 @@ class MasterFailoverTest : public YBTest {
  protected:
   int num_masters_;
   ExternalMiniClusterOptions opts_;
-  gscoped_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
 };
 
@@ -294,7 +304,8 @@ TEST_P(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
   const int kPauseAfterStage = GetParam();
   YBTableName table_name(YQL_DATABASE_CQL, "test", "testPauseAfterCreateTableIssued");
   LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
-  FLAGS_TEST_yb_num_total_tablets = 5;
+  FLAGS_ycql_num_tablets = 5;
+  FLAGS_ysql_num_tablets = 5;
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
   LOG(INFO) << "CreateTable done for " << table_name.ToString();
 
@@ -496,18 +507,16 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
                 MonoDelta::FromSeconds(60),
                 "Load Balancer Idle check failed"));
 
-  // Delay TS Heartbeats by 40 times of original rate.
-  ASSERT_OK(cluster_->SetFlagOnTServers("heartbeat_interval_ms",
-                            std::to_string(kHeartbeatIntervalMs * 40)));
-
-  // Wait for the delay to take effect.
-  // Approximately let's give it 4 cycles.
-  SleepFor(MonoDelta::FromMilliseconds(4 * kHeartbeatIntervalMs));
+  // Disable TS heartbeats.
+  LOG(INFO) << "Disabled Heartbeats";
+  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_disable_heartbeat_test_only",
+                                        "true"));
 
   // Blacklist a TS.
   ExternalMaster *leader = cluster_->GetLeaderMaster();
   ExternalTabletServer *ts = cluster_->tablet_server(3);
   ASSERT_OK(cluster_->AddTServerToBlacklist(leader, ts));
+  LOG(INFO) << "Blacklisted tserver#3";
 
   // Get the initial load.
   int idx = -1;
@@ -523,6 +532,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
   int initial_total_load = resp.total();
 
   // Failover the leader.
+  LOG(INFO) << "Failing over master leader.";
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
 
   // Get the final load and validate.
@@ -534,9 +544,35 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
 
   proxy = cluster_->master_proxy(idx);
   ASSERT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+  LOG(INFO) << "Initial loads. Before master leader failover: " <<  initial_total_load
+            << " v/s after master leader failover: " << resp.total();
 
   EXPECT_EQ(resp.total(), initial_total_load) << "Expected the initial blacklisted load"
                                   " to be propagated to new leader master.";
+
+  // The progress should be reported as 0 until tservers heartbeat
+  // their tablet reports.
+  EXPECT_EQ(resp.percent(), 0) << "Expected the initial progress"
+                                  " to be zero.";
+
+  // Now enable heartbeats.
+  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_disable_heartbeat_test_only",
+                                        "false"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("blacklist_progress_initial_delay_secs",
+                                        std::to_string((kHeartbeatIntervalMs * 20)/1000)));
+  LOG(INFO) << "Enabled heartbeats";
+
+  ASSERT_OK(LoggedWaitFor(
+    [&]() -> Result<bool> {
+      req.Clear();
+      resp.Clear();
+      rpc.Reset();
+      RETURN_NOT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+      return resp.percent() >= 100;
+    },
+    MonoDelta::FromSeconds(300),
+    "Waiting for blacklist load transfer to complete"
+  ));
 }
 
 class MasterFailoverTestWithPlacement : public MasterFailoverTest {
@@ -561,12 +597,12 @@ class MasterFailoverTestWithPlacement : public MasterFailoverTest {
 
   void AssertTserverHasPlacementUuid(
       const string& ts_uuid, const string& placement_uuid,
-      const std::vector<std::unique_ptr<YBTabletServer>>& tablet_servers) {
+      const std::vector<YBTabletServer>& tablet_servers) {
     auto it = std::find_if(tablet_servers.begin(), tablet_servers.end(), [&](const auto& ts) {
-        return ts->uuid() == ts_uuid;
+        return ts.uuid == ts_uuid;
     });
     ASSERT_TRUE(it != tablet_servers.end());
-    ASSERT_EQ((*it)->placement_uuid(), placement_uuid);
+    ASSERT_EQ(it->placement_uuid, placement_uuid);
   }
 
  protected:
@@ -609,8 +645,7 @@ TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWi
     return tserver_count == 4;
   }, MonoDelta::FromSeconds(30), "Wait for tablet server count"));
 
-  std::vector<std::unique_ptr<YBTabletServer>> tablet_servers;
-  ASSERT_OK(client_->ListTabletServers(&tablet_servers));
+  const auto tablet_servers = ASSERT_RESULT(client_->ListTabletServers());
 
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(live_ts_uuid, kLivePlacementUuid, tablet_servers));
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(

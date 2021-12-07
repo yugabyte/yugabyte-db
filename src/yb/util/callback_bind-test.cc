@@ -30,12 +30,12 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <gtest/gtest.h>
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
-
-#include <gtest/gtest.h>
 
 namespace yb {
 
@@ -72,6 +72,8 @@ struct RefCountable {
   }
 
   mutable int refs;
+
+ private:
   DISALLOW_COPY_AND_ASSIGN(RefCountable);
 };
 
@@ -91,23 +93,8 @@ TEST(CallbackBindTest, TestPartialBind) {
   ASSERT_EQ(23, cb.Run("hello world"));
 }
 
-char IncrementChar(gscoped_ptr<char> in) {
+char IncrementChar(std::unique_ptr<char> in) {
   return *in + 1;
-}
-
-TEST(CallbackBindTest, TestCallScopedPtrArg) {
-  // Calling a function with a gscoped_ptr argument is just like any other
-  // function which takes gscoped_ptr:
-  gscoped_ptr<char> foo(new char('x'));
-  Callback<char(gscoped_ptr<char>)> cb = Bind(&IncrementChar);
-  ASSERT_EQ('y', cb.Run(foo.Pass()));
-}
-
-TEST(CallbackBindTest, TestBindScopedPtrArg) {
-  // Binding a function with a gscoped_ptr argument requires using Passed()
-  gscoped_ptr<char> foo(new char('x'));
-  Callback<char(void)> cb = Bind(&IncrementChar, Passed(&foo));
-  ASSERT_EQ('y', cb.Run());
 }
 
 // Test that the ref counting functionality works.

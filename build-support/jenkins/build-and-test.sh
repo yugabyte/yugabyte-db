@@ -73,8 +73,9 @@
 
 set -euo pipefail
 
-echo "Build script $BASH_SOURCE is running"
+echo "Build script ${BASH_SOURCE[0]} is running"
 
+# shellcheck source=build-support/common-test-env.sh
 . "${BASH_SOURCE%/*}/../common-test-env.sh"
 
 readonly COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD=(
@@ -160,6 +161,8 @@ log "Removing old JSON-based test report files"
   rm -f test_results.json test_failures.json
 )
 
+# We change YB_RUN_JAVA_TEST_METHODS_SEPARATELY in a subshell in a few places and that is OK.
+# shellcheck disable=SC2031
 export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
 
 export TSAN_OPTIONS=""
@@ -173,6 +176,8 @@ MAX_NUM_PARALLEL_TESTS=3
 
 # gather core dumps
 ulimit -c unlimited
+
+detect_architecture
 
 BUILD_TYPE=${BUILD_TYPE:-debug}
 build_type=$BUILD_TYPE
@@ -197,7 +202,9 @@ log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
 # Build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
 
+# shellcheck disable=SC2119
 set_build_root
+
 set_common_test_paths
 
 # As soon as we know build root, we need to do the necessary workspace cleanup.
@@ -260,6 +267,7 @@ export BUILD_ROOT
 
 "$YB_SRC_ROOT/yb_build.sh" --cmake-unit-tests
 
+find_or_download_ysql_snapshots
 find_or_download_thirdparty
 validate_thirdparty_dir
 detect_toolchain
@@ -276,6 +284,8 @@ remove_latest_symlink
 
 if is_jenkins; then
   log "Running on Jenkins, will re-create the Python virtualenv"
+  # YB_RECREATE_VIRTUALENV is used in common-build-env.sh.
+  # shellcheck disable=SC2034
   YB_RECREATE_VIRTUALENV=1
 fi
 
@@ -319,7 +329,6 @@ CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 CTEST_FULL_OUTPUT_PATH="$BUILD_ROOT"/ctest-full.log
 
 TEST_LOG_DIR="$BUILD_ROOT/test-logs"
-TEST_TMP_ROOT_DIR="$BUILD_ROOT/test-tmp"
 
 # If we're running inside Jenkins (the BUILD_ID is set), then install an exit handler which will
 # clean up all of our build results.
@@ -333,12 +342,6 @@ export NO_REBUILD_THIRDPARTY=1
 
 THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin
 export PPROF_PATH=$THIRDPARTY_BIN/pprof
-
-if which ccache >/dev/null ; then
-  CLANG=$YB_BUILD_SUPPORT_DIR/ccache-clang/clang
-else
-  CLANG=$YB_SRC_ROOT/thirdparty/clang-toolchain/bin/clang
-fi
 
 # Configure the build
 #
@@ -387,7 +390,7 @@ while true; do
     fatal "CMake failed after $MAX_CMAKE_RETRIES attempts, giving up."
   fi
   heading "CMake failed at attempt $cmake_attempt_index, re-trying"
-  let cmake_attempt_index+=1
+  (( cmake_attempt_index+=1 ))
 done
 
 # Only enable test core dumps for certain build types.
@@ -476,8 +479,8 @@ if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
   git log -n 2
 
   (
-    build_cpp_code "$PWD" 2>&1 | \
-      while read output_line; do \
+    build_cpp_code "$PWD" 2>&1 |
+      while read -r output_line; do
         echo "[base version build] $output_line"
       done
   ) &
@@ -526,7 +529,7 @@ if [[ $BUILD_TYPE != "tsan" ]]; then
       log "Successfully created initial system catalog snapshot at attempt $initdb_attempt_index"
       break
     fi
-    let initdb_attempt_index+=1
+    (( initdb_attempt_index+=1 ))
   done
   if [[ $initdb_attempt_index -gt $MAX_INITDB_ATTEMPTS ]]; then
     fatal "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
@@ -557,8 +560,6 @@ fi
 #   tests to run in Phabricator builds. If we just diff with origin/master, we'll always pick up
 #   pom.xml changes we've just made, forcing us to always run Java tests.
 current_git_commit=$(git rev-parse HEAD)
-
-random_build_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
 
 # -------------------------------------------------------------------------------------------------
 # Java build
@@ -627,8 +628,7 @@ fi
 
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
-      $build_type != "asan" &&
-      $YB_COMPILER_TYPE != *[0-9] ]]; then
+      $build_type != "asan" ]]; then
   heading "Creating a distribution package"
 
   package_path_file="$BUILD_ROOT/package_path.txt"
@@ -671,11 +671,47 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
 
   # Upload the package.
   if ! is_jenkins_phabricator_build; then
+    # shellcheck source=ent/build-support/upload_package.sh
     . "$YB_SRC_ROOT/ent/build-support/upload_package.sh"
     if ! "$package_uploaded" && ! "$package_upload_skipped"; then
       FAILURES+=$'Package upload failed\n'
       EXIT_STATUS=1
     fi
+  fi
+
+  if grep -q "CentOS Linux 7" /etc/os-release; then
+    log "This is CentOS 7, doing a quick sanity-check of the release package using Docker."
+
+    # Have to export this for the script inside Docker to see it.
+    export YB_PACKAGE_PATH
+
+    # Do a quick sanity test on the release package. This verifies that we can at least start the
+    # cluster, which requires all RPATHs to be set correctly, either at the time the package is
+    # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
+    docker run -i \
+      -e YB_PACKAGE_PATH \
+      --mount "type=bind,source=$YB_SRC_ROOT/build,target=/mnt/dir_with_package" centos:7 \
+      bash -c '
+        set -euo pipefail -x
+        yum install -y libatomic
+        package_name=${YB_PACKAGE_PATH##*/}
+        package_path=/mnt/dir_with_package/$package_name
+        set +e
+        # This will be "yugabyte-a.b.c.d/" (with a trailing slash).
+        dir_name_inside_archive=$(tar tf "$package_path" | head -1)
+        set -e
+        # Remove the trailing slash.
+        dir_name_inside_archive=${dir_name_inside_archive%/}
+        cd /tmp
+        tar xzf "$package_path"
+        cd "$dir_name_inside_archive"
+        bin/post_install.sh
+        bin/yb-ctl create
+        bin/ysqlsh -c "create table t (k int primary key, v int);
+                       insert into t values (1, 2);
+                       select * from t;"'
+  else
+    log "Not doing a quick sanity-check of the release package. OS: $OSTYPE."
   fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: $OSTYPE," \
@@ -698,12 +734,12 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
   if spark_available; then
     if [[ $YB_BUILD_CPP == "1" || $YB_BUILD_JAVA == "1" ]]; then
       log "Will run tests on Spark"
-      extra_args=()
+      run_tests_extra_args=()
       if [[ $YB_BUILD_JAVA == "1" ]]; then
-        extra_args+=( "--java" )
+        run_tests_extra_args+=( "--java" )
       fi
       if [[ $YB_BUILD_CPP == "1" ]]; then
-        extra_args+=( "--cpp" )
+        run_tests_extra_args+=( "--cpp" )
       fi
       if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
         test_conf_path="$BUILD_ROOT/test_conf.json"
@@ -714,12 +750,12 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
             --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
             --output-test-config "$test_conf_path" \
             affected
-        extra_args+=( "--test_conf" "$test_conf_path" )
+        run_tests_extra_args+=( "--test_conf" "$test_conf_path" )
         unset test_conf_path
       fi
       if is_linux || (is_mac && ! is_src_root_on_nfs); then
         log "Will create an archive for Spark workers with all the code instead of using NFS."
-        extra_args+=( "--send_archive_to_workers" )
+        run_tests_extra_args+=( "--send_archive_to_workers" )
       fi
       # Workers use /private path, which caused mis-match when check is done by yb_dist_tests that
       # YB_MVN_LOCAL_REPO is in source tree. So unsetting value here to allow default.
@@ -727,7 +763,7 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         unset YB_MVN_LOCAL_REPO
       fi
       set +u  # because extra_args can be empty
-      if ! run_tests_on_spark "${extra_args[@]}"; then
+      if ! run_tests_on_spark "${run_tests_extra_args[@]}"; then
         set -u
         EXIT_STATUS=1
         FAILURES+=$'Distributed tests on Spark (C++ and/or Java) failed\n'
@@ -748,14 +784,17 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
       if ! spark_available; then
         log "Did not find Spark on the system, falling back to a ctest-based way of running tests"
         set +e
-        time ctest -j$NUM_PARALLEL_TESTS ${EXTRA_TEST_FLAGS:-} \
+        # We don't double-quote EXTRA_TEST_FLAGS on purpose, to allow specifying multiple flags.
+        # shellcheck disable=SC2086
+        time ctest "-j$NUM_PARALLEL_TESTS" ${EXTRA_TEST_FLAGS:-} \
             --output-log "$CTEST_FULL_OUTPUT_PATH" \
             --output-on-failure 2>&1 | tee "$CTEST_OUTPUT_PATH"
-        if [[ $? -ne 0 ]]; then
-          EXIT_STATUS=1
-          FAILURES+=$'C++ tests failed\n'
-        fi
+        ctest_exit_code=$?
         set -e
+        if [[ $ctest_exit_code -ne 0 ]]; then
+          EXIT_STATUS=1
+          FAILURES+=$'C++ tests failed with exit code $ctest_exit_code\n'
+        fi
       fi
       log "Finished running C++ tests (see timing information above)"
     fi
@@ -768,6 +807,7 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         FAILURES+=$'Java tests failed\n'
       fi
       log "Finished running Java tests (see timing information above)"
+      # shellcheck disable=SC2119
       kill_stuck_processes
     fi
   fi
@@ -777,9 +817,7 @@ fi
 remove_latest_symlink
 
 log "Aggregating test reports"
-cd "$YB_SRC_ROOT"  # even though we should already be in this directory
-find . -type f -name "*_test_report.json" | \
-    "$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
+"$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
       --yb-src-root "$YB_SRC_ROOT" \
       --output-dir "$YB_SRC_ROOT" \
       --build-type "$build_type" \

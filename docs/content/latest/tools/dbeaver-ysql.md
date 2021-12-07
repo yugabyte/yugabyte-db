@@ -4,7 +4,7 @@ headerTitle: Using DBeaver with YSQL
 linkTitle: DBeaver
 description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
 aliases:
-- /latest/tools/dbeaver
+  - /latest/tools/dbeaver
 menu:
   latest:
     identifier: dbeaver-ysql
@@ -44,7 +44,7 @@ Before you can start using DBeaver with YSQL, you need to perform the following:
 
 - Start YugabyteDB. 
 
-  For more information, see [Quick Start](https://docs.yugabyte.com/quick-start/install).
+  For more information, see [Quick Start](/quick-start/install).
 
 - Install JRE or JDK for Java 8 or later. 
 
@@ -82,4 +82,4 @@ You can expand the list to see all databases available to the Yugabyte User, as 
 
 ![img](/images/develop/tools/dbeaver/dbeaver-localhost.png)
 
-For sample databases to explore YugabyteDB using DBeaver, see [Sample data](https://docs.yugabyte.com/latest/sample-data/).
+For sample databases to explore YugabyteDB using DBeaver, see [Sample data](/latest/sample-data/).

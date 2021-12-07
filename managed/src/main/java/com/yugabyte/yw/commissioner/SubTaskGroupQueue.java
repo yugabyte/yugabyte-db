@@ -2,10 +2,9 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.yugabyte.yw.models.TaskInfo;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-
-import com.yugabyte.yw.models.TaskInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,17 +21,13 @@ public class SubTaskGroupQueue {
     this.userTaskUUID = userTaskUUID;
   }
 
-  /**
-   * Add a task list to this sequence.
-   */
+  /** Add a task list to this sequence. */
   public boolean add(SubTaskGroup subTaskGroup) {
     subTaskGroup.setTaskContext(subTaskGroups.size(), userTaskUUID);
     return subTaskGroups.add(subTaskGroup);
   }
 
-  /**
-   * Execute the sequence of task lists in a sequential manner.
-   */
+  /** Execute the sequence of task lists in a sequential manner. */
   public void run() {
     boolean runSuccess = true;
     for (SubTaskGroup subTaskGroup : subTaskGroups) {
@@ -63,5 +58,12 @@ public class SubTaskGroupQueue {
     }
 
     if (!runSuccess) throw new RuntimeException("One or more subTaskGroups failed while running.");
+  }
+
+  /** Cleans up the resources held by the subtasks in the groups */
+  public void cleanup() {
+    for (SubTaskGroup subTaskGroup : subTaskGroups) {
+      subTaskGroup.cleanup();
+    }
   }
 }

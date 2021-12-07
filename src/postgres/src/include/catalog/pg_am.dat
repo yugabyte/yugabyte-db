@@ -33,5 +33,8 @@
 { oid => '9900', oid_symbol => 'LSM_AM_OID',
   descr => 'YugaByte log-structured merge-tree index access method',
   amname => 'lsm', amhandler => 'ybcinhandler', amtype => 'i' },
+{ oid => '8021', oid_symbol => 'YBGIN_AM_OID',
+  descr => 'Yugabyte GIN index access method',
+  amname => 'ybgin', amhandler => 'ybginhandler', amtype => 'i' },
 
 ]

@@ -11,12 +11,15 @@
 // under the License.
 //
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/yql_size_estimates_vtable.h"
 
-#include "yb/rpc/messenger.h"
+#include "yb/common/partition.h"
+#include "yb/common/schema.h"
 
-#include "yb/util/net/dns_resolver.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+
+#include "yb/util/status_log.h"
 #include "yb/util/yb_partition.h"
 
 namespace yb {
@@ -30,17 +33,16 @@ YQLSizeEstimatesVTable::YQLSizeEstimatesVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
-  CatalogManager* catalog_manager = master_->catalog_manager();
+  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto* catalog_manager = &this->catalog_manager();
 
-  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  auto tables = catalog_manager->GetTables(GetTablesMode::kVisibleToClient);
   for (const auto& table : tables) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
 
     // Get namespace for table.
-    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
-        table->namespace_id()));
+    auto ns_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Hide non-YQL tables.
     if (table->GetTableType() != TableType::YQL_TABLE_TYPE) {
@@ -48,8 +50,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
     }
 
     // Get tablets for table.
-    std::vector<scoped_refptr<TabletInfo> > tablets;
-    table->GetAllTablets(&tablets);
+    auto tablets = table->GetTablets();
     for (const scoped_refptr<TabletInfo>& tablet : tablets) {
       TabletLocationsPB tabletLocationsPB;
       Status s = catalog_manager->GetTabletLocations(tablet->id(), &tabletLocationsPB);

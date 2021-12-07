@@ -38,21 +38,21 @@
 #include <string>
 
 #include <gflags/gflags.h>
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metrics.h"
-#include "yb/util/flag_tags.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/metrics.h"
 
 METRIC_DEFINE_gauge_uint32(table, log_gc_running,
                            "Log GCs Running",
                            yb::MetricUnit::kOperations,
                            "Number of log GC operations currently running.");
-METRIC_DEFINE_histogram(table, log_gc_duration,
+METRIC_DEFINE_coarse_histogram(table, log_gc_duration,
                         "Log GC Duration",
                         yb::MetricUnit::kMilliseconds,
-                        "Time spent garbage collecting the logs.", 60000LU, 1);
+                        "Time spent garbage collecting the logs.");
 
 namespace yb {
 namespace tablet {

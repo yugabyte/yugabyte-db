@@ -730,6 +730,7 @@ FormData_pg_ts_parser
 FormData_pg_ts_template
 FormData_pg_type
 FormData_pg_user_mapping
+FormData_pg_yb_tablegroup
 Form_pg_aggregate
 Form_pg_am
 Form_pg_amop
@@ -788,6 +789,7 @@ Form_pg_ts_parser
 Form_pg_ts_template
 Form_pg_type
 Form_pg_user_mapping
+Form_pg_yb_tablegroup
 FormatNode
 FreeBlockNumberArray
 FreeListData
@@ -808,7 +810,7 @@ FuncExpr
 FuncInfo
 Function
 FunctionCallInfo
-FunctionCallInfoBaseData
+FunctionCallInfoData
 FunctionParameter
 FunctionParameterMode
 FunctionScan
@@ -1158,6 +1160,7 @@ LLVMJitHandle
 LLVMMemoryBufferRef
 LLVMModuleRef
 LLVMOrcJITStackRef
+LLVMOrcLookupStateRef
 LLVMOrcModuleHandle
 LLVMOrcTargetAddress
 LLVMPassManagerBuilderRef
@@ -1353,7 +1356,6 @@ NonEmptyRange
 Notification
 NotifyStmt
 Nsrt
-NullableDatum
 NullIfExpr
 NullTest
 NullTestType

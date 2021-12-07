@@ -16,10 +16,14 @@ import { isNotHidden, isDisabled } from '../../utils/LayoutUtils';
 import {
   changeUserRole,
   createUser,
-  createUserResponse,
+  createUserFailure,
+  createUserSuccess,
   deleteUser,
   deleteUserResponse
 } from '../../actions/customers';
+import { toast } from 'react-toastify';
+import { createErrorMessage } from '../alerts/AlertConfiguration/AlertUtils';
+import { timeFormatter } from '../../utils/TableFormatters';
 
 class UserList extends Component {
   constructor(props) {
@@ -113,6 +117,7 @@ class UserList extends Component {
                 onHide={closeModal}
                 createUser={this.props.createUser}
                 getCustomerUsers={this.props.getCustomerUsers}
+                passwordValidationInfo={this.props.passwordValidationInfo}
               />
             )}
             {showModal && visibleModal === 'editRoleModal' && (
@@ -149,7 +154,9 @@ class UserList extends Component {
                 <TableHeaderColumn dataField="uuid" isKey hidden />
                 <TableHeaderColumn dataField="email">Email</TableHeaderColumn>
                 <TableHeaderColumn dataField="role">Role</TableHeaderColumn>
-                <TableHeaderColumn dataField="creationDate">Created At</TableHeaderColumn>
+                <TableHeaderColumn dataField="creationDate" dataFormat={timeFormatter}>
+                  Created At
+                </TableHeaderColumn>
                 <TableHeaderColumn
                   columnClassName="table-actions-cell"
                   dataFormat={(cell, row) => this.actionsDropdown(row)}
@@ -169,7 +176,17 @@ const mapDispatchToProps = (dispatch) => {
   return {
     createUser: (payload) => {
       return dispatch(createUser(payload)).then((response) => {
-        return dispatch(createUserResponse(response.payload));
+        try {
+          if (response.payload.isAxiosError || response.payload.status !== 200) {
+            toast.error(createErrorMessage(response.payload));
+            return dispatch(createUserFailure(response.payload));
+          } else {
+            toast.success('User created successfully');
+            return dispatch(createUserSuccess(response.payload));
+          }
+        } catch (error) {
+          console.error('Error while creating customer users');
+        }
       });
     },
     changeUserRole: (userUUID, newRole) => {

@@ -36,11 +36,11 @@
 
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/log.h"
+
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/threadpool.h"
+
 #include "yb/util/logging.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
 namespace consensus {
@@ -53,7 +53,7 @@ PeerManager::PeerManager(const std::string tablet_id,
                          PeerProxyFactory* peer_proxy_factory,
                          PeerMessageQueue* queue,
                          ThreadPoolToken* raft_pool_token,
-                         const scoped_refptr<log::Log>& log)
+                         const log::LogPtr& log)
     : tablet_id_(tablet_id),
       local_uuid_(local_uuid),
       peer_proxy_factory_(peer_proxy_factory),
@@ -123,7 +123,7 @@ void PeerManager::Close() {
 }
 
 void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
-  unordered_map<string, RaftPeerPB> peers_in_config;
+  std::unordered_map<std::string, RaftPeerPB> peers_in_config;
   for (const RaftPeerPB &peer_pb : config.peers()) {
     InsertOrDie(&peers_in_config, peer_pb.permanent_uuid(), peer_pb);
   }

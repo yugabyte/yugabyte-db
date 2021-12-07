@@ -16,10 +16,11 @@
 
 #include <string>
 
+#include <glog/logging.h>
+
 #include "yb/util/cast.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace util {
@@ -41,25 +42,45 @@ void FastAppendSignedVarIntToBuffer(int64_t v, Buffer* dest) {
   dest->append(buf, len);
 }
 
+// Returns status, decoded value and size consumed from source.
+// Might use effective performance optimization that reads before src, but not before
+// read_allowed_from.
+CHECKED_STATUS FastDecodeSignedVarInt(
+    const uint8_t* src, size_t src_size, const uint8_t* read_allowed_from, int64_t* v,
+    size_t* decoded_size);
+
+inline CHECKED_STATUS FastDecodeSignedVarInt(
+    const char* src, size_t src_size, const char* read_allowed_from, int64_t* v,
+    size_t* decoded_size) {
+  return FastDecodeSignedVarInt(
+      to_uchar_ptr(src), src_size, to_uchar_ptr(read_allowed_from), v,
+      decoded_size);
+}
+
+// WARNING:
+// FastDecodeSignedVarIntUnsafe functions below are optimized for performance, but require from
+// caller to guarantee that we can read some bytes (up to 7) before src.
+
 // Consumes decoded part of the slice.
-Result<int64_t> FastDecodeSignedVarInt(Slice* slice);
-CHECKED_STATUS FastDecodeSignedVarInt(const uint8_t* src,
+Result<int64_t> FastDecodeSignedVarIntUnsafe(Slice* slice);
+CHECKED_STATUS FastDecodeSignedVarIntUnsafe(const uint8_t* src,
                                       size_t src_size,
                                       int64_t* v,
                                       size_t* decoded_size);
 
-// The same as FastDecodeSignedVarInt but takes a regular char pointer.
-inline CHECKED_STATUS FastDecodeSignedVarInt(
+// The same as FastDecodeSignedVarIntUnsafe but takes a regular char pointer.
+inline CHECKED_STATUS FastDecodeSignedVarIntUnsafe(
     const char* src, size_t src_size, int64_t* v, size_t* decoded_size) {
-  return FastDecodeSignedVarInt(yb::util::to_uchar_ptr(src), src_size, v, decoded_size);
+  return FastDecodeSignedVarIntUnsafe(to_uchar_ptr(src), src_size, v, decoded_size);
 }
 
-CHECKED_STATUS FastDecodeSignedVarInt(const std::string& encoded, int64_t* v, size_t* decoded_size);
+CHECKED_STATUS FastDecodeSignedVarIntUnsafe(
+    const std::string& encoded, int64_t* v, size_t* decoded_size);
 
 // Encoding a "descending VarInt" is simply decoding -v as a VarInt.
 inline char* FastEncodeDescendingSignedVarInt(int64_t v, char *buf) {
   size_t size = 0;
-  FastEncodeSignedVarInt(-v, yb::util::to_uchar_ptr(buf), &size);
+  FastEncodeSignedVarInt(-v, to_uchar_ptr(buf), &size);
   return buf + size;
 }
 
@@ -70,8 +91,8 @@ inline void FastEncodeDescendingSignedVarInt(int64_t v, std::string *dest) {
 }
 
 // Decode a "descending VarInt" encoded by FastEncodeDescendingVarInt.
-CHECKED_STATUS FastDecodeDescendingSignedVarInt(Slice *slice, int64_t *dest);
-Result<int64_t> FastDecodeDescendingSignedVarInt(Slice* slice);
+CHECKED_STATUS FastDecodeDescendingSignedVarIntUnsafe(Slice *slice, int64_t *dest);
+Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice);
 
 size_t UnsignedVarIntLength(uint64_t v);
 void FastAppendUnsignedVarIntToStr(uint64_t v, std::string* dest);

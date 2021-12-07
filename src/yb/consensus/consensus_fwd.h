@@ -14,22 +14,22 @@
 #ifndef YB_CONSENSUS_CONSENSUS_FWD_H
 #define YB_CONSENSUS_CONSENSUS_FWD_H
 
+#include <memory>
+#include <type_traits>
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-
-namespace log {
-
-class Log;
-
-} // namespace log
-
 namespace consensus {
 
 class Consensus;
 class ConsensusContext;
+class ConsensusRoundCallback;
+class ConsensusStatePB;
 class PeerProxyFactory;
 class PeerMessageQueue;
 class RaftConfigPB;

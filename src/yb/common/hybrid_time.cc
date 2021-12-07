@@ -32,16 +32,15 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include <boost/algorithm/string/trim.hpp>
 #include <boost/date_time/c_local_time_adjustor.hpp>
-#include <boost/date_time/posix_time/ptime.hpp>
-#include <boost/date_time/posix_time/posix_time_duration.hpp>
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
+#include "yb/util/date_time.h"
 #include "yb/util/memcmpable_varint.h"
+#include "yb/util/result.h"
 
 using std::string;
-using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 namespace yb {
 
@@ -133,6 +132,25 @@ MicrosTime HybridTime::CeilPhysicalValueMicros() const {
     ++result;
   }
   return result;
+}
+
+Result<HybridTime> HybridTime::ParseHybridTime(std::string input) {
+  boost::trim(input);
+
+  HybridTime ht;
+  // The HybridTime is given in microseconds and will contain 16 chars.
+  static const std::regex int_regex("[0-9]{16}");
+  if (std::regex_match(input, int_regex)) {
+    return HybridTime::FromMicros(std::stoul(input));
+  }
+  if (!input.empty() && input[0] == '-') {
+    return HybridTime::FromMicros(
+        VERIFY_RESULT(WallClock()->Now()).time_point -
+        VERIFY_RESULT(DateTime::IntervalFromString(input.substr(1))).ToMicroseconds());
+  }
+  auto ts =
+      VERIFY_RESULT(DateTime::TimestampFromString(input, DateTime::HumanReadableInputFormat));
+  return HybridTime::FromMicros(ts.ToInt64());
 }
 
 const char* const HybridTime::kHybridTimeDebugStrPrefix = "HT";

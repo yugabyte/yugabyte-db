@@ -32,9 +32,9 @@
 
 #include "yb/util/faststring.h"
 
-#include <glog/logging.h>
+#include <memory>
 
-#include "yb/gutil/gscoped_ptr.h"
+#include <glog/logging.h>
 
 namespace yb {
 
@@ -53,7 +53,7 @@ void faststring::GrowByAtLeast(size_t count) {
 
 void faststring::GrowArray(size_t newcapacity) {
   DCHECK_GE(newcapacity, capacity_);
-  gscoped_array<uint8_t> newdata(new uint8_t[newcapacity]);
+  std::unique_ptr<uint8_t[]> newdata(new uint8_t[newcapacity]);
   if (len_ > 0) {
     memcpy(&newdata[0], &data_[0], len_);
   }

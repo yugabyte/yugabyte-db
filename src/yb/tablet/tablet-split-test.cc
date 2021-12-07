@@ -16,14 +16,18 @@
 #include <boost/algorithm/string/join.hpp>
 
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/docdb.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_debug.h"
 
+#include "yb/rocksdb/db.h"
+
+#include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/local_tablet_writer.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 
@@ -163,6 +167,11 @@ TEST_F(TabletSplitTest, SplitTablet) {
   }
 
   for (auto split_tablet : split_tablets) {
+    {
+      RaftGroupReplicaSuperBlockPB super_block;
+      split_tablet->metadata()->ToSuperBlock(&super_block);
+      ASSERT_EQ(split_tablet->tablet_id(), super_block.kv_store().kv_store_id());
+    }
     const auto split_docdb_dump_str = split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);
 
     // Before compaction underlying DocDB dump should be the same.

@@ -18,26 +18,21 @@
 //
 
 #include <dirent.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <fts.h>
-#include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <time.h>
-#include <unistd.h>
 
 #include <set>
 #include <vector>
-#include "yb/util/status.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -53,20 +48,27 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/alignment.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/file_system_posix.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread_restrictions.h"
 
@@ -94,10 +96,6 @@ DEFINE_bool(writable_file_use_fsync, false,
             "Use fsync(2) instead of fdatasync(2) for synchronizing dirty "
             "data to disk.");
 TAG_FLAG(writable_file_use_fsync, advanced);
-
-DEFINE_bool(suicide_on_eio, true,
-            "Kill the process if an I/O operation results in EIO");
-TAG_FLAG(suicide_on_eio, advanced);
 
 #ifdef __APPLE__
 // Never fsync on Mac OS X as we are getting many slow fsync errors in Jenkins and the fsync
@@ -137,25 +135,6 @@ static __thread uint64_t thread_local_id;
 static Atomic64 cur_thread_local_id_;
 
 namespace yb {
-
-Status IOError(const std::string& context, int err_number, const char* file, int line) {
-  Errno err(err_number);
-  switch (err_number) {
-    case ENOENT:
-      return Status(Status::kNotFound, file, line, context, err);
-    case EEXIST:
-      return Status(Status::kAlreadyPresent, file, line, context, err);
-    case EOPNOTSUPP:
-      return Status(Status::kNotSupported, file, line, context, err);
-    case EIO:
-      if (FLAGS_suicide_on_eio) {
-        // TODO: This is very, very coarse-grained. A more comprehensive
-        // approach is described in KUDU-616.
-        LOG(FATAL) << "Fatal I/O error, context: " << context;
-      }
-  }
-  return Status(Status::kIOError, file, line, context, err);
-}
 
 namespace {
 
@@ -213,7 +192,8 @@ class ScopedFdCloser {
   int fd_;
 };
 
-#define STATUS_IO_ERROR(context, err_number) IOError(context, err_number, __FILE__, __LINE__)
+#define STATUS_IO_ERROR(context, err_number) \
+    STATUS_FROM_ERRNO_SPECIAL_EIO_HANDLING(context, err_number)
 
 static Status DoSync(int fd, const string& filename) {
   ThreadRestrictions::AssertIOAllowed();
@@ -1175,7 +1155,7 @@ class PosixEnv : public Env {
       dir = buf;
     }
     // Directory may already exist
-    ignore_result(CreateDir(dir));
+    WARN_NOT_OK(CreateDir(dir), "Create test dir failed");
     // /tmp may be a symlink, so canonicalize the path.
     return Canonicalize(dir, result);
   }
@@ -1290,11 +1270,11 @@ class PosixEnv : public Env {
 
     // FTS requires a non-const copy of the name. strdup it and free() when
     // we leave scope.
-    gscoped_ptr<char, FreeDeleter> name_dup(strdup(root.c_str()));
+    std::unique_ptr<char, FreeDeleter> name_dup(strdup(root.c_str()));
     char *paths[] = { name_dup.get(), nullptr };
 
     // FTS_NOCHDIR is important here to make this thread-safe.
-    gscoped_ptr<FTS, FtsCloser> tree(
+    std::unique_ptr<FTS, FtsCloser> tree(
         fts_open(paths, FTS_PHYSICAL | FTS_XDEV | FTS_NOCHDIR, nullptr));
     if (!tree.get()) {
       return STATUS_IO_ERROR(root, errno);
@@ -1351,7 +1331,7 @@ class PosixEnv : public Env {
   Status Canonicalize(const string& path, string* result) override {
     TRACE_EVENT1("io", "PosixEnv::Canonicalize", "path", path);
     ThreadRestrictions::AssertIOAllowed();
-    gscoped_ptr<char[], FreeDeleter> r(realpath(path.c_str(), nullptr));
+    std::unique_ptr<char[], FreeDeleter> r(realpath(path.c_str(), nullptr));
     if (!r) {
       return STATUS_IO_ERROR(path, errno);
     }
@@ -1450,8 +1430,12 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  bool IsEncrypted() const override {
+    return file_factory_->IsEncrypted();
+  }
+
  private:
-  // gscoped_ptr Deleter implementation for fts_close
+  // std::unique_ptr Deleter implementation for fts_close
   struct FtsCloser {
     void operator()(FTS *fts) const {
       if (fts) { fts_close(fts); }
@@ -1572,6 +1556,10 @@ class PosixFileFactory : public FileFactory {
   Result<uint64_t> GetFileSize(const std::string& fname) override {
     return GetFileStat(
         fname, "PosixEnv::GetFileSize", [](const struct stat& sbuf) { return sbuf.st_size; });
+  }
+
+  bool IsEncrypted() const override {
+    return false;
   }
 
  private:

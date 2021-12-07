@@ -15,9 +15,12 @@
 #ifndef YB_YQL_PGGATE_PG_DML_H_
 #define YB_YQL_PGGATE_PG_DML_H_
 
+#include <boost/unordered_map.hpp>
+
+#include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_table.h"
 
 namespace yb {
 namespace pggate {
@@ -37,8 +40,7 @@ class PgDml : public PgStatement {
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
-  CHECKED_STATUS PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
-                                      const PgColumn **col);
+  Result<const PgColumn&> PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb);
   CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.
@@ -70,6 +72,10 @@ class PgDml : public PgStatement {
   Result<bool> GetNextRow(PgTuple *pg_tuple);
 
   virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
+
+  // Get column info on whether the column 'attr_num' is a hash key, a range
+  // key, or neither.
+  Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
 
   bool has_aggregate_targets();
 
@@ -129,7 +135,7 @@ class PgDml : public PgStatement {
   // Targets of statements (Output parameter).
   // - "target_desc_" is the table descriptor where data will be read from.
   // - "targets_" are either selected or returned expressions by DML statements.
-  PgTableDesc::ScopedRefPtr target_desc_;
+  PgTable target_;
   std::vector<PgExpr*> targets_;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
@@ -139,7 +145,7 @@ class PgDml : public PgStatement {
   // - For secondary key binding, "bind_desc_" is the descriptor of teh secondary index table.
   //   The bound values will be used to read base_ybctid which is then used to read actual data
   //   from the main table.
-  PgTableDesc::ScopedRefPtr bind_desc_;
+  PgTable bind_;
 
   // Prepare control parameters.
   PgPrepareParameters prepare_params_ = { .index_oid = kInvalidOid,
@@ -172,7 +178,7 @@ class PgDml : public PgStatement {
   // * Bind values are used to identify the selected rows to be operated on.
   // * Set values are used to hold columns' new values in the selected rows.
   bool ybctid_bind_ = false;
-  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
+  boost::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // Used for colocated TRUNCATE that doesn't bind any columns.
@@ -185,6 +191,10 @@ class PgDml : public PgStatement {
   // Data members for navigating the output / result-set from either seleted or returned targets.
   std::list<PgDocResult> rowsets_;
   int64_t current_row_order_ = 0;
+
+  // Yugabyte has a few IN/OUT parameters of statement execution, "pg_exec_params_" is used to sent
+  // OUT value back to postgres.
+  const PgExecParameters *pg_exec_params_ = NULL;
 
   //------------------------------------------------------------------------------------------------
   // Hashed and range values/components used to compute the tuple id.

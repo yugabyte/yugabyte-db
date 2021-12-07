@@ -16,19 +16,21 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 
-#include "yb/docdb/doc_rowwise_iterator.h"
-
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -36,6 +38,8 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
 
 using namespace std::literals;
@@ -330,7 +334,7 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
 
 // Verifies that a set of expected rows (key, value) is present in the tablet.
 void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValue>& expected) {
-  auto iter = tablet_peer_->tablet()->NewRowIterator(schema, boost::none);
+  auto iter = tablet_peer_->tablet()->NewRowIterator(schema);
   ASSERT_OK(iter);
 
   int count = 0;

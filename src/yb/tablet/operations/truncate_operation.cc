@@ -15,40 +15,27 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
-#include "yb/rpc/rpc_context.h"
-#include "yb/server/hybrid_clock.h"
+#include "yb/consensus/consensus_round.h"
+
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/trace.h"
 
 namespace yb {
 namespace tablet {
 
-using consensus::ReplicateMsg;
-using consensus::TRUNCATE_OP;
-using consensus::DriverType;
-using strings::Substitute;
-
-void TruncateOperationState::UpdateRequestFromConsensusRound() {
-  request_ = consensus_round()->replicate_msg()->mutable_truncate_request();
+template <>
+void RequestTraits<tserver::TruncateRequestPB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, tserver::TruncateRequestPB* request) {
+  replicate->set_allocated_truncate_request(request);
 }
 
-string TruncateOperationState::ToString() const {
-  return Format("TruncateOperationState [hybrid_time=$0]", hybrid_time_even_if_unset());
-}
-
-TruncateOperation::TruncateOperation(std::unique_ptr<TruncateOperationState> state)
-    : Operation(std::move(state), OperationType::kTruncate) {
-}
-
-consensus::ReplicateMsgPtr TruncateOperation::NewReplicateMsg() {
-  auto result = std::make_shared<ReplicateMsg>();
-  result->set_op_type(TRUNCATE_OP);
-  result->mutable_truncate_request()->CopyFrom(*state()->request());
-  return result;
+template <>
+tserver::TruncateRequestPB* RequestTraits<tserver::TruncateRequestPB>::MutableRequest(
+    consensus::ReplicateMsg* replicate) {
+  return replicate->mutable_truncate_request();
 }
 
 Status TruncateOperation::DoAborted(const Status& status) {
@@ -58,15 +45,11 @@ Status TruncateOperation::DoAborted(const Status& status) {
 Status TruncateOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY TRUNCATE: started");
 
-  RETURN_NOT_OK(state()->tablet()->Truncate(state()));
+  RETURN_NOT_OK(tablet()->Truncate(this));
 
   TRACE("APPLY TRUNCATE: finished");
 
   return Status::OK();
-}
-
-string TruncateOperation::ToString() const {
-  return Substitute("TruncateOperation [state=$0]", state()->ToString());
 }
 
 }  // namespace tablet

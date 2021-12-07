@@ -17,6 +17,7 @@
 
 #include <list>
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/yql/pggate/pg_dml.h"
@@ -67,6 +68,10 @@ class PgDmlRead : public PgDml {
   // Bind a column with an IN condition.
   CHECKED_STATUS BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
 
+  CHECKED_STATUS BindHashCode(bool start_valid, bool start_inclusive,
+                                uint64_t start_hash_val, bool end_valid,
+                                bool end_inclusive, uint64_t end_hash_val);
+
   // Execute.
   virtual CHECKED_STATUS Exec(const PgExecParameters *exec_params);
 
@@ -93,7 +98,19 @@ class PgDmlRead : public PgDml {
   PgsqlReadRequestPB *read_req_ = nullptr;
 
  private:
+  // Indicates that current operation reads concrete row by specifying row's DocKey.
+  bool IsConcreteRowRead() const;
   CHECKED_STATUS ProcessEmptyPrimaryBinds();
+  bool CanBuildYbctidsFromPrimaryBinds();
+  Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
+  CHECKED_STATUS SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
+  CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const PgsqlConditionPB& in_operator);
+  CHECKED_STATUS CopyBoundValue(
+      const PgColumn& col, const PgsqlExpressionPB& src, QLValuePB* dest) const;
+  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
+      const PgColumn& col, const PgsqlExpressionPB& src, PgsqlExpressionPB* dest);
+  Result<docdb::PrimitiveValue> BuildKeyColumnValue(
+      const PgColumn& col, const PgsqlExpressionPB& src);
 };
 
 }  // namespace pggate

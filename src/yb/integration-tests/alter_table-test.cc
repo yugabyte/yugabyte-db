@@ -33,12 +33,12 @@
 #include <map>
 #include <string>
 #include <utility>
-#include <boost/assign.hpp>
+
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -50,34 +50,40 @@
 
 #include "yb/common/ql_value.h"
 
+#include "yb/consensus/log.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/master.h"
+
 #include "yb/master/master.pb.h"
-#include "yb/master/master-test-util.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/server/hybrid_clock.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
-#include "yb/util/stopwatch.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(enable_maintenance_manager);
+DECLARE_bool(enable_ysql);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(use_hybrid_clock);
@@ -144,7 +150,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_replicas();
     FLAGS_replication_factor = num_replicas();
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas()));
 
@@ -177,8 +183,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
   }
 
   std::shared_ptr<TabletPeer> LookupTabletPeer() {
-    vector<std::shared_ptr<TabletPeer> > peers;
-    cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers();
     return peers[0];
   }
 
@@ -267,8 +272,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
 
   int GetSysCatalogWrites() {
     auto GetSysCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
-      auto metrics = cluster_->mini_master()->master()->catalog_manager()->sys_catalog()
-          ->GetMetricEntity();
+      auto metrics = cluster_->mini_master()->sys_catalog().GetMetricEntity();
       return prototype.Instantiate(metrics)->value();
     };
     return GetSysCatalogMetric(METRIC_sys_catalog_peer_write_count);
@@ -302,6 +306,7 @@ class ReplicatedAlterTableTest : public AlterTableTest {
 const YBTableName AlterTableTest::kTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table");
 
 INSTANTIATE_TEST_CASE_P(BatchSize, AlterTableTest, ::testing::Values(1, 10));
+INSTANTIATE_TEST_CASE_P(BatchSize, ReplicatedAlterTableTest, ::testing::Values(1, 10));
 
 // Simple test to verify that the "alter table" command sent and executed
 // on the TS handling the tablet of the altered table.
@@ -445,7 +450,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
     }
 
     ops.push_back(op);
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
 
     if (ops.size() >= 50) {
       FlushSessionOrDie(session, ops);
@@ -470,7 +475,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
   for (const auto& e : updates) {
     table.AddInt32ColumnValue(update->mutable_request(), e.first, e.second);
   }
-  CHECK_OK(session->Apply(update));
+  session->Apply(update);
   FlushSessionOrDie(session);
 }
 
@@ -771,7 +776,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
       }
 
       ops.push_back(op);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
     }
 
     if (should_stop || ops.size() >= 10) {
@@ -885,7 +890,7 @@ TEST_P(AlterTableTest, TestInsertAfterAlterTable) {
   table.AddInt32ColumnValue(req, "new-i32", 1);
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
-  ASSERT_OK(session->Apply(insert));
+  session->Apply(insert);
   auto flush_status = session->FlushAndGetOpsErrors();
   const auto& s = flush_status.status;
   if (!s.ok()) {

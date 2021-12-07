@@ -42,6 +42,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
@@ -70,7 +71,7 @@ class OperationTrackerTest : public YBTest {
     void UpdateRequestFromConsensusRound() override {
       req_ = consensus_round()->replicate_msg();
     }
-    std::string ToString() const override { return "NoOpOperationState"; }
+    std::string ToString() const override { return "NoOpOperation"; }
    private:
     std::shared_ptr<consensus::ReplicateMsg> req_;
   };

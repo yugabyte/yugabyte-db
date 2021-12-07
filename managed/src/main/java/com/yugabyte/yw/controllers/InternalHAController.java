@@ -10,30 +10,30 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.DemoteInstanceFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import java.io.File;
+import java.net.URL;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Files;
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.With;
-
-import java.io.File;
-import java.net.URL;
-import java.util.Date;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 
 @With(HAAuthenticator.class)
 public class InternalHAController extends Controller {
@@ -41,10 +41,11 @@ public class InternalHAController extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(InternalHAController.class);
 
   private final PlatformReplicationManager replicationManager;
-  private final FormFactory formFactory;
+  private final ValidatingFormFactory formFactory;
 
   @Inject
-  InternalHAController(PlatformReplicationManager replicationManager, FormFactory formFactory) {
+  InternalHAController(
+      PlatformReplicationManager replicationManager, ValidatingFormFactory formFactory) {
     this.replicationManager = replicationManager;
     this.formFactory = formFactory;
   }
@@ -56,13 +57,13 @@ public class InternalHAController extends Controller {
   public Result getHAConfigByClusterKey() {
     try {
       Optional<HighAvailabilityConfig> config =
-        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+          HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
 
       if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Could not find HA Config by cluster key");
       }
 
-      return ApiResponse.success(config.get());
+      return PlatformResults.withData(config.get());
     } catch (Exception e) {
       LOG.error("Error retrieving HA config");
 
@@ -70,51 +71,45 @@ public class InternalHAController extends Controller {
     }
   }
 
+  // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
   public Result syncInstances(long timestamp) {
-    try {
-      Optional<HighAvailabilityConfig> config =
+    Optional<HighAvailabilityConfig> config =
         HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
-      if (!config.isPresent()) {
-        return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
-      }
-
-      Optional<PlatformInstance> localInstance = config.get().getLocal();
-
-      if (!localInstance.isPresent()) {
-        LOG.warn("No local instance configured");
-
-        return ApiResponse.error(BAD_REQUEST, "No local instance configured");
-      }
-
-      if (localInstance.get().getIsLeader()) {
-        LOG.warn(
-          "Rejecting request to import instances due to this process being designated a leader"
-        );
-
-        return ApiResponse.error(BAD_REQUEST, "Cannot import instances for a leader");
-      }
-
-      Date requestLastFailover = new Date(timestamp);
-      Date localLastFailover = config.get().getLastFailover();
-
-      // Reject the request if coming from a platform instance that was failed over to earlier.
-      if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
-        LOG.warn("Rejecting request to import instances due to request lastFailover being stale");
-
-        return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
-      }
-
-      Set<PlatformInstance> processedInstances = replicationManager.importPlatformInstances(
-        config.get(),
-        (ArrayNode) request().body().asJson()
-      );
-
-      return ApiResponse.success(processedInstances);
-    } catch (Exception e) {
-      LOG.error("Error importing platform instances", e);
-
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Error importing platform instances");
+    if (!config.isPresent()) {
+      return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
     }
+
+    Optional<PlatformInstance> localInstance = config.get().getLocal();
+
+    if (!localInstance.isPresent()) {
+      LOG.warn("No local instance configured");
+
+      return ApiResponse.error(BAD_REQUEST, "No local instance configured");
+    }
+
+    if (localInstance.get().getIsLeader()) {
+      LOG.warn(
+          "Rejecting request to import instances due to this process being designated a leader");
+
+      return ApiResponse.error(BAD_REQUEST, "Cannot import instances for a leader");
+    }
+
+    Date requestLastFailover = new Date(timestamp);
+    Date localLastFailover = config.get().getLastFailover();
+
+    // Reject the request if coming from a platform instance that was failed over to earlier.
+    if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
+      LOG.warn("Rejecting request to import instances due to request lastFailover being stale");
+
+      return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
+    }
+
+    String content = ctx().request().body().asBytes().utf8String();
+    List<PlatformInstance> newInstances = Util.parseJsonArray(content, PlatformInstance.class);
+    Set<PlatformInstance> processedInstances =
+        replicationManager.importPlatformInstances(config.get(), newInstances);
+
+    return PlatformResults.withData(processedInstances);
   }
 
   public Result syncBackups() throws Exception {
@@ -124,9 +119,11 @@ public class InternalHAController extends Controller {
     String[] leaders = reqParams.getOrDefault("leader", new String[0]);
     String[] senders = reqParams.getOrDefault("sender", new String[0]);
     if (reqParams.size() != 2 || leaders.length != 1 || senders.length != 1) {
-      return ApiResponse.error(BAD_REQUEST,
-        "Expected exactly 2 (leader and sender) argument in 'application/x-www-form-urlencoded' " +
-          "data part. Received: " + reqParams);
+      return ApiResponse.error(
+          BAD_REQUEST,
+          "Expected exactly 2 (leader and sender) argument in 'application/x-www-form-urlencoded' "
+              + "data part. Received: "
+              + reqParams);
     }
     Http.MultipartFormData.FilePart<Files.TemporaryFile> filePart = body.getFile("backup");
     if (filePart == null) {
@@ -138,31 +135,31 @@ public class InternalHAController extends Controller {
     String sender = senders[0];
 
     if (!leader.equals(sender)) {
-      return ApiResponse.error(BAD_REQUEST, "Sender: " + sender +
-        " does not match leader: " + leader);
+      return ApiResponse.error(
+          BAD_REQUEST, "Sender: " + sender + " does not match leader: " + leader);
     }
 
     Optional<HighAvailabilityConfig> config =
-      HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
     if (!config.isPresent()) {
       return ApiResponse.error(BAD_REQUEST, "Could not find HA Config");
     }
 
     Optional<PlatformInstance> localInstance = config.get().getLocal();
     if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
-      return ApiResponse.error(BAD_REQUEST,
-        "Backup originated on the node itself. Leader: " + leader);
+      return ApiResponse.error(
+          BAD_REQUEST, "Backup originated on the node itself. Leader: " + leader);
     }
 
     URL leaderUrl = new URL(leader);
 
     // For all the other cases we will accept the backup without checking local config state.
-    boolean success = replicationManager.saveReplicationData(
-      fileName, temporaryFile, leaderUrl, new URL(sender));
+    boolean success =
+        replicationManager.saveReplicationData(fileName, temporaryFile, leaderUrl, new URL(sender));
     if (success) {
       // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
       replicationManager.cleanupReceivedBackups(leaderUrl);
-      return YWResults.YWSuccess.withMessage("File uploaded");
+      return YBPSuccess.withMessage("File uploaded");
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "failed to copy backup");
     }
@@ -171,18 +168,15 @@ public class InternalHAController extends Controller {
   public Result demoteLocalLeader(long timestamp) {
     try {
       Optional<HighAvailabilityConfig> config =
-        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+          HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
       if (!config.isPresent()) {
         LOG.warn("No HA configuration configured, skipping request");
 
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
-      Form<DemoteInstanceFormData> formData =
-        formFactory.form(DemoteInstanceFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+      DemoteInstanceFormData formData =
+          formFactory.getFormDataOrBadRequest(DemoteInstanceFormData.class).get();
 
       Optional<PlatformInstance> localInstance = config.get().getLocal();
 
@@ -206,9 +200,9 @@ public class InternalHAController extends Controller {
       }
 
       // Demote the local instance.
-      replicationManager.demoteLocalInstance(localInstance.get(), formData.get().leader_address);
+      replicationManager.demoteLocalInstance(localInstance.get(), formData.leader_address);
 
-      return ApiResponse.success(localInstance);
+      return PlatformResults.withData(localInstance);
     } catch (Exception e) {
       LOG.error("Error demoting platform instance", e);
 

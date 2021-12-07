@@ -49,6 +49,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/high_water_mark.h"
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/random.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -57,6 +58,7 @@ namespace yb {
 
 class Status;
 class MemTracker;
+class MetricEntity;
 typedef std::shared_ptr<MemTracker> MemTrackerPtr;
 
 // Garbage collector is used by MemTracker to free memory allocated by caches when reached
@@ -592,7 +594,11 @@ class ScopedTrackedConsumption {
 template <class F>
 int64_t AbsRelMemLimit(int64_t value, const F& f) {
   if (value < 0) {
-    return f() * std::min<int64_t>(-value, 100) / 100;
+    auto base_memory_limit = f();
+    if (base_memory_limit < 0) {
+      return -1;
+    }
+    return base_memory_limit * std::min<int64_t>(-value, 100) / 100;
   }
   if (value == 0) {
     return -1;

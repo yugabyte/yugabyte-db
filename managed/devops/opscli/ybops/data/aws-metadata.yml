@@ -10,6 +10,9 @@ region_cidr_format: "{}.0.0/16"
 zone_cidr_format: "{}.{}.0/20"
 # For list of AMIs: https://wiki.centos.org/Cloud/AWS
 # Updated to: 2018-Jan-14
+# All AMIs in this list have one of the following descriptions:
+#   "CentOS Linux 7 x86_64 HVM EBS 1708_11.01"
+#   "CentOS Linux 7 x86_64 HVM EBS ENA 2002_01"
 regions:
   us-west-1:
     cidr_prefix: "172.150"
@@ -28,9 +31,9 @@ regions:
     image: ami-4dd5522b
 # TODO: not currently supported in x-region VPC.
 # TODO: seems like at least we have an AMI...
-#  ap-northeast-2:
-#    cidr_prefix: "172.155"
-#    image: ami-7248e81c
+  ap-northeast-2:
+    cidr_prefix: "172.155"
+    image: ami-53a1073d
   ap-southeast-1:
     cidr_prefix: "172.156"
     image: ami-a6e88dda
@@ -43,29 +46,48 @@ regions:
   eu-west-1:
     cidr_prefix: "172.159"
     image: ami-192a9460
+  # CIDR prefixes cannot be 172.16x because this is reserved address space.
+  # See https://en.wikipedia.org/wiki/Private_network#Private_use_of_other_reserved_addresses
   sa-east-1:
-    cidr_prefix: "172.160"
+    cidr_prefix: "10.100"
     image: ami-6b5c1b07
   us-east-2:
-    cidr_prefix: "172.161"
+    cidr_prefix: "10.101"
     image: ami-e0eac385
   eu-west-2:
-    cidr_prefix: "172.162"
+    cidr_prefix: "10.102"
     image: ami-c8d7c9ac
   eu-west-3:
-    cidr_prefix: "172.163"
+    cidr_prefix: "10.103"
     image: ami-0c60d771
   ca-central-1:
-    cidr_prefix: "172.164"
+    cidr_prefix: "10.104"
     image: ami-b111aad5
   ap-south-1:
-    cidr_prefix: "172.165"
+    cidr_prefix: "10.105"
     image: ami-82a3eaed
 # TODO: not currently supported in x-region VPC.
 # cn-north-1:
-#    cidr_prefix: "172.166"
+#    cidr_prefix: "10.106"
 #    image: N/A
-
+  ap-northeast-3:
+    cidr_prefix: "10.107"
+    image: ami-03dc46610d8b18793
+  af-south-1:
+    cidr_prefix: "10.108"
+    image: ami-0a2be7731769e6cc1
+  me-south-1:
+    cidr_prefix: "10.109"
+    image: ami-011c71a894b10f35b
+  ap-east-1:
+    cidr_prefix: "10.110"
+    image: ami-0e5c29e6c87a9644f
+  eu-south-1:
+    cidr_prefix: "10.111"
+    image: ami-03014b98e9665115a
+  eu-north-1:
+    cidr_prefix: "10.112"
+    image: ami-05788af9005ef9a93
 sg_rules:
   - ip_protocol: tcp
     from_port: 22

@@ -32,29 +32,42 @@
 
 #include <memory>
 #include <string>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
+
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/stl_util.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_leader_failure_detection);
@@ -100,7 +113,7 @@ class TsTabletManagerITest : public YBTest {
  protected:
   const YBSchema schema_;
 
-  gscoped_ptr<MiniCluster> cluster_;
+  std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<YBClient> client_;
 };
@@ -116,7 +129,7 @@ void TsTabletManagerITest::SetUp() {
 
   MiniClusterOptions opts;
   opts.num_tablet_servers = kNumReplicas;
-  cluster_.reset(new MiniCluster(env_.get(), opts));
+  cluster_.reset(new MiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   client_ = ASSERT_RESULT(cluster_->CreateClient(client_messenger_.get()));
 }
@@ -168,7 +181,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
     vector<std::shared_ptr<TabletPeer> > cur_ts_tablet_peers;
     // The replicas may not have been created yet, so loop until we see them.
     while (true) {
-      ts->server()->tablet_manager()->GetTabletPeers(&cur_ts_tablet_peers);
+      cur_ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
       if (!cur_ts_tablet_peers.empty()) break;
       SleepFor(MonoDelta::FromMilliseconds(10));
     }

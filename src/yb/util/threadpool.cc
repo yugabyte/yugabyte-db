@@ -32,7 +32,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <iostream>
 #include <limits>
 #include <memory>
 
@@ -46,11 +45,9 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -59,6 +56,9 @@ namespace yb {
 
 using strings::Substitute;
 using std::unique_ptr;
+
+
+ThreadPoolMetrics::~ThreadPoolMetrics() = default;
 
 ////////////////////////////////////////////////////////
 // ThreadPoolBuilder
@@ -104,13 +104,7 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_idle_timeout(const MonoDelta& idle_tim
   return *this;
 }
 
-Status ThreadPoolBuilder::Build(gscoped_ptr<ThreadPool>* pool) const {
-  pool->reset(new ThreadPool(*this));
-  RETURN_NOT_OK((*pool)->Init());
-  return Status::OK();
-}
-
-Status ThreadPoolBuilder::Build(unique_ptr<ThreadPool>* pool) const {
+Status ThreadPoolBuilder::Build(std::unique_ptr<ThreadPool>* pool) const {
   pool->reset(new ThreadPool(*this));
   RETURN_NOT_OK((*pool)->Init());
   return Status::OK();

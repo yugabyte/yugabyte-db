@@ -119,8 +119,8 @@ extern void index_backfill(Relation heapRelation,
 						   Relation indexRelation,
 						   IndexInfo *indexInfo,
 						   bool isprimary,
-						   uint64_t *read_time,
-						   RowBounds *row_bounds);
+						   YbBackfillInfo *bfinfo,
+						   YbPgExecOutParam *bfresult);
 
 extern double IndexBuildHeapScan(Relation heapRelation,
 				   Relation indexRelation,
@@ -144,8 +144,8 @@ extern double IndexBackfillHeapRangeScan(Relation heapRelation,
 										 IndexInfo *indexInfo,
 										 IndexBuildCallback callback,
 										 void *callback_state,
-										 uint64_t *read_time,
-										 RowBounds *row_bounds);
+										 YbBackfillInfo *bfinfo,
+										 YbPgExecOutParam *bfresult);
 
 extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 

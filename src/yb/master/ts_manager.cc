@@ -36,11 +36,9 @@
 #include <vector>
 
 #include "yb/gutil/map-util.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/util/flag_tags.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/util/shared_lock.h"
 
 using std::shared_ptr;
 using std::string;

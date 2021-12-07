@@ -30,11 +30,14 @@
 // under the License.
 //
 
-#include <glog/logging.h>
+#include <string>
+
+#include <gtest/gtest.h>
+
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/consensus/opid_util.h"
-#include "yb/util/test_util.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace consensus {

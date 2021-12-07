@@ -15,17 +15,24 @@
 // QLEnv represents the environment where SQL statements are being processed.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/yql/cql/ql/util/ql_env.h"
+
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/permissions.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
-#include "yb/yql/cql/ql/util/ql_env.h"
+#include "yb/common/ql_type.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
 DEFINE_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
@@ -99,7 +106,7 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
       return STATUS(InternalError, "No transaction pool provider");
     }
   }
-  auto result = transaction_pool_->Take();
+  auto result = transaction_pool_->Take(client::ForceGlobalTransaction::kTrue);
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }
@@ -177,7 +184,7 @@ void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::stri
 }
 
 //------------------------------------------------------------------------------------------------
-Status QLEnv::GrantRevokePermission(GrantRevokeStatementType statement_type,
+Status QLEnv::GrantRevokePermission(client::GrantRevokeStatementType statement_type,
                                     const PermissionType& permission,
                                     const ResourceType& resource_type,
                                     const std::string& canonical_resource,
@@ -246,7 +253,7 @@ Status QLEnv::DeleteRole(const std::string& role_name) {
   return client_->DeleteRole(role_name, CurrentRoleName());
 }
 
-Status QLEnv::GrantRevokeRole(GrantRevokeStatementType statement_type,
+Status QLEnv::GrantRevokeRole(client::GrantRevokeStatementType statement_type,
                               const std::string& granted_role_name,
                               const std::string& recipient_role_name) {
   return client_->GrantRevokeRole(statement_type, granted_role_name, recipient_role_name);
@@ -285,7 +292,7 @@ Status QLEnv::HasTablePermission(const client::YBTableName table_name,
 }
 
 Status QLEnv::HasRolePermission(const RoleName& role_name, const PermissionType permission) {
-  return HasResourcePermission(get_canonical_role(role_name), OBJECT_ROLE, permission);
+  return HasResourcePermission(get_canonical_role(role_name), ObjectType::ROLE, permission);
 }
 
 //------------------------------------------------------------------------------------------------

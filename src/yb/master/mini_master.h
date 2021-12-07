@@ -35,22 +35,24 @@
 #include <string>
 #include <vector>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
+
+#include "yb/master/master_fwd.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
 
 namespace yb {
 
 class HostPort;
 
 namespace master {
-
-class Master;
-class MasterOptions;
 
 // An in-process Master meant for use in test cases.
 //
@@ -88,6 +90,20 @@ class MiniMaster {
   const Master* master() const { return master_.get(); }
   Master* master() { return master_.get(); }
 
+  rpc::Messenger& messenger() const;
+
+  CatalogManagerIf& catalog_manager() const;
+
+  CatalogManager& catalog_manager_impl() const;
+
+  tablet::TabletPeerPtr tablet_peer() const;
+
+  master::SysCatalogTable& sys_catalog() const;
+
+  master::TSManager& ts_manager() const;
+
+  master::FlushManager& flush_manager() const;
+
   // Return UUID of this mini master.
   std::string permanent_uuid() const;
 
@@ -108,7 +124,7 @@ class MiniMaster {
   const std::string fs_root_;
   const uint16_t rpc_port_, web_port_;
 
-  gscoped_ptr<Master> master_;
+  std::unique_ptr<Master> master_;
   int index_;
   std::unique_ptr<Tunnel> tunnel_;
   bool pass_master_addresses_ = true;

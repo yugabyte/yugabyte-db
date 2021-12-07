@@ -11,10 +11,14 @@
 // under the License.
 //
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/permissions_manager.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
+
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/permissions_manager.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -26,9 +30,9 @@ YQLAuthResourceRolePermissionsIndexVTable::YQLAuthResourceRolePermissionsIndexVT
 
 Result<std::shared_ptr<QLRowBlock>> YQLAuthResourceRolePermissionsIndexVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
   std::vector<scoped_refptr<RoleInfo>> roles;
-  master_->catalog_manager()->permissions_manager()->GetAllRoles(&roles);
+  catalog_manager().permissions_manager()->GetAllRoles(&roles);
   for (const auto& rp : roles) {
     auto l = rp->LockForRead();
     const auto& pb = l->pb;

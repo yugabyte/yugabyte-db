@@ -61,7 +61,6 @@
 // tools/write_stress_runner.py should only take one parameter -- runtime_sec
 // and it should figure out everything else on its own.
 
-#include <cstdio>
 
 #ifndef GFLAGS
 int main() {

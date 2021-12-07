@@ -35,31 +35,33 @@
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
-#include "yb/common/row.h"
-#include "yb/common/row_mark.h"
-#include "yb/common/wire_protocol.pb.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/primitive_value_util.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
-
+#include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -74,7 +76,6 @@ namespace client {
 
 using std::shared_ptr;
 using std::unique_ptr;
-using common::QLScanRange;
 
 //--------------------------------------------------------------------------------------------------
 // YBOperation
@@ -111,10 +112,6 @@ bool YBOperation::IsYsqlCatalogOp() const {
 
 void YBOperation::MarkTablePartitionListAsStale() {
   table_->MarkPartitionsAsStale();
-}
-
-Result<bool> YBOperation::MaybeRefreshTablePartitionList() {
-  return table_->MaybeRefreshPartitions();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -216,6 +213,10 @@ YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
 YBqlOp::~YBqlOp() {
 }
 
+bool YBqlOp::succeeded() const {
+  return response().status() == QLResponsePB::YQL_STATUS_OK;
+}
+
 // YBqlWriteOp -----------------------------------------------------------------
 
 YBqlWriteOp::YBqlWriteOp(const shared_ptr<YBTable>& table)
@@ -294,8 +295,12 @@ bool YBqlWriteOp::WritesPrimaryRow() const {
   return writes_primary_row_;
 }
 
+bool YBqlWriteOp::returns_sidecar() {
+  return ql_write_request_->has_if_expr() || ql_write_request_->returns_status();
+}
+
 // YBqlWriteOp::HashHash/Equal ---------------------------------------------------------------
-size_t YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op) const {
+size_t YBqlWriteHashKeyComparator::operator()(const YBqlWriteOpPtr& op) const {
   size_t hash = 0;
 
   // Hash the table id.
@@ -311,8 +316,8 @@ size_t YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op) con
   return hash;
 }
 
-bool YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op1,
-                                                 const YBqlWriteOpPtr& op2) const {
+bool YBqlWriteHashKeyComparator::operator()(const YBqlWriteOpPtr& op1,
+                                              const YBqlWriteOpPtr& op2) const {
   // Check if two write ops overlap that they apply to the same hash key in the same table.
   if (op1->table() != op2->table() && op1->table()->id() != op2->table()->id()) {
     return false;
@@ -332,8 +337,8 @@ bool YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op1,
 }
 
 // YBqlWriteOp::PrimaryHash/Equal ---------------------------------------------------------------
-size_t YBqlWriteOp::PrimaryKeyComparator::operator() (const YBqlWriteOpPtr& op) const {
-  size_t hash = YBqlWriteOp::HashKeyComparator::operator()(op);
+size_t YBqlWritePrimaryKeyComparator::operator()(const YBqlWriteOpPtr& op) const {
+  size_t hash = YBqlWriteHashKeyComparator()(op);
 
   // Hash the range key also.
   string key;
@@ -345,9 +350,9 @@ size_t YBqlWriteOp::PrimaryKeyComparator::operator() (const YBqlWriteOpPtr& op) 
   return hash;
 }
 
-bool YBqlWriteOp::PrimaryKeyComparator::operator() (const YBqlWriteOpPtr& op1,
-                                                    const YBqlWriteOpPtr& op2) const {
-  if (!YBqlWriteOp::HashKeyComparator::operator()(op1, op2)) {
+bool YBqlWritePrimaryKeyComparator::operator()(const YBqlWriteOpPtr& op1,
+                                                 const YBqlWriteOpPtr& op2) const {
+  if (!YBqlWriteHashKeyComparator()(op1, op2)) {
     return false;
   }
 
@@ -510,6 +515,14 @@ YBPgsqlOp::YBPgsqlOp(const shared_ptr<YBTable>& table)
 YBPgsqlOp::~YBPgsqlOp() {
 }
 
+bool YBPgsqlOp::succeeded() const {
+  return response().status() == PgsqlResponsePB::PGSQL_STATUS_OK;
+}
+
+bool YBPgsqlOp::applied() {
+  return succeeded() && !response_->skipped();
+}
+
 namespace {
 
 Status GetRangeComponents(
@@ -604,6 +617,11 @@ CHECKED_STATUS SetRangePartitionBounds(const YBPgsqlReadOp& op,
   return Status::OK();
 }
 
+std::string ResponseSuffix(const PgsqlResponsePB& response) {
+  const auto str = response.ShortDebugString();
+  return str.empty() ? std::string() : (", response: " + str);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -655,8 +673,9 @@ std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
-  return "PGSQL_WRITE " + write_request_->ShortDebugString() +
-         ", response: " + response().ShortDebugString();
+  return Format(
+      "PGSQL_WRITE $0$1$2", write_request_->ShortDebugString(),
+      (write_time_ ? " write_time: " + write_time_.ToString() : ""), ResponseSuffix(response()));
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
@@ -712,6 +731,17 @@ std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable
   return op;
 }
 
+std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSample(const shared_ptr<YBTable>& table) {
+  std::unique_ptr<YBPgsqlReadOp> op(new YBPgsqlReadOp(table));
+  PgsqlReadRequestPB *req = op->mutable_request();
+  req->set_client(YQL_CLIENT_PGSQL);
+  req->set_table_id(table->id());
+  req->set_schema_version(table->schema().version());
+  req->set_stmt_id(op->GetQueryId());
+
+  return op;
+}
+
 std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::DeepCopy() {
   auto op = NewSelect(table_);
   op->set_yb_consistency_level(yb_consistency_level());
@@ -722,7 +752,7 @@ std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::DeepCopy() {
 }
 
 std::string YBPgsqlReadOp::ToString() const {
-  return "PGSQL_READ " + read_request_->DebugString();
+  return "PGSQL_READ " + read_request_->ShortDebugString() + ResponseSuffix(response());
 }
 
 void YBPgsqlReadOp::SetHashCode(const uint16_t hash_code) {
@@ -748,20 +778,21 @@ Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
 
   // Seek a specific partition_key from read_request.
   // 1. Not specified hash condition - Full scan.
-  // 2. ybctid -- Given to fetch one specific row.
-  // 3. paging_state -- Set by server to continue current request.
-  // 4. lower and upper bound -- Set by PgGate to query a specific set of hash values.
-  // 5. hash column values -- Given to scan ONE SET of specfic hash values.
-  // 6. range and regular condition - These are filter expression and will be processed by DocDB.
+  // 2. paging_state -- Set by server to continue current request.
+  // 3. lower and upper bound -- Set by PgGate to query a specific set of hash values.
+  // 4. hash column values -- Given to scan ONE SET of specfic hash values.
+  // 5. range and regular condition - These are filter expression and will be processed by DocDB.
   //    Shouldn't we able to set RANGE boundary here?
-  if (!IsNull(ybctid)) {
-    // If ybctid value is given, find its associated partition key.
-    const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
-    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
-    read_request_->set_hash_code(hash_code);
-    read_request_->set_max_hash_code(hash_code);
 
-  } else if (read_request_->has_paging_state() &&
+  // If primary index lookup using ybctid requests are batched, there is a possibility that tablets
+  // might get split after the batch of requests have been prepared. Hence, we need to execute the
+  // prepared request in both tablet partitions. For this purpose, we use paging state to continue
+  // executing the request in the second sub-partition after completing the first sub-partition.
+  //
+  // batched ybctids
+  // In order to represent a single ybctid or a batch of ybctids, we leverage the lower bound and
+  // upper bounds to set hash codes and max hash codes.
+  if (read_request_->has_paging_state() &&
              read_request_->paging_state().has_next_partition_key()) {
     // If this is a subsequent query, use the partition key from the paging state. This is only
     // supported for forward scan.
@@ -777,7 +808,7 @@ Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
         return STATUS_SUBSTITUTE(
             InternalError,
             "Out of bounds partition key found in paging state:"
-            "Query's partition bounds: [%d, %d], paging state partition: %d",
+            "Query's partition bounds: [$0, $1], paging state partition: $2",
             read_request_->has_hash_code() ? read_request_->hash_code() : 0,
             read_request_->has_max_hash_code() ? read_request_->max_hash_code() : 0,
             paging_state_hash_code);
@@ -785,6 +816,9 @@ Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
       read_request_->set_hash_code(paging_state_hash_code);
     }
 
+  } else if (!IsNull(ybctid)) {
+    const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
   } else if (read_request_->has_lower_bound() || read_request_->has_upper_bound()) {
     // If the read request does not provide a specific partition key, but it does provide scan
     // boundary, use the given boundary to setup the scan lower and upper bound.
@@ -914,6 +948,10 @@ void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
   used_read_time_ = used_time;
 }
 
+void YBPgsqlReadOp::SetIsForBackfill(const bool value) {
+  read_request_->set_is_for_backfill(value);
+}
+
 ////////////////////////////////////////////////////////////
 // YBNoOp
 ////////////////////////////////////////////////////////////
@@ -922,7 +960,7 @@ YBNoOp::YBNoOp(const std::shared_ptr<YBTable>& table)
   : table_(table) {
 }
 
-Status YBNoOp::Execute(const YBPartialRow& key) {
+Status YBNoOp::Execute(YBClient* client, const YBPartialRow& key) {
   string encoded_key;
   RETURN_NOT_OK(table_->partition_schema().EncodeKey(key, &encoded_key));
   CoarseTimePoint deadline = CoarseMonoClock::Now() + 5s;
@@ -932,14 +970,14 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
 
   for (int attempt = 1; attempt < 11; attempt++) {
     Synchronizer sync;
-    auto remote_ = VERIFY_RESULT(table_->client()->data_->meta_cache_->LookupTabletByKeyFuture(
+    auto remote_ = VERIFY_RESULT(client->data_->meta_cache_->LookupTabletByKeyFuture(
         table_, encoded_key, deadline).get());
 
     internal::RemoteTabletServer *ts = nullptr;
     std::vector<internal::RemoteTabletServer*> candidates;
     std::set<string> blacklist;  // TODO: empty set for now.
-    Status lookup_status = table_->client()->data_->GetTabletServer(
-       table_->client(),
+    Status lookup_status = client->data_->GetTabletServer(
+       client,
        remote_,
        YBClient::ReplicaSelection::LEADER_ONLY,
        blacklist,
@@ -971,7 +1009,7 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
     // for the user's call.
     CoarseTimePoint rpc_deadline;
     if (static_cast<int>(candidates.size()) - blacklist.size() > 1) {
-      rpc_deadline = now + table_->client()->default_rpc_timeout();
+      rpc_deadline = now + client->default_rpc_timeout();
       rpc_deadline = std::min(deadline, rpc_deadline);
     } else {
       rpc_deadline = deadline;

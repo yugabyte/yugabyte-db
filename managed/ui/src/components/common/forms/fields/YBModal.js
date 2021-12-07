@@ -6,18 +6,23 @@ import { Modal } from 'react-bootstrap';
 import YBButton from './YBButton';
 import './stylesheets/YBModal.scss';
 
-const ENTER_KEY_CODE = 13;
 const ESC_KEY_CODE = 27;
 
 export default class YBModal extends Component {
   handleKeyPressFunction = (event) => {
-    const { onHide, submitOnCarriage, onFormSubmit } = this.props;
+    const { onHide } = this.props;
     if (event.keyCode === ESC_KEY_CODE) {
       onHide(event);
-    } else if (event.keyCode === ENTER_KEY_CODE && submitOnCarriage) {
-      onFormSubmit();
     }
   };
+
+  handleFormSubmit = (event) => {
+    const { onFormSubmit } = this.props;
+    if (onFormSubmit) {
+      onFormSubmit(event);
+    }
+    event.preventDefault();
+  }
 
   componentDidMount() {
     document.addEventListener('keydown', this.handleKeyPressFunction, false);
@@ -55,7 +60,7 @@ export default class YBModal extends Component {
     }
     return (
       <Modal show={visible} onHide={onHide} bsSize={size} className={className}>
-        <form name={formName} onSubmit={onFormSubmit}>
+        <form name={formName} onSubmit={this.handleFormSubmit}>
           <Modal.Header closeButton>
             <Modal.Title>{title}</Modal.Title>
             <div
@@ -74,7 +79,8 @@ export default class YBModal extends Component {
                     btnClass="btn btn-orange pull-right"
                     disabled={btnDisabled}
                     btnText={submitLabel}
-                    onClick={onFormSubmit}
+                    onClick={this.handleFormSubmit}
+                    btnType="submit"
                   />
                 )}
                 {showCancelButton && (

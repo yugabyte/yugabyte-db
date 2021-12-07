@@ -16,12 +16,24 @@
 #ifndef YB_RPC_YB_RPC_H
 #define YB_RPC_YB_RPC_H
 
+#include <stdint.h>
+
+#include <cstdint>
+#include <cstdlib>
+#include <string>
+#include <type_traits>
+
+#include <boost/version.hpp>
+
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_call_id.h"
+#include "yb/rpc/serialization.h"
 
 #include "yb/util/ev_util.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace rpc {
@@ -72,7 +84,7 @@ class YBInboundConnectionContext : public YBConnectionContext {
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
-  Result<ProcessDataResult> ProcessCalls(const ConnectionPtr& connection,
+  Result<ProcessCallsResult> ProcessCalls(const ConnectionPtr& connection,
                                           const IoVecs& data,
                                           ReadBufferFull read_buffer_full) override;
 
@@ -115,12 +127,14 @@ class YBInboundCall : public InboundCall {
   CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call_data);
 
   int32_t call_id() const {
-    return header_.call_id();
+    return header_.call_id;
   }
 
-  const RemoteMethod& remote_method() const {
-    return remote_method_;
+  Slice serialized_remote_method() const override {
+    return header_.remote_method;
   }
+
+  Slice method_name() const override;
 
   // See RpcContext::AddRpcSidecar()
   virtual size_t AddRpcSidecar(Slice car);
@@ -158,7 +172,7 @@ class YBInboundCall : public InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -170,23 +184,12 @@ class YBInboundCall : public InboundCall {
     return timing_.time_received;
   }
 
-  const std::string& method_name() const override {
-    return remote_method_.method_name();
-  }
-
-  const std::string& service_name() const override {
-    return remote_method_.service_name();
-  }
-
   virtual CHECKED_STATUS ParseParam(google::protobuf::Message *message);
-
-  void RespondBadMethod();
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
   size_t DynamicMemoryUsage() const override {
-    return InboundCall::DynamicMemoryUsage() +
-           DynamicMemoryUsageOf(header_, response_buf_, remote_method_);
+    return InboundCall::DynamicMemoryUsage() + DynamicMemoryUsageOf(response_buf_);
   }
 
  protected:
@@ -212,14 +215,10 @@ class YBInboundCall : public InboundCall {
   void AllocateSidecarBuffer(size_t size);
 
   // The header of the incoming call. Set by ParseFrom()
-  RequestHeader header_;
+  serialization::ParsedRequestHeader header_;
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   RefCntBuffer response_buf_;
-
-  // Proto service this calls belongs to. Used for routing.
-  // This field is filled in when the inbound request header is parsed.
-  RemoteMethod remote_method_;
 
   ScopedTrackedConsumption consumption_;
 };
@@ -242,9 +241,9 @@ class YBOutboundConnectionContext : public YBConnectionContext {
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
   void AssignConnection(const ConnectionPtr& connection) override;
-  Result<ProcessDataResult> ProcessCalls(const ConnectionPtr& connection,
-                              const IoVecs& data,
-                              ReadBufferFull read_buffer_full) override;
+  Result<ProcessCallsResult> ProcessCalls(const ConnectionPtr& connection,
+                                          const IoVecs& data,
+                                          ReadBufferFull read_buffer_full) override;
 
   void UpdateLastRead(const ConnectionPtr& connection) override;
 

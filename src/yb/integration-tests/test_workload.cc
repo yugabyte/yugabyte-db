@@ -30,29 +30,43 @@
 // under the License.
 //
 
-#include <yb/yql/cql/ql/util/statement_result.h>
-#include "yb/client/client.h"
+#include "yb/integration-tests/test_workload.h"
+
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/error.h"
-#include "yb/client/schema-internal.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/transaction_pool.h"
+#include "yb/client/table_info.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/wire_protocol-test-util.h"
+
+#include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/test_workload.h"
+
+#include "yb/integration-tests/mini_cluster_base.h"
+
 #include "yb/master/master_util.h"
+
 #include "yb/util/env.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 
@@ -60,7 +74,6 @@ namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSchemaFromSchema;
@@ -274,10 +287,10 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           QLAddInt32HashValue(req, 0);
           table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
           if (options.ttl >= 0) {
-            req->set_ttl(options.ttl);
+            req->set_ttl(options.ttl * MonoTime::kMillisecondsPerSecond);
           }
           ops.push_back(update);
-          CHECK_OK(session->Apply(update));
+          session->Apply(update);
           break;
         }
       }
@@ -298,14 +311,14 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       QLAddInt32HashValue(req, key);
       table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
       table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
-      if (options.ttl > 0) {
+      if (options.ttl >= 0) {
         req->set_ttl(options.ttl);
       }
       ops.push_back(insert);
     }
 
     for (const auto& op : ops) {
-      CHECK_OK(session->Apply(op));
+      session->Apply(op);
     }
 
     const auto flush_status = session->FlushAndGetOpsErrors();
@@ -402,7 +415,7 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
       key = r.Next();
     }
     QLAddInt32HashValue(req, key);
-    CHECK_OK(session->Apply(op));
+    session->Apply(op);
     const auto flush_status = session->FlushAndGetOpsErrors();
     const auto& s = flush_status.status;
     if (s.ok()) {
@@ -448,7 +461,7 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   client_ = CHECK_RESULT(cluster_->CreateClient(&client_builder));
   CHECK_OK(client_->CreateNamespaceIfNotExists(
       options.table_name.namespace_name(),
-      master::GetDatabaseTypeForTable(client::YBTable::ClientToPBTableType(table_type))));
+      master::GetDatabaseTypeForTable(client::ClientToPBTableType(table_type))));
 
   // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.
@@ -465,6 +478,10 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   if (!table_exists.get()) {
     auto schema = GetSimpleTestSchema();
     schema.SetTransactional(options.is_transactional());
+    if (options.has_table_ttl()) {
+      schema.SetDefaultTimeToLive(
+          options.table_ttl * MonoTime::kMillisecondsPerSecond);
+    }
     YBSchema client_schema(YBSchemaFromSchema(schema));
 
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());

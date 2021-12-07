@@ -128,6 +128,22 @@ message PgsqlPartitionBound {
   optional bool is_inclusive = 2;
 }
 
+// Random sampling state
+message PgsqlSamplingStatePB {
+  // target number of rows to collect
+  optional int32 targrows = 1;
+  // number of rows collected so far across all blocks
+  optional int32 numrows = 2;
+  // number of rows considered for sample across all blocks
+  optional double samplerows = 3;
+  // current number of rows to skip
+  optional double rowstoskip = 4;
+  // reservoir state W
+  optional double rstate_w = 5;
+  // 48 bits of sampler random state
+  optional uint64 rand_state = 6;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Data Writing Instructions - INSERT, UPDATE, DELETE, colocated TRUNCATE.
 //--------------------------------------------------------------------------------------------------
@@ -264,6 +280,19 @@ message PgsqlPagingStatePB {
   optional ReadHybridTimePB read_time = 6;
 }
 
+// Backfill instruction.
+message PgsqlBackfillSpecPB {
+  // Limit for each backfill batch. "-1" means no limit.
+  optional int64 limit = 1 [default = -1];
+
+  // Accumulated counter is used to check if the number of scanned rows has reached limit.
+  optional int64 count = 2 [default = 0];
+
+  // The next row key to read for backfill. Defined/used similar to how it is used in paging state.
+  // i.e. The row key (SubDocKey = [DocKey + HybridTimestamp]) of the next row to read.
+  optional bytes next_row_key = 3;
+}
+
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
 // execution plan in tablet server.
 message PgsqlReadRequestPB {
@@ -313,7 +342,8 @@ message PgsqlReadRequestPB {
 
   // Indicates ybctids in batch_arguments may not exist.
   // If flag is false read operation will fail in case any of ybctids in batch will not be found.
-  optional bool unknown_ybctid_allowed = 26;
+  // Reserved for deprecated unknown_ybctid_allowed
+  reserved 26;
 
   //------------------------------------------------------------------------------------------------
   // Output Argument Specification (Tuple descriptor).
@@ -361,6 +391,16 @@ message PgsqlReadRequestPB {
   // Row mark as used by postgres for row locking.
   optional RowMarkType row_mark_type = 23;
 
+  // Used to identify 3 possibilities: WAIT_BLOCK, WAIT_SKIP or WAIT_ERROR
+  // TODO(Piyush):
+  // 1. YB doesn't support WAIT_BLOCK as of now. That will be supported with blocking infrastructure
+  //    that is to be implemented for pessmistic locking feature.
+  // 2. Default is set to WAIT_ERROR. For now, WAIT_ERROR denotes the current YB behaviour of
+  //    "abort other txn or raise conflict error when a conflict is found". When pessimistic locking
+  //    is turned on by default on YB, WAIT_ERROR will only denote the behaviour of raising conflict
+  //    error in current txn and not aborting others (like Postgres).
+  optional WaitPolicy wait_policy = 32 [default = WAIT_ERROR];
+
   // Scan partition boundary.
   // NOTE
   // - Boundaries indicate the scan range that are given by SQL statement. This should be set by
@@ -379,6 +419,15 @@ message PgsqlReadRequestPB {
 
   // Does this request correspond to scanning the indexed table for backfill?
   optional bool is_for_backfill = 29 [default = false];
+
+  // If present, the request is to collect random sample
+  optional PgsqlSamplingStatePB sampling_state = 30;
+
+  // Instruction for BACKFILL operation from the tablet server.
+  // This is the serialized-string of "message PgsqlBackfillSpecPB" which will be used by
+  // the tablet server handling the PgsqlRead to terminate the scan and checkpoint the paging
+  // state as desired.
+  optional bytes backfill_spec = 31;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -420,6 +469,7 @@ message PgsqlResponsePB {
   // NOTE: This variable could have been inside "paging state", but due to rolling upgrade I have
   // to place it here, separated from paging status for singular request.
   optional int64 batch_arg_count = 10 [ default = 1 ];
+  repeated int64 batch_orders = 12;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
@@ -438,4 +488,15 @@ message PgsqlResponsePB {
   // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
   // of Status::ErrorData(TransactionErrorTag::kCategory)
   optional uint32 txn_error_code = 9;
+
+  // Random sample state to hand over to the next block
+  optional PgsqlSamplingStatePB sampling_state = 11;
+
+  // Instruction for BACKFILL operation from master/table server.
+  // This is the serialized-string of "message PgsqlBackfillSpecPB".
+  //
+  // If 'is_backfill_batch_done' == true, Postgres will return this 'backfill_spec' to tablet server
+  // that sent out the 'BACKFILL' request statement.
+  optional bytes backfill_spec = 13;
+  optional bool is_backfill_batch_done = 14;
 }

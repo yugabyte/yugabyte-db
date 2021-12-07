@@ -14,9 +14,9 @@
 #include "yb/util/encryption_test_util.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
-namespace enterprise {
 
 constexpr uint32_t kEncryptionTestNumIterations = 10;
 
@@ -34,5 +34,4 @@ void DoTest(std::function<void(uint32_t, uint32_t)> file_op, int32_t size) {
   ASSERT_NO_FATALS(file_op(last_idx, size));
 }
 
-} // namespace enterprise
 } // namespace yb

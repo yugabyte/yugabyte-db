@@ -32,18 +32,27 @@
 
 #include "yb/util/spinlock_profiling.h"
 
-#include <glog/logging.h>
+#include <functional>
+#include <string>
+#include <vector>
+
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/basictypes.h"
+#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
+#include "yb/gutil/once.h"
 #include "yb/gutil/spinlock.h"
+#include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/sysinfo.h"
-#include "yb/util/debug-util.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
+#include "yb/util/slice.h"
+#include "yb/util/stack_trace.h"
 #include "yb/util/striped64.h"
 #include "yb/util/trace.h"
 

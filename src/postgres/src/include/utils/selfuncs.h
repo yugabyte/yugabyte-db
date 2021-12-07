@@ -109,6 +109,7 @@ typedef struct
 	RestrictInfo *rinfo;		/* the indexqual itself */
 	int			indexcol;		/* zero-based index column number */
 	bool		varonleft;		/* true if index column is on left of qual */
+	bool		is_hashed;		/* true if the variable is hashed */
 	Oid			clause_op;		/* qual's operator OID, if relevant */
 	Node	   *other_operand;	/* non-index operand of qual's operator */
 } IndexQualInfo;

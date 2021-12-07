@@ -15,8 +15,10 @@
 
 #include <hiredis/hiredis.h>
 
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/stol_utils.h"
 
 namespace yb {
 namespace redisserver {

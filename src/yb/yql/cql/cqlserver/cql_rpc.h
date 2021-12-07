@@ -15,12 +15,24 @@
 #ifndef YB_YQL_CQL_CQLSERVER_CQL_RPC_H
 #define YB_YQL_CQL_CQLSERVER_CQL_RPC_H
 
+#include <stdint.h>
+
 #include <atomic>
+#include <mutex>
+#include <set>
+#include <type_traits>
+#include <utility>
+
+#include <boost/version.hpp>
+
+#include "yb/master/master_defaults.h"
 
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/server_event.h"
+
+#include "yb/util/net/net_fwd.h"
 
 #include "yb/yql/cql/ql/ql_session.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
@@ -66,9 +78,9 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   }
 
   uint64_t ExtractCallId(rpc::InboundCall* call) override;
-  Result<rpc::ProcessDataResult> ProcessCalls(const rpc::ConnectionPtr& connection,
-                                              const IoVecs& bytes_to_process,
-                                              rpc::ReadBufferFull read_buffer_full) override;
+  Result<rpc::ProcessCallsResult> ProcessCalls(const rpc::ConnectionPtr& connection,
+                                               const IoVecs& bytes_to_process,
+                                               rpc::ReadBufferFull read_buffer_full) override;
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleCall(
       const rpc::ConnectionPtr& connection, rpc::CallData* call_data) override;
@@ -104,7 +116,7 @@ class CQLInboundCall : public rpc::InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -124,10 +136,13 @@ class CQLInboundCall : public rpc::InboundCall {
 
   uint16_t stream_id() const { return stream_id_; }
 
-  const std::string& service_name() const override;
-  const std::string& method_name() const override;
+  Slice serialized_remote_method() const override;
+  Slice method_name() const override;
+
+  static Slice static_serialized_remote_method();
+
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
-  void RespondSuccess(const RefCntBuffer& buffer, const yb::rpc::RpcMethodMetrics& metrics);
+  void RespondSuccess(const RefCntBuffer& buffer);
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void SetRequest(std::shared_ptr<const ql::CQLRequest> request, CQLServiceImpl* service_impl) {
     service_impl_ = service_impl;

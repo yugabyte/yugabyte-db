@@ -34,10 +34,7 @@ NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
 CREATE INDEX p2_val_id_idx ON p2 (val, id);
 -- TODOs collage is unsupported
 CREATE INDEX p2_val_idx2 ON p2 (val COLLATE "ja_JP");
-ERROR:  CREATE INDEX COLLATE not supported yet
-LINE 1: CREATE INDEX p2_val_idx2 ON p2 (val COLLATE "ja_JP");
-                                            ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  collation "ja_JP" for encoding "UTF8" does not exist
 CREATE INDEX p2_val_idx3 ON p2 (val varchar_ops);
 CREATE INDEX p2_val_idx4 ON p2 (val DESC NULLS LAST);
 CREATE INDEX p2_val_idx5 ON p2 (val NULLS FIRST);
@@ -116,21 +113,14 @@ CREATE INDEX p1_val3 ON p1 (val);
 -- CREATE INDEX p1_c4_val2 ON p1_c4 (val);
 -- CREATE INDEX p1_c4_val3 ON p1_c4 (val);
 ANALYZE t1;
-WARNING:  analyzing non-temporary tables will be ignored
 ANALYZE t2;
-WARNING:  analyzing non-temporary tables will be ignored
 ANALYZE t3;
-WARNING:  analyzing non-temporary tables will be ignored
 ANALYZE t4;
-WARNING:  analyzing non-temporary tables will be ignored
 ANALYZE t5;
-WARNING:  analyzing non-temporary tables will be ignored
 ANALYZE p1;
-WARNING:  analyzing non-temporary tables will be ignored
 -- ANALYZE p1_c1;
 -- ANALYZE p1_c2;
 ANALYZE p2;
-WARNING:  analyzing non-temporary tables will be ignored
 CREATE VIEW v1 AS SELECT id, val FROM t1;
 CREATE VIEW v2 AS SELECT t1.id t1_id, t1.val t1_val, t2.id t2_id, t2.val t2_val FROM t1, t2 WHERE t1.id = t2.id;
 CREATE VIEW v3 AS SELECT t_1.id t1_id, t_1.val t1_val, t_2.id t2_id, t_2.val t2_val FROM t1 t_1, t2 t_2 WHERE t_1.id = t_2.id;

@@ -11,14 +11,17 @@
 // under the License.
 //
 
+#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
+#include "yb/util/bitmap.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

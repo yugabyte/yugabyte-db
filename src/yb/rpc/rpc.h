@@ -33,22 +33,21 @@
 #define YB_RPC_RPC_H
 
 #include <atomic>
+#include <future>
 #include <memory>
 #include <string>
 
 #include <boost/container/stable_vector.hpp>
-
 #include <boost/optional/optional.hpp>
 
-#include "yb/gutil/callback.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
-#include "yb/util/status_callback.h"
 
 namespace yb {
+
+class Trace;
 
 namespace rpc {
 
@@ -58,6 +57,8 @@ class Rpc;
 // The command that could be retried by RpcRetrier.
 class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
  public:
+  RpcCommand();
+
   // Asynchronously sends the RPC to the remote end.
   //
   // Subclasses should use Finished() below as the callback function.
@@ -74,8 +75,13 @@ class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
 
   virtual CoarseTimePoint deadline() const = 0;
 
+  Trace* trace() { return trace_.get(); }
+
  protected:
-  ~RpcCommand() {}
+  virtual ~RpcCommand();
+
+  // The trace buffer.
+  scoped_refptr<Trace> trace_;
 };
 
 YB_DEFINE_ENUM(RpcRetrierState, (kIdle)(kRunning)(kScheduling)(kWaiting)(kFinished));
@@ -204,7 +210,6 @@ class Rpc : public RpcCommand {
   }
 
   void ScheduleRetry(const Status& status);
-
  protected:
   const RpcRetrier& retrier() const { return retrier_; }
   RpcRetrier* mutable_retrier() { return &retrier_; }
@@ -258,13 +263,6 @@ class Rpcs {
   Calls calls_;
   bool shutdown_ = false;
 };
-
-template <class T, class... Args>
-RpcCommandPtr StartRpc(Args&&... args) {
-  auto rpc = std::make_shared<T>(std::forward<Args>(args)...);
-  rpc->SendRpc();
-  return rpc;
-}
 
 template <class Value>
 class RpcFutureCallback {

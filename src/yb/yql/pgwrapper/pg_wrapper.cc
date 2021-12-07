@@ -14,33 +14,40 @@
 
 #include <signal.h>
 
-#include <vector>
-#include <string>
-#include <random>
 #include <fstream>
+#include <random>
 #include <regex>
+#include <string>
+#include <thread>
+#include <vector>
 
-#include <gflags/gflags.h>
 #include <boost/algorithm/string.hpp>
 
-#include "yb/common/common_flags.h"
+#include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/env_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/thread.h"
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEFINE_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_bool(pg_transactions_enabled, true,
-            "True to enable transactions in YugaByte PostgreSQL API. This should eventually "
-            "be set to true by default.");
+            "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
+
+DEFINE_test_flag(bool, pg_collation_enabled, true,
+                 "True to enable collation support in YugaByte PostgreSQL.");
+
 DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
@@ -75,6 +82,7 @@ DEFINE_string(ysql_pg_conf_csv, "",
               "CSV formatted line represented list of postgres setting assignments");
 DEFINE_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
+TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
 
 DEFINE_string(ysql_pg_conf, "",
               "Deprecated, use the `ysql_pg_conf_csv` flag instead. " \
@@ -82,6 +90,7 @@ DEFINE_string(ysql_pg_conf, "",
 DEFINE_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
+TAG_FLAG(ysql_hba_conf, sensitive_info);
 
 using std::vector;
 using std::string;
@@ -119,6 +128,33 @@ void ReadCommaSeparatedValues(const string& src, vector<string>* lines) {
   vector<string> new_lines;
   boost::split(new_lines, src, boost::is_any_of(","));
   lines->insert(lines->end(), new_lines.begin(), new_lines.end());
+}
+
+void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
+  string copy = boost::replace_all_copy(src, " ", "");
+  copy = boost::erase_first_copy(copy, "shared_preload_libraries");
+  // According to the documentation in postgresql.conf file,
+  // the '=' is optional hence it needs to be handled separately.
+  copy = boost::erase_first_copy(copy, "=");
+  copy = boost::trim_copy_if(copy, boost::is_any_of("'\""));
+  vector<string> new_items;
+  boost::split(new_items, copy, boost::is_any_of(","));
+  // Remove empty elements, makes it safe to use with empty user
+  // provided shared_preload_libraries, for example,
+  // if the value was provided via environment variable, example:
+  //
+  //   --ysql_pg_conf="shared_preload_libraries='$UNSET_VALUE'"
+  //
+  // Alternative example:
+  //
+  //   --ysql_pg_conf="shared_preload_libraries='$LIB1,$LIB2,$LIB3'"
+  // where any of the libs could be undefined.
+  new_items.erase(
+    std::remove_if(new_items.begin(),
+      new_items.end(),
+      [](const std::string& s){return s.empty();}),
+      new_items.end());
+  defaults->insert(defaults->end(), new_items.begin(), new_items.end());
 }
 
 CHECKED_STATUS ReadCSVValues(const string& csv, vector<string>* lines) {
@@ -169,17 +205,41 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
         ErrnoToString(errno));
   }
 
+  // Gather the default extensions:
+  vector<string> metricsLibs;
+  if (FLAGS_pg_stat_statements_enabled) {
+    metricsLibs.push_back("pg_stat_statements");
+  }
+  metricsLibs.push_back("pg_stat_monitor");
+  metricsLibs.push_back("yb_pg_metrics");
+  metricsLibs.push_back("pgaudit");
+  metricsLibs.push_back("pg_hint_plan");
+
   vector<string> lines;
   string line;
   while (std::getline(conf_file, line)) {
     lines.push_back(line);
   }
+  conf_file.close();
 
+  vector<string> user_configs;
   if (!FLAGS_ysql_pg_conf_csv.empty()) {
-    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &lines));
+    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &user_configs));
   } else if (!FLAGS_ysql_pg_conf.empty()) {
-    ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &lines);
+    ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &user_configs);
   }
+
+  // If the user has given any shared_preload_libraries, merge them in.
+  for (string &value : user_configs) {
+    if (boost::starts_with(value, "shared_preload_libraries")) {
+      MergeSharedPreloadLibraries(value, &metricsLibs);
+    } else {
+      lines.push_back(value);
+    }
+  }
+
+  // Add shared_preload_libraries to the ysql_pg.conf.
+  lines.push_back(Format("shared_preload_libraries='$0'", boost::join(metricsLibs, ",")));
 
   if (conf.enable_tls) {
     lines.push_back("ssl=on");
@@ -250,12 +310,10 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   }
 
   // Add comments to the hba config file noting the internally hardcoded config line.
-  if (!FLAGS_ysql_disable_index_backfill) {
-    lines.insert(lines.begin(), {
-          "# Internal configuration:",
-          "# local all postgres yb-tserver-key",
-        });
-  }
+  lines.insert(lines.begin(), {
+      "# Internal configuration:",
+      "# local all postgres yb-tserver-key",
+  });
 
   const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_hba.conf");
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
@@ -349,15 +407,6 @@ Status PgWrapper::Start() {
   }
 
   argv.push_back("-c");
-  // TODO: we should probably load the metrics library in a different way once we let
-  // users change the shared_preload_libraries conf parameter.
-  if (FLAGS_pg_stat_statements_enabled) {
-    argv.push_back("shared_preload_libraries=pg_stat_statements,yb_pg_metrics,pgaudit,"
-      "pg_hint_plan");
-  } else {
-    argv.push_back("shared_preload_libraries=yb_pg_metrics,pgaudit,pg_hint_plan");
-  }
-  argv.push_back("-c");
   argv.push_back("yb_pg_metrics.node_name=" + FLAGS_metric_node_name);
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.port=" + std::to_string(FLAGS_pgsql_proxy_webserver_port));
@@ -371,12 +420,22 @@ Status PgWrapper::Start() {
   }
 
   pg_proc_.emplace(postgres_executable, argv);
+  vector<string> ld_library_path {
+    GetPostgresLibPath(),
+    GetPostgresThirdPartyLibPath()
+  };
+  pg_proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
-  pg_proc_->SetParentDeathSignal(SIGINT);
+  // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
+  pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&pg_proc_.get(), /* yb_enabled */ true);
   RETURN_NOT_OK(pg_proc_->Start());
+  if (!FLAGS_postmaster_cgroup.empty()) {
+    std::string path = FLAGS_postmaster_cgroup + "/cgroup.procs";
+    pg_proc_->AddPIDToCGroup(path, pg_proc_->pid());
+  }
   LOG(INFO) << "PostgreSQL server running as pid " << pg_proc_->pid();
   return Status::OK();
 }
@@ -396,14 +455,17 @@ Status PgWrapper::InitDb(bool yb_enabled) {
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
+  initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&initdb_subprocess, yb_enabled);
-  int exit_code = 0;
+  int status = 0;
   RETURN_NOT_OK(initdb_subprocess.Start());
-  RETURN_NOT_OK(initdb_subprocess.Wait(&exit_code));
-  if (exit_code != 0) {
+  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
+  if (status != 0) {
+    SCHECK(WIFEXITED(status), InternalError,
+           Format("$0 did not exit normally", initdb_program_path));
     return STATUS_FORMAT(RuntimeError, "$0 failed with exit code $1",
                          initdb_program_path,
-                         exit_code);
+                         WEXITSTATUS(status));
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
@@ -428,7 +490,9 @@ Result<int> PgWrapper::Wait() {
   return pg_proc_->Wait();
 }
 
-Status PgWrapper::InitDbForYSQL(const string& master_addresses, const string& tmp_dir_base) {
+Status PgWrapper::InitDbForYSQL(
+    const string& master_addresses, const string& tmp_dir_base,
+    int tserver_shm_fd) {
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -436,6 +500,7 @@ Status PgWrapper::InitDbForYSQL(const string& master_addresses, const string& tm
   conf.pg_port = 0;  // We should not use this port.
   std::mt19937 rng{std::random_device()()};
   conf.data_dir = Format("$0/tmp_pg_data_$1", tmp_dir_base, rng());
+  conf.tserver_shm_fd = tserver_shm_fd;
   auto se = ScopeExit([&conf] {
     auto is_dir = Env::Default()->IsDirectory(conf.data_dir);
     if (is_dir.ok()) {
@@ -467,6 +532,14 @@ string PgWrapper::GetPostgresExecutablePath() {
   return JoinPathSegments(GetPostgresInstallRoot(), "bin", "postgres");
 }
 
+string PgWrapper::GetPostgresLibPath() {
+  return JoinPathSegments(GetPostgresInstallRoot(), "lib");
+}
+
+string PgWrapper::GetPostgresThirdPartyLibPath() {
+  return JoinPathSegments(GetPostgresInstallRoot(), "..", "lib", "yb-thirdparty");
+}
+
 string PgWrapper::GetInitDbExecutablePath() {
   return JoinPathSegments(GetPostgresInstallRoot(), "bin", "initdb");
 }
@@ -487,10 +560,10 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
+  proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
   if (yb_enabled) {
     proc->SetEnv("YB_ENABLED_IN_POSTGRES", "1");
     proc->SetEnv("FLAGS_pggate_master_addresses", conf_.master_addresses);
-    proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
     // Postgres process can't compute default certs dir by itself
     // as it knows nothing about t-server's root data directory.
     // Solution is to specify it explicitly.
@@ -538,6 +611,9 @@ PgSupervisor::PgSupervisor(PgProcessConf conf)
     : conf_(std::move(conf)) {
 }
 
+PgSupervisor::~PgSupervisor() {
+}
+
 Status PgSupervisor::Start() {
   std::lock_guard<std::mutex> lock(mtx_);
   RETURN_NOT_OK(ExpectStateUnlocked(PgProcessState::kNotStarted));
@@ -575,11 +651,29 @@ CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
       LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
       // If process does not exist, system may return "process does not exist" or
       // "operation not permitted" error. Ignore those errors.
-      if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
-        return STATUS(RuntimeError, "Unable to kill", Errno(errno));
+      postmaster_pid_file.close();
+      bool postgres_found = true;
+      string cmdline = "";
+#ifdef __linux__
+      string cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
+      std::ifstream postmaster_cmd_file;
+      postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
+      if (postmaster_cmd_file.good()) {
+        postmaster_cmd_file >> cmdline;
+        postgres_found = cmdline.find("/postgres") != std::string::npos;
+        postmaster_cmd_file.close();
+      }
+#endif
+      if (postgres_found) {
+        if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
+          return STATUS(RuntimeError, "Unable to kill", Errno(errno));
+        }
+      } else {
+        LOG(WARNING) << "Didn't find postgres in " << cmdline;
       }
     }
-    ignore_result(Env::Default()->DeleteFile(postmaster_pid_filename));
+    WARN_NOT_OK(Env::Default()->DeleteFile(postmaster_pid_filename),
+                "Failed to remove postmaster pid file");
   }
   return Status::OK();
 }

@@ -47,7 +47,7 @@ void ExplicitBatchingExample() {
 
   // Insert 100 rows.
   for (int i = 0; i < 100; i++) {
-    gscoped_ptr<Insert> ins = t->NewInsert();
+    auto ins = t->NewInsert();
     ins->mutable_row()->SetInt64("key", i);
     ins->mutable_row()->SetInt64("val", i * 2);
     // The insert should return immediately after moving the insert
@@ -57,12 +57,12 @@ void ExplicitBatchingExample() {
   }
 
   // Update a row.
-  gscoped_ptr<Update> upd = t->NewUpdate();
+  std::unique_ptr<Update> upd = t->NewUpdate();
   upd->mutable_row()->SetInt64("key", 1);
   upd->mutable_row()->SetInt64("val", 1 * 2 + 1);
 
   // Delete a row.
-  gscoped_ptr<Delete> del = t->NewDelete();
+  std::unique_ptr<Delete> del = t->NewDelete();
   del->mutable_row()->SetInt64("key", 2); // only specify key.
 
   // Setting a timeout on the session applies to the next Flush call.
@@ -110,7 +110,7 @@ void BulkIngestExample() {
   CHECK_OK(session->SetFlushMode(YBSession::AUTO_FLUSH_BACKGROUND));
 
   for (int i = 0; i < 10000; i++) {
-    gscoped_ptr<Insertion> ins = t->NewInsertion();
+    std::unique_ptr<Insertion> ins = t->NewInsertion();
     ins->SetInt64("key", i);
     ins->SetInt64("val", i * 2);
     // This will start getting written in the background.

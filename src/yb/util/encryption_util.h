@@ -14,20 +14,22 @@
 #ifndef YB_UTIL_ENCRYPTION_UTIL_H
 #define YB_UTIL_ENCRYPTION_UTIL_H
 
-#include "yb/util/status.h"
-#include "yb/util/result.h"
-#include "yb/util/header_manager.h"
+#include <stdint.h>
+
+#include <cstdarg>
+#include <string>
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/cipher_stream.h"
-#include "yb/util/strongly_typed_uuid.h"
-#include "yb/util/env.h"
+#include "yb/util/file_system.h"
+#include "yb/util/header_manager.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 
 class EncryptionParamsPB;
 class RandomAccessFile;
-
-namespace enterprise {
-
 class HeaderManager;
 class BlockAccessCipherStream;
 class OpenSSLInitializer;
@@ -124,6 +126,10 @@ Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
   return true;
 }
 
+CHECKED_STATUS CompleteCreateEncryptionInfoForWrite(
+    const std::string& header, std::unique_ptr<EncryptionParams> encryption_params,
+    std::unique_ptr<BlockAccessCipherStream>* stream, uint32_t* header_size);
+
 // Given a writable file, generate a new stream and header for that file.
 template <typename Writable>
 Status CreateEncryptionInfoForWrite(HeaderManager* header_manager,
@@ -134,15 +140,8 @@ Status CreateEncryptionInfoForWrite(HeaderManager* header_manager,
   string header = VERIFY_RESULT(
       header_manager->SerializeEncryptionParams(*encryption_params.get()));
   RETURN_NOT_OK(underlying_w->Append(header));
-
-  // Since file doesn't exist or this overwrites, append key to the name and create.
-  *stream = std::make_unique<BlockAccessCipherStream>(std::move(encryption_params));
-  RETURN_NOT_OK((*stream)->Init());
-  if (header.size() > std::numeric_limits<uint32_t>::max()) {
-    return STATUS_FORMAT(Corruption, "Invalid encryption header size: $0", header.size());
-  }
-  *header_size = static_cast<uint32_t>(header.size());
-  return Status::OK();
+  return CompleteCreateEncryptionInfoForWrite(
+      header, std::move(encryption_params), stream, header_size);
 }
 
 template <typename EncryptedFile, typename BufType, typename ReadablePtr>
@@ -153,9 +152,8 @@ Status CreateRandomAccessFile(ReadablePtr* result,
   std::unique_ptr<BlockAccessCipherStream> stream;
   uint32_t header_size;
 
-  auto res = GetEncryptionInfoFromFile<BufType>(
-      header_manager, underlying.get(), &stream, &header_size);
-  bool file_encrypted = VERIFY_RESULT(res);
+  const auto file_encrypted = VERIFY_RESULT(GetEncryptionInfoFromFile<BufType>(
+      header_manager, underlying.get(), &stream, &header_size));
 
   if (!file_encrypted) {
     *result = std::move(underlying);
@@ -188,7 +186,6 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 
 OpenSSLInitializer& InitOpenSSL();
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_ENCRYPTION_UTIL_H

@@ -82,9 +82,18 @@ class Block {
   // If total_order_seek is true, hash_index_ and prefix_index_ are ignored.
   // This option only applies for index block. For data block, hash_index_
   // and prefix_index_ are null, so this option does not matter.
+  // key_value_encoding_format specifies what kind of algorithm to use for decoding entries.
   InternalIterator* NewIterator(const Comparator* comparator,
+                                KeyValueEncodingFormat key_value_encoding_format,
                                 BlockIter* iter = nullptr,
                                 bool total_order_seek = true);
+
+  inline InternalIterator* NewIndexIterator(
+      const Comparator* comparator, BlockIter* iter = nullptr, bool total_order_seek = true) {
+    return NewIterator(
+        comparator, kIndexBlockKeyValueEncodingFormat, iter, total_order_seek);
+  }
+
   void SetBlockHashIndex(BlockHashIndex* hash_index);
   void SetBlockPrefixIndex(BlockPrefixIndex* prefix_index);
 
@@ -93,7 +102,7 @@ class Block {
 
   // Returns middle restart key from this data block (see block_builder.cc comments for restart
   // points description).
-  yb::Result<Slice> GetMiddleKey() const;
+  yb::Result<Slice> GetMiddleKey(KeyValueEncodingFormat key_value_encoding_format) const;
 
  private:
   BlockContents contents_;
@@ -121,17 +130,20 @@ class BlockIter : public InternalIterator {
         hash_index_(nullptr),
         prefix_index_(nullptr) {}
 
-  BlockIter(const Comparator* comparator, const char* data, uint32_t restarts,
-       uint32_t num_restarts, BlockHashIndex* hash_index,
-       BlockPrefixIndex* prefix_index)
+  BlockIter(
+      const Comparator* comparator, const char* data,
+      KeyValueEncodingFormat key_value_encoding_format, uint32_t restarts, uint32_t num_restarts,
+      BlockHashIndex* hash_index, BlockPrefixIndex* prefix_index)
       : BlockIter() {
-    Initialize(comparator, data, restarts, num_restarts,
-        hash_index, prefix_index);
+    Initialize(
+        comparator, data, key_value_encoding_format, restarts, num_restarts, hash_index,
+        prefix_index);
   }
 
-  void Initialize(const Comparator* comparator, const char* data,
-      uint32_t restarts, uint32_t num_restarts, BlockHashIndex* hash_index,
-      BlockPrefixIndex* prefix_index);
+  void Initialize(
+      const Comparator* comparator, const char* data,
+      KeyValueEncodingFormat key_value_encoding_format, uint32_t restarts, uint32_t num_restarts,
+      BlockHashIndex* hash_index, BlockPrefixIndex* prefix_index);
 
   void SetStatus(Status s) {
     status_ = s;
@@ -173,6 +185,7 @@ class BlockIter : public InternalIterator {
  private:
   const Comparator* comparator_;
   const char* data_;       // underlying block contents
+  KeyValueEncodingFormat key_value_encoding_format_;
   uint32_t restarts_;      // Offset of restart array (list of fixed32)
   uint32_t num_restarts_;  // Number of uint32_t entries in restart array
 
@@ -210,7 +223,8 @@ class BlockIter : public InternalIterator {
     value_ = Slice(data_ + offset, 0UL);
   }
 
-  void CorruptionError();
+  void SetError(const Status& error);
+  void CorruptionError(const std::string& error_details);
 
   bool ParseNextKey();
 

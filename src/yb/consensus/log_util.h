@@ -40,17 +40,20 @@
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
-
-#include "yb/consensus/log.pb.h"
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log.pb.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/atomic.h"
+#include "yb/util/compare_util.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
+#include "yb/util/status.h"
 #include "yb/util/tostring.h"
 
 // Used by other classes, now part of the API.
@@ -60,12 +63,6 @@ DECLARE_string(fs_wal_dirs);
 DECLARE_string(fs_data_dirs);
 
 namespace yb {
-
-namespace consensus {
-class ReplicateMsg;
-struct OpIdBiggerThanFunctor;
-} // namespace consensus
-
 namespace log {
 
 // Suffix for temporary files
@@ -77,8 +74,6 @@ extern const size_t kEntryHeaderSize;
 
 extern const int kLogMajorVersion;
 extern const int kLogMinorVersion;
-
-class ReadableLogSegment;
 
 // Options for the Write Ahead Log. The LogOptions constructor initializes default field values
 // based on flags. See log_util.cc for details.
@@ -123,13 +118,16 @@ struct LogEntryMetadata {
   uint64_t active_segment_sequence_number;
 
   std::string ToString() const {
-    return Format("{ entry_time: $0 offset: $1 active_segment_sequence_number: $2 }",
-                  entry_time, offset, active_segment_sequence_number);
+    return YB_STRUCT_TO_STRING(entry_time, offset, active_segment_sequence_number);
+  }
+
+  friend bool operator==(const LogEntryMetadata& lhs, const LogEntryMetadata& rhs) {
+    return YB_STRUCT_EQUALS(entry_time, offset, active_segment_sequence_number);
   }
 };
 
 // A sequence of segments, ordered by increasing sequence number.
-typedef std::vector<scoped_refptr<ReadableLogSegment> > SegmentSequence;
+typedef std::vector<ReadableLogSegmentPtr> SegmentSequence;
 typedef std::vector<std::unique_ptr<LogEntryPB>> LogEntries;
 
 struct ReadEntriesResult {
@@ -167,9 +165,7 @@ struct FirstEntryMetadata {
 class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
  public:
   // Factory method to construct a ReadableLogSegment from a file on the FS.
-  static CHECKED_STATUS Open(Env* env,
-                     const std::string& path,
-                     scoped_refptr<ReadableLogSegment>* segment);
+  static Result<scoped_refptr<ReadableLogSegment>> Open(Env* env, const std::string& path);
 
   // Build a readable segment to read entries from the provided path.
   ReadableLogSegment(std::string path,
@@ -191,8 +187,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   // Initialize the ReadableLogSegment.
   // This initializer will parse the log segment header and footer.
-  // Note: This returns Status and may fail.
-  CHECKED_STATUS Init();
+  // Returns false if it is empty segment, that could be ignored.
+  Result<bool> Init();
 
   // Reads all entries of the provided segment.
   //
@@ -224,10 +220,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     return path_;
   }
 
-  const LogSegmentHeaderPB& header() const {
-    DCHECK(header_.IsInitialized());
-    return header_;
-  }
+  const LogSegmentHeaderPB& header() const;
 
   // Indicates whether this segment has a footer.
   //
@@ -248,30 +241,30 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     return footer_;
   }
 
-  const std::shared_ptr<RandomAccessFile> readable_file() const {
+  std::shared_ptr<RandomAccessFile> readable_file() const {
     return readable_file_;
   }
 
-  const std::shared_ptr<RandomAccessFile> readable_file_checkpoint() const {
+  std::shared_ptr<RandomAccessFile> readable_file_checkpoint() const {
     return readable_file_checkpoint_;
   }
 
-  const int64_t file_size() const {
+  int64_t file_size() const {
     return file_size_.Load();
   }
 
-  const int64_t first_entry_offset() const {
+  int64_t first_entry_offset() const {
     return first_entry_offset_;
   }
 
-  const int64_t get_header_size() const {
+  int64_t get_header_size() const {
     return readable_file_->GetEncryptionHeaderSize();
   }
 
   // Returns the full size of the file, if the segment is closed and has
   // a footer, or the offset where the last written, non corrupt entry
   // ends.
-  const int64_t readable_up_to() const;
+  int64_t readable_up_to() const;
 
  private:
   friend class RefCountedThreadSafe<ReadableLogSegment>;
@@ -295,7 +288,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   CHECKED_STATUS ReadFileSize();
 
-  CHECKED_STATUS ReadHeader();
+  Result<bool> ReadHeader();
 
   CHECKED_STATUS ReadHeaderMagicAndHeaderLength(uint32_t *len);
 
@@ -407,9 +400,7 @@ class WritableLogSegment {
   CHECKED_STATUS WriteEntryBatch(const Slice& entry_batch_data);
 
   // Makes sure the I/O buffers in the underlying writable file are flushed.
-  CHECKED_STATUS Sync() {
-    return writable_file_->Sync();
-  }
+  CHECKED_STATUS Sync();
 
   // Returns true if the segment header has already been written to disk.
   bool IsHeaderWritten() const {
@@ -435,11 +426,11 @@ class WritableLogSegment {
     return path_;
   }
 
-  const int64_t first_entry_offset() const {
+  int64_t first_entry_offset() const {
     return first_entry_offset_;
   }
 
-  const int64_t written_offset() const {
+  int64_t written_offset() const {
     return written_offset_;
   }
 

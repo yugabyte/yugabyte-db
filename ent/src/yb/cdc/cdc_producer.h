@@ -20,15 +20,18 @@
 #include <boost/unordered_map.hpp>
 
 #include "yb/cdc/cdc_service.service.h"
-#include "yb/client/client.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 
 namespace yb {
+
+class MemTracker;
+
 namespace cdc {
 
 struct StreamMetadata {
@@ -51,7 +54,8 @@ CHECKED_STATUS GetChanges(const std::string& stream_id,
                           const std::shared_ptr<MemTracker>& mem_tracker,
                           consensus::ReplicateMsgsHolder* msgs_holder,
                           GetChangesResponsePB* resp,
-                          int64_t* last_readable_opid_index = nullptr);
+                          int64_t* last_readable_opid_index = nullptr,
+                          const CoarseTimePoint deadline = CoarseTimePoint::max());
 
 }  // namespace cdc
 }  // namespace yb

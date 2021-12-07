@@ -14,13 +14,18 @@
 #ifndef YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
 #define YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
 
+#include <stdint.h>
+
 #include <memory>
+#include <type_traits>
+
+#include "yb/common/common.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tablet {
@@ -28,6 +33,7 @@ namespace tablet {
 struct TransactionStatusInfo {
   TransactionId transaction_id = TransactionId::Nil();
   TransactionStatus status;
+  AbortedSubTransactionSet aborted_subtxn_set;
   HybridTime status_ht;
   HybridTime coordinator_safe_time;
 

@@ -21,24 +21,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 #include <dirent.h>
-#include <errno.h>
 #include <fcntl.h>
 #if defined(__linux__)
 #include <linux/fs.h>
 #endif
 #include <pthread.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #ifdef __linux__
 #include <sys/statfs.h>
 #include <sys/syscall.h>
 #endif
-#include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <algorithm>
@@ -52,18 +48,20 @@
 #endif
 #include <deque>
 #include <set>
+
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/port/port.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/io_posix.h"
 #include "yb/rocksdb/util/thread_posix.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/posix_logger.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_local.h"
 
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 

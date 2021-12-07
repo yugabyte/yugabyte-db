@@ -35,26 +35,25 @@
 
 #include <iosfwd>
 #include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_cache.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-
-#include "yb/server/clock.h"
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/server/clock.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
-#include "yb/util/result.h"
 
 namespace yb {
 template<class T>
@@ -63,12 +62,8 @@ class MemTracker;
 class MetricEntity;
 class ThreadPoolToken;
 
-namespace log {
-class Log;
-class AsyncLogReader;
-}
-
 namespace consensus {
+
 class PeerMessageQueueObserver;
 struct MajorityReplicatedData;
 
@@ -358,8 +353,10 @@ class PeerMessageQueue {
   }
 
   // Read replicated log records starting from the OpId immediately after last_op_id.
-  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id,
-                                                     int64_t* last_replicated_opid_index = nullptr);
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
+    const yb::OpId& last_op_id,
+    int64_t* last_replicated_opid_index = nullptr,
+    const CoarseTimePoint deadline = CoarseTimePoint::max());
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id);
 
@@ -377,6 +374,8 @@ class PeerMessageQueue {
   const server::ClockPtr& clock() const {
     return clock_;
   }
+
+  Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
@@ -447,7 +446,7 @@ class PeerMessageQueue {
     Mode mode = Mode::NON_LEADER;
 
     // The currently-active raft config. Only set if in LEADER mode.
-    gscoped_ptr<RaftConfigPB> active_config;
+    std::unique_ptr<RaftConfigPB> active_config;
 
     std::string ToString() const;
   };
@@ -520,10 +519,12 @@ class PeerMessageQueue {
   // Reads operations from the log cache in the range (after_index, to_index].
   //
   // If 'to_index' is 0, then all operations after 'after_index' will be included.
-  Result<ReadOpsResult> ReadFromLogCache(int64_t after_index,
-                                         int64_t to_index,
-                                         int max_batch_size,
-                                         const std::string& peer_uuid);
+  Result<ReadOpsResult> ReadFromLogCache(
+    int64_t after_index,
+    int64_t to_index,
+    int max_batch_size,
+    const std::string& peer_uuid,
+    const CoarseTimePoint deadline = CoarseTimePoint::max());
 
   std::vector<PeerMessageQueueObserver*> observers_;
 

@@ -2,6 +2,10 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.DELETE;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -10,26 +14,34 @@ import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableManagerParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import org.yb.Common.TableType;
-import play.libs.Json;
-
 import java.io.File;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static com.yugabyte.yw.common.TableManager.CommandSubType.*;
+import org.yb.Common.TableType;
+import play.libs.Json;
 
 @Singleton
 public class TableManager extends DevopsBase {
   private static final int EMR_MULTIPLE = 8;
+  private static final int BACKUP_PREFIX_LENGTH = 8;
+  private static final int TS_FMT_LENGTH = 19;
+  private static final int UNIV_PREFIX_LENGTH = 6;
+  private static final int UUID_LENGTH = 36;
   private static final String YB_CLOUD_COMMAND_TYPE = "table";
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
+  private static final String BACKUP_LOCATION = "BACKUP_LOCATION";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -47,11 +59,9 @@ public class TableManager extends DevopsBase {
     }
   }
 
-  @Inject
-  ReleaseManager releaseManager;
+  @Inject ReleaseManager releaseManager;
 
-  public ShellResponse runCommand(CommandSubType subType,
-                                                      TableManagerParams taskParams) {
+  public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
@@ -61,15 +71,16 @@ public class TableManager extends DevopsBase {
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
-    Map<String, String> extraVars = region.provider.getConfig();
+    Map<String, String> extraVars = region.provider.getUnmaskedConfig();
     Map<String, String> namespaceToConfig = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;
-      namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(pi,
-          universe.getUniverseDetails().nodePrefix, provider);
+      namespaceToConfig =
+          PlacementInfoUtil.getConfigPerNamespace(
+              pi, universe.getUniverseDetails().nodePrefix, provider);
     }
 
     commandArgs.add(PY_WRAPPER);
@@ -84,14 +95,23 @@ public class TableManager extends DevopsBase {
     switch (subType) {
       case BACKUP:
         backupTableParams = (BackupTableParams) taskParams;
+
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
-        if (userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
+        if (userIntent.enableYSQLAuth
+            || userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
           commandArgs.add("--ysql_enable_auth");
         }
+        commandArgs.add("--ysql_port");
+        commandArgs.add(
+            Integer.toString(universe.getUniverseDetails().communicationPorts.ysqlServerRpcPort));
+
         if (backupTableParams.actionType == BackupTableParams.ActionType.CREATE) {
-          if (backupTableParams.tableUUIDList != null && !backupTableParams.tableUUIDList.isEmpty()) {
-            for (int listIndex = 0; listIndex < backupTableParams.tableNameList.size(); listIndex++) {
+          if (backupTableParams.tableUUIDList != null
+              && !backupTableParams.tableUUIDList.isEmpty()) {
+            for (int listIndex = 0;
+                listIndex < backupTableParams.tableNameList.size();
+                listIndex++) {
               commandArgs.add("--table");
               commandArgs.add(backupTableParams.tableNameList.get(listIndex));
               commandArgs.add("--keyspace");
@@ -112,7 +132,8 @@ public class TableManager extends DevopsBase {
             }
           }
         } else if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
-          if (backupTableParams.tableUUIDList != null && !backupTableParams.tableUUIDList.isEmpty()) {
+          if (backupTableParams.tableUUIDList != null
+              && !backupTableParams.tableUUIDList.isEmpty()) {
             for (String tableName : backupTableParams.tableNameList) {
               commandArgs.add("--table");
               commandArgs.add(tableName);
@@ -128,24 +149,22 @@ public class TableManager extends DevopsBase {
         }
 
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        customerConfig = CustomerConfig.get(customer.uuid,
-                                            backupTableParams.storageConfigUUID);
-        File backupKeysFile = EncryptionAtRestUtil
-          .getUniverseBackupKeysFile(backupTableParams.storageLocation);
+        customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+        File backupKeysFile =
+            EncryptionAtRestUtil.getUniverseBackupKeysFile(backupTableParams.storageLocation);
 
         if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)) {
-            if (backupKeysFile.exists()) {
-                commandArgs.add("--backup_keys_source");
-                commandArgs.add(backupKeysFile.getAbsolutePath());
-            }
-        } else if (
-          backupTableParams.actionType.equals(BackupTableParams.ActionType.RESTORE_KEYS)
-        ) {
-            if (!backupKeysFile.exists() && (backupKeysFile.getParentFile().exists() ||
-                backupKeysFile.getParentFile().mkdirs())) {
-                commandArgs.add("--restore_keys_destination");
-                commandArgs.add(backupKeysFile.getAbsolutePath());
-            }
+          if (backupKeysFile.exists()) {
+            commandArgs.add("--backup_keys_source");
+            commandArgs.add(backupKeysFile.getAbsolutePath());
+          }
+        } else if (backupTableParams.actionType.equals(BackupTableParams.ActionType.RESTORE_KEYS)) {
+          if (!backupKeysFile.exists()
+              && (backupKeysFile.getParentFile().exists()
+                  || backupKeysFile.getParentFile().mkdirs())) {
+            commandArgs.add("--restore_keys_destination");
+            commandArgs.add(backupKeysFile.getAbsolutePath());
+          }
         }
         if (taskParams.tableUUID != null) {
           commandArgs.add("--table_uuid");
@@ -155,14 +174,35 @@ public class TableManager extends DevopsBase {
         if (taskParams.sse) {
           commandArgs.add("--sse");
         }
-        addCommonCommandArgs(backupTableParams, accessKey, region, customerConfig,
-                             provider, namespaceToConfig, nodeToNodeTlsEnabled, commandArgs);
+        if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
+          if (backupTableParams.restoreTimeStamp != null) {
+            String backupLocation = customerConfig.data.get(BACKUP_LOCATION).asText();
+            String restoreTimeStampMicroUnix =
+                getValidatedRestoreTimeStampMicroUnix(
+                    backupTableParams.restoreTimeStamp,
+                    backupTableParams.storageLocation,
+                    backupLocation);
+            commandArgs.add("--restore_time");
+            commandArgs.add(restoreTimeStampMicroUnix);
+          }
+        }
+        addCommonCommandArgs(
+            backupTableParams,
+            accessKey,
+            region,
+            customerConfig,
+            provider,
+            namespaceToConfig,
+            nodeToNodeTlsEnabled,
+            commandArgs);
         // Update env vars with customer config data after provider config to make sure the correct
         // credentials are used.
         extraVars.putAll(customerConfig.dataAsMap());
-        break;
-      // TODO: Add support for TLS connections for bulk-loading.
-      // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
+
+        LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+        return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
+        // TODO: Add support for TLS connections for bulk-loading.
+        // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
       case BULK_IMPORT:
         commandArgs.add("--table");
         commandArgs.add(taskParams.getTableName());
@@ -172,8 +212,8 @@ public class TableManager extends DevopsBase {
         ReleaseManager.ReleaseMetadata metadata =
             releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
         if (metadata == null) {
-          throw new RuntimeException("Unable to fetch yugabyte release for version: " +
-              userIntent.ybSoftwareVersion);
+          throw new RuntimeException(
+              "Unable to fetch yugabyte release for version: " + userIntent.ybSoftwareVersion);
         }
         String ybServerPackage = metadata.filePath;
         if (bulkImportParams.instanceCount == 0) {
@@ -199,11 +239,17 @@ public class TableManager extends DevopsBase {
       case DELETE:
         backupTableParams = (BackupTableParams) taskParams;
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        customerConfig = CustomerConfig.get(customer.uuid,
-                                            backupTableParams.storageConfigUUID);
+        customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
         LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
-        addCommonCommandArgs(backupTableParams, accessKey, region, customerConfig,
-                             provider, namespaceToConfig, nodeToNodeTlsEnabled, commandArgs);
+        addCommonCommandArgs(
+            backupTableParams,
+            accessKey,
+            region,
+            customerConfig,
+            provider,
+            namespaceToConfig,
+            nodeToNodeTlsEnabled,
+            commandArgs);
         extraVars.putAll(customerConfig.dataAsMap());
         break;
     }
@@ -213,14 +259,57 @@ public class TableManager extends DevopsBase {
   }
 
   private String getCertsDir(Region region, Provider provider) {
-    return region.provider.code.equals("kubernetes") ? K8S_CERT_PATH :
-                                                       provider.getYbHome() + VM_CERT_DIR;
+    return region.provider.code.equals("kubernetes")
+        ? K8S_CERT_PATH
+        : provider.getYbHome() + VM_CERT_DIR;
   }
 
-  private void addCommonCommandArgs(BackupTableParams backupTableParams, AccessKey accessKey,
-                                    Region region, CustomerConfig customerConfig,
-                                    Provider provider, Map<String, String> namespaceToConfig,
-                                    boolean nodeToNodeTlsEnabled, List<String> commandArgs) {
+  private String getValidatedRestoreTimeStampMicroUnix(
+      String restoreTimeStamp, String storageLocation, String storageLocationPrefix) {
+    try {
+      long restoreTimeMicroUnix =
+          Util.microUnixTimeFromDateString(restoreTimeStamp, "yyyy-MM-dd HH:mm:ss");
+
+      // we will remove the backupLocation from the storageLocation, so after that we are left with
+      // /univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>
+      // /table-keyspace.table_name.table_uuid
+      // After receiving the storageLocation in above format we will be extracting the tsformat
+      // timestamp of length 19 by removing "/univ-", "<univ-UUID>", "/backup-".
+      String backupCreationTime =
+          storageLocation
+              .replaceFirst(storageLocationPrefix, "")
+              .substring(
+                  UNIV_PREFIX_LENGTH + UUID_LENGTH + BACKUP_PREFIX_LENGTH,
+                  UNIV_PREFIX_LENGTH + UUID_LENGTH + BACKUP_PREFIX_LENGTH + TS_FMT_LENGTH);
+      long backupCreationTimeMicroUnix =
+          Util.microUnixTimeFromDateString(backupCreationTime, "yyyy-MM-dd'T'HH:mm:ss");
+
+      // Currently, we cannot validate input restoreTimeStamp with the desired backup's restore time
+      // lower_bound limit.
+      // As we require "timestamp_history_retention_interval_sec" flag value which has to be
+      // captured during the backup creation and also to be stored in backup metadata.
+      // Even after that we still have to figure out a way to extract the value in
+      // Platform as we only have storageLocation as parameter form user.
+      if (restoreTimeMicroUnix > backupCreationTimeMicroUnix) {
+        throw new RuntimeException(
+            "Restore TimeStamp is not within backup creation TimeStamp boundaries.");
+      }
+      return Long.toString(restoreTimeMicroUnix);
+    } catch (ParseException e) {
+      throw new RuntimeException(
+          "Invalid restore timeStamp format, Please provide it in yyyy-MM-dd HH:mm:ss format");
+    }
+  }
+
+  private void addCommonCommandArgs(
+      BackupTableParams backupTableParams,
+      AccessKey accessKey,
+      Region region,
+      CustomerConfig customerConfig,
+      Provider provider,
+      Map<String, String> namespaceToConfig,
+      boolean nodeToNodeTlsEnabled,
+      List<String> commandArgs) {
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
@@ -234,9 +323,9 @@ public class TableManager extends DevopsBase {
     commandArgs.add(backupTableParams.storageLocation);
     commandArgs.add("--storage_type");
     commandArgs.add(customerConfig.name.toLowerCase());
-    if(customerConfig.name.toLowerCase().equals("nfs")) {
+    if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get("BACKUP_LOCATION").asText());
+      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION).asText());
     }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");

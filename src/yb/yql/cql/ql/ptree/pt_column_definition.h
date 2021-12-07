@@ -18,11 +18,9 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_COLUMN_DEFINITION_H
 #define YB_YQL_CQL_QL_PTREE_PT_COLUMN_DEFINITION_H
 
-#include "yb/common/schema.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
 namespace ql {
@@ -41,7 +39,7 @@ class PTColumnDefinition : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTColumnDefinition(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc,
+                     YBLocationPtr loc,
                      const MCSharedPtr<MCString>& name,
                      const PTBaseType::SharedPtr& datatype,
                      const PTListNode::SharedPtr& qualifiers);
@@ -95,11 +93,11 @@ class PTColumnDefinition : public TreeNode {
     order_ = order;
   }
 
-  ColumnSchema::SortingType sorting_type() {
+  SortingType sorting_type() {
     return sorting_type_;
   }
 
-  void set_sorting_type(ColumnSchema::SortingType sorting_type) {
+  void set_sorting_type(SortingType sorting_type) {
     sorting_type_ = sorting_type;
   }
 
@@ -134,7 +132,7 @@ class PTColumnDefinition : public TreeNode {
     return datatype_->is_counter();
   }
 
-  virtual const PTExpr::SharedPtr colexpr() const {
+  virtual PTExprPtr colexpr() const {
     return nullptr;
   }
 
@@ -157,7 +155,7 @@ class PTColumnDefinition : public TreeNode {
   bool is_static_;
   int32_t order_;
   // Sorting order. Only relevant when this key is a primary key.
-  ColumnSchema::SortingType sorting_type_;
+  SortingType sorting_type_;
 
   // Ref column_id.
   // - In a TABLE, indexed_ref_ of a column is "-1" as it doesn't reference any column.
@@ -190,9 +188,9 @@ class PTIndexColumn : public PTColumnDefinition {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   explicit PTIndexColumn(MemoryContext *memctx,
-                         YBLocation::SharedPtr loc,
+                         YBLocationPtr loc,
                          const MCSharedPtr<MCString>& name,
-                         const PTExpr::SharedPtr& expr);
+                         const PTExprPtr& expr);
   virtual ~PTIndexColumn();
 
   template<typename... TypeArgs>
@@ -206,15 +204,13 @@ class PTIndexColumn : public PTColumnDefinition {
   CHECKED_STATUS SetupHashKey(SemContext *sem_context);
   CHECKED_STATUS SetupCoveringIndexColumn(SemContext *sem_context);
 
-  virtual std::shared_ptr<QLType> ql_type() const override {
-    return colexpr_->ql_type();
-  }
+  std::shared_ptr<QLType> ql_type() const override;
 
   virtual bool is_counter() const override {
     return false;
   }
 
-  virtual const PTExpr::SharedPtr colexpr() const override {
+  PTExprPtr colexpr() const override {
     return colexpr_;
   }
 
@@ -225,7 +221,7 @@ class PTIndexColumn : public PTColumnDefinition {
   //   - INDEX (j->>'x') ==> colexpr_ = j->'x'
   //   - When user insert to TABLE tab, YugaByte inserts to INDEX (j->'x', ybctid)
   //   - DEFAULT: colexpr == EXPR_NOT_YET
-  PTExpr::SharedPtr colexpr_;
+  PTExprPtr colexpr_;
 
   // "coldef_" is pointer to the definition of an index column.
   // - If the column of the same name is previously-defined, we use that definition.

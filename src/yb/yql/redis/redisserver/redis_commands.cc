@@ -16,7 +16,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
-
 #include <gflags/gflags.h>
 
 #include "yb/client/client.h"
@@ -25,16 +24,21 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/redis_constants_common.h"
+
+#include "yb/gutil/strings/join.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master_util.h"
 
-#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/redis_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 
@@ -226,7 +230,11 @@ void Command(
                       BatchContext* context) { \
       BOOST_PP_CAT(type, _COMMAND)(cname); \
     }; \
-    yb::rpc::RpcMethodMetrics metrics(YB_REDIS_METRIC(name).Instantiate(metric_entity)); \
+    yb::rpc::RpcMethodMetrics metrics {               \
+        nullptr, \
+        nullptr, \
+        YB_REDIS_METRIC(name).Instantiate(metric_entity), \
+    };\
     setup_method({BOOST_PP_STRINGIZE(name), functor, arity, std::move(metrics)}); \
   } \
   /**/
@@ -406,7 +414,7 @@ void HandlePubSub(LocalCommandData data) {
   RedisResponsePB response;
   if (boost::iequals(data.arg(1).ToBuffer(), "CHANNELS") && data.arg_size() <= 3) {
     auto all = data.context()->service_data()->GetAllSubscriptions(AsPattern::kFalse);
-    unordered_set<string> matched;
+    std::unordered_set<std::string> matched;
     if (data.arg_size() > 2) {
       const string& pattern = data.arg(2).ToBuffer();
       for (auto& channel : all) {
@@ -703,12 +711,8 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       return;
     }
 
-    auto status1 = session_->Apply(read_src_op_);
-    auto status2 = session_->Apply(read_ttl_op_);
-    if (!status1.ok() || !status2.ok()) {
-      RespondWithError("Could not apply read_src_op_.");
-      return;
-    }
+    session_->Apply(read_src_op_);
+    session_->Apply(read_ttl_op_);
     session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       if (!s.ok()) {
@@ -814,12 +818,8 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       write_dest_ttl_op_->mutable_request()->mutable_set_ttl_request()->set_ttl(ttl_ms);
     }
 
-    auto status1 = session_->Apply(delete_dest_op_);
-    auto status2 = session_->Apply(write_dest_op_);
-    if (!status1.ok() || !status2.ok()) {
-      RespondWithError("Could not apply deleteOps/write_dest_op_.");
-      return;
-    }
+    session_->Apply(delete_dest_op_);
+    session_->Apply(write_dest_op_);
     session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       if (!s.ok()) {
@@ -838,11 +838,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       return;
     }
 
-    auto status = session_->Apply(write_dest_ttl_op_);
-    if (!status.ok()) {
-      RespondWithError("Could not apply write_dest_ttl_op_.");
-      return;
-    }
+    session_->Apply(write_dest_ttl_op_);
 
     session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
@@ -857,11 +853,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
 
   void BeginDeleteSrc() {
     VLOG(1) << "4. BeginDeleteSrc";
-    auto status = session_->Apply(delete_src_op_);
-    if (!status.ok()) {
-      RespondWithError("Could not apply delete_src_op_.");
-      return;
-    }
+    session_->Apply(delete_src_op_);
     session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       if (!s.ok()) {
@@ -919,11 +911,7 @@ class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
     request->mutable_keys_request()->set_pattern(data_.arg(1).ToBuffer());
     request->mutable_keys_request()->set_threshold(keys_threshold_);
     sessions_[idx]->set_allow_local_calls_in_curr_thread(false);
-    auto status = sessions_[idx]->Apply(operation);
-    if (!status.ok()) {
-      ProcessedAll(status);
-      return;
-    }
+    sessions_[idx]->Apply(operation);
     sessions_[idx]->FlushAsync(std::bind(
         &KeysProcessor::ProcessedOne, shared_from_this(), idx, operation, _1));
   }

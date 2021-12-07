@@ -13,8 +13,16 @@
 
 #include "yb/docdb/docdb_debug.h"
 
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/kv_debug.h"
+
+#include "yb/rocksdb/db.h"
+
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/result.h"
 
 using namespace std::placeholders;
 
@@ -46,12 +54,15 @@ void ProcessDumpEntry(
   }
 }
 
-std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type) {
+std::string EntryToString(const Slice& key, const Slice& value, StorageDbType db_type) {
   std::ostringstream out;
   ProcessDumpEntry(
-      iterator.key(), iterator.value(), IncludeBinary::kFalse, db_type,
-      std::bind(&AppendLineToStream, _1, &out));
+      key, value, IncludeBinary::kFalse, db_type, std::bind(&AppendLineToStream, _1, &out));
   return out.str();
+}
+
+std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type) {
+  return EntryToString(iterator.key(), iterator.value(), db_type);
 }
 
 template <class DumpStringFunc>

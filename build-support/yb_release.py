@@ -23,7 +23,7 @@ import subprocess
 import tempfile
 import traceback
 import uuid
-import yaml
+import ruamel.yaml
 
 from yb.library_packager import LibraryPackager, add_common_arguments
 from yb import library_packager as library_packager_module
@@ -190,6 +190,7 @@ def main():
         raise IOError("The build script failed to generate build descriptor file at '{}'".format(
                 build_desc_path))
 
+    yaml = ruamel.yaml.YAML()
     with open(build_desc_path) as build_desc_file:
         build_desc = yaml.load(build_desc_file)
 
@@ -245,6 +246,8 @@ def main():
     if os.path.exists(build_target) and os.listdir(build_target):
         raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target))
     release_util.create_distribution(build_target)
+
+    library_packager.post_process_distribution(build_target)
 
     # ---------------------------------------------------------------------------------------------
     # Invoke YugaWare packaging

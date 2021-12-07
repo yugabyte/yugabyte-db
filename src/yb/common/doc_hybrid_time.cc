@@ -13,21 +13,20 @@
 
 #include "yb/common/doc_hybrid_time.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
-#include "yb/util/status.h"
-#include "yb/util/varint.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/varint.h"
 
 using yb::util::VarInt;
 using yb::util::FastEncodeDescendingSignedVarInt;
-using yb::util::FastDecodeDescendingSignedVarInt;
+using yb::util::FastDecodeDescendingSignedVarIntUnsafe;
 using yb::FormatBytesAsStr;
 using yb::FormatSliceAsStr;
 using yb::QuotesType;
-using yb::util::to_char_ptr;
-using yb::util::to_uchar_ptr;
 
 using strings::Substitute;
 using strings::SubstituteAndAppend;
@@ -88,17 +87,17 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
   const size_t previous_size = slice->size();
   {
     // Currently we just ignore the generation number as it should always be 0.
-    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice));
+    RETURN_NOT_OK(FastDecodeDescendingSignedVarIntUnsafe(slice));
     int64_t decoded_micros =
-        kYugaByteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
+        kYugaByteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice));
 
-    int64_t decoded_logical = VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
+    int64_t decoded_logical = VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice));
 
     hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(decoded_micros, decoded_logical);
   }
 
   const auto ptr_before_decoding_write_id = slice->data();
-  int64_t decoded_shifted_write_id = VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
+  int64_t decoded_shifted_write_id = VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice));
 
   if (decoded_shifted_write_id < 0) {
     return STATUS_SUBSTITUTE(

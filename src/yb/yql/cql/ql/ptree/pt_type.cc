@@ -16,6 +16,8 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_type.h"
+
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 namespace yb {
@@ -58,6 +60,7 @@ PTBaseType::SharedPtr PTBaseType::FromQLType(MemoryContext *memctx,
     case DataType::UINT16: FALLTHROUGH_INTENDED;
     case DataType::UINT32: FALLTHROUGH_INTENDED;
     case DataType::UINT64: FALLTHROUGH_INTENDED;
+    case DataType::GIN_NULL: FALLTHROUGH_INTENDED;
     case DataType::UNKNOWN_DATA: FALLTHROUGH_INTENDED;
     case DataType::NULL_VALUE_TYPE:
       FATAL_INVALID_ENUM_VALUE(DataType, ql_type->main());
@@ -67,7 +70,7 @@ PTBaseType::SharedPtr PTBaseType::FromQLType(MemoryContext *memctx,
 
 //--------------------------------------------------------------------------------------------------
 
-PTFloat::PTFloat(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
+PTFloat::PTFloat(MemoryContext *memctx, YBLocationPtr loc, int8_t precision)
     : PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, true>(memctx, loc),
       precision_(precision) {
 }
@@ -75,7 +78,7 @@ PTFloat::PTFloat(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precis
 PTFloat::~PTFloat() {
 }
 
-PTDouble::PTDouble(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
+PTDouble::PTDouble(MemoryContext *memctx, YBLocationPtr loc, int8_t precision)
     : PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE, true>(memctx, loc),
       precision_(precision) {
 }
@@ -85,7 +88,7 @@ PTDouble::~PTDouble() {
 
 //--------------------------------------------------------------------------------------------------
 
-PTCounter::PTCounter(MemoryContext *memctx, YBLocation::SharedPtr loc)
+PTCounter::PTCounter(MemoryContext *memctx, YBLocationPtr loc)
     : PTSimpleType<InternalType::kInt64Value, DataType::INT64, false>(memctx, loc) {
 }
 
@@ -95,7 +98,7 @@ PTCounter::~PTCounter() {
 //--------------------------------------------------------------------------------------------------
 
 PTCharBaseType::PTCharBaseType(MemoryContext *memctx,
-                               YBLocation::SharedPtr loc,
+                               YBLocationPtr loc,
                                int32_t max_length)
     : PTSimpleType<InternalType::kStringValue, DataType::STRING>(memctx, loc),
       max_length_(max_length) {
@@ -104,14 +107,14 @@ PTCharBaseType::PTCharBaseType(MemoryContext *memctx,
 PTCharBaseType::~PTCharBaseType() {
 }
 
-PTChar::PTChar(MemoryContext *memctx, YBLocation::SharedPtr loc, int32_t max_length)
+PTChar::PTChar(MemoryContext *memctx, YBLocationPtr loc, int32_t max_length)
     : PTCharBaseType(memctx, loc, max_length) {
 }
 
 PTChar::~PTChar() {
 }
 
-PTVarchar::PTVarchar(MemoryContext *memctx, YBLocation::SharedPtr loc, int32_t max_length)
+PTVarchar::PTVarchar(MemoryContext *memctx, YBLocationPtr loc, int32_t max_length)
     : PTCharBaseType(memctx, loc, max_length) {
 }
 
@@ -121,7 +124,7 @@ PTVarchar::~PTVarchar() {
 //--------------------------------------------------------------------------------------------------
 
 PTMap::PTMap(MemoryContext *memctx,
-             YBLocation::SharedPtr loc,
+             YBLocationPtr loc,
              const PTBaseType::SharedPtr& keys_type,
              const PTBaseType::SharedPtr& values_type)
     : PTPrimitiveType<InternalType::kMapValue, DataType::MAP, false>(memctx, loc),
@@ -158,7 +161,7 @@ CHECKED_STATUS PTMap::Analyze(SemContext *sem_context) {
 }
 
 PTSet::PTSet(MemoryContext *memctx,
-             YBLocation::SharedPtr loc,
+             YBLocationPtr loc,
              const PTBaseType::SharedPtr& elems_type)
     : PTPrimitiveType<InternalType::kSetValue, DataType::SET, false>(memctx, loc),
       elems_type_(elems_type) {
@@ -191,7 +194,7 @@ CHECKED_STATUS PTSet::Analyze(SemContext *sem_context) {
 }
 
 PTList::PTList(MemoryContext *memctx,
-               YBLocation::SharedPtr loc,
+               YBLocationPtr loc,
                const PTBaseType::SharedPtr& elems_type)
     : PTPrimitiveType<InternalType::kListValue, DataType::LIST, false>(memctx, loc),
       elems_type_(elems_type) {
@@ -216,7 +219,7 @@ CHECKED_STATUS PTList::Analyze(SemContext *sem_context) {
 }
 
 PTUserDefinedType::PTUserDefinedType(MemoryContext *memctx,
-                                     YBLocation::SharedPtr loc,
+                                     YBLocationPtr loc,
                                      const PTQualifiedName::SharedPtr& name)
     : PTPrimitiveType<InternalType::kMapValue, DataType::USER_DEFINED_TYPE, false>(memctx, loc),
       name_(name) {
@@ -226,8 +229,7 @@ PTUserDefinedType::~PTUserDefinedType() {
 }
 
 CHECKED_STATUS PTUserDefinedType::Analyze(SemContext *sem_context) {
-
-  RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TYPE));
+  RETURN_NOT_OK(name_->AnalyzeName(sem_context, ObjectType::TYPE));
   auto ybname = name_->ToTableName();
   ql_type_ = sem_context->GetUDType(ybname.namespace_name(), ybname.table_name());
   if (ql_type_ == nullptr) {
@@ -238,7 +240,7 @@ CHECKED_STATUS PTUserDefinedType::Analyze(SemContext *sem_context) {
 }
 
 PTFrozen::PTFrozen(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc,
+                   YBLocationPtr loc,
                    const PTBaseType::SharedPtr& elems_type)
     : PTPrimitiveType<InternalType::kFrozenValue, DataType::FROZEN, true>(memctx, loc),
       elems_type_(elems_type) {

@@ -74,6 +74,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "commands/ybccmds.h"
 
 static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
                                         const char *queryString,
@@ -415,32 +416,6 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 	pstate = make_parsestate(NULL);
 	pstate->p_sourcetext = queryString;
-
-	/*
-	 * For tserver-postgres libpq connection, only authorize certain queries.
-	 */
-	if (IsYugaByteEnabled() &&
-		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates() &&
-		MyProcPort->yb_is_tserver_auth_method)
-	{
-		switch (nodeTag(parsetree))
-		{
-			case T_BackfillIndexStmt:
-			{
-				BackfillIndexStmt *stmt = (BackfillIndexStmt *) parsetree;
-				BackfillIndex(stmt);
-			}
-			break;
-			default:
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("yb-tserver cannot run this query: %s",
-								CreateCommandTag(parsetree))));
-		}
-		free_parsestate(pstate);
-		return;
-	}
 
 	switch (nodeTag(parsetree))
 	{
@@ -865,13 +840,20 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_BackfillIndexStmt:
-			Assert(IsYugaByteEnabled());
-			Assert(!IsBootstrapProcessingMode());
-			Assert(!YBIsPreparingTemplates());
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("backfill can only be run internally by"
-							" yb-tserver")));
+			/*
+			 * Only tserver-postgres libpq connection can send BACKFILL request.
+			 */
+			if (!IsYugaByteEnabled() ||
+				!MyProcPort->yb_is_tserver_auth_method ||
+				IsBootstrapProcessingMode() ||
+				YBIsPreparingTemplates())
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot run this query: %s",
+								CreateCommandTag(parsetree))));
+			}
+			YbBackfillIndex((BackfillIndexStmt *) parsetree, dest);
 			break;
 
 			/*
@@ -1373,11 +1355,14 @@ ProcessUtilitySlow(ParseState *pstate,
 							 * build.
 							 * TODO(jason): heed issue #6240.
 							 */
-							ereport(DEBUG1,
+							ereport(NOTICE,
 									(errmsg("making create index for table "
-											"\"%s\" in transaction block "
-											"nonconcurrent",
-											stmt->relation->relname)));
+											"\"%s\" nonconcurrent",
+											stmt->relation->relname),
+									 errdetail("Create index in transaction"
+											   " block cannot be concurrent."),
+									 errhint("Consider running it outside of a"
+											 " transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.")));
 							stmt->concurrent = false;
 						}
 						else
@@ -1549,7 +1534,7 @@ ProcessUtilitySlow(ParseState *pstate,
 				break;
 
 			case T_AlterEnumStmt:	/* ALTER TYPE (enum) */
-				address = AlterEnum((AlterEnumStmt *) parsetree, isTopLevel);
+				address = AlterEnum((AlterEnumStmt *) parsetree);
 				break;
 
 			case T_ViewStmt:	/* CREATE VIEW */
@@ -1892,6 +1877,9 @@ UtilityReturnsTuples(Node *parsetree)
 		case T_VariableShowStmt:
 			return true;
 
+		case T_BackfillIndexStmt:
+			return true;
+
 		default:
 			return false;
 	}
@@ -1946,6 +1934,9 @@ UtilityTupleDescriptor(Node *parsetree)
 
 				return GetPGVariableResultDesc(n->name);
 			}
+
+		case T_BackfillIndexStmt:
+			return YbBackfillIndexResultDesc((BackfillIndexStmt *) parsetree);
 
 		default:
 			return NULL;
@@ -2126,7 +2117,7 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_TABCONSTRAINT:
 			tag = "ALTER TABLE";
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			tag = "ALTER TABLEGROUP";
 			break;
 		case OBJECT_TABLESPACE:

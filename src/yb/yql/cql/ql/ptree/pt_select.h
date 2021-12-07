@@ -21,7 +21,6 @@
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 
 namespace yb {
@@ -43,8 +42,8 @@ class PTOrderBy : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTOrderBy(MemoryContext *memctx,
-            YBLocation::SharedPtr loc,
-            const PTExpr::SharedPtr& order_expr,
+            YBLocationPtr loc,
+            const PTExprPtr& order_expr,
             const Direction direction,
             const NullPlacement null_placement);
   virtual ~PTOrderBy();
@@ -69,12 +68,12 @@ class PTOrderBy : public TreeNode {
     return null_placement_;
   }
 
-  PTExpr::SharedPtr order_expr() const {
+  PTExprPtr order_expr() const {
     return order_expr_;
   }
 
  private:
-  PTExpr::SharedPtr order_expr_;
+  PTExprPtr order_expr_;
   Direction direction_;
   NullPlacement null_placement_;
 };
@@ -93,7 +92,7 @@ class PTTableRef : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTTableRef(MemoryContext *memctx,
-             YBLocation::SharedPtr loc,
+             YBLocationPtr loc,
              const PTQualifiedName::SharedPtr& name,
              MCSharedPtr<MCString> alias);
   virtual ~PTTableRef();
@@ -144,7 +143,7 @@ class SelectScanInfo : public MCBase {
   CHECKED_STATUS AddWhereExpr(SemContext *sem_context,
                               const PTRelationExpr *expr,
                               const ColumnDesc *col_desc,
-                              PTExpr::SharedPtr value,
+                              PTExprPtr value,
                               PTExprListNode::SharedPtr col_args = nullptr);
 
   // Setup for analyzing where clause.
@@ -236,10 +235,19 @@ class SelectScanSpec {
     is_forward_scan_ = val;
   }
 
+  void set_prefix_length(int prefix_length) {
+    prefix_length_ = prefix_length;
+  }
+
+  int prefix_length() const {
+    return prefix_length_;
+  }
+
  private:
   TableId index_id_;
   bool covers_fully_ = false;
   bool is_forward_scan_ = true;
+  int prefix_length_ = 0;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -254,17 +262,17 @@ class PTSelectStmt : public PTDmlStmt {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTSelectStmt(MemoryContext *memctx,
-               YBLocation::SharedPtr loc,
+               YBLocationPtr loc,
                bool distinct,
                PTExprListNode::SharedPtr selected_exprs,
                PTTableRefListNode::SharedPtr from_clause,
-               PTExpr::SharedPtr where_clause,
-               PTExpr::SharedPtr if_clause,
+               PTExprPtr where_clause,
+               PTExprPtr if_clause,
                PTListNode::SharedPtr group_by_clause,
                PTListNode::SharedPtr having_clause,
                PTOrderByListNode::SharedPtr order_by_clause,
-               PTExpr::SharedPtr limit_clause,
-               PTExpr::SharedPtr offset_clause);
+               PTExprPtr limit_clause,
+               PTExprPtr offset_clause);
 
   // Construct a nested select tnode to select from the index.
   PTSelectStmt(MemoryContext *memctx,
@@ -300,7 +308,8 @@ class PTSelectStmt : public PTDmlStmt {
   // in CQL, so we will keep it that way for now to avoid new bugs and extra work. If the CQL
   // language is extended further toward SQL, we can change this design.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-  bool CoversFully(const IndexInfo& index_info) const;
+  bool CoversFully(const IndexInfo& index_info,
+                   const MCUnorderedMap<int32, uint16> &column_ref_cnts) const;
 
   // Explain scan path.
   void PrintSemanticAnalysisResult(SemContext *sem_context);
@@ -315,11 +324,11 @@ class PTSelectStmt : public PTDmlStmt {
     order_by_clause_ = order_by_clause;
   }
 
-  virtual void SetLimitClause(PTExpr::SharedPtr limit_clause) {
+  virtual void SetLimitClause(PTExprPtr limit_clause) {
     limit_clause_ = limit_clause;
   }
 
-  virtual void SetOffsetClause(PTExpr::SharedPtr offset_clause) {
+  virtual void SetOffsetClause(PTExprPtr offset_clause) {
     offset_clause_ = offset_clause;
   }
 
@@ -331,15 +340,15 @@ class PTSelectStmt : public PTDmlStmt {
     return is_forward_scan_;
   }
 
-  const PTExpr::SharedPtr& limit() const {
+  const PTExprPtr& limit() const {
     return limit_clause_;
   }
 
-  const PTExpr::SharedPtr& offset() const {
+  const PTExprPtr& offset() const {
     return offset_clause_;
   }
 
-  const MCList<PTExpr::SharedPtr>& selected_exprs() const {
+  const MCList<PTExprPtr>& selected_exprs() const {
     return selected_exprs_->node_list();
   }
 
@@ -387,8 +396,10 @@ class PTSelectStmt : public PTDmlStmt {
   // system.peers
   bool IsReadableByAllSystemTable() const;
 
-  const std::shared_ptr<client::YBTable>& bind_table() const override {
-    return child_select_ ? child_select_->bind_table() : PTDmlStmt::bind_table();
+  const std::shared_ptr<client::YBTable>& bind_table() const override;
+
+  const std::shared_ptr<client::YBTable>& table() const {
+    return PTDmlStmt::bind_table();
   }
 
   const MCVector<PTBindVar*> &bind_variables() const override {
@@ -417,6 +428,10 @@ class PTSelectStmt : public PTDmlStmt {
   //   the top level SELECT in this case.
   bool IsTopLevelReadNode() const override {
     return is_top_level_ || covers_fully_;
+  }
+
+  bool IsWriteOp() const override {
+    return false;
   }
 
  private:
@@ -457,8 +472,8 @@ class PTSelectStmt : public PTDmlStmt {
   const PTListNode::SharedPtr group_by_clause_;
   const PTListNode::SharedPtr having_clause_;
   PTOrderByListNode::SharedPtr order_by_clause_;
-  PTExpr::SharedPtr limit_clause_;
-  PTExpr::SharedPtr offset_clause_;
+  PTExprPtr limit_clause_;
+  PTExprPtr offset_clause_;
 
   // -- The semantic analyzer will decorate this node with the following information --
   // Collecting all expressions that are selected.
@@ -480,7 +495,7 @@ class PTSelectStmt : public PTDmlStmt {
 
   // Name of all columns the SELECT statement is referenced. Similar to the list "column_refs_",
   // but this is a list of column names instead of column ids.
-  MCSet<string> referenced_index_colnames_;
+  MCSet<std::string> referenced_index_colnames_;
   SelectScanInfo *select_scan_info_ = nullptr;
 
   // Flag for a top level SELECT.
