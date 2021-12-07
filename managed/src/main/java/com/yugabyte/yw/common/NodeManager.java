@@ -1524,6 +1524,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
           }
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          break;
         }
       case Precheck:
         {
