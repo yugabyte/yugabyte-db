@@ -212,6 +212,22 @@ public class YsqlQueryExecutor {
     }
   }
 
+  public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.query = "SELECT 1";
+    JsonNode ysqlResponse =
+        executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
+    if (ysqlResponse.has("error")) {
+      String errMsg = ysqlResponse.get("error").asText();
+      // Actual message is "FATAL: password authentication failed for user".
+      // Foolproof attempt to match words in order.
+      if (errMsg.matches(".*\\bpassword\\b.+\\bauthentication\\b.+\\bfailed\\b.*")) {
+        throw new PlatformServiceException(Http.Status.UNAUTHORIZED, errMsg);
+      }
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, errMsg);
+    }
+  }
+
   public void updateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     // Update admin user password YSQL.
     RunQueryFormData ysqlQuery = new RunQueryFormData();

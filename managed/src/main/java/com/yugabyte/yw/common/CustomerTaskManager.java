@@ -5,6 +5,8 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.models.CustomerTask.TargetType;
 import static com.yugabyte.yw.models.CustomerTask.TaskType;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
@@ -34,6 +36,11 @@ public class CustomerTaskManager {
               });
       // Mark task as a failure
       taskInfo.setTaskState(TaskInfo.State.Failure);
+      JsonNode jsonNode = taskInfo.getTaskDetails();
+      if (jsonNode != null && jsonNode instanceof ObjectNode) {
+        ObjectNode details = (ObjectNode) jsonNode;
+        details.put("errorString", "Platform restarted.");
+      }
       taskInfo.save();
       // Mark customer task as completed
       customerTask.markAsCompleted();
@@ -87,13 +94,25 @@ public class CustomerTaskManager {
   public void failAllPendingTasks() {
     LOG.info("Failing incomplete tasks...");
     try {
-      // Retrieve all incomplete customer tasks
+      String incompleteStates =
+          String.join(
+              "', '",
+              new String[] {
+                TaskInfo.State.Created.name(),
+                TaskInfo.State.Initializing.name(),
+                TaskInfo.State.Running.name()
+              });
+      // Retrieve all incomplete customer tasks.
+      // TODO It is possible that completion_time == NULL
+      // but task_state is completed. Retry will not appear on UI.
       String query =
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
               + "AND ct.completion_time IS NULL "
-              + "AND ti.task_state IN ('Created', 'Initializing', 'Running')";
+              + "AND ti.task_state IN ('"
+              + incompleteStates
+              + "')";
       Ebean.createSqlQuery(query)
           .findList()
           .forEach(

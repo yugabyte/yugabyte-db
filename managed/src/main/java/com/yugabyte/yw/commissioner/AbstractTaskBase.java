@@ -194,9 +194,4 @@ public abstract class AbstractTaskBase implements ITask {
   public boolean isAbortable() {
     return false;
   }
-
-  @Override
-  public boolean isRetryable() {
-    return false;
-  }
 }

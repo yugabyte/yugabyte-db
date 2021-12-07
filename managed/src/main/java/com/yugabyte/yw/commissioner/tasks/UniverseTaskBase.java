@@ -98,7 +98,6 @@ import java.util.function.Consumer;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.Common;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
@@ -219,11 +218,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           throw new RuntimeException(msg);
         }
         // If the task is retried, check if the task UUID is same as the one in the universe.
+        // Check this condition only on retry to retain same behavior as before.
         if (!isForceUpdate
-            && UniverseTaskBase.this.isRetryable()
-            && StringUtils.isNotBlank(universeDetails.errorString)
+            && !universeDetails.updateSucceeded
+            && taskParams().previousTaskUUID != null
             && !Objects.equal(taskParams().previousTaskUUID, universeDetails.updatingTaskUUID)) {
-          String msg = "Universe " + taskParams().universeUUID + " is already in error state.";
+          String msg = "Only the last task " + taskParams().previousTaskUUID + " can be retried";
           log.error(msg);
           throw new RuntimeException(msg);
         }
@@ -455,15 +455,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
 
-  public void unlockUniverseForUpdate() {
-    unlockUniverseForUpdate(null);
+  public Universe unlockUniverseForUpdate() {
+    return unlockUniverseForUpdate(null);
   }
 
-  public void unlockUniverseForUpdate(String error) {
+  public Universe unlockUniverseForUpdate(String error) {
     UUID universeUUID = taskParams().universeUUID;
     if (!universeLocked) {
       log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
-      return;
+      return null;
     }
     final String err = error;
     // Create the update lambda.
@@ -485,6 +485,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             if (universeDetails.updateSucceeded) {
               // Clear the task UUID only if the update succeeded.
               universeDetails.updatingTaskUUID = null;
+              universeDetails.firstTry = false;
             }
             universe.setUniverseDetails(universeDetails);
           }
@@ -492,8 +493,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Update the progress flag to false irrespective of the version increment failure.
     // Universe version in master does not need to be updated as this does not change
     // the Universe state. It simply sets updateInProgress flag to false.
-    Universe.saveDetails(universeUUID, updater, false);
+    universe = Universe.saveDetails(universeUUID, updater, false);
     log.trace("Unlocked universe {} for updates.", universeUUID);
+    return universe;
   }
 
   /** Create a task to mark the change on a universe as success. */
@@ -1562,6 +1564,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   return expectedTagValue != null && expectedTagValue.equals(e.getValue().asText());
                 })
             .count();
+    log.info("Expected tags: {}", expectedTags);
     return Optional.of(matchCount == expectedTags.size());
   }
 

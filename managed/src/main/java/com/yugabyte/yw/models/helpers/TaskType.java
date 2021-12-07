@@ -258,7 +258,9 @@ public enum TaskType {
 
   ResetUniverseVersion("subtasks.ResetUniverseVersion"),
 
-  DeleteCertificate("subtasks.DeleteCertificate");
+  DeleteCertificate("subtasks.DeleteCertificate"),
+
+  SetNodeStatus("subtasks.SetNodeStatus");
 
   private String relativeClassPath;
 

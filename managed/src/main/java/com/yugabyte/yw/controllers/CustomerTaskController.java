@@ -7,19 +7,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
-import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -257,8 +252,12 @@ public class CustomerTaskController extends AuthenticatedController {
 
     UniverseTaskParams taskParams = null;
     switch (taskType) {
-      case CreateKubernetesUniverse:
-        taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
+      case CreateUniverse:
+        UniverseDefinitionTaskParams params =
+            Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
+        // Reset the error string.
+        params.setErrorString(null);
+        taskParams = params;
         break;
       default:
         String errMsg =

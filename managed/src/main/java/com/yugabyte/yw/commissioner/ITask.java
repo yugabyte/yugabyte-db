@@ -43,9 +43,6 @@ public interface ITask extends Runnable {
    */
   public void setUserTaskUUID(UUID userTaskUUID);
 
-  /** Returns true if the task can be retried on failure or aborted state. */
-  public boolean isRetryable();
-
   /**
    * Return true if the task can be aborted.
    *
