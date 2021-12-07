@@ -41,7 +41,7 @@ To connect to a cluster via Cloud Shell:
 The `ysqlsh` or `ycqlsh` prompt appears and is ready to use.
 
 ```output
-ysqlsh (11.2-YB-2.2.0.0-b0)
+ysqlsh (11.2-YB-2.6.1.0-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 

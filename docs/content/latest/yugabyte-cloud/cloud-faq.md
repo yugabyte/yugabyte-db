@@ -157,9 +157,9 @@ Cloud Shell
 Client Shell
 : Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
 
-: Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
+: Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
 
-: You must be running the latest versions of the client shells. These are available in Yugabyte Client 2.6 or later, which you can download using the following command on Linux or macOS:
+: You must be running the latest versions of the client shells (Yugabyte Client 2.6 or later), which you can download using the following command on Linux or macOS:
 
     ```sh
     $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
@@ -171,7 +171,17 @@ Client Shell
     docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
     ```
 
-: Please check [cloud.yugabyte.com](https://cloud.yugabyte.com/) to see the latest version.
+psql
+: Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your clusters. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
+
+    ```sh
+    psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
+    --dbname=yugabyte \
+    --set=sslmode=verify-full \
+    --set=sslrootcert=<ROOT_CERT_PATH>
+    ```
+
+: For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
 
 Applications
 : Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps).
