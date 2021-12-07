@@ -11,7 +11,6 @@ import { Col, Row } from 'react-bootstrap';
 import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
 import { Highlighter } from '../../../helpers/Highlighter';
-import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'highlight.js/styles/github.css';
 import { toast } from 'react-toastify';
@@ -99,7 +98,6 @@ class TaskDetail extends Component {
         displayMessage = 'View Less';
         displayIcon = <i className="fa fa-compress"></i>;
       }
-
       return (
         <div className="clearfix">
           <div className="onprem-config__json">{errorElement}</div>
@@ -110,7 +108,7 @@ class TaskDetail extends Component {
             {displayIcon}
             {displayMessage}
           </div>
-          {isNonEmptyString(currentTaskData.title) &&
+          {allowRetry && isNonEmptyString(currentTaskData.title) &&
             currentTaskData.title.includes('Created Universe') && (
               <div
                 className="btn btn-orange text-center pull-right task-detail-button"
@@ -138,11 +136,14 @@ class TaskDetail extends Component {
     if (isNonEmptyArray(failedTasks.data.failedSubTasks)) {
       taskFailureDetails = failedTasks.data.failedSubTasks.map((subTask) => {
         let errorString = <span />;
-        if (subTask.errorString !== 'null') {
+        // Show retry only for the last failed task.
+        if (subTask.subTaskState === 'Failure') {
+          if (subTask.errorString === 'null') {
+            subTask.errorString = "Task failed";
+          }
           let allowRetry = false;
           if (universe) {
-            const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
-            allowRetry = primaryCluster.userIntent.providerType === 'onprem';
+            allowRetry = (taskUUID === universe.universeDetails.updatingTaskUUID);
           }
           errorString = getErrorMessageDisplay(subTask.errorString, taskUUID, allowRetry);
         }

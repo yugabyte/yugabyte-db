@@ -18,6 +18,8 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeStatus;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 
 import java.util.List;
 import javax.inject.Inject;
@@ -75,6 +77,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
       ShellResponse response =
           getNodeManager().nodeCommand(NodeManager.NodeCommandType.Provision, taskParams());
       processShellResponse(response);
+      setNodeStatus(NodeStatus.builder().nodeState(NodeState.ServerSetup).build());
     }
   }
 }

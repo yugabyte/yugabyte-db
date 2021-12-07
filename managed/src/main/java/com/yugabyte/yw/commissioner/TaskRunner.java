@@ -166,7 +166,9 @@ public class TaskRunner implements Runnable {
    * This method does two things. First, it updates the timestamp on the task to indicate progress.
    * Second, it gives the underlying task to checkpoint its work if needed.
    */
-  public void doHeartbeat() {
+  public synchronized void doHeartbeat() {
+    // Sync from the DB.
+    taskInfo.refresh();
     // Set the last updated timestamp of the task to now by force saving it.
     taskInfo.markAsDirty();
     taskInfo.save();
@@ -182,7 +184,6 @@ public class TaskRunner implements Runnable {
     try {
       // Run the task.
       task.run();
-
       // Update the task state to success and checkpoint it.
       updateTaskState(TaskInfo.State.Success);
       writeTaskSuccessMetric(executionStart);
@@ -252,8 +253,10 @@ public class TaskRunner implements Runnable {
    *
    * @param newState
    */
-  private void updateTaskState(TaskInfo.State newState) {
+  private synchronized void updateTaskState(TaskInfo.State newState) {
     LOG.info("Updating task [" + taskInfo.toString() + "] to new state " + newState);
+    // Sync from the DB.
+    taskInfo.refresh();
     taskInfo.setTaskState(newState);
     taskInfo.save();
   }
