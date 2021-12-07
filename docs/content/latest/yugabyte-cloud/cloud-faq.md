@@ -171,8 +171,6 @@ Client Shell
     docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
     ```
 
-: Please check [cloud.yugabyte.com](https://cloud.yugabyte.com/) to see the latest version.
-
 psql
 : Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your YugabyteDB clusters in Yugabyte Cloud. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
 
