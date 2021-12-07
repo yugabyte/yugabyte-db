@@ -781,6 +781,15 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--extra_gflags");
             expectedCommand.add(Json.stringify(Json.toJson(default_gflags)));
           }
+
+          if (processType == ServerType.TSERVER.name()
+              && runtimeConfigFactory
+                      .forUniverse(Universe.getOrBadRequest(configureParams.universeUUID))
+                      .getInt(NodeManager.POSTGRES_MAX_MEM_MB)
+                  > 0) {
+            gflags.put("postmaster_cgroup", NodeManager.YSQL_CGROUP_PATH);
+          }
+
           String gflagsJson = Json.stringify(Json.toJson(gflags));
           expectedCommand.add("--gflags");
           expectedCommand.add(gflagsJson);
@@ -1021,6 +1030,12 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--local_package_path");
             expectedCommand.add(packagePath);
           }
+          expectedCommand.add("--pg_max_mem_mb");
+          expectedCommand.add(
+              Integer.toString(
+                  runtimeConfigFactory
+                      .forUniverse(Universe.getOrBadRequest(params.universeUUID))
+                      .getInt(NodeManager.POSTGRES_MAX_MEM_MB)));
         }
       }
     }
@@ -1252,7 +1267,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 5;
+      int accessKeyIndexOffset = 7;
       if (t.cloudType.equals(Common.CloudType.aws)
           && params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
         accessKeyIndexOffset += 2;
