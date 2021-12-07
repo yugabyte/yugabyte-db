@@ -190,10 +190,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     for (NodeDetails node : nodes) {
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
+      boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
       if (runBeforeStopping) rollingUpgradeLambda.run(singletonNodeList, processType);
       // set leader blacklist and poll
-      if (processType == ServerType.TSERVER && isBlacklistLeaders) {
+      if (processType == ServerType.TSERVER && isBlacklistLeaders && isLeaderBlacklistValidRF) {
         createModifyBlackListTask(
                 Arrays.asList(node), true /* isAdd */, true /* isLeaderBlacklist */)
             .setSubTaskGroupType(subGroupType);
@@ -207,7 +208,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       createWaitForServerReady(node, processType, sleepTime).setSubTaskGroupType(subGroupType);
       createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
       // remove leader blacklist
-      if (processType == ServerType.TSERVER && isBlacklistLeaders) {
+      if (processType == ServerType.TSERVER && isBlacklistLeaders && isLeaderBlacklistValidRF) {
         createModifyBlackListTask(
                 Arrays.asList(node), false /* isAdd */, true /* isLeaderBlacklist */)
             .setSubTaskGroupType(subGroupType);
