@@ -95,6 +95,8 @@ typedef enum OidOptions
 bool		g_verbose;			/* User wants verbose narration of our
 								 * activities. */
 static bool dosync = true;		/* Issue fsync() to make dump durable on disk. */
+static bool pg_tablegroup_exists = false;
+static bool pg_yb_tablegroup_exists = false;
 
 /* subquery used to convert user ID (eg, datdba) to user name */
 static const char *username_subquery;
@@ -199,6 +201,7 @@ static void dumpTrigger(Archive *fout, TriggerInfo *tginfo);
 static void dumpEventTrigger(Archive *fout, EventTriggerInfo *evtinfo);
 static void dumpTable(Archive *fout, TableInfo *tbinfo);
 static void dumpTableSchema(Archive *fout, TableInfo *tbinfo);
+static void dumpTablegroup(Archive *fout, TablegroupInfo *tginfo);
 static void dumpAttrDef(Archive *fout, AttrDefInfo *adinfo);
 static void dumpSequence(Archive *fout, TableInfo *tbinfo);
 static void dumpSequenceData(Archive *fout, TableDataInfo *tdinfo);
@@ -289,6 +292,9 @@ static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static TableInfo *getRootTableInfo(TableInfo *tbinfo);
+static bool pgYbTablegroupTableExists(Archive *fout);
+static bool pgTablegroupTableExists(Archive *fout);
+static bool hasTablegroups(Archive *fout);
 
 static void getYbTableProperties(Archive *fout, YBCPgTableProperties *properties,
 					   TableInfo *tbinfo);
@@ -384,6 +390,8 @@ main(int argc, char **argv)
 		{"no-unlogged-table-data", no_argument, &dopt.no_unlogged_table_data, 1},
 		{"no-subscriptions", no_argument, &dopt.no_subscriptions, 1},
 		{"no-sync", no_argument, NULL, 7},
+		{"no-tablegroups", no_argument, &dopt.no_tablegroups, 1},
+		{"no-tablegroup-creations", no_argument, &dopt.no_tablegroup_creations, 1},
 		{"include-yb-metadata", no_argument, &dopt.include_yb_metadata, 1},
 
 		{NULL, 0, NULL, 0}
@@ -814,6 +822,10 @@ main(int argc, char **argv)
 	if (dopt.include_everything && !dopt.schemaOnly && !dopt.dontOutputBlobs)
 		dopt.outputBlobs = true;
 
+	/* Update pg_tablegroup existence variables */
+	pg_yb_tablegroup_exists = pgYbTablegroupTableExists(fout);
+	pg_tablegroup_exists = pgTablegroupTableExists(fout);
+
 	/*
 	 * Now scan the database and create DumpableObject structs for all the
 	 * objects we intend to dump.
@@ -1022,6 +1034,8 @@ help(const char *progname)
 	printf(_("  --no-subscriptions           do not dump subscriptions\n"));
 	printf(_("  --no-synchronized-snapshots  do not use synchronized snapshots in parallel jobs\n"));
 	printf(_("  --no-tablespaces             do not dump tablespace assignments\n"));
+	printf(_("  --no-tablegroups             do not dump tablegroup assignments or creations\n"));
+	printf(_("  --no-tablegroup-creations    do not dump tablegroup creations\n"));
 	printf(_("  --no-unlogged-table-data     do not dump unlogged table data\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
@@ -5888,6 +5902,80 @@ getFuncs(Archive *fout, int *numFuncs)
 }
 
 /*
+ * pgYbTablegroupTableExists returns true if the pg_yb_tablegroup table has been created.
+ */
+static bool pgYbTablegroupTableExists(Archive *fout) {
+	PQExpBuffer query = createPQExpBuffer();
+	PGresult   *res;
+
+	appendPQExpBuffer(query,
+					  "SELECT 1 FROM pg_class WHERE relname = 'pg_yb_tablegroup' "
+					  "AND relnamespace = 'pg_catalog'::regnamespace");
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+
+	bool exists = (PQntuples(res) == 1);
+
+	destroyPQExpBuffer(query);
+	PQclear(res);
+
+	return exists;
+}
+
+/*
+ * pgTablegroupTableExists returns true if the pg_tablegroup table has been created.
+ */
+static bool pgTablegroupTableExists(Archive *fout) {
+	PQExpBuffer query = createPQExpBuffer();
+	PGresult   *res;
+
+	appendPQExpBuffer(query,
+					  "SELECT 1 FROM pg_class WHERE relname = 'pg_tablegroup' "
+					  "AND relnamespace = 'pg_catalog'::regnamespace");
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+
+	bool exists = (PQntuples(res) == 1);
+
+	destroyPQExpBuffer(query);
+	PQclear(res);
+
+	return exists;
+}
+
+/*
+ * hasTablegroups returns true if tablegroups have been created.
+ * If pgYbTablegroupExists, it will check the pg_yb_tablegroup table for
+ * tablegroups. Otherwise, and if pgTablegroupExists, it will check the
+ * pg_tablegroup table. This table might exist if the latest migrations have
+ * not been run yet.
+ * Otherwise, it will return false.
+ */
+static bool hasTablegroups(Archive *fout) {
+	PQExpBuffer query;
+	PGresult   *res;
+
+	if (!pg_yb_tablegroup_exists && !pg_tablegroup_exists)
+		return false;
+
+	query = createPQExpBuffer();
+
+	if (pg_yb_tablegroup_exists)
+		appendPQExpBuffer(query, "SELECT 1 FROM pg_yb_tablegroup LIMIT 1");
+	else
+		appendPQExpBuffer(query, "SELECT 1 FROM pg_tablegroup LIMIT 1");
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+
+	bool has_rows = (PQntuples(res) == 1);
+
+	destroyPQExpBuffer(query);
+	PQclear(res);
+
+	return has_rows;
+}
+
+/*
  * getTables
  *	  read all the tables (no indexes)
  * in the system catalogs return them in the TableInfo* structure
@@ -5941,6 +6029,7 @@ getTables(Archive *fout, int *numTables)
 	int			i_partkeydef;
 	int			i_ispartition;
 	int			i_partbound;
+	int			i_tablegroup_oid;
 
 	/*
 	 * Find all the tables and table-like objects.
@@ -6008,6 +6097,9 @@ getTables(Archive *fout, int *numTables)
 						attinitracl_subquery, "at.attacl", "c.relowner", "'c'",
 						dopt->binary_upgrade);
 
+		bool should_dump_tablegroups = fout->dopt->include_yb_metadata &&
+									   !fout->dopt->no_tablegroups && hasTablegroups(fout);
+
 		appendPQExpBuffer(query,
 						  "SELECT c.tableoid, c.oid, c.relname, "
 						  "%s AS relacl, %s as rrelacl, "
@@ -6021,12 +6113,28 @@ getTables(Archive *fout, int *numTables)
 						  "tc.relfrozenxid AS tfrozenxid, "
 						  "tc.relminmxid AS tminmxid, "
 						  "c.relpersistence, c.relispopulated, "
-						  "c.relreplident, c.relpages, "
+						  "c.relreplident, c.relpages, ",
+						  acl_subquery->data,
+						  racl_subquery->data,
+						  initacl_subquery->data,
+						  initracl_subquery->data,
+						  username_subquery);
+		if (should_dump_tablegroups)
+			appendPQExpBuffer(query, "options_table.option_value AS tablegroup_oid, ");
+		else
+			appendPQExpBuffer(query, "0 AS tablegroup_oid, ");
+		appendPQExpBuffer(query,
 						  "CASE WHEN c.reloftype <> 0 THEN c.reloftype::pg_catalog.regtype ELSE NULL END AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
 						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = c.reltablespace) AS reltablespace, "
-						  "array_remove(array_remove(c.reloptions,'check_option=local'),'check_option=cascaded') AS reloptions, "
+						  "array_remove(array_remove(");
+		if (should_dump_tablegroups)
+			appendPQExpBuffer(query, "array_remove(c.reloptions,'tablegroup='||options_table.option_value), ");
+		else
+			appendPQExpBuffer(query, "c.reloptions,");
+		appendPQExpBuffer(query,
+						  "  'check_option=local'),'check_option=cascaded') AS reloptions, "
 						  "CASE WHEN 'check_option=local' = ANY (c.reloptions) THEN 'LOCAL'::text "
 						  "WHEN 'check_option=cascaded' = ANY (c.reloptions) THEN 'CASCADED'::text ELSE NULL END AS checkoption, "
 						  "tc.reloptions AS toast_reloptions, "
@@ -6045,7 +6153,19 @@ getTables(Archive *fout, int *numTables)
 						  "%s AS partkeydef, "
 						  "%s AS ispartition, "
 						  "%s AS partbound "
-						  "FROM pg_class c "
+						  "FROM pg_class c ",
+						  RELKIND_SEQUENCE,
+						  attacl_subquery->data,
+						  attracl_subquery->data,
+						  attinitacl_subquery->data,
+						  attinitracl_subquery->data,
+						  partkeydef,
+						  ispartition,
+						  partbound);
+		if (should_dump_tablegroups)
+			appendPQExpBuffer(query, "LEFT JOIN pg_options_to_table(c.reloptions) options_table ON "
+						  	  "option_name = 'tablegroup' ");
+		appendPQExpBuffer(query,
 						  "LEFT JOIN pg_depend d ON "
 						  "(c.relkind = '%c' AND "
 						  "d.classid = c.tableoid AND d.objid = c.oid AND "
@@ -6058,19 +6178,6 @@ getTables(Archive *fout, int *numTables)
 						  "AND pip.objsubid = 0) "
 						  "WHERE c.relkind in ('%c', '%c', '%c', '%c', '%c', '%c', '%c') "
 						  "ORDER BY c.oid",
-						  acl_subquery->data,
-						  racl_subquery->data,
-						  initacl_subquery->data,
-						  initracl_subquery->data,
-						  username_subquery,
-						  RELKIND_SEQUENCE,
-						  attacl_subquery->data,
-						  attracl_subquery->data,
-						  attinitacl_subquery->data,
-						  attinitracl_subquery->data,
-						  partkeydef,
-						  ispartition,
-						  partbound,
 						  RELKIND_SEQUENCE,
 						  RELKIND_RELATION, RELKIND_SEQUENCE,
 						  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE,
@@ -6108,6 +6215,7 @@ getTables(Archive *fout, int *numTables)
 						  "tc.relminmxid AS tminmxid, "
 						  "c.relpersistence, c.relispopulated, "
 						  "c.relreplident, c.relpages, "
+						  "0 AS tablegroup_oid, "
 						  "CASE WHEN c.reloftype <> 0 THEN c.reloftype::pg_catalog.regtype ELSE NULL END AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
@@ -6157,6 +6265,7 @@ getTables(Archive *fout, int *numTables)
 						  "tc.relminmxid AS tminmxid, "
 						  "c.relpersistence, c.relispopulated, "
 						  "c.relreplident, c.relpages, "
+						  "0 AS tablegroup_oid, "
 						  "CASE WHEN c.reloftype <> 0 THEN c.reloftype::pg_catalog.regtype ELSE NULL END AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
@@ -6206,6 +6315,7 @@ getTables(Archive *fout, int *numTables)
 						  "tc.relminmxid AS tminmxid, "
 						  "c.relpersistence, c.relispopulated, "
 						  "'d' AS relreplident, c.relpages, "
+						  "0 AS tablegroup_oid, "
 						  "CASE WHEN c.reloftype <> 0 THEN c.reloftype::pg_catalog.regtype ELSE NULL END AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
@@ -6255,6 +6365,7 @@ getTables(Archive *fout, int *numTables)
 						  "0 AS tminmxid, "
 						  "c.relpersistence, 't' as relispopulated, "
 						  "'d' AS relreplident, c.relpages, "
+						  "0 AS tablegroup_oid, "
 						  "CASE WHEN c.reloftype <> 0 THEN c.reloftype::pg_catalog.regtype ELSE NULL END AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
@@ -6302,6 +6413,7 @@ getTables(Archive *fout, int *numTables)
 						  "0 AS tminmxid, "
 						  "'p' AS relpersistence, 't' as relispopulated, "
 						  "'d' AS relreplident, c.relpages, "
+						  "0 AS tablegroup_oid, "
 						  "CASE WHEN c.reloftype <> 0 THEN c.reloftype::pg_catalog.regtype ELSE NULL END AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
@@ -6348,6 +6460,7 @@ getTables(Archive *fout, int *numTables)
 						  "0 AS tminmxid, "
 						  "'p' AS relpersistence, 't' as relispopulated, "
 						  "'d' AS relreplident, c.relpages, "
+						  "0 AS tablegroup_oid, "
 						  "NULL AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
@@ -6394,6 +6507,7 @@ getTables(Archive *fout, int *numTables)
 						  "0 AS tminmxid, "
 						  "'p' AS relpersistence, 't' as relispopulated, "
 						  "'d' AS relreplident, c.relpages, "
+						  "0 AS tablegroup_oid, "
 						  "NULL AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
@@ -6439,6 +6553,7 @@ getTables(Archive *fout, int *numTables)
 						  "0 AS tfrozenxid, 0 AS tminmxid,"
 						  "'p' AS relpersistence, 't' as relispopulated, "
 						  "'d' AS relreplident, relpages, "
+						  "0 AS tablegroup_oid, "
 						  "NULL AS reloftype, "
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
@@ -6518,6 +6633,7 @@ getTables(Archive *fout, int *numTables)
 	i_partkeydef = PQfnumber(res, "partkeydef");
 	i_ispartition = PQfnumber(res, "ispartition");
 	i_partbound = PQfnumber(res, "partbound");
+	i_tablegroup_oid = PQfnumber(res, "tablegroup_oid");
 
 	if (dopt->lockWaitTimeout)
 	{
@@ -6587,6 +6703,10 @@ getTables(Archive *fout, int *numTables)
 		else
 			tblinfo[i].checkoption = pg_strdup(PQgetvalue(res, i, i_checkoption));
 		tblinfo[i].toast_reloptions = pg_strdup(PQgetvalue(res, i, i_toastreloptions));
+		if (PQgetisnull(res, i, i_tablegroup_oid))
+			tblinfo[i].tablegroup_oid = InvalidOid;
+		else
+			tblinfo[i].tablegroup_oid = atooid(PQgetvalue(res, i, i_tablegroup_oid));
 
 		/* other fields were zeroed above */
 
@@ -6668,6 +6788,118 @@ getTables(Archive *fout, int *numTables)
 	destroyPQExpBuffer(query);
 
 	return tblinfo;
+}
+
+
+/*
+ * getTablegroups:
+ *	  read all user-defined tablegroups in the system catalogs and return
+ *	  them in the TablegroupInfo* structure
+ *
+ *	numTablegroups is set to the number of tablegroups read in
+ */
+TablegroupInfo *
+getTablegroups(Archive *fout, int *numTablegroups)
+{
+	PGresult   *res;
+	int			ntups;
+	int			i;
+	PQExpBuffer query;
+	TablegroupInfo *tbinfo;
+	int			i_grpname;
+	int			i_oid;
+	int			i_grpowner;
+	int			i_grpacl;
+	int			i_grpracl;
+	int			i_grpinitacl;
+	int			i_grpinitracl;
+	int			i_grpoptions;
+
+	if (!pg_yb_tablegroup_exists && !pg_tablegroup_exists)
+	{
+		*numTablegroups = 0;
+		return NULL;
+	}
+
+	query = createPQExpBuffer();
+
+	Assert(fout->remoteVersion >= 90600);
+	PQExpBuffer acl_subquery = createPQExpBuffer();
+	PQExpBuffer racl_subquery = createPQExpBuffer();
+	PQExpBuffer init_acl_subquery = createPQExpBuffer();
+	PQExpBuffer init_racl_subquery = createPQExpBuffer();
+
+	buildACLQueries(acl_subquery, racl_subquery, init_acl_subquery,
+					init_racl_subquery, "tg.grpacl", "tg.grpowner", "'g'",
+					fout->dopt->binary_upgrade);
+
+	/* Select all tablegroups from pg_tablegroup or pg_yb_tablegroup table */
+	appendPQExpBuffer(query,
+						"SELECT grpname, tg.oid, grpoptions, "
+						"(%s grpowner) AS owner, "
+						"%s AS acl, "
+						"%s AS racl, "
+						"%s AS initacl, "
+						"%s AS initracl "
+						"FROM %s AS tg "
+						"LEFT JOIN pg_init_privs pip ON "
+						"tg.oid = pip.objoid",
+						username_subquery,
+						acl_subquery->data,
+						racl_subquery->data,
+						init_acl_subquery->data,
+						init_racl_subquery->data,
+						pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
+
+	destroyPQExpBuffer(acl_subquery);
+	destroyPQExpBuffer(racl_subquery);
+	destroyPQExpBuffer(init_acl_subquery);
+	destroyPQExpBuffer(init_racl_subquery);
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+	*numTablegroups = ntups;
+
+	tbinfo = (TablegroupInfo *) pg_malloc(ntups * sizeof(TablegroupInfo));
+
+	i_grpname = PQfnumber(res, "grpname");
+	i_oid = PQfnumber(res, "oid");
+	i_grpowner = PQfnumber(res, "owner");
+	i_grpoptions = PQfnumber(res, "grpoptions");
+	i_grpacl = PQfnumber(res, "acl");
+	i_grpracl = PQfnumber(res, "racl");
+	i_grpinitacl = PQfnumber(res, "initacl");
+	i_grpinitracl = PQfnumber(res, "initracl");
+
+	for (i = 0; i < ntups; i++)
+	{
+		tbinfo[i].dobj.objType = DO_TABLEGROUP;
+
+		tbinfo[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_oid));
+
+		/* add the object to a global lookup map */
+		AssignDumpId(&tbinfo[i].dobj);
+
+		tbinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_grpname));
+		tbinfo[i].grpowner = pg_strdup(PQgetvalue(res, i, i_grpowner));
+
+		tbinfo[i].grpacl = pg_strdup(PQgetvalue(res, i, i_grpacl));
+		tbinfo[i].grpracl = pg_strdup(PQgetvalue(res, i, i_grpracl));
+		tbinfo[i].grpinitacl = pg_strdup(PQgetvalue(res, i, i_grpinitacl));
+		tbinfo[i].grpinitracl = pg_strdup(PQgetvalue(res, i, i_grpinitracl));
+
+		tbinfo[i].grpoptions = pg_strdup(PQgetvalue(res, i, i_grpoptions));
+
+		/* Decide whether we want to dump it */
+		selectDumpableObject(&(tbinfo[i].dobj), fout);
+	}
+
+	PQclear(res);
+
+	destroyPQExpBuffer(query);
+
+	return tbinfo;
 }
 
 /*
@@ -9932,6 +10164,9 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			break;
 		case DO_TABLE:
 			dumpTable(fout, (TableInfo *) dobj);
+			break;
+		case DO_TABLEGROUP:
+			dumpTablegroup(fout, (TablegroupInfo *) dobj);
 			break;
 		case DO_ATTRDEF:
 			dumpAttrDef(fout, (AttrDefInfo *) dobj);
@@ -15551,6 +15786,75 @@ createDummyViewAsClause(Archive *fout, TableInfo *tbinfo)
 }
 
 /*
+ * dumpTablegroup
+ *    write the declaration of one user-defined tablegroup
+ */
+static void
+dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
+{
+	DumpOptions *dopt = fout->dopt;
+
+	/* do nothing, if --no-tablegroups or --no-tablegroup-creation is supplied */
+	if (!dopt->include_yb_metadata || dopt->no_tablegroups || dopt->no_tablegroup_creations)
+		return;
+
+	PQExpBuffer  q = createPQExpBuffer();
+	PQExpBuffer  delq = createPQExpBuffer();
+	char	    *namecopy;
+
+	if (!tginfo->dobj.dump || dopt->dataOnly)
+		return;
+
+	namecopy = pg_strdup(fmtId(tginfo->dobj.name));
+
+	appendPQExpBuffer(q, "CREATE TABLEGROUP %s", namecopy);
+	if (nonemptyReloptions(tginfo->grpoptions))
+	{
+		appendPQExpBufferStr(q, "\nWITH (");
+		appendReloptionsArrayAH(q, tginfo->grpoptions, "", fout);
+		appendPQExpBufferStr(q, ")");
+	}
+	appendPQExpBufferStr(q, ";\n");
+
+	appendPQExpBuffer(delq, "DROP TABLEGROUP %s;\n", namecopy);
+
+	if (tginfo->dobj.dump & DUMP_COMPONENT_DEFINITION)
+		ArchiveEntry(fout,
+					 tginfo->dobj.catId,	/* catalog ID */
+					 tginfo->dobj.dumpId,	/* dump ID */
+					 tginfo->dobj.name,		/* Name */
+					 NULL,  				/* Namespace */
+					 /* TODO: timothy-e: dump tablespaces for tablegroups */
+					 NULL,					/* Tablespace */
+					 tginfo->grpowner,		/* Owner */
+					 false,					/* with oids */
+					 "TABLEGROUP",			/* Desc */
+					 SECTION_PRE_DATA,		/* Section */
+					 q->data,				/* Create */
+					 delq->data,			/* Del */
+					 NULL,					/* Copy */
+					 NULL,					/* Deps */
+					 0,						/* # Deps */
+					 NULL,					/* Dumper */
+					 NULL);					/* Dumper Arg */
+
+	if (tginfo->grpacl && (tginfo->dobj.dump & DUMP_COMPONENT_ACL))
+		dumpACL(fout, tginfo->dobj.catId, tginfo->dobj.dumpId, "LARGE OBJECT",
+				tginfo->dobj.name,
+				NULL, /* subname */
+				NULL, /* Namespace */
+				tginfo->grpowner, /* Owner */
+				tginfo->grpacl, /* ACLs */
+				tginfo->grpracl, /* rACLs */
+				tginfo->grpinitacl, /* initACLs */
+				tginfo->grpinitracl /* initrACLs */);
+
+	destroyPQExpBuffer(q);
+	destroyPQExpBuffer(delq);
+	free(namecopy);
+}
+
+/*
  * dumpTableSchema
  *	  write the declaration (not data) of one user-defined table or view
  */
@@ -15920,9 +16224,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		/*
 		 * Construct the reloptions array for Yugabyte reloptions. If YB is
 		 * disabled, then the array will be empty ('{}').
+		 * If the table is colocated using tablegroups, we don't need to specify
+		 * the table_oid.
 		 */
 		appendPQExpBuffer(yb_reloptions, "{");
-		if (dopt->include_yb_metadata &&
+		if (dopt->include_yb_metadata && tbinfo->tablegroup_oid == InvalidOid &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
 		{
 			/* Get the table properties from YugaByte. */
@@ -16021,6 +16327,16 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				exit_nicely(1);
 			}
 			/* else - single shard table - supported, no need to add anything */
+		}
+
+		if (!dopt->no_tablegroups && dopt->include_yb_metadata &&
+			tbinfo->tablegroup_oid != InvalidOid)
+		{
+			TablegroupInfo *tablegroup = findTablegroupByOid(tbinfo->tablegroup_oid);
+			if (tablegroup == NULL)
+				exit_horribly(NULL, "could not find tablegroup definition with OID %u\n",
+					tbinfo->tablegroup_oid);
+			appendPQExpBuffer(q, "\nTABLEGROUP %s", tablegroup->dobj.name);
 		}
 
 		/* Dump generic options if any */
@@ -18323,6 +18639,7 @@ addBoundaryDependencies(DumpableObject **dobjs, int numObjs,
 			case DO_COLLATION:
 			case DO_CONVERSION:
 			case DO_TABLE:
+			case DO_TABLEGROUP:
 			case DO_ATTRDEF:
 			case DO_PROCLANG:
 			case DO_CAST:
