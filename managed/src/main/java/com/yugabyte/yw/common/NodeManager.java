@@ -85,6 +85,8 @@ public class NodeManager extends DevopsBase {
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
   static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
+  static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
+  static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
   static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
   static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
 
@@ -702,6 +704,9 @@ public class NodeManager extends DevopsBase {
           "pgsql_proxy_webserver_port",
           Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
     }
+    if (runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB) > 0) {
+      gflags.put("postmaster_cgroup", YSQL_CGROUP_PATH);
+    }
     return gflags;
   }
 
@@ -1200,6 +1205,7 @@ public class NodeManager extends DevopsBase {
   }
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
+    Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     Path bootScriptFile = null;
@@ -1434,6 +1440,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--install_python");
           }
 
+          commandArgs.add("--pg_max_mem_mb");
+          commandArgs.add(
+              Integer.toString(
+                  runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
           break;
         }
       case Configure:

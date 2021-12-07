@@ -13,6 +13,7 @@
       - use_chrony is defined
       - mount_points is defined
       - systemd_option is defined
+      - pg_max_mem_mb is defined
 
 - name: Do we need chrony?
   set_fact:
@@ -137,7 +138,7 @@
 
 - include_tasks: "setup-cgroup.yml"
   # setting up cgroup on YB DB nodes requires installing additional packages from external repos.
-  when: not air_gap
+  when: not air_gap and pg_max_mem_mb > 0
 
 - block:
   # Give yugabyte user sudo access to start/stop/restart master and tserver

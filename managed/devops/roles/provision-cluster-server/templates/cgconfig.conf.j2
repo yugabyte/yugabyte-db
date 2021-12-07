@@ -11,7 +11,7 @@ group ysql{
   }
   memory{
     cgroup.clone_children=1;
-    memory.limit_in_bytes={{ (ansible_memory_mb.real.total*ysql_cgroup_mem_fraction)|int }}M;
-    memory.memsw.limit_in_bytes={{ (ansible_memory_mb.real.total*ysql_cgroup_mem_fraction)|int }}M;
+    memory.limit_in_bytes={{ pg_max_mem_mb }}M;
+    memory.memsw.limit_in_bytes={{ pg_max_mem_mb }}M;
   }
 }
