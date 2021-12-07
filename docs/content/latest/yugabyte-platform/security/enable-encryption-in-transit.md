@@ -176,7 +176,7 @@ You rotate the existing custom certificates and replace them with new database n
 
 - Navigate to the universe for which you are rotating the keys.
 
-- Select **Actions > Edit Security**, as shown in the following illustration. <br>
+- Select **Actions > Edit Security**, as shown in the following illustration:<br><br>
 
   ![edit-security](/images/yp/encryption-in-transit/edit-security.png)   
 
