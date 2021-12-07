@@ -452,10 +452,12 @@ public class PlacementInfoUtil {
                     cluster.clusterType,
                     cluster.userIntent,
                     cluster.userIntent.replicationFactor,
+                    allowGeoPartitioning,
                     defaultRegionUUID)
                 : cluster.placementInfo;
         LOG.info("Placement created={}.", cluster.placementInfo);
-        configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster);
+        configureNodeStates(
+            taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster, allowGeoPartitioning);
 
         return;
       }
@@ -475,9 +477,11 @@ public class PlacementInfoUtil {
               cluster.clusterType,
               cluster.userIntent,
               cluster.userIntent.replicationFactor,
+              allowGeoPartitioning,
               defaultRegionUUID);
       LOG.info("Placement created={}.", cluster.placementInfo);
-      configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster);
+      configureNodeStates(
+          taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster, allowGeoPartitioning);
 
       return;
     }
@@ -493,7 +497,7 @@ public class PlacementInfoUtil {
     // If user AZ Selection is made for Edit get a new configuration from placement info.
     if (taskParams.userAZSelected && universe != null) {
       mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
-      configureNodeStates(taskParams, universe, mode, cluster);
+      configureNodeStates(taskParams, universe, mode, cluster, allowGeoPartitioning);
 
       return;
     }
@@ -590,7 +594,11 @@ public class PlacementInfoUtil {
         } else {
           cluster.placementInfo =
               getPlacementInfo(
-                  cluster.clusterType, cluster.userIntent, num_zones_intended, defaultRegionUUID);
+                  cluster.clusterType,
+                  cluster.userIntent,
+                  num_zones_intended,
+                  allowGeoPartitioning,
+                  defaultRegionUUID);
           LOG.info("New placement has {} zones.", getNumZones(cluster.placementInfo));
           taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
           mode = ConfigureNodesMode.NEW_CONFIG;
@@ -619,7 +627,11 @@ public class PlacementInfoUtil {
                 .sum();
         cluster.placementInfo =
             getPlacementInfo(
-                cluster.clusterType, cluster.userIntent, num_zones_intended, defaultRegionUUID);
+                cluster.clusterType,
+                cluster.userIntent,
+                num_zones_intended,
+                allowGeoPartitioning,
+                defaultRegionUUID);
         changeNodeStates = true;
       } else {
         String newInstType = cluster.userIntent.instanceType;
@@ -646,12 +658,14 @@ public class PlacementInfoUtil {
     }
 
     // Compute the node states that should be configured for this operation.
-    configureNodeStates(taskParams, universe, mode, cluster);
+    configureNodeStates(taskParams, universe, mode, cluster, allowGeoPartitioning);
   }
 
-  public static void setPerAZRF(PlacementInfo placementInfo, int rf) {
-    LOG.info("Setting per AZ replication factor.");
+  @VisibleForTesting
+  static void setPerAZRF(PlacementInfo placementInfo, int rf, UUID defaultRegionUUID) {
+    LOG.info("Setting per AZ replication factor. Default region {}", defaultRegionUUID);
     List<PlacementAZ> sortedAZs = getAZsSortedByNumNodes(placementInfo.cloudList);
+    int numNodesInUniverse = sortedAZs.stream().map(az -> az.numNodesInAZ).reduce(0, Integer::sum);
 
     // Reset per-AZ RF to 0
     placementInfo
@@ -661,18 +675,76 @@ public class PlacementInfoUtil {
         .flatMap(region -> region.azList.stream())
         .forEach(az -> az.replicationFactor = 0);
 
-    // Set per-AZ RF according to node distribution across AZs
-    for (int i = 0; i < rf; i++) {
-      PlacementAZ az = sortedAZs.get(i % sortedAZs.size());
+    if (defaultRegionUUID != null) {
+      // If default region is set, placing replicas only in its zones (removing all
+      // other zones).
+      placementInfo
+          .cloudList
+          .stream()
+          .flatMap(cloud -> cloud.regionList.stream())
+          .filter(region -> !defaultRegionUUID.equals(region.uuid))
+          .flatMap(region -> region.azList.stream())
+          .forEach(az -> sortedAZs.remove(az));
+      LOG.info("AZs left after applying default region {}", sortedAZs.size());
+    }
+    if (sortedAZs.size() == 0) {
+      throw new IllegalArgumentException("Unable to place replicas, no zones available.");
+    }
+
+    // Converting sortedAZs to list of pairs <region UUID, PlacementAZ from
+    // placementInfo>. Zones order remains the same.
+    List<Pair<UUID, PlacementAZ>> sortedAZPlacements = new ArrayList<>();
+    for (PlacementAZ az : sortedAZs) {
       for (PlacementCloud cloud : placementInfo.cloudList) {
         for (PlacementRegion region : cloud.regionList) {
           for (PlacementAZ placementAZ : region.azList) {
             if (placementAZ.uuid.equals(az.uuid)) {
-              placementAZ.replicationFactor += 1;
+              sortedAZPlacements.add(new Pair<>(region.uuid, placementAZ));
             }
           }
         }
       }
+    }
+
+    // Placing replicas in each region at first.
+    int placedReplicas = 0;
+    Set<UUID> regionsWithReplicas = new HashSet<>();
+    for (Pair<UUID, PlacementAZ> az : sortedAZPlacements) {
+      if (placedReplicas >= rf) {
+        break;
+      }
+      if (!regionsWithReplicas.contains(az.getFirst())) {
+        az.getSecond().replicationFactor++;
+        placedReplicas++;
+        regionsWithReplicas.add(az.getFirst());
+      }
+    }
+
+    // Filling zero gaps.
+    for (Pair<UUID, PlacementAZ> az : sortedAZPlacements) {
+      if (placedReplicas >= rf) {
+        break;
+      }
+      if (az.getSecond().replicationFactor == 0) {
+        az.getSecond().replicationFactor++;
+        placedReplicas++;
+      }
+    }
+
+    // Set per-AZ RF according to node distribution across AZs.
+    // We already have one replica in each region. Now placing other.
+    int i = 0;
+    while ((placedReplicas < rf) && (i < numNodesInUniverse)) {
+      Pair<UUID, PlacementAZ> az = sortedAZPlacements.get(i % sortedAZs.size());
+      if (az.getSecond().replicationFactor < az.getSecond().numNodesInAZ) {
+        az.getSecond().replicationFactor++;
+        placedReplicas++;
+      }
+      i++;
+    }
+
+    if (placedReplicas < rf) {
+      throw new IllegalArgumentException("Unable to place replicas, not enough nodes in zones.");
     }
   }
 
@@ -1321,7 +1393,8 @@ public class PlacementInfoUtil {
    *
    * @param taskParams
    */
-  public static void configureNodeEditUsingPlacementInfo(UniverseDefinitionTaskParams taskParams) {
+  public static void configureNodeEditUsingPlacementInfo(
+      UniverseDefinitionTaskParams taskParams, boolean allowGeoPartitioning) {
     // TODO: this only works for a case when we have one read replica,
     // if we have more than one we need to revisit this logic.
     Cluster currentCluster =
@@ -1351,6 +1424,7 @@ public class PlacementInfoUtil {
               currentCluster.clusterType,
               currentCluster.userIntent,
               num_zones_intended,
+              allowGeoPartitioning,
               getDefaultRegion(taskParams));
       configureDefaultNodeStates(currentCluster, taskParams.nodeDetailsSet, universe);
     } else {
@@ -1630,7 +1704,8 @@ public class PlacementInfoUtil {
       UniverseDefinitionTaskParams taskParams,
       Universe universe,
       PlacementInfoUtil.ConfigureNodesMode mode,
-      Cluster cluster) {
+      Cluster cluster,
+      boolean allowGeoPartitioning) {
     switch (mode) {
       case NEW_CONFIG:
         // This case covers create universe and full move edit.
@@ -1648,13 +1723,14 @@ public class PlacementInfoUtil {
         updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
         break;
       case NEW_CONFIG_FROM_PLACEMENT_INFO:
-        configureNodeEditUsingPlacementInfo(taskParams);
+        configureNodeEditUsingPlacementInfo(taskParams, allowGeoPartitioning);
     }
 
     removeUnusedPlacementAZs(cluster.placementInfo);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
-    setPerAZRF(cluster.placementInfo, cluster.userIntent.replicationFactor);
+    setPerAZRF(
+        cluster.placementInfo, cluster.userIntent.replicationFactor, getDefaultRegion(taskParams));
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
     finalSanityCheckConfigure(
         cluster,
@@ -2272,7 +2348,11 @@ public class PlacementInfoUtil {
   // Returns the AZ placement info for the node in the user intent. It chooses a maximum of
   // RF zones for the placement.
   public static PlacementInfo getPlacementInfo(
-      ClusterType clusterType, UserIntent userIntent, int intentZones, UUID defaultRegionUUID) {
+      ClusterType clusterType,
+      UserIntent userIntent,
+      int intentZones,
+      boolean allowGeoPartitioning,
+      UUID defaultRegionUUID) {
     if (userIntent == null) {
       LOG.info("No placement due to null userIntent.");
 
@@ -2292,9 +2372,6 @@ public class PlacementInfoUtil {
           BAD_REQUEST,
           "Preferred region " + userIntent.preferredRegion + " not in user region list.");
     }
-
-    // Create the placement info object.
-    PlacementInfo placementInfo = new PlacementInfo();
 
     // We would group the zones by region and the corresponding nodes, and use
     // this map for subsequent calls, instead of recomputing the list every time.
@@ -2355,6 +2432,9 @@ public class PlacementInfoUtil {
         allAzsInRegions.size(),
         num_zones);
 
+    // Create the placement info object.
+    PlacementInfo placementInfo = new PlacementInfo();
+
     // Case (1) Set min_num_replicas = RF
     if (num_zones == 1) {
       addPlacementZone(
@@ -2389,7 +2469,7 @@ public class PlacementInfoUtil {
     addPlacementZone(zone, placementInfo, 1 /* rf */, 1 /* numNodes */);
   }
 
-  public static void addPlacementZone(
+  private static void addPlacementZone(
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes) {
     addPlacementZone(zone, placementInfo, rf, numNodes, true);
   }
@@ -2400,7 +2480,14 @@ public class PlacementInfoUtil {
     AvailabilityZone az = AvailabilityZone.get(zone);
     Region region = az.region;
     Provider cloud = region.provider;
-    LOG.trace("provider: {}", cloud.uuid);
+    LOG.trace(
+        "provider {} ({}), region {} ({}), zone {} ({})",
+        cloud.code,
+        cloud.uuid,
+        region.code,
+        region.uuid,
+        az.code,
+        az.uuid);
     // Find the placement cloud if it already exists, or create a new one if one does not exist.
     PlacementCloud placementCloud =
         placementInfo
