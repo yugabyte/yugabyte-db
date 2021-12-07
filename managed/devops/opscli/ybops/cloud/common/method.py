@@ -402,6 +402,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Disable running the ansible task for using custom SSH.")
         self.parser.add_argument("--install_python", action="store_true", default=False,
                                  help="Flag to set if host OS needs python installed for Ansible.")
+        self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
+                                 help="Max memory for postgress process.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -436,6 +438,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
         if args.remote_package_path:
             self.extra_vars.update({"remote_package_path": args.remote_package_path})
+        if args.pg_max_mem_mb:
+            self.extra_vars.update({"pg_max_mem_mb": args.pg_max_mem_mb})
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
