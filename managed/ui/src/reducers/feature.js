@@ -17,7 +17,7 @@ const initialStateFeatureReleased = {
   adminAlertsConfig: true,
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
-  enableXCluster: false,
+  enableXCluster: true,
   enableGeoPartitioning: false,
   enableHCVault: false
 };
