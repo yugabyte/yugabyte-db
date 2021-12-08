@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.SortBy;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -120,17 +121,30 @@ public class AlertService {
 
   @Transactional
   public List<Alert> markResolved(AlertFilter filter) {
-    AlertFilter notResolved =
-        filter.toBuilder().state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
+    AlertFilter notResolved = filter.toBuilder().states(State.getFiringStates()).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
             .peek(
                 alert -> {
-                  alert.setState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
-                  if (alert.getNotifiedState() != Alert.State.ACKNOWLEDGED) {
+                  boolean wasInitiallySuspended =
+                      alert.getState() == State.SUSPENDED
+                          && alert.getNotifiedState() == null
+                          && alert.getNotificationsFailed() == 0;
+                  if (alert.getNotifiedState() != Alert.State.ACKNOWLEDGED
+                      && !wasInitiallySuspended) {
+                    // Don't send resolved notification in case alert was acknowledged,
+                    // or it was suspended by maintenance window and there was no attempt
+                    // to send active notification - means it was fired right before or
+                    // during maintenance window
                     alert.setNextNotificationTime(nowWithoutMillis());
+                  } else {
+                    log.debug(
+                        "Alert {}({}) was acknowledged or initially suspended - skip notification",
+                        alert.getName(),
+                        alert.getUuid());
                   }
+                  alert.setState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
                 })
             .collect(Collectors.toList());
     return save(resolved);
@@ -138,7 +152,7 @@ public class AlertService {
 
   @Transactional
   public List<Alert> acknowledge(AlertFilter filter) {
-    AlertFilter notResolved = filter.toBuilder().state(Alert.State.ACTIVE).build();
+    AlertFilter notResolved = filter.toBuilder().state(Alert.State.ACTIVE, State.SUSPENDED).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
@@ -171,8 +185,7 @@ public class AlertService {
   }
 
   public List<Alert> listNotResolved(AlertFilter filter) {
-    AlertFilter notResolved =
-        filter.toBuilder().state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
+    AlertFilter notResolved = filter.toBuilder().states(State.getFiringStates()).build();
     return list(notResolved);
   }
 
@@ -192,7 +205,7 @@ public class AlertService {
       return;
     }
     alert.delete();
-    log.trace("Alert {} deleted", uuid);
+    log.trace("Alert {}({}) deleted", alert.getName(), uuid);
   }
 
   @Transactional
@@ -203,13 +216,28 @@ public class AlertService {
   }
 
   /**
-   * Required to make alert labels consistent between definition based alerts and manual alerts.
-   * Will only need to insert definition related labels once all alerts will have underlying
-   * definition.
+   * Adds labels from alert fields. Also triggers/removes notification for suspended and
+   * un-suspended alerts.
    */
   private Alert prepareForSave(Alert alert, Alert before) {
     if (before != null) {
       alert.setCreateTime(before.getCreateTime());
+      if (before.getState() == State.SUSPENDED
+          && alert.getState() == State.ACTIVE
+          && alert.getNotifiedState() == null) {
+        log.debug(
+            "Alert {}({}) was initially suspended, and became active - schedule notification",
+            alert.getName(),
+            alert.getUuid());
+        // Alert was initially suspended and became active - need to notify.
+        alert.setNextNotificationTime(nowWithoutMillis());
+      }
+    } else {
+      // Alert is initially suspended
+      if (alert.getState() == State.SUSPENDED) {
+        log.debug("Alert {} is suspended - skip notification", alert.getName());
+        alert.setNextNotificationTime(null);
+      }
     }
     return alert
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, alert.getCustomerUUID().toString())

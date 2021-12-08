@@ -77,6 +77,8 @@ public enum PlatformMetrics {
   ALERT_QUERY_UPDATED_ALERTS("Number of updated active alerts", Unit.COUNT),
   ALERT_QUERY_RESOLVED_ALERTS("Number of resolved alerts", Unit.COUNT),
   ALERT_CONFIG_WRITER_STATUS("Alerting rules configuration writer status", Unit.STATUS),
+  ALERT_MAINTENANCE_WINDOW_PROCESSOR_STATUS(
+      "Maintenance windows alert processor status", Unit.STATUS),
   ALERT_CONFIG_SYNC_FAILED("Number of config sync failures", Unit.COUNT),
   ALERT_CONFIG_WRITTEN("Alert rule files written", Unit.COUNT),
   ALERT_CONFIG_REMOVED("Alert rule files removed", Unit.COUNT),
