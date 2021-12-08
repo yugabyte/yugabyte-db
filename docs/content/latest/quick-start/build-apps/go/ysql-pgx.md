@@ -4,10 +4,10 @@ headerTitle: Build a Go application
 linkTitle: Go
 description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations.
 menu:
-  stable:
+  latest:
     parent: build-apps
     name: Go
-    identifier: go-2
+    identifier: go-1
     weight: 552
 type: page
 isTocNested: true
@@ -16,13 +16,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../ysql-pgx/" class="nav-link">
+    <a href="../ysql-pgx/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PGX
     </a>
   </li>
   <li >
-    <a href="../ysql-pq/" class="nav-link active">
+    <a href="../ysql-pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PQ
     </a>
@@ -47,7 +47,7 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [pq driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
+The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [pgx driver](https://pkg.go.dev/github.com/jackc/pgx), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
 
 ## Prerequisites
 
@@ -55,7 +55,7 @@ This tutorial assumes that:
 
 - YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [Yugabyte Cloud](http://cloud.yugabyte.com/register) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
-- [Go version 1.8](https://golang.org/dl/), or later, is installed.
+- [Go version 1.15](https://golang.org/dl/), or later, is installed.
 
 ### SSL/TLS configuration
 
@@ -82,9 +82,9 @@ The following table summarizes the SSL modes and their support in the driver:
 | SSL Mode | Client driver behavior |
 | :--------- | :---------------- |
 | disable | Supported |
-| allow | Not supported |
-| prefer | Not supported |
-| require (default) | Supported |
+| allow | Supported |
+| prefer (default) | Supported |
+| require | Supported |
 | verify-ca | Supported |
 | verify-full | Supported |
 
@@ -92,17 +92,15 @@ Yugabyte Cloud requires SSL/TLS, and connections using SSL mode `disable` will f
 
 ### Go PostgreSQL driver
 
-The [Go PostgreSQL driver package (`pq`)](https://godoc.org/github.com/lib/pq) is a Go PostgreSQL driver for the `database/sql` package.
+The [Go PostgreSQL driver package (`pgx`)](https://pkg.go.dev/github.com/jackc/pgx) is a Go driver and toolkit for PostgreSQL. The current release of `pgx v4` requires Go modules.
 
 To install the package locally, run the following commands:
 
-{{< note title="Note">}}
-Set the  environment variable `GO111MODULE` before installing the `lib/pq` package if your Go version is 1.11 or higher.
-{{< /note >}}
-
 ```sh
-$ export GO111MODULE=auto
-$ go get github.com/lib/pq
+$ mkdir yb-pgx
+$ cd yb-pgx
+$ go mod init hello
+$ go get github.com/jackc/pgx/v4
 ```
 
 ## Create the sample Go application
@@ -113,11 +111,12 @@ Create a file `ybsql_hello_world.go` and copy the contents below.
 package main
 
 import (
-  "database/sql"
+  "context"
   "fmt"
   "log"
+  "os"
 
-  _ "github.com/lib/pq"
+  "github.com/jackc/pgx/v4"
 )
 
 const (
@@ -129,34 +128,39 @@ const (
 )
 
 func main() {
-    psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
-                            host, port, user, password, dbname)
-    // Other connection configs are read from the standard environment variables:
-    // PGSSLMODE, PGSSLROOTCERT, and so on.
-    db, err := sql.Open("postgres", psqlInfo)
+    // SSL/TLS config is read from env variables PGSSLMODE and PGSSLROOTCERT, if provided.
+    url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
+                       user, password, host, port, dbname)
+    conn, err := pgx.Connect(context.Background(), url)
     if err != nil {
-        log.Fatal(err)
+        fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+        os.Exit(1)
     }
+    defer conn.Close(context.Background())
 
     var dropStmt = `DROP TABLE IF EXISTS employee`;
-    if _, err := db.Exec(dropStmt); err != nil {
-        log.Fatal(err)
+
+    _, err = conn.Exec(context.Background(), dropStmt)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Exec for drop table failed: %v\n", err)
     }
 
     var createStmt = `CREATE TABLE employee (id int PRIMARY KEY,
                                              name varchar,
                                              age int,
                                              language varchar)`;
-    if _, err := db.Exec(createStmt); err != nil {
-        log.Fatal(err)
+    _, err = conn.Exec(context.Background(), createStmt)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Exec for create table failed: %v\n", err)
     }
     fmt.Println("Created table employee")
 
     // Insert into the table.
     var insertStmt string = "INSERT INTO employee(id, name, age, language)" +
         " VALUES (1, 'John', 35, 'Go')";
-    if _, err := db.Exec(insertStmt); err != nil {
-        log.Fatal(err)
+    _, err = conn.Exec(context.Background(), insertStmt)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Exec for create table failed: %v\n", err)
     }
     fmt.Printf("Inserted data: %s\n", insertStmt)
 
@@ -164,7 +168,7 @@ func main() {
     var name string
     var age int
     var language string
-    rows, err := db.Query(`SELECT name, age, language FROM employee WHERE id = 1`)
+    rows, err := conn.Query(context.Background(), "SELECT name, age, language FROM employee WHERE id = 1")
     if err != nil {
         log.Fatal(err)
     }
@@ -181,8 +185,6 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-
-    defer db.Close()
 }
 ```
 
@@ -195,14 +197,14 @@ The **const** values are set to the defaults for a local installation of Yugabyt
 
 **port** is set to 5433, which is the default port for the YSQL API.
 
-## Set SSL/TLS related variables
+## Enable SSL/TLS
 
 For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
 
-   ```sh
-    $ export PGSSLMODE=verify-ca
-    $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
-   ```
+```sh
+$ export PGSSLMODE=verify-ca
+$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+```
 
 ## Run the application
 
