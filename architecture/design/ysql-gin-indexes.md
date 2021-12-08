@@ -1,3 +1,4 @@
+Tracking GitHub issue [7850](https://github.com/yugabyte/yugabyte-db/issues/7850)
 # YSQL GIN indexes
 
 As of v2.6 and v2.7, Yugabyte supports only one type of index access method for DocDB-backed relations: `lsm`. This simply maps columns to the primary key of the base table.
