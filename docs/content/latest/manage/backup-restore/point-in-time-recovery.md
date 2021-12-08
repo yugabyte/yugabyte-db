@@ -121,7 +121,7 @@ This feature is in active development. YSQL and YCQL support different features,
 
 ### YSQL limitations
 
-* The following list summarizes what's supported v/s what's not:
+* The following list summarizes what's supported:
   * Data changes
   * CREATE and DROP TABLE
   * CREATE and DROP INDEX
