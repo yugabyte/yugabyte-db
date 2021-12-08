@@ -77,6 +77,8 @@ class SnapshotCoordinatorContext {
 
   virtual server::Clock* Clock() = 0;
 
+  virtual size_t GetNumLiveTServersForActiveCluster() = 0;
+
   virtual ~SnapshotCoordinatorContext() = default;
 };
 
