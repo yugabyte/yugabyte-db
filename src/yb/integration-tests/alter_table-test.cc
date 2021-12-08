@@ -919,7 +919,7 @@ TEST_P(AlterTableTest, TestMultipleAlters) {
   }
 
   // Now wait. This should block on all of them.
-  WaitAlterTableCompletion(kSplitTableName, 50);
+  ASSERT_OK(WaitAlterTableCompletion(kSplitTableName, 50));
 
   // All new columns should be present.
   YBSchema new_schema;

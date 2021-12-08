@@ -3022,7 +3022,7 @@ TEST_P(DocDBTestWrapper, BloomFilterCorrectness) {
   }
 
   rocksdb::TablePropertiesCollection props;
-  rocksdb()->GetPropertiesOfAllTables(&props);
+  ASSERT_OK(rocksdb()->GetPropertiesOfAllTables(&props));
   for (const auto& prop : props) {
     ASSERT_GE(prop.second->num_filter_blocks, 2) << Format(
         "To test rolling over filter block we need at least 2 filter blocks, but got $0 for $1. "

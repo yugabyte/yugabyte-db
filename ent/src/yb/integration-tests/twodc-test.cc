@@ -292,7 +292,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
                                   bool delete_op = false) {
     auto pair = ASSERT_RESULT(CreateSessionWithTransaction(client, txn_mgr));
     ASSERT_NO_FATALS(WriteIntents(start, end, client, pair.first, table, delete_op));
-    pair.second->CommitFuture().get();
+    ASSERT_OK(pair.second->CommitFuture().get());
   }
 
  private:
@@ -485,7 +485,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
   }
 
   rpc::RpcController rpc;
-  producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc);
+  ASSERT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
 
   ASSERT_EQ(resp.cdc_bootstrap_ids().size(), producer_tables.size());
@@ -1044,10 +1044,10 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, MultipleTransactions) {
   auto consumer_results = ScanToStrings(tables[1]->name(), consumer_client());
   ASSERT_EQ(consumer_results.size(), 0);
 
-  txn_0.second->CommitFuture().get();
+  ASSERT_OK(txn_0.second->CommitFuture().get());
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
-  txn_1.second->CommitFuture().get();
+  ASSERT_OK(txn_1.second->CommitFuture().get());
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
   ASSERT_OK(WaitFor([&]() {
     return CountIntents(consumer_cluster()) == 0;
@@ -1117,7 +1117,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, NoCleanupOfFlushedFiles) {
   // Wait for 5 seconds to make sure background CleanupIntents thread doesn't cleanup intents on the
   // consumer.
   SleepFor(MonoDelta::FromSeconds(5));
-  txn_0.second->CommitFuture().get();
+  ASSERT_OK(txn_0.second->CommitFuture().get());
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
   ASSERT_OK(WaitFor([&]() {
     return CountIntents(consumer_cluster()) == 0;
@@ -1238,7 +1238,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, BiDirectionalWrites) {
   }
 
   // Ensure that same records exist on both universes.
-  VerifyWrittenRecords(tables[0]->name(), tables[1]->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   Destroy();

@@ -798,7 +798,7 @@ TEST_P(CDCServiceTest, TestGetChangesInvalidStream) {
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
   RpcController rpc;
-  ASSERT_NO_FATALS(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+  ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
   ASSERT_TRUE(change_resp.has_error());
 }
 
@@ -1563,7 +1563,7 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
   BootstrapProducerResponsePB resp;
   req.add_table_ids(table_.table()->id());
   rpc::RpcController rpc;
-  cdc_proxy_->BootstrapProducer(req, &resp, &rpc);
+  ASSERT_OK(cdc_proxy_->BootstrapProducer(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
 
   ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
