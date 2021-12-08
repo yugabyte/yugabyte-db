@@ -138,6 +138,7 @@ endif()
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
+  async_task_util.cc
   atomic.cc
   background_task.cc
   bitmap.cc

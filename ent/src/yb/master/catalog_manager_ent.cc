@@ -4315,6 +4315,13 @@ void CatalogManager::SysCatalogLoaded(int64_t term) {
   return snapshot_coordinator_.SysCatalogLoaded(term);
 }
 
+size_t CatalogManager::GetNumLiveTServersForActiveCluster() {
+  BlacklistSet blacklist = BlacklistSetFromPB();
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, placement_uuid(), blacklist);
+  return ts_descs.size();
+}
+
 }  // namespace enterprise
 }  // namespace master
 }  // namespace yb
