@@ -1,0 +1,14 @@
+---
+title: Postgres JDBC Driver
+linkTitle: Postgres JDBC Driver
+description: Postgres JDBC Driver for YSQL
+aliases:
+  - /latest/develop/drivers-orms/java/postgres-jdbc/
+menu:
+  latest:
+    identifier: jdbc-driver
+    parent: drivers-orms
+    weight: 577
+isTocNested: true
+showAsideToc: true
+---
