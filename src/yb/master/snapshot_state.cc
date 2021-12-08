@@ -25,12 +25,29 @@
 #include "yb/tserver/backup.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"
 
 using namespace std::literals;
 
 DEFINE_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
               "Delay for snapshot cleanup after deletion.");
+
+DEFINE_int64(max_concurrent_snapshot_rpcs, 0,
+             "Maximum number of tablet snapshot RPCs that can be outstanding. "
+             "Only used if its value is >= 0. Default value is 0 which means that "
+             "INT_MAX number of snapshot rpcs can be concurrent. "
+             "If its value is < 0 then the max_concurrent_snapshot_rpcs_per_tserver gflag and "
+             "the number of TServers in the primary cluster is used to determine "
+             "the number of maximum number of tablet snapshot RPCs that can be outstanding.");
+TAG_FLAG(max_concurrent_snapshot_rpcs, runtime);
+
+DEFINE_int64(max_concurrent_snapshot_rpcs_per_tserver, 5,
+             "Maximum number of tablet snapshot RPCs per tserver that can be outstanding. "
+             "Only used if the value of the gflag max_concurrent_snapshot_rpcs is < 0. "
+             "When used it is multiplied with the number of TServers in the active cluster "
+             "(not read-replicas) to obtain the total maximum concurrent snapshot RPCs.");
+TAG_FLAG(max_concurrent_snapshot_rpcs_per_tserver, runtime);
 
 namespace yb {
 namespace master {
@@ -55,12 +72,13 @@ std::string MakeSnapshotStateLogPrefix(
 
 SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
-    const tserver::TabletSnapshotOpRequestPB& request)
+    const tserver::TabletSnapshotOpRequestPB& request, uint64_t throttle_limit)
     : StateWithTablets(context, SysSnapshotEntryPB::CREATING,
                        MakeSnapshotStateLogPrefix(id, request.schedule_id())),
       id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()),
       previous_snapshot_hybrid_time_(HybridTime::FromPB(request.previous_snapshot_hybrid_time())),
-      schedule_id_(TryFullyDecodeSnapshotScheduleId(request.schedule_id())), version_(1) {
+      schedule_id_(TryFullyDecodeSnapshotScheduleId(request.schedule_id())), version_(1),
+      throttler_(throttle_limit) {
   InitTabletIds(request.tablet_id(),
                 request.imported() ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
   request.extra_data().UnpackTo(&entries_);
@@ -145,7 +163,10 @@ void SnapshotState::DeleteAborted(const Status& status) {
 }
 
 void SnapshotState::PrepareOperations(TabletSnapshotOperations* out) {
-  DoPrepareOperations([this, out](const TabletData& tablet) {
+  DoPrepareOperations([this, out](const TabletData& tablet) -> bool {
+    if (Throttler().Throttle()) {
+      return false;
+    }
     out->push_back(TabletSnapshotOperation {
       .tablet_id = tablet.id,
       .schedule_id = schedule_id_,
@@ -153,6 +174,7 @@ void SnapshotState::PrepareOperations(TabletSnapshotOperations* out) {
       .state = initial_state(),
       .snapshot_hybrid_time = snapshot_hybrid_time_,
     });
+    return true;
   });
 }
 
