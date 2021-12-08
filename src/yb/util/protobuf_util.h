@@ -43,6 +43,8 @@
 #include <type_traits>
 
 #include <boost/mpl/and.hpp>
+#include <google/protobuf/stubs/port.h>
+#include <google/protobuf/generated_enum_reflection.h>
 #include <google/protobuf/message_lite.h>
 
 #include "yb/util/enums.h"

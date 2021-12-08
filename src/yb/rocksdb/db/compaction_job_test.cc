@@ -168,8 +168,8 @@ class CompactionJobTest : public testing::Test {
                      /* marked_for_compaction */ false);
 
     mutex_.Lock();
-    versions_->LogAndApply(versions_->GetColumnFamilySet()->GetDefault(),
-                           mutable_cf_options_, &edit, &mutex_);
+    ASSERT_OK(versions_->LogAndApply(versions_->GetColumnFamilySet()->GetDefault(),
+                                     mutable_cf_options_, &edit, &mutex_));
     mutex_.Unlock();
   }
 

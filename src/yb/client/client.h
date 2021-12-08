@@ -44,19 +44,16 @@
 #include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/client/client_fwd.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
 
-#ifdef YB_HEADERS_NO_STUBS
-#include <gtest/gtest_prod.h>
 #include "yb/common/clock.h"
 #include "yb/common/entity_ids.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-#else
-#include "yb/client/stubs.h"
-#endif
 
 #include "yb/common/partition.h"
 #include "yb/common/retryable_request.h"

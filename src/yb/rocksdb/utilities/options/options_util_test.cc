@@ -79,7 +79,7 @@ TEST_F(OptionsUtilTest, SaveAndLoad) {
   }
 
   const std::string kFileName = "OPTIONS-123456";
-  PersistRocksDBOptions(db_opt, cf_names, cf_opts, kFileName, env_.get());
+  ASSERT_OK(PersistRocksDBOptions(db_opt, cf_names, cf_opts, kFileName, env_.get()));
 
   DBOptions loaded_db_opt;
   std::vector<ColumnFamilyDescriptor> loaded_cf_descs;
@@ -202,7 +202,7 @@ TEST_F(OptionsUtilTest, SanityCheck) {
   db_opt.create_missing_column_families = true;
   db_opt.create_if_missing = true;
 
-  DestroyDB(dbname_, Options(db_opt, cf_descs[0].options));
+  ASSERT_OK(DestroyDB(dbname_, Options(db_opt, cf_descs[0].options)));
   DB* db;
   std::vector<ColumnFamilyHandle*> handles;
   // open and persist the options

@@ -51,7 +51,7 @@ class ManualCompactionTest : public testing::Test {
   ManualCompactionTest() {
     // Get rid of any state from an old run.
     dbname_ = rocksdb::test::TmpDir() + "/rocksdb_cbug_test";
-    DestroyDB(dbname_, rocksdb::Options());
+    CHECK_OK(DestroyDB(dbname_, rocksdb::Options()));
     LOG(INFO) << "Starting test with " << kNumKeys;
   }
 
@@ -94,7 +94,7 @@ TEST_F(ManualCompactionTest, CompactTouchesAllKeys) {
     ASSERT_OK(db->Put(WriteOptions(), Slice("key4"), Slice("destroy")));
 
     Slice key4("key4");
-    db->CompactRange(CompactRangeOptions(), nullptr, &key4);
+    ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, &key4));
     Iterator* itr = db->NewIterator(ReadOptions());
     itr->SeekToFirst();
     ASSERT_TRUE(itr->Valid());

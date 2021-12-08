@@ -749,7 +749,7 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
   Schema schema({ColumnSchema("key", INT32)}, 1);
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
-  proxy_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController());
+  ASSERT_OK(proxy_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController()));
   ASSERT_FALSE(config_resp.has_error());
   ASSERT_TRUE(config_resp.has_cluster_config());
   auto cluster_config = config_resp.cluster_config();
@@ -1398,7 +1398,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
 
   // Finish Namespace create.
   SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
-  CreateNamespaceWait(nsid, YQLDatabase::YQL_DATABASE_PGSQL);
+  ASSERT_OK(CreateNamespaceWait(nsid, YQLDatabase::YQL_DATABASE_PGSQL));
 
   // Verify that Basic Access to a Namespace is now available.
   // 1. Create a Table within the Schema.
@@ -1437,7 +1437,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
 
     // We should be able to create a namespace with the same NAME at this time.
     ASSERT_OK(CreateNamespaceAsync("new_" + test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
-    CreateNamespaceWait(resp.id(), YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(CreateNamespaceWait(resp.id(), YQLDatabase::YQL_DATABASE_PGSQL));
   }
 }
 
