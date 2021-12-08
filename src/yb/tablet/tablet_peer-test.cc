@@ -38,6 +38,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -45,6 +46,7 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/multi_raft_batcher.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
@@ -131,6 +133,10 @@ class TabletPeerTest : public YBTabletTest {
     addr->set_host("fake-host");
     addr->set_port(0);
 
+    multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(messenger_.get(),
+                                                                        proxy_cache_.get(),
+                                                                        config_peer.cloud_info());
+
     // "Bootstrap" and start the TabletPeer.
     tablet_peer_.reset(new TabletPeer(
         make_scoped_refptr(tablet()->metadata()), config_peer, clock(),
@@ -181,7 +187,8 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */));
+                                           nullptr /* retryable_requests */,
+                                           multi_raft_manager_.get()));
   }
 
   CHECKED_STATUS StartPeer(const ConsensusBootstrapInfo& info) {
@@ -292,6 +299,7 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.

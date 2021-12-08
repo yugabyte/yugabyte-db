@@ -276,6 +276,8 @@ class SysCatalogTable {
 
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
 
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
+
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };
 
