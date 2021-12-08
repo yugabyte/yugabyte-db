@@ -81,7 +81,7 @@ This is an internal tag used for organizing your providers, so you know where yo
 
 #### SSH User
 
-To provision on-prem nodes with YugabyteDB, the Yugabyte Platform requires SSH access to these nodes. Unless you plan to provision the database nodes manually, this user needs to have _passwordless sudo permissions_ to complete a few tasks.
+To provision on-prem nodes with YugabyteDB, Yugabyte Platform requires SSH access to these nodes. Unless you plan to provision the database nodes manually, this user needs to have passwordless sudo permissions to complete a few tasks.
 
 If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps in the [Manually provision nodes](#manually-provision-nodes) section.
 
@@ -91,7 +91,7 @@ Port number of ssh client connections.
 
 #### Manually Provision Nodes
 
-If you choose to manually set up your database nodes, set this flag to true. Otherwise, the Yugabyte Platform will use the sudo user to set up DB nodes. For manual provisioning, you'll be prompted to run a python script at a later stage, or to run a set of commands on the database nodes.
+If you choose to manually set up your database nodes, set this flag to true. Otherwise, Yugabyte Platform will use the sudo user to set up DB nodes. For manual provisioning, you'll be prompted to run a python script at a later stage, or to run a set of commands on the database nodes.
 
 {{< note title="Note" >}}
 If any of the items from this checklist are true, you need to [provision the nodes manually](#provision-nodes-manually).
@@ -127,13 +127,13 @@ You can override the default prometheus user. This is useful when a user is pre-
 
 ### Provision the YugabyteDB nodes
 
-Follow the steps below to provide node hardware configuration (CPU, memory, and volume information)
+Complete the fields shown in the following illustration to provide node hardware configuration (CPU, memory, and volume information):
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-2.png)
 
 #### Machine Type
 
-This is an internal user-defined tag used as an identifier in the “Instance Type” universe field.
+This is an internal user-defined tag used as an identifier in the Instance Type universe field.
 
 #### Number of Cores
 
@@ -153,7 +153,7 @@ For mount paths, use a mount point with enough space to contain your node densit
 
 ### Region and Zones
 
-Follow the steps below to provide the location of DB nodes. All these fields are user-defined, which will be later used during the universe creation.
+Complete the fields shown in the following illustration to provide the location of DB nodes. All these fields are user-defined, which will be later used during the universe creation:
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
 
@@ -173,7 +173,7 @@ For each node you want to add, click Add Instances to add a YugabyteDB node. You
 
 To provision your nodes manually, you have two options:
 
-* If the SSH user you provided has sudo privileges but _requires a password_, you can [run the pre-provisioning script](#run-the-pre-provisioning-script).
+* If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#run-the-pre-provisioning-script).
 
 * If the SSH user doesn't have sudo privileges at all, you need to [set the database nodes up manually](#set-up-database-nodes-manually).
 
