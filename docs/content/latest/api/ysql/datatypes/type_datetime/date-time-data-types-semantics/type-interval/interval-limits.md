@@ -178,9 +178,9 @@ this is the result:
  22008: "interval out of range" caught.
 ```
 
-Anomalously, the evaluation of _"i := make_interval(secs=>secs)"_ (where _secs_ is _9,435,181,535,999_) silently succeeds. But the attempts to use it with, for example, _extract(seconds from i)_ or _i::text_ both cause the _"interval out of range"_ error.
+Anomalously, the evaluation of _"i := make_interval(secs=>secs)"_ (where _secs_ is _9,435,181,535,999_) silently succeeds. But the attempts to use it with, for example, _i::text_ or _extract(seconds from i)_ both cause the _"interval out of range"_ error.
 
-The actual limit, in microseconds, is, of course, set by the range that an eight-byte integer can represent. However, empirical tests show that the actual legal range for _ss_, in seconds, is, a lot less than what the representation implies. This is the legal _ss_ range (in seconds):
+The actual limit, in microseconds, is, of course, set by the range that an eight-byte integer can represent. However, empirical tests show that the actual legal range for _ss_, in seconds, is a lot less than what the representation implies. This is the legal _ss_ range (in seconds):
 
 ```output
 [-((2^31)*60*60 + 59*60 + 59),  ((2^31 - 1)*60*60 + 59*60 + 59)]  i.e.  [-7730941136399, 7730941132799]
@@ -281,7 +281,7 @@ Finally, try this:
 select '7730941132799 seconds'::interval;
 ```
 
-It causes the error _"22015: interval field value out of range"_. This is a spurious limitation that the _make_interval()_ approach doesn't suffer from. (In fact, any parameter that you use in the _::interval_ typecast approach is limited to the four-byte integer range _[-2147483648, 2147483647]_.) This explains why these three statements cause the _"22015: interval field value out of range"_ error:
+It causes the error _"22015: interval field value out of range"_. This is a spurious limitation that the _make_interval()_ approach doesn't suffer from. (In fact, any number that you use in the _::interval_ typecast approach is limited to the four-byte integer range _[-2147483648, 2147483647]_.) This explains why these three statements cause the _"22015: interval field value out of range"_ error:
 
 ```plpgsql
 select '2147483648 months'  ::interval;
@@ -301,7 +301,7 @@ select
 {{< tip title="Avoid using the '::interval' typecast approach for constructing an 'interval' value." >}}
 Yugabyte recommends that you avoid using the _::interval_ typecast approach to construct an _interval_ value in application code.
 
-Notice, though, that if you follow Yugabyte's recommendation to use only the _months_, _days_, and _seconds_ user-defined domains in application code (see the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/)), and never to use "raw" _interval_ values, then you'll always use the value-constructor functions for these types and therefore never face the choice between using _make_interval()_ or the _::text_ typecast of an _interval_ literal.
+Notice, though, that if you follow Yugabyte's recommendation to use only the _months_, _days_, and _seconds_ user-defined domains in application code (see the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/)), and never to use "raw" _interval_ values, then you'll always use the value-constructor functions for these domains and therefore never face the choice between using _make_interval()_ or the _::text_ typecast of an _interval_ literal.
 
 (By all means, use either of these approaches in _ad hoc_ statements at the _ysqlsh_ prompt.)
 {{< /tip >}}
