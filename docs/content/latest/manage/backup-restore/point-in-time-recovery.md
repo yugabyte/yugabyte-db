@@ -121,26 +121,19 @@ This feature is in active development. YSQL and YCQL support different features,
 
 ### YSQL limitations
 
-* Currently, you can only recover from the following YSQL operations:
+* The following list summarizes what's supported v/s what's not:
   * Data changes
   * CREATE and DROP TABLE
-  * ALTER TABLE - only ADD, DROP, and RENAME COLUMN
   * CREATE and DROP INDEX
+  * ALTER TABLE - See [Alter Commands list](https://github.com/yugabyte/yugabyte-db/issues/1124) to understand Alters that work and those that don't.
 
-* The following types of ALTER TABLE aren't supported currently:
-  * ALTER TABLE RENAME TABLE
-  * Other types of ALTER TABLE supported by YSQL but not mentioned above
+* For Sequences, restoring rows of a table containing SERIAL columns and/or other columns of sequence type work. However, restoring to a state before the sequence table was created/dropped doesn't work.
 
 * Colocated Tables aren't supported and databases with colocated tables cannot be restored to a previous point in time.
 
-* Restoring DDLs is quite slow currently. Efforts are being made to speed up YSQL restores.
+* Cluster-wide changes such as roles and permissions, tablespaces, etc. aren't supported. Please note however that database-level operations such as changing ownership of a table of a database, row-level security, etc. can be restored as their scope is not cluster-wide.
 
-* Cluster-wide changes such as roles and permissions, tablespaces, etc. aren't supported.
-
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
-
-* Support for other types of ALTER TABLE
-* Graceful handling of cluster-wide changes such as roles and permissions, and tablespaces
+Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120).
 
 ### YCQL limitations
 
@@ -154,4 +147,7 @@ Currently, you can recover from the following YCQL operations:
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
 
 * YCQL roles and permissions
-* Support for automatic tablet splitting
+
+### Common limitations
+
+* Currently, we don't support PITR in conjunction with xCluster replication.
