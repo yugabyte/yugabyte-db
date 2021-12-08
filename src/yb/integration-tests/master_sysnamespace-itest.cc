@@ -111,7 +111,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   namespace_identifier->set_name(master::kSystemNamespaceName);
   namespace_identifier->set_id(master::kSystemNamespaceId);
   std::unique_ptr<rpc::RpcController> controller(new rpc::RpcController());
-  proxy_->GetTableLocations(req, &resp, controller.get());
+  ASSERT_OK(proxy_->GetTableLocations(req, &resp, controller.get()));
 
   ASSERT_FALSE(resp.has_error());
   ASSERT_EQ(TableType::YQL_TABLE_TYPE, resp.table_type());
@@ -123,7 +123,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   GetTabletLocationsResponsePB tablet_resp;
   tablet_req.add_tablet_ids(resp.tablet_locations(0).tablet_id());
   controller->Reset();
-  proxy_->GetTabletLocations(tablet_req, &tablet_resp, controller.get());
+  ASSERT_OK(proxy_->GetTabletLocations(tablet_req, &tablet_resp, controller.get()));
   ASSERT_FALSE(tablet_resp.has_error());
   ASSERT_EQ(1, tablet_resp.tablet_locations_size());
   VerifyTabletLocations(tablet_resp.tablet_locations(0));
@@ -133,7 +133,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   GetTableSchemaResponsePB schema_resp;
   controller->Reset();
   *schema_req.mutable_table() = *table_identifier;
-  proxy_->GetTableSchema(schema_req, &schema_resp, controller.get());
+  ASSERT_OK(proxy_->GetTableSchema(schema_req, &schema_resp, controller.get()));
   ASSERT_FALSE(schema_resp.has_error());
   ASSERT_TRUE(schema_resp.create_table_done());
 

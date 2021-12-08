@@ -1004,13 +1004,13 @@ class StressTest {
         num_times_reopened_(0) {
     if (FLAGS_destroy_db_initially) {
       std::vector<std::string> files;
-      FLAGS_env->GetChildren(FLAGS_db, &files);
+      CHECK_OK(FLAGS_env->GetChildren(FLAGS_db, &files));
       for (unsigned int i = 0; i < files.size(); i++) {
         if (Slice(files[i]).starts_with("heap-")) {
-          FLAGS_env->DeleteFile(FLAGS_db + "/" + files[i]);
+          CHECK_OK(FLAGS_env->DeleteFile(FLAGS_db + "/" + files[i]));
         }
       }
-      DestroyDB(FLAGS_db, Options());
+      CHECK_OK(DestroyDB(FLAGS_db, Options()));
     }
   }
 
@@ -1569,7 +1569,7 @@ class StressTest {
       // Change Options
       if (FLAGS_set_options_one_in > 0 &&
           thread->rand.OneIn(FLAGS_set_options_one_in)) {
-        SetOptions(thread);
+        CHECK_OK(SetOptions(thread));
       }
 
       if (FLAGS_set_in_place_one_in > 0 &&
@@ -1640,7 +1640,7 @@ class StressTest {
             thread->stats.AddErrors(1);
           }
         } else {
-          MultiGet(thread, read_opts, column_family, key, &from_db);
+          CHECK_OK(MultiGet(thread, read_opts, column_family, key, &from_db));
         }
       } else if (FLAGS_readpercent <= prob_op && prob_op < prefixBound) {
         // OPERATION prefix scan
@@ -1665,7 +1665,7 @@ class StressTest {
           }
           delete iter;
         } else {
-          MultiPrefixScan(thread, read_opts, column_family, key);
+          CHECK_OK(MultiPrefixScan(thread, read_opts, column_family, key));
         }
       } else if (prefixBound <= prob_op && prob_op < writeBound) {
         // OPERATION write
@@ -1710,7 +1710,7 @@ class StressTest {
           }
           thread->stats.AddBytesForWrites(1, sz);
         } else {
-          MultiPut(thread, write_opts, column_family, key, v, sz);
+          CHECK_OK(MultiPut(thread, write_opts, column_family, key, v, sz));
         }
         PrintKeyValue(rand_column_family, static_cast<uint32_t>(rand_key),
                       value, sz);
@@ -1753,11 +1753,11 @@ class StressTest {
             }
           }
         } else {
-          MultiDelete(thread, write_opts, column_family, key);
+          CHECK_OK(MultiDelete(thread, write_opts, column_family, key));
         }
       } else {
         // OPERATION iterate
-        MultiIterate(thread, read_opts, column_family, key);
+        CHECK_OK(MultiIterate(thread, read_opts, column_family, key));
       }
       thread->stats.FinishedSingleOp();
     }
@@ -2238,7 +2238,7 @@ int main(int argc, char** argv) {
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db.empty()) {
       std::string default_db_path;
-      rocksdb::Env::Default()->GetTestDirectory(&default_db_path);
+      CHECK_OK(rocksdb::Env::Default()->GetTestDirectory(&default_db_path));
       default_db_path += "/dbstress";
       FLAGS_db = default_db_path;
   }
