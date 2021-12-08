@@ -32,14 +32,9 @@
 #ifndef YB_CLIENT_CALLBACKS_H_
 #define YB_CLIENT_CALLBACKS_H_
 
-#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/walltime.h"
-#else
-#include "yb/client/stubs.h"
-#endif
-
 
 namespace yb {
 

@@ -79,13 +79,7 @@ YB_STRONGLY_TYPED_BOOL(AddRef);
 class StatusErrorCode;
 struct StatusCategoryDescription;
 
-#ifndef DISABLE_STATUS_NODISCARD
-#define STATUS_NODISCARD_CLASS NODISCARD_CLASS
-#else
-#define STATUS_NODISCARD_CLASS
-#endif
-
-class STATUS_NODISCARD_CLASS Status {
+class NODISCARD_CLASS Status {
  public:
   // Wrapper class for OK status to forbid creation of Result from Status::OK in compile time
   class OK {

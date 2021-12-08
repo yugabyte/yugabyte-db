@@ -49,7 +49,7 @@ namespace yb {
 
 // Given a status, return a copy of it.
 // For use in the above macro, so it works with both Status and Result.
-Status ToStatus(const Status& status) {
+inline Status ToStatus(const Status& status) {
   return status;
 }
 

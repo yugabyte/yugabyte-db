@@ -563,7 +563,7 @@ class TestLoadBalancerBase {
     PlacementInfoPB* cluster_placement = replication_info_.mutable_live_replicas();
     cluster_placement->set_num_replicas(kDefaultNumReplicas);
     // Analyze the tablets into the internal state.
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Check some base expectations for balanced cluster.
     ASSERT_EQ(0, cb_->get_total_over_replication());

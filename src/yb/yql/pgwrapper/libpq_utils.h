@@ -14,10 +14,10 @@
 #ifndef YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
 #define YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
 
-#include <libpq-fe.h>
-
 #include <memory>
 #include <string>
+
+#include "libpq-fe.h" // NOLINT
 
 #include "yb/common/common.pb.h"
 

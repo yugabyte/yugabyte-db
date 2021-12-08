@@ -101,7 +101,7 @@ std::shared_ptr<DB> OpenDb(const std::string &dbname, const bool ttl = false,
   options.max_successive_merges = max_successive_merges;
   options.min_partial_merge_operands = min_partial_merge_operands;
   Status s;
-  DestroyDB(dbname, Options());
+  CHECK_OK(DestroyDB(dbname, Options()));
 // DBWithTTL is not supported in ROCKSDB_LITE
 #ifndef ROCKSDB_LITE
   if (ttl) {
@@ -280,7 +280,9 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
 
   counters.assert_set("a", 1);
 
-  if (test_compaction) db->Flush(o);
+  if (test_compaction) {
+    ASSERT_OK(db->Flush(o));
+  }
 
   assert(counters.assert_get("a") == 1);
 
@@ -291,7 +293,9 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
 
   counters.assert_add("a", 2);
 
-  if (test_compaction) db->Flush(o);
+  if (test_compaction) {
+    ASSERT_OK(db->Flush(o));
+  }
 
   // 1+2 = 3
   assert(counters.assert_get("a") == 3);
@@ -314,10 +318,10 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
   std::cout << "3\n";
 
   if (test_compaction) {
-    db->Flush(o);
+    ASSERT_OK(db->Flush(o));
 
     std::cout << "Compaction started ...\n";
-    db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+    ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     std::cout << "Compaction ended\n";
 
     dumpDb(db);
@@ -364,8 +368,8 @@ void testPartialMerge(Counters *counters, DB *db, size_t max_merge,
     counters->assert_add("b", i);
     tmp_sum += i;
   }
-  db->Flush(o);
-  db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db->Flush(o));
+  ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
   ASSERT_EQ(tmp_sum, counters->assert_get("b"));
   if (count > max_merge) {
     // in this case, FullMerge should be called instead.
@@ -378,13 +382,13 @@ void testPartialMerge(Counters *counters, DB *db, size_t max_merge,
   // Test case 2: partial merge should not be called when a put is found.
   resetNumPartialMergeCalls();
   tmp_sum = 0;
-  db->Put(rocksdb::WriteOptions(), "c", "10");
+  ASSERT_OK(db->Put(rocksdb::WriteOptions(), "c", "10"));
   for (size_t i = 1; i <= count; i++) {
     counters->assert_add("c", i);
     tmp_sum += i;
   }
-  db->Flush(o);
-  db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db->Flush(o));
+  ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
   ASSERT_EQ(tmp_sum, counters->assert_get("c"));
   ASSERT_EQ(num_partial_merge_calls, 0U);
 }
@@ -450,7 +454,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
     }
   }
 
-  DestroyDB(dbname, Options());
+  ASSERT_OK(DestroyDB(dbname, Options()));
 
   {
     std::cout << "Test merge in memtable... \n";
@@ -460,7 +464,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
     testCounters(&counters, db.get(), compact);
     testSuccessiveMerge(&counters, max_merge, max_merge * 2);
     testSingleBatchSuccessiveMerge(db.get(), 5, 7);
-    DestroyDB(dbname, Options());
+    ASSERT_OK(DestroyDB(dbname, Options()));
   }
 
   {
@@ -471,14 +475,14 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
         auto db = OpenDb(dbname, use_ttl, max_merge, min_merge);
         MergeBasedCounters counters(db, 0);
         testPartialMerge(&counters, db.get(), max_merge, min_merge, count);
-        DestroyDB(dbname, Options());
+        ASSERT_OK(DestroyDB(dbname, Options()));
       }
       {
         auto db = OpenDb(dbname, use_ttl, max_merge, min_merge);
         MergeBasedCounters counters(db, 0);
         testPartialMerge(&counters, db.get(), max_merge, min_merge,
             min_merge * 10);
-        DestroyDB(dbname, Options());
+        ASSERT_OK(DestroyDB(dbname, Options()));
       }
     }
   }
@@ -491,7 +495,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
       counters.add("test-key", 1);
       counters.add("test-key", 1);
       counters.add("test-key", 1);
-      db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+      ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     }
 
     DB *reopen_db;
@@ -499,7 +503,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
     std::string value;
     ASSERT_TRUE(!(reopen_db->Get(ReadOptions(), "test-key", &value).ok()));
     delete reopen_db;
-    DestroyDB(dbname, Options());
+    ASSERT_OK(DestroyDB(dbname, Options()));
   }
 
   /* Temporary remove this test

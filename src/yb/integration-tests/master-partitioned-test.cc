@@ -187,7 +187,8 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
   std::vector<std::pair<int, int>> break_connectivity = {{1, 0}, {1, 2}, {2, 1}, {2, 0}};
   bool connectivity_broken = false;
 
-  ASSERT_OK(WaitFor([this, &master_0_is_leader, &break_connectivity, &connectivity_broken]() {
+  ASSERT_OK(WaitFor(
+      [this, &master_0_is_leader, &break_connectivity, &connectivity_broken]() -> Result<bool> {
     auto leader_mini_master = cluster_->GetLeaderMiniMaster();
     if (!leader_mini_master.ok()) {
       return false;
@@ -195,7 +196,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     if (LastReceivedOpId(*leader_mini_master) != LastReceivedOpId(cluster_->mini_master(0))) {
       if (connectivity_broken) {
         for (const auto& p : break_connectivity) {
-          RestoreMasterConnectivityTo(p.first, p.second);
+          RETURN_NOT_OK(RestoreMasterConnectivityTo(p.first, p.second));
         }
         connectivity_broken = false;
       }
@@ -204,7 +205,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
 
     if (!connectivity_broken) {
       for (const auto& p : break_connectivity) {
-        BreakMasterConnectivityTo(p.first, p.second);
+        RETURN_NOT_OK(BreakMasterConnectivityTo(p.first, p.second));
       }
       connectivity_broken = true;
     }
@@ -245,7 +246,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     // master-0 cannot send updates to master 2. This will cause master-2
     // to increase its term. And cause the leader (master-0) to step down
     // and re-elect himself
-    BreakMasterConnectivityTo(0, 2);
+    ASSERT_OK(BreakMasterConnectivityTo(0, 2));
     ASSERT_OK(WaitFor(
         [this, initial_term]() {
           consensus::ConsensusStatePB cpb;
@@ -255,7 +256,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
         kTimeout,
         "Wait for master 2 to do elections and increase the term"));
 
-    RestoreMasterConnectivityTo(0, 2);
+    ASSERT_OK(RestoreMasterConnectivityTo(0, 2));
 
     ASSERT_OK(cluster_->mini_master(2)->catalog_manager().GetCurrentConfig(&cpb));
     const auto new_term = cpb.current_term();
@@ -291,8 +292,8 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
       new_cohort_peer2 = i;
     }
     LOG(INFO) << "Breaking connectivity between " << i << " and " << old_leader_idx;
-    BreakMasterConnectivityTo(old_leader_idx, i);
-    BreakMasterConnectivityTo(i, old_leader_idx);
+    ASSERT_OK(BreakMasterConnectivityTo(old_leader_idx, i));
+    ASSERT_OK(BreakMasterConnectivityTo(i, old_leader_idx));
   }
 
   LOG(INFO) << "Introduced a network split. Cohort#1 masters: " << old_leader_idx
@@ -361,10 +362,10 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   ASSERT_EQ(resp.error().status().code(), AppStatusPB::LEADER_HAS_NO_LEASE);
 
   // Restore connectivity.
-  RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer1);
-  RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer2);
-  RestoreMasterConnectivityTo(new_cohort_peer1, old_leader_idx);
-  RestoreMasterConnectivityTo(new_cohort_peer2, old_leader_idx);
+  ASSERT_OK(RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer1));
+  ASSERT_OK(RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer2));
+  ASSERT_OK(RestoreMasterConnectivityTo(new_cohort_peer1, old_leader_idx));
+  ASSERT_OK(RestoreMasterConnectivityTo(new_cohort_peer2, old_leader_idx));
 }
 
 }  // namespace yb

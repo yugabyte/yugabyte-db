@@ -801,7 +801,7 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
     }
 
     ASSERT_OK(Flush(1));
-    reinterpret_cast<DBImpl*>(db_)->TEST_WaitForCompact();
+    ASSERT_OK(reinterpret_cast<DBImpl*>(db_)->TEST_WaitForCompact());
 
     stats_checker->set_verify_next_comp_io_stats(true);
     std::atomic<bool> first_prepare_write(true);
@@ -900,7 +900,7 @@ TEST_P(CompactionJobStatsTest, DeletionStatsTest) {
   CompactRangeOptions cr_options;
   cr_options.change_level = true;
   cr_options.target_level = 2;
-  db_->CompactRange(cr_options, handles_[1], nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(cr_options, handles_[1], nullptr, nullptr));
   ASSERT_GT(NumTableFilesAtLevel(2, 1), 0);
 
   // Stage 2: Generate files including keys from the entire key range
@@ -1016,7 +1016,7 @@ TEST_P(CompactionJobStatsTest, UniversalCompactionTest) {
         &rnd, start_key, start_key + key_base - 1,
         kKeySize, kValueSize, key_interval,
         compression_ratio, 1);
-    reinterpret_cast<DBImpl*>(db_)->TEST_WaitForCompact();
+    ASSERT_OK(reinterpret_cast<DBImpl*>(db_)->TEST_WaitForCompact());
   }
   ASSERT_EQ(stats_checker->NumberOfUnverifiedStats(), 0U);
 }

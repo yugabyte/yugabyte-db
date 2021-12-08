@@ -32,14 +32,9 @@
 #ifndef YB_CLIENT_VALUE_H
 #define YB_CLIENT_VALUE_H
 
-#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-#else
-#include "yb/client/stubs.h"
-#endif
 #include "yb/util/slice.h"
-
 
 namespace yb {
 namespace client {

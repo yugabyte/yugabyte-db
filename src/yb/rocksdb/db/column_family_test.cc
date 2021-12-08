@@ -78,7 +78,7 @@ class ColumnFamilyTest : public testing::Test {
     db_options_.create_if_missing = true;
     db_options_.fail_if_options_file_error = true;
     db_options_.env = env_;
-    DestroyDB(dbname_, Options(db_options_, column_family_options_));
+    CHECK_OK(DestroyDB(dbname_, Options(db_options_, column_family_options_)));
   }
 
   ~ColumnFamilyTest() {
@@ -161,13 +161,13 @@ class ColumnFamilyTest : public testing::Test {
 
   void CreateColumnFamilies(
       const std::vector<std::string>& cfs,
-      const std::vector<ColumnFamilyOptions> options = {}) {
+      const std::vector<ColumnFamilyOptions>& options = {}) {
     int cfi = static_cast<int>(handles_.size());
     handles_.resize(cfi + cfs.size());
     names_.resize(cfi + cfs.size());
     for (size_t i = 0; i < cfs.size(); ++i) {
       const auto& current_cf_opt =
-          options.size() == 0 ? column_family_options_ : options[i];
+          options.empty() ? column_family_options_ : options[i];
       ASSERT_OK(
           db_->CreateColumnFamily(current_cf_opt, cfs[i], &handles_[cfi]));
       names_[cfi] = cfs[i];
@@ -176,7 +176,13 @@ class ColumnFamilyTest : public testing::Test {
       // Verify the CF options of the returned CF handle.
       ColumnFamilyDescriptor desc;
       ASSERT_OK(handles_[cfi]->GetDescriptor(&desc));
-      RocksDBOptionsParser::VerifyCFOptions(desc.options, current_cf_opt);
+      if (current_cf_opt.arena_block_size == 0) {
+        // When column family is created and specified arena_block_size is 0, we modify
+        // arena_block_size to value specified by flags. See SanitizeOptions for info.
+        // So reset it back to 0, to make verifier happy.
+        desc.options.arena_block_size = 0;
+      }
+      ASSERT_OK(RocksDBOptionsParser::VerifyCFOptions(desc.options, current_cf_opt));
 #endif  // !ROCKSDB_LITE
       cfi++;
     }
@@ -543,10 +549,10 @@ TEST_F(ColumnFamilyTest, IgnoreRecoveredLog) {
   ASSERT_OK(env_->CreateDirIfMissing(dbname_));
   ASSERT_OK(env_->CreateDirIfMissing(backup_logs));
   std::vector<std::string> old_files;
-  env_->GetChildren(backup_logs, &old_files);
+  ASSERT_OK(env_->GetChildren(backup_logs, &old_files));
   for (auto& file : old_files) {
     if (file != "." && file != "..") {
-      env_->DeleteFile(backup_logs + "/" + file);
+      ASSERT_OK(env_->DeleteFile(backup_logs + "/" + file));
     }
   }
 
@@ -574,7 +580,7 @@ TEST_F(ColumnFamilyTest, IgnoreRecoveredLog) {
 
   // copy the logs to backup
   std::vector<std::string> logs;
-  env_->GetChildren(db_options_.wal_dir, &logs);
+  ASSERT_OK(env_->GetChildren(db_options_.wal_dir, &logs));
   for (auto& log : logs) {
     if (log != ".." && log != ".") {
       CopyFile(db_options_.wal_dir + "/" + log, backup_logs + "/" + log);
@@ -631,7 +637,7 @@ TEST_F(ColumnFamilyTest, FlushTest) {
     for (int i = 0; i < 3; ++i) {
       uint64_t max_total_in_memory_state =
           MaxTotalInMemoryState();
-      Flush(i);
+      ASSERT_OK(Flush(i));
       AssertMaxTotalInMemoryState(max_total_in_memory_state);
     }
     ASSERT_OK(Put(1, "foofoo", "bar"));
@@ -2557,8 +2563,8 @@ TEST_F(ColumnFamilyTest, LogSyncConflictFlush) {
   Open();
   CreateColumnFamiliesAndReopen({"one", "two"});
 
-  Put(0, "", "");
-  Put(1, "foo", "bar");
+  ASSERT_OK(Put(0, "", ""));
+  ASSERT_OK(Put(1, "foo", "bar"));
 
   rocksdb::SyncPoint::GetInstance()->LoadDependency(
       {{"DBImpl::SyncWAL:BeforeMarkLogsSynced:1",
@@ -2568,12 +2574,12 @@ TEST_F(ColumnFamilyTest, LogSyncConflictFlush) {
 
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
 
-  std::thread thread([&] { db_->SyncWAL(); });
+  std::thread thread([&] { ASSERT_OK(db_->SyncWAL()); });
 
   TEST_SYNC_POINT("ColumnFamilyTest::LogSyncConflictFlush:1");
-  Flush(1);
-  Put(1, "foo", "bar");
-  Flush(1);
+  ASSERT_OK(Flush(1));
+  ASSERT_OK(Put(1, "foo", "bar"));
+  ASSERT_OK(Flush(1));
 
   TEST_SYNC_POINT("ColumnFamilyTest::LogSyncConflictFlush:2");
 

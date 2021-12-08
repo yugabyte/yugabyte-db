@@ -540,7 +540,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   }
 
   rpc::RpcController rpc;
-  producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc);
+  ASSERT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
 
   ASSERT_EQ(resp.cdc_bootstrap_ids().size(), producer_tables.size());

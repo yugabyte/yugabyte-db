@@ -160,7 +160,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   // Choose a tablet to orphan and take note of the servers which are leaders/followers for this
   // tablet.
   google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
-  client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets);
+  ASSERT_OK(client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
   std::vector<yb::tserver::MiniTabletServer *> followers;
   yb::tserver::MiniTabletServer* leader = nullptr;
   auto orphan_tablet = tablets.Get(0);
@@ -240,7 +240,7 @@ TEST_F(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint) {
 
   // Get all the tablets of this table and store them
   google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
-  client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets);
+  ASSERT_OK(client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
 
   std::vector<std::string> tIds;
   bool isTestTrue = true;

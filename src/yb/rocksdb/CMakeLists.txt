@@ -213,7 +213,6 @@ target_link_libraries(rocksdb_tools rocksdb yb_rocksutil)
 macro(ADD_YB_ROCKSDB_TOOL tool)
   add_executable(${tool} tools/${tool}.cc)
   target_link_libraries(${tool} rocksdb_tools)
-  set_target_properties(${tool} PROPERTIES COMPILE_FLAGS "-DDISABLE_STATUS_NODISCARD")
 endmacro()
 
 set(ROCKSDB_TEST_UTIL_SRCS

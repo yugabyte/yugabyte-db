@@ -46,12 +46,14 @@ Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
     cdc_rpc_tasks->messenger_ = VERIFY_RESULT(messenger_builder.Build());
   }
 
+  LOG(INFO) << __func__ << " before";
   cdc_rpc_tasks->yb_client_ = VERIFY_RESULT(
       yb::client::YBClientBuilder()
           .add_master_server_addr(master_addrs)
           .default_admin_operation_timeout(
               MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
           .Build(cdc_rpc_tasks->messenger_.get()));
+  LOG(INFO) << __func__ << " after";
 
   return cdc_rpc_tasks;
 }

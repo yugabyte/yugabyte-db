@@ -126,10 +126,10 @@ void EncryptedSSTableTest::CounterOverflow(
   ASSERT_OK(table_builder->Finish());
   LOG(INFO) << "Wrote a file of total size " << table_builder->TotalFileSize()
       << ", base file size: " << table_builder->BaseFileSize();
-  base_writer.Flush();
-  data_writer.Flush();
-  base_writer.Close();
-  data_writer.Close();
+  ASSERT_OK(base_writer.Flush());
+  ASSERT_OK(data_writer.Flush());
+  ASSERT_OK(base_writer.Close());
+  ASSERT_OK(data_writer.Close());
 
   std::unique_ptr<rocksdb::RandomAccessFile> random_access_file;
   ASSERT_OK(env->NewRandomAccessFile(file_name, &random_access_file, rocksdb::EnvOptions()));

@@ -36,15 +36,8 @@
 #include <string>
 #include <vector>
 
-#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-#else
-// This is a poor module interdependency, but the stubs are header-only and
-// it's only for exported header builds, so we'll make an exception.
-#include "yb/client/stubs.h"
-#endif
-
 
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"

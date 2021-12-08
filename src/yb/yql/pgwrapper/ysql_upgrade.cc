@@ -14,11 +14,11 @@
 
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
-#include <server/catalog/pg_yb_migration_d.h>
-
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
+
+#include "server/catalog/pg_yb_migration_d.h"
 
 #include "yb/util/env_util.h"
 #include "yb/util/format.h"

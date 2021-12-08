@@ -499,7 +499,7 @@ TEST_F(RpcStubTest, TestRpcPanic) {
     RpcController controller;
     PanicRequestPB req;
     PanicResponsePB resp;
-    p.Panic(req, &resp, &controller);
+    ASSERT_OK(p.Panic(req, &resp, &controller));
   }
 }
 
@@ -775,7 +775,7 @@ TEST_F(RpcStubTest, IPv6) {
   google::FlagSaver saver;
   FLAGS_net_address_filter = "all";
   std::vector<IpAddress> addresses;
-  GetLocalAddresses(&addresses, AddressFilter::ANY);
+  ASSERT_OK(GetLocalAddresses(&addresses, AddressFilter::ANY));
 
   IpAddress server_address;
   for (const auto& address : addresses) {
@@ -795,7 +795,7 @@ TEST_F(RpcStubTest, IPv6) {
   WhoAmIRequestPB req;
   WhoAmIResponsePB resp;
   RpcController controller;
-  proxy.WhoAmI(req, &resp, &controller);
+  ASSERT_OK(proxy.WhoAmI(req, &resp, &controller));
   ASSERT_OK(controller.status());
   LOG(INFO) << "I'm " << resp.address();
   auto parsed = ParseEndpoint(resp.address(), 0);
@@ -842,7 +842,7 @@ TEST_F(RpcStubTest, TrafficMetrics) {
   rpc_test::EchoRequestPB req;
   req.set_data(RandomHumanReadableString(kStringLen));
   rpc_test::EchoResponsePB resp;
-  proxy.Echo(req, &resp, &controller);
+  ASSERT_OK(proxy.Echo(req, &resp, &controller));
 
   auto server_metrics = server_messenger()->metric_entity()->UnsafeMetricsMapForTests();
 

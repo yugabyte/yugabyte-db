@@ -306,7 +306,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
           req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
 
           tserver::ReadResponsePB resp;
-          proxy->Read(req, &resp, &controller);
+          RETURN_NOT_OK(proxy->Read(req, &resp, &controller));
 
           const auto& ql_batch = resp.ql_batch(0);
           if (ql_batch.status() != QLResponsePB_QLStatus_YQL_STATUS_OK) {

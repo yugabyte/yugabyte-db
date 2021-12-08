@@ -378,7 +378,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
     rpc::RpcController controller;
     controller.set_timeout(kRpcTimeout);
     tserver::GetSplitKeyResponsePB resp;
-    ts_service_proxy->GetSplitKey(req, &resp, &controller);
+    RETURN_NOT_OK(ts_service_proxy->GetSplitKey(req, &resp, &controller));
     return resp;
   }
 
@@ -1655,14 +1655,14 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
   rpc::RpcController rpc;
-  ASSERT_NO_FATALS(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
+  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
   ASSERT_FALSE(change_resp.has_error());
 
   // Test that if the tablet leadership of the parent tablet changes we can still call GetChanges.
   StepDownAllTablets(cluster_.get());
 
   rpc.Reset();
-  ASSERT_NO_FATALS(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
+  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
   ASSERT_FALSE(change_resp.has_error()) << change_resp.ShortDebugString();
 
   // Now let the table get deleted by the background task. Need to lower the wal_retention_secs.
@@ -1681,7 +1681,7 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
 
   // Try to do a GetChanges again, it should fail.
   rpc.Reset();
-  ASSERT_NO_FATALS(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
+  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
   ASSERT_TRUE(change_resp.has_error());
 }
 

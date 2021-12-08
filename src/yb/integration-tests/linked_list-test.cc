@@ -1089,7 +1089,7 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
     }
     converged_tablets.insert(tablet_id);
     LOG(INFO) << "Waiting for replicas of tablet " << tablet_id << " to agree";
-    ASSERT_NO_FATALS(WaitForServersToAgree(
+    ASSERT_OK(WaitForServersToAgree(
         MonoDelta::FromSeconds(kWaitTime),
         tablet_servers_,
         tablet_id,

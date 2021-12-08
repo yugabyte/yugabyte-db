@@ -145,7 +145,7 @@ TEST_F(TsRecoveryITest, CrashAfterLogSegmentPreAllocationg) {
     tserver::FlushTabletsResponsePB resp;
     rpc::RpcController controller;
     controller.set_timeout(30s);
-    proxy->FlushTablets(req, &resp, &controller);
+    WARN_NOT_OK(proxy->FlushTablets(req, &resp, &controller), "FlushTablets failed");
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
   work.StopAndJoin();

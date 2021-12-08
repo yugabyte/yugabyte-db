@@ -743,7 +743,7 @@ TEST_F(DBBloomFilterTest, EmptyFilterKeys) {
     ASSERT_OK(Flush(kColumnFamilyIndex));
 
     TablePropertiesCollection props_collection;
-    db_->GetPropertiesOfAllTables(handles_[kColumnFamilyIndex], &props_collection);
+    ASSERT_OK(db_->GetPropertiesOfAllTables(handles_[kColumnFamilyIndex], &props_collection));
     ASSERT_EQ(props_collection.size(), 2) << "We should have properties for 2 SST files";
     const auto props = *props_collection.begin();
     ASSERT_GE(props.second->num_filter_blocks, 2) << yb::Format(
