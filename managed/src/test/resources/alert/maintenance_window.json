@@ -1,0 +1,21 @@
+{
+  "uuid": "f33e3c9b-75ab-4c30-80ad-cba8564dfef9",
+  "customerUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+  "name": "Some Maintenance",
+  "createTime": "2021-05-30 15:08:19",
+  "startTime": "2021-06-30 15:08:19",
+  "endTime": "2021-07-30 15:08:19",
+  "alertConfigurationFilter": {
+    "uuids": ["f33e3c9b-75ab-4c30-80ad-cba8564dfef8", "f33e3c9b-75ab-4c30-80ad-cba8564dfef9"],
+    "name": "Test",
+    "active": true,
+    "targetType": "UNIVERSE",
+    "target": {
+      "all": true
+    },
+    "template": "REPLICATION_LAG",
+    "severity": "WARNING",
+    "destinationType": "SELECTED_DESTINATION",
+    "destinationUuid": "f33e3c9b-75ab-4c30-80ad-cba8564dfef9"
+  }
+}

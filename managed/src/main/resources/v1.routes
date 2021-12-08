@@ -164,6 +164,14 @@ GET     /customers/:cUUID/alert_destinations/:adUUID                           c
 PUT     /customers/:cUUID/alert_destinations/:adUUID                           com.yugabyte.yw.controllers.AlertController.updateAlertDestination(cUUID: java.util.UUID, adUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_destinations/:adUUID                           com.yugabyte.yw.controllers.AlertController.deleteAlertDestination(cUUID: java.util.UUID, adUUID: java.util.UUID)
 
+# Maintenance Window API
+GET     /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.get(cUUID: java.util.UUID, windowUUID: java.util.UUID)
+POST    /customers/:cUUID/maintenance_windows/page                             com.yugabyte.yw.controllers.MaintenanceController.page(cUUID: java.util.UUID)
+POST    /customers/:cUUID/maintenance_windows/list                             com.yugabyte.yw.controllers.MaintenanceController.list(cUUID: java.util.UUID)
+POST    /customers/:cUUID/maintenance_windows                                  com.yugabyte.yw.controllers.MaintenanceController.create(cUUID: java.util.UUID)
+PUT     /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.update(cUUID: java.util.UUID, windowUUID: java.util.UUID)
+DELETE  /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.delete(cUUID: java.util.UUID, windowUUID: java.util.UUID)
+
 # Access Key API
 GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
 GET     /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)

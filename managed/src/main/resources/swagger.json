@@ -106,7 +106,7 @@
         },
         "notifiedState" : {
           "description" : "Alert state in the last-sent notification",
-          "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
+          "enum" : [ "ACTIVE", "ACKNOWLEDGED", "SUSPENDED", "RESOLVED" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -139,7 +139,7 @@
         },
         "state" : {
           "description" : "The alert's state",
-          "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
+          "enum" : [ "ACTIVE", "ACKNOWLEDGED", "SUSPENDED", "RESOLVED" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -192,7 +192,7 @@
         },
         "states" : {
           "items" : {
-            "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
+            "enum" : [ "ACTIVE", "ACKNOWLEDGED", "SUSPENDED", "RESOLVED" ],
             "type" : "string"
           },
           "type" : "array",
@@ -381,6 +381,16 @@
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
+        },
+        "maintenanceWindowUuids" : {
+          "description" : "Maintenance window UUIDs, applied to this alert config",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array",
+          "uniqueItems" : true
         },
         "name" : {
           "description" : "Name",
@@ -580,6 +590,16 @@
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
+        },
+        "maintenanceWindowUuids" : {
+          "description" : "Maintenance window UUIDs, applied to this alert config",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array",
+          "uniqueItems" : true
         },
         "name" : {
           "description" : "Name",
@@ -2404,6 +2424,129 @@
         }
       },
       "required" : [ "lines" ],
+      "type" : "object"
+    },
+    "MaintenanceWindow" : {
+      "description" : "Maintenance Window",
+      "properties" : {
+        "alertConfigurationFilter" : {
+          "$ref" : "#/definitions/AlertConfigurationApiFilter",
+          "description" : "Alert configuration filter"
+        },
+        "createTime" : {
+          "description" : "Creation time",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "endTime" : {
+          "description" : "End time",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Name",
+          "maxLength" : 1000,
+          "minLength" : 1,
+          "type" : "string"
+        },
+        "startTime" : {
+          "description" : "Start time",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "state" : {
+          "description" : "State",
+          "enum" : [ "FINISHED", "ACTIVE", "PENDING" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Maintenance window UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "alertConfigurationFilter", "createTime", "customerUUID", "endTime", "name", "startTime" ],
+      "type" : "object"
+    },
+    "MaintenanceWindowApiFilter" : {
+      "properties" : {
+        "states" : {
+          "items" : {
+            "enum" : [ "FINISHED", "ACTIVE", "PENDING" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "uuids" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "states", "uuids" ],
+      "type" : "object"
+    },
+    "MaintenanceWindowPagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/MaintenanceWindowApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "uuid", "name", "createTime", "startTime", "endTime", "state" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "MaintenanceWindowPagedResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/MaintenanceWindow"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
     "MasterNode" : {
@@ -6536,6 +6679,200 @@
         "tags" : [ "Encryption at rest" ]
       }
     },
+    "/api/v1/customers/{cUUID}/maintenance_windows" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "create",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "CreateMaintenanceWindowRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/MaintenanceWindow"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindow"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create maintenance window",
+        "tags" : [ "Maintenance windows" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/maintenance_windows/list" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "listOfMaintenanceWindows",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/MaintenanceWindow"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List maintenance windows",
+        "tags" : [ "Maintenance windows" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/maintenance_windows/page" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "page",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PageMaintenanceWindowsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/MaintenanceWindowPagedApiQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindowPagedResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List maintenance windows (paginated)",
+        "tags" : [ "Maintenance windows" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/maintenance_windows/{windowUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "windowUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete maintenance window",
+        "tags" : [ "Maintenance windows" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "get",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "windowUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindow"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get details of a maintenance window",
+        "tags" : [ "Maintenance windows" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "update",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "windowUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "UpdateMaintenanceWindowRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/MaintenanceWindow"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindow"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update maintenance window",
+        "tags" : [ "Maintenance windows" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/metrics" : {
       "post" : {
         "description" : "",
@@ -10612,6 +10949,8 @@
     "name" : "Instance types"
   }, {
     "name" : "LoggingConfig"
+  }, {
+    "name" : "Maintenance windows"
   }, {
     "name" : "Metrics"
   }, {

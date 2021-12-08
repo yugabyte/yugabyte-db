@@ -183,9 +183,10 @@ public class AlertManager {
   }
 
   public void sendNotifications() {
+    // In case alert was first active, and then became suspended - we still want to notify on it.
     AlertFilter filter =
         AlertFilter.builder()
-            .state(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .state(Alert.State.ACTIVE, State.SUSPENDED, Alert.State.RESOLVED)
             .notificationPending(true)
             .build();
     List<Alert> toNotify = alertService.list(filter);

@@ -34,6 +34,7 @@ public class AlertConfigurationFilter {
   Severity severity;
   DestinationType destinationType;
   UUID destinationUuid;
+  Boolean suspended;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -68,6 +69,9 @@ public class AlertConfigurationFilter {
     }
     if (destinationUuid != null) {
       result.destinationUuid(destinationUuid);
+    }
+    if (suspended != null) {
+      result.suspended(suspended);
     }
     return result;
   }

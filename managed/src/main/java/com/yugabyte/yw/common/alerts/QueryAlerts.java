@@ -23,6 +23,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertLabel;
@@ -200,7 +201,7 @@ public class QueryAlerts {
       AlertFilter alertFilter =
           AlertFilter.builder()
               .definitionUuids(definitionUuids)
-              .state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
+              .states(State.getFiringStates())
               .build();
       Map<AlertKey, Alert> existingAlertsByKey =
           alertService
@@ -395,6 +396,13 @@ public class QueryAlerts {
         .setConfigurationType(configurationType)
         .setMessage(message)
         .setLabels(labels);
+    State state =
+        alert.getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS) != null
+            ? State.SUSPENDED
+            : State.ACTIVE;
+    if (alert.getState() != State.ACKNOWLEDGED) {
+      alert.setState(state);
+    }
     return alert;
   }
 
