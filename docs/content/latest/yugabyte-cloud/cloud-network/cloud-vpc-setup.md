@@ -22,12 +22,23 @@ Peering connections are configured on the [Peering Connections](../cloud-add-pee
 
 Before setting up the VPC network, you will need the following:
 
-- The details of the VPN you want to peer with, including
+- The CIDR block you want to use for your VPC.
+- The details of the VPC you want to peer with, including
 
   - GCP - the project ID and the network name, and CIDR block.
   - AWS - the AWS account ID, and the VPC ID, region, and CIDR block.
 
-## Create a VPC in Yugabyte Cloud
+## Set up a VPC network
+
+The steps for setting up a VPC network for Yugabyte Cloud are as follows:
+
+1. Create a VPC in Yugabyte Cloud. The status of the VPC is Active when done.
+1. Deploy a cluster in the VPC.
+1. Create a peering connection in Yugabyte Cloud. The status of the peering connection is Pending when done.
+1. Configure your cloud provider to accept the connection. The status of the peering connection changes to Active once communication is established.
+1. Add the application VPC IP addresses to the cluster's IP allow list.
+
+### Create a VPC in Yugabyte Cloud
 
 1. On the **Network Access** page, select **VPC Network**, then **VPCs**.
 1. Cick **Create VPC** to display the **Create VPC** sheet.
@@ -37,9 +48,9 @@ Before setting up the VPC network, you will need the following:
 1. Specify the VPC CIDR address. You can use the range suggested by Yugabyte Cloud, or enter a custom IP range. The IP range cannot overlap with another VPC in your cloud.
 1. Click **Save**.
 
-## Deploy a cluster in the VPC
+### Deploy a cluster in the VPC
 
-Once a VPC has been created, you can [deploy your cluster](../../cloud-basics/create-clusters/) in the VPN.
+Once a VPC has been created, you can [deploy your cluster](../../cloud-basics/create-clusters/) in the VPC.
 
 1. On the **Clusters** page, click **Add Cluster**.
 1. Choose **Yugabyte Cloud** and click **Next**.
@@ -50,7 +61,7 @@ Once a VPC has been created, you can [deploy your cluster](../../cloud-basics/cr
 1. Under **Network Access**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.
 1. Click **Create Cluster**.
 
-## Create a Peering Connection in Yugabyte Cloud
+### Create a Peering Connection in Yugabyte Cloud
 
 Once you have created at least one VPC in Yugabyte Cloud, you can create a peering connection with an application VPC on the same cloud provider. You need to specify the following:
 
@@ -70,14 +81,18 @@ To create a peering connection, do the following:
 1. Select **Add application CIDR to IP allow list** to add the the CIDR range to your cloud IP allow list. You will add this IP allow list to your cluster so that the application VPC can connect to the database.
 1. Click **Initiate Peering**.
 
-## Configure the connection in your cloud provider
+When finished, the status of the peering connection is Pending, indicating that you need to configure the cloud provider to complete the connection.
+
+### Configure the connection in your cloud provider
 
 Once the peering connection is added in Yugabyte Cloud, you need to sign in to your cloud provider and configure the connection.
 
 - For AWS, use the VPC Dashboard to accept the peering request, enable DNS, and add a route table entry.
-- In the Google Cloud Console, create a peering connection using the project ID and network name of the Yugabyte Cloud VPC. 
+- In the Google Cloud Console, create a peering connection using the project ID and network name of the Yugabyte Cloud VPC.
 
-### Accept the peering request in AWS
+When finished, the status of the peering connection changes to Active if the connection is successful.
+
+#### Accept the peering request in AWS
 
 To make an AWS peering connection active, in AWS, use the **VPC Dashboard** to do the following:
 
@@ -87,7 +102,7 @@ To make an AWS peering connection active, in AWS, use the **VPC Dashboard** to d
 
 For information on VPC network peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html.) in the AWS documentation.
 
-### Create a peering connection in GCP
+#### Create a peering connection in GCP
 
 To make a GCP peering connection active, you must create a peering connection in GCP. You will need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the [Peering Details](#view-peering-connection-details) sheet.
 
@@ -102,9 +117,9 @@ In the Google Cloud Console, do the following:
 
 For information on VPC network peering in GCP, refer to [VPC Network Peering overview](https://cloud.google.com/vpc/docs/vpc-peering.) in the Google VPC documentation.
 
-## Add the peered application VPC to the IP allow list for your cluster
+### Add the peered application VPC to your cluster IP allow list
 
-Once the cluster and the peering connection are active, you need add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../cloud-basics/add-connections/) for your cluster.
+Once the VPC and the peering connection are active, you need add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../cloud-basics/add-connections/) for your cluster.
 
 1. On the **Clusters** page, select your cluster.
 1. Click **Quick Links** and **Edit IP Allow List**.
@@ -112,3 +127,27 @@ Once the cluster and the peering connection are active, you need add at least on
 1. Enter a name for the allow list.
 1. Enter the IP addresses or CIDR.
 1. Click **Save**.
+
+## Troubleshooting
+
+If you have set up a VPC network and are unable to connect, verify the following:
+
+### VPC status is Failed
+
+If you are unable to successfully create the VPC, check that the CIDR range does not overlap with another VPC.
+
+### Peering connection status is Pending
+
+A peering connection status of Pending indicates that you need to configure your cloud provider to accept the connection. Refer to [Configure the connection in your cloud provider](#configure-the-connection-in-your-cloud-provider).
+
+### Peering connection status is Expired
+
+AWS only. Expired indicates the peering request was not accepted. Retry the peering request.
+
+### Peering connection status is Failed
+
+Check your cloud provider settings to ensure you have entered the correct details for your peering connection.
+
+### VPC and peering connection are active but you cannot connect to the cluster
+
+Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.

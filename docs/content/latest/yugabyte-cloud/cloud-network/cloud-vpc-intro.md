@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A virtual private cloud (VPC) is a virtual network that you can define within a cloud provider. Once you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks. In addition, traffic in a VPC network doesn’t count against data transfer costs, as the traffic is all effectively local.
+A virtual private cloud (VPC) is a virtual network that you can define within a cloud provider. Once you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
 
 In the context of Yugabyte Cloud, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays within the cloud provider's network. The VPCs can be in different regions.
 
@@ -38,19 +38,12 @@ To avoid cross-region data transfer costs, deploy your VPC and cluster in the sa
 
 A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you cannot resize a VPC once it is created, you need to decide on an appropriate size before creating it. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. You may want to create a large network to cover all contingencies, but a network that is over-sized can impact network performance. If your traffic experiences spikes, you will need to take that into account.
 
-When entering the range for your VPC in Yugabyte Cloud, the size of the network is determined by the prefix length (the number after the `/`). Yugabyte Cloud supports network sizes from `/24` to `/16` as shown in the following table.
+When entering the range for your VPC in Yugabyte Cloud, the size of the network is determined by the prefix length (the number after the `/`). Yugabyte Cloud supports network sizes from `/26` to `/16` as shown in the following table.
 
-| Network Size (prefix length) | Number of Usable IP Addresses |
-| --- | --- | --- |
-| /16 | 65536 |
-| /17 | 32768 |
-| /18 | 16384 |
-| /19 | 8192 |
-| /20 | 4096 |
-| /21 | 2048 |
-| /22 | 1024 |
-| /23 | 512 |
-| /24 | 256 |
+| Provider | Network Size (prefix length) | Number of Usable IP Addresses | Notes |
+| --- | --- | --- | --- | --- |
+| GCP (auto)| /16<br>/17<br>/18 | 65536<br>32768<br>16384 | In GCP auto network, the range is split across all supported regions.<br>For information on GCP custom and auto VPCs, refer to [Subnet creation mode](https://cloud.google.com/vpc/docs/vpc#subnet-ranges) in the GCP documentation. |
+| AWS and GCP (custom) | /24<br>/25<br>/26 | 256<br>128<br>64 | In AWS or a GCP custom network, the range is assigned to a single region. |
 
 You can use the following address ranges (per [RFC 1918](https://datatracker.ietf.org/doc/html/rfc1918)) for your VPCs:
 
@@ -60,14 +53,18 @@ You can use the following address ranges (per [RFC 1918](https://datatracker.iet
 
 Addresses cannot overlap with your other VPCs. Yugabyte Cloud warns you when you enter an overlapping range. You can calculate ranges beforehand using [IP Address Guide’s CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
 
-Yugabyte Cloud reserves the `10.21.0.0.16` range for internal operations.
+Yugabyte Cloud reserves the following ranges for internal operations.
+
+| Provider | Range |
+| --- | --- |
+| AWS | 10.3.0.0.16<br>10.4.0.0.16 |
+| GCP | 10.21.0.0/16 |
 
 ## Limitations
 
-- Yugabyte Cloud supports AWC and GCP for self-managed VPC peering.
 - You assign a VPC when you create a cluster. You cannot change VPCs after cluster creation.
 - You cannot change the size of your VPC once it is created.
-- VPC network ranges cannot overlap with the ranges of other networks in the same account.
+- You cannot peer VPCs with overlapping ranges with the same application VPC.
 - IP addresses of peered application VPCs must be [added to the IP allow list](../../cloud-basics/add-connections/) of your cluster to be able to connect to the database.
 
 ## Next steps

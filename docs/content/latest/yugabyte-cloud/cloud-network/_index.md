@@ -20,8 +20,6 @@ A Virtual Private Cloud (VPC) network allows applications running on instances o
 - Better security. Your services are never exposed to the public Internet.
 - Lower data transfer costs. By staying in the provider's network, you won't have any Internet data transfer traffic. (Same region and cross region overages may still apply. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).)
 
-Yugabyte Cloud supports AWC and GCP for self-managed peering.
-
 VPCs and peering connections are managed in Yugabyte Cloud on the **VPC Network** tab of the **Network Access** page.
 
 {{< note title="Note" >}}
