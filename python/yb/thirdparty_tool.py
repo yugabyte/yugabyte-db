@@ -244,6 +244,10 @@ def parse_args() -> argparse.Namespace:
         '--update', '-u', action='store_true',
         help=f'Update the third-party archive metadata in in {THIRDPARTY_ARCHIVES_REL_PATH}.')
     parser.add_argument(
+        '--list-compilers',
+        action='store_true',
+        help='List compiler types available for the given OS and architecture')
+    parser.add_argument(
         '--get-sha1',
         action='store_true',
         help='Show the Git SHA1 of the commit to use in the yugabyte-db-thirdparty repo '
@@ -439,6 +443,24 @@ def filter_for_os(archive_candidates: List[Dict[str, str]], os_type: str) -> Lis
     ]
 
 
+def get_compilers(
+        metadata: Dict[str, Any],
+        os_type: Optional[str],
+        architecture: Optional[str]) -> list:
+    if not os_type:
+        os_type = local_sys_conf().short_os_name_and_version()
+    if not architecture:
+        architecture = local_sys_conf().architecture
+
+    candidates = [i for i in metadata['archives'] if i['architecture'] == architecture]
+
+    candidates = filter_for_os(candidates, os_type)
+
+    compilers = [x['compiler_type'] for x in candidates]
+
+    return compilers
+
+
 def get_download_url(
         metadata: Dict[str, Any],
         compiler_type: str,
@@ -507,6 +529,15 @@ def main() -> None:
         return
 
     metadata['archives'].extend(manual_metadata['archives'])
+
+    if args.list_compilers:
+        compiler_list = get_compilers(
+            metadata=metadata,
+            os_type=args.os_type,
+            architecture=args.architecture)
+        for compiler in compiler_list:
+            print(compiler)
+        return
 
     if args.save_download_url_to_file:
         if not args.compiler_type:
