@@ -7,7 +7,7 @@ menu:
   stable:
     parent: build-apps
     name: Go
-    identifier: go-2
+    identifier: go-4
     weight: 552
 type: page
 isTocNested: true
@@ -15,10 +15,22 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../ysql-pgx" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - PGX
+    </a>
+  </li>
   <li >
     <a href="../ysql-pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PQ
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-pg/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - PG
     </a>
   </li>
   <li >
@@ -218,7 +230,7 @@ $ curl http://localhost:8080/users
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -242,7 +254,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -280,7 +292,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source
