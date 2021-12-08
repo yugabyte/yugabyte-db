@@ -63,7 +63,7 @@ You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer
 
 #### CA certificate
 
-Create a [CA certficate](../../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) to launch your YugabyteDB cluster with SSL/TLS enabled.
+Use the  [CA certficate](../../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) generated above as part of the SSL/TLS configuration of your cluster.
 
 In case of a Yugabyte Cloud cluster, to download the CA certificate for your cluster in Yugabyte Cloud, do the following:
 
