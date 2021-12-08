@@ -60,6 +60,19 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
       error, s, ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR, context);
 }
 
+void SetupError(TabletServerErrorPB* error, const Status& s) {
+  auto ts_error = TabletServerError::FromStatus(s);
+  auto code = ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR;
+  if (code == TabletServerErrorPB::UNKNOWN_ERROR) {
+    consensus::ConsensusError consensus_error(s);
+    if (consensus_error.value() == consensus::ConsensusErrorPB::TABLET_SPLIT) {
+      code = TabletServerErrorPB::TABLET_SPLIT;
+    }
+  }
+  StatusToPB(s, error->mutable_status());
+  error->set_code(code);
+}
+
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
   std::shared_ptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   if (!consensus) {

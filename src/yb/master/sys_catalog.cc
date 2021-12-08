@@ -52,6 +52,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -511,6 +512,10 @@ Status SysCatalogTable::GoIntoShellMode() {
 void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   InitLocalRaftPeerPB();
 
+  multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(master_->messenger(),
+                                                                      &master_->proxy_cache(),
+                                                                      local_peer_pb_.cloud_info());
+
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
@@ -602,7 +607,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests */),
+          nullptr /* retryable_requests */,
+          multi_raft_manager_.get()),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),

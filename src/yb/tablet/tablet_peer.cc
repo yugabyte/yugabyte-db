@@ -189,7 +189,8 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
-    consensus::RetryableRequests* retryable_requests) {
+    consensus::RetryableRequests* retryable_requests,
+    consensus::MultiRaftManager* multi_raft_manager) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -270,7 +271,8 @@ Status TabletPeer::InitTabletPeer(
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
-        retryable_requests);
+        retryable_requests,
+        multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));

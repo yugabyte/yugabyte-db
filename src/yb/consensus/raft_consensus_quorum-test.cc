@@ -186,7 +186,8 @@ class RaftConsensusQuorumTest : public YBTest {
           proxy_factory.get(),
           queue.get(),
           pool_token.get(),
-          logs_[i]);
+          logs_[i],
+          nullptr);
 
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,

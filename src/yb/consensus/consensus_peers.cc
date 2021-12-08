@@ -48,14 +48,13 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/replicate_msgs_holder.h"
-
+#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet_error.h"
-
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
@@ -86,6 +85,8 @@ DEFINE_int32(max_wait_for_processresponse_before_closing_ms,
 TAG_FLAG(max_wait_for_processresponse_before_closing_ms, advanced);
 
 DECLARE_int32(raft_heartbeat_interval_ms);
+
+DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 
 DEFINE_test_flag(double, fault_crash_on_leader_request_fraction, 0.0,
                  "Fraction of the time when the leader will crash just before sending an "
@@ -118,13 +119,14 @@ using strings::Substitute;
 
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, PeerProxyPtr proxy,
-    PeerMessageQueue* queue, ThreadPoolToken* raft_pool_token, Consensus* consensus,
-    rpc::Messenger* messenger)
+    PeerMessageQueue* queue, MultiRaftHeartbeatBatcherPtr multi_raft_batcher,
+    ThreadPoolToken* raft_pool_token, Consensus* consensus, rpc::Messenger* messenger)
     : tablet_id_(std::move(tablet_id)),
       leader_uuid_(std::move(leader_uuid)),
       peer_pb_(peer_pb),
       proxy_(std::move(proxy)),
       queue_(queue),
+      multi_raft_batcher_(std::move(multi_raft_batcher)),
       raft_pool_token_(raft_pool_token),
       consensus_(consensus),
       messenger_(messenger) {}
@@ -329,6 +331,14 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   needs_cleanup = false;
   msgs_holder.ReleaseOps();
 
+  if (request_.ops_size() == 0 && multi_raft_batcher_
+      && FLAGS_enable_multi_raft_heartbeat_batcher) {
+    multi_raft_batcher_->AddRequestToBatch(&request_, &response_,
+                                           std::bind(&Peer::ProcessResponseWithStatus,
+                                                     shared_from_this(), _1));
+    return;
+  }
+
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   proxy_->UpdateAsync(&request_, trigger_mode, &response_, &controller_,
                       std::bind(&Peer::ProcessResponse, retain_self));
@@ -344,15 +354,9 @@ std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
   return lock;
 }
 
-void Peer::ProcessResponse() {
+void Peer::ProcessResponseWithStatus(const Status& status) {
   DCHECK(performing_mutex_.is_locked()) << "Got a response when nothing was pending";
-
   CleanRequestOps();
-
-  Status status = controller_.status();
-  if (status.ok()) {
-    status = controller_.thread_pool_failure();
-  }
   controller_.Reset();
 
   auto performing_lock = LockPerforming(std::adopt_lock);
@@ -432,6 +436,14 @@ void Peer::ProcessResponse() {
     performing_lock.release();
     SendNextRequest(RequestTriggerMode::kAlwaysSend);
   }
+}
+
+void Peer::ProcessResponse() {
+  auto status = controller_.status();
+  if (status.ok()) {
+    status = controller_.thread_pool_failure();
+  }
+  ProcessResponseWithStatus(status);
 }
 
 Status Peer::SendRemoteBootstrapRequest() {

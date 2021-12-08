@@ -48,6 +48,7 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/multi_raft_batcher.h"
 
 #include "yb/gutil/callback.h"
 
@@ -76,6 +77,7 @@ class Clock;
 namespace rpc {
 class PeriodicTimer;
 }
+
 namespace consensus {
 
 class ConsensusMetadata;
@@ -119,7 +121,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests);
+    RetryableRequests* retryable_requests,
+    MultiRaftManager* multi_raft_manager);
 
   // Creates RaftConsensus.
   RaftConsensus(

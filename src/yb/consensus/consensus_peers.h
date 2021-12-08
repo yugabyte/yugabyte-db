@@ -131,7 +131,7 @@ typedef std::shared_ptr<Peer> PeerPtr;
 class Peer : public std::enable_shared_from_this<Peer> {
  public:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
-       PeerProxyPtr proxy, PeerMessageQueue* queue,
+       PeerProxyPtr proxy, PeerMessageQueue* queue, MultiRaftHeartbeatBatcherPtr multi_raft_batcher,
        ThreadPoolToken* raft_pool_token, Consensus* consensus, rpc::Messenger* messenger);
 
   // Initializes a peer and get its status.
@@ -185,6 +185,8 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Signals that a response was received from the peer. This method does response handling that
   // requires IO or may block.
   void ProcessResponse();
+
+  void ProcessResponseWithStatus(const Status& status);
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
   // goes to ProcessRemoteBootstrapResponse().
@@ -241,6 +243,10 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // Heartbeater for remote peer implementations.  This will send status only requests to the remote
   // peers whenever we go more than 'FLAGS_raft_heartbeat_interval_ms' without sending actual data.
   std::shared_ptr<rpc::PeriodicTimer> heartbeater_;
+
+  // Batcher that currently batches heartbeat requests that are sent by each consensus peer
+  // on a per tserver level
+  MultiRaftHeartbeatBatcherPtr multi_raft_batcher_;
 
   // Thread pool used to construct requests to this peer.
   ThreadPoolToken* raft_pool_token_;
