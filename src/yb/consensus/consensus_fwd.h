@@ -29,6 +29,7 @@ namespace consensus {
 class Consensus;
 class ConsensusContext;
 class ConsensusRoundCallback;
+class MultiRaftManager;
 class ConsensusStatePB;
 class PeerProxyFactory;
 class PeerMessageQueue;
@@ -60,6 +61,9 @@ typedef scoped_refptr<LeaderElection> LeaderElectionPtr;
 
 class PeerProxy;
 typedef std::unique_ptr<PeerProxy> PeerProxyPtr;
+
+class MultiRaftHeartbeatBatcher;
+using MultiRaftHeartbeatBatcherPtr = std::shared_ptr<MultiRaftHeartbeatBatcher>;
 
 struct LeaderElectionData;
 

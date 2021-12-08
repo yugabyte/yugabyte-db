@@ -13,8 +13,11 @@
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
+#include <memory>
+
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 
@@ -94,6 +97,9 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   MessengerBuilder mbuilder(CURRENT_TEST_NAME());
   messenger_ = ASSERT_RESULT(mbuilder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+  multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(messenger_.get(),
+                                                                      proxy_cache_.get(),
+                                                                      config_peer.cloud_info());
 
   log_anchor_registry_.reset(new LogAnchorRegistry());
   ASSERT_OK(tablet_peer_->SetBootstrapping());
@@ -107,7 +113,8 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       tablet_metric_entity,
       raft_pool_.get(),
       tablet_prepare_pool_.get(),
-      nullptr /* retryable_requests */));
+      nullptr /* retryable_requests */,
+      multi_raft_manager_.get()));
   consensus::ConsensusBootstrapInfo boot_info;
   ASSERT_OK(tablet_peer_->Start(boot_info));
 

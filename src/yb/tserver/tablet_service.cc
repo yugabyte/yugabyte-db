@@ -48,7 +48,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-
+#include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/raft_consensus.h"
 
@@ -298,17 +298,24 @@ using tablet::WriteOperation;
 
 namespace {
 
+Result<std::shared_ptr<consensus::RaftConsensus>> GetConsensus(const TabletPeerPtr& tablet_peer) {
+  auto result = tablet_peer->shared_raft_consensus();
+  if (!result) {
+    Status s = STATUS(ServiceUnavailable, "Consensus unavailable. Tablet not running");
+    return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
+  }
+  return result;
+}
+
 template<class RespClass>
 std::shared_ptr<consensus::RaftConsensus> GetConsensusOrRespond(const TabletPeerPtr& tablet_peer,
                                                                 RespClass* resp,
                                                                 rpc::RpcContext* context) {
-  auto result = tablet_peer->shared_raft_consensus();
-  if (!result) {
-    Status s = STATUS(ServiceUnavailable, "Consensus unavailable. Tablet not running");
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::TABLET_NOT_RUNNING, context);
+  auto result = GetConsensus(tablet_peer);
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), context);
   }
-  return result;
+  return result.get();
 }
 
 template<class RespClass>
@@ -316,7 +323,12 @@ bool GetConsensusOrRespond(const TabletPeerPtr& tablet_peer,
                            RespClass* resp,
                            rpc::RpcContext* context,
                            shared_ptr<Consensus>* consensus) {
-  return (*consensus = GetConsensusOrRespond(tablet_peer, resp, context)) != nullptr;
+  auto result = GetConsensus(tablet_peer);
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), context);
+    return false;
+  }
+  return (*consensus = result.get()) != nullptr;
 }
 
 Status GetTabletRef(const TabletPeerPtr& tablet_peer,
@@ -2475,6 +2487,69 @@ ConsensusServiceImpl::ConsensusServiceImpl(const scoped_refptr<MetricEntity>& me
 ConsensusServiceImpl::~ConsensusServiceImpl() {
 }
 
+void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
+    std::shared_ptr<tablet::TabletPeer> tablet_peer,
+    consensus::ConsensusResponsePB* resp) {
+  auto tablet = tablet_peer->shared_tablet();
+  if (tablet) {
+    resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
+  }
+  resp->set_propagated_hybrid_time(tablet_peer->clock().Now().ToUint64());
+}
+
+void ConsensusServiceImpl::MultiRaftUpdateConsensus(
+      const consensus::MultiRaftConsensusRequestPB *req,
+      consensus::MultiRaftConsensusResponsePB *resp,
+      rpc::RpcContext context) {
+    DVLOG(3) << "Received Batch Consensus Update RPC: " << req->ShortDebugString();
+    // Effectively performs ConsensusServiceImpl::UpdateConsensus for
+    // each ConsensusRequestPB in the batch but does not fail the entire
+    // batch if a single request fails.
+    for (int i = 0; i < req->consensus_request_size(); i++) {
+      // Unfortunately, we have to use const_cast here,
+      // because the protobuf-generated interface only gives us a const request
+      // but we need to be able to move messages out of the request for efficiency.
+      auto consensus_req = const_cast<ConsensusRequestPB*>(&req->consensus_request(i));
+      auto consensus_resp = resp->add_consensus_response();;
+
+      auto uuid_match_res = CheckUuidMatch(tablet_manager_, "UpdateConsensus", consensus_req,
+                                           context.requestor_string());
+      if (!uuid_match_res.ok()) {
+        SetupError(consensus_resp->mutable_error(), uuid_match_res.status());
+        continue;
+      }
+
+      auto peer_tablet_res = LookupTabletPeer(tablet_manager_, consensus_req->tablet_id());
+      if (!peer_tablet_res.ok()) {
+        SetupError(consensus_resp->mutable_error(), peer_tablet_res.status());
+        continue;
+      }
+      auto tablet_peer = peer_tablet_res.get().tablet_peer;
+
+      // Submit the update directly to the TabletPeer's Consensus instance.
+      auto consensus_res = GetConsensus(tablet_peer);
+      if (!consensus_res.ok()) {
+        SetupError(consensus_resp->mutable_error(), consensus_res.status());
+        continue;
+      }
+      auto consensus = *consensus_res;
+
+      Status s = consensus->Update(
+        consensus_req, consensus_resp, context.GetClientDeadline());
+      if (PREDICT_FALSE(!s.ok())) {
+        // Clear the response first, since a partially-filled response could
+        // result in confusing a caller, or in having missing required fields
+        // in embedded optional messages.
+        consensus_resp->Clear();
+        SetupError(consensus_resp->mutable_error(), s);
+        continue;
+      }
+
+      CompleteUpdateConsensusResponse(tablet_peer, consensus_resp);
+    }
+    context.RespondSuccess();
+}
+
 void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
                                            ConsensusResponsePB* resp,
                                            rpc::RpcContext context) {
@@ -2505,12 +2580,8 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
     return;
   }
 
-  auto tablet = tablet_peer->shared_tablet();
-  if (tablet) {
-    resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
-  }
+  CompleteUpdateConsensusResponse(tablet_peer, resp);
 
-  resp->set_propagated_hybrid_time(tablet_peer->clock().Now().ToUint64());
   context.RespondSuccess();
 }
 

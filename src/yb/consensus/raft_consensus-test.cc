@@ -124,7 +124,7 @@ class MockQueue : public PeerMessageQueue {
 
 class MockPeerManager : public PeerManager {
  public:
-  MockPeerManager() : PeerManager("", "", nullptr, nullptr, nullptr, nullptr) {}
+  MockPeerManager() : PeerManager("", "", nullptr, nullptr, nullptr, nullptr, nullptr) {}
   MOCK_METHOD1(UpdateRaftConfig, void(const consensus::RaftConfigPB& config));
   MOCK_METHOD1(SignalRequest, void(RequestTriggerMode trigger_mode));
   MOCK_METHOD0(Close, void());

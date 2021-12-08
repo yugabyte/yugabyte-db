@@ -327,9 +327,11 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests) {
+    RetryableRequests* retryable_requests,
+    MultiRaftManager* multi_raft_manager) {
+
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
-      messenger, proxy_cache, local_peer_pb.cloud_info());
+    messenger, proxy_cache, local_peer_pb.cloud_info());
 
   // The message queue that keeps track of which operations need to be replicated
   // where.
@@ -362,7 +364,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       rpc_factory.get(),
       queue.get(),
       raft_pool_token.get(),
-      log);
+      log,
+      multi_raft_manager);
 
   return std::make_shared<RaftConsensus>(
       options,
