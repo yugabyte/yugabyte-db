@@ -25,9 +25,6 @@ import org.yb.util.Pair;
 
 import static org.yb.AssertionWrappers.assertTrue;
 
-import org.yb.Common;
-import org.yb.IndexInfo;
-import org.yb.client.GetTableSchemaResponse;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
@@ -1256,24 +1253,7 @@ public class TestPartialIndex extends BaseCQLTest {
     String queryWithoutIndexes = String.format("select %s from %s where %s",
       String.join(",", selectCols), testTableName, whereClauseWithoutIndexes);
 
-    while (true) {
-      boolean all_indexes_have_read_perms = true;
-      GetTableSchemaResponse response = miniCluster.getClient().getTableSchema(
-        DEFAULT_TEST_KEYSPACE, testTableName);
-      List<IndexInfo> indexes = response.getIndexes();
-
-      for (IndexInfo index : indexes) {
-        if (index.getIndexPermissions() !=
-              Common.IndexPermissions.INDEX_PERM_READ_WRITE_AND_DELETE) {
-          LOG.info("Found index with permissions=" + index.getIndexPermissions() +
-            " != INDEX_PERM_READ_WRITE_AND_DELETE");
-          all_indexes_have_read_perms = false;
-          break;
-        }
-      }
-      if (all_indexes_have_read_perms) break;
-      Thread.sleep(100);
-    }
+    waitForReadPermsOnAllIndexes(testTableName);
 
     // We just execute three SELECT statements to get metadata cache of all tservers on the same
     // schema version post the index creation. If that doesn't happen we might choose a wrong

@@ -54,6 +54,11 @@ public class TestIndex extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndex.class);
 
   @Override
+  protected int getNumShardsPerTServer() {
+    return 1;
+  }
+
+  @Override
   public int getTestMethodTimeoutSec() {
     // Usual time for a test ~90 seconds. But can be much more on Jenkins.
     return super.getTestMethodTimeoutSec()*10;
@@ -1618,6 +1623,8 @@ public class TestIndex extends BaseCQLTest {
                     "  WITH TRANSACTIONS = {'enabled' : true};");
     session.execute("CREATE INDEX test_order_by_idx ON test_order_by(b, c)" +
                     "  INCLUDE (non_index_cluster_column);");
+    waitForReadPermsOnAllIndexes("test_order_by");
+
     // Run one valid query to make sure the setup is correct.
     runValidSelect("SELECT * FROM test_order_by WHERE b = 3 ORDER BY c;");
     // Test invalid ORDER BY for non-existing column.
@@ -1631,6 +1638,8 @@ public class TestIndex extends BaseCQLTest {
     session.execute("CREATE TABLE test_jsonb_order_by(i INT, j JSONB, k INT, PRIMARY KEY (i, k))" +
                     "  WITH TRANSACTIONS = { 'enabled' : true };");
     session.execute("CREATE INDEX test_jsonb_order_by_idx ON test_jsonb_order_by(k, j->>'x');");
+    waitForReadPermsOnAllIndexes("test_jsonb_order_by");
+
     // Run one valid query to make sure the setup is correct.
     runValidSelect("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j->>'x';");
     // Test invalid ORDER BY non existing column "j->>'y'".
