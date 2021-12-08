@@ -64,6 +64,7 @@ TabletInfos RestorationState::PrepareOperations() {
   std::vector<TabletId> tablet_ids;
   DoPrepareOperations([&tablet_ids](const TabletData& data) {
     tablet_ids.push_back(data.id);
+    return true;
   });
   return context().GetTabletInfos(tablet_ids);
 }
