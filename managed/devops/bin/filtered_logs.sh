@@ -5,13 +5,15 @@ output_file=$2
 grep_regex=$3
 max_lines=$4
 
+script_name="filtered_logs.sh"
+script_name_regex="filtered_logs"
 grep_regex_file="$output_file-regex"
 temp_file="$output_file-temp"
 
 # temporary files to stores log lines
-echo "log_dir $log_dir"
-echo "output_file: $output_file"
-echo "grep_regex: $grep_regex"
+echo "$script_name - log_dir: $log_dir"
+echo "$script_name - output_file: $output_file"
+echo "$script_name - grep_regex: $grep_regex"
 
 echo > "$output_file"
 echo > "$grep_regex_file"
@@ -27,8 +29,9 @@ find "$log_dir" -type f -print0 | xargs -0 ls -t | while read -r file_path; do
     break
   fi
 
-  echo "Currently reading log file: $file_path"
-  zgrep -ie "$grep_regex" "$file_path" | tail -n "$lines_remaining" > "$grep_regex_file"
+  echo "$script_name - Currently reading log file: $file_path"
+  zgrep -Ei "$grep_regex" "$file_path" | zgrep -Eiv "$script_name_regex" \
+    | tail -n "$lines_remaining" > "$grep_regex_file"
   cat "$grep_regex_file" "$output_file" > "$temp_file"
   mv "$temp_file" "$output_file"
 done
