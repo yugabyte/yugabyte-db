@@ -1,3 +1,5 @@
+Tracking GitHub issue [7120](https://github.com/yugabyte/yugabyte-db/issues/7120)
+
 # Point In Time Recovery and Incremental Backups
 
 ## Goals
