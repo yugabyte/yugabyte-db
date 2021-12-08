@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowMinusWithoutMillis;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +20,7 @@ import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertConfiguration;
@@ -31,6 +34,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
@@ -42,6 +46,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
@@ -460,6 +465,30 @@ public class ModelFactory {
     destination.save();
     return destination;
   }
+
+  public static MaintenanceWindow createMaintenanceWindow(UUID customerUUID) {
+    return createMaintenanceWindow(customerUUID, window -> {});
+  }
+
+  public static MaintenanceWindow createMaintenanceWindow(
+      UUID customerUUID, Consumer<MaintenanceWindow> modifier) {
+    Date startDate = nowMinusWithoutMillis(1, ChronoUnit.HOURS);
+    Date endDate = nowPlusWithoutMillis(1, ChronoUnit.HOURS);
+    AlertConfigurationApiFilter filter = new AlertConfigurationApiFilter();
+    filter.setName("Replication Lag");
+    MaintenanceWindow window =
+        new MaintenanceWindow()
+            .generateUUID()
+            .setName("Test")
+            .setStartTime(startDate)
+            .setEndTime(endDate)
+            .setCustomerUUID(customerUUID)
+            .setCreateTime(nowWithoutMillis())
+            .setAlertConfigurationFilter(filter);
+    modifier.accept(window);
+    window.save();
+    return window;
+  };
 
   /*
    * KMS Configuration creation helpers.
