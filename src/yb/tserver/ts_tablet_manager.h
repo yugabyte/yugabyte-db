@@ -574,6 +574,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;
 
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
+
   boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
 
   TabletPeers shutting_down_peers_;
