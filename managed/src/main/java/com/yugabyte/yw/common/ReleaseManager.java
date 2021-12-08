@@ -5,8 +5,8 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.forms.ReleaseFormData;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
@@ -24,7 +24,6 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.UUID;
 import javax.inject.Singleton;
 import javax.validation.Valid;
 import org.apache.commons.lang3.StringUtils;
@@ -318,7 +317,7 @@ public class ReleaseManager {
     return releases;
   }
 
-  public void addReleaseWithMetadata(String version, ReleaseMetadata metadata) {
+  public synchronized void addReleaseWithMetadata(String version, ReleaseMetadata metadata) {
     Map<String, Object> currentReleases = getReleaseMetadata();
     if (currentReleases.containsKey(version)) {
       String errorMsg = "Release already exists for version [" + version + "]";
@@ -329,7 +328,7 @@ public class ReleaseManager {
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
 
-  public void removeRelease(String version) {
+  public synchronized void removeRelease(String version) {
     Map<String, Object> currentReleases = getReleaseMetadata();
     boolean isPresentLocally = false;
     String ybReleasesPath = appConfig.getString("yb.releases.path");
@@ -353,7 +352,7 @@ public class ReleaseManager {
     }
   }
 
-  public void importLocalReleases() {
+  public synchronized void importLocalReleases() {
     String ybReleasesPath = appConfig.getString("yb.releases.path");
     String ybReleasePath = appConfig.getString("yb.docker.release");
     String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
@@ -373,7 +372,7 @@ public class ReleaseManager {
     }
   }
 
-  public void updateReleaseMetadata(String version, ReleaseMetadata newData) {
+  public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
     Map<String, Object> currentReleases = getReleaseMetadata();
     if (currentReleases.containsKey(version)) {
       currentReleases.put(version, newData);

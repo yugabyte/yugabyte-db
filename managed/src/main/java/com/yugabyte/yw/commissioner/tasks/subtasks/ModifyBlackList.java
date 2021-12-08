@@ -97,10 +97,12 @@ public class ModifyBlackList extends UniverseTaskBase {
     if (CollectionUtils.isNotEmpty(nodes)) {
       hostPorts = new ArrayList<>(nodes.size());
       for (NodeDetails node : nodes) {
-        String ip = node.cloudInfo.private_ip;
-        if (ip == null) {
+        String ip = null;
+        if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
           NodeDetails onDiskNode = universe.getNode(node.nodeName);
           ip = onDiskNode.cloudInfo.private_ip;
+        } else {
+          ip = node.cloudInfo.private_ip;
         }
         HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         hostPorts.add(hpb.build());

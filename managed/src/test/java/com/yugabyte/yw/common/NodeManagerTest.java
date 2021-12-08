@@ -2966,4 +2966,56 @@ public class NodeManagerTest extends FakeDBApplication {
         NodeManager.SkipCertValidationType.valueOf(expected),
         NodeManager.getSkipCertValidationType(config, userIntent, params));
   }
+
+  @Test
+  public void testCronCheckWithAccessKey() {
+    for (TestData t : testData) {
+      // Create AccessKey
+      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+      keyInfo.privateKey = "/path/to/private.key";
+      keyInfo.publicKey = "/path/to/public.key";
+      keyInfo.vaultFile = "/path/to/vault_file";
+      keyInfo.vaultPasswordFile = "/path/to/vault_password";
+      keyInfo.sshPort = 3333;
+      keyInfo.installNodeExporter = false;
+      getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+
+      Universe.saveDetails(
+          params.universeUUID,
+          universe -> {
+            NodeDetails nodeDetails = universe.getNode(params.nodeName);
+            UserIntent userIntent =
+                universe
+                    .getUniverseDetails()
+                    .getClusterByUuid(nodeDetails.placementUuid)
+                    .userIntent;
+            userIntent.accessKeyCode = "demo-access";
+          });
+
+      List<String> expectedCommand = new ArrayList<>(t.baseCommand);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.CronCheck, params, t));
+      List<String> accessKeyCommands =
+          new ArrayList<>(
+              ImmutableList.of(
+                  "--vars_file",
+                  "/path/to/vault_file",
+                  "--vault_password_file",
+                  "/path/to/vault_password",
+                  "--private_key_file",
+                  "/path/to/private.key"));
+      accessKeyCommands.add("--custom_ssh_port");
+      accessKeyCommands.add("3333");
+      expectedCommand.addAll(expectedCommand.size() - 1, accessKeyCommands);
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.CronCheck, params);
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+    }
+  }
 }
