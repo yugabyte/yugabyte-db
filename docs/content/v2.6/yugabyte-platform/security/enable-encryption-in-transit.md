@@ -103,7 +103,7 @@ When you create a universe, you can enable TLS using your own certificates, as f
 12. Select an existing certificate from the **Root Certificate** list and then select the certificate that you have uploaded.
 13. Create the universe.
 
-You can also modify TLS settings for an existing universe by navigating to **Universes**, opening a specific universe, clicking **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog, and then following the procedure described in [How to Use Platform-Generate Certificates to Enable TLS](#how-to-use-platform-generated-certificates-to-enable-tls) for an existing universe. 
+You can also modify TLS settings for an existing universe by navigating to **Universes**, opening a specific universe, clicking **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog, and then following the procedure described in [How to Use Platform-Generated Certificates to Enable TLS](#how-to-use-platform-generated-certificates-to-enable-tls) for an existing universe. 
 
 ## Custom CA-Signed Self-Provided Certificates
 
