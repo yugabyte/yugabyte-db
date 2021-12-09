@@ -465,4 +465,8 @@ extern void YBSaveDdlHandle(YBCPgStatement handle);
 extern List* YBGetDdlHandles(void);
 extern void YBClearDdlHandles(void);
 
+/*
+ * Utility for clearing transaction ID.
+*/
+extern void YbClearCurrentTransactionId(void);
 #endif							/* XACT_H */
