@@ -590,3 +590,24 @@ class AbstractCloud(AbstractCommandParser):
                 "Cannot reach the instance {} after its start at ports {}".format(
                     instance_name, str(ssh_ports))
                 )
+
+    def wait_for_startup_script(self, args, host_info):
+        if self._wait_for_startup_script_command:
+            rc, stdout, stderr = remote_exec_command(
+                host_info['ssh_host'], host_info['ssh_port'],
+                host_info['ssh_user'], args.private_key_file,
+                self._wait_for_startup_script_command)
+            if rc != 0:
+                logging.error(
+                    'Failed to wait for startup script completion on {}:'.format(
+                        args.search_pattern))
+                if stdout:
+                    logging.error('STDOUT: {}'.format(stdout))
+                if stderr:
+                    logging.error('STDERR: {}'.format(stderr))
+            return rc == 0
+
+        return True
+
+    def get_console_output(self, args):
+        return ''
