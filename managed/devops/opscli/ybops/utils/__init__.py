@@ -644,7 +644,7 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
         username (str): SSH username
         ssh_key_file (str): SSH key file
         cmd (str): Command to run
-        timetout (int): Time in seconds to wait before erroring
+        timeout (int): Time in seconds to wait before erroring
     Returns:
         rc (int): returncode
         stdout (str): output log
@@ -665,7 +665,7 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
         return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
     except (paramiko.ssh_exception, socket.timeout, socket.error) as e:
         logging.error("Failed to execute remote command: {}".format(e))
-        return False
+        return 1, None, None  # treat this as a non-zero return code
     finally:
         ssh_client.close()
 

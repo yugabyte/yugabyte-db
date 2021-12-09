@@ -872,3 +872,13 @@ class GoogleCloudAdmin():
             zone=zone,
             body=body).execute(), zone=zone)
         logging.info("[app] Created GCP VM {}".format(instance_name))
+
+    def get_console_output(self, zone, instance_name):
+        try:
+            return self.compute.instances().getSerialPortOutput(
+                        project=self.project,
+                        zone=zone,
+                        instance=instance_name).execute().get('contents', '')
+        except HttpError:
+            logging.exception('Failed to get console output from {}'.format(instance_name))
+            return ''
