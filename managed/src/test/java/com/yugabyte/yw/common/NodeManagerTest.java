@@ -89,8 +89,6 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
-
-import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -2978,6 +2976,7 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
       keyInfo.sshPort = 3333;
       keyInfo.installNodeExporter = false;
+      keyInfo.sshUser = "yugabyte";
       getOrCreate(t.provider.uuid, "demo-access", keyInfo);
 
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -3012,6 +3011,8 @@ public class NodeManagerTest extends FakeDBApplication {
                   "/path/to/private.key"));
       accessKeyCommands.add("--custom_ssh_port");
       accessKeyCommands.add("3333");
+      accessKeyCommands.add("--ssh_user");
+      accessKeyCommands.add("yugabyte");
       expectedCommand.addAll(expectedCommand.size() - 1, accessKeyCommands);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.CronCheck, params);
