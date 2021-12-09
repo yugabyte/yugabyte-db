@@ -1,6 +1,6 @@
 ---
 title: PostgreSQL JDBC Driver
-linkTitle: Java PostgreSQL JDBC Driver
+linkTitle: PostgreSQL JDBC Driver
 description: Postgres JDBC Driver for YSQL
 headcontent: Postgres JDBC Driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -15,22 +15,23 @@ showAsideToc: true
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL which can used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatiblity with PostgreSQL JDBC Driver, allows Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
 
+* [Quick Start](#quick-start)
+* [Download the Driver Dependency](#download-driver-dependencuy)
+* [Compatibility Matrix](#compatibility-matrix)
+* [Fundamentals](#fundamentals)
+* [Transaction and Isolation Levels](#transaction-isolation-levels)
+* [Other Usage Examples](#other-usage-examples)
+* [FAQ](#faq)
+
 ## Quick Start
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/java/ysql-jdbc) in Quick Start section.
 
-## Fundamentals
-
-Learn how to perform the fundamental tasks required for Java App development using the PostgreSQL JDBC driver
-
-* [Download the Driver Dependency](#download-the-driver-dependency)
-* [Connect to YugabyteDB Database](#connect-to-yugabytedb-database)
-
-### Download the Driver Dependency
+## Download the Driver Dependency
 
 Postgres JDBC Drivers are available as maven dependency, you can download the dirver by adding the following dependency in to your java project.
 
-#### Maven Depedency
+### Maven Depedency
 
 ```xml
 <!-- https://mvnrepository.com/artifact/org.postgresql/postgresql -->
@@ -41,15 +42,40 @@ Postgres JDBC Drivers are available as maven dependency, you can download the di
 </dependency>
 ```
 
-#### Gradle Dependency
+### Gradle Dependency
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
 implementation 'org.postgresql:postgresql:42.2.14'
 ```
 
-### Connect to YugabyteDB Database
+## Compatibility Matrix
 
-You can connect to and query the YugabyteDB database using the `DriverManager` class.
+| Driver Version | YugabyteDB Version | Support |
+| :------------- | :----------------- | :------ |
+| hostname  | hostname of the YugabyteDB instance | localhost
+| port |  Listen port for YSQL | 5433
+| database | database name | yugabyte
+| user | user for connecting to the database | yugabyte
+| password | password for connecting to the database | yugabyte
 
-Use the `DriverManager.getConnection`
+## Fundamentals
+
+Learn how to perform the fundamental tasks required for Java App development using the PostgreSQL JDBC driver
+
+* [Connect to YugabyteDB Database](postgres-jdbc-fundamentals#connect-to-yugabytedb-database)
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="postgres-jdbc-fundamentals" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Postgres JDBC Driver - Fundamentals
+    </a>
+  </li>
+</ul>
+
+## Transaction and Isolation Levels
+
+## Other Usage Examples
+
+## FAQ
