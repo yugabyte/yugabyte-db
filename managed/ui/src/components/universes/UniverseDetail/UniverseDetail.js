@@ -224,7 +224,7 @@ class UniverseDetail extends Component {
       updateBackupState,
       closeModal,
       customer,
-      customer: { currentCustomer },
+      customer: { currentCustomer, currentUser },
       params: { tab },
       featureFlags,
       providers,
@@ -468,7 +468,11 @@ class UniverseDetail extends Component {
                 unmountOnExit={true}
                 disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
               >
-                <UniverseHealthCheckList universe={universe} currentCustomer={currentCustomer} />
+                <UniverseHealthCheckList
+                  universe={universe}
+                  currentCustomer={currentCustomer}
+                  currentUser={currentUser}
+                />
               </Tab.Pane>
             )
           ])
@@ -717,7 +721,7 @@ class UniverseDetail extends Component {
                         !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
                           featureFlags.released['pausedUniverse']) && (
-                          <YBMenuItem 
+                          <YBMenuItem
                             onClick={showToggleUniverseStateModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
