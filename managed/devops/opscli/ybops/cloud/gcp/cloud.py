@@ -28,6 +28,9 @@ class GcpCloud(AbstractCloud):
     def __init__(self):
         super(GcpCloud, self).__init__("gcp")
         self.admin = None
+        self._wait_for_startup_script_command = \
+            "while ps -ef | grep 'google_metadata_script_runner startup' | " \
+            "grep -v grep ; do sleep 1 ; done"
 
     def get_admin(self):
         if self.admin is None:
@@ -332,3 +335,6 @@ class GcpCloud(AbstractCloud):
             if metadata:
                 return metadata
         return {}
+
+    def get_console_output(self, args):
+        return self.get_admin().get_console_output(args.zone, args.search_pattern)

@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import socket
-import time
 
 import boto3
 from botocore.exceptions import ClientError
@@ -28,8 +27,7 @@ from ybops.cloud.aws.utils import (ROOT_VOLUME_LABEL, AwsBootstrapClient, YbVpcC
                                    query_vpc, update_disk)
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.utils import (DEFAULT_SSH_PORT, DEFAULT_SSH_USER, format_rsa_key, get_datafile_path,
-                         is_valid_ip_address, remote_exec_command, scp_to_tmp, validated_key_file)
+from ybops.utils import (format_rsa_key, is_valid_ip_address, validated_key_file)
 
 
 class AwsCloud(AbstractCloud):
@@ -42,6 +40,8 @@ class AwsCloud(AbstractCloud):
 
     def __init__(self):
         super(AwsCloud, self).__init__("aws")
+        self._wait_for_startup_script_command = \
+            "until test -e /var/lib/cloud/instance/boot-finished ; do sleep 1 ; done"
 
     def add_subcommands(self):
         """Override to setup the cloud-specific instances of the subcommands.
@@ -493,3 +493,14 @@ class AwsCloud(AbstractCloud):
             logging.error(e)
         finally:
             sock.close()
+
+    def get_console_output(self, args):
+        instance = self.get_host_info(args)
+
+        try:
+            ec2 = boto3.client('ec2', region_name=instance['region'])
+            return ec2.get_console_output(InstanceId=instance['id'], Latest=True).get('Output', '')
+        except ClientError:
+            logging.exception('Failed to get console output from {}'.format(args.search_pattern))
+
+        return ''
