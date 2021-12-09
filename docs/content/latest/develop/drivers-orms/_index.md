@@ -10,12 +10,14 @@ menu:
     identifier: drivers-orms
     parent: develop
     weight: 570
+isTocNested: true
+showAsideToc: true
 ---
 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-  <a class="section-link icon-offset" href="java/java-drivers-orms">
+  <a class="section-link icon-offset" href="java/">
     <div class="head">
       <div class="icon">
         <i class="icon-java"></i>

@@ -21,7 +21,7 @@ For Java application, this page provides list of all the Drivers and ORMs which 
 | Driver | Support Level | Example Apps |
 | :----- | :--- | :-------------- |
 | [YugabyteDB JDBC Smart Driver](/latest/integrations/jdbc-driver) | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-yb-jdbc) |
-| Postgres JDBC Driver | Full |  |
+| [Postgres JDBC Driver](../postgres-jdbc) | Full |  |
 
 ## ORM Support
 | ORM | Support Level | Example Apps |
