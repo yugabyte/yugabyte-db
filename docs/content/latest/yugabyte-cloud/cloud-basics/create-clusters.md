@@ -24,7 +24,7 @@ To create a cluster, on the **Clusters** page, click **Add Cluster** to start th
 
 Before creating a cluster, create a billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/). You do not need a billing profile to create your free cluster.
 
-If you want to use dedicated VPCs for network isolation and security, you must set up VPC Peering for the cloud provider before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC peering](../../cloud-network/).
+If you want to use dedicated VPCs for network isolation and security, you must set up VPC Peering for the cloud provider before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-vpcs/).
 
 {{< /note >}}
 
@@ -76,7 +76,7 @@ If you are creating a **Paid** cluster, set the following additional options:
   - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
   - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
-- **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC peering](../../cloud-network/).
+- **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 
 - **Cluster Configuration**:
 

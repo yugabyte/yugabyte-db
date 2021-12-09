@@ -6,7 +6,7 @@ description: How to set up and VPC network in Yugabyte Cloud.
 menu:
   latest:
     identifier: cloud-vpc-setup
-    parent: cloud-network
+    parent: cloud-vpcs
     weight: 20
 isTocNested: true
 showAsideToc: true

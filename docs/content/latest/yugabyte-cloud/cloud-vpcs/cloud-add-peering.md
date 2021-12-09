@@ -6,7 +6,7 @@ description: Manage peering connections to your cloud VPCs.
 menu:
   latest:
     identifier: cloud-add-peering
-    parent: cloud-network
+    parent: cloud-vpcs
     weight: 40
 isTocNested: true
 showAsideToc: true

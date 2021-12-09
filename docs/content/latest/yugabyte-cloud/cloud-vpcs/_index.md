@@ -9,7 +9,7 @@ aliases:
   - /latest/yugabyte-cloud/cloud-network/vpc-peers/
 menu:
   latest:
-    identifier: cloud-network
+    identifier: cloud-vpcs
     parent: yugabyte-cloud
     weight: 400
 ---
