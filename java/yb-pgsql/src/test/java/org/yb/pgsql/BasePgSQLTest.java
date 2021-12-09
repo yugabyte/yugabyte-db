@@ -683,6 +683,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected String getOwnerForTable(Statement stmt, String tableName) throws Exception {
+    return getSingleRow(stmt, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = '" +
+        tableName + "'").getString(0);
+  }
+
   protected long getMetricCounter(String metricName) throws Exception {
     return getMetric(metricName).count;
   }
