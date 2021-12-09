@@ -419,7 +419,7 @@ DefineIndex(Oid relationId,
 		IsYBRelation(rel))
 	{
 		HandleYBStatus(YBCPgIsTableColocated(databaseId,
-											 relationId,
+											 YbGetStorageRelid(rel),
 											 &is_indexed_table_colocated));
 	}
 
@@ -1570,7 +1570,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
 		if (IsYBRelation(rel))
 			HandleYBStatus(YBCPgIsTableColocated(YBCGetDatabaseOid(rel),
-												 relId,
+												 YbGetStorageRelid(rel),
 												 &colocated));
 		RelationClose(rel);
 	}
