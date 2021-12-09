@@ -551,4 +551,11 @@ extern const int yb_funcs_safe_for_modify_fast_path_count;
  */
 void YBSetParentDeathSignal();
 
+/**
+ * Return the relid to be used for the relation's storage in docDB.
+ * Ex: If we have swapped relation A with relation B, relation A's
+ * filenode has been set to relation B's OID.
+ */
+Oid YbGetStorageRelid(Relation relation);
+
 #endif /* PG_YB_UTILS_H */

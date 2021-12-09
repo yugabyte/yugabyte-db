@@ -470,7 +470,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	overlay_placing substr_from substr_for
 
 %type <boolean> opt_instead
-%type <boolean> opt_unique opt_concurrently opt_verbose opt_full
+%type <boolean> opt_unique opt_concurrently opt_verbose opt_full opt_concurrently_matview
 %type <boolean> opt_freeze opt_analyze opt_default opt_recheck
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
@@ -912,6 +912,7 @@ stmt :
 			| CreateExtensionStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
+			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
 			| CreatePolicyStmt
@@ -945,6 +946,7 @@ stmt :
 			| LockStmt
 			| PrepareStmt
 			| ReassignOwnedStmt
+			| RefreshMatViewStmt
 			| RemoveAggrStmt
 			| RemoveFuncStmt
 			| RemoveOperStmt
@@ -999,7 +1001,6 @@ stmt :
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1010,7 +1011,6 @@ stmt :
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
-			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
 			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -4491,7 +4491,6 @@ opt_with_data:
 CreateMatViewStmt:
 		CREATE OptNoLog MATERIALIZED VIEW create_mv_target AS SelectStmt opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE MATERIALIZED VIEW", 1131);
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $7;
 					ctas->into = $5;
@@ -4505,7 +4504,6 @@ CreateMatViewStmt:
 				}
 		| CREATE OptNoLog MATERIALIZED VIEW IF_P NOT EXISTS create_mv_target AS SelectStmt opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE MATERIALIZED VIEW", 1131);
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $10;
 					ctas->into = $8;
@@ -4546,9 +4544,8 @@ OptNoLog:	UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
  *****************************************************************************/
 
 RefreshMatViewStmt:
-			REFRESH MATERIALIZED VIEW opt_concurrently qualified_name opt_with_data
+			REFRESH MATERIALIZED VIEW opt_concurrently_matview qualified_name opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "REFRESH MATERIALIZED VIEW", 1131);
 					RefreshMatViewStmt *n = makeNode(RefreshMatViewStmt);
 					n->concurrent = $4;
 					n->relation = $5;
@@ -4557,6 +4554,17 @@ RefreshMatViewStmt:
 				}
 		;
 
+opt_concurrently_matview:
+			CONCURRENTLY
+				{
+					$$ = true;
+				}
+			| NONCONCURRENTLY
+			| /*EMPTY*/
+				{
+					$$ = false;
+				}
+		;
 
 /*****************************************************************************
  *
@@ -6836,7 +6844,6 @@ drop_type_any_name:
 			| VIEW									{ $$ = OBJECT_VIEW; }
 			| MATERIALIZED VIEW
 				{
-					parser_ybc_not_support(@1, "DROP MATERIALIZED VIEW");
 					$$ = OBJECT_MATVIEW;
 				}
 			| INDEX { $$ = OBJECT_INDEX; }

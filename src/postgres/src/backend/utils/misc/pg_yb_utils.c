@@ -109,7 +109,8 @@ CheckIsYBSupportedRelationByKind(char relkind)
 	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
 		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_PARTITIONED_TABLE ||
-		  relkind == RELKIND_PARTITIONED_INDEX || relkind == RELKIND_FOREIGN_TABLE))
+		  relkind == RELKIND_PARTITIONED_INDEX || relkind == RELKIND_FOREIGN_TABLE ||
+		  relkind == RELKIND_MATVIEW))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));
@@ -127,8 +128,8 @@ IsYBRelation(Relation relation)
 	/* Currently only support regular tables and indexes.
 	 * Temp tables and views are supported, but they are not YB relations. */
 	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX || relkind == RELKIND_PARTITIONED_TABLE ||
-	        relkind == RELKIND_PARTITIONED_INDEX) &&
-	        relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
+			relkind == RELKIND_PARTITIONED_INDEX || relkind == RELKIND_MATVIEW) &&
+			relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
 }
 
 bool
@@ -202,13 +203,12 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
                                         bool includeYBSystemColumns)
 {
 	Oid            dboid         = YBCGetDatabaseOid(rel);
-	Oid            relid         = RelationGetRelid(rel);
 	int            natts         = RelationGetNumberOfAttributes(rel);
 	Bitmapset      *pkey         = NULL;
 	YBCPgTableDesc ybc_tabledesc = NULL;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
-	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_tabledesc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(rel), &ybc_tabledesc));
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		if ((!includeYBSystemColumns && !IsRealYBColumn(rel, attnum)) ||
@@ -1325,6 +1325,9 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			*is_breaking_catalog_change = false;
 			return castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
 
+		case T_RefreshMatViewStmt:
+			return true;
+
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;
@@ -2022,4 +2025,12 @@ void YBSetParentDeathSignal()
 		}
 	}
 #endif
+}
+
+Oid YbGetStorageRelid(Relation relation) {
+	if (relation->rd_rel->relkind == RELKIND_MATVIEW && 
+		relation->rd_rel->relfilenode != InvalidOid) {
+		return relation->rd_rel->relfilenode;
+	}
+	return RelationGetRelid(relation);
 }

@@ -123,10 +123,9 @@ static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
 static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 {
 	Oid            dboid          = YBCGetDatabaseOid(relation);
-	Oid            relid          = RelationGetRelid(relation);
 	YBCPgTableDesc ybc_table_desc = NULL;
 
-	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(relation), &ybc_table_desc));
 
 	for (AttrNumber attnum = 1; attnum <= relation->rd_att->natts; attnum++)
 	{
@@ -450,7 +449,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		bool colocated = false;
 		bool notfound;
 		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
-														   RelationGetRelid(relation),
+														   YbGetStorageRelid(relation),
 														   &colocated),
 									 &notfound);
 		ybScan->prepare_params.querying_colocated_table |= colocated;
@@ -742,10 +741,9 @@ static void
 ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 	Relation relation = ybScan->relation;
 	Relation index = ybScan->index;
-	Oid		dboid    = YBCGetDatabaseOid(relation);
-	Oid		relid    = RelationGetRelid(relation);
+	Oid		 dboid = YBCGetDatabaseOid(relation);
 
-	HandleYBStatus(YBCPgNewSelect(dboid, relid, &ybScan->prepare_params, &ybScan->handle));
+	HandleYBStatus(YBCPgNewSelect(dboid, YbGetStorageRelid(relation), &ybScan->prepare_params, &ybScan->handle));
 
 	if (IsSystemRelation(relation))
 	{
@@ -1846,9 +1844,9 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	TupleDesc      tupdesc = RelationGetDescr(relation);
 
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-																RelationGetRelid(relation),
-																NULL /* prepare_params */,
-																&ybc_stmt));
+								  YbGetStorageRelid(relation),
+								  NULL /* prepare_params */,
+								  &ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
