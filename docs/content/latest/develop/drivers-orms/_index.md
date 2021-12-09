@@ -1,6 +1,6 @@
 ---
 title: Drivers and ORMs
-linkTitle: Learn app development
+linkTitle: Drivers and ORMs
 description: Connect your applications from one of Supported Drivers and ORMs
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -112,7 +112,6 @@ showAsideToc: true
   </a>
 </div>
 
-
 <div class="col-12 col-md-6 col-lg-12 col-xl-6">
   <a class="section-link icon-offset" href="cpp/ysql/">
     <div class="head">
@@ -126,7 +125,6 @@ showAsideToc: true
     </div>
   </a>
 </div>
-
 
 <div class="col-12 col-md-6 col-lg-12 col-xl-6">
   <a class="section-link icon-offset" href="c/ysql/">
