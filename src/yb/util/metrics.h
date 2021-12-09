@@ -704,8 +704,11 @@ class PrometheusWriter {
             per_table_values_[it->second][name] += value;
             break;
           case kMax:
-            per_table_values_[it->second][name] = std::max(per_table_values_[it->second][name],
-                                                           static_cast<double>(value));
+            // If we have a new max, also update the metadata so that it matches correctly.
+            if (static_cast<double>(value) > per_table_values_[it->second][name]) {
+              per_table_attributes_[it->second] = attr;
+              per_table_values_[it->second][name] = value;
+            }
             break;
           default:
             FATAL_INVALID_ENUM_VALUE(AggregationFunction, aggregation_function);
