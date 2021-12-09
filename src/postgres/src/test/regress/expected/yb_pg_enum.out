@@ -630,15 +630,17 @@ ORDER BY 2;
 -- modified in the current txn; this should not be considered safe
 BEGIN;
 ALTER TYPE bogus RENAME TO bogon;
-ERROR:  ALTER TYPE not supported yet
-LINE 1: ALTER TYPE bogus RENAME TO bogon;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 ALTER TYPE bogon ADD VALUE 'bad';
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SELECT 'bad'::bogon;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  unsafe use of new value "bad" of enum type bogon
+LINE 1: SELECT 'bad'::bogon;
+               ^
+HINT:  New enum values must be committed before they can be used.
 ROLLBACK;
+-- (yifan): Non-transactional.
+-- Add these two lines to change type bogus back to the expected state.
+DROP TYPE bogon;
+CREATE TYPE bogus AS ENUM('good','new');
 -- but a renamed value is safe to use later in same transaction
 BEGIN;
 ALTER TYPE bogus RENAME VALUE 'good' to 'bad';
@@ -654,29 +656,27 @@ DROP TYPE bogus;
 BEGIN;
 CREATE TYPE bogus AS ENUM('good','bad','ugly');
 ALTER TYPE bogus RENAME TO bogon;
-ERROR:  ALTER TYPE not supported yet
-LINE 1: ALTER TYPE bogus RENAME TO bogon;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 select enum_range(null::bogon);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+   enum_range
+-----------------
+ {good,bad,ugly}
+(1 row)
+
 ROLLBACK;
+-- (yifan): Non-transactional.
+-- Add this line to drop type bogon,
+-- which cannot be removed in the transaction above
+DROP TYPE bogon;
 -- ideally, we'd allow this usage; but it requires keeping track of whether
 -- the enum type was created in the current transaction, which is expensive
 BEGIN;
 CREATE TYPE bogus AS ENUM('good');
-ERROR:  type "bogus" already exists
 ALTER TYPE bogus RENAME TO bogon;
-ERROR:  ALTER TYPE not supported yet
-LINE 1: ALTER TYPE bogus RENAME TO bogon;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 ALTER TYPE bogon ADD VALUE 'bad';
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ALTER TYPE bogon ADD VALUE 'ugly';
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 select enum_range(null::bogon);  -- fails
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  unsafe use of new value "bad" of enum type bogon
+HINT:  New enum values must be committed before they can be used.
 ROLLBACK;
 --
 -- Cleanup
@@ -685,6 +685,7 @@ DROP TABLE enumtest_child;
 DROP TABLE enumtest_parent;
 DROP TABLE enumtest;
 DROP TYPE rainbow;
+DROP TYPE bogon; -- (yifan): Non-transactional.
 --
 -- Verify properly cleaned up
 --

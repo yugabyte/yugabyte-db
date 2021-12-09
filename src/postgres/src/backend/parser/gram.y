@@ -9768,7 +9768,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TYPE_P any_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE", 1893);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TYPE;
 					n->object = (Node *) $3;
