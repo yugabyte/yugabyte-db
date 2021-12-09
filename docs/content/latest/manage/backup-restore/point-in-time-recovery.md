@@ -129,13 +129,11 @@ This feature is in active development. YSQL and YCQL support different features,
 
 * Support for Triggers and Stored Procedures is to be investigated. Tracked by issue [#10350](https://github.com/yugabyte/yugabyte-db/issues/10350).
 
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120).
+* In case of software upgrades/downgrades, we don't support restoring back in time to the previous version.
 
 ### YCQL limitations
 
 * Support for YCQL roles and permissions is yet to be added. Tracked by issue [#8453](https://github.com/yugabyte/yugabyte-db/issues/8453).
-
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120).
 
 ### Common limitations
 
@@ -143,4 +141,6 @@ Development for this feature is tracked in [issue 7120](https://github.com/yugab
 
 * TRUNCATE TABLE is a limitation tracked [here](https://github.com/yugabyte/yugabyte-db/issues/7130).
 
-* We don't support metadata restores to a previous point in time using external backups. This is being tracked [here](https://github.com/yugabyte/yugabyte-db/issues/8847).
+* We don't support DDL restores to a previous point in time using external backups. This is being tracked [here](https://github.com/yugabyte/yugabyte-db/issues/8847).
+
+Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120).
