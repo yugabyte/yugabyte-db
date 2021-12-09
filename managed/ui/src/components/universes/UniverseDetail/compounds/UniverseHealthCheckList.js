@@ -21,7 +21,8 @@ import './UniverseHealthCheckList.scss';
 export const UniverseHealthCheckList = (props) => {
   const {
     universe: { healthCheck, currentUniverse },
-    currentCustomer
+    currentCustomer,
+    currentUser
   } = props;
   const primaryCluster = getPrimaryCluster(
     props?.universe?.currentUniverse?.data?.universeDetails?.clusters
@@ -48,7 +49,7 @@ export const UniverseHealthCheckList = (props) => {
     content = <div>There're no finished Health checks available at the moment.</div>;
   } else if (getPromiseState(healthCheck).isSuccess() && isNonEmptyArray(healthCheck.data)) {
     const data = [...healthCheck.data].reverse();
-    const timestamps = prepareData(data);
+    const timestamps = prepareData(data, currentUser.data.timezone);
     content = timestamps.map((timestamp, index) => (
       <Timestamp
         id={'healthcheck' + timestamp.timestampMoment.unix()}
@@ -70,7 +71,7 @@ export const UniverseHealthCheckList = (props) => {
             <div className="pull-left">
               <h2>Health Checks</h2>
             </div>
-            {isNotHidden(currentCustomer.data.features, 'universes.details.health.alerts') && 
+            {isNotHidden(currentCustomer.data.features, 'universes.details.health.alerts') &&
               <div className="pull-right">
                 <div className="backup-action-btn-group">
                   <UniverseAction
@@ -82,7 +83,7 @@ export const UniverseHealthCheckList = (props) => {
                   />
                 </div>
               </div>
-            }            
+            }
           </Row>
           <Row>{nodesCronStatus}</Row>
         </div>
@@ -233,9 +234,12 @@ const detailsFormatter = (cell, row) => {
 };
 
 // For performance optimization, move this to a Redux reducer, so that it doesn't get run on each render.
-function prepareData(data) {
+function prepareData(data, timezone) {
   return data.map((timeData) => {
-    const timestampMoment = moment.utc(timeData.timestamp).local();
+    let timestampMoment = moment.utc(timeData.timestamp).local();
+    if (timezone) {
+      timestampMoment = moment.utc(timeData.timestamp).tz(timezone);
+    }
     const nodesByIpAddress = {};
     timeData.data.forEach((check) => {
       check.key = getKeyForCheck(check);
