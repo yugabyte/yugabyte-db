@@ -22,7 +22,7 @@ For Java application, this page provides list of all the Drivers and ORMs which 
 | Driver | Support Level | Example Apps |
 | :----- | :------------ | :----------- |
 | [YugabyteDB JDBC Smart Driver](/latest/integrations/jdbc-driver) | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-yb-jdbc) |
-| [Postgres JDBC Driver](../postgres-jdbc) | Full |  |
+| [Postgres JDBC Driver](postgres-jdbc/) | Full | [CRUD Example](/latest/quick-start/build-apps/java/ysql-jdbc)  |
 
 ## ORM Support
 
@@ -40,4 +40,4 @@ For Java application, this page provides list of all the Drivers and ORMs which 
 | Spring Data JPA | full |  |
 | Spring Data JDBC | full |  |
 | Micronaut | Beta |  |
-| quarkus | Beta |  |
+| Quarkus | Beta |  |

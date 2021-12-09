@@ -23,13 +23,13 @@ showAsideToc: true
       <div class="title">Java</div>
     </div>
     <div class="body">
-      Build applications using Java.
+      Java Client Drivers, ORMs and Frameworks.
     </div>
   </a>
 </div>
 
-<!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-  <a class="section-link icon-offset" href="nodejs/ysql-pg/">
+ <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <a class="section-link icon-offset" href="nodejs/">
     <div class="head">
       <div class="icon">
         <i class="icon-nodejs"></i>
@@ -37,13 +37,13 @@ showAsideToc: true
       <div class="title">NodeJS</div>
     </div>
     <div class="body">
-      Build applications using NodeJS.
+      NodeJS Client Drivers, ORMs and Frameworks.
     </div>
   </a>
 </div>
 
 <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-  <a class="section-link icon-offset" href="go/ysql-pq/">
+  <a class="section-link icon-offset" href="golang/">
     <div class="head">
       <div class="icon">
         <i class="icon-go"></i>
@@ -51,13 +51,13 @@ showAsideToc: true
       <div class="title">Go</div>
     </div>
     <div class="body">
-      Build applications using Go.
+      Golang Client Drivers, ORMs and Frameworks.
     </div>
   </a>
 </div>
 
 <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-  <a class="section-link icon-offset" href="python/ysql-psycopg2/">
+  <a class="section-link icon-offset" href="python/">
     <div class="head">
       <div class="icon">
         <i class="icon-python"></i>
@@ -65,13 +65,13 @@ showAsideToc: true
       <div class="title">Python</div>
     </div>
     <div class="body">
-      Build applications using Python.
+      Python Client Drivers, ORMs and Frameworks.
     </div>
   </a>
 </div>
 
 <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-  <a class="section-link icon-offset" href="ruby/ysql-pg/">
+  <a class="section-link icon-offset" href="ruby/">
     <div class="head">
       <div class="icon">
         <i class="icon-ruby"></i>
@@ -79,13 +79,13 @@ showAsideToc: true
       <div class="title">Ruby</div>
     </div>
     <div class="body">
-      Build applications using Ruby.
+      Ruby Client Drivers, ORMs and Frameworks.
     </div>
   </a>
 </div>
 
 <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-  <a class="section-link icon-offset" href="csharp/ysql/">
+  <a class="section-link icon-offset" href="csharp/">
     <div class="head">
       <div class="icon">
         <i class="icon-csharp"></i>
@@ -93,12 +93,12 @@ showAsideToc: true
       <div class="title">C#</div>
     </div>
     <div class="body">
-      Build applications using C#.
+      C# Client Drivers, ORMs and Frameworks.
     </div>
   </a>
 </div>
 
-<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+<!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
   <a class="section-link icon-offset" href="php/ysql/">
     <div class="head">
       <div class="icon">
