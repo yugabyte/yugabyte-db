@@ -1,10 +1,8 @@
 ---
 title: Drivers and ORMs
 linkTitle: Learn app development
-description: Connect your applications from one of Supported Drivers and ORMs 
+description: Connect your applications from one of Supported Drivers and ORMs
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
-aliases:
-  - /develop/drivers-orms/
 menu:
   latest:
     identifier: drivers-orms
