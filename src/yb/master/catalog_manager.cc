@@ -3370,8 +3370,28 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
   const auto pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+  auto table_storage_id = GetPgsqlTableOid(table->id());
+
+  // In the scenario where we create a new relation during a REFRESH MATERIALIZED VIEW command,
+  // the new relation's name is of the form pg_temp_<matview_oid>. When the refresh has completed,
+  // the matview's relfilenode is swapped with the new relation's relfilenode, and the sys catalog
+  // entries of the new relation are deleted. Any subsequent scans of the matview will map to scans
+  // of the new relation in DocDB.
+  // Therefore, the correct pg_class entry to look for is matview_oid in pg_temp_<matview_oid>.
+  // TODO (fizaa): https://github.com/yugabyte/yugabyte-db/issues/10816
+  std::string matview_table_prefix = "pg_temp_";
+  if (table->name().find(matview_table_prefix) == 0) {
+    try {
+      table_storage_id = std::stol(table->name().substr(matview_table_prefix.length()));
+    }
+    catch (...) {
+      string msg = Substitute("Unexpected materialized view table name ($0), assuming user table",
+                              table->name());
+      LOG(WARNING) << msg;
+    }
+  }
   auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlTableOid(table->id())));
+      ysql_transaction_->PgEntryExists(pg_table_id, table_storage_id));
   auto l = table->LockForWrite();
   auto& metadata = table->mutable_metadata()->mutable_dirty()->pb;
 
