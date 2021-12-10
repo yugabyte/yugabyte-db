@@ -54,6 +54,10 @@ static const char* const kAdminToolName = "yb-admin";
 } // namespace
 
 class YBAdminMultiMasterTest : public ExternalMiniClusterITestBase {
+ protected:
+  YB_STRONGLY_TYPED_BOOL(UseUUID);
+
+  void TestRemoveDownMaster(UseUUID use_uuid);
 };
 
 TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
@@ -93,7 +97,7 @@ TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
   ASSERT_EQ(output1, output2);
 }
 
-TEST_F(YBAdminMultiMasterTest, RemoveDownMaster) {
+void YBAdminMultiMasterTest::TestRemoveDownMaster(UseUUID use_uuid) {
   const int kNumInitMasters = 3;
   const auto admin_path = GetToolPath(kAdminToolName);
   ASSERT_NO_FATALS(StartCluster({}, {}, 1/*num tservers*/, kNumInitMasters));
@@ -101,6 +105,7 @@ TEST_F(YBAdminMultiMasterTest, RemoveDownMaster) {
   const auto master_addrs = cluster_->GetMasterAddresses();
   ASSERT_OK(cluster_->GetFirstNonLeaderMasterIndex(&idx));
   const auto addr = cluster_->master(idx)->bound_rpc_addr();
+  const auto uuid = cluster_->master(idx)->uuid();
   ASSERT_OK(cluster_->master(idx)->Pause());
 
   std::string output2;
@@ -112,9 +117,13 @@ TEST_F(YBAdminMultiMasterTest, RemoveDownMaster) {
   ASSERT_EQ(lines2.size(), kNumInitMasters + 1);
 
   std::string output3;
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      admin_path, "-master_addresses", cluster_->GetMasterAddresses(),
-      "change_master_config", "REMOVE_SERVER", addr.host(), addr.port()), &output3));
+  auto args = ToStringVector(
+      admin_path, "-master_addresses", cluster_->GetMasterAddresses(), "change_master_config",
+      "REMOVE_SERVER", addr.host(), addr.port());
+  if (use_uuid) {
+    args.push_back(uuid);
+  }
+  ASSERT_OK(Subprocess::Call(args, &output3));
   LOG(INFO) << "change_master_config: REMOVE_SERVER\n" << output3;
 
   std::string output4;
@@ -124,6 +133,14 @@ TEST_F(YBAdminMultiMasterTest, RemoveDownMaster) {
   LOG(INFO) << "list_all_masters \n" << output4;
   const auto lines4 = StringSplit(output4, '\n');
   ASSERT_EQ(lines4.size(), kNumInitMasters);
+}
+
+TEST_F(YBAdminMultiMasterTest, RemoveDownMaster) {
+  TestRemoveDownMaster(UseUUID::kFalse);
+}
+
+TEST_F(YBAdminMultiMasterTest, RemoveDownMasterByUuid) {
+  TestRemoveDownMaster(UseUUID::kTrue);
 }
 
 TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
