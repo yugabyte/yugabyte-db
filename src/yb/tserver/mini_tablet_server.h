@@ -122,6 +122,8 @@ class MiniTabletServer {
 
   Endpoint bound_rpc_addr() const;
   Endpoint bound_http_addr() const;
+  std::string bound_http_addr_str() const;
+  std::string bound_rpc_addr_str() const;
 
   const TabletServer* server() const { return server_.get(); }
   TabletServer* server() { return server_.get(); }

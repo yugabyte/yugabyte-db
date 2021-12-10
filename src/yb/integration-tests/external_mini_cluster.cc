@@ -1108,6 +1108,17 @@ string ExternalMiniCluster::GetTabletServerAddresses() const {
   return peer_addrs;
 }
 
+string ExternalMiniCluster::GetTabletServerHTTPAddresses() const {
+  string peer_addrs = "";
+  for (const auto& ts : tablet_servers_) {
+    if (!peer_addrs.empty()) {
+      peer_addrs += ",";
+    }
+    peer_addrs += HostPortToString(ts->bind_host(), ts->http_port());
+  }
+  return peer_addrs;
+}
+
 Status ExternalMiniCluster::StartMasters() {
   int num_masters = opts_.num_masters;
 

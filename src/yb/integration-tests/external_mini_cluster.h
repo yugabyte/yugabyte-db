@@ -238,6 +238,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   string GetTabletServerAddresses() const;
 
+  string GetTabletServerHTTPAddresses() const;
+
   // Start a new master with `peer_addrs` as the master_addresses parameter.
   Result<ExternalMaster *> StartMasterWithPeers(const string& peer_addrs);
 
