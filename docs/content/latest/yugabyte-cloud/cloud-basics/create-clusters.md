@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: create-clusters
     parent: cloud-basics
-    weight: 30
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
