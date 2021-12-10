@@ -30,10 +30,9 @@ Next, check the list of [cluster issues](../cluster) and the respective fixes fo
 
 Inspect the YugabyteDB logs for more details on your issue. For more details on where to find and how to understand the YugabyteDB log files, see [Inspect logs](../nodes/check-logs).
 
-## 4. Explore Support KB's 
+## 4. Explore knowledge base articles
 
-Additional troubleshooting resources, and information on errata can be found on our [Support page](https://support.yugabyte.com).
-
+You can find additional troubleshooting resources, and information on errata, on our [Support page](https://support.yugabyte.com).
 
 ## 5. File an issue
 
