@@ -76,6 +76,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     EITHER
   }
 
+  public enum PortType {
+    HTTP,
+    RPC
+  }
+
   private Configuration appConfig;
 
   // Constants needed for parsing a templated node name tag (for AWS).

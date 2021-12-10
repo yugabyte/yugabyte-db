@@ -19,11 +19,14 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.google.common.net.HostAndPort;
+
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.client.TestUtils;
+import org.yb.minicluster.MiniYBDaemon;
 
 public final class YBBackupUtil {
   private static final Logger LOG = LoggerFactory.getLogger(YBBackupUtil.class);
@@ -31,6 +34,7 @@ public final class YBBackupUtil {
 
   // Comma separate describing the master addresses and ports.
   private static String masterAddresses;
+  private static String tsWebHostsAndPorts;
   private static InetSocketAddress postgresContactPoint;
 
   public static void setPostgresContactPoint(InetSocketAddress contactPoint) {
@@ -39,6 +43,19 @@ public final class YBBackupUtil {
 
   public static void setMasterAddresses(String addresses) {
     masterAddresses = addresses;
+  }
+
+  public static void setTSWebAddresses(String hostsAndPorts) {
+    tsWebHostsAndPorts = hostsAndPorts;
+  }
+
+  public static void setTSAddresses(Map<HostAndPort, MiniYBDaemon> tserversMap) {
+    String hostsAndPorts = "";
+    List<MiniYBDaemon> tservers = new ArrayList<>(tserversMap.values());
+    for (MiniYBDaemon tserver : tservers) {
+      hostsAndPorts += (hostsAndPorts.isEmpty() ? "" : ",") + tserver.getWebHostAndPort();
+    }
+    setTSWebAddresses(hostsAndPorts);
   }
 
   public static String runProcess(List<String> args, int timeoutSeconds) throws Exception {
@@ -102,6 +119,10 @@ public final class YBBackupUtil {
     if (postgresContactPoint != null) {
       processCommand.add("--ysql_host=" + postgresContactPoint.getHostName());
       processCommand.add("--ysql_port=" + postgresContactPoint.getPort());
+    }
+
+    if (tsWebHostsAndPorts != null) {
+      processCommand.add("--ts_web_hosts_ports=" + tsWebHostsAndPorts);
     }
 
     if (!TestUtils.IS_LINUX) {

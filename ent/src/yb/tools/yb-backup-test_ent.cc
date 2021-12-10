@@ -107,6 +107,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     std::stringstream command;
     command << "python3 " << GetToolPath("../../../managed/devops/bin", "yb_backup.py")
             << " --masters " << cluster_->GetMasterAddresses()
+            << " --ts_web_hosts_ports " << cluster_->GetTabletServerHTTPAddresses()
             << " --remote_yb_admin_binary=" << GetToolPath("yb-admin")
             << " --remote_ysql_dump_binary=" << GetPgToolPath("ysql_dump")
             << " --remote_ysql_shell_binary=" << GetPgToolPath("ysqlsh")

@@ -364,6 +364,17 @@ string MiniCluster::GetMasterAddresses() const {
   return peer_addrs;
 }
 
+string MiniCluster::GetTserverHTTPAddresses() const {
+  string peer_addrs = "";
+  for (const auto& tserver : mini_tablet_servers_) {
+    if (!peer_addrs.empty()) {
+      peer_addrs += ",";
+    }
+    peer_addrs += tserver->bound_http_addr_str();
+  }
+  return peer_addrs;
+}
+
 int MiniCluster::LeaderMasterIdx() {
   Stopwatch sw;
   sw.start();

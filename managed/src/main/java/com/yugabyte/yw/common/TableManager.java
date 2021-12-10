@@ -83,6 +83,9 @@ public class TableManager extends DevopsBase {
     switch (subType) {
       case BACKUP:
         backupTableParams = (BackupTableParams) taskParams;
+
+        commandArgs.add("--ts_web_hosts_ports");
+        commandArgs.add(universe.getTserverHTTPAddresses());
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
         if (userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
@@ -210,6 +213,8 @@ public class TableManager extends DevopsBase {
         break;
       case DELETE:
         backupTableParams = (BackupTableParams) taskParams;
+        commandArgs.add("--ts_web_hosts_ports");
+        commandArgs.add(universe.getTserverHTTPAddresses());
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
         LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);

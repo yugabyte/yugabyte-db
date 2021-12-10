@@ -191,6 +191,9 @@ class MiniCluster : public MiniClusterBase {
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
 
+    // The comma separated string of the tserver adresses host/ports from current list of tservers.
+  std::string GetTserverHTTPAddresses() const;
+
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
 
   tserver::TSTabletManager* GetTabletManager(int idx);

@@ -35,6 +35,7 @@ public class TestYbBackup extends BaseCQLTest {
 
   @Before
   public void initYBBackupUtil() {
+    YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.setMasterAddresses(masterAddresses);
   }
 

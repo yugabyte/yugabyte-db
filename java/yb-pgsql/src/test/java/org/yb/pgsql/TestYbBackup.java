@@ -41,6 +41,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Before
   public void initYBBackupUtil() {
+    YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.setMasterAddresses(masterAddresses);
     YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
   }
@@ -357,7 +358,7 @@ public class TestYbBackup extends BasePgSQLTest {
     miniCluster.startTServer(getTServerFlags());
     // Wait for node list refresh.
     Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
-
+    YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();

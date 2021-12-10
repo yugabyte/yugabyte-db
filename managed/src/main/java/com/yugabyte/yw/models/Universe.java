@@ -10,6 +10,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -535,7 +536,17 @@ public class Universe extends Model {
     if (mastersQueryable && !verifyMastersAreQueryable(masters)) {
       return "";
     }
-    return getHostPortsString(masters, ServerType.MASTER);
+    return getHostPortsString(masters, ServerType.MASTER, PortType.RPC);
+  }
+
+  /**
+   * Returns a comma separated list of <privateIp:tserverHTTPPort> for all tservers of this
+   * universe.
+   *
+   * @return a comma separated string of 'host:port'.
+   */
+  public String getTserverHTTPAddresses() {
+    return getHostPortsString(getTServers(), ServerType.TSERVER, PortType.HTTP);
   }
 
   /**
@@ -558,7 +569,7 @@ public class Universe extends Model {
    * @return a comma separated string of 'host:port'.
    */
   public String getYQLServerAddresses() {
-    return getHostPortsString(getYqlServers(), ServerType.YQLSERVER);
+    return getHostPortsString(getYqlServers(), ServerType.YQLSERVER, PortType.RPC);
   }
 
   /**
@@ -568,7 +579,7 @@ public class Universe extends Model {
    * @return a comma separated string of 'host:port'.
    */
   public String getYSQLServerAddresses() {
-    return getHostPortsString(getYsqlServers(), ServerType.YSQLSERVER);
+    return getHostPortsString(getYsqlServers(), ServerType.YSQLSERVER, PortType.RPC);
   }
 
   /**
@@ -578,30 +589,58 @@ public class Universe extends Model {
    * @return a comma separated string of 'host:port'.
    */
   public String getRedisServerAddresses() {
-    return getHostPortsString(getRedisServers(), ServerType.REDISSERVER);
+    return getHostPortsString(getRedisServers(), ServerType.REDISSERVER, PortType.RPC);
+  }
+
+  // Helper API to return port number based on port type.
+  private static int selectPort(PortType portType, int rpcPort, int httpPort) {
+    if (portType != PortType.HTTP && portType != PortType.RPC) {
+      throw new IllegalArgumentException("Unexpected port type " + portType);
+    }
+    int port = 0;
+    switch (portType) {
+      case RPC:
+        port = rpcPort;
+        break;
+      case HTTP:
+        port = httpPort;
+        break;
+    }
+    return port;
   }
 
   // Helper API to create the based on the server type.
-  private String getHostPortsString(List<NodeDetails> serverNodes, ServerType type) {
+  private String getHostPortsString(
+      List<NodeDetails> serverNodes, ServerType type, PortType portType) {
     StringBuilder servers = new StringBuilder();
     for (NodeDetails node : serverNodes) {
       if (node.cloudInfo.private_ip != null) {
         int port = 0;
         switch (type) {
           case YQLSERVER:
-            if (node.isYqlServer) port = node.yqlServerRpcPort;
+            if (node.isYqlServer) {
+              port = selectPort(portType, node.yqlServerRpcPort, node.yqlServerHttpPort);
+            }
             break;
           case YSQLSERVER:
-            if (node.isYsqlServer) port = node.ysqlServerRpcPort;
+            if (node.isYsqlServer) {
+              port = selectPort(portType, node.ysqlServerRpcPort, node.ysqlServerHttpPort);
+            }
             break;
           case TSERVER:
-            if (node.isTserver) port = node.tserverRpcPort;
+            if (node.isTserver) {
+              port = selectPort(portType, node.tserverRpcPort, node.tserverHttpPort);
+            }
             break;
           case MASTER:
-            if (node.isMaster) port = node.masterRpcPort;
+            if (node.isMaster) {
+              port = selectPort(portType, node.masterRpcPort, node.masterHttpPort);
+            }
             break;
           case REDISSERVER:
-            if (node.isRedisServer) port = node.redisServerRpcPort;
+            if (node.isRedisServer) {
+              port = selectPort(portType, node.redisServerRpcPort, node.redisServerHttpPort);
+            }
             break;
           default:
             throw new IllegalArgumentException("Unexpected server type " + type);
