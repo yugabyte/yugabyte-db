@@ -97,7 +97,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
 
   Status RunBackupCommand(const vector<string>& args) {
     return tools::RunBackupCommand(
-        cluster_->pgsql_hostport(0), cluster_->GetMasterAddresses(), *tmp_dir_, args);
+        cluster_->pgsql_hostport(0), cluster_->GetMasterAddresses(),
+        cluster_->GetTabletServerHTTPAddresses(), *tmp_dir_, args);
   }
 
   void RecreateDatabase(const string& db) {
@@ -1176,7 +1177,9 @@ class YBFailSnapshotTest: public YBBackupTest {
   }
 };
 
-TEST_F(YBFailSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailBackupRestore)) {
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailBackupRestore),
+          YBFailSnapshotTest) {
   client::kv_table_test::CreateTable(
       client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
