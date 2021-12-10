@@ -944,8 +944,27 @@ TEST_F(XClusterAdminCliTest, TestRenameUniverseReplication) {
                                 new_replication_id,
                                 1));
 
+  // Also test that we can rename again.
+  std::string new_replication_id2 = "new_replication_id2";
+  ASSERT_OK(RunAdminToolCommand("alter_universe_replication",
+                                new_replication_id,
+                                "rename_id",
+                                new_replication_id2));
+
+  // Assert that using old universe ids fails.
+  ASSERT_NOK(RunAdminToolCommand("set_universe_replication_enabled",
+                                 kProducerClusterId,
+                                 1));
+  ASSERT_NOK(RunAdminToolCommand("set_universe_replication_enabled",
+                                 new_replication_id,
+                                 1));
+  // But using new correct name should succeed.
+  ASSERT_OK(RunAdminToolCommand("set_universe_replication_enabled",
+                                new_replication_id2,
+                                1));
+
   // Delete this universe so shutdown can proceed.
-  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", new_replication_id));
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", new_replication_id2));
   // Also delete second one too.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", collision_id));
 }
