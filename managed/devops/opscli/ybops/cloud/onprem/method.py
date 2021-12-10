@@ -19,15 +19,13 @@ from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path,
                         get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp, \
                         SSH_RETRY_LIMIT_PRECHECK, DEFAULT_MASTER_HTTP_PORT, \
                         DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
-                        DEFAULT_TSERVER_RPC_PORT
-
+                        DEFAULT_TSERVER_RPC_PORT, DEFAULT_NODE_EXPORTER_HTTP_PORT
 
 import json
 import logging
 import os
 import stat
 import ybops.utils as ybutils
-
 from six import iteritems
 
 
@@ -319,13 +317,14 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help='If the ssh_user has passwordless sudo access or not.')
         self.parser.add_argument("--air_gap", action="store_true",
                                  help='If instances are air gapped or not.')
-        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
+        self.parser.add_argument("--node_exporter_port", type=int,
+                                 default=DEFAULT_NODE_EXPORTER_HTTP_PORT,
                                  help="The port for node_exporter to bind to")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
         self.parser.add_argument("--install_node_exporter", action="store_true")
 
     def callback(self, args):
-        config = {'devops_home': ybutils.YB_DEVOPS_HOME, 'cloud': self.cloud.name}
+        config = {'devops_home': ybutils.YB_DEVOPS_HOME_PERM, 'cloud': self.cloud.name}
         file_name = 'provision_instance.py.j2'
         try:
             config.update(vars(args))

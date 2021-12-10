@@ -101,6 +101,11 @@ if [[ ! -d $yb_devops_home/roles ]]; then
   fatal "No 'roles' subdirectory found inside yb_devops_home ('$yb_devops_home')"
 fi
 
+if [ -L /opt/yugabyte/devops ]; then
+ echo "Found devops symlink"
+ export yb_devops_home_link="/opt/yugabyte/devops"
+fi
+
 # We need to export yb_devops_home because we rely on it in ansible.cfg.
 export yb_devops_home
 
