@@ -1685,7 +1685,7 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
 };
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefetchTest) {
-  constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
   constexpr int kBlockSize = 1000;
   constexpr int kReads = 3;
 
@@ -1693,7 +1693,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefetchTest) {
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigReadWithCompaction), PgMiniBigPrefetchTest) {
-  constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
   constexpr int kBlockSize = 1000;
   constexpr int kReads = 3;
 

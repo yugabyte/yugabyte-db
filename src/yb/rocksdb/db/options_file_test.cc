@@ -40,7 +40,7 @@ void UpdateOptionsFiles(DB* db,
                         std::unordered_set<std::string>* filename_history,
                         int* options_files_count) {
   std::vector<std::string> filenames;
-  db->GetEnv()->GetChildren(db->GetName(), &filenames);
+  ASSERT_OK(db->GetEnv()->GetChildren(db->GetName(), &filenames));
   uint64_t number;
   FileType type;
   *options_files_count = 0;
@@ -57,7 +57,7 @@ void VerifyOptionsFileName(
     DB* db, const std::unordered_set<std::string>& past_filenames) {
   std::vector<std::string> filenames;
   std::unordered_set<std::string> current_filenames;
-  db->GetEnv()->GetChildren(db->GetName(), &filenames);
+  ASSERT_OK(db->GetEnv()->GetChildren(db->GetName(), &filenames));
   uint64_t number;
   FileType type;
   for (auto filename : filenames) {
@@ -80,7 +80,7 @@ TEST_F(OptionsFileTest, NumberOfOptionsFiles) {
   const int kReopenCount = 20;
   Options opt;
   opt.create_if_missing = true;
-  DestroyDB(dbname_, opt);
+  ASSERT_OK(DestroyDB(dbname_, opt));
   std::unordered_set<std::string> filename_history;
   DB* db;
   for (int i = 0; i < kReopenCount; ++i) {

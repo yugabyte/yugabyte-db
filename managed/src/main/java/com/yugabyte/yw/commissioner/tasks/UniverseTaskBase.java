@@ -162,6 +162,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  protected boolean isLeaderBlacklistValidRF(String nodeName) {
+    Cluster curCluster = Universe.getCluster(getUniverse(), nodeName);
+    if (curCluster == null) {
+      return false;
+    }
+    return curCluster.userIntent.replicationFactor > 1;
+  }
+
   protected UserIntent getUserIntent() {
     return getUserIntent(false);
   }
@@ -484,7 +492,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Update the progress flag to false irrespective of the version increment failure.
     // Universe version in master does not need to be updated as this does not change
     // the Universe state. It simply sets updateInProgress flag to false.
-    Universe.saveDetails(universeUUID, updater, shouldIncrementVersion());
+    Universe.saveDetails(universeUUID, updater, false);
     log.trace("Unlocked universe {} for updates.", universeUUID);
   }
 

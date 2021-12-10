@@ -65,7 +65,6 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
     opts->extra_tserver_flags.push_back("--placement_cloud=c");
     opts->extra_tserver_flags.push_back("--placement_region=r");
     opts->extra_tserver_flags.push_back("--placement_zone=z${index}");
-    opts->extra_master_flags.push_back("--load_balancer_skip_leader_as_remove_victim=false");
     opts->extra_master_flags.push_back("--load_balancer_max_concurrent_moves=10");
     opts->extra_master_flags.push_back("--load_balancer_max_concurrent_moves_per_table="
                                        + std::to_string(kMovesPerTable));

@@ -607,7 +607,7 @@ TEST_F(EnvPosixTest, RandomAccessUniqueID) {
   ASSERT_EQ(unique_id2, unique_id3);
 
   // Delete the file
-  env_->DeleteFile(fname);
+  ASSERT_OK(env_->DeleteFile(fname));
 }
 
 // only works in linux platforms
@@ -948,21 +948,21 @@ TEST_F(EnvPosixTest, Preallocation) {
   // Small write should preallocate one block
   std::string str = "test";
   srcfile->PrepareWrite(srcfile->GetFileSize(), str.size());
-  srcfile->Append(str);
+  ASSERT_OK(srcfile->Append(str));
   srcfile->GetPreallocationStatus(&block_size, &last_allocated_block);
   ASSERT_EQ(last_allocated_block, 1UL);
 
   // Write an entire preallocation block, make sure we increased by two.
   std::string buf(block_size, ' ');
   srcfile->PrepareWrite(srcfile->GetFileSize(), buf.size());
-  srcfile->Append(buf);
+  ASSERT_OK(srcfile->Append(buf));
   srcfile->GetPreallocationStatus(&block_size, &last_allocated_block);
   ASSERT_EQ(last_allocated_block, 2UL);
 
   // Write five more blocks at once, ensure we're where we need to be.
   buf = std::string(block_size * 5, ' ');
   srcfile->PrepareWrite(srcfile->GetFileSize(), buf.size());
-  srcfile->Append(buf);
+  ASSERT_OK(srcfile->Append(buf));
   srcfile->GetPreallocationStatus(&block_size, &last_allocated_block);
   ASSERT_EQ(last_allocated_block, 7UL);
 }
@@ -980,7 +980,7 @@ TEST_F(EnvPosixTest, ConsistentChildrenAttributes) {
     const std::string path = oss.str();
     unique_ptr<WritableFile> file;
     ASSERT_OK(env_->NewWritableFile(path, &file, soptions));
-    file->Append(data);
+    ASSERT_OK(file->Append(data));
     data.append("test");
   }
 
@@ -1060,8 +1060,8 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
     WritableFileWrapper(std::move(target)) {}
 
     void CallProtectedMethods() {
-      Allocate(0, 0);
-      RangeSync(0, 0);
+      CHECK_OK(Allocate(0, 0));
+      CHECK_OK(RangeSync(0, 0));
     }
   };
 
@@ -1070,16 +1070,16 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
   {
     auto b = std::make_unique<Base>(&step);
     Wrapper w(std::move(b));
-    w.Append(Slice());
-    w.Close();
-    w.Flush();
-    w.Sync();
-    w.Fsync();
+    ASSERT_OK(w.Append(Slice()));
+    ASSERT_OK(w.Close());
+    ASSERT_OK(w.Flush());
+    ASSERT_OK(w.Sync());
+    ASSERT_OK(w.Fsync());
     w.SetIOPriority(Env::IOPriority::IO_HIGH);
     w.GetFileSize();
     w.GetPreallocationStatus(nullptr, nullptr);
     w.GetUniqueId(nullptr);
-    w.InvalidateCache(0, 0);
+    ASSERT_OK(w.InvalidateCache(0, 0));
     w.CallProtectedMethods();
   }
 

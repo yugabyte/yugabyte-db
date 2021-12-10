@@ -50,6 +50,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/util/options_parser.h"
 
 #include "yb/server/webui_util.h"
 
@@ -300,9 +301,39 @@ void HandleTransactionsPage(
   *output << "Tablet is non transactional";
 }
 
-void DumpRocksDB(const char* title, rocksdb::DB* db, std::ostream* out) {
+void DumpRocksDBOptions(rocksdb::DB* db, std::stringstream* out) {
+    std::vector<std::string> cf_names;
+    std::vector<rocksdb::ColumnFamilyOptions> cf_options;
+    db->GetColumnFamiliesOptions(&cf_names, &cf_options);
+
+    auto env = rocksdb::NewMemEnv(db->GetEnv());
+    const std::string tag_id = Uuid::Generate().ToHexString();
+    *out << "<input type=\"checkbox\" id=\"" << tag_id << "\" class=\"yb-collapsible-cb\"/>"
+         << "<label for=\"" << tag_id << "\"><h3>Options</h3></label>" << std::endl
+         << "<pre>" << std::endl;
+
+    std::string content;
+    auto status = rocksdb::PersistRocksDBOptions(db->GetDBOptions(),
+                                                 cf_names, cf_options, "opts", env,
+                                                 rocksdb::IncludeHeader::kFalse,
+                                                 rocksdb::IncludeFileVersion::kFalse);
+    if (PREDICT_TRUE(status.ok())) {
+      status = rocksdb::ReadFileToString(env, "opts", &content);
+    }
+    if (PREDICT_TRUE(status.ok())) {
+      EscapeForHtml(content, out);
+    } else {
+      *out << "Failed to get options: " << status << std::endl;
+    }
+    *out << "</pre>" << std::endl;
+    delete env;
+}
+
+void DumpRocksDB(const char* title, rocksdb::DB* db, std::stringstream* out) {
   if (db) {
     *out << "<h2>" << title << "</h2>" << std::endl;
+    DumpRocksDBOptions(db, out);
+
     *out << "<h3>Files</h3>" << std::endl;
     auto files = db->GetLiveFilesMetaData();
     *out << "<pre>" << std::endl;
@@ -310,6 +341,7 @@ void DumpRocksDB(const char* title, rocksdb::DB* db, std::ostream* out) {
       *out << file.ToString() << std::endl;
     }
     *out << "</pre>" << std::endl;
+
     rocksdb::TablePropertiesCollection properties;
     auto status = db->GetPropertiesOfAllTables(&properties);
     if (status.ok()) {

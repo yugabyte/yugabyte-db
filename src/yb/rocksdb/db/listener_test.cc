@@ -129,8 +129,8 @@ TEST_F(EventListenerTest, OnSingleDBCompactionTest) {
     const Slice kRangeEnd = "z";
     ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), handles_[i],
                                      &kRangeStart, &kRangeEnd));
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
   }
 
   ASSERT_EQ(listener->compacted_dbs_.size(), cf_names.size());
@@ -215,7 +215,7 @@ TEST_F(EventListenerTest, OnSingleDBFlushTest) {
   ASSERT_OK(Put(7, "popovich", std::string(90000, 'p')));
   for (int i = 1; i < 8; ++i) {
     ASSERT_OK(Flush(i));
-    dbfull()->TEST_WaitForFlushMemTable();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
     ASSERT_EQ(listener->flushed_dbs_.size(), i);
     ASSERT_EQ(listener->flushed_column_family_names_.size(), i);
   }
@@ -291,7 +291,7 @@ TEST_F(EventListenerTest, MultiDBMultiListeners) {
     ASSERT_OK(DB::Open(options, dbname_ + ToString(d), &db));
     for (size_t c = 0; c < cf_names.size(); ++c) {
       ColumnFamilyHandle* handle;
-      db->CreateColumnFamily(cf_opts, cf_names[c], &handle);
+      ASSERT_OK(db->CreateColumnFamily(cf_opts, cf_names[c], &handle));
       handles.push_back(handle);
     }
 
@@ -309,7 +309,7 @@ TEST_F(EventListenerTest, MultiDBMultiListeners) {
   for (size_t c = 0; c < cf_names.size(); ++c) {
     for (int d = 0; d < kNumDBs; ++d) {
       ASSERT_OK(dbs[d]->Flush(FlushOptions(), vec_handles[d][c]));
-      reinterpret_cast<DBImpl*>(dbs[d])->TEST_WaitForFlushMemTable();
+      ASSERT_OK(reinterpret_cast<DBImpl*>(dbs[d])->TEST_WaitForFlushMemTable());
     }
   }
 
@@ -364,8 +364,8 @@ TEST_F(EventListenerTest, DisableBGCompaction) {
   // keep writing until writes are forced to stop.
   for (int i = 0; static_cast<int>(cf_meta.file_count) < kSlowdownTrigger * 10;
        ++i) {
-    Put(1, ToString(i), std::string(10000, 'x'), WriteOptions());
-    db_->Flush(FlushOptions(), handles_[1]);
+    ASSERT_OK(Put(1, ToString(i), std::string(10000, 'x'), WriteOptions()));
+    ASSERT_OK(db_->Flush(FlushOptions(), handles_[1]));
     db_->GetColumnFamilyMetaData(handles_[1], &cf_meta);
   }
   ASSERT_GE(listener->slowdown_count, kSlowdownTrigger * 9);
@@ -401,7 +401,7 @@ TEST_F(EventListenerTest, CompactionReasonLevel) {
   for (int i = 0; i < 4; i++) {
     GenerateNewRandomFile(&rnd);
   }
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   ASSERT_EQ(listener->compaction_reasons_.size(), 1);
   ASSERT_EQ(listener->compaction_reasons_[0],
@@ -413,19 +413,19 @@ TEST_F(EventListenerTest, CompactionReasonLevel) {
   for (int k = 1; k <= 30; k++) {
     ASSERT_OK(Put(Key(k), Key(k)));
     if (k % 10 == 0) {
-      Flush();
+      ASSERT_OK(Flush());
     }
   }
 
   // Do a trivial move from L0 -> L1
-  db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(CompactRangeOptions(), nullptr, nullptr));
 
   options.max_bytes_for_level_base = 1;
   Close();
   listener->compaction_reasons_.clear();
   Reopen(options);
 
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   ASSERT_GT(listener->compaction_reasons_.size(), 1);
 
   for (auto compaction_reason : listener->compaction_reasons_) {
@@ -437,7 +437,7 @@ TEST_F(EventListenerTest, CompactionReasonLevel) {
   listener->compaction_reasons_.clear();
   Reopen(options);
 
-  db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(CompactRangeOptions(), nullptr, nullptr));
   ASSERT_GT(listener->compaction_reasons_.size(), 0);
   for (auto compaction_reason : listener->compaction_reasons_) {
     ASSERT_EQ(compaction_reason, CompactionReason::kManualCompaction);
@@ -467,7 +467,7 @@ TEST_F(EventListenerTest, CompactionReasonUniversal) {
   for (int i = 0; i < 8; i++) {
     GenerateNewRandomFile(&rnd);
   }
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   ASSERT_GT(listener->compaction_reasons_.size(), 0);
   for (auto compaction_reason : listener->compaction_reasons_) {
@@ -485,7 +485,7 @@ TEST_F(EventListenerTest, CompactionReasonUniversal) {
   for (int i = 0; i < 8; i++) {
     GenerateNewRandomFile(&rnd);
   }
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   ASSERT_GT(listener->compaction_reasons_.size(), 0);
   for (auto compaction_reason : listener->compaction_reasons_) {
@@ -497,7 +497,7 @@ TEST_F(EventListenerTest, CompactionReasonUniversal) {
   listener->compaction_reasons_.clear();
   Reopen(options);
 
-  db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(CompactRangeOptions(), nullptr, nullptr));
 
   ASSERT_GT(listener->compaction_reasons_.size(), 0);
   for (auto compaction_reason : listener->compaction_reasons_) {
@@ -525,7 +525,7 @@ TEST_F(EventListenerTest, CompactionReasonFIFO) {
   for (int i = 0; i < 4; i++) {
     GenerateNewRandomFile(&rnd);
   }
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   ASSERT_GT(listener->compaction_reasons_.size(), 0);
   for (auto compaction_reason : listener->compaction_reasons_) {

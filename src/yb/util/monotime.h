@@ -36,15 +36,7 @@
 #include <cstdint>
 #include <string>
 
-#ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
-#else
-// This is a poor module interdependency, but the stubs are header-only and
-// it's only for exported header builds, so we'll make an exception.
-#include "yb/client/stubs.h"
-#endif
-
-
 
 struct timeval;
 struct timespec;
