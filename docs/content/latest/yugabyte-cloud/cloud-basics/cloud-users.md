@@ -46,9 +46,19 @@ The following table describes the default YSQL roles and users in Yugabyte Cloud
 | yb_superuser | Yugabyte Cloud only role. yb_superuser does not have YugabyteDB Superuser privileges. This role is assigned to the default cluster user (that is, admin) to perform all the required operations on the database, including creating other yb_superuser users. |
 | yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (ysql_dumps). |
 
-You can create other users with the `yb_superuser` role. You cannot create or assign roles with the Superuser privelege.
+### Admin and yb_superuser
+
+When creating a YugabyteDB cluster in Yugabyte Cloud, you set up the credentials for your admin user. This admin user belongs to the role `yb_superuser`. While similar to the PostgreSQL Superuser role, this role does not have full Superuser permissions. `yb_superuser` is the highest privileged user you have access to in Yugabyte Cloud. You can create other users with the `yb_superuser` role. You cannot create or assign roles with the Superuser privelege.
 
 You cannot delete, change the passwords, or sign in using the `postgres` or `yugabyte` Superuser roles.
+
+The `yb_superuser` role is created with the following options: `INHERIT`, `CREATEROLE`, `CREATEDB`, and `BYPASSRLS`.
+
+Additionally `yb_superuser` is also a member of the following roles: `pg_read_all_stats`, `pg_signal_backend`, and `yb_extension`.
+
+### yb_extension
+
+The `yb_extension` role allows non-Superuser roles to create extensions. A user granted this role can create all the supported extensions in YugabyteDB. `yb_superuser` and, by extension, your default admin user is a member of `yb_extension`.
 
 ## YCQL default roles and users
 
