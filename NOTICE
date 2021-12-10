@@ -1,8 +1,8 @@
 Apache AGE (incubating)
-Copyright 2020-2021 The Apache Software Foundation
-
+Copyright 2021 The Apache Software Foundation.
 This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
 
-This product contains software PostgreSQL(https://www.postgresql.org/download/) developed by
-PostgreSQL Global Development Group and University of California, licensed under the PostgreSQL License. 
+
+Portions of Apache AGE were originally developed by Bitnine Co., Ltd. and were
+donated to the Apache Software Foundation. Copyright 2019-2020 Bitnine Co., Ltd.
