@@ -63,7 +63,7 @@ weight: 645
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-kms-config.md/aws-kms/">
+    <a class="section-link icon-offset" href="create-kms-config/aws-kms/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption/server-to-server.png" aria-hidden="true" />
         <div class="title">Create a KMS configuration</div>
