@@ -687,4 +687,33 @@ void ThreadPool::CheckNotPoolThreadUnlocked() {
   }
 }
 
+CHECKED_STATUS TaskRunner::Init(int concurrency) {
+  ThreadPoolBuilder builder("Task Runner");
+  if (concurrency > 0) {
+    builder.set_max_threads(concurrency);
+  }
+  return builder.Build(&thread_pool_);
+}
+
+CHECKED_STATUS TaskRunner::Wait() {
+  std::unique_lock<std::mutex> lock(mutex_);
+  cond_.wait(lock, [this] { return running_tasks_ == 0; });
+  return first_failure_;
+}
+
+void TaskRunner::CompleteTask(const Status& status) {
+  if (!status.ok()) {
+    bool expected = false;
+    if (failed_.compare_exchange_strong(expected, true)) {
+      first_failure_ = status;
+    } else {
+      LOG(WARNING) << status.message() << std::endl;
+    }
+  }
+  if (--running_tasks_ == 0) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cond_.notify_one();
+  }
+}
+
 } // namespace yb

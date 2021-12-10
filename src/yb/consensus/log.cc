@@ -579,9 +579,8 @@ Status Log::Init() {
   // Reader for previous segments.
   RETURN_NOT_OK(LogReader::Open(get_env(),
                                 log_index_,
-                                tablet_id_,
+                                log_prefix_,
                                 wal_dir_,
-                                peer_uuid_,
                                 table_metric_entity_.get(),
                                 tablet_metric_entity_.get(),
                                 &reader_));
@@ -1452,7 +1451,7 @@ Status Log::SwitchToAllocatedSegment() {
   header.set_major_version(kLogMajorVersion);
   header.set_minor_version(kLogMinorVersion);
   header.set_sequence_number(active_segment_sequence_number_);
-  header.set_tablet_id(tablet_id_);
+  header.set_unused_tablet_id(tablet_id_);
 
   // Set up the new footer. This will be maintained as the segment is written.
   footer_builder_.Clear();
@@ -1461,8 +1460,8 @@ Status Log::SwitchToAllocatedSegment() {
   // Set the new segment's schema.
   {
     SharedLock<decltype(schema_lock_)> l(schema_lock_);
-    SchemaToPB(*schema_, header.mutable_schema());
-    header.set_schema_version(schema_version_);
+    SchemaToPB(*schema_, header.mutable_unused_schema());
+    header.set_unused_schema_version(schema_version_);
   }
 
   RETURN_NOT_OK(new_segment->WriteHeaderAndOpen(header));
@@ -1486,7 +1485,7 @@ Status Log::SwitchToAllocatedSegment() {
   RETURN_NOT_OK(reader_->AppendEmptySegment(readable_segment));
 
   // Now set 'active_segment_' to the new segment.
-  active_segment_.reset(new_segment.release());
+  active_segment_ = std::move(new_segment);
   cur_max_segment_size_ = NextSegmentDesiredSize();
 
   allocation_state_.store(

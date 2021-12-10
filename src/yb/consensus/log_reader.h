@@ -70,9 +70,8 @@ class LogReader {
   // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
   static CHECKED_STATUS Open(Env *env,
                              const scoped_refptr<LogIndex>& index,
-                             const std::string& tablet_id,
+                             std::string log_prefix,
                              const std::string& tablet_wal_path,
-                             const std::string& peer_uuid,
                              const scoped_refptr<MetricEntity>& table_metric_entity,
                              const scoped_refptr<MetricEntity>& tablet_metric_entity,
                              std::unique_ptr<LogReader> *reader);
@@ -196,12 +195,12 @@ class LogReader {
                                           LogEntryBatchPB* batch) const;
 
   LogReader(Env* env, const scoped_refptr<LogIndex>& index,
-            std::string tablet_name, std::string peer_uuid,
+            std::string log_prefix,
             const scoped_refptr<MetricEntity>& table_metric_entity,
             const scoped_refptr<MetricEntity>& tablet_metric_entity);
 
   // Reads the headers of all segments in 'path_'.
-  CHECKED_STATUS Init(const std::string& path_);
+  CHECKED_STATUS Init(const std::string& path);
 
   // Initializes an 'empty' reader for tests, i.e. does not scan a path looking for segments.
   CHECKED_STATUS InitEmptyReaderForTests();
@@ -218,7 +217,6 @@ class LogReader {
   Env *env_;
 
   const scoped_refptr<LogIndex> log_index_;
-  const std::string tablet_id_;
   const std::string log_prefix_;
 
   // Metrics

@@ -80,6 +80,14 @@ class MonoDelta {
   int64_t ToNanoseconds() const;
   std::chrono::steady_clock::duration ToSteadyDuration() const;
 
+  std::chrono::microseconds ToChronoMicroseconds() const {
+    return std::chrono::microseconds(ToMicroseconds());
+  }
+
+  std::chrono::milliseconds ToChronoMilliseconds() const {
+    return std::chrono::milliseconds(ToMilliseconds());
+  }
+
   MonoDelta& operator+=(const MonoDelta& rhs);
   MonoDelta& operator-=(const MonoDelta& rhs);
   MonoDelta& operator*=(int64_t mul);

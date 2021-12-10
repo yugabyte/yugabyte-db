@@ -42,6 +42,8 @@
 
 #include <boost/variant.hpp>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/partition.h"

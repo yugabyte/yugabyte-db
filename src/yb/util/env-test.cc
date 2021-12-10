@@ -72,6 +72,8 @@ DECLARE_bool(TEST_simulate_fs_without_fallocate);
 #define FALLOC_FL_PUNCH_HOLE  0x02 /* de-allocates range */
 #endif
 
+using namespace std::placeholders;
+
 namespace yb {
 
 using std::shared_ptr;
@@ -692,7 +694,7 @@ TEST_F(TestEnv, TestWalk) {
   // Sadly, tr1/unordered_set doesn't implement equality operators, so we
   // compare sorted vectors instead.
   vector<string> actual;
-  ASSERT_OK(env_->Walk(root, Env::PRE_ORDER, Bind(&TestWalkCb, &actual)));
+  ASSERT_OK(env_->Walk(root, Env::PRE_ORDER, std::bind(&TestWalkCb, &actual, _1, _2, _3)));
   sort(expected.begin(), expected.end());
   sort(actual.begin(), actual.end());
   ASSERT_EQ(expected, actual);
@@ -713,7 +715,7 @@ TEST_F(TestEnv, TestWalkCbReturnsError) {
   ASSERT_OK(env_->NewWritableFile(JoinPathSegments(new_dir, new_file), &writer));
   int num_calls = 0;
   ASSERT_TRUE(env_->Walk(new_dir, Env::PRE_ORDER,
-                         Bind(&TestWalkErrorCb, &num_calls)).IsIOError());
+                         std::bind(&TestWalkErrorCb, &num_calls, _1, _2, _3)).IsIOError());
 
   // Once for the directory and once for the file inside it.
   ASSERT_EQ(2, num_calls);
