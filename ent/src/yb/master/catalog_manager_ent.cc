@@ -4137,6 +4137,7 @@ Status CatalogManager::RenameUniverseReplication(
   {
     LockGuard lock(mutex_);
     auto l = universe->LockForWrite();
+    scoped_refptr<UniverseReplicationInfo> new_ri;
 
     // Assert that new_replication_name isn't already in use.
     if (FindPtrOrNull(universe_replication_map_, new_producer_universe_id) != nullptr) {
@@ -4144,25 +4145,37 @@ Status CatalogManager::RenameUniverseReplication(
                     req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
-    // Update the name.
-    *l.mutable_data()->pb.mutable_producer_id() = new_producer_universe_id;
+    // Since the producer_id is used as the key, we need to create a new UniverseReplicationInfo.
+    new_ri = new UniverseReplicationInfo(new_producer_universe_id);
+    new_ri->mutable_metadata()->StartMutation();
+    SysUniverseReplicationEntryPB *metadata = &new_ri->mutable_metadata()->mutable_dirty()->pb;
+    metadata->CopyFrom(l->pb);
+    metadata->set_producer_id(new_producer_universe_id);
 
     // Also need to update internal maps.
-    universe_replication_map_[new_producer_universe_id] =
-        std::move(universe_replication_map_[old_universe_replication_id]);
-    universe_replication_map_.erase(old_universe_replication_id);
-
     auto cl = cluster_config_->LockForWrite();
     auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
     (*producer_map)[new_producer_universe_id] =
         std::move((*producer_map)[old_universe_replication_id]);
     producer_map->erase(old_universe_replication_id);
 
-    RETURN_NOT_OK(CheckStatus(
-        sys_catalog_->Upsert(leader_ready_term(), universe, cluster_config_),
-        "Updating universe replication info and cluster config in sys-catalog"));
+    {
+      // Need both these updates to be atomic.
+      auto w = sys_catalog_->NewWriter(leader_ready_term());
+      RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_DELETE, universe.get()));
+      RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                              new_ri.get(),
+                              cluster_config_.get()));
+      RETURN_NOT_OK(CheckStatus(
+          sys_catalog_->SyncWrite(w.get()),
+          "Updating universe replication info and cluster config in sys-catalog"));
+    }
+    new_ri->mutable_metadata()->CommitMutation();
     cl.Commit();
-    l.Commit();
+
+    // Update universe_replication_map after persistent data is saved.
+    universe_replication_map_[new_producer_universe_id] = new_ri;
+    universe_replication_map_.erase(old_universe_replication_id);
   }
 
   return Status::OK();
