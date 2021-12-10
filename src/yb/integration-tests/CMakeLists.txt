@@ -78,10 +78,20 @@ target_link_libraries(cdc_test_util yb_test_util cdc_service_proto tserver)
 add_library(cql_test_util cql_test_base.cc cql_test_util.cc)
 target_link_libraries(cql_test_util cassandra integration-tests yb-cql yb_test_util)
 
+# Requires ql-dml-test-base, so separating from integration-tests.
+add_library(tablet-split-itest-base tablet-split-itest-base.cc)
+target_link_libraries(tablet-split-itest-base integration-tests ql-dml-test-base)
+
 # Tests
 set(YB_TEST_LINK_LIBS
-    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util master_test_common
+    integration-tests
+    yb_client
+    yb_tools_util
+    ql-dml-test-base
+    rpc_test_util
+    master_test_common
     yb_common_test_util
+    tablet-split-itest-base
     ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
@@ -93,6 +103,8 @@ ADD_YB_TEST(client-stress-test)
 ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(tablet_server-itest)
 ADD_YB_TEST(tablet-split-itest)
+ADD_YB_TEST(xcluster-tablet-split-itest)
+
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:
 # ADD_YB_TEST(test_failures-test)
