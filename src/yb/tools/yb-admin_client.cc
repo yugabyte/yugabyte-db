@@ -936,27 +936,35 @@ Status ClusterAdminClient::DropRedisTable() {
 Status ClusterAdminClient::ChangeMasterConfig(
     const string& change_type,
     const string& peer_host,
-    int16 peer_port,
-    bool use_hostport) {
+    uint16_t peer_port,
+    const string& given_uuid) {
   CHECK(initted_);
 
-  VLOG(1) << "ChangeMasterConfig: " << change_type << " | " << peer_host << ":" << peer_port;
   consensus::ChangeConfigType cc_type;
   RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
 
   string peer_uuid;
-  if (!use_hostport) {
-      VLOG(1) << "ChangeMasterConfig: attempt to get UUID for changed host: "
-              << peer_host << ":" << peer_port;
-      RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
+  if (cc_type == consensus::ADD_SERVER) {
+    VLOG(1) << "ChangeMasterConfig: attempt to get UUID for changed host: " << peer_host << ":"
+            << peer_port;
+    RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
+    if (!given_uuid.empty() && given_uuid != peer_uuid) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Specified uuid $0. But the server has uuid $1", given_uuid, peer_uuid);
+    }
+  } else {
+    // Do not verify uuid for REMOVE_SERVER, as the server may not be accessible.
+    peer_uuid = given_uuid;
   }
+  VLOG(1) << "ChangeMasterConfig: " << change_type << " | " << peer_host << ":" << peer_port
+          << " uuid : " << peer_uuid;
 
   auto leader_uuid = VERIFY_RESULT(GetMasterLeaderUuid());
 
   // If removing the leader master, then first make it step down and that
   // starts an election and gets a new leader master.
-  auto changed_leader_addr = leader_addr_;
-  if (cc_type == consensus::REMOVE_SERVER && leader_uuid == peer_uuid) {
+  const HostPort changed_master_addr(peer_host, peer_port);
+  if (cc_type == consensus::REMOVE_SERVER && leader_addr_ == changed_master_addr) {
     VLOG(1) << "ChangeMasterConfig: request leader " << leader_addr_
             << " to step down before removal.";
     string old_leader_uuid = leader_uuid;
@@ -977,16 +985,21 @@ Status ClusterAdminClient::ChangeMasterConfig(
   consensus::ChangeConfigRequestPB req;
 
   RaftPeerPB peer_pb;
-  peer_pb.set_permanent_uuid(peer_uuid);
-  // Ignored by ChangeConfig if request != ADD_SERVER.
-  peer_pb.set_member_type(consensus::PeerMemberType::PRE_VOTER);
+  if (!peer_uuid.empty()) {
+    peer_pb.set_permanent_uuid(peer_uuid);
+  }
+
+  if (cc_type == consensus::ADD_SERVER) {
+    peer_pb.set_member_type(consensus::PRE_VOTER);
+  } else {  // REMOVE_SERVER
+    req.set_use_host(peer_uuid.empty());
+  }
   HostPortPB *peer_host_port = peer_pb.mutable_last_known_private_addr()->Add();
   peer_host_port->set_port(peer_port);
   peer_host_port->set_host(peer_host);
   req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
   req.set_type(cc_type);
-  req.set_use_host(use_hostport);
   *req.mutable_server() = peer_pb;
 
   VLOG(1) << "ChangeMasterConfig: ChangeConfig for tablet id " << yb::master::kSysCatalogTabletId
@@ -996,9 +1009,9 @@ Status ClusterAdminClient::ChangeMasterConfig(
 
   VLOG(1) << "ChangeMasterConfig: update yb client to reflect config change.";
   if (cc_type == consensus::ADD_SERVER) {
-    RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_addr));
+    RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_master_addr));
   } else {
-    RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_leader_addr));
+    RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_master_addr));
   }
 
   return Status::OK();
