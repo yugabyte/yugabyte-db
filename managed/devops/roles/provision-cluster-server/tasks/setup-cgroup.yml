@@ -15,13 +15,6 @@
       state: present
     when: ansible_os_family == 'RedHat'
 
-  - name: Install cgconfig service on Ubuntu
-    package:
-      name:
-        - cgroup-tools
-      state: present
-    when: ansible_os_family == 'Debian'
-
   - name: Add ysql crgroup info to cgconfig.conf
     template:
       src: cgconfig.conf.j2
@@ -37,4 +30,4 @@
     ansible.builtin.service:
       name: cgconfig
       enabled: yes
-  when: "{{ ansible_os_family == 'Debian' or ansible_os_family == 'RedHat' }}"
+  when: ansible_os_family == 'RedHat'
