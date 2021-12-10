@@ -725,9 +725,8 @@ class TabletBootstrap {
         LogReader::Open(
             GetEnv(),
             index,
-            tablet_->metadata()->raft_group_id(),
+            LogPrefix(),
             wal_path,
-            tablet_->metadata()->fs_manager()->uuid(),
             tablet_->GetTableMetricsEntity().get(),
             tablet_->GetTabletMetricsEntity().get(),
             &log_reader_),

@@ -73,6 +73,9 @@ add_executable(yb-ts-cli ts-cli.cc)
 target_link_libraries(yb-ts-cli
   ${LINK_LIBS})
 
+add_executable(data-patcher data-patcher.cc)
+target_link_libraries(data-patcher boost_program_options yb_util yb_docdb log_proto log)
+
 add_library(fs_tool fs_tool.cc)
 target_link_libraries(fs_tool
   gutil
@@ -200,6 +203,8 @@ ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-test
   yb-ts-cli)
 ADD_YB_TEST(ldb_test)
 ADD_YB_TEST(rocksdb_dump_test)
+ADD_YB_TEST(data-patcher-test)
+ADD_YB_TEST_DEPENDENCIES(data-patcher-test data-patcher)
 
 add_executable(run-with-timeout run-with-timeout.cc)
 
