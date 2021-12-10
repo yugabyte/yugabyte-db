@@ -4,7 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler;
-import com.yugabyte.yw.forms.GFlagsValidationParams.GFlagsValidationRequest;
+import com.yugabyte.yw.forms.GFlagsValidationFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -43,9 +43,7 @@ public class GFlagsValidationUiOnlyController extends AuthenticatedController {
    */
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result validateGFlags(String version) throws IOException {
-    GFlagsValidationRequest gflags =
-        formFactory.getFormDataOrBadRequest(
-            request().body().asJson(), GFlagsValidationRequest.class);
+    GFlagsValidationFormData gflags = parseJsonAndValidate(GFlagsValidationFormData.class);
     return PlatformResults.withData(gflagsValidationHandler.validateGFlags(version, gflags));
   }
 
