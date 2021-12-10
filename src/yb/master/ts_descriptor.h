@@ -39,6 +39,8 @@
 #include <mutex>
 #include <string>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/common/hybrid_time.h"
 
 #include "yb/master/master_fwd.h"

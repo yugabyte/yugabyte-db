@@ -40,6 +40,8 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/log.pb.h"
