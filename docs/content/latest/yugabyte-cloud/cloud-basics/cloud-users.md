@@ -58,7 +58,7 @@ Additionally `yb_superuser` is also a member of the following roles: `pg_read_al
 
 ### yb_extension
 
-The `yb_extension` role allows non-Superuser roles to [create extensions](../add-extensions/). A user granted this role can create all the supported extensions in YugabyteDB. `yb_superuser` and, by extension, the default admin user, is a member of `yb_extension`.
+The `yb_extension` role allows non-Superuser roles to [create extensions](../add-extensions/). A user granted this role can create all the extensions that are bundled in YugabyteDB. `yb_superuser` and, by extension, the default admin user, is a member of `yb_extension`.
 
 ## YCQL default roles and users
 

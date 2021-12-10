@@ -13,11 +13,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Extend the functionality of your cluster using PostgreSQL extensions. For a list of extensions supported by YugabyteDB, refer to [Pre-bundled extensions](../../../explore/ysql-language-features/extensions).
+Extend the functionality of your cluster using PostgreSQL extensions. YugabyteDB comes bundled with a number of extensions that are tested to work with YSQL. For a list of bundle extensions, refer to [Pre-bundled extensions](../../../explore/ysql-language-features/extensions).
+
+If you need database extensions that are not bundled with YugabyteDB added to a cluster, contact Yugabyte Support with the names of the cluster and extension, or reach out on Slack.
 
 ## Loading extensions
 
-To load an extension in a database, use the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) command. For example:
+To load a bundled extension in a database, use the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) command. For example:
 
 ```sql
 CREATE EXTENSION fuzzystrmatch;
