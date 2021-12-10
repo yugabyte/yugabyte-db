@@ -114,7 +114,8 @@ class RpcServerBase {
   RpcServerBase(std::string name,
                 const ServerBaseOptions& options,
                 const std::string& metrics_namespace,
-                std::shared_ptr<MemTracker> mem_tracker);
+                std::shared_ptr<MemTracker> mem_tracker,
+                const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcServerBase();
 
   CHECKED_STATUS Init();
@@ -136,6 +137,7 @@ class RpcServerBase {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   scoped_refptr<Clock> clock_;
+  bool external_clock_ = false;
 
   // The instance identifier of this server.
   std::unique_ptr<NodeInstancePB> instance_pb_;
@@ -184,7 +186,8 @@ class RpcAndWebServerBase : public RpcServerBase {
   RpcAndWebServerBase(
       std::string name, const ServerBaseOptions& options,
       const std::string& metrics_namespace,
-      std::shared_ptr<MemTracker> mem_tracker);
+      std::shared_ptr<MemTracker> mem_tracker,
+      const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcAndWebServerBase();
 
   virtual Status HandleDebugPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);

@@ -155,13 +155,13 @@ TEST(TestMonoTime, TestDeltaConversions) {
   // TODO: Reliably test MonoDelta::FromSeconds() considering floating-point rounding errors
 
   MonoDelta mil(MonoDelta::FromMilliseconds(500));
-  ASSERT_EQ(500 * MonoTime::kNanosecondsPerMillisecond, mil.nano_delta_);
+  ASSERT_EQ(500 * MonoTime::kNanosecondsPerMillisecond, mil.ToNanoseconds());
 
   MonoDelta micro(MonoDelta::FromMicroseconds(500));
-  ASSERT_EQ(500 * MonoTime::kNanosecondsPerMicrosecond, micro.nano_delta_);
+  ASSERT_EQ(500 * MonoTime::kNanosecondsPerMicrosecond, micro.ToNanoseconds());
 
   MonoDelta nano(MonoDelta::FromNanoseconds(500));
-  ASSERT_EQ(500, nano.nano_delta_);
+  ASSERT_EQ(500, nano.ToNanoseconds());
 }
 
 template <class Now>

@@ -43,7 +43,7 @@ DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_uint64(transaction_status_tablet_log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
-DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_string(time_source);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(load_balancer_max_concurrent_adds);
@@ -78,7 +78,7 @@ int32_t ValueForTransactionAndIndex(size_t transaction, size_t index, const Writ
 }
 
 void SetIgnoreApplyingProbability(double value) {
-  SetAtomicFlag(value, &FLAGS_TEST_transaction_ignore_applying_probability_in_tests);
+  SetAtomicFlag(value, &FLAGS_TEST_transaction_ignore_applying_probability);
 }
 
 void SetDisableHeartbeatInTests(bool value) {

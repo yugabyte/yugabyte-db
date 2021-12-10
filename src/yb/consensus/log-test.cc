@@ -127,8 +127,8 @@ class LogTest : public LogTestBase {
     header.set_sequence_number(sequence_number);
     header.set_major_version(0);
     header.set_minor_version(0);
-    header.set_tablet_id(kTestTablet);
-    SchemaToPB(GetSimpleTestSchema(), header.mutable_schema());
+    header.set_unused_tablet_id(kTestTablet);
+    SchemaToPB(GetSimpleTestSchema(), header.mutable_unused_schema());
 
     LogSegmentFooterPB footer;
     footer.set_num_entries(10);
@@ -407,8 +407,8 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   // because it has a cached header.
   std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_->env(),
-                            make_scoped_refptr(new LogIndex(log_->wal_dir_)), kTestTablet,
-                            tablet_wal_path_, fs_manager_->uuid(), nullptr, nullptr, &reader));
+                            make_scoped_refptr(new LogIndex(log_->wal_dir_)), "Log reader: ",
+                            tablet_wal_path_, nullptr, nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -499,8 +499,7 @@ TEST_F(LogTest, TestSegmentRollover) {
 
   std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(
-      fs_manager_->env(), nullptr, kTestTablet, tablet_wal_path_, fs_manager_->uuid(), nullptr,
-      nullptr, &reader));
+      fs_manager_->env(), nullptr, "Log reader: ", tablet_wal_path_, nullptr, nullptr, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_TRUE(segments.back()->HasFooter());
@@ -833,8 +832,9 @@ TEST_F(LogTest, TestWriteManyBatches) {
     uint32_t num_entries = 0;
 
     std::unique_ptr<LogReader> reader;
-    ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, kTestTablet, tablet_wal_path_,
-                              fs_manager_->uuid(), nullptr, nullptr, &reader));
+    ASSERT_OK(LogReader::Open(
+        fs_manager_->env(), /* index= */ nullptr, "Log reader: ", tablet_wal_path_,
+        /* table_metric_entity= */ nullptr, /* tablet_metric_entity= */ nullptr, &reader));
 
     std::vector<scoped_refptr<ReadableLogSegment> > segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
@@ -858,8 +858,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
 TEST_F(LogTest, TestLogReader) {
   LogReader reader(fs_manager_->env(),
                    scoped_refptr<LogIndex>(),
-                   kTestTablet,
-                   fs_manager_->uuid(),
+                   "Log reader: ",
                    nullptr,
                    nullptr);
   ASSERT_OK(reader.InitEmptyReaderForTests());
@@ -1246,8 +1245,8 @@ Result<SegmentSequence> LogTest::GetSegmentsFromLogCopyAndCheckLastOpIndex(
   const auto log_copy_dir = GetLogCopyPath(copy_idx);
   std::unique_ptr<LogReader> copied_log_reader;
   RETURN_NOT_OK(LogReader::Open(
-      fs_manager_->env(), make_scoped_refptr(new LogIndex(log_copy_dir)), kTestTablet,
-      log_copy_dir, fs_manager_->uuid(), /* table_metric_entity = */ nullptr,
+      fs_manager_->env(), make_scoped_refptr<LogIndex>(log_copy_dir), "Log reader: ",
+      log_copy_dir, /* table_metric_entity = */ nullptr,
       /* tablet_metric_entity = */ nullptr, &copied_log_reader));
 
   SegmentSequence copied_segments;

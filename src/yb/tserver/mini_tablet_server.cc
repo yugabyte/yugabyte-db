@@ -323,5 +323,10 @@ Endpoint MiniTabletServer::bound_http_addr() const {
   return server_->first_http_address();
 }
 
+FsManager& MiniTabletServer::fs_manager() const {
+  CHECK(started_);
+  return *server_->fs_manager();
+}
+
 } // namespace tserver
 } // namespace yb

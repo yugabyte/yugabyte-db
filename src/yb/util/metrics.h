@@ -249,6 +249,8 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <gflags/gflags_declare.h>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/integral_types.h"
 

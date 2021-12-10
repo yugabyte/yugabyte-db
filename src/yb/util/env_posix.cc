@@ -126,6 +126,7 @@ DEFINE_test_flag(bool, simulate_fs_without_fallocate, false,
 DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
     "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
 
+using namespace std::placeholders;
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using std::vector;
@@ -1046,8 +1047,7 @@ class PosixEnv : public Env {
   }
 
   Status DeleteRecursively(const std::string &name) override {
-    return Walk(name, POST_ORDER, Bind(&PosixEnv::DeleteRecursivelyCb,
-                                       Unretained(this)));
+    return Walk(name, POST_ORDER, std::bind(&PosixEnv::DeleteRecursivelyCb, this, _1, _2, _3));
   }
 
   Result<uint64_t> GetFileSize(const std::string& fname) override {
@@ -1316,7 +1316,7 @@ class PosixEnv : public Env {
           break;
       }
       if (doCb) {
-        if (!cb.Run(type, DirName(ent->fts_path), ent->fts_name).ok()) {
+        if (!cb(type, DirName(ent->fts_path), ent->fts_name).ok()) {
           had_errors = true;
         }
       }

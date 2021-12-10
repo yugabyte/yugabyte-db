@@ -135,6 +135,8 @@ class MiniTabletServer {
   // Re-enable connections from this server to other servers in the cluster.
   CHECKED_STATUS Reconnect();
 
+  FsManager& fs_manager() const;
+
  private:
   bool started_;
   TabletServerOptions opts_;

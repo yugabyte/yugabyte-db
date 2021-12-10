@@ -134,6 +134,8 @@ set(ENV{YB_BUILD_ROOT} "${YB_BUILD_ROOT}")
 get_filename_component(YB_BUILD_ROOT_PARENT "${YB_BUILD_ROOT}" DIRECTORY)
 message("YB_BUILD_ROOT: ${YB_BUILD_ROOT}")
 
+message("YB_TARGET_ARCH: $ENV{YB_TARGET_ARCH}")
+
 DETECT_NUMBER_OF_PROCESSORS()
 
 # Detect the shared library suffix on this platform

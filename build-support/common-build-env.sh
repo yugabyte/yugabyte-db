@@ -2438,6 +2438,9 @@ set_java_home() {
   if ! is_mac; then
     return
   fi
+  if [[ -n ${JAVA_HOME:-} ]]; then
+    return
+  fi
   # macOS has a peculiar way of setting JAVA_HOME
   local cmd_to_get_java_home="/usr/libexec/java_home --version 1.8"
   local new_java_home
@@ -2445,11 +2448,7 @@ set_java_home() {
   if [[ ! -d $new_java_home ]]; then
     fatal "Directory returned by '$cmd_to_get_java_home' does not exist: $new_java_home"
   fi
-  if [[ -n ${JAVA_HOME:-} && $JAVA_HOME != "$new_java_home" ]]; then
-    log "Warning: updating JAVA_HOME from $JAVA_HOME to $new_java_home"
-  else
-    log "Setting JAVA_HOME: $new_java_home"
-  fi
+  log "Setting JAVA_HOME: $new_java_home"
   export JAVA_HOME=$new_java_home
   put_path_entry_first "$JAVA_HOME/bin"
 }

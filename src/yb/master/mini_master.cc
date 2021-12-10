@@ -249,5 +249,9 @@ master::FlushManager& MiniMaster::flush_manager() const {
   return *master_->flush_manager();
 }
 
+FsManager& MiniMaster::fs_manager() const {
+  return *master_->fs_manager();
+}
+
 } // namespace master
 } // namespace yb

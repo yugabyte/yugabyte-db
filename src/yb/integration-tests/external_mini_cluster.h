@@ -41,6 +41,8 @@
 #include <thread>
 #include <vector>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus.pb.h"

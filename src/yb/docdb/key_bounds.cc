@@ -24,5 +24,9 @@ std::string KeyBounds::ToString() const {
   return YB_STRUCT_TO_STRING(lower, upper);
 }
 
+bool IsWithinBounds(const KeyBounds* key_bounds, const Slice& key) {
+  return !key_bounds || key_bounds->IsWithinBounds(key);
+}
+
 }  // namespace docdb
 }  // namespace yb

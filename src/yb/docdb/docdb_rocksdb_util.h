@@ -138,6 +138,11 @@ class RocksDBPatcher {
   // Modify flushed frontier and clean up smallest/largest op id in per-SST file metadata.
   CHECKED_STATUS ModifyFlushedFrontier(const ConsensusFrontier& frontier);
 
+  // Update file sizes in manifest if actual file size was changed because of direct manipulation
+  // with .sst files.
+  // Like all other methods in this class it updates manifest file.
+  CHECKED_STATUS UpdateFileSizes();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

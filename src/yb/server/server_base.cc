@@ -167,12 +167,12 @@ void RegisterTCMallocTracker(const char* name, const char* prop) {
 
 RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
                              const string& metric_namespace,
-                             MemTrackerPtr mem_tracker)
+                             MemTrackerPtr mem_tracker,
+                             const scoped_refptr<server::Clock>& clock)
     : name_(std::move(name)),
       mem_tracker_(std::move(mem_tracker)),
       metric_registry_(new MetricRegistry()),
-      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
-                                                      metric_namespace)),
+      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), metric_namespace)),
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
@@ -198,7 +198,10 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   }
 #endif
 
-  if (FLAGS_use_hybrid_clock) {
+  if (clock) {
+    clock_ = clock;
+    external_clock_ = true;
+  } else if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {
     clock_ = LogicalClock::CreateStartingAt(HybridTime::kInitial);
@@ -273,7 +276,9 @@ Status RpcServerBase::Init() {
   // Initialize the clock immediately. This checks that the clock is synchronized
   // so we're less likely to get into a partially initialized state on disk during startup
   // if we're having clock problems.
-  RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
+  if (!external_clock_) {
+    RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
+  }
 
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
@@ -427,8 +432,9 @@ void RpcServerBase::Shutdown() {
 RpcAndWebServerBase::RpcAndWebServerBase(
     string name, const ServerBaseOptions& options,
     const std::string& metric_namespace,
-    MemTrackerPtr mem_tracker)
-    : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker)),
+    MemTrackerPtr mem_tracker,
+    const scoped_refptr<server::Clock>& clock)
+    : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
       web_server_(new Webserver(options.webserver_opts, name_)) {
   FsManagerOpts fs_opts;
   fs_opts.metric_entity = metric_entity_;

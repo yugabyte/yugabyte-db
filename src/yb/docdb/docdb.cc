@@ -1054,8 +1054,18 @@ CHECKED_STATUS IntentToWriteRequest(
   DocHybridTimeBuffer doc_ht_buffer;
   intent_iter->Seek(reverse_index_value);
   if (!intent_iter->Valid() || intent_iter->key() != reverse_index_value) {
+    Slice temp_slice = reverse_index_value;
+    auto value_doc_ht = DocHybridTime::DecodeFromEnd(&temp_slice);
+    temp_slice = reverse_index_key;
+    auto key_doc_ht = DocHybridTime::DecodeFromEnd(&temp_slice);
+    LOG(ERROR) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
+                << " (" << value_doc_ht << ")  for "
+                << reverse_index_key.ToDebugHexString() << "(" << key_doc_ht << ")";
+    std::this_thread::sleep_for(std::chrono::seconds(1000));
+
     LOG(DFATAL) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
-                << " for " << reverse_index_key.ToDebugHexString();
+                << " (" << value_doc_ht << ") for "
+                << reverse_index_key.ToDebugHexString() << "(" << key_doc_ht << ")";
     return Status::OK();
   }
   auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
@@ -1251,8 +1261,7 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
       }
 
       // Value of reverse index is a key of original intent record, so seek it and check match.
-      if (regular_batch &&
-          (!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
+      if (regular_batch && IsWithinBounds(key_bounds, reverse_index_value)) {
         // We store apply state only if there are some more intents left.
         // So doing this check here, instead of right after write_id was incremented.
         if (write_id >= write_id_limit) {

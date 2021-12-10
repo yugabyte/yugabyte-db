@@ -1011,6 +1011,11 @@ bool Erase(const Value& value, Collection* collection) {
   return true;
 }
 
+template <class Collection>
+void Unique(Collection* collection) {
+  collection->erase(std::unique(collection->begin(), collection->end()), collection->end());
+}
+
 } // namespace yb
 
 // For backward compatibility

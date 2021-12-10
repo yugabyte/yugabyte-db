@@ -71,7 +71,8 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
           "CQLServer", opts, "yb.cqlserver",
           MemTracker::CreateTracker(
               "CQL", tserver ? tserver->mem_tracker() : MemTracker::GetRootTracker(),
-              AddToParent::kTrue, CreateMetrics::kFalse)),
+              AddToParent::kTrue, CreateMetrics::kFalse),
+          tserver->Clock()),
       opts_(opts),
       timer_(*io, refresh_interval()),
       tserver_(tserver) {
