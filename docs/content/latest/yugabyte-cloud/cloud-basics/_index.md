@@ -60,18 +60,6 @@ You deploy clusters in Yugabyte Cloud using the **Create Cluster** wizard. Befor
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-users/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authorization.png" aria-hidden="true" />
-        <div class="title">Users and roles in Yugabyte Cloud</div>
-      </div>
-      <div class="body">
-        Users and roles available in Yugabyte Cloud clusters.
-      </div>
-    </a>
-  </div>
-
 <!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="vpc-peers/">

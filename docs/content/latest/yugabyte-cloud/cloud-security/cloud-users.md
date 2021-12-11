@@ -1,13 +1,13 @@
 ---
-title: Users and roles in Yugabyte Cloud clusters
-linkTitle: Users and roles
+title: Database authorization in Yugabyte Cloud clusters
+linkTitle: Database authorization
 description: The default YugabyteDB users and roles available in Yugabyte Cloud clusters.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
   latest:
     identifier: cloud-users
-    parent: cloud-basics
+    parent: cloud-security
     weight: 30
 isTocNested: true
 showAsideToc: true
@@ -48,7 +48,7 @@ The following table describes the default YSQL roles and users in Yugabyte Cloud
 
 ### Admin and yb_superuser
 
-When creating a YugabyteDB cluster in Yugabyte Cloud, you set up the credentials for your admin user. For security reasons, this user does not have YugabyteDB Superuser priveleges; it is instead a member of `yb_superuser`, a role specific to Yugabyte Cloud clusters. `yb_superuser` is the highest privileged user you have access to in Yugabyte Cloud. You can create other users with the `yb_superuser` role.
+When creating a YugabyteDB cluster in Yugabyte Cloud, you set up the credentials for your admin user. For security reasons, this user does not have YugabyteDB Superuser privileges; it is instead a member of `yb_superuser`, a role specific to Yugabyte Cloud clusters. `yb_superuser` is the highest privileged user you have access to in Yugabyte Cloud. You can create other users with the `yb_superuser` role.
 
 You cannot delete, change the passwords, or sign in using the `postgres` or `yugabyte` Superuser roles.
 
@@ -58,7 +58,7 @@ Additionally `yb_superuser` is also a member of the following roles: `pg_read_al
 
 ### yb_extension
 
-The `yb_extension` role allows non-Superuser roles to [create extensions](../add-extensions/). A user granted this role can create all the extensions that are bundled in YugabyteDB. `yb_superuser` and, by extension, the default admin user, is a member of `yb_extension`.
+The `yb_extension` role allows non-Superuser roles to [create extensions](../../cloud-basics/add-extensions/). A user granted this role can create all the extensions that are bundled in YugabyteDB. `yb_superuser` and, by extension, the default admin user, is a member of `yb_extension`.
 
 ## YCQL default roles and users
 
@@ -68,5 +68,5 @@ In YCQL, there is a single superuser called `cassandra` used during db creation.
 
 - [Role-based access control](../../../secure/authorization/)
 - [Pre-bundled extensions](../../../explore/ysql-language-features/extensions/)
-- [Create YSQL extensions in Yugabyte Cloud](../add-extensions/)
+- [Create YSQL extensions in Yugabyte Cloud](../../cloud-basics/add-extensions/)
 - [Add database users](../../cloud-connect/add-users/)

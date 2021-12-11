@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Extend the functionality of your cluster using PostgreSQL extensions. YugabyteDB comes bundled with a number of extensions that are tested to work with YSQL. For a list of bundle extensions, refer to [Pre-bundled extensions](../../../explore/ysql-language-features/extensions).
+Extend the functionality of your cluster using PostgreSQL extensions. YugabyteDB comes bundled with a number of extensions that are tested to work with YSQL. For a list of bundled extensions, refer to [Pre-bundled extensions](../../../explore/ysql-language-features/extensions).
 
 If you need database extensions that are not bundled with YugabyteDB added to a cluster, contact Yugabyte Support with the names of the cluster and extension, or reach out on Slack.
 
@@ -35,11 +35,11 @@ Use the `GRANT` statement to assign the role to users. For example, to grant the
 yugabyte=# GRANT yb_extension TO user;
 ```
 
-For more information on roles and privelges in Yugabyte Cloud, refer to [Users and roles in Yugabyte Cloud clusters](../cloud-users/).
+For more information on roles and privelges in Yugabyte Cloud, refer to [Users and roles in Yugabyte Cloud clusters](../cloud-security/cloud-users/).
 
 ## Learn more
 
 - [Pre-bundled extensions](../../../explore/ysql-language-features/extensions/)
 - [Install and use extensions](../../../api/ysql/extensions/)
-- [Users and roles in Yugabyte Cloud clusters](../cloud-users/)
+- [Users and roles in Yugabyte Cloud clusters](../../cloud-security/cloud-users/)
 - [Manage Users and Roles in YSQL](../../../secure/authorization/create-roles/)
