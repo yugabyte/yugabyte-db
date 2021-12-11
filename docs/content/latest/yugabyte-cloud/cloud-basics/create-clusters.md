@@ -121,3 +121,4 @@ You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud
 - [Add database users](../../cloud-connect/add-users/)
 - [Create a database](../../cloud-connect/create-databases/)
 - [Develop applications](../../cloud-develop/)
+- [Database authorization in Yugabyte Cloud clusters](../../cloud-security/cloud-users/)

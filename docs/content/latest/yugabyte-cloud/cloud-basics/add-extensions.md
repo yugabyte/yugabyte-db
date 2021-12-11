@@ -35,11 +35,11 @@ Use the `GRANT` statement to assign the role to users. For example, to grant the
 yugabyte=# GRANT yb_extension TO user;
 ```
 
-For more information on roles and privelges in Yugabyte Cloud, refer to [Users and roles in Yugabyte Cloud clusters](../cloud-security/cloud-users/).
+For more information on roles and privelges in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../../cloud-security/cloud-users/).
 
 ## Learn more
 
 - [Pre-bundled extensions](../../../explore/ysql-language-features/extensions/)
 - [Install and use extensions](../../../api/ysql/extensions/)
-- [Users and roles in Yugabyte Cloud clusters](../../cloud-security/cloud-users/)
+- [Database authorization in Yugabyte Cloud clusters](../../cloud-security/cloud-users/)
 - [Manage Users and Roles in YSQL](../../../secure/authorization/create-roles/)
