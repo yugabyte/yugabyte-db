@@ -50,6 +50,7 @@ DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
+DECLARE_uint64(clock_skew_force_crash_bound_usec);
 
 extern double TEST_delay_create_transaction_probability;
 
@@ -345,6 +346,7 @@ TEST_F(SnapshotTxnTest, BankAccountsPartitioned) {
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
   FLAGS_fail_on_out_of_range_clock_skew = false;
+  FLAGS_clock_skew_force_crash_bound_usec = 0;
 
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeStrobe}, 300s,
