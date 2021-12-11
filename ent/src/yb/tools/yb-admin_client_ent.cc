@@ -123,6 +123,7 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
   rapidjson::Value json_snapshots(rapidjson::kArrayType);
   if (!json) {
     if (resp.snapshots_size()) {
+      // Using 2 tabs so that the header can be aligned to the time
       cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << kColumnSep << kColumnSep << "Creation Time" << endl;
     } else {
       cout << "No snapshots" << endl;
