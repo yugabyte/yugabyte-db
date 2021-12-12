@@ -503,8 +503,38 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 
 Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
 
-Use this command to create custom placement policies only for YCQL tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
+Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
 {{< /note >}}
+
+#### create_transaction_table
+
+Creates a transaction status table to be used within a region. This command should always be followed by [`modify_placement_info`](#modify-placement-info) to set the placement information for the newly created transaction status table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_transaction_table \
+    <table_name>
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_name*: The name of the transaction status table to be created; this must start with `transactions_`.
+
+The transaction status table will be created as `system.<table_name>`.
+
+
+**Example**
+
+```sh
+$ ./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    create_transaction_table \
+    transactions_us_east
+```
+
+Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:7000/`) and clicking **Tables** in the navigation bar. You should see a new system table with keyspace `system` and table name `transactions_us_east`.
 
 ---
 
