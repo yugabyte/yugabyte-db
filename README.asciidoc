@@ -693,7 +693,7 @@ orafce's VARCHAR2 implements parts of Oracle database specification about VARCHA
 * Unlike PostgreSQL varchar, implicit cast to VARCHAR2 does not truncate
   white spaces over declared maximum length
 * For these types is possible to use null safe || operator, when you enable
-  orafce.varchar2_null_safe_concat TO true . The behave is very similar to Oracle.
+  orafce.varchar2_null_safe_concat TO true . The behaviour is very similar to Oracle.
 
   Attention: - when result is empty string, then result is NULL. This behaviour is
   disabled by default.
