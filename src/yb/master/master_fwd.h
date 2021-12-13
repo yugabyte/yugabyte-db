@@ -147,6 +147,7 @@ class TabletReportPB;
 class TabletReportUpdatesPB;
 class TabletSplitCompleteHandlerIf;
 class UDTypeInfo;
+class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
