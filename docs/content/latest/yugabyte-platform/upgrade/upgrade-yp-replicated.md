@@ -1,6 +1,6 @@
 ---
 title: Upgrade Yugabyte Platform using Replicated
-headerTitle: Upgrad Yugabyte Platform using Replicated
+headerTitle: Upgrade Yugabyte Platform using Replicated
 linkTitle: Upgrade using Replicated
 description: Use Replicated to upgrade Yugabyte Platform
 menu:
