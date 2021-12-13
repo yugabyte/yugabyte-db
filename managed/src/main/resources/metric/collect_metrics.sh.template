@@ -89,7 +89,7 @@ get_boot_time()
 
 get_postmaster_pid()
 {
-  local tserver_pid=$(ps --no-headers -C yb-tserver -o pid=)
+  local tserver_pid=$(ps --no-headers -C yb-tserver -o pid=  | tr -dc '0-9')
   [[ -z "$tserver_pid" ]] && { echo "yb-tserver not running" ; return 1; }
   local postmaster_pid=$(ps --no-headers --ppid "$tserver_pid" -o pid= -o comm= | \
     grep postgres | tr -dc '0-9')
@@ -195,13 +195,13 @@ collect_leaderless_tablets()
 {
   local leaderless_tablets_response=$(curl -s "$MASTER_HTTP_ENDPOINT/api/v1/tablet-replication" | \
     grep -P '{"leaderless_tablets":\[.*\]}')
-  [[ -z "$leaderless_tablets_response" ]] && { echo "unexpected response received" ; return 1; }
+  [[ -z "$leaderless_tablets_response" ]] && { echo "unexpected response received" ; return; }
   local leaderless_tablets=$(echo "$leaderless_tablets_response" | \
-    sed -r 's/^\{"leaderless_tablets":\[(.*)\]\}$/\1/' | sed 's/,/\n/g' | \
-    sed -r 's/^"(.*)"$/\1/')
-  [[ -z "$leaderless_tablets" ]] && { echo "no leaderless tablets" ; return 0; }
+    sed -r 's/^\{"leaderless_tablets":\[(.*)\]\}$/\1/' | sed 's/},{/}\n{/g' | \
+    sed -r 's/"table_uuid":/table_uuid=/' | sed -r 's/"tablet_uuid":/tablet_uuid=/')
+  [[ -z "$leaderless_tablets" ]] && { echo "no leaderless tablets" ; return; }
   local leaderless_tablet_metrics=$(echo "$leaderless_tablets" | \
-    awk '{printf "yb_node_leaderless_tablet{tablet_id=\"%s\"} 1\n", $1}')
+    awk '{printf "yb_node_leaderless_tablet%s 1\n", $1}')
   metrics="$metrics$leaderless_tablet_metrics\n"
 }
 
@@ -209,13 +209,14 @@ collect_underreplicated_tablets()
 {
   local ur_tablets_response=$(curl -s "$MASTER_HTTP_ENDPOINT/api/v1/tablet-under-replication" | \
     grep -P '{"underreplicated_tablets":\[.*\]}')
-  [[ -z "$ur_tablets_response" ]] && { echo "unexpected response received" ; return 1; }
+  [[ -z "$ur_tablets_response" ]] && { echo "unexpected response received" ; return; }
   local underreplicated_tablets=$(echo "$ur_tablets_response" | \
-    sed -r 's/^\{"underreplicated_tablets":\[(.*)\]\}$/\1/' | sed 's/,/\n/g' | \
-    sed -r 's/^"(.*)"$/\1/')
-  [[ -z "$underreplicated_tablets" ]] && { echo "no under-replicated tablets" ; return 0; }
+    sed -r 's/^\{"underreplicated_tablets":\[(.*)\]\}$/\1/' | sed 's/},{/}\n{/g' | \
+    sed -r 's/"table_uuid":/table_uuid=/' | sed -r 's/"tablet_uuid":/tablet_uuid=/')
+  [[ -z "$underreplicated_tablets" ]] && { echo "no under-replicated tablets" ; return; }
   local underreplicated_tablet_metrics=$(echo "$underreplicated_tablets" | \
-    awk '{printf "yb_node_underreplicated_tablet{tablet_id=\"%s\"} 1\n", $1}')
+    awk '{printf "yb_node_underreplicated_tablet%s 1\n", $1}')
+
   metrics="$metrics$underreplicated_tablet_metrics\n"
 }
 

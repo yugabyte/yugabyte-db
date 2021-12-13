@@ -820,8 +820,8 @@ public enum AlertTemplate {
   LEADERLESS_TABLETS(
       "Leaderless tablets",
       "Leader is missing for some tablet(s) for more than 5 minutes",
-      "count by (node_prefix) "
-          + "(max_over_time(yb_node_leaderless_tablet{node_prefix=\"__nodePrefix__\"}[5m])"
+      "max by (node_prefix) (count by (node_prefix, exported_instance)"
+          + " (max_over_time(yb_node_leaderless_tablet{node_prefix=\"__nodePrefix__\"}[5m]))"
           + " {{ query_condition }} {{ query_threshold }})",
       "Tablet leader is missing for more than 5 minutes for "
           + "{{ $value | printf \\\"%.0f\\\" }} tablet(s) in universe '{{ $labels.source_name }}'.",
@@ -837,8 +837,8 @@ public enum AlertTemplate {
   UNDER_REPLICATED_TABLETS(
       "Under-replicated tablets",
       "Some tablet(s) remain under-replicated for more than 5 minutes",
-      "count by (node_prefix) "
-          + "(max_over_time(yb_node_underreplicated_tablet{node_prefix=\"__nodePrefix__\"}[5m])"
+      "max by (node_prefix) (count by (node_prefix, exported_instance)"
+          + " (max_over_time(yb_node_underreplicated_tablet{node_prefix=\"__nodePrefix__\"}[5m]))"
           + " {{ query_condition }} {{ query_threshold }})",
       "{{ $value | printf \\\"%.0f\\\" }} tablet(s) remain under-replicated "
           + "for more than 5 minutes in universe '{{ $labels.source_name }}'.",
