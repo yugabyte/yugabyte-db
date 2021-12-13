@@ -22,6 +22,7 @@ Here are the features currently supported as of YugabyteDB v2.11, Nov 2021.
         - [x] Range types
         - [x] Composite (record) types
         - [x] Array types
+        - [x] Domain types
     - [ ] XML data type
 - [x] DDL Statements
     - [x] Tables with UNIQUE KEY, PRIMARY KEY, CONSTRAINTS
