@@ -110,15 +110,6 @@ ADD_YB_LIBRARY(yrpc
   SRCS ${YRPC_SRCS}
   DEPS ${YRPC_LIBS})
 
-### RPC generator tool
-add_executable(protoc-gen-yrpc protoc-gen-yrpc.cc)
-target_link_libraries(protoc-gen-yrpc
-    ${YB_BASE_LIBS}
-    protoc
-    protobuf
-    gutil
-    yb_util)
-
 add_library(rpc_test_util rpc_test_util.cc)
 target_link_libraries(rpc_test_util yrpc)
 

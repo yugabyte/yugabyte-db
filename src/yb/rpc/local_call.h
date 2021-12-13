@@ -16,7 +16,10 @@
 #ifndef YB_RPC_LOCAL_CALL_H
 #define YB_RPC_LOCAL_CALL_H
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/outbound_call.h"
+#include "yb/rpc/rpc_context.h"
 #include "yb/rpc/yb_rpc.h"
 
 namespace yb {
@@ -92,6 +95,27 @@ class LocalYBInboundCall : public YBInboundCall {
 
   const CoarseTimePoint deadline_;
 };
+
+template <class Req, class Resp, class F>
+auto HandleCall(InboundCallPtr call, F f) {
+  auto yb_call = std::static_pointer_cast<YBInboundCall>(call);
+  if (yb_call->IsLocalCall()) {
+    auto local_call = std::static_pointer_cast<LocalYBInboundCall>(yb_call);
+    auto* req = yb::down_cast<const Req*>(local_call->request());
+    auto* resp = yb::down_cast<Resp*>(local_call->response());
+    RpcContext rpc_context(std::move(local_call));
+    f(req, resp, std::move(rpc_context));
+  } else {
+    auto req = std::make_shared<Req>();
+    auto resp = std::make_shared<Resp>();
+    const auto* req_raw = req.get();
+    auto* resp_raw = resp.get();
+    RpcContext rpc_context(yb_call, std::move(req), std::move(resp));
+    if (!rpc_context.responded()) {
+      f(req_raw, resp_raw, std::move(rpc_context));
+    }
+  }
+}
 
 } // namespace rpc
 } // namespace yb
