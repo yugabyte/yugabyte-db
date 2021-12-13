@@ -89,6 +89,11 @@
       width: max-content;
       padding: 10px 15px;
     }
+
+    .add-config-margin {
+      margin-bottom: 6px;
+    }
+
   }
 
   .btn-add-region {
@@ -136,10 +141,12 @@
         color: white;
       }
     }
+
     &.has-error {
       border: 1px solid desaturate($YB_ERROR_TEXT_COLOR, 20%);
     }
-    & + .standart-error {
+
+    &+.standart-error {
       color: $YB_ERROR_TEXT_COLOR;
       display: block;
       margin-top: 5px;
@@ -168,12 +175,12 @@
         }
       }
 
-      & > div:first-child {
+      &>div:first-child {
         padding: 0 10px 0 20px;
         border-radius: 7px 0 0 7px;
       }
 
-      & > div:last-child {
+      &>div:last-child {
         border-radius: 0 7px 7px 0;
         width: 50px;
       }
@@ -186,11 +193,12 @@
           padding-bottom: 6px;
         }
 
-        & > *:first-child * {
+        &>*:first-child * {
           font-weight: 700;
           color: $YB_ORANGE !important;
         }
       }
+
       &:not(:first-child):hover {
         position: relative;
         z-index: 2;
@@ -210,7 +218,7 @@
         font-weight: 500;
       }
 
-      & > div {
+      &>div {
         display: table-cell;
       }
 
@@ -289,13 +297,16 @@
   background-color: $YB_FAIL_COLOR;
   border-color: transparent;
   color: white;
+
   i {
     color: $YB_FAIL_COLOR_ICON;
   }
+
   &:hover {
     color: white;
     background-color: darken($YB_FAIL_COLOR, 5%) !important;
     border-color: transparent;
+
     i {
       color: $YB_FAIL_COLOR_DARK;
     }
@@ -333,31 +344,34 @@
 
 .config-tabs .nav-tabs {
   @media screen and (max-width: 1620px) {
-    > li {
+    >li {
       width: calc(100%/7);
 
-      > a  {
+      >a {
         margin-right: 0px;
       }
     }
   }
 
   @media screen and (min-width: 768px) {
-    > li > a  {
+    >li>a {
       min-width: unset;
     }
   }
 
   li:not(.active) {
-    img, svg {
+
+    img,
+    svg {
       filter: grayscale(1) brightness(1.2);
     }
+
     :before {
       filter: sepia(.6);
     }
   }
 
-  > li > a {
+  >li>a {
     height: 52px;
     padding: 0 15px;
     display: flex;
@@ -371,7 +385,7 @@
       overflow: hidden;
 
       @media screen and (max-width: 980px) {
-        > span {
+        >span {
           display: none;
         }
       }
@@ -385,20 +399,24 @@
       &.aws-logo {
         width: 32px;
       }
+
       &.gcp-logo {
         width: 30px;
       }
+
       &.azure-logo {
         height: 24px;
         object-fit: cover;
         width: 33px;
         object-position: left;
       }
+
       &.s3-logo {
         width: 28px;
         object-fit: cover;
         object-position: left;
       }
+
       &.encryption-transit-icon {
         height: 24px;
       }
@@ -457,6 +475,7 @@
       color: $YB_FAIL_COLOR;
     }
   }
+
   .provider-config-container button {
     margin-bottom: 0;
   }

@@ -81,9 +81,10 @@ class OnPremNodesList extends Component {
 
   findProvider = () => {
     const {
-      cloud: { providers }
+      cloud: { providers },
+      selectedProviderUUID
     } = this.props;
-    return providers.data.find((provider) => provider.code === 'onprem');
+    return providers.data.find((provider) => provider.uuid === selectedProviderUUID);
   };
 
   submitAddNodesForm = (vals, dispatch, reduxProps) => {
@@ -207,19 +208,6 @@ class OnPremNodesList extends Component {
     return result;
   };
 
-  UNSAFE_componentWillMount() {
-    const { universeList } = this.props;
-    if (!getPromiseState(universeList).isSuccess()) {
-      this.props.fetchUniverseList();
-    }
-    // Get OnPrem provider if provider list is already loaded during component load
-    const onPremProvider = this.props.cloud.providers.data.find(
-      (provider) => provider.code === 'onprem'
-    );
-    this.props.getRegionListItems(onPremProvider.uuid);
-    this.props.getInstanceTypeListItems(onPremProvider.uuid);
-    this.props.fetchCustomerTasks();
-  }
 
   scheduleTasksPolling = () => {
     if (!this.state.tasksPolling) {
@@ -382,7 +370,7 @@ class OnPremNodesList extends Component {
     }
 
     const currentCloudRegions = supportedRegionList.data.filter(
-      (region) => region.provider.code === 'onprem'
+      (region) => region.provider.uuid === this.props.selectedProviderUUID
     );
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions)
       ? currentCloudRegions
