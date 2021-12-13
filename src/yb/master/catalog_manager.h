@@ -1586,6 +1586,8 @@ class CatalogManager :
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
+  const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 

@@ -254,6 +254,10 @@ DEFINE_bool(catalog_manager_check_ts_count_for_create_table, true,
             "a table to be created.");
 TAG_FLAG(catalog_manager_check_ts_count_for_create_table, hidden);
 
+DEFINE_test_flag(bool, catalog_manager_check_yql_partitions_exist_for_is_create_table_done, true,
+                 "Whether the master should ensure that all of a table's tablets are "
+                 "in the YQL system.partitions vtable during the IsCreateTableDone check.");
+
 METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
                            "The number of tablet servers that have responded or done a heartbeat "
@@ -371,7 +375,9 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_int32(partitions_vtable_cache_refresh_secs, 0,
-             "Amount of time to wait before refreshing the system.partitions cached vtable.");
+             "Amount of time to wait before refreshing the system.partitions cached vtable. "
+             "If generate_partitions_vtable_on_changes is set, then this background task will "
+             "update the cache using the internal map, but won't do any generating of the vtable.");
 
 DEFINE_int32(txn_table_wait_min_ts_count, 1,
              "Minimum Number of TS to wait for before creating the transaction status table."
@@ -918,6 +924,9 @@ void CatalogManager::LoadSysCatalogDataTask() {
     LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
   }
   SysCatalogLoaded(term);
+  // Once we have loaded the SysCatalog, reset and regenerate the yql partitions table in order to
+  // regenerate entries for previous tables.
+  GetYqlPartitionsVtable().ResetAndRegenerateCache();
 }
 
 CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
@@ -1779,6 +1788,9 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   CHECK_EQ(table_ids_map_checkout->erase(table_id), 1)
       << "Unable to erase table with id " << table_id << " from table ids map.";
 
+  if (IsYcqlTable(*table)) {
+    GetYqlPartitionsVtable().RemoveFromCache(table->id());
+  }
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
 
@@ -3769,6 +3781,22 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
     }
   }
 
+  // Sanity check that this table is present in system.partitions if it is a YCQL table.
+  // Only check if we are automatically generating the vtable on changes. If we are creating via
+  // the bg task, then there may be a delay.
+  if (DCHECK_IS_ON() &&
+      resp->done() &&
+      IsYcqlTable(*table) &&
+      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+      FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
+    Schema schema;
+    RETURN_NOT_OK(table->GetSchema(&schema));
+    // Copartitioned tables don't actually create tablets currently (unimplemented), so ignore them.
+    if (!schema.table_properties().HasCopartitionTableId()) {
+      DCHECK(GetYqlPartitionsVtable().CheckTableIsPresent(table->id(), table->NumPartitions()));
+    }
+  }
+
   // If this is a transactional table we are not done until the transaction status table is created.
   // However, if we are currently initializing the system catalog snapshot, we don't create the
   // transactions table.
@@ -4500,6 +4528,9 @@ Status CatalogManager::DeleteTableInternal(
         if (table_names_map_.erase(key) != 1) {
           LOG(WARNING) << "Could not remove table from map: " << key.first << "." << key.second;
         }
+
+        // Also remove from the system.partitions table.
+        GetYqlPartitionsVtable().RemoveFromCache(table.info->id());
       }
     }
     // We commit another map to increment its version and reset cache.
@@ -6074,12 +6105,22 @@ Status CatalogManager::ProcessTabletReportBatch(
       return s;
     }
   }
+  // Filter the mutated tablets to find which tablets were modified. Need to actually commit the
+  // state of the tablets before updating the system.partitions table, so get this first.
+  vector<TabletInfoPtr> yql_partitions_mutated_tablets =
+      VERIFY_RESULT(GetYqlPartitionsVtable().FilterRelevantTablets(mutated_tablets));
 
   // 9. Publish the in-memory tablet mutations and release the locks.
   for (auto& l : tablet_write_locks) {
     l.second.Commit();
   }
   tablet_write_locks.clear();
+
+  // Update the relevant tablet entries in system.partitions.
+  if (!yql_partitions_mutated_tablets.empty()) {
+    Status s = GetYqlPartitionsVtable()
+        .ProcessMutatedTablets(yql_partitions_mutated_tablets, tablet_write_locks);
+  }
 
   // 10. Third Pass. Process all tablet schema version changes.
   // (This is separate from tablet state mutations because only table on-disk state is changed.)
@@ -10025,12 +10066,19 @@ Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tab
 }
 
 void CatalogManager::RebuildYQLSystemPartitions() {
-  if (FLAGS_partitions_vtable_cache_refresh_secs > 0) {
+  if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
+      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.catalog_status().ok() && l.leader_status().ok()) {
       if (system_partitions_tablet_ != nullptr) {
-        auto s = ResultToStatus(down_cast<const YQLPartitionsVTable&>(
-            system_partitions_tablet_->QLStorage()).GenerateAndCacheData());
+        Status s;
+        if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
+          // If we are not generating the vtable on changes, then we need to do a full refresh.
+          s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
+        } else {
+          // Otherwise, we can simply update the cached vtable with the internal map.
+          s = GetYqlPartitionsVtable().UpdateCache();
+        }
         if (!s.ok()) {
           LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
         }
@@ -10168,6 +10216,10 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
     return;
   }
   lock.Commit();
+}
+
+const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
+  return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
 }
 
 }  // namespace master
