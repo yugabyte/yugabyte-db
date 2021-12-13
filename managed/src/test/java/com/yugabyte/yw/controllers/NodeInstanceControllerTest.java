@@ -13,7 +13,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,9 +43,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.LinkedList;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -159,13 +157,14 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithBody("POST", uri, params);
   }
 
-  private void setInTransitNode(UUID universeUUID) {
+  private void setNodeState(UUID universeUUID, String nodeName, NodeState state) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
+          @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            NodeDetails node = universeDetails.nodeDetailsSet.iterator().next();
-            node.state = NodeState.Removed;
+            NodeDetails node = universe.getNode(nodeName);
+            node.state = state;
             universe.setUniverseDetails(universeDetails);
           }
         };
@@ -382,8 +381,9 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testValidNodeAction() {
     for (NodeActionType nodeActionType : NodeActionType.values()) {
-      // Skip QUERY b/c it is UI-only flag
-      if (nodeActionType == NodeActionType.QUERY) {
+      // Skip QUERY b/c it is UI-only flag.
+      // Skip DELETE - tested in another test (testDisableStopRemove).
+      if ((nodeActionType == NodeActionType.QUERY) || (nodeActionType == NodeActionType.DELETE)) {
         continue;
       }
       UUID fakeTaskUUID = UUID.randomUUID();
@@ -406,11 +406,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       assertEquals("host-n1", ct.getTargetName());
       Mockito.reset(mockCommissioner);
     }
-    assertAuditEntry(NodeActionType.values().length - 1, customer.uuid);
+    assertAuditEntry(NodeActionType.values().length - 2, customer.uuid);
   }
 
   @Test
-  public void testDisableStopRemove() {
+  public void testDisableStopRemoveDelete() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
@@ -420,15 +420,9 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             ModelFactory.createUniverse("disable-stop-remove-rf-3", customer.getCustomerId())
                 .universeUUID,
             ApiUtils.mockUniverseUpdater());
-    setInTransitNode(u.universeUUID);
+    setNodeState(u.universeUUID, "host-n1", NodeState.Removed);
 
-    Set<NodeDetails> nodes =
-        u.getMasters()
-            .stream()
-            .filter((n) -> n.state == NodeState.Live)
-            .collect(Collectors.toSet());
-
-    NodeDetails curNode = nodes.iterator().next();
+    NodeDetails curNode = u.getNode("host-n1");
     Result invalidRemove =
         assertPlatformException(
             () ->
@@ -450,6 +444,42 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
         "Cannot STOP "
             + curNode.nodeName
             + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
+
+    // Changing to another node as n1 is in progress by previous operations.
+    NodeDetails nodeToDelete = u.getNode("host-n3");
+    Result invalidDelete =
+        assertPlatformException(
+            () ->
+                performNodeAction(
+                    customer.uuid,
+                    u.universeUUID,
+                    nodeToDelete.nodeName,
+                    NodeActionType.DELETE,
+                    false));
+    assertBadRequest(
+        invalidDelete, "Cannot DELETE " + nodeToDelete.nodeName + ": It is in Live state");
+
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          univ.getNode(nodeToDelete.nodeName).state = NodeState.Decommissioned;
+        });
+
+    invalidDelete =
+        assertPlatformException(
+            () ->
+                performNodeAction(
+                    customer.uuid,
+                    u.universeUUID,
+                    nodeToDelete.nodeName,
+                    NodeActionType.DELETE,
+                    false));
+    assertBadRequest(
+        invalidDelete,
+        "Cannot DELETE "
+            + nodeToDelete.nodeName
+            + ": Unable to have less nodes than RF (count = 3, replicationFactor = 3)");
+
     assertAuditEntry(0, customer.uuid);
   }
 

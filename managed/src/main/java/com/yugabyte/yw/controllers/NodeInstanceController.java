@@ -181,8 +181,7 @@ public class NodeInstanceController extends AuthenticatedController {
 
   @ApiOperation(value = "Delete a node instance")
   public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
-    // Validate customer UUID and universe UUID and AWS provider.
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     NodeInstance nodeToBeFound = findNodeOrThrow(provider, instanceIP);
     if (nodeToBeFound.isInUse()) {
@@ -223,7 +222,9 @@ public class NodeInstanceController extends AuthenticatedController {
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
-    if (nodeAction == NodeActionType.STOP || nodeAction == NodeActionType.REMOVE) {
+    if (nodeAction == NodeActionType.STOP
+        || nodeAction == NodeActionType.REMOVE
+        || nodeAction == NodeActionType.DELETE) {
       // Always check this?? For now leaving it as is since it breaks many tests
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
