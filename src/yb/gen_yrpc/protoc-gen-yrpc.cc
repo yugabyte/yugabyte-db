@@ -44,6 +44,7 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 
 #include "yb/gen_yrpc/printer.h"
+#include "yb/gen_yrpc/messages_generator.h"
 #include "yb/gen_yrpc/proxy_generator.h"
 #include "yb/gen_yrpc/service_generator.h"
 #include "yb/gen_yrpc/substitutions.h"
@@ -79,6 +80,11 @@ class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
     if (file->service_count() != 0) {
       Generate<ServiceGenerator>(file, gen_context, &subs, name_info.service());
       Generate<ProxyGenerator>(file, gen_context, &subs, name_info.proxy());
+    }
+
+    if (params.count("messages")) {
+      Generate<MessagesGenerator>(
+          file, gen_context, &subs, name_info.messages());
     }
 
     return true;

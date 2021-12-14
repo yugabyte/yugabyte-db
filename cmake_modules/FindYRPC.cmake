@@ -43,11 +43,14 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
   endif(NOT ARGN)
 
   set(options)
-  set(one_value_args SOURCE_ROOT BINARY_ROOT)
+  set(one_value_args SOURCE_ROOT BINARY_ROOT MESSAGES SERVICE)
   set(multi_value_args EXTRA_PROTO_PATHS PROTO_FILES)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
   if(ARG_UNPARSED_ARGUMENTS)
     message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+  if("${ARG_SERVICE}" STREQUAL "")
+    set(ARG_SERVICE TRUE)
   endif()
   set(${SRCS})
   set(${HDRS})
@@ -89,32 +92,62 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
     set(SERVICE_H "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.service.h")
     set(PROXY_CC "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.proxy.cc")
     set(PROXY_H "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.proxy.h")
-    list(APPEND ${SRCS} "${PROTO_CC_OUT}" "${SERVICE_CC}" "${PROXY_CC}")
-    list(APPEND ${HDRS} "${PROTO_H_OUT}" "${SERVICE_H}" "${PROXY_H}")
+    set(MESSAGES_CC "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.messages.cc")
+    set(MESSAGES_H "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.messages.h")
+    list(APPEND ${SRCS} "${PROTO_CC_OUT}")
+    list(APPEND ${HDRS} "${PROTO_H_OUT}")
+    set(OUTPUT_FILES "")
+    list(APPEND OUTPUT_FILES "${PROTO_CC_OUT}" "${PROTO_H_OUT}")
+
+    if(${ARG_SERVICE})
+      list(APPEND ${SRCS} "${SERVICE_CC}" "${PROXY_CC}")
+      list(APPEND ${HDRS} "${SERVICE_H}" "${PROXY_H}")
+      list(APPEND OUTPUT_FILES "${SERVICE_CC}" "${SERVICE_H}" "${PROXY_CC}" "${PROXY_H}")
+    endif()
+
+    set(YRPC_OPTS "")
+    if (${ARG_MESSAGES})
+      list(APPEND ${SRCS} "${MESSAGES_CC}")
+      list(APPEND ${HDRS} "${MESSAGES_H}")
+      list(APPEND OUTPUT_FILES "${MESSAGES_CC}" "${MESSAGES_H}")
+      list(APPEND YRPC_OPTS "messages")
+    endif()
+
+    set(ARGS
+        --plugin $<TARGET_FILE:protoc-gen-yrpc>
+        --plugin $<TARGET_FILE:protoc-gen-insertions>
+        --cpp_out ${ARG_BINARY_ROOT}
+        --yrpc_out ${ARG_BINARY_ROOT}
+        --insertions_out ${ARG_BINARY_ROOT}
+        --proto_path ${ARG_SOURCE_ROOT}
+        # Used to find built-in .proto files (e.g. FileDescriptorProto)
+        --proto_path ${PROTOBUF_INCLUDE_DIR})
+
+    if (YRPC_OPTS)
+      list(APPEND ARGS --yrpc_opt ${YRPC_OPTS})
+    endif ()
+
+    list(APPEND ARGS ${EXTRA_PROTO_PATH_ARGS} ${ABS_FIL})
 
     add_custom_command(
-      OUTPUT "${SERVICE_CC}" "${SERVICE_H}"
-             "${PROXY_CC}" "${PROXY_H}"
-             "${PROTO_CC_OUT}" "${PROTO_H_OUT}"
-      COMMAND  ${PROTOBUF_PROTOC_EXECUTABLE}
-      ARGS --plugin $<TARGET_FILE:protoc-gen-yrpc>
-           --plugin $<TARGET_FILE:protoc-gen-insertions>
-           --cpp_out ${ARG_BINARY_ROOT}
-           --yrpc_out ${ARG_BINARY_ROOT}
-           --insertions_out ${ARG_BINARY_ROOT}
-           --proto_path ${ARG_SOURCE_ROOT}
-           # Used to find built-in .proto files (e.g. FileDescriptorProto)
-           --proto_path ${PROTOBUF_INCLUDE_DIR}
-           ${EXTRA_PROTO_PATH_ARGS} ${ABS_FIL}
+      OUTPUT ${OUTPUT_FILES}
+      COMMAND ${PROTOBUF_PROTOC_EXECUTABLE}
+      ${ARGS}
       DEPENDS ${ABS_FIL} protoc-gen-yrpc protoc-gen-insertions
       COMMENT "Running C++ protocol buffer compiler with YRPC plugin on ${FIL}"
       VERBATIM)
 
     GET_PROTOBUF_GENERATION_TARGET_NAME("${PROTO_REL_TO_YB_SRC_ROOT}" TGT_NAME)
-    add_custom_target(${TGT_NAME}
-      DEPENDS "${SERVICE_CC}" "${SERVICE_H}" protoc-gen-insertions
-      "${PROXY_CC}" "${PROXY_H}"
-      "${PROTO_CC_OUT}" "${PROTO_H_OUT}")
+    set(TGT_DEPS "${PROTO_CC_OUT}" "${PROTO_H_OUT}")
+    if(${ARG_SERVICE})
+      list(APPEND TGT_DEPS
+        "${SERVICE_CC}" "${SERVICE_H}" protoc-gen-insertions
+        "${PROXY_CC}" "${PROXY_H}")
+    endif()
+    if(${ARG_MESSAGES})
+      list(APPEND TGT_DEPS "${MESSAGES_CC}" "${MESSAGES_H}")
+    endif()
+    add_custom_target(${TGT_NAME} DEPENDS ${TGT_DEPS})
     add_dependencies(gen_proto ${TGT_NAME})
     # This might be unnecessary, but we've seen issues with plugins not having been built in time.
     add_dependencies("${TGT_NAME}" protoc-gen-insertions protoc-gen-yrpc)

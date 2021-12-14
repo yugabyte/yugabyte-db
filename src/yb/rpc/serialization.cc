@@ -39,6 +39,8 @@
 #include "yb/gutil/stringprintf.h"
 
 #include "yb/rpc/constants.h"
+#include "yb/rpc/lightweight_message.h"
+
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/faststring.h"
@@ -55,46 +57,28 @@ using google::protobuf::io::CodedOutputStream;
 
 namespace yb {
 namespace rpc {
-namespace serialization {
 
-Status SerializeMessage(const MessageLite& message,
-                        RefCntBuffer* param_buf,
-                        int additional_size,
-                        bool use_cached_size,
-                        size_t offset,
-                        size_t* size) {
-  if (PREDICT_FALSE(!message.IsInitialized())) {
-    auto* full_message = dynamic_cast<const google::protobuf::Message*>(&message);
-    return STATUS_FORMAT(
-        InvalidArgument, "RPC argument missing required fields: $0$1",
-        message.InitializationErrorString(),
-        full_message ? Format(" ($0)", full_message->ShortDebugString()) : "");
-  }
-  int pb_size = use_cached_size ? message.GetCachedSize() : message.ByteSize();
-  DCHECK_EQ(message.ByteSize(), pb_size);
-  int recorded_size = pb_size + additional_size;
-  int size_with_delim = pb_size + CodedOutputStream::VarintSize32(recorded_size);
-  int total_size = size_with_delim + additional_size;
+size_t SerializedMessageSize(size_t body_size, int additional_size) {
+  auto full_size = body_size + additional_size;
+  return body_size + CodedOutputStream::VarintSize32(full_size);
+}
 
+CHECKED_STATUS SerializeMessage(
+    AnyMessageConstPtr msg, size_t body_size, const RefCntBuffer& param_buf,
+    int additional_size, size_t offset) {
+  DCHECK_EQ(msg.SerializedSize(), body_size);
+  auto size = SerializedMessageSize(body_size, additional_size);
+
+  auto total_size = size + additional_size;
   if (total_size > FLAGS_rpc_max_message_size) {
-    LOG(DFATAL) << "Sending too long of an RPC message (" << total_size
-                << " bytes)";
+    return STATUS_FORMAT(InvalidArgument, "Sending too long RPC message ($0 bytes)", total_size);
   }
 
-  if (size != nullptr) {
-    *size = offset + size_with_delim;
-  }
-  if (param_buf != nullptr) {
-    if (!*param_buf) {
-      *param_buf = RefCntBuffer(offset + size_with_delim);
-    } else {
-      CHECK_EQ(param_buf->size(), offset + size_with_delim) << "offset = " << offset;
-    }
-    uint8_t *dst = param_buf->udata() + offset;
-    dst = CodedOutputStream::WriteVarint32ToArray(recorded_size, dst);
-    dst = message.SerializeWithCachedSizesToArray(dst);
-    CHECK_EQ(dst, param_buf->udata() + param_buf->size());
-  }
+  CHECK_EQ(param_buf.size(), offset + size) << "offset = " << offset;
+  uint8_t *dst = param_buf.udata() + offset;
+  dst = CodedOutputStream::WriteVarint32ToArray(body_size + additional_size, dst);
+  dst = VERIFY_RESULT(msg.SerializeToArray(dst));
+  CHECK_EQ(dst - param_buf.udata(), param_buf.size());
 
   return Status::OK();
 }
@@ -104,7 +88,6 @@ Status SerializeHeader(const MessageLite& header,
                        RefCntBuffer* header_buf,
                        size_t reserve_for_param,
                        size_t* header_size) {
-
   if (PREDICT_FALSE(!header.IsInitialized())) {
     LOG(DFATAL) << "Uninitialized RPC header";
     return STATUS(InvalidArgument, "RPC header missing required fields",
@@ -139,7 +122,18 @@ Status SerializeHeader(const MessageLite& header,
   return Status::OK();
 }
 
-namespace {
+Result<RefCntBuffer> SerializeRequest(
+    size_t body_size, size_t additional_size, const google::protobuf::Message& header,
+    AnyMessageConstPtr body) {
+  auto message_size = SerializedMessageSize(body_size, additional_size);
+  size_t header_size = 0;
+  RefCntBuffer result;
+  RETURN_NOT_OK(SerializeHeader(
+      header, message_size + additional_size, &result, message_size, &header_size));
+
+  RETURN_NOT_OK(SerializeMessage(body, body_size, result, additional_size, header_size));
+  return result;
+}
 
 bool SkipField(uint8_t type, CodedInputStream* in) {
   switch (type) {
@@ -210,6 +204,8 @@ CHECKED_STATUS ParseHeader(const Slice& buf, CodedInputStream* in, MessageLite* 
 
   return Status::OK();
 }
+
+namespace {
 
 template <class Header>
 CHECKED_STATUS DoParseYBMessage(const Slice& buf,
@@ -311,6 +307,5 @@ void ParsedRequestHeader::ToPB(RequestHeader* out) const {
   }
 }
 
-}  // namespace serialization
 }  // namespace rpc
 }  // namespace yb

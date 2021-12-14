@@ -18,19 +18,11 @@
 
 #include "yb/gen_yrpc/gen_yrpc_fwd.h"
 
+#include "yb/rpc/lightweight_message.pb.h"
+
 #include "yb/util/status.h"
 
 namespace yb {
-
-namespace rpc {
-
-enum class RpcSides {
-  SERVICE,
-  PROXY,
-};
-
-}
-
 namespace gen_yrpc {
 
 class FileSubstitutions {
@@ -59,6 +51,7 @@ class FileSubstitutions {
 Substitutions CreateSubstitutions(const google::protobuf::Descriptor* message);
 Substitutions CreateSubstitutions(
     const google::protobuf::MethodDescriptor* method, rpc::RpcSides side);
+Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field);
 Substitutions CreateSubstitutions(const google::protobuf::ServiceDescriptor* service);
 
 std::string RemoveProtoExtension(const std::string& fname);

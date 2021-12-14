@@ -101,11 +101,18 @@ HostPort::HostPort()
     : port_(0) {
 }
 
+HostPort::HostPort(Slice host, uint16_t port)
+    : host_(host.cdata(), host.size()), port_(port) {}
+
 HostPort::HostPort(std::string host, uint16_t port)
     : host_(std::move(host)), port_(port) {}
 
 HostPort::HostPort(const Endpoint& endpoint)
     : host_(endpoint.address().to_string()), port_(endpoint.port()) {
+}
+
+HostPort::HostPort(const char* host, uint16_t port)
+    : HostPort(Slice(host), port) {
 }
 
 Status HostPort::RemoveAndGetHostPortList(

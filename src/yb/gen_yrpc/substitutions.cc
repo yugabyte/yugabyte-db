@@ -93,18 +93,20 @@ Substitutions FileSubstitutions::Create() {
 
 Substitutions CreateSubstitutions(const google::protobuf::Descriptor* message) {
   Substitutions result;
-  auto message_name = UnnestedName(message, false);
+  auto message_name = UnnestedName(message, Lightweight::kFalse, false);
   result.emplace_back("message_name", message_name);
   std::string message_pb_name;
-  if (message->options().map_entry()) {
-    auto key_type = MapFieldType(message->FindFieldByName("key"));
-    auto value_type = MapFieldType(message->FindFieldByName("value"));
+  if (IsLwAny(message)) {
+    message_pb_name = "::google::protobuf::Any";
+  } else if (message->options().map_entry()) {
+    auto key_type = MapFieldType(message->FindFieldByName("key"), Lightweight::kFalse);
+    auto value_type = MapFieldType(message->FindFieldByName("value"), Lightweight::kFalse);
     message_pb_name = "::google::protobuf::MapPair<" + key_type + ", " + value_type + ">";
   } else {
     message_pb_name = message_name;
   }
   result.emplace_back("message_pb_name", message_pb_name);
-  result.emplace_back("message_lw_name", UnnestedName(message, false));
+  result.emplace_back("message_lw_name", UnnestedName(message, Lightweight::kTrue, false));
   uint32 max_tag = 0;
   for (int i = 0; i != message->field_count(); ++i) {
     auto* field = message->field(i);
@@ -132,11 +134,48 @@ Substitutions CreateSubstitutions(
 
   auto request_type = method->input_type()->full_name();
   auto response_type = method->output_type()->full_name();
+  if (IsLightweightMethod(method, side)) {
+    request_type = MakeLightweightName(request_type);
+    response_type = MakeLightweightName(response_type);
+    result.emplace_back("params", "RpcCallLWParams");
+  } else {
+    result.emplace_back("params", "RpcCallPBParams");
+  }
   result.emplace_back("request", RelativeClassPath(request_type, method->service()->full_name()));
   result.emplace_back(
       "response", RelativeClassPath(response_type,  method->service()->full_name()));
   result.emplace_back("metric_enum_key", Format("k$0", method->name()));
 
+  return result;
+}
+
+Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field) {
+  Substitutions result;
+  auto field_name = boost::to_lower_copy(field->name());
+  result.emplace_back("field_name", field_name);
+  result.emplace_back("field_value", field->is_repeated() ? "entry" : field_name + "()");
+  auto camelcase_name = field->camelcase_name();
+  camelcase_name[0] = std::toupper(camelcase_name[0]);
+  result.emplace_back("field_camelcase_name", camelcase_name);
+  std::string field_type = MapFieldType(field, Lightweight::kTrue);
+  const char* message_type_format = "::yb::ArenaList<$0>";
+  result.emplace_back(
+      "field_stored_type",
+      field->is_repeated()
+          ? Format(IsMessage(field) ? message_type_format : "::yb::MCVector<$0>", field_type)
+          : field_type);
+  result.emplace_back("field_type", field_type);
+  result.emplace_back("nonlw_field_type", MapFieldType(field, Lightweight::kFalse));
+  auto field_type_name = "TYPE_" + boost::to_upper_copy(std::string(field->type_name()));
+  result.emplace_back("field_type_name", field_type_name);
+  result.emplace_back("field_number", std::to_string(field->number()));
+  result.emplace_back(
+      "field_serialization",
+      Format("::yb::rpc::LightweightSerialization<$0::$1, $2>",
+             kWireFormat, field_type_name, field_type));
+  result.emplace_back(
+      "field_serialization_prefix",
+      field->is_packed() ? "Packed" : field->is_repeated() ? "Repeated" : "Single");
   return result;
 }
 

@@ -477,8 +477,7 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
   }
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
   if (it == rpc_endpoints_.end()) {
-    auto remote_method = serialization::ParseRemoteMethod(
-        call->serialized_remote_method());
+    auto remote_method = ParseRemoteMethod(call->serialized_remote_method());
     Status s;
     ErrorStatusPB::RpcErrorCodePB error_code = ErrorStatusPB::ERROR_NO_SUCH_SERVICE;
     if (remote_method.ok()) {

@@ -83,14 +83,16 @@ ADD_YB_LIBRARY(version_info_proto
 # op_id_proto
 #######################################
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   OP_ID_PROTO_SRCS OP_ID_PROTO_HDRS OP_ID_PROTO_TGTS
+  MESSAGES TRUE
+  SERVICE FALSE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES opid.proto)
 ADD_YB_LIBRARY(opid_proto
   SRCS ${OP_ID_PROTO_SRCS}
-  DEPS protobuf
+  DEPS protobuf yb_util yrpc
   NONLINK_DEPS ${OP_ID_PROTO_TGTS})
 
 #########################################

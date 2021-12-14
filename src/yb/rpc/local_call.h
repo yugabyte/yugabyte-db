@@ -32,15 +32,18 @@ class LocalOutboundCall : public OutboundCall {
  public:
   LocalOutboundCall(const RemoteMethod* remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
-                    google::protobuf::Message* response_storage,
+                    AnyMessagePtr response_storage,
                     RpcController* controller, RpcMetrics* rpc_metrics, ResponseCallback callback);
 
-  CHECKED_STATUS SetRequestParam(
-      const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker) override;
+  CHECKED_STATUS SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;
 
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 
   size_t ObjectSize() const override { return sizeof(*this); }
+
+  const AnyMessageConstPtr& request() const {
+    return req_;
+  }
 
  protected:
   void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
@@ -50,13 +53,13 @@ class LocalOutboundCall : public OutboundCall {
  private:
   friend class LocalYBInboundCall;
 
-  const google::protobuf::Message* req_ = nullptr;
+  AnyMessageConstPtr req_;
 
   std::shared_ptr<LocalYBInboundCall> inbound_call_;
 };
 
 // A short-circuited YB inbound call.
-class LocalYBInboundCall : public YBInboundCall {
+class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  public:
   LocalYBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
                      std::weak_ptr<LocalOutboundCall> outbound_call,
@@ -68,10 +71,7 @@ class LocalYBInboundCall : public YBInboundCall {
   const Endpoint& local_address() const override;
   CoarseTimePoint GetClientDeadline() const override { return deadline_; }
 
-  CHECKED_STATUS ParseParam(google::protobuf::Message* message) override;
-
-  const google::protobuf::Message* request() const { return outbound_call()->req_; }
-  google::protobuf::Message* response() const { return outbound_call()->response(); }
+  CHECKED_STATUS ParseParam(RpcCallParams* params) override;
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
@@ -80,13 +80,18 @@ class LocalYBInboundCall : public YBInboundCall {
     return sidecars_.size() - 1;
   }
 
+  std::shared_ptr<LocalOutboundCall> outbound_call() const {
+    return outbound_call_.lock();
+  }
+
  protected:
-  void Respond(const google::protobuf::MessageLite& response, bool is_success) override;
+  void Respond(AnyMessageConstPtr req, bool is_success) override;
 
  private:
   friend class LocalOutboundCall;
 
-  std::shared_ptr<LocalOutboundCall> outbound_call() const { return outbound_call_.lock(); }
+  Result<size_t> ParseRequest(Slice param) override;
+  AnyMessageConstPtr SerializableResponse() override;
 
   boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecars_;
 
@@ -96,23 +101,25 @@ class LocalYBInboundCall : public YBInboundCall {
   const CoarseTimePoint deadline_;
 };
 
-template <class Req, class Resp, class F>
+template <class Params, class F>
 auto HandleCall(InboundCallPtr call, F f) {
   auto yb_call = std::static_pointer_cast<YBInboundCall>(call);
   if (yb_call->IsLocalCall()) {
     auto local_call = std::static_pointer_cast<LocalYBInboundCall>(yb_call);
-    auto* req = yb::down_cast<const Req*>(local_call->request());
-    auto* resp = yb::down_cast<Resp*>(local_call->response());
+    auto outbound_call = local_call->outbound_call();
+    auto* req = yb::down_cast<const typename Params::RequestType*>(
+        Params::CastMessage(outbound_call->request()));
+    auto* resp = yb::down_cast<typename Params::ResponseType*>(
+        Params::CastMessage(outbound_call->response()));
     RpcContext rpc_context(std::move(local_call));
     f(req, resp, std::move(rpc_context));
   } else {
-    auto req = std::make_shared<Req>();
-    auto resp = std::make_shared<Resp>();
-    const auto* req_raw = req.get();
-    auto* resp_raw = resp.get();
-    RpcContext rpc_context(yb_call, std::move(req), std::move(resp));
+    auto params = std::make_shared<Params>();
+    auto* req = &params->request();
+    auto* resp = &params->response();
+    RpcContext rpc_context(yb_call, std::move(params));
     if (!rpc_context.responded()) {
-      f(req_raw, resp_raw, std::move(rpc_context));
+      f(req, resp, std::move(rpc_context));
     }
   }
 }

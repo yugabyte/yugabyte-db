@@ -32,8 +32,6 @@
 
 #include "yb/rpc/inbound_call.h"
 
-#include "yb/common/redis_protocol.pb.h"
-
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/connection.h"
@@ -51,7 +49,6 @@
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
-using yb::RedisResponsePB;
 
 DEFINE_bool(rpc_dump_all_traces, false,
             "If true, dump all RPC traces at INFO level");

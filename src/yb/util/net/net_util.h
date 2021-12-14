@@ -48,12 +48,15 @@ DECLARE_string(net_address_filter);
 namespace yb {
 
 class FileLock;
+class Slice;
 
 // A container for a host:port pair.
 class HostPort {
  public:
   HostPort();
+  HostPort(Slice host, uint16_t port);
   HostPort(std::string host, uint16_t port);
+  HostPort(const char* host, uint16_t port);
   explicit HostPort(const Endpoint& endpoint);
 
   static HostPort FromBoundEndpoint(const Endpoint& endpoint);
