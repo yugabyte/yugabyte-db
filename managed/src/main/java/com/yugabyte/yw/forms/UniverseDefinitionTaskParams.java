@@ -106,7 +106,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public boolean backupInProgress = false;
 
-  // This tracks the if latest operation on this universe has successfully completed. This flag is
+  // This tracks that if latest operation on this universe has successfully completed. This flag is
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
   @ApiModelProperty public boolean updateSucceeded = true;
