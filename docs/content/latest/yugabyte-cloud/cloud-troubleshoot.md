@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Connecting to clusters
+## Connectivity
 
 ### Connection timed out
 
@@ -28,10 +28,6 @@ ysqlsh: could not connect to server: Operation timed out
 If you are trying to connect to a cluster from your local computer, add your computer to the cluster IP allow list.
 
 If you have a VPC configured, add one or more IP addresses from the peered VPN to the cluster IP allow list.
-
-### Unable to connect cluster to peered VPC
-
-Ensure one or more IP addresses from the peered VPN are added to the cluster IP allow list.
 
 ### SSL off
 
@@ -48,3 +44,27 @@ Yugabyte Cloud clusters require an SSL connection. If you set `sslmode` to `disa
 If the password contains special characters (#, %, ^), the driver may fail to parse the URL.
 
 Be sure to encode any special characters in your connection string.
+
+### VPC networking
+
+If you have set up a VPC network and are unable to connect, verify the following.
+
+#### VPC status is Failed
+
+If you are unable to successfully create the VPC, check that the CIDR range does not overlap with another VPC.
+
+#### Peering connection status is Pending
+
+A peering connection status of Pending indicates that you need to configure your cloud provider to accept the connection. Refer to [Configure the connection in your cloud provider](#configure-the-connection-in-your-cloud-provider).
+
+#### Peering connection status is Expired
+
+AWS only. Expired indicates the peering request was not accepted. Retry the peering request.
+
+#### Peering connection status is Failed
+
+Check your cloud provider settings to ensure you have entered the correct details for your peering connection.
+
+#### VPC and peering connection are active but you cannot connect to the cluster
+
+Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
