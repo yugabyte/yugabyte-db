@@ -174,8 +174,9 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetNodeWithInvalidUuid() {
-    Result r = getNode(UUID.randomUUID());
-    checkNotOk(r, "Null content"); // TODO(API): This should cause 4XX not 500
+    UUID uuid = UUID.randomUUID();
+    Result r = getNode(uuid);
+    checkNotOk(r, "Invalid node UUID: " + uuid);
     assertAuditEntry(0, customer.uuid);
   }
 

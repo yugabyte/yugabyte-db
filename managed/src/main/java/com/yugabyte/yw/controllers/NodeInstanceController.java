@@ -45,6 +45,9 @@ public class NodeInstanceController extends AuthenticatedController {
 
     try {
       NodeInstance node = NodeInstance.get(nodeUuid);
+      if (node == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid node UUID: " + nodeUuid);
+      }
       return ApiResponse.success(node);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());

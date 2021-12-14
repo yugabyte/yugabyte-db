@@ -186,7 +186,7 @@ public class CertificateController extends AuthenticatedController {
     if (certificate.certType == CertificateInfo.Type.SelfSigned) {
       return ApiResponse.error(BAD_REQUEST, "Cannot edit self-signed cert.");
     }
-    if (certificate.customCertInfo != null) {
+    if (certificate.getCustomCertInfo() != null) {
       return ApiResponse.error(BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
     }
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
