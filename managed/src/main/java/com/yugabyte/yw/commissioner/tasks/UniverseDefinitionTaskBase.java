@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -1183,6 +1184,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       wasCallbackRun = true;
     }
     return wasCallbackRun;
+  }
+
+  /** Sets the task params from the DB. */
+  public void fetchTaskDetailsFromDB() {
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+    taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
   }
 
   /**

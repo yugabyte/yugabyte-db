@@ -88,6 +88,25 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      boolean isYCQLAuthEnabled =
+          primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth;
+      boolean isYSQLAuthEnabled =
+          primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth;
+
+      // Store the passwords in the temporary variables first.
+      // DB does not store the actual passwords.
+      if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
+        if (isFirstTryForTask(taskParams())) {
+          if (isYCQLAuthEnabled) {
+            ycqlPassword = primaryCluster.userIntent.ycqlPassword;
+          }
+          if (isYSQLAuthEnabled) {
+            ysqlPassword = primaryCluster.userIntent.ysqlPassword;
+          }
+        }
+      }
+
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       // It returns the latest state of the Universe after saving.
@@ -96,6 +115,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
               taskParams().expectedUniverseVersion,
               u -> {
                 if (isFirstTryForTask(taskParams())) {
+                  // Fetch the task params from the DB to start from fresh on retry.
+                  // Otherwise, some operations like name assignment can fail.
+                  fetchTaskDetailsFromDB();
                   // Set all the in-memory node names.
                   setNodeNames(u);
                   // Select master nodes and apply isMaster flags immediately.
@@ -113,21 +135,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                 }
               });
 
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
-      boolean isYCQLAuthEnabled =
-          primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth;
-      boolean isYSQLAuthEnabled =
-          primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth;
-
       if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
         if (isFirstTryForTask(taskParams())) {
           if (isYCQLAuthEnabled) {
-            ycqlPassword = taskParams().getPrimaryCluster().userIntent.ycqlPassword;
             taskParams().getPrimaryCluster().userIntent.ycqlPassword =
                 Util.redactString(ycqlPassword);
           }
           if (isYSQLAuthEnabled) {
-            ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
             taskParams().getPrimaryCluster().userIntent.ysqlPassword =
                 Util.redactString(ysqlPassword);
           }
