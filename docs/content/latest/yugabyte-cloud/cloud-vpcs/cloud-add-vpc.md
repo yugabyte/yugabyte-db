@@ -63,6 +63,6 @@ To terminate a VPC, click the **Delete** icon for the VPC in the list you want t
 
 ## Next steps
 
-- [Create a peering connection](../cloud-add-peering/#create-a-peering-connection/).
-- [Configure your cloud provider](../cloud-add-peering/#configure-the-cloud-provider/).
-- [Add an application VPC to the IP allow list](../cloud-add-peering/#configure-the-cloud-provider/).
+- [Create a peering connection](../cloud-add-peering/#create-a-peering-connection)
+- [Configure your cloud provider](../cloud-add-peering/#configure-the-cloud-provider)
+- [Add the application VPC CIDR to the cluster IP allow list](../cloud-add-peering/#add-the-peered-application-vpc-to-your-cluster-ip-allow-list)

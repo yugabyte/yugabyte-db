@@ -74,13 +74,13 @@ Yugabyte Cloud reserves the following ranges for internal operations.
 
 ## Limitations
 
-- You assign a VPC when you create a cluster. You cannot change VPCs after cluster creation.
+- You assign a VPC when you create a cluster. You cannot switch VPCs after cluster creation.
 - You cannot change the size of your VPC once it is created.
 - You cannot peer VPCs with overlapping ranges with the same application VPC.
 - You can create a maximum of 3 AWS VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
 
-If you need additional VPCs, contact Support.
+If you need additional VPCs, contact Yugabyte Support.
 
 ## Next steps
 
