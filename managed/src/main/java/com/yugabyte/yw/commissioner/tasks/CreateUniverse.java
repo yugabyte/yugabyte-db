@@ -94,7 +94,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                   // Set non on-prem node UUIDs.
                   setCloudNodeUuids(u);
                   // Update on-prem node UUIDs.
-                  updateOnPremNodeUuids(u);
+                  updateOnPremNodeUuidsOnTaskParams();
                   // Set the prepared data to universe in-memory.
                   setUserIntentToUniverse(u, taskParams(), false);
                   // There is a rare possibility that this succeeds and
