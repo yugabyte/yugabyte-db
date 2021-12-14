@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
@@ -82,6 +83,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected YsqlQueryExecutor mockYsqlQueryExecutor;
   protected NodeUniverseManager mockNodeUniverseManager;
   protected TaskExecutor taskExecutor;
+  protected EncryptionAtRestManager mockEARManager;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -143,6 +145,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
+    mockEARManager = mock(EncryptionAtRestManager.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -170,7 +173,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(
-                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class)))
+                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
+                .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager)))
         .build();
   }
 
