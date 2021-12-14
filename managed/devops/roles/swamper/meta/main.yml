@@ -20,6 +20,8 @@ dependencies:
     prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
                                     --collector.textfile.directory=/tmp/yugabyte/metrics"
     prometheus_node_exporter_use_systemd: true
+    prometheus_platform_suffix: "{{ 'linux-arm64' if ansible_architecture == 'aarch64' \
+                                    else 'linux-amd64'}}"
     prometheus_user: "{{ node_exporter_user }}"
     prometheus_group: "{{ node_exporter_group }}"
     when: install_node_exporter is not defined or install_node_exporter|bool
