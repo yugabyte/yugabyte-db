@@ -435,6 +435,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .forEach(n -> n.nodeUuid = UUID.randomUUID());
   }
 
+  // This reserves NodeInstances in the DB.
+  // TODO Universe creation can fail during locking after the reservation but it is ok, the task is
+  // not-retryable (updatingTaskUUID is not updated) and it forces user to delete the Universe. But
+  // instances will not be cleaned up because the Universe is not updated with the node names.
+  // Better fix will be to add Universe UUID column in the node_instance such that Universe destroy
+  // does not have to depend on the node names.
   public Map<String, NodeInstance> setOnpremData(Set<NodeDetails> nodes, String instanceType) {
     Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
     for (NodeDetails node : nodes) {
