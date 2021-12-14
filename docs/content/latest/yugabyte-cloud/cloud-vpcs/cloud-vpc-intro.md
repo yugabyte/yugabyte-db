@@ -18,16 +18,6 @@ In the context of Yugabyte Cloud, when a Yugabyte cluster is deployed in a VPC, 
 
 ![Peered VPCs](/images/yb-cloud/cloud-vpc-diagram.png)
 
-To create a VPC network, you need to do the following steps:
-
-1. Create a VPC, reserving a [range of IP addresses](#setting-the-cidr-and-sizing-your-vpc) for the network.
-2. Deploy a cluster in the VPC.
-3. Create a peering connection to establish a connection with the application VPC. The peering connection tells Yugabyte Cloud the location of the application VPC on the cloud provider network.
-4. Configure your cloud provider settings to confirm the connection.
-5. Add the application VPC CIDR to the cluster IP allow list, so the application can connect to the cluster.
-
-With the exception of step 4, these steps are performed in Yugabyte Cloud. For detailed steps, refer to [Set up a VPC network](../cloud-vpc-setup).
-
 ## Advantages
 
 Deploying your cluster in a VPC network has the following advantages:
@@ -40,16 +30,18 @@ Deploying your cluster in a VPC network has the following advantages:
 
 There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs.
 
-## Locating your VPC
+## Choosing the region for your VPC
 
 To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you are peering with.
 
-### Peering multi-region clusters
+### Peering multi-region VPCs
 
 If your cluster spans multiple regions, how you peer with your application VPCs will depend on the cloud provider you use.
 
 GCP
 : If you use the default GCP VPC setup, your cluster VPC is global; your peered application VPC automatically has access to all regions.
+
+: - auto vs custom?
 
 AWS
 : Create a VPC in each region, and peer your application VPC to each of them - that is, create a separate peering connection for each regional VPC.
@@ -87,6 +79,8 @@ Yugabyte Cloud reserves the following ranges for internal operations.
 - You cannot peer VPCs with overlapping ranges with the same application VPC.
 - You can create a maximum of 3 AWS VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
+
+If you need additional VPCs, contact Support.
 
 ## Next steps
 

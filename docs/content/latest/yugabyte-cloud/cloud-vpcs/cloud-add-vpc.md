@@ -1,8 +1,8 @@
 ---
-title: Manage VPCs
+title: Create VPCs
 headerTitle: 
 linkTitle: VPCs
-description: Manage your cloud VPCs.
+description: Create and manage your cloud VPCs.
 menu:
   latest:
     identifier: cloud-add-vpc
@@ -42,13 +42,27 @@ Yugabyte Cloud adds the VPC to the VPCs list with a status of Creating. If succe
 
 The VPC's network name and project ID are automatically assigned. You will need these details when configuring the peering in GCP.
 
+## Deploy a cluster in a VPC
+
+Once a VPC has been created, you can [deploy your cluster](../../cloud-basics/create-clusters/) in the VPC.
+
+1. On the **Clusters** page, click **Add Cluster**.
+1. Choose **Yugabyte Cloud** and click **Next**.
+1. Choose the provider you used for your VPC.
+1. Enter a name for the cluster.
+1. Select the **Region**. For AWS, choose the same region as your VPC.
+1. Set the Fault Tolerance. For production clusters, typically this will be Availability Zone Level.
+1. Under **Network Access**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.
+1. Click **Create Cluster**.
+
 ## Terminate a VPC
 
 You cannot terminate a VPC with active peering connections or clusters.
 
 To terminate a VPC, click the **Delete** icon for the VPC in the list you want to terminate, then click **Terminate**. You can also terminate a VPC by clicking **Terminate VPC** in the **VPC Details** sheet.
 
-## Related topics
+## Next steps
 
-- Create a cluster in a VPN. You do this by selecting the VPC during cluster creation. Refer to [Create a cluster](../../../cloud-basics/create-clusters).
-- Connect a Yugabyte Cloud VPN to an application VPN. Refer to [Configure a peering connection](../cloud-add-peering/#configure-a-peering-connection).
+- [Create a peering connection](../cloud-add-peering/#create-a-peering-connection/).
+- [Configure your cloud provider](../cloud-add-peering/#configure-the-cloud-provider/).
+- [Add an application VPC to the IP allow list](../cloud-add-peering/#configure-the-cloud-provider/).
