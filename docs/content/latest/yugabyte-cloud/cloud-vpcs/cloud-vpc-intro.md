@@ -20,7 +20,7 @@ In the context of Yugabyte Cloud, when a Yugabyte cluster is deployed in a VPC, 
 
 To create a VPC network, you need to do the following steps:
 
-1. Create a VPC, reserving a [range of IP addresses](#setting-the-CIDR-and-sizing-your-vpc) for the network.
+1. Create a VPC, reserving a [range of IP addresses](#setting-the-cidr-and-sizing-your-vpc) for the network.
 2. Deploy a cluster in the VPC.
 3. Create a peering connection to establish a connection with the application VPC. The peering connection tells Yugabyte Cloud the location of the application VPC on the cloud provider network.
 4. Configure your cloud provider settings to confirm the connection.
@@ -43,6 +43,16 @@ There's no additional charge for using a VPC. In most cases, using a VPC will re
 ## Locating your VPC
 
 To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you are peering with.
+
+### Peering multi-region clusters
+
+If your cluster spans multiple regions, how you peer with your application VPCs will depend on the cloud provider you use.
+
+GCP
+: If you use the default GCP VPC setup, your cluster VPC is global; your peered application VPC automatically has access to all regions.
+
+AWS
+: Create a VPC in each region, and peer your application VPC to each of them - that is, create a separate peering connection for each regional VPC.
 
 ## Setting the CIDR and sizing your VPC
 

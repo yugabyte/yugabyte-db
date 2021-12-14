@@ -104,12 +104,18 @@ For information on VPC network peering in AWS, refer to [VPC Peering](https://do
 
 #### Create a peering connection in GCP
 
-To make a GCP peering connection active, you must create a peering connection in GCP. You will need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the [Peering Details](#view-peering-connection-details) sheet.
+To make a GCP peering connection active, you must create a peering connection in GCP. You will need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the **VPC Details** sheet on the **VPCs** page or the **Peering Details** sheet on the **Peering Connections** page.
 
 In the Google Cloud Console, do the following:
 
-1. Navigate to **VPC Network > VPC network peering**.
-1. Click **Create Peering Connection**, then click **Continue**.
+1. Navigate to **VPC Network > VPC network peering** and click **Create Peering Connection**.\
+\
+    ![VPC network peering in GCP](/images/yb-cloud/cloud-peer-gcp-1.png)
+
+1. Click **Continue** to display the **Create peering connection** details.\
+\
+    ![Create peering connection in GCP](/images/yb-cloud/cloud-peer-gcp-2.png)
+
 1. Enter a name for the GCP peering connection.
 1. Select your VPC network name.
 1. Select **In another project** and enter the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with.
