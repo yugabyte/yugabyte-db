@@ -72,7 +72,7 @@ void GenerateHandlerAssignment(YBPrinter printer) {
   printer(
       "call->SetRpcMethodMetrics(methods_["
           "static_cast<size_t>($service_method_enum$::$metric_enum_key$)].metrics);\n"
-      "::yb::rpc::HandleCall<$request$, $response$>(\n"
+      "::yb::rpc::HandleCall<::yb::rpc::$params$Impl<$request$, $response$>>(\n"
       "    std::move(call), [this](const $request$* req, $response$* resp, "
           "::yb::rpc::RpcContext rpc_context) {\n"
       "  $rpc_name$(req, resp, std::move(rpc_context));\n"
