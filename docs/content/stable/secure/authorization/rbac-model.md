@@ -44,6 +44,63 @@ Roles in YSQL can represent individual users or a group of users. They encapsula
 
 * Roles inherit the privileges of all other roles granted to them.
 
+View the roles for your YugabyteDB clusters with the following command:
+
+```sql
+yugabyte=> \du
+```
+
+```output
+                                     List of roles
+  Role name   |                         Attributes                         | Member of
+--------------+------------------------------------------------------------+-----------
+ postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ yb_extension | Cannot login                                               | {}
+ yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+```
+
+The following table describes the default YSQL roles and users in YugabyteDB clusters.
+
+| Role | Description |
+| --- | --- |
+| postgres | Superuser role used during database creation and for PostgreSQL operations. |
+| yb_extension | Role that allows non-Superuser users to create PostgreSQL extensions. |
+| yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (ysql_dumps).
+
+### yb_extension
+
+The `yb_extension` role allows non-Superuser roles to [create extensions](../../../api/ysql/the-sql-language/statements/ddl_create_extension/). A user granted this role can create all the extensions that are bundled in YugabyteDB.
+
+Create a role `test` and grant `yb_extension` to this role.
+
+```sql
+yugabyte=# create role test;
+yugabyte=# grant yb_extension to test ;
+yugabyte=# set role test;
+yugabyte=> select * from current_user;
+```
+
+```output
+ current_user
+--------------
+ test
+(1 row)
+```
+
+Create an extension as the test user and check if it's created.
+
+```sql
+yugabyte=> create extension pgcrypto ;
+yugabyte=> select * from pg_extension where extname='pgcrypto';
+```
+
+```output
+ extname  | extowner | extnamespace | extrelocatable | extversion | extconfig | extcondition
+----------+----------+--------------+----------------+------------+-----------+--------------
+ pgcrypto |    16386 |         2200 | t              | 1.3        |           |
+(1 row)
+```
+
 ## Resources
 
 YSQL defines a number of specific resources, that represent underlying database objects. A resource can denote one object or a collection of objects. YSQL resources are hierarchical as described below:
