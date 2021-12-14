@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.algorithms.AwsAlgorithm;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
@@ -139,11 +140,38 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
           break;
         default:
         case DATA_KEY:
-          keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef);
+          keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef, null);
           if (keyVal == null) {
             LOG.warn("Could not retrieve key from key ref through AWS KMS");
-          } else {
-            EncryptionAtRestUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+          }
+          break;
+      }
+    } catch (Exception e) {
+      final String errMsg = "Error occurred retrieving encryption key";
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
+    }
+    return keyVal;
+  }
+
+  @Override
+  protected byte[] validateRetrieveKeyWithService(
+      UUID universeUUID,
+      UUID configUUID,
+      byte[] keyRef,
+      EncryptionAtRestConfig config,
+      ObjectNode authConfig) {
+    byte[] keyVal = null;
+    try {
+      switch (config.type) {
+        case CMK:
+          keyVal = keyRef;
+          break;
+        default:
+        case DATA_KEY:
+          keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef, authConfig);
+          if (keyVal == null) {
+            LOG.warn("Could not retrieve key from key ref through AWS KMS");
           }
           break;
       }
