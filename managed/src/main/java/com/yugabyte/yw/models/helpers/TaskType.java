@@ -37,6 +37,8 @@ public enum TaskType {
 
   MultiTableBackup("MultiTableBackup"),
 
+  CreateBackup("CreateBackup"),
+
   EditUniverse("EditUniverse"),
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
@@ -232,6 +234,8 @@ public enum TaskType {
   CloudSetup("subtasks.cloud.CloudSetup"),
 
   BackupTable("subtasks.BackupTable"),
+
+  BackupTableYb("subtasks.BackupTableYb"),
 
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 
