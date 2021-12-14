@@ -54,6 +54,10 @@ void ProxyGenerator::Header(YBPrinter printer, const google::protobuf::FileDescr
       "#include \"$path_no_extension$.pb.h\"\n"
   );
 
+  if (HasLightweightMethod(file, rpc::RpcSides::PROXY)) {
+    printer("#include \"$path_no_extension$.messages.h\"\n");
+  }
+
   printer(
     "\n"
       "#include \"yb/rpc/proxy.h\"\n"

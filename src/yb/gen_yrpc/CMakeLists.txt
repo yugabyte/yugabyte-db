@@ -13,6 +13,7 @@
 
 ### RPC generator tool
 add_executable(protoc-gen-yrpc
+    messages_generator.cc
     metric_descriptor.cc
     model.cc
     printer.cc
@@ -25,4 +26,5 @@ target_link_libraries(protoc-gen-yrpc
     protoc
     protobuf
     gutil
-    yb_util)
+    yb_util
+    lightweight_message_proto)
