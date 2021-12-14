@@ -219,6 +219,40 @@ using internal::MetaCache;
 using ql::ObjectType;
 using std::shared_ptr;
 
+namespace {
+
+void FillFromRepeatedTabletLocations(
+    const RepeatedPtrField<TabletLocationsPB>& tablets,
+    vector<TabletId>* tablet_uuids,
+    vector<string>* ranges,
+    vector<TabletLocationsPB>* locations) {
+  tablet_uuids->reserve(tablets.size());
+  if (ranges) {
+    ranges->reserve(tablets.size());
+  }
+  if (locations) {
+    locations->reserve(tablets.size());
+  }
+  for (const auto& tablet : tablets) {
+    if (locations) {
+      locations->push_back(tablet);
+    }
+    tablet_uuids->push_back(tablet.tablet_id());
+    if (ranges) {
+      const auto& partition = tablet.partition();
+      ranges->push_back(partition.ShortDebugString());
+    }
+  }
+}
+
+std::future<FetchPartitionsResult> FetchPartitionsFuture(
+    YBClient* client, const TableId& table_id) {
+  return MakeFuture<FetchPartitionsResult>(
+      [&](const auto& callback) { YBTable::FetchPartitions(client, table_id, callback); });
+}
+
+} // namespace
+
 #define CALL_SYNC_LEADER_MASTER_RPC(req, resp, method) \
   do { \
     auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout(); \
@@ -1709,31 +1743,6 @@ Status YBClient::GetTabletLocation(const TabletId& tablet_id,
   return Status::OK();
 }
 
-namespace {
-
-void FillFromRepeatedTabletLocations(
-    const RepeatedPtrField<TabletLocationsPB>& tablets,
-    vector<TabletId>* tablet_uuids,
-    vector<string>* ranges,
-    std::vector<master::TabletLocationsPB>* locations) {
-  tablet_uuids->reserve(tablets.size());
-  if (ranges != nullptr) {
-    ranges->reserve(tablets.size());
-  }
-  for (const TabletLocationsPB& tablet : tablets) {
-    if (locations) {
-      locations->push_back(tablet);
-    }
-    tablet_uuids->push_back(tablet.tablet_id());
-    if (ranges != nullptr) {
-      const PartitionPB& partition = tablet.partition();
-      ranges->push_back(partition.ShortDebugString());
-    }
-  }
-}
-
-} // namespace
-
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             vector<TabletId>* tablet_uuids,
@@ -1979,36 +1988,27 @@ Result<bool> YBClient::TableExists(const YBTableName& table_name) {
   return false;
 }
 
-Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* table) {
+Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
   YBTableInfo info;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
-
-  *table = VERIFY_RESULT(CompleteTable(info));
+  auto future = FetchPartitionsFuture(this, info.table_id);
+  // In the future, probably will look up the table in some map to reuse YBTable instances.
+  *table = std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
   return Status::OK();
 }
 
-Status YBClient::OpenTable(const TableId& table_id, shared_ptr<YBTable>* table,
-                           master::GetTableSchemaResponsePB* resp) {
+Status YBClient::OpenTable(
+    const TableId& table_id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
+  // Fetch partitions first to run GetTableSchema and GetTableLocations RPCs in parallel.
+  auto future = FetchPartitionsFuture(this, table_id);
+
   YBTableInfo info;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info, resp));
-
-  *table = VERIFY_RESULT(CompleteTable(info));
+  // In the future, probably will look up the table in some map to reuse YBTable instances.
+  *table = std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
   return Status::OK();
-}
-
-Result<YBTablePtr> YBClient::CompleteTable(const YBTableInfo& info) {
-  std::promise<FetchPartitionsResult> promise;
-  auto future = promise.get_future();
-
-  YBTable::FetchPartitions(this, info, [&promise](const FetchPartitionsResult& result) {
-    promise.set_value(result);
-  });
-
-  // In the future, probably will look up the table in some map to reuse YBTable
-  // instances.
-  return std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
 }
 
 shared_ptr<YBSession> YBClient::NewSession() {

@@ -240,7 +240,7 @@ void YBTable::RefreshPartitions(YBClient* client, StdStatusCallback callback) {
 
   VLOG_WITH_FUNC(2) << Format(
       "Calling FetchPartitions for table $0 ($1)", info_->table_name, info_->table_id);
-  FetchPartitions(client, *info_, [this](const FetchPartitionsResult& result) {
+  FetchPartitions(client, info_->table_id, [this](const FetchPartitionsResult& result) {
     if (!result.ok()) {
       InvokeRefreshPartitionsCallbacks(result.status());
       return;
@@ -274,15 +274,14 @@ bool YBTable::ArePartitionsStale() const {
 }
 
 void YBTable::FetchPartitions(
-    YBClient* client, std::reference_wrapper<const YBTableInfo> table_info,
-    FetchPartitionsCallback callback) {
+    YBClient* client, const TableId& table_id, FetchPartitionsCallback callback) {
   // TODO: fetch the schema from the master here once catalog is available.
   // TODO(tsplit): consider optimizing this to not wait for all tablets to be running in case
   // of some tablet has been split and post-split tablets are not yet running.
   client->GetTableLocations(
-      table_info.get().table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
+      table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue,
-      [table_info, callback = std::move(callback)]
+      [table_id, callback = std::move(callback)]
           (const Result<master::GetTableLocationsResponsePB*>& result) {
         if (!result.ok()) {
           callback(result.status());
@@ -291,8 +290,8 @@ void YBTable::FetchPartitions(
         const auto& resp = **result;
 
         VLOG_WITH_FUNC(2) << Format(
-            "Fetched partitions for table $0 ($1), found $2 tablets", table_info.get().table_name,
-            table_info.get().table_id, resp.tablet_locations_size());
+            "Fetched partitions for table $0, found $2 tablets",
+            table_id, resp.tablet_locations_size());
 
         auto partitions = std::make_shared<VersionedTablePartitionList>();
         partitions->version = resp.partition_list_version();
