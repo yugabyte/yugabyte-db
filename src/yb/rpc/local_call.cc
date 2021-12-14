@@ -18,6 +18,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_header.messages.h"
 
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
@@ -32,7 +33,7 @@ using std::shared_ptr;
 LocalOutboundCall::LocalOutboundCall(
     const RemoteMethod* remote_method,
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
-    google::protobuf::Message* response_storage, RpcController* controller,
+    AnyMessagePtr response_storage, RpcController* controller,
     RpcMetrics* rpc_metrics, ResponseCallback callback)
     : OutboundCall(remote_method, outbound_call_metrics, /* method_metrics= */ nullptr,
                    response_storage, controller, rpc_metrics, std::move(callback),
@@ -41,8 +42,8 @@ LocalOutboundCall::LocalOutboundCall(
 }
 
 Status LocalOutboundCall::SetRequestParam(
-    const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker) {
-  req_ = &req;
+    AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
+  req_ = req;
   return Status::OK();
 }
 
@@ -87,7 +88,7 @@ const Endpoint& LocalYBInboundCall::local_address() const {
   return endpoint;
 }
 
-void LocalYBInboundCall::Respond(const google::protobuf::MessageLite& response, bool is_success) {
+void LocalYBInboundCall::Respond(AnyMessageConstPtr resp, bool is_success) {
   auto call = outbound_call();
   if (!call) {
     LOG(DFATAL) << "Outbound call is NULL during Respond, looks like double response. "
@@ -98,14 +99,29 @@ void LocalYBInboundCall::Respond(const google::protobuf::MessageLite& response, 
   if (is_success) {
     call->SetFinished();
   } else {
-    auto error = std::make_unique<ErrorStatusPB>(yb::down_cast<const ErrorStatusPB&>(response));
+    std::unique_ptr<ErrorStatusPB> error;
+    if (resp.is_lightweight()) {
+      error = std::make_unique<ErrorStatusPB>();
+      yb::down_cast<const LWErrorStatusPB&>(*resp.lightweight()).ToGoogleProtobuf(error.get());
+    } else {
+      error = std::make_unique<ErrorStatusPB>(
+          yb::down_cast<const ErrorStatusPB&>(*resp.protobuf()));
+    }
     auto status = STATUS(RemoteError, "Local call error", error->message());
     call->SetFailed(std::move(status), std::move(error));
   }
 }
 
-Status LocalYBInboundCall::ParseParam(google::protobuf::Message* message) {
+Status LocalYBInboundCall::ParseParam(RpcCallParams* params) {
   LOG(FATAL) << "local call should not require parsing";
+}
+
+Result<size_t> LocalYBInboundCall::ParseRequest(Slice param) {
+  return STATUS(InternalError, "ParseRequest called for local call");
+}
+
+AnyMessageConstPtr LocalYBInboundCall::SerializableResponse() {
+  return outbound_call()->response();
 }
 
 } // namespace rpc

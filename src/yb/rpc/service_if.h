@@ -85,4 +85,5 @@ class ServiceIf {
 
 }  // namespace rpc
 }  // namespace yb
+
 #endif  // YB_RPC_SERVICE_IF_H_
