@@ -7650,6 +7650,39 @@ YBMoveRelDependencies(Relation old_rel, Relation new_rel,
 }
 
 /*
+ * Filter the DefElem list, removing all reloptions that should not be
+ * carried over when cloning the relation.
+ */
+static List *
+YBExcludeNonCopyableOptions(List *options)
+{
+	if (options)
+	{
+		ListCell   *prev = NULL;
+		ListCell   *next;
+
+		for (ListCell *curr = list_head(options); curr != NULL; curr = next)
+		{
+			next = lnext(curr);
+			DefElem *elem = lfirst_node(DefElem, curr);
+
+			/*
+			 * - Tablegroup is stored as a reloption but should not be copied
+			 *   as such, there's a separate mechanism for it.
+			 */
+			if (strcmp(elem->defname, "tablegroup") == 0)
+			{
+				options = list_delete_cell(options, curr, prev);
+				break; /* since we only have one case so far, we can stop early. */
+			}
+			else
+				prev = curr;
+		}
+	}
+	return options;
+}
+
+/*
  * Primary key is an inherent part of a DocDB table, we can't literally "add"
  * a primary key to an existing table.
  * As a workaround, we create a new table with the desired schema and replace
@@ -7669,6 +7702,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	AttrNumber*  new2old_attmap;
 	Oid          old_relid, new_relid;
 	bool         is_range_pk = false;
+	bool         is_null;
 
 	Relation     pg_constraint, pg_trigger, pg_depend;
 	ScanKeyData  key;
@@ -7771,20 +7805,26 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	create_stmt->tablegroup     = NULL;
 
 	/*
-	 * Colocation support is further complicated by the fact that we can't
-	 * verify it via pure SQL, see #6159.
+	 * Initialize reloptions.
+	 * Note that we're not allowed to look for reloptions in rd_rel, we have to look up
+	 * the real HeapTuple.
 	 */
-	const Oid tablegroup_id = RelationGetTablegroup(*mutable_rel);
-	if (OidIsValid(tablegroup_id))
+
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(old_relid));
+	Datum datum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions, &is_null);
+	if (!is_null)
+		create_stmt->options = untransformRelOptions(datum);
+	ReleaseSysCache(tuple);
+
+	create_stmt->options = YBExcludeNonCopyableOptions(create_stmt->options);
+
+	const Oid tablegroup_oid = RelationGetTablegroup(*mutable_rel);
+	if (OidIsValid(tablegroup_oid))
 	{
 		create_stmt->tablegroup = makeNode(OptTableGroup);
 		create_stmt->tablegroup->has_tablegroup = true;
-		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_id);
+		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_oid);
 		Assert(create_stmt->tablegroup->tablegroup_name);
-	} else if ((*mutable_rel)->rd_options && MyDatabaseColocated) {
-		const bool colocated = RelationGetColocated(*mutable_rel);
-		create_stmt->options = lappend(create_stmt->options,
-			makeDefElem("colocated", (Node *) makeInteger(colocated), -1));
 	}
 
 	/* The only constraint we care about here is the PK constraint needed for YB. */
@@ -8102,42 +8142,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		RenameRelation(rename_stmt);
 		CommandCounterIncrement();
 
-		/* The tablegroup attribute of a table is not a reloption at syntax level
-		 * but it is recorded as a reloption by DefineIndex (which makes a special
-		 * case only for "tablegroup" to convert it to a reloption). As a result,
-		 * if the old table has a tablegroup, then every index on the old table
-		 * including the dummy pkey index has also stored a reloption for the
-		 * tablegroup when DefineIndex was called for it.
-		 *
-		 * When generateClonedIndexStmt is called to make a new index statement, it
-		 * will have cloned the old index's reloptions, which includes the special
-		 * reloption for "tablegroup".
-		 *
-		 * Next we will call DefineIndex for each cloned index statement. DefineIndex
-		 * will again make a special case for "tablegroup" and convert "tablegroup"
-		 * to another reloption. This means that the new index statement gets two
-		 * "tablegroup" reloption instances and caused postgres error:
-		 *   ERROR: parameter "tablegroup" specified more than once
-		 * To prevent this error, remove "tablegroup" reloption if there is one.
-		 */
-		if (idx_stmt->options)
-		{
-			ListCell   *option;
-			ListCell   *prev;
-
-			prev = NULL;
-			foreach(option, idx_stmt->options)
-			{
-				DefElem *elem = lfirst_node(DefElem, option);
-				if (strcmp(elem->defname, "tablegroup") == 0)
-				{
-					idx_stmt->options = list_delete_cell(idx_stmt->options, option, prev);
-					break;
-				}
-				else
-					prev = option;
-			}
-		}
+		idx_stmt->options = YBExcludeNonCopyableOptions(idx_stmt->options);
 
 		/* Create a new index taking up the freed name. */
 		idx_stmt->idxname = pstrdup(idx_orig_name);

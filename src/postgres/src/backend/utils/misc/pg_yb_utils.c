@@ -1601,11 +1601,16 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	TupleDesc	tupdesc;
 	Datum		values[3];
 	bool		nulls[3];
-	YBCPgTableDesc ybc_tabledesc = NULL;
+	bool		exists_in_yb = false;
+	YBCPgTableDesc yb_tabledesc = NULL;
 	YBCPgTableProperties yb_table_properties;
 
-	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &ybc_tabledesc));
-	HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
+	HandleYBStatus(YBCPgTableExists(MyDatabaseId, relid, &exists_in_yb));
+	if (exists_in_yb)
+	{
+		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &yb_tabledesc));
+		HandleYBStatus(YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties));
+	}
 
 	tupdesc = CreateTemplateTupleDesc(3, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
@@ -1616,10 +1621,18 @@ yb_table_properties(PG_FUNCTION_ARGS)
 					   "is_colocated", BOOLOID, -1, 0);
 	BlessTupleDesc(tupdesc);
 
-	values[0] = Int64GetDatum(yb_table_properties.num_tablets);
-	values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
-	values[2] = BoolGetDatum(yb_table_properties.is_colocated);
-	memset(nulls, 0, sizeof(nulls));
+	if (exists_in_yb)
+	{
+		values[0] = Int64GetDatum(yb_table_properties.num_tablets);
+		values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
+		values[2] = BoolGetDatum(yb_table_properties.is_colocated);
+		memset(nulls, 0, sizeof(nulls));
+	}
+	else
+	{
+		/* Table does not exist in YB, set nulls for all columns. */
+		memset(nulls, 1, sizeof(nulls));
+	}
 
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
 }
