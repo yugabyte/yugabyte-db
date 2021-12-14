@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;

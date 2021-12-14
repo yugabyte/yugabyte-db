@@ -8,12 +8,12 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Strings;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,6 +50,8 @@ public class SubTaskGroup implements Runnable {
   private final Map<Future<?>, TaskInfoWithStats> futuresMap;
 
   private final AtomicInteger numTasksCompleted;
+
+  private String hostname;
 
   // The threadpool executor in case parallel execution is requested.
   ExecutorService executor;
@@ -130,14 +132,9 @@ public class SubTaskGroup implements Runnable {
     // Set up corresponding TaskInfo.
     TaskType taskType = TaskType.valueOf(task.getClass().getSimpleName());
     TaskInfo taskInfo = new TaskInfo(taskType);
-    taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
+    taskInfo.setTaskDetails(redactedTask);
     // Set the owner info in the TaskInfo.
-    String hostname = "";
-    try {
-      hostname = InetAddress.getLocalHost().getHostName();
-    } catch (UnknownHostException e) {
-      log.error("Could not determine the hostname", e);
-    }
+    String hostname = getHostName();
     taskInfo.setOwner(hostname);
     // Set the SubTaskGroupType in TaskInfo
     if (this.subTaskGroupType != null) {
@@ -145,6 +142,13 @@ public class SubTaskGroup implements Runnable {
     }
     taskInfo.save();
     taskMap.put(task, new TaskInfoWithStats(taskInfo));
+  }
+
+  public String getHostName() {
+    if (Strings.isNullOrEmpty(hostname)) {
+      hostname = Util.getHostname();
+    }
+    return hostname;
   }
 
   public int getNumTasks() {
