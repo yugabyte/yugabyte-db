@@ -68,6 +68,8 @@ To release the IP address associated with the **yb-15-node-actions-n3** node, cl
 
 ![Release Node Actions](/images/ee/node-actions-released.png)
 
+The **Release Instance** action releases the node instances in a cloud, as well as frees up on-premise nodes.
+
 ## Delete node
 
 The action to delete a node is available from the following node states:
