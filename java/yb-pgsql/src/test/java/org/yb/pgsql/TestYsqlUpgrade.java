@@ -1197,24 +1197,35 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       assertEquals(
           "Expected \"fresh\" migrations table to have just one row, got " + reinitdbMigrations,
           1, reinitdbMigrations.size());
-      final int latestVersion = reinitdbMigrations.get(0).getInt(0);
-      assertRow(new Row(latestVersion, 0, "<baseline>", null), reinitdbMigrations.get(0));
+      final int latestMajorVersion = reinitdbMigrations.get(0).getInt(0);
+      final int latestMinorVersion = reinitdbMigrations.get(0).getInt(1);
+      final int totalMigrations = latestMajorVersion + latestMinorVersion;
+      assertRow(new Row(latestMajorVersion, latestMinorVersion, "<baseline>", null),
+                reinitdbMigrations.get(0));
 
       // Applied migrations table has a baseline row
       // followed by rows for all migrations (up to the latest).
       List<Row> appliedMigrations = migratedSnapshot.catalog.get(MIGRATIONS_TABLE);
       assertEquals(
-          "Expected applied migrations table to have exactly " + (latestVersion + 1) + " rows, got "
-              + appliedMigrations,
-          latestVersion + 1, appliedMigrations.size());
+          "Expected applied migrations table to have exactly "
+              + (totalMigrations + 1) + " rows, got " + appliedMigrations,
+          totalMigrations + 1, appliedMigrations.size());
       assertRow(new Row(0, 0, "<baseline>", null), appliedMigrations.get(0));
-      for (int ver = 1; ver <= latestVersion; ++ver) {
+      for (int ver = 1; ver <= totalMigrations; ++ver) {
         // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
         Row migrationRow = appliedMigrations.get(ver);
-        assertEquals(ver, migrationRow.getInt(0).intValue());
-        assertEquals(0, migrationRow.getInt(1).intValue());
-        assertTrue(migrationRow.getString(2).startsWith("V" + ver + "__"));
-        assertTrue("Expected migration timestamp to be at most 5 mins old!",
+        final int majorVersion = Math.min(ver, latestMajorVersion);
+        final int minorVersion = ver - majorVersion;
+        assertEquals(majorVersion, migrationRow.getInt(0).intValue());
+        assertEquals(minorVersion, migrationRow.getInt(1).intValue());
+        String migrationNamePrefix;
+        if (minorVersion > 0) {
+          migrationNamePrefix = "V" + majorVersion + "." + minorVersion + "__";
+        } else {
+          migrationNamePrefix = "V" + majorVersion + "__";
+        }
+        assertTrue(migrationRow.getString(2).startsWith(migrationNamePrefix));
+        assertTrue("Expected migration timestamp to be at most 10 mins old!",
             migrationRow.getLong(3) != null &&
                 System.currentTimeMillis() - migrationRow.getLong(3) < 5 * 60 * 1000);
       }
