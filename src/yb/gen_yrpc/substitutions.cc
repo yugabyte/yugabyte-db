@@ -40,7 +40,7 @@ std::string GetBaseName(const std::string &path) {
 
 std::string GenerateOpenNamespace(const std::string& str) {
   std::string out;
-  for (const auto& c : strings::Split(str, ".")) {
+  for (const auto c : strings::Split(str, ".")) {
     out += Format("namespace $0 {\n", c);
   }
   return out;
@@ -48,7 +48,7 @@ std::string GenerateOpenNamespace(const std::string& str) {
 
 std::string GenerateCloseNamespace(const string &str) {
   std::string out;
-  for (const auto& c : strings::Split(str, ".")) {
+  for (const auto c : strings::Split(str, ".")) {
     out = Format("} // namespace $0\n", c) + out;
   }
   return out;
