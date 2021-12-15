@@ -263,6 +263,38 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 
 ## Transaction and Isolation Levels
 
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaing strong consistency for concurrent data access.
+
+JDBC Driver `java.sql.Connection` interface provides `connection.setAutoCommit()`, `connection.commit()` and `connection.rollback()` methods for enabling transactional access to YugabyteDB Database.
+
+For example
+
+```Java
+Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
+conn.setAutoCommit(false);
+Statment stmt = conn.createStatement();
+try {
+  
+  PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, langugage) VALUES (?, ?, ?, ?)");
+  pstmt.setInt(1, 1);
+  pstmt.setString(2, "John");
+  pstmt.setInt(3, 35);
+  pstmt.setString(4, "Java");
+  pstmt.execute();
+
+  conn.commit();
+
+} catch (SQLException e) {
+  System.err.println(e.getMessage());
+}
+
+```
+
+By default PostgreSQL JDBC driver will have `auto-commit` mode enabled which means each SQL statement is treated as a transaction and is automatically committed. If one or more SQL statements are encapsulated in a transaction, auto-commit mode must be disabled by using `setAutoCommit()` method of the `Connection` object.
+
 ## Other Usage Examples
+
+- [JDBC SSL example](../../../../quick-start/build-apps/java/ysql-jdbc-ssl/)
+- [ORM Examples]()
 
 ## FAQ
