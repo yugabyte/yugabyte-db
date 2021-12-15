@@ -51,7 +51,7 @@ VPC peering is not supported in free clusters.
         <div class="title">Set up a VPC network</div>
       </div>
       <div class="body">
-        Set up a VPC network by creating a VPC and adding a peering connection.
+        How to set up a VPC network in Yugabyte Cloud.
       </div>
     </a>
   </div>
@@ -63,7 +63,7 @@ VPC peering is not supported in free clusters.
         <div class="title">VPCs</div>
       </div>
       <div class="body">
-        Manage your cloud VPCs.
+        Create and manage VPCs for your clusters.
       </div>
     </a>
   </div>
@@ -75,7 +75,7 @@ VPC peering is not supported in free clusters.
         <div class="title">Peering Connections</div>
       </div>
       <div class="body">
-        Manage your cloud peering connections.
+        Create and manage peering connections to application VPCs.
       </div>
     </a>
   </div>

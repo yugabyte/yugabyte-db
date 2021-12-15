@@ -23,15 +23,27 @@ The peering connection is created with a status of _Pending_. To complete the pe
 
 ### Accept the peering request in AWS
 
-To complete a _Pending_ peering connection, you need to sign in to AWS and accept the peering request.
+To complete a _Pending_ peering connection, you need to sign in to AWS, accept the peering request, and add a routing table entry.
 
-Use the VPC Dashboard to accept the peering request, enable DNS, and add a route table entry.
+Before accepting the request, ensure that the DNS hostnames and DNS resolution options are enabled for the VPC. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the Yugabyte Cloud cluster is accessed from the application VPC.
 
-To make an AWS peering connection active, in AWS, use the **VPC Dashboard** to do the following:
+1. On the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page, select the VPC in the list.
+1. Click **Actions** and choose **Edit DNS hostnames** or **Edit DNS resolution**.
+1. Enable the **DNS hostnames** or **DNS resolution** option and click **Save changes**.
 
-1. Enable DNS hostnames and DNS resolution. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the Yugabyte Cloud cluster is accessed from the application VPC.
-1. Accept the [peering connection](https://console.aws.amazon.com/vpc/home?#PeeringConnections) request that you received from Yugabyte.
-1. Add a [route table](https://console.aws.amazon.com/vpc/home?#RouteTables) entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the **Destination** column, and the Peering Connection ID to the **Target** column.
+To accept the peering request, do the following:
+
+1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the VPC in the list.
+1. Click **Actions** and choose **Accept request**.
+
+To add a routing table entry:
+
+1. On the AWS [Route Tables](https://console.aws.amazon.com/vpc/home?#RouteTables) page, select the route table associated with the VPC peer.
+1. Click **Actions** and choose **Edit routes**.
+    ![Add routes in AWS](/images/yb-cloud/cloud-peer-aws-route.png)
+1. Click **Add route**.
+1. Add the Yugabyte Cloud cluster CIDR address to the **Destination** column, and the Peering Connection ID to the **Target** column.
+1. Click **Save changes**.
 
 When finished, the status of the peering connection in Yugabyte Cloud changes to _Active_ if the connection is successful.
 

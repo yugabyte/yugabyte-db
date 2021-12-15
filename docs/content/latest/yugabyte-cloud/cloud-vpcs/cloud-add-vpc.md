@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The first step in setting up a VPC network in Yugabyte Cloudis to create a VPC to host your clusters. The VPC reserves a range of IP addresses with the cloud provider you select. A VPC must be created before you can configure a peering connection. You must set up a dedicated VPC before deploying your cluster.
+The first step in setting up a VPC network in Yugabyte Cloudis to create a VPC to host your clusters. The VPC reserves a range of IP addresses with the cloud provider you select. You must set up a dedicated VPC before deploying your cluster. A VPC must be created before you can configure a peering connection.
 
 **VPCs** on the **VPC Network** tab displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, ID, CIDR, local VPC IP address, and cluster to which the VPC is assigned.
 
