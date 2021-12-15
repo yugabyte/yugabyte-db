@@ -65,6 +65,5 @@ For more information on creating clusters, refer to [Create a cluster](../../clo
 
 ## Next steps
 
-- [Create a peering connection](../cloud-add-peering/#create-a-peering-connection)
-- [Configure your cloud provider](../cloud-add-peering/#configure-the-cloud-provider)
-- [Add the application VPC CIDR to the cluster IP allow list](../cloud-add-peering/#add-the-peered-application-vpc-to-your-cluster-ip-allow-list)
+- [Create a peering connection and configure your cloud provider](../cloud-add-peering/)
+- [Add the application VPC CIDR to the cluster IP allow list](../../cloud-basics/add-connections/)
