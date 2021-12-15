@@ -1,7 +1,7 @@
 ---
 title: VPC network
 headerTitle: VPC network
-linkTitle: VPC networking
+linkTitle: VPC network
 description: Configure VPC networking.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 headcontent: Set up VPC networking so that your clusters can communicate privately with applications.
@@ -14,11 +14,11 @@ menu:
     weight: 400
 ---
 
-A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your Yugabyte Cloud clusters to communicate with those clusters without traversing the public internet; all traffic stays within the cloud provider's network. This has the following advantages:
+A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your Yugabyte Cloud clusters to communicate with those clusters without traversing the public internet; all traffic stays within the cloud provider's network.
 
-- Lower network latency. Traffic uses only internal addresses, which provides lower latency than connectivity that uses external addresses.
-- Better security. Your services are never exposed to the public Internet.
-- Lower data transfer costs. By staying in the provider's network, you won't have any Internet data transfer traffic. (Same region and cross region overages may still apply. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).)
+In Yugabyte Cloud, a VPC network consists of a _VPC_ where you can deploy clusters, and a _peering connection_ that links the cluster VPC to an application VPC on the same cloud provider.
+
+Use VPC networks to lower network latencies, make your application and database infrastructure more secure, and reduce network data transfer costs.
 
 VPCs and peering connections are managed in Yugabyte Cloud on the **VPC Network** tab of the **Network Access** page.
 

@@ -34,43 +34,41 @@ There's no additional charge for using a VPC. In most cases, using a VPC will re
 
 To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you are peering with.
 
-### Peering multi-region VPCs
+For GCP, you have the choice of selecting all regions automatically, or defining a custom set of regions. If you use automated region selection, the VPC is created globally and assigned to all regions supported by Yugabyte Cloud. If you use custom region selection, you can choose one or more regions, and specify unique CIDR ranges for each; you can also add regions at a later date.
 
-If your cluster spans multiple regions, how you peer with your application VPCs will depend on the cloud provider you use.
-
-GCP
-: If you use the default GCP VPC setup, your cluster VPC is global; your peered application VPC automatically has access to all regions.
-
-: - auto vs custom?
-
-AWS
-: Create a VPC in each region, and peer your application VPC to each of them - that is, create a separate peering connection for each regional VPC.
+For AWS, you can only define a single region per VPC.
 
 ## Setting the CIDR and sizing your VPC
 
-A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you cannot resize a VPC once it is created, you need to decide on an appropriate size before creating it. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. You may want to create a large network to cover all contingencies, but a network that is over-sized can impact network performance. If your traffic experiences spikes, you will need to take that into account.
+A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you cannot resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accomodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you will need to take that into account.
 
-When entering the range for your VPC in Yugabyte Cloud, the size of the network is determined by the prefix length (the number after the `/`). Yugabyte Cloud supports network sizes from `/26` to `/16` as shown in the following table.
+When entering the range for your VPC in Yugabyte Cloud, the size of the network is determined by the prefix length (the number after the `/`). Yugabyte Cloud supports network sizes from `/26` to `/16` as shown in the following table. For typical applications, `/26` is more than sufficient.
 
 | Provider | Network Size (prefix length) | Number of Usable IP Addresses | Notes |
 | --- | --- | --- | --- | --- |
-| GCP (auto)| /16<br>/17<br>/18 | 65536<br>32768<br>16384 | In GCP auto network, the range is split across all supported regions.<br>For information on GCP custom and auto VPCs, refer to [Subnet creation mode](https://cloud.google.com/vpc/docs/vpc#subnet-ranges) in the GCP documentation. |
-| AWS and GCP (custom) | /24<br>/25<br>/26 | 256<br>128<br>64 | In AWS or a GCP custom network, the range is assigned to a single region. |
+| GCP (auto)| /16<br>/17<br>/18 | 65536<br>32768<br>16384 | In a GCP auto network, the range is split across all supported regions.<br>For information on GCP custom and auto VPCs, refer to [Subnet creation mode](https://cloud.google.com/vpc/docs/vpc#subnet-ranges) in the GCP documentation. |
+| GCP (custom) | /24<br>/25<br>/26 | 256<br>128<br>64 | In a GCP custom network, you can customize the regions for the VPC. |
+| AWS | /26 | 64 | In AWS, you assign the range to a single region. If you need multiple regions, you must create a separate VPC for each. |
 
-You can use the following address ranges (per [RFC 1918](https://datatracker.ietf.org/doc/html/rfc1918)) for your VPCs:
+You can use the IP addresses in the following ranges (per [RFC 1918](https://datatracker.ietf.org/doc/html/rfc1918)) for your VPCs:
 
 - 10.0.0.0        -   10.255.255.255  (10/8 prefix)
 - 172.16.0.0      -   172.31.255.255  (172.16/12 prefix)
 - 192.168.0.0     -   192.168.255.255 (192.168/16 prefix)
 
-Addresses can overlap with other VPCs, but not if they are peered to the same application VPC. Yugabyte Cloud warns you when you enter an overlapping range. You can calculate ranges beforehand using [IP Address Guide’s CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
+Addresses have the following restrictions:
 
-Yugabyte Cloud reserves the following ranges for internal operations.
+- Addresses can overlap with other VPCs, but not if they are peered to the same application VPC. Yugabyte Cloud warns you when you enter an overlapping range.
+- Addresses cannot overlap with the CIDR of the application VPC you intend to peer with. 
 
-| Provider | Range |
-| --- | --- |
-| AWS | 10.3.0.0/16<br>10.4.0.0/16 |
-| GCP | 10.21.0.0/16 |
+- Yugabyte Cloud reserves the following ranges for internal operations.
+
+  | Provider | Range |
+  | --- | --- |
+  | AWS | 10.3.0.0/16<br>10.4.0.0/16 |
+  | GCP | 10.21.0.0/16 |
+
+You can calculate ranges beforehand using [IP Address Guide’s CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
 
 ## Limitations
 
