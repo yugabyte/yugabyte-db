@@ -235,7 +235,8 @@ export function deleteUniverseResponse(response) {
 export function pauseUniverse(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const request = axios.post(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/pause`);
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/pause`
+  );
   return {
     type: PAUSE_UNIVERSE,
     payload: request
@@ -252,7 +253,8 @@ export function pauseUniverseResponse(response) {
 export function restartUniverse(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const request = axios.post(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/resume`);
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/resume`
+  );
   return {
     type: RESTART_UNIVERSE,
     payload: request
@@ -684,7 +686,7 @@ export function updateBackupStateResponse(response) {
 }
 
 export function fetchLiveQueries(universeUUID) {
-  const customerUUID = localStorage.getItem("customerId");
+  const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/live_queries`;
   return axios.get(endpoint);
 }
@@ -714,13 +716,13 @@ export function resetSlowQueries(universeUUID) {
 export function getAlertTemplates(filter) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_templates`;
-  return axios.post(endpoint, filter).then(resp => resp.data);
+  return axios.post(endpoint, filter).then((resp) => resp.data);
 }
 
 export function getAlertConfigurations(filter) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_configurations/list`;
-  return axios.post(endpoint, filter).then(resp => resp.data);
+  return axios.post(endpoint, filter).then((resp) => resp.data);
 }
 
 export function createAlertConfiguration(data) {
@@ -739,4 +741,12 @@ export function downloadLogs(universeUUID, nodeName) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/${nodeName}/download_logs`;
   window.open(endpoint, '_blank');
+}
+
+//G-Flags
+export function fetchGFlags(params) {
+  const request = axios.get(`${ROOT_URL}/metadata/version/2.11.1.0-b36/list_gflags`, {
+    params
+  });
+  return request;
 }
