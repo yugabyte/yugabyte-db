@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.UrlValidator;
+import org.apache.commons.validator.routines.DomainValidator;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -36,6 +37,8 @@ public class CustomerConfigValidator {
   private static final String[] GCS_URL_SCHEMES = {"http", "https", "gs"};
 
   private static final String[] AZ_URL_SCHEMES = {"http", "https"};
+
+  private static final String[] TLD_OVERRIDE = {"local"};
 
   private static final String AWS_HOST_BASE_FIELDNAME = "AWS_HOST_BASE";
 
@@ -96,11 +99,17 @@ public class CustomerConfigValidator {
 
     private final boolean emptyAllowed;
 
+    static {
+      DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
+    }
+
     public ConfigValidatorUrl(
         String type, String name, String fieldName, String[] schemes, boolean emptyAllowed) {
       super(type, name, fieldName);
       this.emptyAllowed = emptyAllowed;
-      urlValidator = new UrlValidator(schemes, UrlValidator.ALLOW_LOCAL_URLS);
+      DomainValidator domainValidator = DomainValidator.getInstance(true);
+      urlValidator =
+          new UrlValidator(schemes, null, UrlValidator.ALLOW_LOCAL_URLS, domainValidator);
     }
 
     @Override

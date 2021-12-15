@@ -81,6 +81,8 @@ public class CustomerConfigValidatorTest {
     // location - correct, aws_host_base(negative port value) - incorrect -> disallowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com:-443, false",
     // location - correct, aws_host_base - correct -> allowed
+    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, minio.rmn.local:30000, true",
+    // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com/test/itest, "
         + "AWS_HOST_BASE, cloudstorage.onefs.dell.com, true",
     // location - incorrect, aws_host_base - correct -> disallowed
