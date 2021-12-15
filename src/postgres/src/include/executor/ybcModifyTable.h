@@ -28,10 +28,10 @@
 
 /**
  * YSQL guc variables that can be used to enable non transactional writes.
- * e.g. 'SET yb_force_non_transactional_writes=true'
+ * e.g. 'SET yb_disable_transactional_writes=true'
  * See also the corresponding entries in guc.c.
  */
-extern bool yb_force_non_transactional_writes;
+extern bool yb_disable_transactional_writes;
 
 //------------------------------------------------------------------------------
 // YugaByte modify table API.
