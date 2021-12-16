@@ -19,7 +19,7 @@ showAsideToc: true
 
 #### New features
 
-- Self service Virtual Private Cloud (VPC) networking. Use VPC networks to lower network latencies, make your application and database infrastructure more secure, and reduce network data transfer costs. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Network Access** page.
+- Self service Virtual Private Cloud (VPC) networking. Use VPC networks to lower network latencies and make your application and database infrastructure more secure. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Network Access** page.
 - Ability to enable pre-bundled extensions using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
 
 ### December 2, 2021
