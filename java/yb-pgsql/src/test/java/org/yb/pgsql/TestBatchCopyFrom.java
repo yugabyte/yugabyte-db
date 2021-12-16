@@ -47,8 +47,8 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   private static final String BATCH_TXN_SESSION_VARIABLE_NAME =
       "yb_default_copy_from_rows_per_transaction";
   private static final int BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS = 1000;
-  private static final String NON_TXN_WRITE_SESSION_VARIABLE_NAME =
-      "yb_force_non_transactional_writes";
+  private static final String DISABLE_TXN_WRITES_SESSION_VARIABLE_NAME =
+      "yb_disable_transactional_writes";
 
   private String getAbsFilePath(String fileName) {
     return TestUtils.getBaseTmpDir() + "/" + fileName;
@@ -495,9 +495,9 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
 
     try (Statement statement = connection.createStatement()) {
       // ensure non-txn session variable is off by default
-      assertOneRow(statement, "SHOW " + NON_TXN_WRITE_SESSION_VARIABLE_NAME, "off");
+      assertOneRow(statement, "SHOW " + DISABLE_TXN_WRITES_SESSION_VARIABLE_NAME, "off");
       // set non-txn session variable
-      statement.execute("SET " + NON_TXN_WRITE_SESSION_VARIABLE_NAME + "=true");
+      statement.execute("SET " + DISABLE_TXN_WRITES_SESSION_VARIABLE_NAME + "=true");
       statement.execute(String.format(
           "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
       statement.execute(String.format(
