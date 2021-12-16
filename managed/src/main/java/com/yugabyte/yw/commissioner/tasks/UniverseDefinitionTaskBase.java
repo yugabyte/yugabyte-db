@@ -1277,7 +1277,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             universe,
             nodesToBeConfigured,
             ignoreNodeStatus,
-            NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
+            NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
               createConfigureServerTasks(filteredNodes, isShellMode /* isShell */)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
