@@ -351,7 +351,10 @@ public class TaskExecutor {
       throw new RuntimeException("Task " + task.getName() + " is not abortable");
     }
     // Signal abort to the task.
-    runnableTask.setAbortTime(Instant.now());
+    if (runnableTask.getAbortTime() == null) {
+      // This is not atomic but it is ok.
+      runnableTask.setAbortTime(Instant.now());
+    }
     // Update the task state in the memory and DB.
     runnableTask.compareAndSetTaskState(
         Sets.immutableEnumSet(State.Initializing, State.Created, State.Running), State.Abort);

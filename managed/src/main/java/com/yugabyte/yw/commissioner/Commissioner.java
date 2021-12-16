@@ -92,7 +92,19 @@ public class Commissioner {
     }
   }
 
-  public boolean abort(UUID taskUUID) {
+  /**
+   * Triggers task abort asynchronously. It can take some time for the task to abort. Caller can
+   * check the task status for the final state.
+   *
+   * @param taskUUID the UUID of the task to be aborted.
+   * @return true if the task is found running and abort is triggered successfully, else false.
+   */
+  public boolean abortTask(UUID taskUUID) {
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    if (taskInfo.getTaskState() != TaskInfo.State.Running) {
+      LOG.warn("Task {} is not running", taskUUID);
+      return false;
+    }
     Optional<TaskInfo> optional = taskExecutor.abort(taskUUID);
     return optional.isPresent();
   }

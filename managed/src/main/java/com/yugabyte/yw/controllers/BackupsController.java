@@ -301,8 +301,7 @@ public class BackupsController extends AuthenticatedController {
     int numRetries = 0;
     while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
-      if (taskInfo.getTaskState() == TaskInfo.State.Success
-          || taskInfo.getTaskState() == TaskInfo.State.Failure) {
+      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
         return;
       }
       Thread.sleep(1000);
