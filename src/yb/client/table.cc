@@ -290,7 +290,7 @@ void YBTable::FetchPartitions(
         const auto& resp = **result;
 
         VLOG_WITH_FUNC(2) << Format(
-            "Fetched partitions for table $0, found $2 tablets",
+            "Fetched partitions for table $0, found $1 tablets",
             table_id, resp.tablet_locations_size());
 
         auto partitions = std::make_shared<VersionedTablePartitionList>();
