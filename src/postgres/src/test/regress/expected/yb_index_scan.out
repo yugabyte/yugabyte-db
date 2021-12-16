@@ -807,6 +807,57 @@ SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
   232
 (1 row)
 
+-- test index scans where the filter trivially rejects everything and
+-- no request should be sent to DocDB
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE col3 = ANY('{}');
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using idx_col3 on test (actual rows=0 loops=1)
+   Index Cond: (col3 = ANY ('{}'::integer[]))
+(2 rows)
+
+SELECT * FROM test WHERE col3 = ANY('{}');
+ pk | col2 | col3 | col4 | col5 | col6 | col7 | col8 | col9 
+----+------+------+------+------+------+------+------+------
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE col3 = ANY('{NULL}');
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using idx_col3 on test (actual rows=0 loops=1)
+   Index Cond: (col3 = ANY ('{NULL}'::integer[]))
+(2 rows)
+
+SELECT * FROM test WHERE col3 = ANY('{NULL}');
+ pk | col2 | col3 | col4 | col5 | col6 | col7 | col8 | col9 
+----+------+------+------+------+------+------+------+------
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT col3 FROM test WHERE col3 = ANY('{NULL}');
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Index Only Scan using idx_col3 on test (actual rows=0 loops=1)
+   Index Cond: (col3 = ANY ('{NULL}'::integer[]))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT col3 FROM test WHERE col3 = ANY('{NULL}');
+ col3 
+------
+(0 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE col3 = ANY('{NULL, NULL}');
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using idx_col3 on test (actual rows=0 loops=1)
+   Index Cond: (col3 = ANY ('{NULL,NULL}'::integer[]))
+(2 rows)
+
+SELECT * FROM test WHERE col3 = ANY('{NULL, NULL}');
+ pk | col2 | col3 | col4 | col5 | col6 | col7 | col8 | col9 
+----+------+------+------+------+------+------+------+------
+(0 rows)
+
 -- testing update on primary key
 update test set pk=17 where pk=1;
 update test set pk=25, col4=777 where pk=2;
