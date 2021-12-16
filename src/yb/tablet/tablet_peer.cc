@@ -215,14 +215,22 @@ Status TabletPeer::InitTabletPeer(
     messenger_ = messenger;
 
     tablet->SetMemTableFlushFilterFactory([log] {
-      auto index = log->GetLatestEntryOpId().index;
-      return [index] (const rocksdb::MemTable& memtable) -> Result<bool> {
+      auto largest_log_op_index = log->GetLatestEntryOpId().index;
+      return [largest_log_op_index] (const rocksdb::MemTable& memtable) -> Result<bool> {
         auto frontiers = memtable.Frontiers();
         if (frontiers) {
-          const auto& largest = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
+          const auto largest_memtable_op_index =
+              down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
           // We can only flush this memtable if all operations written to it have also been written
           // to the log (maybe not synced, if durable_wal_write is disabled, but that's OK).
-          return largest.op_id().index <= index;
+          auto should_flush = largest_memtable_op_index <= largest_log_op_index;
+          if (!should_flush) {
+            LOG(WARNING)
+              << "Skipping flush on memtable with ops ahead of log. "
+              << "Memtable index: " << largest_memtable_op_index
+              << " - log index: " << largest_log_op_index;
+          }
+          return should_flush;
         }
 
         // It is correct to not have frontiers when memtable is empty

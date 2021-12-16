@@ -149,7 +149,7 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
     // the provisional records RocksDB.
     //
     // See https://github.com/yugabyte/yugabyte-db/issues/437 for more details.
-    YB_LOG_EVERY_N_SECS(WARNING, 1)
+    YB_LOG_EVERY_N_SECS(INFO, 1)
         << db_options_.log_prefix
         << "[" << cfd_->GetName() << "] Nothing in memtable to flush.";
     std::this_thread::sleep_for(std::chrono::milliseconds(
