@@ -246,6 +246,25 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
 
 int CalcNumTablets(int num_tablet_servers);
 
+template<uint32_t limit>
+struct LengthLimitedStringPrinter {
+  explicit LengthLimitedStringPrinter(const std::string& str_)
+      : str(str_) {
+  }
+  const std::string& str;
+};
+
+using Max500CharsPrinter = LengthLimitedStringPrinter<500>;
+
+template<uint32_t limit>
+std::ostream& operator<<(std::ostream& os, const LengthLimitedStringPrinter<limit>& printer) {
+  const auto& s = printer.str;
+  if (s.length() <= limit) {
+    return os << s;
+  }
+  return os.write(s.c_str(), limit) << "... (" << (s.length() - limit) << " more characters)";
+}
+
 class StopOnFailure {
  public:
   explicit StopOnFailure(std::atomic<bool>* stop) : stop_(*stop) {}
