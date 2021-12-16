@@ -22,7 +22,7 @@ Before setting up the VPC network, you'll need the following:
 
 - The details of the application VPC you want to peer with.
 
-  - AWS - the AWS account ID, and the VPC ID, region, and CIDR block. To obtain these details, navigate to your AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page.
+  - AWS - the AWS account ID, and the VPC ID, region, and CIDR block. To obtain these details, navigate to your AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region where the VPC is located.
 
   - GCP - the project ID and the network name, and CIDR block. To obtain these details, navigate to your GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
 

@@ -30,7 +30,10 @@ To create a VPC in Yugabyte Cloud, you need to specify the following:
 - Region in which to deploy the VPC (AWS and GPC custom). For GPC automated, the VPC is deployed in all regions.
 - Preferred CIDR to use for your database VPC.
 
-You'll also need to know the CIDR range for the application VPC with which you want to peer, as the addresses can't overlap.
+You'll also need to know the CIDR range for the application VPC with which you want to peer, as the addresses can't overlap. To view the application VPC CIDR address:
+
+- For AWS, navigate to the [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
+- For GCP, navigate to the [VPC networks](https://console.cloud.google.com/networking/networks) page.
 
 To create a VPC, do the following:
 
@@ -38,7 +41,7 @@ To create a VPC, do the following:
 1. Cick **Create VPC** to display the **Create VPC** sheet.
 1. Enter a name for the VPC.
 1. Choose the provider (AWS or GCP).
-1. If you selected **GCP**, choose on the the following options:
+1. If you selected **GCP**, choose one of the following options:
     - **Automated** - VPCs are created globally and assigned to all regions supported by Yugabyte Cloud.
     - **Custom** - Select a region and [specify the CIDR address](../cloud-vpc-intro/#setting-the-cidr-and-sizing-your-vpc). Click **Add Region** to add additional regions. CIDR addresses in different regions cannot overlap.
 1. If you selected **AWS**, select the region and specify the CIDR address.
