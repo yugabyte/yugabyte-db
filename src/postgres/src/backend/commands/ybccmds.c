@@ -149,7 +149,6 @@ YBCDropTablegroup(Oid grpoid)
 
 /* ------------------------------------------------------------------------- */
 /*  Table Functions. */
-
 static void CreateTableAddColumn(YBCPgStatement handle,
 								 Form_pg_attribute att,
 								 bool is_hash,
@@ -1299,4 +1298,12 @@ YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel, AttrNumb
 				false, /* check_not_in_use */
 				false, /* skip_build */
 				true /* quiet */);
+}
+
+/* ------------------------------------------------------------------------- */
+/*  System validation. */
+void
+YBCValidatePlacement(const char *placement_info)
+{
+	HandleYBStatus(YBCPgValidatePlacement(placement_info));
 }

@@ -719,6 +719,9 @@ class YBClient {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
+  // Check if placement information is satisfiable.
+  CHECKED_STATUS ValidateReplicationInfo(const master::ReplicationInfoPB& replication_info);
+
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,
                          CoarseTimePoint deadline,
