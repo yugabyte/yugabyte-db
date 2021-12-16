@@ -134,9 +134,6 @@ static void agtype_typecast_array(agtype_in_state *state, char *annotation);
 static bool is_object_vertex(agtype_value *agtv);
 static bool is_object_edge(agtype_value *agtv);
 static bool is_array_path(agtype_value *agtv);
-/* helper functions */
-static uint64 agtype_to_int64(agtype *agt, int index);
-static void check_type_and_null(Oid type, bool is_null, int index);
 /* graph entity retrieval */
 static Datum get_vertex(const char *graph, const char *vertex_label,
                         int64 graphid);
@@ -1658,7 +1655,7 @@ void add_agtype(Datum val, bool is_null, agtype_in_state *result,
 
 agtype_value *string_to_agtype_value(char *s)
 {
-    agtype_value *agtv = palloc(sizeof(agtype_value));
+    agtype_value *agtv = palloc0(sizeof(agtype_value));
 
     agtv->type = AGTV_STRING;
     agtv->val.string.len = check_string_length(strlen(s));
@@ -1670,7 +1667,7 @@ agtype_value *string_to_agtype_value(char *s)
 /* helper function to create an agtype_value integer from an integer */
 static agtype_value *integer_to_agtype_value(int64 int_value)
 {
-    agtype_value *agtv = palloc(sizeof(agtype_value));
+    agtype_value *agtv = palloc0(sizeof(agtype_value));
 
     agtv->type = AGTV_INTEGER;
     agtv->val.int_value = int_value;
@@ -3001,7 +2998,7 @@ Datum agtype_hash_cmp(PG_FUNCTION_ARGS)
 
     agt = AG_GET_ARG_AGTYPE_P(0);
 
-    r = palloc(sizeof(agtype_value));
+    r = palloc0(sizeof(agtype_value));
 
     it = agtype_iterator_init(&agt->root);
     while ((tok = agtype_iterator_next(&it, r, false)) != WAGT_DONE)
@@ -3092,7 +3089,7 @@ Datum agtype_typecast_numeric(PG_FUNCTION_ARGS)
     /* this allows string numbers and NaN */
     case AGTV_STRING:
         /* we need a null terminated string */
-        string = (char *) palloc(sizeof(char)*arg_value->val.string.len + 1);
+        string = (char *) palloc0(sizeof(char)*arg_value->val.string.len + 1);
         string = strncpy(string, arg_value->val.string.val,
                          arg_value->val.string.len);
         string[arg_value->val.string.len] = '\0';
@@ -3168,7 +3165,7 @@ Datum agtype_typecast_int(PG_FUNCTION_ARGS)
         break;
     case AGTV_STRING:
         /* we need a null terminated string */
-        string = (char *) palloc(sizeof(char)*arg_value->val.string.len + 1);
+        string = (char *) palloc0(sizeof(char)*arg_value->val.string.len + 1);
         string = strncpy(string, arg_value->val.string.val,
                          arg_value->val.string.len);
         string[arg_value->val.string.len] = '\0';
@@ -3244,7 +3241,7 @@ Datum agtype_typecast_float(PG_FUNCTION_ARGS)
     /* this allows string numbers, NaN, Infinity, and -Infinity */
     case AGTV_STRING:
         /* we need a null terminated string */
-        string = (char *) palloc(sizeof(char)*arg_value->val.string.len + 1);
+        string = (char *) palloc0(sizeof(char)*arg_value->val.string.len + 1);
         string = strncpy(string, arg_value->val.string.val,
                          arg_value->val.string.len);
         string[arg_value->val.string.len] = '\0';
@@ -3512,200 +3509,6 @@ Datum agtype_typecast_path(PG_FUNCTION_ARGS)
     path.res->type = AGTV_PATH;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(path.res));
-}
-
-static uint64 agtype_to_int64(agtype *agt, int index)
-{
-    agtype_value *v;
-
-    if (!AGT_ROOT_IS_SCALAR(agt))
-    {
-        ereport(
-            ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg(
-                 "agtype parameter %i in _ag_enforce_edge_uniqueness must resolve to an integer",
-                 index)));
-    }
-
-    v = get_ith_agtype_value_from_container(&agt->root, 0);
-
-    if (v->type != AGTV_INTEGER)
-    {
-        ereport(
-            ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg(
-                 "agtype parameter %i in _ag_enforce_edge_uniqueness must resolve to an integer",
-                 index)));
-    }
-
-    return v->val.int_value;
-}
-
-/*
- * Helper function to throw errors if any of the passed in values are
- * NULL or not agtype.
- */
-static void check_type_and_null(Oid type, bool is_null, int index)
-{
-    if (is_null)
-    {
-        ereport(
-            ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg(
-                 "parameter %i in _ag_enforce_edge_uniqueness must not be null",
-                 index)));
-    }
-
-    if (type != AGTYPEOID)
-    {
-        ereport(
-            ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg(
-                 "parameter %i in _ag_enforce_edge_uniqueness must be an agtype",
-                 index)));
-    }
-}
-
-/*
- * This function checks the edges in a MATCH clause to see if they are unique or
- * not. Filters out all the paths where the edge uniques rules are not met.
- * Arguements can be a combination of agtype ints and VLE_path_containers.
- */
-PG_FUNCTION_INFO_V1(_ag_enforce_edge_uniqueness);
-
-Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
-{
-    int nargs;
-    Datum *args;
-    bool *nulls;
-    Oid *types;
-    int i, j;
-
-    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
-
-    // iterate through through all the arguments for comparison
-    for (i = 0; i < nargs; i++)
-    {
-        agtype *agt_i;
-
-        check_type_and_null(types[i], nulls[i], i);
-
-        agt_i = AG_GET_ARG_AGTYPE_P(i);
-
-        // if the agtype at i is a VLE_path_container
-        if (AGT_ROOT_IS_BINARY(agt_i) &&
-            AGT_ROOT_BINARY_FLAGS(agt_i) == AGT_FBINARY_TYPE_VLE_PATH)
-        {
-            // cast the agtype to a VLE_path_container
-            VLE_path_container *path_i = (VLE_path_container *)agt_i;
-
-            // iterate through all the element after i passed in
-            for (j = i + 1; j < nargs; j++)
-            {
-                agtype *agt_j;
-
-                check_type_and_null(types[j], nulls[j], j);
-
-                // get the parameter at j
-                agt_j = AG_GET_ARG_AGTYPE_P(j);
-
-                // if the agtype at j is a VLE_path_container
-                if (AGT_ROOT_IS_BINARY(agt_j) &&
-                    AGT_ROOT_BINARY_FLAGS(agt_j) == AGT_FBINARY_TYPE_VLE_PATH)
-                {
-                    // cast the agtype to a VLE_path_container
-                    VLE_path_container *path_j = (VLE_path_container *)agt_j;
-
-                    /*
-                     *  check if there is overlap between the two vle edges.
-                     *  If there are return false, because this is not allowed.
-                     */
-                    if(vle_edges_overlap(path_i, path_j))
-                    {
-                        return false;
-                    }
-                }
-                else if (AGT_ROOT_IS_SCALAR(agt_j))
-                {
-                    /*
-                     * The element at j is a graph id, check if its in
-                     * the list of edges in the path.
-                     */
-                    uint64 id_2 = agtype_to_int64(agt_j, j);
-
-                    if (is_edge_id_in_vle_container(path_i, id_2))
-                    {
-                        return false;
-                    }
-                }
-            }
-        }
-        else if (AGT_ROOT_IS_SCALAR(agt_i))
-        {
-            // the agtype at i is an integer.
-            uint64 id_1 = agtype_to_int64(agt_i, i);
-
-            for (j = i + 1; j < nargs; j++)
-            {
-                agtype *agt_j;
-
-                check_type_and_null(types[j], nulls[j], j);
-
-                // get the parameter at j
-                agt_j = AG_GET_ARG_AGTYPE_P(j);
-
-                if (AGT_ROOT_IS_BINARY(agt_j) &&
-                    AGT_ROOT_BINARY_FLAGS(agt_j) == AGT_FBINARY_TYPE_VLE_PATH)
-                {
-                    // cast the agtype to a VLE_path_container
-                    VLE_path_container *path_j = (VLE_path_container *)agt_j;
-
-                    /*
-                     * The element at i is a graph id, check if its in
-                     * the list of edges in the path.
-                     */
-                    if (is_edge_id_in_vle_container(path_j, id_1))
-                    {
-                        return false;
-                    }
-                }
-                else if (AGT_ROOT_IS_SCALAR(agt_j))
-                {
-                    uint64 id_2 = agtype_to_int64(agt_j, j);
-
-                    // both elements are graphids do a scalar comparison.
-                    if (id_1 == id_2)
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    ereport(
-                        ERROR,
-                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                         errmsg(
-                             "parameter %i in _ag_enforce_edge_uniqueness must resolve to a vle edge or an int", j)));
-                }
-            }
-        }
-        else
-        {
-            ereport(
-                ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg(
-                     "parameter %i in _ag_enforce_edge_uniqueness must resolve to a vle edge or an int", i)));
-
-        }
-    }
-
-    // Success!
-    return true;
 }
 
 /* helper function to retrieve a value, given a key, from an agtype_value */
@@ -5298,7 +5101,7 @@ Datum age_toupper(PG_FUNCTION_ARGS)
         PG_RETURN_NULL();
 
     /* allocate the new string */
-    result = palloc(string_len);
+    result = palloc0(string_len);
 
     /* upcase the string */
     for (i = 0; i < string_len; i++)
@@ -5388,7 +5191,7 @@ Datum age_tolower(PG_FUNCTION_ARGS)
         PG_RETURN_NULL();
 
     /* allocate the new string */
-    result = palloc(string_len);
+    result = palloc0(string_len);
 
     /* downcase the string */
     for (i = 0; i < string_len; i++)
@@ -6246,7 +6049,7 @@ Datum age_split(PG_FUNCTION_ARGS)
             string_len = VARSIZE(elements[i]) - VARHDRSZ;
 
             /* make a copy */
-            string_copy = palloc(string_len);
+            string_copy = palloc0(string_len);
             memcpy(string_copy, string, string_len);
 
             /* build the agtype string */
@@ -7628,7 +7431,7 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name, agt
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                         errmsg("can only update objects")));
 
-    r = palloc(sizeof(agtype_value));
+    r = palloc0(sizeof(agtype_value));
 
     prop_agtype = agtype_value_to_agtype(properties);
     it = agtype_iterator_init(&prop_agtype->root);
@@ -7663,7 +7466,7 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name, agt
         {
             agtype_value *new_agtype_value_v;
 
-            if(remove_property)
+            if (remove_property)
             {
                 tok = agtype_iterator_next(&it, r, true);
                 continue;
@@ -8130,7 +7933,7 @@ Datum age_percentile_aggtransfn(PG_FUNCTION_ARGS)
         /* switch to the correct aggregate context */
         old_mcxt = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
         /* create and initialize the state */
-        pgastate = palloc(sizeof(PercentileGroupAggState));
+        pgastate = palloc0(sizeof(PercentileGroupAggState));
         pgastate->percentile = percentile;
         /*
          * Percentiles need to be calculated from a sorted set. We are only
@@ -8329,7 +8132,7 @@ Datum age_collect_aggtransfn(PG_FUNCTION_ARGS)
     if (PG_ARGISNULL(0))
     {
         /* create and initialize the state */
-        castate = palloc(sizeof(agtype_in_state));
+        castate = palloc0(sizeof(agtype_in_state));
         memset(castate, 0, sizeof(agtype_in_state));
         /* start the array */
         castate->res = push_agtype_value(&castate->parse_state,

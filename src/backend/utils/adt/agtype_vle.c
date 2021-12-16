@@ -2515,69 +2515,6 @@ Datum age_vle(PG_FUNCTION_ARGS)
 }
 
 /*
- * Scans the passed in path, if the edge_id is contained, return true. Else
- * return false.
- *
- * TODO: Use hashtable for larger lists
- */
-bool is_edge_id_in_vle_container(VLE_path_container *vpc, graphid edge_id)
-{
-    graphid *ids = NULL;
-    int i = 0;
-
-    Assert(vpc != NULL);
-
-    ids = GET_GRAPHID_ARRAY_FROM_CONTAINER(vpc);
-
-    for (i = 1; i < vpc->graphid_array_size - 1; i += 2)
-    {
-        graphid id_2 = ids[i];
-
-        if (edge_id == id_2)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/*
- * Compare two vle edge lists, if one contains an id that is also in
- * the other, return true, else return false.
- *
- * TODO: Use hashtables for larger lists.
- */
-bool vle_edges_overlap(VLE_path_container *vpc_1, VLE_path_container *vpc_2)
-{
-    graphid *ids_1 = NULL;
-    graphid *ids_2 = NULL;
-    int i, j = 0;
-
-    Assert(vpc_1 != NULL && vpc_2 != NULL);
-
-    ids_1 = GET_GRAPHID_ARRAY_FROM_CONTAINER(vpc_1);
-    ids_2 = GET_GRAPHID_ARRAY_FROM_CONTAINER(vpc_2);
-
-    for (i = 1; i < vpc_1->graphid_array_size - 1; i += 2)
-    {
-        graphid id_1 = ids_1[i];
-
-        for (j = 1; j < vpc_2->graphid_array_size - 1; j += 2)
-        {
-            graphid id_2 = ids_2[j];
-
-            if (id_1 == id_2)
-            {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-/*
  * Exposed helper function to make an agtype AGTV_PATH from a
  * VLE_path_container.
  */
@@ -3051,4 +2988,187 @@ Datum age_build_vle_match_edge(PG_FUNCTION_ARGS)
     result.res->type = AGTV_EDGE;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+/*
+ * This function checks the edges in a MATCH clause to see if they are unique or
+ * not. Filters out all the paths where the edge uniques rules are not met.
+ * Arguements can be a combination of agtype ints and VLE_path_containers.
+ */
+PG_FUNCTION_INFO_V1(_ag_enforce_edge_uniqueness);
+
+Datum _ag_enforce_edge_uniqueness(PG_FUNCTION_ARGS)
+{
+    HTAB *exists_hash = NULL;
+    HASHCTL exists_ctl;
+    Datum *args = NULL;
+    bool *nulls = NULL;
+    Oid *types = NULL;
+    int nargs = 0;
+    int i = 0;
+
+    /* extract our arguments */
+    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+
+    /* verify the arguments */
+    for (i = 0; i < nargs; i++)
+    {
+        if (nulls[i])
+        {
+             ereport(ERROR,
+                     (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                      errmsg("_ag_enforce_edge_uniqueness argument %d must not be NULL",
+                             i)));
+        }
+        if (types[i] != AGTYPEOID &&
+            types[i] != INT8OID &&
+            types[i] != GRAPHIDOID)
+        {
+             ereport(ERROR,
+                     (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                      errmsg("_ag_enforce_edge_uniqueness argument %d must be AGTYPE, INT8, or GRAPHIDOID",
+                             i)));
+        }
+    }
+
+    /* configure the hash table */
+    MemSet(&exists_ctl, 0, sizeof(exists_ctl));
+    exists_ctl.keysize = sizeof(int64);
+    exists_ctl.entrysize = sizeof(int64);
+    exists_ctl.hash = tag_hash;
+
+    /* create hash table */
+    exists_hash = hash_create("edges", 1000, &exists_ctl,
+                              HASH_ELEM | HASH_FUNCTION);
+
+    /* insert arguments into hash table */
+    for (i = 0; i < nargs; i++)
+    {
+        agtype *agt_i = NULL;
+
+        /* get the argument */
+        agt_i = DATUM_GET_AGTYPE_P(args[i]);
+
+        /* if the argument is an AGTYPE VLE_path_container */
+        if (types[i] == AGTYPEOID &&
+            AGT_ROOT_IS_BINARY(agt_i) &&
+            AGT_ROOT_BINARY_FLAGS(agt_i) == AGT_FBINARY_TYPE_VLE_PATH)
+        {
+            VLE_path_container *vpc = NULL;
+            graphid *graphid_array = NULL;
+            int64 graphid_array_size = 0;
+            int64 j = 0;
+
+            /* cast to VLE_path_container */
+            vpc = (VLE_path_container *)agt_i;
+
+            /* get the graphid array */
+            graphid_array = GET_GRAPHID_ARRAY_FROM_CONTAINER(vpc);
+
+            /* get the graphid array size */
+            graphid_array_size = vpc->graphid_array_size;
+
+            /* insert all the edges in the vpc, into the hash table */
+            for (j = 1; j < graphid_array_size - 1; j+=2)
+            {
+                int64 *value = NULL;
+                bool found = false;
+                graphid edge_id = 0;
+
+                /* get the edge id */
+                edge_id = graphid_array[j];
+
+                /* insert the edge id */
+                value = (int64 *)hash_search(exists_hash, (void *)&edge_id,
+                                             HASH_ENTER, &found);
+
+                /* if we found it, we're done, we have a duplicate */
+                if (found)
+                {
+                    hash_destroy(exists_hash);
+                    PG_RETURN_BOOL(false);
+                }
+                /* otherwise, add it to the returned bucket */
+                else
+                {
+                    *value = edge_id;
+                }
+            }
+        }
+        /* if it is a regular AGTYPE scalar */
+        else if (types[i] == AGTYPEOID &&
+                 AGT_ROOT_IS_SCALAR(agt_i))
+        {
+            agtype_value *agtv_id = NULL;
+            int64 *value = NULL;
+            bool found = false;
+            graphid edge_id = 0;
+
+            agtv_id = get_ith_agtype_value_from_container(&agt_i->root, 0);
+
+            if (agtv_id->type != AGTV_INTEGER)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("_ag_enforce_edge_uniqueness parameter %d must resolve to an agtype integer",
+                                i)));
+            }
+
+            edge_id = agtv_id->val.int_value;
+
+            /* insert the edge_id */
+            value = (int64 *)hash_search(exists_hash, (void *)&edge_id,
+                                         HASH_ENTER, &found);
+
+            /* if we found it, we're done, we have a duplicate */
+            if (found)
+            {
+                hash_destroy(exists_hash);
+                PG_RETURN_BOOL(false);
+            }
+            /* otherwise, add it to the returned bucket */
+            else
+            {
+                *value = edge_id;
+            }
+        }
+        /* if it is an INT8OID or a GRAPHIDOID */
+        else if (types[i] == INT8OID ||
+                 types[i] == GRAPHIDOID)
+        {
+            graphid edge_id = 0;
+            bool found = false;
+            int64 *value = NULL;
+
+            edge_id = DatumGetInt64(args[i]);
+
+            /* insert the edge_id */
+            value = (int64 *)hash_search(exists_hash, (void *)&edge_id,
+                                         HASH_ENTER, &found);
+
+            /* if we found it, we're done, we have a duplicate */
+            if (found)
+            {
+                hash_destroy(exists_hash);
+                PG_RETURN_BOOL(false);
+            }
+            /* otherwise, add it to the returned bucket */
+            else
+            {
+                *value = edge_id;
+            }
+        }
+        /* it is neither a VLE_path_container, AGTYPE, INT8, or a GRAPHIDOID */
+        else
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("_ag_enforce_edge_uniqueness invalid parameter type %d",
+                            i)));
+        }
+    }
+
+    /* if all entries were successfully inserted, we have no duplicates */
+    hash_destroy(exists_hash);
+    PG_RETURN_BOOL(true);
 }

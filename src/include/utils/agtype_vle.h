@@ -45,8 +45,4 @@ agtype_value *agtv_materialize_vle_path(agtype *agt_arg_vpc);
  */
 agtype_value *agtv_materialize_vle_edges(agtype *agt_arg_vpc);
 
-/* edge checking */
-bool is_edge_id_in_vle_container(VLE_path_container *vpc, graphid edge_id);
-bool vle_edges_overlap(VLE_path_container *vpc_1, VLE_path_container *vpc_2);
-
 #endif
