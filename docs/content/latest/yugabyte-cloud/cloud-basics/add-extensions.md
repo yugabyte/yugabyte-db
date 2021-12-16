@@ -39,7 +39,7 @@ For more information on roles in Yugabyte Cloud, refer to [Database authorizatio
 
 You cannot install new extensions in Yugabyte Cloud.
 
-If you need a database extension that is not bundled with YugabyteDB added to a cluster, contact Yugabyte Support with the names of the cluster and extension, or reach out on Slack.
+If you need a database extension that is not bundled with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or [reach out on Slack](https://yugabyte-db.slack.com/).
 
 ## Learn more
 

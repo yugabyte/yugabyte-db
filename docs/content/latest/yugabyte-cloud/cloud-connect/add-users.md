@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Create database users to provide clients access to the cluster's YugabyteDB database. A database user's access is determined by the roles assigned to the user. YugabyteDB uses [role-based access control](../../cloud-security/cloud-users/) (RBAC) to manage authorization.
+Create database users to provide clients access to the cluster's YugabyteDB database. A database user's access is determined by the roles assigned to the user. YugabyteDB uses role-based access control (RBAC) to [manage authorization](../../cloud-security/cloud-users/).
 
 Once you have added a user to the database, send them the credentials.
 
