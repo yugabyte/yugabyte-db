@@ -94,11 +94,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
-  CHECKED_STATUS CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
-                                           const TSDescriptorVector& all_ts_descs,
-                                           const vector<Partition>& partitions,
-                                           CreateTableResponsePB* resp) override;
-
   CHECKED_STATUS HandlePlacementUsingReplicationInfo(const ReplicationInfoPB& replication_info,
                                                      const TSDescriptorVector& all_ts_descs,
                                                      consensus::RaftConfigPB* config) override;

@@ -1490,5 +1490,9 @@ Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
   return pg_session_->ListTabletServers();
 }
 
+Status PgApiImpl::ValidatePlacement(const char *placement_info) {
+  return pg_session_->ValidatePlacement(placement_info);
+}
+
 } // namespace pggate
 } // namespace yb

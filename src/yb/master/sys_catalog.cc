@@ -45,6 +45,7 @@
 #include "yb/common/index.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
+#include "yb/common/placement_info.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -897,8 +898,20 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
           options.value(), &placement_options));
 
     // Fetch the status and print the tablespace option along with the status.
-    const auto& replication_info = VERIFY_RESULT(ParseReplicationInfo(
-          tablespace_id, placement_options));
+    ReplicationInfoPB replication_info;
+    PlacementInfoConverter::Placement placement =
+      VERIFY_RESULT(PlacementInfoConverter::FromQLValue(placement_options));
+
+    PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
+    for (const auto& block : placement.placement_infos) {
+      auto pb = live_replicas->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud(block.cloud);
+      pb->mutable_cloud_info()->set_placement_region(block.region);
+      pb->mutable_cloud_info()->set_placement_zone(block.zone);
+      pb->set_min_num_replicas(block.min_num_replicas);
+    }
+    live_replicas->set_num_replicas(placement.num_replicas);
+
     const auto& ret = tablespace_map->emplace(tablespace_id, replication_info);
     // This map should not have already had an element associated with this
     // tablespace.
@@ -1114,97 +1127,6 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
   }
 
   return name;
-}
-
-Result<boost::optional<ReplicationInfoPB>> SysCatalogTable::ParseReplicationInfo(
-  const TablespaceId& tablespace_id,
-  const vector<QLValuePB>& options) {
-
-  // Today only one option is supported, so this array should have only one option.
-  if (options.size() != 1) {
-    return STATUS(Corruption, "Unexpected number of options: " + std::to_string(options.size()) +
-        " for tablespace with ID:" + tablespace_id);
-  }
-
-  const string& option = options[0].string_value();
-  // The only option supported today is "replica_placement" that allows specification
-  // of placement policies encoded as a JSON array. Example value:
-  // replica_placement=
-  //   '{"num_replicas":3, "placement_blocks": [
-  //         {"cloud":"c1", "region":"r1", "zone":"z1", "min_num_replicas":1},
-  //         {"cloud":"c2", "region":"r2", "zone":"z2", "min_num_replicas":1},
-  //         {"cloud":"c3", "region":"r3", "zone":"z3", "min_num_replicas":1}]}'
-  if (option.find("replica_placement") == string::npos) {
-    return STATUS(Corruption, "Invalid option found in spcoptions for tablespace with ID:" +
-        tablespace_id);
-  }
-
-  // First split the string and get only the json value in a string.
-  vector<string> split;
-  split = strings::Split(option, "replica_placement=", strings::SkipEmpty());
-  if (split.size() != 1) {
-    return STATUS(Corruption, "replica_placement option illformed: " + option +
-        " for tablespace with ID:" + tablespace_id);
-  }
-
-  const string& placement_info = split[0];
-  rapidjson::Document document;
-  if (document.Parse(placement_info.c_str()).HasParseError() || !document.IsObject()) {
-    return STATUS(Corruption, "Json parsing of replica placement option failed: " +
-          placement_info + " for tablespace with ID:" + tablespace_id);
-  }
-
-  if (!document.HasMember("num_replicas") || !document["num_replicas"].IsInt()) {
-    return STATUS(Corruption, "Invalid value found for \"num_replicas\" field in the placement "
-            "policy for tablespace with ID:" + tablespace_id + " Placement policy: " +
-            placement_info);
-  }
-  const int num_replicas = document["num_replicas"].GetInt();
-
-  // Parse the placement blocks.
-  if (!document.HasMember("placement_blocks") || !document["placement_blocks"].IsArray()) {
-    return STATUS(Corruption, "\"placement_blocks\" field not found in the placement "
-              "policy for tablespace with ID:" + tablespace_id + " Placement policy: " +
-              placement_info);
-  }
-
-  const rapidjson::Value& pb = document["placement_blocks"];
-  if (pb.Size() < 1) {
-    return STATUS(Corruption, "\"placement_blocks\" field has empty value in the placement "
-                "policy for tablespace with ID:" + tablespace_id + " Placement policy: " +
-                placement_info);
-  }
-
-  ReplicationInfoPB replication_info_pb;
-  master::PlacementInfoPB* live_replicas = replication_info_pb.mutable_live_replicas();
-  int64 total_min_replicas = 0;
-  for (int64 ii = 0; ii < pb.Size(); ++ii) {
-    const rapidjson::Value& placement = pb[ii];
-    auto pb = live_replicas->add_placement_blocks();
-    if (!placement.HasMember("cloud") || !placement.HasMember("region") ||
-        !placement.HasMember("zone") || !placement.HasMember("min_num_replicas")) {
-      return STATUS(Corruption, "Missing keys in replica placement option: " +
-          placement_info + " for tablespace with ID:" + tablespace_id);
-    }
-    if (!placement["cloud"].IsString() || !placement["region"].IsString() ||
-        !placement["zone"].IsString() || !placement["min_num_replicas"].IsInt()) {
-      return STATUS(Corruption, "Invalid value for replica_placement option: " +
-          placement_info + " for tablespace with ID:" + tablespace_id);
-    }
-    pb->mutable_cloud_info()->set_placement_cloud(placement["cloud"].GetString());
-    pb->mutable_cloud_info()->set_placement_region(placement["region"].GetString());
-    pb->mutable_cloud_info()->set_placement_zone(placement["zone"].GetString());
-    const int min_rf = placement["min_num_replicas"].GetInt();
-    pb->set_min_num_replicas(min_rf);
-    total_min_replicas += min_rf;
-  }
-  if (total_min_replicas > num_replicas) {
-    return STATUS(Corruption, "Sum of min_num_replicas fields exceeds the total replication factor "
-                  "in the placement policy for tablespace with ID:" + tablespace_id +
-                  " Placement policy: " + placement_info);
-  }
-  live_replicas->set_num_replicas(num_replicas);
-  return replication_info_pb;
 }
 
 Status SysCatalogTable::CopyPgsqlTables(

@@ -1495,6 +1495,14 @@ message ChangeMasterClusterConfigResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message ValidateReplicationInfoRequestPB {
+  optional ReplicationInfoPB replication_info = 1;
+}
+
+message ValidateReplicationInfoResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message SetPreferredZonesRequestPB {
   repeated CloudInfoPB preferred_zones = 1;
 }
@@ -2200,6 +2208,9 @@ service MasterService {
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
   rpc GetNamespaceInfo(GetNamespaceInfoRequestPB) returns (GetNamespaceInfoResponsePB);
+
+  rpc ValidateReplicationInfo(ValidateReplicationInfoRequestPB)
+      returns (ValidateReplicationInfoResponsePB);
 
   // For Tablegroup:
   rpc CreateTablegroup(CreateTablegroupRequestPB) returns (CreateTablegroupResponsePB);

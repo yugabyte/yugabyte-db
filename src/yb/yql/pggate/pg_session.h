@@ -324,6 +324,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
+  CHECKED_STATUS ValidatePlacement(const string& placement_info);
+
   PgClient& pg_client() const {
     return pg_client_;
   }

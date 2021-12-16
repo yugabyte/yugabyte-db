@@ -2252,21 +2252,6 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   // TODO: dump snapshots
 }
 
-Status CatalogManager::CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
-                                                 const TSDescriptorVector& all_ts_descs,
-                                                 const vector<Partition>& partitions,
-                                                 CreateTableResponsePB* resp) {
-  TSDescriptorVector ts_descs;
-  GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
-  RETURN_NOT_OK(super::CheckValidPlacementInfo(replication_info.live_replicas(), ts_descs,
-                                               partitions, resp));
-  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
-    GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
-    RETURN_NOT_OK(super::CheckValidPlacementInfo(replication_info.read_replicas(i), ts_descs,
-                                                 partitions, resp));
-  }
-  return Status::OK();
-}
 
 Status CatalogManager::HandlePlacementUsingReplicationInfo(
     const ReplicationInfoPB& replication_info,

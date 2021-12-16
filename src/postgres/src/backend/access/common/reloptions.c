@@ -844,7 +844,7 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 
 /*
  * See above for transformRelOptions description.
- * 
+ *
  * If ybIgnoreYsqlUpgradeOptions is specified, ignore "table_oid"
  * and "row_type_oid" options. This is needed in YSQL upgrade mode, where we
  * use them to simulate initdb-like behaviour for creating relations but don't

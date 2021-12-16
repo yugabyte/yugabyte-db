@@ -642,6 +642,13 @@ void MasterServiceImpl::ChangeMasterClusterConfig(
   HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, SetClusterConfig);
 }
 
+void MasterServiceImpl::ValidateReplicationInfo(
+    const ValidateReplicationInfoRequestPB* req,
+    ValidateReplicationInfoResponsePB* resp,
+    RpcContext rpc) {
+  HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, ValidateReplicationInfo);
+}
+
 void MasterServiceImpl::GetLoadMoveCompletion(
     const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
     RpcContext rpc) {

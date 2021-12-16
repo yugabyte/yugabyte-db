@@ -68,6 +68,7 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/pg_type_d.h"
 #include "commands/comment.h"
 #include "commands/seclabel.h"
 #include "commands/tablecmds.h"
@@ -86,6 +87,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 #include "utils/tqual.h"
 #include "utils/varlena.h"
 
@@ -1591,6 +1593,45 @@ get_tablespace_name(Oid spc_oid)
 	return result;
 }
 
+/*
+ * yb_get_tablespace_options - given a tablespace OID, look up the
+ * tablespace options
+ *
+ * Returns a palloc'd string, or NULL if no such tablespace.
+ */
+void
+yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
+{
+	bool isnull;
+	Datum datum;
+	HeapTuple	tuple;
+
+	/*
+	 * Search pg_tablespace.
+	 */
+	tuple = SearchSysCache1(TABLESPACEOID, ObjectIdGetDatum(spc_oid));
+
+	if (HeapTupleIsValid(tuple))
+	{
+		datum = SysCacheGetAttr(TABLESPACEOID, tuple,
+								Anum_pg_tablespace_spcoptions, &isnull);
+		if (!isnull)
+		{
+			Assert(PointerIsValid(DatumGetPointer(datum)));
+			ArrayType  *array = DatumGetArrayTypeP(datum);
+			deconstruct_array(array, TEXTOID, -1, false, 'i',
+							  options, NULL, num_options);
+		}
+	}
+
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablespace %i does not exist",
+						spc_oid)));
+
+	ReleaseSysCache(tuple);
+}
 
 /*
  * TABLESPACE resource manager's routines

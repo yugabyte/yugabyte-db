@@ -177,6 +177,7 @@ using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
 using yb::master::CreateTransactionStatusTableResponsePB;
+using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
 using std::vector;
@@ -1948,6 +1949,11 @@ Status YBClient::GetMasterUUID(const string& host,
 Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->SetReplicationInfo(this, replication_info, deadline);
+}
+
+Status YBClient::ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->ValidateReplicationInfo(replication_info, deadline);
 }
 
 Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,

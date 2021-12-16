@@ -585,19 +585,10 @@ class CatalogManager :
   virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req)
       override;
 
-  int GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info);
-
-  // Loops through the table's placement infos to make sure the overall replication info is valid.
-  virtual CHECKED_STATUS CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
-                                                   const TSDescriptorVector& all_ts_descs,
-                                                   const vector<Partition>& partitions,
-                                                   CreateTableResponsePB* resp);
-
-  // Makes sure the available ts_descs in a placement can accomodate the placement config.
+  // Checks that placement info can be accommodated by available ts_descs.
   CHECKED_STATUS CheckValidPlacementInfo(const PlacementInfoPB& placement_info,
                                          const TSDescriptorVector& ts_descs,
-                                         const vector<Partition>& partitions,
-                                         CreateTableResponsePB* resp);
+                                         ValidateReplicationInfoResponsePB* resp);
 
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
@@ -648,6 +639,11 @@ class CatalogManager :
   CHECKED_STATUS SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req,
       ChangeMasterClusterConfigResponsePB* resp) override;
+
+
+  // Validator for placement information with respect to cluster configuration
+  CHECKED_STATUS ValidateReplicationInfo(
+      const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp);
 
   CHECKED_STATUS SetPreferredZones(
       const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp);

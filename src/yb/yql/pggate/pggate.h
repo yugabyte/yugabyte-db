@@ -488,7 +488,6 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
-  //------------------------------------------------------------------------------------------------
   // Column reference.
   CHECKED_STATUS NewColumnRef(
       PgStatement *handle, int attr_num, const PgTypeEntity *type_entity,
@@ -536,6 +535,10 @@ class PgApiImpl {
   void SetTimeout(int timeout_ms);
 
   Result<client::TabletServersInfo> ListTabletServers();
+
+  //------------------------------------------------------------------------------------------------
+  // System Validation.
+  CHECKED_STATUS ValidatePlacement(const char *placement_info);
 
  private:
   // Control variables.

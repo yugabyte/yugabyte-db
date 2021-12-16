@@ -73,6 +73,16 @@ ALTER TABLESPACE regress_tblspace RESET (random_page_cost, effective_io_concurre
 -- create a schema we can use
 CREATE SCHEMA testschema;
 
+-- create a tablespace not satisfied by the cluster
+CREATE TABLESPACE invalid_tablespace WITH (replica_placement='{"num_replicas": 1, "placement_blocks":[{"cloud":"nonexistent","region":"nowhere","zone":"area51","min_num_replicas":1}]}');
+
+-- try using unsatisfiable tablespace
+CREATE TABLE testschema.foo (i int) TABLESPACE invalid_tablespace; -- fail
+CREATE TABLE testschema.foo (i int) TABLESPACE regress_tblspace;
+ALTER TABLE testschema.foo SET TABLESPACE invalid_tablespace; -- fail
+DROP TABLE testschema.foo;
+DROP TABLESPACE invalid_tablespace;
+
 -- try a table
 CREATE TABLE testschema.foo (i int) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c

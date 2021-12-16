@@ -29,7 +29,8 @@ namespace tserver {
     (Heartbeat)(AlterDatabase)(AlterTable)(BackfillIndex)(CreateDatabase) \
     (CreateSequencesDataTable)(CreateTable)(CreateTablegroup)(DropDatabase)(DropTable) \
     (DropTablegroup)(GetCatalogMasterVersion)(GetDatabaseInfo)(IsInitDbDone) \
-    (ListLiveTabletServers)(OpenTable)(ReserveOids)(TabletServerCount)(TruncateTable)
+    (ListLiveTabletServers)(OpenTable)(ReserveOids)(TabletServerCount)(TruncateTable) \
+    (ValidatePlacement)
 
 using TransactionPoolProvider = std::function<client::TransactionPool*()>;
 
