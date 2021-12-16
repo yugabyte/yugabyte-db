@@ -22,7 +22,7 @@ To create a cluster, on the **Clusters** page, click **Add Cluster** to start th
 
 {{< note title="Note" >}}
 
-Before creating a cluster, create a billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/). You do not need a billing profile to create your free cluster.
+Before creating a cluster, create a billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/). You don't need a billing profile to create your free cluster.
 
 If you want to use dedicated VPCs for network isolation and security, you must set up VPC Peering for the cloud provider before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-vpcs/).
 

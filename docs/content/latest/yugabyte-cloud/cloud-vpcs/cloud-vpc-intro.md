@@ -28,7 +28,7 @@ Deploying your cluster in a VPC network has the following advantages:
 
 ## Pricing
 
-There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs.
+There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for free clusters.
 
 ## Choosing the region for your VPC
 
@@ -40,7 +40,7 @@ For AWS, you can only define a single region per VPC.
 
 ## Setting the CIDR and sizing your VPC
 
-A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you cannot resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accomodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you will need to take that into account.
+A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accomodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
 When entering the range for your VPC in Yugabyte Cloud, the size of the network is determined by the prefix length (the number after the `/`). Yugabyte Cloud supports network sizes from `/26` to `/16` as shown in the following table. For typical applications, `/26` is more than sufficient.
 
@@ -59,7 +59,7 @@ You can use the IP addresses in the following ranges (per [RFC 1918](https://dat
 Addresses have the following restrictions:
 
 - Addresses can overlap with other VPCs, but not if they are peered to the same application VPC. Yugabyte Cloud warns you when you enter an overlapping range.
-- Addresses cannot overlap with the CIDR of the application VPC you intend to peer with. 
+- Addresses can't overlap with the CIDR of the application VPC you intend to peer with.
 
 - Yugabyte Cloud reserves the following ranges for internal operations.
 
@@ -72,13 +72,14 @@ You can calculate ranges beforehand using [IP Address Guide’s CIDR to IPv4 Con
 
 ## Limitations
 
-- You assign a VPC when you create a cluster. You cannot switch VPCs after cluster creation.
-- You cannot change the size of your VPC once it is created.
-- You cannot peer VPCs with overlapping ranges with the same application VPC.
+- You assign a VPC when you create a cluster. You can't switch VPCs after cluster creation.
+- You can't change the size of your VPC once it is created.
+- You can't peer VPCs with overlapping ranges with the same application VPC.
 - You can create a maximum of 3 AWS VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
+- VPCs are not supported on free clusters.
 
-If you need additional VPCs, contact Yugabyte Support.
+If you need additional VPCs, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 ## Next steps
 

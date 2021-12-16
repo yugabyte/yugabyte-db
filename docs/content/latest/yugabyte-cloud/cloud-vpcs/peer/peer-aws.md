@@ -12,7 +12,7 @@ To obtain these details, navigate to your AWS [Your VPCs](https://console.aws.am
 To create a peering connection, in Yugabyte Cloud do the following:
 
 1. On the **Network Access** page, select **VPC Network**, then **Peering Connections**.
-1. Click **Create Peering** to display the **Create Peering** sheet.
+1. Click **Add Peering Connection** to display the **Create Peering** sheet.
 1. Enter a name for the peering connection.
 1. Choose **AWS**.
 1. Choose the Yugabyte Cloud VPC you are peering. Only VPCs that use AWS are listed.
@@ -25,7 +25,7 @@ The peering connection is created with a status of _Pending_. To complete the pe
 
 To complete a _Pending_ peering connection, you need to sign in to AWS, accept the peering request, and add a routing table entry.
 
-You will need the the CIDR address of the Yugabyte Cloud VPC you are peering with. You can view and copy this in the **VPC Details** sheet on the **VPCs** page or the **Peering Details** sheet on the **Peering Connections** page.
+You'll need the the CIDR address of the Yugabyte Cloud VPC you are peering with. You can view and copy this in the **VPC Details** sheet on the **VPCs** page or the **Peering Details** sheet on the **Peering Connections** page.
 
 After you sign in to your AWS account, navigate to the region hosting the VPC you want to peer.
 

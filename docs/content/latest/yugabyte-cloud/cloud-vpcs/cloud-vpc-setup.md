@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Before you begin
 
-Before setting up the VPC network, you will need the following:
+Before setting up the VPC network, you'll need the following:
 
 - The CIDR block you want to use for your VPC.
 
@@ -32,19 +32,19 @@ To create a VPC network, you need to complete the following tasks:
 
 1. [Create a VPC](../cloud-add-vpc/#create-a-vpc).
 
-    - The VPC reserves a range of IP addresses for the network. The range cannot overlap with the range used by any application VPC you want to peer.
+    - The VPC reserves a range of IP addresses for the network. The range can't overlap with the range used by any application VPC you want to peer.
 
     - VPCs are configured on the [VPCs](../cloud-add-vpc/) page of the **VPC Network** tab on the **Network Access** page.
 
     - The status of the VPC is _Active_ when done.
 
-    - Once the VPC is created, you can [deploy a cluster in the VPC](../cloud-add-vpc/#deploy-a-cluster-in-a-vpc); you do not need to wait until the VPC is peered.
+    - Once the VPC is created, you can [deploy a cluster in the VPC](../cloud-add-vpc/#deploy-a-cluster-in-a-vpc); you don't need to wait until the VPC is peered.
 
 1. [Create a peering connection](../cloud-add-peering/) between the VPC and the application VPC on the cloud provider network.
 
     - Peering connections are configured on the [Peering Connections](../cloud-add-peering) page of the **VPC Network** tab on the **Network Access** page.
 
-    - The status of the peering connection is _Pending_ when done.
+    - The status of the peering connection is _Pending_ when done; to make the connection active, you must configure your cloud provider.
 
 1. Configure your cloud provider to confirm the connection.
 

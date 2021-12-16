@@ -11,7 +11,7 @@ To obtain these details, navigate to your GCP [VPC networks](https://console.clo
 To create a peering connection, do the following:
 
 1. On the **Network Access** page, select **VPC Network**, then **Peering Connections**.
-1. Click **Create Peering** to display the **Create Peering** sheet.
+1. Click **Add Peering Connection** to display the **Create Peering** sheet.
 1. Enter a name for the peering connection.
 1. Choose **GCP**.
 1. Choose the Yugabyte Cloud VPC. Only VPCs that use GCP are listed.
@@ -24,7 +24,7 @@ The peering connection is created with a status of _Pending_. To complete the pe
 
 To complete a _Pending_ peering connection, you need to sign in to GCP and create a peering connection.
 
-You will need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the **VPC Details** sheet on the **VPCs** page or the **Peering Details** sheet on the **Peering Connections** page.
+You'll need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the **VPC Details** sheet on the **VPCs** page or the **Peering Details** sheet on the **Peering Connections** page.
 
 In the Google Cloud Console, do the following:
 
