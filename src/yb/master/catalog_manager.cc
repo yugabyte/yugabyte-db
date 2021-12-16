@@ -2861,6 +2861,32 @@ size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placeme
   return ts_descs.size();
 }
 
+namespace {
+
+int GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info) {
+  return placement_info.num_replicas() > 0 ?
+      placement_info.num_replicas() : FLAGS_replication_factor;
+}
+
+Status CheckNumReplicas(const PlacementInfoPB& placement_info,
+                        const TSDescriptorVector& ts_descs,
+                        const vector<Partition>& partitions,
+                        CreateTableResponsePB* resp) {
+  int max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
+  int num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
+  if (num_replicas > 1 && max_tablets > 0 && partitions.size() > max_tablets) {
+    std::string msg = Substitute("The requested number of tablets ($0) is over the permitted "
+                                 "maximum ($1)", partitions.size(), max_tablets);
+    Status s = STATUS(InvalidArgument, msg);
+    LOG(WARNING) << msg;
+    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
+  }
+
+  return Status::OK();
+}
+
+} // namespace
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -3023,6 +3049,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Get placement info.
   const ReplicationInfoPB& replication_info = VERIFY_RESULT(
     GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
+  const PlacementInfoPB& placement_info = replication_info.live_replicas();
 
   // Calculate number of tablets to be used. Priorities:
   //   1. Use Internally specified value from 'CreateTableRequestPB::num_tablets'.
@@ -3046,7 +3073,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
     const auto num_live_tservers =
-        GetNumLiveTServersForPlacement(replication_info.live_replicas().placement_uuid());
+        GetNumLiveTServersForPlacement(placement_info.placement_uuid());
     num_tablets = num_live_tservers * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
                                                    : FLAGS_yb_num_shards_per_tserver);
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
@@ -3087,6 +3114,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // The vector 'partitions' contains real setup partitions, so the variable
     // should be updated.
     num_tablets = partitions.size();
+  }
+
+  TSDescriptorVector all_ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
+  RETURN_NOT_OK(CheckNumReplicas(placement_info, all_ts_descs, partitions, resp));
+
+  ValidateReplicationInfoResponsePB validate_resp;
+  s = CheckValidPlacementInfo(placement_info, all_ts_descs, &validate_resp);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), validate_resp.mutable_error()->code(), s);
   }
 
   LOG(INFO) << "Set number of tablets: " << num_tablets;
@@ -3131,12 +3168,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   LOG(INFO) << "CreateTable with IndexInfo " << AsString(index_info);
-  TSDescriptorVector all_ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
-  s = CheckValidReplicationInfo(replication_info, all_ts_descs, partitions, resp);
-  if (!s.ok()) {
-    return s;
-  }
 
   scoped_refptr<TableInfo> table;
   TabletInfos tablets;
@@ -3464,36 +3495,15 @@ Result<TabletInfos> CatalogManager::CreateTabletsFromTable(const vector<Partitio
   return tablets;
 }
 
-int CatalogManager::GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info) {
-  return placement_info.num_replicas() > 0 ?
-      placement_info.num_replicas() : FLAGS_replication_factor;
-}
-
-Status CatalogManager::CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
-                                                 const TSDescriptorVector& all_ts_descs,
-                                                 const vector<Partition>& partitions,
-                                                 CreateTableResponsePB* resp) {
-  return CheckValidPlacementInfo(replication_info.live_replicas(), all_ts_descs, partitions, resp);
-}
-
 Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_info,
                                                const TSDescriptorVector& ts_descs,
-                                               const vector<Partition>& partitions,
-                                               CreateTableResponsePB* resp) {
+                                               ValidateReplicationInfoResponsePB* resp) {
   // Verify that the total number of tablets is reasonable, relative to the number
   // of live tablet servers.
   int num_live_tservers = ts_descs.size();
   int num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
-  int max_tablets = FLAGS_max_create_tablets_per_ts * num_live_tservers;
   Status s;
   string msg;
-  if (num_replicas > 1 && max_tablets > 0 && partitions.size() > max_tablets) {
-    msg = Substitute("The requested number of tablets ($0) is over the permitted maximum ($1)",
-                     partitions.size(), max_tablets);
-    s = STATUS(InvalidArgument, msg);
-    LOG(WARNING) << msg;
-    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
-  }
 
   // Verify that the number of replicas isn't larger than the number of live tablet
   // servers.
@@ -9626,6 +9636,18 @@ Status CatalogManager::SetClusterConfig(
   RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), cluster_config_));
 
   l.Commit();
+
+  return Status::OK();
+}
+
+Status CatalogManager::ValidateReplicationInfo(
+    const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
+  TSDescriptorVector all_ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
+  Status s = CheckValidPlacementInfo(req->replication_info().live_replicas(), all_ts_descs, resp);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
 
   return Status::OK();
 }
