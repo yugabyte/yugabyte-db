@@ -216,7 +216,9 @@ docker pull yugabytedb/yugabyte:2.11.1.0-b305
 
 #### Yugabyte Platform
 
-* You may see a "Warning: cronjobs are not active on some nodes" message on the Universe health check page, even when cron jobs are active on the database nodes. To remove the warning:
+* [PLAT-2487] When you add read replicas, the instance type and volume may not show any values. Re-select the provider and the values should populate correctly as primary cluster.
+
+* [PLAT-2490] You may see a "Warning: cronjobs are not active on some nodes" message on the Universe health check page, even when cron jobs are active on the database nodes. To remove the warning:
 
   * For Replicated- and Yugabundle-based Platform installs, launch the `devops/bin/edit_universe_details.py` script and globally replace the value of `cronsActive` field from `true` to `false`. The number of `cronsActive` entries corresponds to the number of database nodes in your universe &mdash; you need to replace all of them.
 
