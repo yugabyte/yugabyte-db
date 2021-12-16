@@ -959,12 +959,13 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 
 					/*
 						* If there's no non-nulls, the scan qual is unsatisfiable
-						* TODO(rajukumaryb): when num_nonnulls is zero, the query should not be
-						* sent to DocDB as it will return rows that will all be dropped.
 						* Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
 						*/
 					if (num_nonnulls == 0)
+					{
+						ybScan->quit_scan = true;
 						break;
+					}
 
 					/* Build temporary vars */
 					IndexScanDescData tmp_scan_desc;
@@ -1402,6 +1403,9 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
 	Relation    index    = ybScan->index;
 	IndexTuple  tup      = NULL;
+
+	if (ybScan->quit_scan)
+		return NULL;
 
 	/*
 	 * YB Scan may not be able to push down the scan key condition so we may
