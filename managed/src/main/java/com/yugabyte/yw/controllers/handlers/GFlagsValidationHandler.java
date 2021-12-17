@@ -112,6 +112,9 @@ public class GFlagsValidationHandler {
 
   private String checkValueType(String inputValue, String expectedType) {
     String errorString = null;
+    if (inputValue == null) {
+      return errorString;
+    }
     switch (expectedType) {
       case "bool":
         if (!(inputValue.equals("true") || inputValue.equals("false"))) {
