@@ -154,6 +154,7 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
                                    YBCPgOid database_oid,
                                    YBCPgOid tablegroup_oid,
+                                   YBCPgOid tablespace_oid,
                                    YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle);
 
