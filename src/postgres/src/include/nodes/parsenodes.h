@@ -2197,12 +2197,6 @@ typedef struct CreateTableGroupStmt
 	char 	   *tablespacename;
 } CreateTableGroupStmt;
 
-typedef struct DropTableGroupStmt
-{
-	NodeTag		type;
-	char 		 *tablegroupname;
-} DropTableGroupStmt;
-
 /* ----------------------
  * YugaByte Tablegroup options
  * ----------------------
