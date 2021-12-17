@@ -20,6 +20,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -117,7 +118,14 @@ public class CustomerConfig extends Model {
       new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
 
   public Map<String, String> dataAsMap() {
-    return new ObjectMapper().convertValue(data, Map.class);
+    Map<String, String> result = new ObjectMapper().convertValue(data, Map.class);
+    // Remove not String values.
+    for (Entry<String, String> entry : result.entrySet()) {
+      if (!(entry.getValue() instanceof String)) {
+        result.remove(entry.getKey());
+      }
+    }
+    return result;
   }
 
   public CustomerConfig generateUUID() {

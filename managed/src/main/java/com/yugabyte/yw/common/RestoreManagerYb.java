@@ -1,12 +1,13 @@
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
-import com.yugabyte.yw.forms.RestoreBackupParams.BackupData;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -23,7 +24,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import play.libs.Json;
 
 @Singleton
@@ -37,7 +37,6 @@ public class RestoreManagerYb extends DevopsBase {
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
-  private static final String BACKUP_LOCATION = "BACKUP_LOCATION";
 
   @Inject CustomerConfigService customerConfigService;
 
@@ -119,7 +118,7 @@ public class RestoreManagerYb extends DevopsBase {
 
     if (actionType.equals(ActionType.RESTORE)) {
       if (restoreBackupParams.restoreTimeStamp != null) {
-        String backupLocation = customerConfig.data.get(BACKUP_LOCATION).asText();
+        String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
         String restoreTimeStampMicroUnix =
             getValidatedRestoreTimeStampMicroUnix(
                 restoreBackupParams.restoreTimeStamp,
@@ -210,7 +209,7 @@ public class RestoreManagerYb extends DevopsBase {
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION).asText());
+      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");

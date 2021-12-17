@@ -99,6 +99,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Restore TimeStamp")
   public String restoreTimeStamp = null;
 
+  @ApiModelProperty(value = "Is tablespaces information included")
+  public Boolean useTablespaces = false;
+
   @JsonIgnore
   public Set<String> getTableNames() {
     Set<String> tableNames = new HashSet<>();

@@ -5,7 +5,10 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.DELETE;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -27,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -41,7 +45,9 @@ public class TableManager extends DevopsBase {
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
-  private static final String BACKUP_LOCATION = "BACKUP_LOCATION";
+
+  private static final String REGION_LOCATIONS = "REGION_LOCATIONS";
+  private static final String REGION_NAME = "REGION";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -180,7 +186,7 @@ public class TableManager extends DevopsBase {
         }
         if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.restoreTimeStamp != null) {
-            String backupLocation = customerConfig.data.get(BACKUP_LOCATION).asText();
+            String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
             String restoreTimeStampMicroUnix =
                 getValidatedRestoreTimeStampMicroUnix(
                     backupTableParams.restoreTimeStamp,
@@ -188,6 +194,26 @@ public class TableManager extends DevopsBase {
                     backupLocation);
             commandArgs.add("--restore_time");
             commandArgs.add(restoreTimeStampMicroUnix);
+          }
+        }
+        if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)
+            && !customerConfig.name.toLowerCase().equals("nfs")) {
+          // For non-nfs configurations we are adding region configurations.
+          JsonNode regions = customerConfig.getData().get(REGION_LOCATIONS);
+          if ((regions != null) && regions.isArray()) {
+            for (JsonNode regionSettings : regions) {
+              JsonNode regionName = regionSettings.get(REGION_NAME);
+              JsonNode regionLocation = regionSettings.get(REGION_LOCATION_FIELDNAME);
+              if ((regionName != null)
+                  && !StringUtils.isEmpty(regionName.asText())
+                  && (regionLocation != null)
+                  && !StringUtils.isEmpty(regionLocation.asText())) {
+                commandArgs.add("--region");
+                commandArgs.add(regionName.asText().toLowerCase());
+                commandArgs.add("--region_location");
+                commandArgs.add(regionLocation.asText());
+              }
+            }
           }
         }
         addCommonCommandArgs(
@@ -331,8 +357,9 @@ public class TableManager extends DevopsBase {
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION).asText());
+      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
+
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));
@@ -340,6 +367,9 @@ public class TableManager extends DevopsBase {
     commandArgs.add(backupTableParams.actionType.name().toLowerCase());
     if (backupTableParams.enableVerboseLogs) {
       commandArgs.add("--verbose");
+    }
+    if (backupTableParams.useTablespaces) {
+      commandArgs.add("--use_tablespaces");
     }
   }
 
