@@ -547,6 +547,36 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "flush_sys_catalog", 
+      "[timeout_in_seconds] (default 20)"
+      "[ADD_INDEXES] (default false)",
+      [client](const CLIArguments& args) -> Status {
+        int timeout_secs = 20;
+        bool add_indexes = false;
+        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(
+          args.begin() + 1, args.end()));
+        RETURN_NOT_OK_PREPEND(
+            client->FlushSysCatalog(timeout_secs),
+            Substitute("Unable to flush table sys_catalog"));
+        return Status::OK();
+      });
+
+  Register(
+        " compact_sys_catalog",
+        "[timeout_in_seconds] (default 20)"
+        "[ADD_INDEXES] (default false)",
+        [client](const CLIArguments& args) -> Status {
+        int timeout_secs = 20;
+        bool add_indexes = false;
+        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(
+          args.begin() + 1, args.end()));
+        RETURN_NOT_OK_PREPEND(
+            client->CompactSysCatalog(timeout_secs),
+            Substitute("Unable to compact table sys_catalog"));
+        return Status::OK();
+      });
+
+  Register(
       "delete_index_by_id", " <index_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 1) {
