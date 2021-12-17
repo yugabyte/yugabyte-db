@@ -121,6 +121,7 @@ set(COMMON_SRCS
   key_encoder.cc
   partial_row.cc
   pgsql_error.cc
+  placement_info.cc
   ql_bfunc.cc
   ql_datatype.cc
   ql_expr.cc
@@ -204,6 +205,7 @@ ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(ql_table_row-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
+ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(row_key-util-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)

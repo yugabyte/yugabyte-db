@@ -167,7 +167,11 @@ class ArenaBase {
   uint8_t *AddSlice(const Slice& value);
 
   // Same as above.
-  void * AddBytes(const void *data, size_t len);
+  void* AddBytes(const void *data, size_t len);
+
+  Slice DupSlice(const Slice& value) {
+    return Slice(AddSlice(value), value.size());
+  }
 
   // Handy wrapper for placement-new
   template<class T, class... Args>

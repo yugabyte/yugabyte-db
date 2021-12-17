@@ -149,7 +149,7 @@ void GenericCalculatorService::GenericCalculatorService::DoAdd(InboundCall* inco
 
   AddResponsePB resp;
   resp.set_result(req.x() + req.y());
-  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
 void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
@@ -167,7 +167,7 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
     resp.add_sidecars(down_cast<YBInboundCall*>(incoming)->AddRpcSidecar(sidecar.as_slice()));
   }
 
-  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
 void GenericCalculatorService::DoSleep(InboundCall* incoming) {
@@ -183,7 +183,7 @@ void GenericCalculatorService::DoSleep(InboundCall* incoming) {
   LOG(INFO) << "got call: " << req.ShortDebugString();
   SleepFor(MonoDelta::FromMicroseconds(req.sleep_micros()));
   SleepResponsePB resp;
-  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
 void GenericCalculatorService::DoEcho(InboundCall* incoming) {
@@ -198,7 +198,7 @@ void GenericCalculatorService::DoEcho(InboundCall* incoming) {
 
   EchoResponsePB resp;
   resp.set_data(std::move(*req.mutable_data()));
-  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
 namespace {
@@ -306,6 +306,77 @@ class CalculatorService: public CalculatorServiceIf {
       resp->set_name(forwarded_resp.name());
       context.RespondSuccess();
     }
+  }
+
+  void Lightweight(
+      const rpc_test::LWLightweightRequestPB* const_req, rpc_test::LWLightweightResponsePB* resp,
+      RpcContext context) override {
+    auto* req = const_cast<rpc_test::LWLightweightRequestPB*>(const_req);
+
+    resp->set_i32(-req->i32());
+    resp->set_i64(-req->i64());
+    resp->set_f32(req->u32());
+    resp->set_f64(req->u64());
+    resp->set_u32(req->f32());
+    resp->set_u64(req->f64());
+    resp->set_r32(-req->r32());
+    resp->set_r64(-req->r64());
+    resp->ref_str(req->bytes());
+    resp->ref_bytes(req->str());
+    resp->set_en(static_cast<rpc_test::LightweightEnum>(req->en() + 1));
+    resp->set_sf32(req->si32());
+    resp->set_sf64(req->si64());
+    resp->set_si32(req->sf32());
+    resp->set_si64(req->sf64());
+    *resp->mutable_ru32() = req->rf32();
+    *resp->mutable_rf32() = req->ru32();
+
+    resp->mutable_rstr()->assign(req->rstr().rbegin(), req->rstr().rend());
+
+    auto& resp_msg = *resp->mutable_message();
+    const auto& req_msg = req->message();
+    resp_msg.set_sf32(-req_msg.sf32());
+
+    resp_msg.mutable_rsi32()->assign(req_msg.rsi32().rbegin(), req_msg.rsi32().rend());
+
+    resp_msg.dup_str(">" + req_msg.str().ToBuffer() + "<");
+
+    resp_msg.mutable_rbytes()->assign(req_msg.rbytes().rbegin(), req_msg.rbytes().rend());
+
+    for (auto it = req->mutable_repeated_messages()->rbegin();
+         it != req->mutable_repeated_messages()->rend(); ++it) {
+      resp->mutable_repeated_messages()->push_back_ref(&*it);
+    }
+    for (const auto& msg : req->repeated_messages()) {
+      auto temp = CopySharedMessage<rpc_test::LWLightweightSubMessagePB>(msg.ToGoogleProtobuf());
+      resp->mutable_repeated_messages_copy()->emplace_back(*temp);
+    }
+
+    resp->mutable_packed_u64()->assign(req->packed_u64().rbegin(), req->packed_u64().rend());
+
+    resp->mutable_packed_f32()->assign(req->packed_f32().rbegin(), req->packed_f32().rend());
+
+    for (const auto& p : req->pairs()) {
+      auto& pair = *resp->add_pairs();
+      *pair.mutable_s1() = p.s2();
+      *pair.mutable_s2() = p.s1();
+    }
+
+    resp->ref_ptr_message(req->mutable_ptr_message());
+
+    // Should check it before filling map, because map does not preserve order.
+    ASSERT_STR_EQ(AsString(resp->ToGoogleProtobuf()), AsString(*resp));
+
+    for (const auto& p : req->map()) {
+      auto& pair = *resp->add_map();
+      pair.ref_key(p.key());
+      pair.set_value(p.value());
+    }
+
+    req->mutable_map()->clear();
+    resp->dup_short_debug_string(req->ShortDebugString());
+
+    context.RespondSuccess();
   }
 
  private:

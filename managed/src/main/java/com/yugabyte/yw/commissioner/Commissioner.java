@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -41,18 +42,22 @@ public class Commissioner {
 
   private final ExecutorService executor;
 
-  // A map of all task UUID's to the task runner objects for all the user tasks that are currently
+  private final TaskExecutor taskExecutor;
+
+  // A map of all task UUID's to the task runnable objects for all the user tasks that are currently
   // active. Recently completed tasks are also in this list, their completion percentage should be
   // persisted before removing the task from this map.
-  private final Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<>();
+  private final Map<UUID, RunnableTask> runningTasks = new ConcurrentHashMap<>();
 
   @Inject
   public Commissioner(
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
-      PlatformExecutorFactory platformExecutorFactory) {
+      PlatformExecutorFactory platformExecutorFactory,
+      TaskExecutor taskExecutor) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
+    this.taskExecutor = taskExecutor;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
@@ -60,7 +65,7 @@ public class Commissioner {
   }
 
   /**
-   * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
+   * Creates a new task runnable to run the required task, and submits it to a threadpool if needed.
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     try {
@@ -70,22 +75,26 @@ public class Commissioner {
       // TODO: enforce a limit on number of tasks here.
       boolean claimTask = true;
 
-      // Create the task runner object based on the various parameters passed in.
-      TaskRunner taskRunner = TaskRunner.createTask(taskType, taskParams, claimTask);
+      // Create the task runnable object based on the various parameters passed in.
+      RunnableTask taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
 
       if (claimTask) {
-        // Add this task to our queue.
-        runningTasks.put(taskRunner.getTaskUUID(), taskRunner);
-
         // If we had claimed ownership of the task, submit it to the task threadpool.
-        executor.submit(taskRunner);
+        UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
+        // Add this task to our queue.
+        runningTasks.put(taskUUID, taskRunnable);
       }
-      return taskRunner.getTaskUUID();
+      return taskRunnable.getTaskUUID();
     } catch (Throwable t) {
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
       LOG.error(msg, t);
       throw new RuntimeException(msg, t);
     }
+  }
+
+  public boolean abort(UUID taskUUID) {
+    Optional<TaskInfo> optional = taskExecutor.abort(taskUUID);
+    return optional.isPresent();
   }
 
   public ObjectNode getStatusOrBadRequest(UUID taskUUID) {
@@ -158,7 +167,7 @@ public class Commissioner {
       this.executionContext = executionContext;
     }
 
-    public void start(Map<UUID, TaskRunner> runningTasks) {
+    public void start(Map<UUID, RunnableTask> runningTasks) {
       Duration checkInterval = this.progressCheckInterval();
       if (checkInterval.isZero()) {
         log.info(YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL + " set to 0.");
@@ -173,28 +182,27 @@ public class Commissioner {
       }
     }
 
-    private void scheduleRunner(Map<UUID, TaskRunner> runningTasks) {
+    private void scheduleRunner(Map<UUID, RunnableTask> runningTasks) {
       // Loop through all the active tasks.
       try {
-        Iterator<Entry<UUID, TaskRunner>> iter = runningTasks.entrySet().iterator();
+        Iterator<Entry<UUID, RunnableTask>> iter = runningTasks.entrySet().iterator();
         while (iter.hasNext()) {
-          Entry<UUID, TaskRunner> entry = iter.next();
-          TaskRunner taskRunner = entry.getValue();
+          Entry<UUID, RunnableTask> entry = iter.next();
+          RunnableTask taskRunnable = entry.getValue();
 
           // If the task is still running, update its latest timestamp as a part of the heartbeat.
-          if (taskRunner.isTaskRunning()) {
-            taskRunner.doHeartbeat();
-          } else if (taskRunner.hasTaskSucceeded()) {
-            LOG.info("Task " + taskRunner.toString() + " has succeeded.");
+          if (taskRunnable.isTaskRunning()) {
+            taskRunnable.doHeartbeat();
+          } else if (taskRunnable.hasTaskSucceeded()) {
+            LOG.info("Task " + taskRunnable.toString() + " has succeeded.");
             // Remove task from the set of live tasks.
             iter.remove();
-          } else if (taskRunner.hasTaskFailed()) {
-            LOG.info("Task " + taskRunner.toString() + " has failed.");
+          } else if (taskRunnable.hasTaskFailed()) {
+            LOG.info("Task " + taskRunnable.toString() + " has failed.");
             // Remove task from the set of live tasks.
             iter.remove();
           }
         }
-
         // TODO: Scan the DB for tasks that have failed to make progress and claim one if possible.
       } catch (Exception e) {
         log.error("Error running commissioner progress checker", e);

@@ -30,7 +30,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = refreshXClusterConfig();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
 
@@ -41,10 +41,9 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
     try {
       SetupUniverseReplicationResponse resp =
           client.setupUniverseReplication(
-              xClusterConfig.sourceUniverseUUID,
+              xClusterConfig.getReplicationGroupName(),
               taskParams().createFormData.tables,
-              new HashSet<>(NetUtil.parseStringsAsPB(sourceUniverse.getMasterAddresses())),
-              taskParams().createFormData.bootstrapIds);
+              new HashSet<>(NetUtil.parseStringsAsPB(sourceUniverse.getMasterAddresses())));
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(

@@ -28,7 +28,7 @@ public class XClusterConfigDelete extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = refreshXClusterConfig();
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -37,7 +37,7 @@ public class XClusterConfigDelete extends XClusterConfigTaskBase {
 
     try {
       DeleteUniverseReplicationResponse resp =
-          client.deleteUniverseReplication(xClusterConfig.sourceUniverseUUID);
+          client.deleteUniverseReplication(xClusterConfig.getReplicationGroupName());
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(

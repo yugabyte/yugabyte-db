@@ -55,7 +55,7 @@
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
 
-bool yb_force_non_transactional_writes = false;
+bool yb_disable_transactional_writes = false;
 
 /*
  * Hack to ensure that the next CommandCounterIncrement() will call
@@ -314,7 +314,7 @@ Oid YBCExecuteInsertForDb(Oid dboid,
                           TupleDesc tupleDesc,
                           HeapTuple tuple)
 {
-	bool non_transactional = !IsSystemRelation(rel) && yb_force_non_transactional_writes;
+	bool non_transactional = !IsSystemRelation(rel) && yb_disable_transactional_writes;
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,

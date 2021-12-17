@@ -31,7 +31,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -435,6 +434,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .forEach(n -> n.nodeUuid = UUID.randomUUID());
   }
 
+  // This reserves NodeInstances in the DB.
+  // TODO Universe creation can fail during locking after the reservation but it is ok, the task is
+  // not-retryable (updatingTaskUUID is not updated) and it forces user to delete the Universe. But
+  // instances will not be cleaned up because the Universe is not updated with the node names.
+  // Better fix will be to add Universe UUID column in the node_instance such that Universe destroy
+  // does not have to depend on the node names.
   public Map<String, NodeInstance> setOnpremData(Set<NodeDetails> nodes, String instanceType) {
     Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
     for (NodeDetails node : nodes) {
@@ -1184,10 +1189,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param taskParams the given task params(details).
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
-    taskInfo.setTaskDetails(RedactingService.filterSecretFields(Json.toJson(taskParams)));
-    log.debug("Saving task({}) details: {}", taskInfo.getTaskUUID(), taskInfo.getTaskDetails());
-    taskInfo.save();
+    getRunnableTask().setTaskDetails(RedactingService.filterSecretFields(Json.toJson(taskParams)));
   }
 
   /**
@@ -1275,7 +1277,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             universe,
             nodesToBeConfigured,
             ignoreNodeStatus,
-            NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
+            NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
               createConfigureServerTasks(filteredNodes, isShellMode /* isShell */)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);

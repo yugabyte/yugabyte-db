@@ -458,7 +458,13 @@ class NodeChecker():
             message = str(ex)
             return e.fill_and_return_entry([message], True)
 
-        matched = is_equal_release_build(release_build, expected)
+        try:
+            matched = is_equal_release_build(release_build, expected)
+        except RuntimeError as re:
+            return e.fill_and_return_entry(
+                ['Failed to parse node ({}) or expected ({}) build number: {}'.
+                 format(expected, release_build, str(re))],
+                True)
         if not matched:
             return e.fill_and_return_entry(
                 ['Version from platform metadata {}, version reported by instance process {}'.
@@ -698,7 +704,6 @@ class NodeChecker():
     def check_clock_skew(self):
         logging.info("Checking clock synchronization on node {}".format(self.node))
         e = self._new_entry("Clock synchronization")
-        errors = []
 
         remote_cmd = "timedatectl status"
         output = self._remote_check_output(remote_cmd).strip()
@@ -711,12 +716,20 @@ class NodeChecker():
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
 
+        errors = []
+
         if ntp_enabled_answer not in ("yes", "active"):
             if ntp_enabled_answer in ("no", "inactive"):
-                return e.fill_and_return_entry(["NTP disabled"], True)
+                errors.append("NTP disabled")
+            else:
+                errors.append("Error getting NTP state {}".format(ntp_enabled_answer))
 
-            return e.fill_and_return_entry(["Error getting NTP state {}"
-                                            .format(ntp_enabled_answer)], True)
+        clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
+        if clock_re:
+            ntp_service_answer = clock_re.group(4)
+            # Oracle8 NTP service: n/a not supported anymore
+            if ntp_service_answer in ("n/a"):
+                errors = []
 
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
@@ -728,10 +741,10 @@ class NodeChecker():
 
         if ntp_synchronized_answer != "yes":
             if ntp_synchronized_answer == "no":
-                errors = ["NTP desynchronized"]
+                errors.append("NTP desynchronized")
             else:
-                errors = ["Error getting NTP synchronization state {}"
-                          .format(ntp_synchronized_answer)]
+                errors.append("Error getting NTP synchronization state {}"
+                              .format(ntp_synchronized_answer))
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
@@ -795,21 +808,6 @@ def parse_release_build(release_build):
     return match
 
 
-def is_equal_release_build(release_build1, release_build2):
-    parsed_release_build_1 = parse_release_build(release_build1)
-    parsed_release_build_2 = parse_release_build(release_build2)
-    if not parsed_release_build_1 or not parsed_release_build_2:
-        return False
-
-    for i in range(1, 6):
-        component1 = int(parsed_release_build_1.group(i))
-        component2 = int(parsed_release_build_2.group(i))
-        if component1 != component2:
-            # If any component is behind or ahead, release builds are not equal.
-            return False
-    return True
-
-
 def is_equal_or_newer_release_build(current_release_build, threshold_release_build):
     parsed_current_release_build = parse_release_build(current_release_build)
     parsed_threshold_release_build = parse_release_build(threshold_release_build)
@@ -827,6 +825,11 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
             return True
     # If all components were equal, then release builds are compatible.
     return True
+
+
+def is_equal_release_build(release_build1, release_build2):
+    return (is_equal_or_newer_release_build(release_build1, release_build2) and
+            is_equal_or_newer_release_build(release_build2, release_build1))
 
 
 ###################################################################################################
@@ -983,8 +986,12 @@ def main():
         # Technically, each cluster can have its own version, but in practice,
         # we disallow that in YW.
         universe_version = universe.clusters[0].yb_version if universe.clusters else None
-        alert_enhancements_version = is_equal_or_newer_release_build(
-            universe_version, ALERT_ENHANCEMENTS_RELEASE_BUILD)
+        try:
+            alert_enhancements_version = is_equal_or_newer_release_build(
+                universe_version, ALERT_ENHANCEMENTS_RELEASE_BUILD)
+        except RuntimeError as re:
+            logging.info("Failed to check release build: " + str(re))
+            alert_enhancements_version = True
         report = Report(universe_version)
         for c in universe.clusters:
             master_nodes = c.master_nodes

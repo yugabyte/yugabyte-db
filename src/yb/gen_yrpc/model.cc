@@ -61,6 +61,43 @@ size_t FixedSize(const google::protobuf::FieldDescriptor* field) {
   }
 }
 
+std::string MakeLightweightName(const std::string& input) {
+  auto idx = input.find_last_of('.');
+  if (idx != std::string::npos) {
+    ++idx;
+  } else {
+    idx = 0;
+  }
+  return input.substr(0, idx) + "LW" + input.substr(idx);
+}
+
+bool IsLightweightMethod(const google::protobuf::MethodDescriptor* method, rpc::RpcSides side) {
+  const auto& options = method->options().GetExtension(rpc::lightweight_method);
+  if (side == rpc::RpcSides::BOTH) {
+    return options.sides() != rpc::RpcSides::NONE;
+  }
+  return options.sides() == side || options.sides() == rpc::RpcSides::BOTH;
+}
+
+bool HasLightweightMethod(const google::protobuf::ServiceDescriptor* service, rpc::RpcSides side) {
+  for (int i = 0; i != service->method_count(); ++i) {
+    if (IsLightweightMethod(service->method(i), side)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HasLightweightMethod(const google::protobuf::FileDescriptor* file, rpc::RpcSides side) {
+  for (int i = 0; i != file->service_count(); ++i) {
+    if (HasLightweightMethod(file->service(i), side)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 std::string ReplaceNamespaceDelimiters(const std::string& arg_full_name) {
   return JoinStrings(strings::Split(arg_full_name, "."), "::");
 }
@@ -84,13 +121,13 @@ std::string RelativeClassPath(const std::string& clazz, const std::string& servi
 }
 
 std::string UnnestedName(
-    const google::protobuf::Descriptor* message, bool full_path) {
-  auto name = message->name();
+    const google::protobuf::Descriptor* message, Lightweight lightweight, bool full_path) {
+  auto name = lightweight ? MakeLightweightName(message->name()) : message->name();
   if (message->options().map_entry()) {
     name += "_DoNotUse";
   }
   if (message->containing_type()) {
-    return UnnestedName(message->containing_type(), full_path) + "_" + name;
+    return UnnestedName(message->containing_type(), lightweight, full_path) + "_" + name;
   }
   if (full_path) {
     const auto& full_name = message->full_name();
@@ -102,7 +139,7 @@ std::string UnnestedName(
   return name;
 }
 
-std::string MapFieldType(const google::protobuf::FieldDescriptor* field) {
+std::string MapFieldType(const google::protobuf::FieldDescriptor* field, Lightweight lightweight) {
   switch (WireFormatLite::FieldTypeToCppType(FieldType(field))) {
     case WireFormatLite::CppType::CPPTYPE_INT32:
       return "int32_t";
@@ -121,14 +158,17 @@ std::string MapFieldType(const google::protobuf::FieldDescriptor* field) {
     case WireFormatLite::CppType::CPPTYPE_ENUM:
       return RelativeClassPath(
           field->enum_type()->containing_type()
-              ? UnnestedName(field->enum_type()->containing_type(), true) + "." +
+              ? UnnestedName(field->enum_type()->containing_type(), lightweight, true) + "." +
                     field->enum_type()->name()
               : field->enum_type()->full_name(),
           field->containing_type()->full_name());
     case WireFormatLite::CppType::CPPTYPE_STRING:
-      return "std::string";
+      return lightweight ? "::yb::Slice" : "std::string";
     case WireFormatLite::CppType::CPPTYPE_MESSAGE:
-      return RelativeClassPath(UnnestedName(field->message_type(), true),
+      if (IsPbAny(field->message_type()) && lightweight) {
+        return "::yb::rpc::LWAny";
+      }
+      return RelativeClassPath(UnnestedName(field->message_type(), lightweight, true),
                                field->containing_type()->full_name());
     default:
       break;
@@ -142,6 +182,39 @@ bool IsMessage(const google::protobuf::FieldDescriptor* field) {
 
 bool IsSimple(const google::protobuf::FieldDescriptor* field) {
   return !field->is_repeated() && !IsMessage(field);
+}
+
+bool NeedArena(const google::protobuf::Descriptor* message) {
+  const auto& options = message->options().GetExtension(rpc::lightweight_message);
+  if (options.force_arena()) {
+    return true;
+  }
+  for (int i = 0; i != message->field_count(); ++i) {
+    const auto* field = message->field(i);
+    if (IsMessage(field) || StoredAsSlice(field)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsPointerField(const google::protobuf::FieldDescriptor* field) {
+  const auto& lightweight_field_options = field->options().GetExtension(rpc::lightweight_field);
+  return lightweight_field_options.pointer();
+}
+
+bool StoredAsSlice(const google::protobuf::FieldDescriptor* field) {
+  auto type = field->type();
+  return type == google::protobuf::FieldDescriptor::TYPE_BYTES ||
+         type == google::protobuf::FieldDescriptor::TYPE_STRING;
+}
+
+bool IsPbAny(const google::protobuf::Descriptor* message) {
+  return message->full_name() == "google.protobuf.Any";
+}
+
+bool IsLwAny(const google::protobuf::Descriptor* message) {
+  return message->full_name() == "yb.rpc.Any";
 }
 
 } // namespace gen_yrpc

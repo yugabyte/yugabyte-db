@@ -511,4 +511,33 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999");  // Should not exist.
     }
   }
+
+  @Test
+  public void testSedRegExpForYSQLDump() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE ROLE  admin");
+      // Default DB & table owner is ROLE 'yugabyte'.
+      stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT)");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+
+      // Restore with the table owner renaming on fly.
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2",
+          "--edit_ysql_dump_sed_reg_exp", "s|OWNER TO yugabyte_test|OWNER TO admin|");
+
+      // In this DB the table owner was not changed.
+      assertEquals("yugabyte_test", getOwnerForTable(stmt, "test_tbl"));
+    }
+
+    // Verify the changed table owner for the restored table.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertEquals("admin", getOwnerForTable(stmt, "test_tbl"));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
 }

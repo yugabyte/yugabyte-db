@@ -327,9 +327,14 @@ def get_db_name_cmd(dump_file):
     return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
 
 
+def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
+    return "sed -i '{}' {}".format(reg_exp, pipes.quote(dump_file))
+
+
 def replace_db_name_cmd(dump_file, old_name, new_name):
-    return "sed -i 's|DATABASE {}|DATABASE {}|;s|\\\\connect {}|\\\\connect {}|' {}".format(
-        old_name, new_name, old_name, new_name, pipes.quote(dump_file))
+    return apply_sed_edit_reg_exp_cmd(
+        dump_file, "s|DATABASE {0}|DATABASE {1}|;s|\\\\connect {0}|\\\\connect {1}|".format(
+                   old_name, new_name))
 
 
 def get_table_names_str(keyspaces, tables, delimeter, space):
@@ -766,12 +771,16 @@ class YBBackup:
         parser.add_argument(
             '--restore_time', required=False,
             help='The Unix microsecond timestamp to which to restore the snapshot.')
-        parser.add_argument('--upload', dest='upload', action='store_true')
+        parser.add_argument('--upload', dest='upload', action='store_true', default=True)
         # Please note that we have to use this weird naming (i.e. underscore in the argument name)
-        # style to keep it in sync with other arguments in this script.
+        # style to keep it in sync with YB processes G-flags.
         parser.add_argument('--no_upload', dest='upload', action='store_false',
                             help="Skip uploading snapshot")
-        parser.set_defaults(upload=True)
+        parser.add_argument(
+            '--edit_ysql_dump_sed_reg_exp', required=False,
+            help="Regular expression for 'sed' tool to edit on fly YSQL dump file(s) during the "
+                 "backup restoring. Example: \"s|OWNER TO yugabyte|OWNER TO admin|\". WARNING: "
+                 "Contact support team before use! No any backward compatibility guaranties.")
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -2124,9 +2133,23 @@ class YBBackup:
                 old_db_name = self.run_ssh_cmd(cmd, self.get_main_host_ip()).strip()
 
             new_db_name = keyspace_name(self.args.keyspace[0])
-            logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
-                         old_db_name, new_db_name))
-            cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
+            if new_db_name == old_db_name:
+                logging.info("[app] Skip renaming because YSQL DB name was not changed: "
+                             "'{}'".format(old_db_name))
+            else:
+                logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
+                             old_db_name, new_db_name))
+                cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
+
+                if self.args.local_yb_admin_binary:
+                    self.run_program(cmd)
+                else:
+                    self.run_ssh_cmd(cmd, self.get_main_host_ip())
+
+        if self.args.edit_ysql_dump_sed_reg_exp:
+            logging.info("[app] Applying sed regular expression '{}' to {}".format(
+                         self.args.edit_ysql_dump_sed_reg_exp, dump_file_path))
+            cmd = apply_sed_edit_reg_exp_cmd(dump_file_path, self.args.edit_ysql_dump_sed_reg_exp)
 
             if self.args.local_yb_admin_binary:
                 self.run_program(cmd)

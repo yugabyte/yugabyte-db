@@ -13,11 +13,11 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Ebean;
+import java.util.List;
+import java.util.UUID;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.List;
-import java.util.UUID;
 
 @Singleton
 public class CustomerTaskManager {
@@ -100,7 +100,8 @@ public class CustomerTaskManager {
               new String[] {
                 TaskInfo.State.Created.name(),
                 TaskInfo.State.Initializing.name(),
-                TaskInfo.State.Running.name()
+                TaskInfo.State.Running.name(),
+                TaskInfo.State.Abort.name()
               });
       // Retrieve all incomplete customer tasks.
       // TODO It is possible that completion_time == NULL
@@ -113,6 +114,7 @@ public class CustomerTaskManager {
               + "AND ti.task_state IN ('"
               + incompleteStates
               + "')";
+      // TODO use Finder.
       Ebean.createSqlQuery(query)
           .findList()
           .forEach(
