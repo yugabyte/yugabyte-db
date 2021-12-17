@@ -704,7 +704,6 @@ class NodeChecker():
     def check_clock_skew(self):
         logging.info("Checking clock synchronization on node {}".format(self.node))
         e = self._new_entry("Clock synchronization")
-        errors = []
 
         remote_cmd = "timedatectl status"
         output = self._remote_check_output(remote_cmd).strip()
@@ -717,12 +716,20 @@ class NodeChecker():
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
 
+        errors = []
+
         if ntp_enabled_answer not in ("yes", "active"):
             if ntp_enabled_answer in ("no", "inactive"):
-                return e.fill_and_return_entry(["NTP disabled"], True)
+                errors.append("NTP disabled")
+            else:
+                errors.append("Error getting NTP state {}".format(ntp_enabled_answer))
 
-            return e.fill_and_return_entry(["Error getting NTP state {}"
-                                            .format(ntp_enabled_answer)], True)
+        clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
+        if clock_re:
+            ntp_service_answer = clock_re.group(4)
+            # Oracle8 NTP service: n/a not supported anymore
+            if ntp_service_answer in ("n/a"):
+                errors = []
 
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
@@ -734,10 +741,10 @@ class NodeChecker():
 
         if ntp_synchronized_answer != "yes":
             if ntp_synchronized_answer == "no":
-                errors = ["NTP desynchronized"]
+                errors.append("NTP desynchronized")
             else:
-                errors = ["Error getting NTP synchronization state {}"
-                          .format(ntp_synchronized_answer)]
+                errors.append("Error getting NTP synchronization state {}"
+                              .format(ntp_synchronized_answer))
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
