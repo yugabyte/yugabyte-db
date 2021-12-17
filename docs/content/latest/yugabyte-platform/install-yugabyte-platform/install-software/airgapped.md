@@ -99,7 +99,7 @@ You should see an output similar to the following:
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-The next step is to install Yugabyte Platform..
+The next step is to install Yugabyte Platform.
 
 ## Set Up HTTPS (optional)
 

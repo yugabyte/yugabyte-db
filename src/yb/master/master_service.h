@@ -246,6 +246,10 @@ class MasterServiceImpl : public MasterServiceIf,
                                  ChangeMasterClusterConfigResponsePB* resp,
                                  rpc::RpcContext rpc) override;
 
+  void ValidateReplicationInfo(const ValidateReplicationInfoRequestPB* req,
+                               ValidateReplicationInfoResponsePB* resp,
+                               rpc::RpcContext rpc) override;
+
   void GetLoadMoveCompletion(const GetLoadMovePercentRequestPB* req,
                              GetLoadMovePercentResponsePB* resp,
                              rpc::RpcContext rpc) override;

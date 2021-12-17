@@ -174,11 +174,6 @@ class SysCatalogTable {
   // respective placement information.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> ReadPgTablespaceInfo();
 
-  // Parse the binary value present in ql_value into ReplicationInfoPB.
-  Result<boost::optional<ReplicationInfoPB>> ParseReplicationInfo(
-      const TablespaceId& tablespace_id,
-      const vector<QLValuePB>& options);
-
   // Copy the content of co-located tables in sys catalog as a batch.
   CHECKED_STATUS CopyPgsqlTables(const std::vector<TableId>& source_table_ids,
                                  const std::vector<TableId>& target_table_ids,

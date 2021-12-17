@@ -13,7 +13,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.anyList;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -127,7 +127,7 @@ public class UniverseTest extends FakeDBApplication {
   @Test(expected = RuntimeException.class)
   public void testGetUnknownUniverse() {
     UUID unknownUUID = UUID.randomUUID();
-    Universe u = Universe.getOrBadRequest(unknownUUID);
+    Universe.getOrBadRequest(unknownUUID);
   }
 
   @Test
@@ -695,42 +695,69 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetNodeActions() {
-    Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
-    NodeDetails nd = u.getNodes().iterator().next();
+    for (int numNodes = 3; numNodes <= 4; numNodes++) {
+      Universe u = createUniverseWithNodes(3 /* rf */, numNodes, true /* setMasters */);
+      NodeDetails nd = numNodes == 3 ? u.getNode("host-n1") : u.getNode("host-n4");
 
-    for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
-      nd.state = nodeState;
-      Set<NodeActionType> allowedActions = new AllowedActionsHelper(u, nd).listAllowedActions();
+      for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
+        nd.state = nodeState;
+        Set<NodeActionType> allowedActions = new AllowedActionsHelper(u, nd).listAllowedActions();
 
-      if (nodeState == NodeDetails.NodeState.ToBeAdded) {
-        assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.Adding) {
-        assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.InstanceCreated) {
-        assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.ServerSetup) {
-        assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
-        // Cannot REMOVE host-n1: As it will under replicate the masters.
-        assertEquals(ImmutableSet.of(), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
-        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
-        // Cannot REMOVE host-n1: As it will under replicate the masters.
-        assertEquals(ImmutableSet.of(), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.Live) {
-        assertEquals(
-            ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY),
-            allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.Stopped) {
-        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.QUERY), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.Removed) {
-        assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE), allowedActions);
-      } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
-        assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
-      } else {
-        assertTrue(allowedActions.isEmpty());
+        if (nodeState == NodeDetails.NodeState.ToBeAdded) {
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+        } else if (nodeState == NodeDetails.NodeState.Adding) {
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+        } else if (nodeState == NodeDetails.NodeState.InstanceCreated) {
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+        } else if (nodeState == NodeDetails.NodeState.ServerSetup) {
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+        } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
+          if (nd.isMaster) {
+            // Cannot REMOVE master node: As it will under replicate the masters.
+            assertEquals(ImmutableSet.of(), allowedActions);
+          } else {
+            assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+          }
+        } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
+          assertEquals(
+              ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE), allowedActions);
+        } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
+          if (nd.isMaster) {
+            // Cannot REMOVE master node: As it will under replicate the masters.
+            assertEquals(ImmutableSet.of(), allowedActions);
+          } else {
+            assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+          }
+        } else if (nodeState == NodeDetails.NodeState.Live) {
+          assertEquals(
+              ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY),
+              allowedActions);
+        } else if (nodeState == NodeDetails.NodeState.Stopped) {
+          if (nd.isMaster) {
+            // Cannot REMOVE master node: As it will under replicate the masters.
+            assertEquals(
+                ImmutableSet.of(NodeActionType.START, NodeActionType.QUERY), allowedActions);
+          } else {
+            assertEquals(
+                ImmutableSet.of(NodeActionType.START, NodeActionType.REMOVE, NodeActionType.QUERY),
+                allowedActions);
+          }
+        } else if (nodeState == NodeDetails.NodeState.Removed) {
+          assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE), allowedActions);
+        } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
+          if (numNodes == 3) {
+            // Cannot DELETE node from universe with 3 nodes only - will get only two nodes
+            // left.
+            assertEquals(ImmutableSet.of(NodeActionType.ADD), allowedActions);
+          } else {
+            assertEquals(
+                ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
+          }
+        } else {
+          assertTrue(allowedActions.isEmpty());
+        }
       }
+      u.delete();
     }
   }
 
@@ -748,7 +775,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetNodeActions_AllDeletesAllowed() {
-    Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
+    Universe u = createUniverseWithNodes(1 /* rf */, 3 /* numNodes */, true /* setMasters */);
     NodeDetails nd = u.getNodes().iterator().next();
 
     for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
@@ -765,5 +792,22 @@ public class UniverseTest extends FakeDBApplication {
     Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
     assertFalse(actions.contains(NodeActionType.REMOVE));
     assertFalse(actions.contains(NodeActionType.STOP));
+  }
+
+  @Test
+  public void testGetNodeActions_CheckDeletePresence() {
+    Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
+    NodeDetails nd = u.getNodes().iterator().next();
+
+    for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
+      nd.state = nodeState;
+      if (!nd.isRemovable()) {
+        continue;
+      }
+      // It is not allowed to remove normal (state == Decommissioned) node from the
+      // universe if number of nodes become less than RF.
+      Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
+      assertEquals(nodeState != NodeState.Decommissioned, actions.contains(NodeActionType.DELETE));
+    }
   }
 }
