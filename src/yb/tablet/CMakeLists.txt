@@ -30,6 +30,8 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX tablet)
+
 set(TABLET_SRCS
   abstract_tablet.cc
   apply_intents_task.cc

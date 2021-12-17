@@ -11,6 +11,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX pgwrapper)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
