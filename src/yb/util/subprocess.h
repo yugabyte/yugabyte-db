@@ -179,6 +179,9 @@ class Subprocess {
   // (stdout or stderr) into the output parameter.
   CHECKED_STATUS Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
 
+  // Writes pid to cgroup specified by path
+  void AddPIDToCGroup(const string& path, pid_t pid);
+
  private:
   enum State {
     kNotStarted,
