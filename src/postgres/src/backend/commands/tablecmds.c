@@ -13034,6 +13034,20 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		return;
 	}
 
+	if (IsYBRelation(rel)) {
+		Datum *options;
+		int num_options;
+		yb_get_tablespace_options(&options, &num_options, newTableSpace);
+		/*
+		 * Validation should only happen on tablespaces that have a defined replica
+		 * placement
+		 */
+		for (int i = 0; i < num_options; i++) {
+			char *option = VARDATA(options[i]);
+			YBCValidatePlacement(option);
+		}
+	}
+
 	/* Get a modifiable copy of the relation's pg_class row */
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
 

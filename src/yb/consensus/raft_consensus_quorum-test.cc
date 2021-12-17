@@ -186,7 +186,8 @@ class RaftConsensusQuorumTest : public YBTest {
           proxy_factory.get(),
           queue.get(),
           pool_token.get(),
-          logs_[i]);
+          logs_[i],
+          nullptr);
 
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,
@@ -410,10 +411,9 @@ class RaftConsensusQuorumTest : public YBTest {
     std::unique_ptr<LogReader> log_reader;
     EXPECT_OK(log::LogReader::Open(fs_managers_[idx]->env(),
                                    scoped_refptr<log::LogIndex>(),
-                                   kTestTablet,
+                                   "Log reader: ",
                                    fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
                                                                                 kTestTablet),
-                                   fs_managers_[idx]->uuid(),
                                    table_metric_entity_.get(),
                                    tablet_metric_entity_.get(),
                                    &log_reader));

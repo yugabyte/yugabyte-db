@@ -6078,14 +6078,23 @@ xact_redo(XLogReaderState *record)
 		elog(PANIC, "xact_redo: unknown op code %u", info);
 }
 
-void YBSaveDdlHandle(YBCPgStatement handle) {
+void YBSaveDdlHandle(YBCPgStatement handle)
+{
 	CurrentTransactionState->YBPostponedDdlOps = lappend(CurrentTransactionState->YBPostponedDdlOps, handle);
 }
 
-List* YBGetDdlHandles() {
+List* YBGetDdlHandles()
+{
 	return CurrentTransactionState->YBPostponedDdlOps;
 }
 
-void YBClearDdlHandles() {
+void YBClearDdlHandles()
+{
 	CurrentTransactionState->YBPostponedDdlOps = NULL;
+}
+
+void YbClearCurrentTransactionId()
+{
+	CurrentTransactionState->transactionId = InvalidTransactionId;
+	MyPgXact->xid = InvalidTransactionId;
 }

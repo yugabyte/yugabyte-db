@@ -228,7 +228,7 @@ public class SessionController extends AbstractPlatformController {
   @With(TokenAuthenticator.class)
   public Result getFilteredLogs(Integer maxLines, String universeName, String queryRegex) {
     LOG.debug(
-        "getFilteredLogs: maxLines - {}, universeName - {}, queryRegex - {}",
+        "filtered_logs: maxLines - {}, universeName - {}, queryRegex - {}",
         maxLines,
         universeName,
         queryRegex);
@@ -252,7 +252,7 @@ public class SessionController extends AbstractPlatformController {
 
     try {
       Path filteredLogsPath = sessionHandler.getFilteredLogs(maxLines, universe, queryRegex);
-      LOG.debug("filtered logs temporary file path {}", filteredLogsPath.toString());
+      LOG.debug("filtered_logs temporary file path {}", filteredLogsPath.toString());
       InputStream is = Files.newInputStream(filteredLogsPath, StandardOpenOption.DELETE_ON_CLOSE);
       return ok(is).as("text/plain");
     } catch (IOException ex) {

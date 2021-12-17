@@ -199,6 +199,9 @@ class MiniCluster : public MiniClusterBase {
   // The comma separated string of the master adresses host/ports from current list of masters.
   std::string GetMasterAddresses() const;
 
+    // The comma separated string of the tserver adresses host/ports from current list of tservers.
+  std::string GetTserverHTTPAddresses() const;
+
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
 
   tserver::TSTabletManager* GetTabletManager(int idx);
@@ -261,6 +264,9 @@ class MiniCluster : public MiniClusterBase {
 
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
+
+MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> JumpClocks(
+    MiniCluster* cluster, std::chrono::milliseconds delta);
 
 void StepDownAllTablets(MiniCluster* cluster);
 void StepDownRandomTablet(MiniCluster* cluster);
@@ -353,6 +359,9 @@ Result<int> ServerWithLeaders(MiniCluster* cluster);
 // Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
+
+CHECKED_STATUS WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseTimePoint deadline);
 
 }  // namespace yb
 

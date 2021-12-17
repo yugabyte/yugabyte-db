@@ -37,13 +37,14 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-
+#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/substitute.h"
@@ -115,6 +116,7 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
   scoped_refptr<RemoteBootstrapSession> session_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 };
 
 }  // namespace tserver

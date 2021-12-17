@@ -454,7 +454,9 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   DCHECK(!r->closed);
   if (!ok()) return;
   if (r->props.num_entries > 0) {
-    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0);
+    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0)
+        << "New key: " << key.ToDebugHexString()
+        << ", last key: " << Slice(r->last_key).ToDebugHexString();
   }
 
   const auto should_flush_data = r->flush_block_policy->Update(key, value);

@@ -1,10 +1,16 @@
+// Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 
 public class ShellResponse {
-  public int code = 0;
+  // Some known error codes for shell process.
+  public static final int ERROR_CODE_SUCCESS = 0;
+  public static final int ERROR_CODE_GENERIC_ERROR = -1;
+  public static final int ERROR_CODE_EXECUTION_CANCELLED = -2;
+
+  public int code = ERROR_CODE_SUCCESS;
   public String message = null;
   public long durationMs = 0;
   public String description = null;

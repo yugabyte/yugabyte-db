@@ -8,7 +8,11 @@
 [![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://www.yugabyte.com/slack)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
 
-* [What is YugabyteDB?](#what-is-yugabytedb)
+# What is YugabyteDB? 
+
+**YugabyteDB** is a **high-performance, cloud-native distributed SQL database** that aims to support **all PostgreSQL features**. It is best to fit for **cloud-native OLTP (i.e. real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, or globally-distributed deployments.**
+
+* [Core Features](#core-features)
 * [Get Started](#get-started)
 * [Build Apps](#build-apps)
 * [What's being worked on?](#whats-being-worked-on)
@@ -18,11 +22,7 @@
 * [License](#license)
 * [Read More](#read-more)
 
-# What is YugabyteDB?
-
-**YugabyteDB** is a **high-performance, cloud-native distributed SQL database** that aims to support **all PostgreSQL features**. It is best to fit for **cloud-native OLTP (i.e. real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, or globally-distributed deployments.**
-
-The core features of YugabyteDB include:
+# Core Features 
 
 * **Powerful RDBMS capabilities** Yugabyte SQL (*YSQL* for short) reuses the query layer of PostgreSQL (similar to Amazon Aurora PostgreSQL), thereby supporting most of its features (datatypes, queries, expressions, operators and functions, stored procedures, triggers, extensions, etc). Here is a detailed [list of features currently supported by YSQL](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/YSQL-Features-Supported.md).
 
@@ -92,7 +92,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Pessimistic locking Design | PROGRESS  | v2.13  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
 | Make [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) default for YSQL | PLANNING  |  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5239)  |  |
 | Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) | Apply transactions atomically on consumer cluster. |
-
+| Support for GiST indexes | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) |Suppor for GiST (Generalized Search Tree) based index|
 
 ## Recently released features
 
@@ -101,28 +101,13 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | [YSQL-Support `GIN` indexes](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-gin-indexes.md) |  ✅ *DONE*  | v2.11 | [Docs](https://docs.yugabyte.com/latest/explore/ysql-language-features/gin/) | Support for generalized inverted indexes for container data types like jsonb, tsvector, and array |
 | [YSQL-Collation Support](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-collation-support.md)  | ✅ *DONE*  | v2.11           |[Docs](https://docs.yugabyte.com/latest/explore/ysql-language-features/collations/) |Allows specifying the sort order and character classification behavior of data per-column, or even per-operation according to language and country-specific rules           |
 [YSQL-Savepoint Support](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/savepoints.md)  |  ✅ *DONE*  | v2.11     |[Docs](https://docs.yugabyte.com/latest/explore/ysql-language-features/savepoints/) | Useful for implementing complex error recovery in multi-statement transaction|
-| [xCluster replication management through Platform](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/platform-xcluster-replication-management.md) | ✅ *DONE* | v2.11           |        |     
+| [xCluster replication management through Platform](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/platform-xcluster-replication-management.md) | ✅ *DONE* | v2.11           |   [Docs](https://docs.yugabyte.com/latest/yugabyte-platform/create-deployments/async-replication-platform/)     |   
 | [Spring Data YugabyteDB module](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/spring-data-yugabytedb.md) | ✅ *DONE*  | v2.9 | [Track](https://github.com/yugabyte/yugabyte-db/issues/7956) | Bridges the gap for learning the distributed SQL concepts with familiarity and ease of Spring Data APIs |
 | Support Liquibase, Flyway, ORM schema migrations | ✅ *DONE* | v2.9           |           [Docs](https://blog.yugabyte.com/schema-versioning-in-yugabytedb-using-flyway/)      | 
 | [Support `ALTER TABLE` add primary key](https://github.com/yugabyte/yugabyte-db/issues/1124) | ✅ *DONE* | v2.9 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
 | [YCQL-LDAP Support](https://github.com/yugabyte/yugabyte-db/issues/4421) |  ✅ *DONE*  | v2.8           |[Docs](https://docs.yugabyte.com/latest/secure/authentication/ldap-authentication-ycql/#root)  | support LDAP authentication in YCQL API |             
 | [Platform Alerting and Notification](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/) | ✅ *DONE* | v2.8  |  [Docs](https://docs.yugabyte.com/latest/yugabyte-platform/alerts-monitoring/alert/) |  To get notified in real time about database alerts, user defined alert policies notify you when a performance metric rises above or falls below a threshold you set.|      
 | [Platform API](https://blog.yugabyte.com/yugabytedb-2-8-api-automated-operations/) | ✅ *DONE* | v2.8           |   [Docs](https://api-docs.yugabyte.com/docs/yugabyte-platform/ZG9jOjIwMDY0MTA4-platform-api-overview)              |   Securely Deploy YugabyteDB Clusters Using Infrastructure-as-Code|            
-| Support Spark 3.x on YCQL API | ✅ *DONE* | v2.6           |  [Track](https://github.com/yugabyte/yugabyte-db/issues/6488)  |
-| Identity and access management in YSQL | ✅ *DONE*  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) | LDAP and Active Directory support |
-| Follower reads in YSQL | ✅ *BETA* | v2.5 | [Issue](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL.  |
-| YSQL cluster administration features - Node-Level statistics | ✅ *DONE*  | v2.5  | [Issue](https://github.com/yugabyte/yugabyte-db/issues/4194) | Per-node view of currently active queries, find which queries are slow, what active connections are doing, etc. |
-| Support loading large data sets into YSQL using `COPY` | ✅ *DONE*  | v2.5  | [Issue](https://github.com/yugabyte/yugabyte-db/issues/5241) | Improving transactions which have a very large number of operations, as well as provide various options to batch load data more efficiently
-| Database runtime activity monitoring | ✅ *DONE*  | v2.5  | [Issue](https://github.com/yugabyte/yugabyte-db/issues/1331) | Activity monitoring, audit logging, inactivity monitoring |
-| [Online rebuild of indexes](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)  | ✅ *DONE*  | v2.2 |  | Docs coming soon. See [pending enhancements](https://github.com/yugabyte/yugabyte-db/issues/448) |
-| [`DEFERRED` constraints in YSQL](https://github.com/yugabyte/yugabyte-db/issues/4700) | ✅ *DONE* | v2.2 |  | Docs coming soon. See [pending enhancements](https://github.com/yugabyte/yugabyte-db/issues/4700). |
-| [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) GA | ✅ *DONE*  | v2.2  |  | Docs coming soon |
-| [Online schema migration framework](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | ✅ *DONE*  | v2.2 |  | Note that this is just the framework implementation. See [planned enhancements](https://github.com/yugabyte/yugabyte-db/issues/4192) in this area. |
-| [Distributed backups for transactional tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md)    | ✅ *DONE* | v2.2  |  | Docs coming soon. See [pending enhancements](https://github.com/yugabyte/yugabyte-db/issues/2620). |
-| IPV6 support for YugabyteDB | ✅ *DONE*  | v2.2 | | Docs coming soon |
-| [Automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | ✅ *BETA*  | v2.2 | [Docs](https://docs.yugabyte.com/latest/architecture/docdb-sharding/tablet-splitting/) | See [further enhancements](https://github.com/yugabyte/yugabyte-db/issues/1004) |
-| [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) (async cross-cluster replication) | ✅ *DONE* | v2.1 | [Docs](https://docs.yugabyte.com/latest/deploy/multi-dc/2dc-deployment/) |  |
-| [Encryption of data at rest](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md) | ✅ *DONE* | v2.1 | [Docs](https://docs.yugabyte.com/latest/secure/encryption-at-rest/) |  |
 
 # Architecture
 
@@ -132,9 +117,11 @@ Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/arch
 
 # Need Help?
 
-* You can ask questions, find answers, and help others on our Community [Slack](https://www.yugabyte.com/slack) and [Forum](https://forum.yugabyte.com), as well as [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db).
+* You can ask questions, find answers, and help others on our Community [Slack](https://www.yugabyte.com/slack), [Forum](https://forum.yugabyte.com), [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db), as well as Twitter [@Yugabyte](https://twitter.com/yugabyte)
 
-* Please use [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues) to report issues.
+* Please use [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues) to report issues or request new features. 
+
+* To Troubleshoot YugabyteDB, cluser/node level isssues, Please refer to [Troubleshooting documentation](https://docs.yugabyte.com/latest/troubleshoot/)
 
 # Contribute
 
@@ -154,4 +141,6 @@ The build produces two sets of binaries:
 # Read More
 
 * To see our updates, go to [The Distributed SQL Blog](https://blog.yugabyte.com/).
+* For an in-depth design and the YugabyteDB architecture, see our [design specs](https://github.com/yugabyte/yugabyte-db/tree/master/architecture/design).
+* Tech Talks and [Videos](https://www.youtube.com/c/YugaByte).
 * See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/latest/comparisons/).

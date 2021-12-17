@@ -10,7 +10,15 @@ import javax.persistence.Table;
 public class XClusterTableConfig extends Model {
 
   @Column(name = "table_id")
-  public String tableID;
+  private String tableID;
+
+  public String getTableID() {
+    return this.tableID;
+  }
+
+  public void setTableID(String tableID) {
+    this.tableID = tableID;
+  }
 
   public XClusterTableConfig(String tableID) {
     this.tableID = tableID;

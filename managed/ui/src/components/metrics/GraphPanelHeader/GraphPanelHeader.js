@@ -3,7 +3,6 @@
 import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
-import { DateTimePicker } from 'react-widgets';
 import momentLocalizer from 'react-widgets-moment';
 import { withRouter, browserHistory } from 'react-router';
 import moment from 'moment';
@@ -17,6 +16,7 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import './GraphPanelHeader.scss';
+import { CustomDatePicker } from "../CustomDatePicker/CustomDatePicker";
 
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -316,32 +316,18 @@ class GraphPanelHeader extends Component {
       prometheusQueryEnabled,
       customer: { currentUser }
     } = this.props;
-    const { filterType, refreshIntervalLabel } = this.state;
+    const { filterType, refreshIntervalLabel, startMoment, endMoment } = this.state;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
     if (this.state.filterLabel === 'Custom') {
       datePicker = (
-        <span className="graph-filter-custom">
-          <DateTimePicker
-            placeholder="MMM dd, yyyy, hh:mm a"
-            defaultValue={this.state.startMoment.toDate()}
-            onChange={this.handleStartDateChange}
-            max={new Date()}
-          />
-          &ndash;
-          <DateTimePicker
-            placeholder="MMM dd, yyyy, hh:mm a"
-            defaultValue={this.state.endMoment.toDate()}
-            onChange={this.handleEndDateChange}
-            max={new Date()}
-            min={this.state.startMoment.toDate()}
-          />
-          <YBButtonLink
-            btnClass={'btn btn-default custom-filter-btn'}
-            btnIcon={'fa fa-caret-right'}
-            onClick={this.applyCustomFilter}
-          />
-        </span>
+        <CustomDatePicker
+          startMoment={startMoment}
+          endMoment={endMoment}
+          handleTimeframeChange={this.applyCustomFilter}
+          setStartMoment={this.handleStartDateChange}
+          setEndMoment={this.handleEndDateChange}
+        />
       );
     }
 

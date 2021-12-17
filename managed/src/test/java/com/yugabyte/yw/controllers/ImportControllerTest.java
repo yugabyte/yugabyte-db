@@ -313,7 +313,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertInternalServerError(result, "java.lang.RuntimeException: WaitForServer");
+    assertInternalServerError(result, "WaitForServer");
     JsonNode resultJson = Json.parse(contentAsString(result));
     String univUUID = resultJson.get("error").get("universeUUID").asText();
     assertNotNull(univUUID);

@@ -71,7 +71,7 @@ DEFINE_uint64(transaction_min_running_check_interval_ms, 250,
               "long (ms). Used for the optimization that deletes "
               "provisional records RocksDB SSTable files.");
 
-DEFINE_test_flag(double, transaction_ignore_applying_probability_in_tests, 0,
+DEFINE_test_flag(double, transaction_ignore_applying_probability, 0,
                  "Probability to ignore APPLYING update in tests.");
 DEFINE_test_flag(bool, fail_in_apply_if_no_metadata, false,
                  "Fail when applying intents if metadata is not found.");
@@ -1312,7 +1312,7 @@ class TransactionParticipant::Impl
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
     if (RandomActWithProbability(GetAtomicFlag(
-        &FLAGS_TEST_transaction_ignore_applying_probability_in_tests))) {
+        &FLAGS_TEST_transaction_ignore_applying_probability))) {
       VLOG_WITH_PREFIX(2)
           << "TEST: Rejected apply: "
           << FullyDecodeTransactionId(operation->request()->transaction_id());

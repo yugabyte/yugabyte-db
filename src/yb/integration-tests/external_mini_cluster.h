@@ -41,6 +41,8 @@
 #include <thread>
 #include <vector>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus.pb.h"
@@ -250,6 +252,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   string GetMasterAddresses() const;
 
   string GetTabletServerAddresses() const;
+
+  string GetTabletServerHTTPAddresses() const;
 
   // Start a new master with `peer_addrs` as the master_addresses parameter.
   Result<ExternalMaster *> StartMasterWithPeers(const string& peer_addrs);

@@ -134,6 +134,8 @@ set(ENV{YB_BUILD_ROOT} "${YB_BUILD_ROOT}")
 get_filename_component(YB_BUILD_ROOT_PARENT "${YB_BUILD_ROOT}" DIRECTORY)
 message("YB_BUILD_ROOT: ${YB_BUILD_ROOT}")
 
+message("YB_TARGET_ARCH: $ENV{YB_TARGET_ARCH}")
+
 DETECT_NUMBER_OF_PROCESSORS()
 
 # Detect the shared library suffix on this platform
@@ -761,6 +763,7 @@ add_subdirectory(src/yb/rocksdb)
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
 add_subdirectory(src/yb/common)
+add_subdirectory(src/yb/gen_yrpc)
 add_subdirectory(src/yb/fs)
 add_subdirectory(src/yb/server)
 add_subdirectory(src/yb/tablet)

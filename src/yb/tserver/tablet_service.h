@@ -45,6 +45,7 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.service.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -299,6 +300,10 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                                consensus::ConsensusResponsePB *resp,
                                rpc::RpcContext context) override;
 
+  virtual void MultiRaftUpdateConsensus(const consensus::MultiRaftConsensusRequestPB *req,
+                                        consensus::MultiRaftConsensusResponsePB *resp,
+                                        rpc::RpcContext context) override;
+
   virtual void RequestConsensusVote(const consensus::VoteRequestPB* req,
                                     consensus::VoteResponsePB* resp,
                                     rpc::RpcContext context) override;
@@ -336,6 +341,8 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                                     rpc::RpcContext context) override;
 
  private:
+  void CompleteUpdateConsensusResponse(std::shared_ptr<tablet::TabletPeer> tablet_peer,
+                                       consensus::ConsensusResponsePB* resp);
   TabletPeerLookupIf* tablet_manager_;
 };
 

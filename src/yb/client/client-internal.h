@@ -368,6 +368,10 @@ class YBClient::Data {
       YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
       bool* retry = nullptr);
 
+  // Validate replication info as satisfiable for the cluster data.
+  CHECKED_STATUS ValidateReplicationInfo(
+        const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
+
   template <class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (master::MasterServiceProxy::*)(
       const ReqClass &req, RespClass *response, rpc::RpcController *controller,
