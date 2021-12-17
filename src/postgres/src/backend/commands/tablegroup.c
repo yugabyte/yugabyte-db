@@ -187,145 +187,12 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	if (tablespaceId != InvalidOid)
 		recordDependencyOnTablespace(YbTablegroupRelationId, tablegroupoid,
 									 tablespaceId);
+	recordDependencyOnOwner(YbTablegroupRelationId, tablegroupoid, ownerId);
 
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(rel, NoLock);
 
 	return tablegroupoid;
-}
-
-/*
- * Drop a tablegroup
- */
-void
-DropTableGroup(DropTableGroupStmt *stmt)
-{
-	char *tablegroupname = stmt->tablegroupname;
-	HeapScanDesc	scandesc;
-	SysScanDesc		class_scandesc;
-	Relation		rel;
-	Relation		class_rel;
-	HeapTuple		tuple;
-	ScanKeyData		entry[1];
-	Oid				tablegroupoid;
-
-	if (!YbTablegroupCatalogExists)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
-	}
-	/*
-	 * Find the target tuple
-	 */
-	rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
-
-	// Scan pg_tablegroup to find a tuple with a matching name.
-	ScanKeyInit(&entry[0],
-				Anum_pg_yb_tablegroup_grpname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(tablegroupname));
-	scandesc = heap_beginscan_catalog(rel, 1, entry);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
-
-	if (!HeapTupleIsValid(tuple))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("tablegroup \"%s\" does not exist",
-				 tablegroupname)));
-		return;
-	}
-
-	tablegroupoid = HeapTupleGetOid(tuple);
-
-	/* If not superuser check ownership to allow drop. */
-	if (!superuser())
-	{
-		if (!pg_tablegroup_ownercheck(tablegroupoid, GetUserId()))
-			aclcheck_error(ACLCHECK_NOT_OWNER,
-						   OBJECT_YBTABLEGROUP,
-						   tablegroupname);
-	}
-
-	/*
-	 * Search pg_class for a tuple with a matching tablegroup oid in reloptions.
-	 * If found, disallow drop as the tablegroup is non-empty.
-	 * Use pg_class oid index for the systable scan.
-	 */
-	class_rel = heap_open(RelationRelationId, AccessShareLock);
-	class_scandesc = systable_beginscan(class_rel,
-										ClassOidIndexId,
-										true /* indexOk */,
-										NULL, 0, NULL);
-
-	/*
-	 * This is a clunky search. The alternate option is to use RelationIdGetRelation
-	 * to open the relcache entry for every relation and search the rd_options struct
-	 * to find the value of the tablegroup option (if not NULL). This seemed potentially
-	 * dangerous. The current method is inefficient but DROP TABLEGROUP is a fairly rare
-	 * operation.
-	 */
-	HeapTuple pg_class_tuple;
-	TupleDesc pg_class_desc = RelationGetDescr(class_rel);
-	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(class_scandesc)))
-	{
-		bool isnull;
-		Datum datum = fastgetattr(pg_class_tuple,
-								  Anum_pg_class_reloptions,
-								  pg_class_desc,
-								  &isnull);
-
-		if (isnull)
-			continue;
-
-		List *reloptions = untransformRelOptions(datum);
-		ListCell *cell;
-		foreach(cell, reloptions)
-		{
-			DefElem	*defel = (DefElem *) lfirst(cell);
-			if (strcmp(defel->defname, "tablegroup") == 0)
-			{
-				if (tablegroupoid == (Oid) pg_atoi(defGetString(defel), sizeof(Oid), 0))
-				{
-					// Close pg_class
-					systable_endscan(class_scandesc);
-					heap_close(class_rel, NoLock);
-					// Close pg_tablegroup
-					heap_endscan(scandesc);
-					heap_close(rel, NoLock);
-					ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 		 errmsg("tablegroup \"%s\" is not empty",
-								tablegroupname)));
-					return;
-				}
-			}
-		}
-	}
-	// Close pg_class
-	systable_endscan(class_scandesc);
-	heap_close(class_rel, NoLock);
-
-	/* DROP hook for the tablegroup being removed */
-	InvokeObjectDropHook(YbTablegroupRelationId, tablegroupoid, 0);
-
-	/*
-	 * Remove the pg_tablegroup tuple.
-	 */
-	CatalogTupleDelete(rel, tuple);
-
-	deleteSharedDependencyRecordsFor(YbTablegroupRelationId, tablegroupoid, 0 /* objectSubId */);
-
-	heap_endscan(scandesc);
-
-	if (IsYugaByteEnabled())
-	{
-		YBCDropTablegroup(tablegroupoid);
-	}
-
-	/* We keep the lock on pg_tablegroup until commit */
-	heap_close(rel, NoLock);
 }
 
 /*
@@ -480,11 +347,9 @@ void
 RemoveTableGroupById(Oid grp_oid)
 {
 	Relation		pg_tblgrp_rel;
-	SysScanDesc		class_scandesc;
 	HeapScanDesc	scandesc;
 	ScanKeyData		skey[1];
 	HeapTuple		tuple;
-	Relation		class_rel;
 
 	if (!YbTablegroupCatalogExists)
 	{
@@ -514,54 +379,6 @@ RemoveTableGroupById(Oid grp_oid)
 				 		grp_oid)));
 	}
 
-	class_rel = heap_open(RelationRelationId, RowExclusiveLock);
-	class_scandesc = systable_beginscan(class_rel,
-										ClassOidIndexId,
-										true /* indexOk */,
-										NULL, 0, NULL);
-
-	// Scan pg_class for reloptions. See DropTablegroup for more description.
-	HeapTuple pg_class_tuple;
-	TupleDesc pg_class_desc = RelationGetDescr(class_rel);
-	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(class_scandesc)))
-	{
-		bool isnull;
-		Datum datum = fastgetattr(pg_class_tuple,
-								  Anum_pg_class_reloptions,
-								  pg_class_desc,
-								  &isnull);
-
-		if (isnull)
-			continue;
-
-		List *reloptions = untransformRelOptions(datum);
-		ListCell *cell;
-		foreach(cell, reloptions)
-		{
-			DefElem	*defel = (DefElem *) lfirst(cell);
-			if (strcmp(defel->defname, "tablegroup") == 0)
-			{
-				if (grp_oid == (Oid) pg_atoi(defGetString(defel), sizeof(Oid), 0))
-				{
-					// Close pg_class
-					systable_endscan(class_scandesc);
-					heap_close(class_rel, NoLock);
-					// Close pg_tablegroup
-					heap_endscan(scandesc);
-					heap_close(pg_tblgrp_rel, NoLock);
-					ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 		 errmsg("tablegroup with oid \"%u\" is not empty",
-								grp_oid)));
-					return;
-				}
-			}
-		}
-	}
-	// Close pg_class
-	systable_endscan(class_scandesc);
-	heap_close(class_rel, NoLock);
-
 	/* DROP hook for the tablegroup being removed */
 	InvokeObjectDropHook(YbTablegroupRelationId, grp_oid, 0);
 
@@ -571,6 +388,11 @@ RemoveTableGroupById(Oid grp_oid)
 	CatalogTupleDelete(pg_tblgrp_rel, tuple);
 
 	heap_endscan(scandesc);
+
+	if (IsYugaByteEnabled())
+	{
+		YBCDropTablegroup(grp_oid);
+	}
 
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(pg_tblgrp_rel, NoLock);
@@ -734,6 +556,8 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 
 		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
 		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+		changeDependencyOnOwner(YbTablegroupRelationId, tablegroupoid, newOwnerId);
 
 		heap_freetuple(newtuple);
 

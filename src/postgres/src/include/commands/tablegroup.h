@@ -41,7 +41,6 @@
 #include "nodes/parsenodes.h"
 
 extern Oid	CreateTableGroup(CreateTableGroupStmt *stmt);
-extern void DropTableGroup(DropTableGroupStmt *stmt);
 
 extern Oid	get_tablegroup_oid(const char *tablegroupname, bool missing_ok);
 extern Oid  get_tablegroup_oid_by_table_oid(Oid table_oid);

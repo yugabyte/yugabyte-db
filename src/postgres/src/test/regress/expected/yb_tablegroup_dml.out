@@ -326,8 +326,10 @@ LINE 1: SELECT * FROM tab_range2;
 (5 rows)
 
 -- DROP TABLEGROUP
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLEGROUP tg_test1; -- fail
-ERROR:  tablegroup "tg_test1" is not empty
+ERROR:  cannot drop tablegroup tg_test1 because other objects depend on it
+\set VERBOSITY default
 DROP TABLEGROUP tg_test2;
 -- drop database
 \c yugabyte

@@ -677,6 +677,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 	OIDNewHeap = heap_create_with_catalog(NewHeapName,
 										  namespaceid,
 										  NewTableSpace,
+										  InvalidOid, /* tablegroup */
 										  InvalidOid,
 										  InvalidOid,
 										  InvalidOid,
