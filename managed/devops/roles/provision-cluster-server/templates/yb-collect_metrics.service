@@ -3,11 +3,11 @@ Description=Yugabyte collect metrics
 Wants=yb-collect_metrics.timer
 
 [Service]
-User={{ssh_user}}
-Group={{ssh_user}}
+User=yugabyte
+Group=yugabyte
 Type=oneshot
 WorkingDirectory={{yb_home_dir}}/bin
-ExecStart=/bin/bash {{ssh_user_bin_dir}}/collect_metrics_wrapper.sh
+ExecStart=/bin/bash {{yb_home_dir}}/bin/collect_metrics_wrapper.sh
 
 [Install]
 WantedBy=multi-user.target
