@@ -1,0 +1,24 @@
+#contrib/pgcrypto/yb_schedule
+
+test: yb_pg_init
+test: yb_pg_3des
+test: yb_pg_cast5
+test: yb_pg_crypt-des
+test: yb_pg_crypt-xdes
+test: yb_pg_hmac-md5
+test: yb_pg_sha2
+test: yb_pg_blowfish
+test: yb_pg_crypt-blowfish
+test: yb_pg_crypt-md5
+test: yb_pg_des
+test: yb_pg_hmac-sha1
+test: yb_pg_md5
+test: yb_pg_sha1
+test: yb_pg_pgp-pubkey-decrypt
+test: yb_pg_pgp-pubkey-encrypt
+test: yb_pg_pgp-info
+test: yb_pg_pgp-encrypt
+test: yb_pg_pgp-decrypt
+test: yb_pg_pgp-compression
+test: yb_pg_pgp-armor
+
