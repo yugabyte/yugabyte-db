@@ -522,7 +522,6 @@ DropReplicationSlotCmd
 DropRoleStmt
 DropStmt
 DropSubscriptionStmt
-DropTableGroupStmt
 DropTableSpaceStmt
 DropUserMappingStmt
 DropdbStmt

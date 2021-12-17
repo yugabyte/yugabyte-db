@@ -1227,7 +1227,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropReplicationSlotCmd:
 		case T_DropRoleStmt:
 		case T_DropSubscriptionStmt:
-		case T_DropTableGroupStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
 			return true;

@@ -4041,15 +4041,6 @@ _copyCreateTableGroupStmt(const CreateTableGroupStmt *from)
 	return newnode;
 }
 
-static DropTableGroupStmt *
-_copyDropTableGroupStmt(const DropTableGroupStmt *from)
-{
-	DropTableGroupStmt *newnode = makeNode(DropTableGroupStmt);
-
-	COPY_STRING_FIELD(tablegroupname);
-	return newnode;
-}
-
 static CreateTableSpaceStmt *
 _copyCreateTableSpaceStmt(const CreateTableSpaceStmt *from)
 {
@@ -5459,9 +5450,6 @@ copyObjectImpl(const void *from)
 			break;
 		case T_CreateTableGroupStmt:
 			retval = _copyCreateTableGroupStmt(from);
-			break;
-		case T_DropTableGroupStmt:
-			retval = _copyDropTableGroupStmt(from);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _copyCreateTableSpaceStmt(from);

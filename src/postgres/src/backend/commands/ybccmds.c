@@ -144,7 +144,7 @@ YBCDropTablegroup(Oid grpoid)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
-	HandleYBStatus(YBCPgExecDropTablegroup(handle));
+	YBSaveDdlHandle(handle);
 }
 
 

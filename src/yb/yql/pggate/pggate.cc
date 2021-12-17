@@ -867,6 +867,8 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
       return down_cast<PgDropTable*>(handle)->Exec();
     case StmtOp::STMT_DROP_INDEX:
       return down_cast<PgDropIndex*>(handle)->Exec();
+    case StmtOp::STMT_DROP_TABLEGROUP:
+      return down_cast<PgDropTablegroup*>(handle)->Exec();
 
     default:
       break;

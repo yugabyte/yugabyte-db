@@ -1798,13 +1798,6 @@ _equalCreateTableGroupStmt(const CreateTableGroupStmt *a, const CreateTableGroup
 }
 
 static bool
-_equalDropTableGroupStmt(const DropTableGroupStmt *a, const DropTableGroupStmt *b)
-{
-	COMPARE_STRING_FIELD(tablegroupname);
-	return true;
-}
-
-static bool
 _equalOptTableGroup(const OptTableGroup *a, const OptTableGroup *b)
 {
 	COMPARE_STRING_FIELD(tablegroup_name);
@@ -3478,9 +3471,6 @@ equal(const void *a, const void *b)
 			break;
 		case T_CreateTableGroupStmt:
 			retval = _equalCreateTableGroupStmt(a, b);
-			break;
-		case T_DropTableGroupStmt:
-			retval = _equalDropTableGroupStmt(a, b);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);

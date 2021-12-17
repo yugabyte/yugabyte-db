@@ -8328,12 +8328,9 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
     SharedLock lock(mutex_);
     colocated_tablet_ids_map_.erase(table->namespace_id());
   } else if (table->IsTablegroupParentTable()) {
-    // In the case of dropped database/tablegroup parent table, need to delete tablegroup info.
+    // In the case of dropped tablegroup parent table, need to delete tablegroup info.
     SharedLock lock(mutex_);
-    for (auto tgroup : tablegroup_tablet_ids_map_[table->namespace_id()]) {
-      tablegroup_ids_map_.erase(tgroup.first);
-    }
-    tablegroup_tablet_ids_map_.erase(table->namespace_id());
+    tablegroup_ids_map_.erase(table->id().substr(0, 32));
   }
   return Status::OK();
 }
