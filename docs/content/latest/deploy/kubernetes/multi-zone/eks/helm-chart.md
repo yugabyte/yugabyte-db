@@ -160,7 +160,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.11.0           2.11.0.1-b1    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.11.0           2.11.1.0-b305    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
