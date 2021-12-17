@@ -378,6 +378,9 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   template_op_->mutable_request()->set_return_paging_state(true);
+  if (exec_params_.read_from_followers) {
+    template_op_->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+  }
   SetRequestPrefetchLimit();
   SetBackfillSpec();
   SetRowMark();
@@ -397,10 +400,6 @@ Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
 Status PgDocReadOp::CreateRequests() {
   if (request_population_completed_) {
     return Status::OK();
-  }
-
-  if (exec_params_.read_from_followers) {
-    template_op_->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
   }
 
   // All information from the SQL request has been collected and setup. This code populate
