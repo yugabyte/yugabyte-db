@@ -27,10 +27,10 @@ Security features of Yugabyte Cloud include:
     <a class="section-link icon-offset" href="cloud-security-features/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
-        <div class="title">Security features</div>
+        <div class="title">Security architecture</div>
       </div>
       <div class="body">
-        The security features of Yugabyte Cloud.
+        Learn about Yugabyte Cloud's security architecture.
       </div>
     </a>
   </div>

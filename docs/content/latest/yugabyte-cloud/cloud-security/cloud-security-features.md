@@ -1,7 +1,7 @@
 ---
-title: Security features of Yugabyte Cloud
-linkTitle: Security features
-description: Security features of Yugabyte Cloud.
+title: Security architecture
+linkTitle: Architecture
+description: Security architecture of Yugabyte Cloud.
 image: /images/section_icons/index/secure.png
 menu:
   latest:
