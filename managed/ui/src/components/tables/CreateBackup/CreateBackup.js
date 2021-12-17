@@ -114,7 +114,8 @@ export default class CreateBackup extends Component {
         cronExpression: isNonEmptyString(values.cronExpression) ? values.cronExpression : null,
         parallelism: values.parallelism,
         timeBeforeDelete: values.timeBeforeDelete * 24 * 60 * 60 * 1000,
-        actionType: 'CREATE'
+        actionType: 'CREATE',
+        useTablespaces: values.useTablespaces
       };
       try {
         let response = null;
@@ -543,6 +544,7 @@ export default class CreateBackup extends Component {
                     {s3StorageSelected && (
                       <Field name="enableSSE" component={YBFormToggle} label={'Encrypt Backup'} />
                     )}
+                    <Field name="useTablespaces" component={YBFormToggle} label={'Use Tablespaces'} />
                     <Field
                       name="parallelism"
                       component={YBFormInput}
