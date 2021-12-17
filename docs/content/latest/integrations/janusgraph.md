@@ -40,12 +40,20 @@ ycqlsh>
 
 ## 2. Download JanusGraph
 
-Download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses the `0.2.0` version of JanusGraph.
+- Download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses the `0.2.0` version of JanusGraph.
 
 ```sh
 $ wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgraph-0.2.0-hadoop2.zip
 $ unzip janusgraph-0.2.0-hadoop2.zip
-$ cd janusgraph-0.2.0-hadoop2
+$ cd janusgraph-0.2.0-hadoop2/lib
+```
+
+- Download the [cassandra-driver-core-3.8.0-yb-6.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.8.0-yb-6/cassandra-driver-core-3.8.0-yb-6.jar) and copy it into `janusgraph-0.2.0-hadoop2/lib`.
+
+- Rename the existing cassandra driver.
+
+```sh
+mv cassandra-driver-core-3.1.4.jar cassandra-driver-core-3.1.4.jar.orig
 ```
 
 ## 3. Run JanusGraph with YugabyteDB
