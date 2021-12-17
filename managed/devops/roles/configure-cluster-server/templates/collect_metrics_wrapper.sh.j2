@@ -12,16 +12,15 @@ set -euo pipefail
 
 collect_metrics_script=({{ yb_home_dir }}/bin/collect_metrics.sh)
 filename=({{ yb_metrics_dir }}/node_metrics.prom)
-sudo_user={{ ssh_user }}
 
-if [[ "$(id -u)" != "0" && "$USER" != "$sudo_user" ]]; then
-  echo "This script must be run as root or $sudo_user"
+if [[ "$(id -u)" != "0" && "$USER" != "yugabyte" ]]; then
+  echo "This script must be run as root or yugabyte"
   exit 1
 fi
 
 # Just call a script, generated and uploaded by health check process
-if sudo [ -f $collect_metrics_script ]; then
-  sudo /bin/bash $collect_metrics_script -o file -f $filename
+if [ -f $collect_metrics_script ]; then
+  /bin/bash $collect_metrics_script -o file -f $filename
 else
   echo "Metric collection script $collect_metrics_script does not exist"
   exit 1
