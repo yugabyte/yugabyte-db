@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.DELETE;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.RESTORE;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.RESTORE_KEYS;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -43,7 +44,6 @@ public class TableManagerYb extends DevopsBase {
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
-  private static final String BACKUP_LOCATION = "BACKUP_LOCATION";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -168,7 +168,7 @@ public class TableManagerYb extends DevopsBase {
           commandArgs.add("--sse");
         }
         if (backupTableParams.restoreTimeStamp != null) {
-          String backupLocation = customerConfig.data.get(BACKUP_LOCATION).asText();
+          String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
           String restoreTimeStampMicroUnix =
               getValidatedRestoreTimeStampMicroUnix(
                   backupTableParams.restoreTimeStamp,
@@ -349,7 +349,7 @@ public class TableManagerYb extends DevopsBase {
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION).asText());
+      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");
