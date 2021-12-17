@@ -1020,12 +1020,17 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
 
 Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
-                                  const std::string& tablegroup_id) {
+                                  const std::string& tablegroup_id,
+                                  const std::string& tablespace_id) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
   req.set_namespace_id(namespace_id);
   req.set_namespace_name(namespace_name);
+
+  if (!tablespace_id.empty()) {
+    req.set_tablespace_id(tablespace_id);
+  }
 
   int attempts = 0;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();

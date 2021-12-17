@@ -231,9 +231,19 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       "CREATE INDEX invalidPlacementIdx ON negativeTestTable(a) TABLESPACE invalid_tblspc",
       not_enough_tservers_in_zone_msg);
 
+    // Test creation of tablegroup in invalid tablespace.
+    executeAndAssertErrorThrown(
+      "CREATE TABLEGROUP invalidPlacementTablegroup TABLESPACE invalid_tblspc",
+      not_enough_tservers_in_zone_msg);
+
     // Test creation of table when the replication factor cannot be satisfied.
     executeAndAssertErrorThrown(
-      "CREATE TABLE insufficent_rf_tbl (a int) TABLESPACE insufficient_rf_tblspc",
+      "CREATE TABLE insufficentRfTable (a int) TABLESPACE insufficient_rf_tblspc",
+      not_enough_tservers_for_rf_msg);
+
+    // Test creation of tablegroup when the replication factor cannot be satisfied.
+    executeAndAssertErrorThrown(
+      "CREATE TABLEGROUP insufficientRfTablegroup TABLESPACE insufficient_rf_tblspc",
       not_enough_tservers_for_rf_msg);
   }
 
