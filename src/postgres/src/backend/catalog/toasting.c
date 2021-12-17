@@ -262,6 +262,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	toast_relid = heap_create_with_catalog(toast_relname,
 										   namespaceid,
 										   rel->rd_rel->reltablespace,
+										   InvalidOid, /* tablegroup */
 										   toastOid,
 										   toast_typid,
 										   InvalidOid,
