@@ -246,7 +246,8 @@ Status MasterTestBase::DeleteTable(const NamespaceName& namespace_name,
 
 Status MasterTestBase::CreateTablegroup(const TablegroupId& tablegroup_id,
                                         const NamespaceId& namespace_id,
-                                        const NamespaceName& namespace_name) {
+                                        const NamespaceName& namespace_name,
+                                        const TablespaceId& tablespace_id) {
   CreateTablegroupRequestPB req, *request;
   request = &req;
   CreateTablegroupResponsePB resp;
@@ -254,6 +255,7 @@ Status MasterTestBase::CreateTablegroup(const TablegroupId& tablegroup_id,
   request->set_id(tablegroup_id);
   request->set_namespace_id(namespace_id);
   request->set_namespace_name(namespace_name);
+  request->set_tablespace_id(tablespace_id);
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.

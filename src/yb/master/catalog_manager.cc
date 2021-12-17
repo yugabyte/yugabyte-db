@@ -6508,6 +6508,7 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   ctreq.mutable_namespace_()->set_id(req->namespace_id());
   ctreq.set_table_type(PGSQL_TABLE_TYPE);
   ctreq.set_tablegroup_id(req->id());
+  ctreq.set_tablespace_id(req->tablespace_id());
 
   YBSchemaBuilder schemaBuilder;
   schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();

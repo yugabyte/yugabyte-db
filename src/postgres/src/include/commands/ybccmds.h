@@ -45,7 +45,7 @@ extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid
 
 /*  Tablegroup Functions ------------------------------------------------------------------------ */
 
-extern void YBCCreateTablegroup(Oid grpoid);
+extern void YBCCreateTablegroup(Oid grpoid, Oid tablespace_oid);
 
 extern void YBCDropTablegroup(Oid grpoid);
 

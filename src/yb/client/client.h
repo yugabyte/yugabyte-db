@@ -448,7 +448,8 @@ class YBClient {
   // Create a new tablegroup.
   CHECKED_STATUS CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
-                                  const std::string& tablegroup_id);
+                                  const std::string& tablegroup_id,
+                                  const std::string& tablespace_id);
 
   // Delete a tablegroup.
   CHECKED_STATUS DeleteTablegroup(const std::string& namespace_id,

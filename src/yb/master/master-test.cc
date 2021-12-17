@@ -627,7 +627,7 @@ TEST_F(MasterTest, TestTablegroups) {
 
   SetAtomicFlag(true, &FLAGS_TEST_tablegroup_master_only);
   // Create tablegroup and ensure it exists in catalog manager maps.
-  ASSERT_OK(CreateTablegroup(kTablegroupId, ns_id, ns_name));
+  ASSERT_OK(CreateTablegroup(kTablegroupId, ns_id, ns_name, "" /* tablespace_id */));
   SetAtomicFlag(false, &FLAGS_TEST_tablegroup_master_only);
 
   ListTablegroupsRequestPB req;

@@ -140,9 +140,11 @@ Status PgClientSession::CreateTablegroup(
     const PgCreateTablegroupRequestPB& req, PgCreateTablegroupResponsePB* resp,
     rpc::RpcContext* context) {
   auto id = PgObjectId::FromPB(req.tablegroup_id());
+  auto tablespace_id = PgObjectId::FromPB(req.tablespace_id());
   auto s = client().CreateTablegroup(
       req.database_name(), GetPgsqlNamespaceId(id.database_oid),
-      GetPgsqlTablegroupId(id.database_oid, id.object_oid));
+      id.GetYBTablegroupId(),
+      tablespace_id.IsValid() ? tablespace_id.GetYBTablespaceId() : "");
   if (s.ok()) {
     return Status::OK();
   }
