@@ -30,6 +30,8 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX server)
+
 YB_INCLUDE_EXTENSIONS()
 
 #########################################

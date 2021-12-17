@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX util)
+set(YB_PCH_DEP_LIBS cds gmock gutil icui18n icuuc libev protoc)
+
 #######################################
 # protoc-gen-insertions
 #######################################
@@ -325,36 +328,26 @@ add_dependencies(yb_util gen_version_info)
 # yb_test_util
 #######################################
 
-add_library(yb_test_util
-  logging_test_util.cc
-  memory/memory_usage_test_util.cc
-  test_util.cc
-  test_thread_holder.cc)
-target_link_libraries(yb_test_util
-  gflags
-  glog
-  gmock
-  yb_util)
+ADD_YB_TEST_LIBRARY(
+  yb_test_util
+  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
+  DEPS gflags glog gmock yb_util)
 
-add_library(encryption_test_util encryption_test_util.cc header_manager_mock_impl.cc)
-target_link_libraries(encryption_test_util yb_test_util)
+ADD_YB_TEST_LIBRARY(
+  encryption_test_util
+  SRCS encryption_test_util.cc header_manager_mock_impl.cc
+  DEPS yb_test_util)
 
 #######################################
 # yb_test_main
 #######################################
 
-add_library(yb_test_main
-  test_main.cc)
-target_link_libraries(yb_test_main
-  gflags
-  glog
-  gmock
-  yb_util
-  yb_test_util)
+ADD_YB_TEST_LIBRARY(yb_test_main
+                    SRCS test_main.cc
+                    DEPS gflags glog gmock yb_util yb_test_util)
 
 if(NOT APPLE)
-  target_link_libraries(yb_test_main
-    rt)
+  target_link_libraries(yb_test_main rt)
 endif()
 
 #######################################
@@ -460,9 +453,11 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES jsonwriter_test.proto)
-add_library(jsonwriter_test_proto ${JSONWRITER_TEST_PROTO_SRCS} ${JSONWRITER_TEST_PROTO_HDRS})
-target_link_libraries(jsonwriter_test_proto
-  protobuf)
+ADD_YB_LIBRARY(
+    jsonwriter_test_proto
+    SRCS ${JSONWRITER_TEST_PROTO_SRCS} ${JSONWRITER_TEST_PROTO_HDRS})
+add_dependencies(jsonwriter_test_proto ${JSONWRITER_TEST_PROTO_TGTS})
+target_link_libraries(jsonwriter_test_proto protobuf)
 
 #######################################
 # jsonwriter-test
@@ -483,16 +478,10 @@ PROTOBUF_GENERATE_CPP(
     proto_container_test.proto
     proto_container_test2.proto
     proto_container_test3.proto)
-add_library(proto_container_test_proto
-  ${PROTO_CONTAINER_TEST_PROTO_SRCS}
-  ${PROTO_CONTAINER_TEST_PROTO_HDRS})
-add_dependencies(proto_container_test_proto
-  gen_src_yb_util_proto_container_test_proto
-  gen_src_yb_util_proto_container_test2_proto
-  gen_src_yb_util_proto_container_test3_proto
-  )
-target_link_libraries(proto_container_test_proto
-  protobuf)
+ADD_YB_LIBRARY(proto_container_test_proto
+               SRCS ${PROTO_CONTAINER_TEST_PROTO_SRCS} ${PROTO_CONTAINER_TEST_PROTO_HDRS})
+add_dependencies(proto_container_test_proto ${PROTO_CONTAINER_TEST_PROTO_TGTS})
+target_link_libraries(proto_container_test_proto protobuf)
 
 #######################################
 # pb_util-test
