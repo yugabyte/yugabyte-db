@@ -51,20 +51,20 @@ If you have set up a VPC network and are unable to connect, verify the following
 
 #### VPC status is Failed
 
-If you are unable to successfully create the VPC, check that the CIDR range does not overlap with another VPC.
+If you are unable to successfully create the VPC, contact Yugabyte Support.
 
 #### Peering connection status is Pending
 
-A peering connection status of Pending indicates that you need to configure your cloud provider to accept the connection. Refer to [Configure the connection in your cloud provider](#configure-the-connection-in-your-cloud-provider).
+A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Configure the connection in your cloud provider](#configure-the-connection-in-your-cloud-provider).
 
 #### Peering connection status is Expired
 
-AWS only. Expired indicates the peering request was not accepted. Retry the peering request.
+AWS only. The peering request was not accepted. Retry the peering request.
 
 #### Peering connection status is Failed
 
-Check your cloud provider settings to ensure you have entered the correct details for your peering connection.
+Select the peering request to display the Peering Details sheet and check the Peered VPC Details to ensure you entered the correct details for the cloud provider and application VPC.
 
-#### VPC and peering connection are active but you cannot connect to the cluster
+#### VPC and peering connection are active but your application cannot connect to the cluster
 
-Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
+Add the application VPC CIDR address to the [cluster IP allow list](../cloud-basics/add-connections/). Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
