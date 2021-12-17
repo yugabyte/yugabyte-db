@@ -30,7 +30,7 @@
 # under the License.
 #
 
-YB_INCLUDE_EXTENSIONS()
+set(YB_PCH_PREFIX master)
 
 PROTOBUF_GENERATE_CPP(
   MASTER_TYPES_YRPC_SRCS MASTER_TYPES_YRPC_HDRS MASTER_TYPES_YRPC_TGTS
@@ -50,12 +50,13 @@ set(MASTER_YRPC_LIBS
   tablet_proto
   tserver_proto
   wire_protocol_proto
-  yb_pgwrapper
   cdc_consumer_proto)
 ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS} ${MASTER_TYPES_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
   NONLINK_DEPS ${MASTER_YRPC_TGTS} ${MASTER_TYPES_YRPC_TGTS})
+
+YB_INCLUDE_EXTENSIONS()
 
 set(MASTER_PROTO_LIBS
   master_proto

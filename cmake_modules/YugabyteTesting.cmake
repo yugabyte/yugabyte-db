@@ -181,3 +181,29 @@ function(ADD_COMMON_YB_TEST_DEPENDENCIES REL_TEST_NAME)
   # Our ctest-based wrapper, run-test.sh, uses this tool to put a time limit on tests.
   ADD_YB_TEST_DEPENDENCIES(${REL_TEST_NAME} run-with-timeout)
 endfunction()
+
+function(ADD_YB_TEST_LIBRARY LIB_NAME)
+  # Parse the arguments.
+  set(options "")
+  set(one_value_args COMPILE_FLAGS)
+  set(multi_value_args SRCS DEPS NONLINK_DEPS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  # This is used to let add_library know whether we're adding a test.
+  set(YB_ADDING_TEST_EXECUTABLE "TRUE" CACHE INTERNAL "" FORCE)
+  add_library(${LIB_NAME} ${ARG_SRCS})
+  set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "" FORCE)
+
+  if(ARG_COMPILE_FLAGS)
+    set_target_properties(${LIB_NAME}
+      PROPERTIES COMPILE_FLAGS ${ARG_COMPILE_FLAGS})
+  endif()
+  target_link_libraries(${LIB_NAME} ${ARG_DEPS})
+  yb_remember_dependency(${LIB_NAME} ${ARG_DEPS})
+  if(ARG_NONLINK_DEPS)
+    add_dependencies(${LIB_NAME} ${ARG_NONLINK_DEPS})
+  endif()
+endfunction()

@@ -352,6 +352,7 @@ uint32_t ExtendImpl(uint32_t crc, const char* buf, size_t size) {
   uint64_t l = crc ^ 0xffffffffu;
 
 // Align n to (1 << m) byte boundary
+#undef ALIGN
 #define ALIGN(n, m)     ((n + ((1 << m) - 1)) & ~((1 << m) - 1))
 
 #define STEP1 do {                              \

@@ -19,10 +19,10 @@ add_subdirectory(sem)
 add_subdirectory(exec)
 add_subdirectory(test)
 
-add_library(ql_api statement.cc ql_processor.cc)
-target_link_libraries(ql_api
-                      ql_parser
-                      ql_audit
-                      ql_sem
-                      ql_exec
-                      ql_util)
+ADD_YB_LIBRARY(ql_api
+               SRCS statement.cc ql_processor.cc
+               DEPS ql_parser ql_audit ql_sem ql_exec ql_util)
+
+if(${YB_PCH_ON})
+  target_precompile_headers(ql_api REUSE_FROM ql_util)
+endif()

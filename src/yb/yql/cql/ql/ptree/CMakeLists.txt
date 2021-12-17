@@ -57,3 +57,7 @@ add_library(ql_ptree
 
 target_link_libraries(ql_ptree ql_util yb_client yb_util yb_bfql yb_common)
 add_dependencies(ql_ptree yb_bfql)
+
+if(${YB_PCH_ON})
+  target_precompile_headers(ql_ptree REUSE_FROM ql_util)
+endif()
