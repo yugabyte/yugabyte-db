@@ -31,8 +31,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef STRINGS_SPLIT_H_
-#define STRINGS_SPLIT_H_
+#ifndef YB_GUTIL_STRINGS_SPLIT_H
+#define YB_GUTIL_STRINGS_SPLIT_H
 
 #include <stddef.h>
 #include <algorithm>
@@ -42,12 +42,6 @@ using std::min;
 using std::reverse;
 using std::sort;
 using std::swap;
-#include <ext/hash_map>
-using __gnu_cxx::hash;
-using __gnu_cxx::hash_map;
-#include <ext/hash_set>
-using __gnu_cxx::hash;
-using __gnu_cxx::hash_set;
 #include <iterator>
 using std::back_insert_iterator;
 using std::iterator_traits;
@@ -576,7 +570,7 @@ inline internal::Splitter<delimiter::Literal, Predicate> Split(
 //    webserver/util/snippets/rewriteboldtags, which considers the width
 //    of the string, not just the number of bytes.
 //
-//    TODO(user) Move ClipString back to strutil.  The problem with this is
+// TODO(user) Move ClipString back to strutil.  The problem with this is
 //    that ClipStringHelper is used behind the scenes by SplitStringToLines, but
 //    probably shouldn't be exposed in the .h files.
 // ----------------------------------------------------------------------
@@ -692,8 +686,6 @@ void SplitGStringPieceToVector(const GStringPiece& full,
 // ----------------------------------------------------------------------
 void SplitStringUsing(const string& full, const char* delimiters,
                       vector<string>* result);
-void SplitStringToHashsetUsing(const string& full, const char* delimiters,
-                               hash_set<string>* result);
 void SplitStringToSetUsing(const string& full, const char* delimiters,
                            set<string>* result);
 // The even-positioned (0-based) components become the keys for the
@@ -703,8 +695,6 @@ void SplitStringToSetUsing(const string& full, const char* delimiters,
 // empty string if the key is a newly inserted key.
 void SplitStringToMapUsing(const string& full, const char* delim,
                            map<string, string>* result);
-void SplitStringToHashmapUsing(const string& full, const char* delim,
-                               hash_map<string, string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringAllowEmpty()
@@ -756,9 +746,6 @@ void SplitStringWithEscapingAllowEmpty(const string& full,
 void SplitStringWithEscapingToSet(const string& full,
                                   const strings::CharSet& delimiters,
                                   set<string>* result);
-void SplitStringWithEscapingToHashset(const string& full,
-                                      const strings::CharSet& delimiters,
-                                      hash_set<string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringIntoNPiecesAllowEmpty()
@@ -1220,4 +1207,4 @@ bool SplitStringAndParseToList(
 // END DOXYGEN SplitFunctions grouping
 /* @} */
 
-#endif  // STRINGS_SPLIT_H_
+#endif  // YB_GUTIL_STRINGS_SPLIT_H

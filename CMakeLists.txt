@@ -39,9 +39,20 @@ message("-- CMAKE_SYSTEM_INFO_FILE: ${CMAKE_SYSTEM_INFO_FILE}")
 message("-- CMAKE_SYSTEM_NAME:      ${CMAKE_SYSTEM_NAME}")
 message("-- CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
 message("-- CMAKE_SYSTEM:           ${CMAKE_SYSTEM}")
+message("-- CMAKE_VERSION:          ${CMAKE_VERSION}")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_standard_modules")
+set(YB_PCH_ON FALSE)
+set(YB_PCH_CODEGEN FALSE)
+if("$ENV{YB_USE_PCH}" STREQUAL "1")
+  set(YB_PCH_ON TRUE)
+  if (APPLE)
+    set(CMAKE_CXX_COMPILE_OPTIONS_INSTANTIATE_TEMPLATES_PCH -fpch-instantiate-templates)
+    list(APPEND CMAKE_CXX_COMPILE_OPTIONS_CREATE_PCH -fpch-codegen -fpch-debuginfo)
+    set(YB_PCH_CODEGEN TRUE)
+  endif()
+endif()
 include(YugabyteFunctions)
 include(YugabyteTesting)
 
@@ -415,10 +426,6 @@ elseif(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
 else()
   message("Not specifying linker flags to not allow any undefined symbols: this is ASAN/TSAN")
 endif()
-
-# We don't want to use any stubs; that's exclusively for builds using our
-# exported client headers).
-ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 
 # compiler flags for different build types (run 'cmake -DCMAKE_BUILD_TYPE=<type> .')
 # For all builds:

@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX common)
+set(YB_PCH_DEP_LIBS gmock gutil yb_test_util yb_util)
+
 PROTOBUF_GENERATE_CPP(
   COMMON_PROTO_SRCS COMMON_PROTO_HDRS COMMON_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
@@ -149,12 +152,6 @@ set(COMMON_SRCS
   ybc-internal.cc
   )
 
-# Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
-# in which it incorrectly optimizes row_key-util.cc and causes incorrect results.
-if ("${COMPILER_FAMILY}" STREQUAL "clang")
-  set_source_files_properties(row_key-util.cc PROPERTIES COMPILE_FLAGS -fwrapv)
-endif()
-
 set(COMMON_LIBS
   yb_common_proto
   yb_common_base
@@ -192,12 +189,9 @@ ADD_YB_LIBRARY(yb_partition
   DEPS ${PARTITION_DEPS}
   )
 
-add_library(yb_common_test_util
-            transaction-test-util.cc
-            wire_protocol-test-util.cc)
-target_link_libraries(yb_common_test_util
-                      yb_common
-                      yb_docdb)
+ADD_YB_TEST_LIBRARY(yb_common_test_util
+                    SRCS transaction-test-util.cc wire_protocol-test-util.cc
+                    DEPS yb_common yb_docdb)
 
 set(YB_TEST_LINK_LIBS yb_common yb_partition yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)

@@ -15,6 +15,8 @@
 # redisserver_service_proto
 #########################################
 
+set(YB_PCH_PREFIX redisserver)
+
 YRPC_GENERATE(
   REDISSERVER_YRPC_SRCS REDISSERVER_YRPC_HDRS REDISSERVER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../..

@@ -11,6 +11,8 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX cqlserver)
+
 #########################################
 # cqlserver_service_proto
 #########################################

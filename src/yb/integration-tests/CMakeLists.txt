@@ -30,6 +30,14 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX integration-tests)
+set(YB_PCH_DEP_LIBS boost_regex)
+
+ADD_YB_TEST_LIBRARY(
+    cdc_test_util
+    SRCS cdc_test_util.cc
+    DEPS yb_test_util cdc_service_proto tserver)
+
 YB_INCLUDE_EXTENSIONS()
 
 set(INTEGRATION_TESTS_SRCS
@@ -50,7 +58,7 @@ set(INTEGRATION_TESTS_SRCS
   ${INTEGRATION_TESTS_SRCS_EXTENSIONS}
 )
 
-add_library(integration-tests ${INTEGRATION_TESTS_SRCS})
+ADD_YB_TEST_LIBRARY(integration-tests SRCS ${INTEGRATION_TESTS_SRCS})
 target_link_libraries(integration-tests
   tserver
   tserver_test_util
@@ -72,11 +80,10 @@ add_dependencies(integration-tests
   yb-tserver
   yb-master)
 
-add_library(cdc_test_util cdc_test_util.cc)
-target_link_libraries(cdc_test_util yb_test_util cdc_service_proto tserver)
-
-add_library(cql_test_util cql_test_base.cc cql_test_util.cc)
-target_link_libraries(cql_test_util cassandra integration-tests yb-cql yb_test_util)
+ADD_YB_TEST_LIBRARY(
+    cql_test_util
+    SRCS cql_test_base.cc cql_test_util.cc
+    DEPS cassandra integration-tests yb-cql yb_test_util)
 
 # Requires ql-dml-test-base, so separating from integration-tests.
 add_library(tablet-split-itest-base tablet-split-itest-base.cc)

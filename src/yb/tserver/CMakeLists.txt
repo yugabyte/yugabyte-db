@@ -30,7 +30,49 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX tserver)
+set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+
 YB_INCLUDE_EXTENSIONS()
+
+#########################################
+# tserver_proto
+#########################################
+
+PROTOBUF_GENERATE_CPP(
+  TSERVER_PROTO_SRCS TSERVER_PROTO_HDRS TSERVER_PROTO_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES tserver.proto)
+set(TSERVER_PROTO_LIBS
+  yb_common_proto
+  consensus_metadata_proto
+  tablet_proto
+  wire_protocol_proto
+  redis_protocol_proto
+  ql_protocol_proto
+  docdb_proto)
+ADD_YB_LIBRARY(tserver_proto
+  SRCS ${TSERVER_PROTO_SRCS}
+  DEPS ${TSERVER_PROTO_LIBS}
+  NONLINK_DEPS ${TSERVER_PROTO_TGTS})
+
+#########################################
+# backup_proto
+#########################################
+
+YRPC_GENERATE(
+  BACKUP_YRPC_SRCS BACKUP_YRPC_HDRS BACKUP_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES backup.proto)
+set(BACKUP_YRPC_LIBS
+  yrpc
+  tserver_proto)
+ADD_YB_LIBRARY(backup_proto
+  SRCS ${BACKUP_YRPC_SRCS}
+  DEPS ${BACKUP_YRPC_LIBS}
+  NONLINK_DEPS ${BACKUP_YRPC_TGTS})
 
 #########################################
 # remote_bootstrap_proto
@@ -54,23 +96,6 @@ ADD_YB_LIBRARY(remote_bootstrap_proto
   NONLINK_DEPS ${REMOTE_BOOTSTRAP_YRPC_TGTS})
 
 #########################################
-# backup_proto
-#########################################
-
-YRPC_GENERATE(
-  BACKUP_YRPC_SRCS BACKUP_YRPC_HDRS BACKUP_YRPC_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES backup.proto)
-set(BACKUP_YRPC_LIBS
-  yrpc
-  tserver_proto)
-ADD_YB_LIBRARY(backup_proto
-  SRCS ${BACKUP_YRPC_SRCS}
-  DEPS ${BACKUP_YRPC_LIBS}
-  NONLINK_DEPS ${BACKUP_YRPC_TGTS})
-
-#########################################
 # pg_client_proto
 #########################################
 
@@ -88,28 +113,6 @@ ADD_YB_LIBRARY(pg_client_proto
   SRCS ${PG_CLIENT_YRPC_SRCS}
   DEPS ${PG_CLIENT_YRPC_LIBS}
   NONLINK_DEPS ${PG_CLIENT_YRPC_TGTS})
-
-#########################################
-# tserver_proto
-#########################################
-
-PROTOBUF_GENERATE_CPP(
-  TSERVER_PROTO_SRCS TSERVER_PROTO_HDRS TSERVER_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES tserver.proto)
-set(TSERVER_PROTO_LIBS
-  yb_common_proto
-  consensus_metadata_proto
-  tablet_proto
-  wire_protocol_proto
-  redis_protocol_proto
-  ql_protocol_proto
-  docdb_proto)
-ADD_YB_LIBRARY(tserver_proto
-  SRCS ${TSERVER_PROTO_SRCS}
-  DEPS ${TSERVER_PROTO_LIBS}
-  NONLINK_DEPS ${TSERVER_PROTO_TGTS})
 
 #########################################
 # tserver_admin_proto

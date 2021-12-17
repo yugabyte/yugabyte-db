@@ -17,3 +17,7 @@ add_library(ql_sem
 target_link_libraries(ql_sem
                       ql_parser
                       yb_util)
+
+if(${YB_PCH_ON})
+  target_precompile_headers(ql_sem REUSE_FROM ql_util)
+endif()

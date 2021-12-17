@@ -11,6 +11,8 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX docdb)
+
 # docdb_proto
 
 PROTOBUF_GENERATE_CPP(

@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX rpc)
+set(YB_PCH_DEP_LIBS cds gmock gutil libev protoc snappy yb_test_util yb_util)
+
 ADD_YB_LIBRARY(
     yrpc_base
     SRCS lightweight_message.cc
@@ -116,8 +119,7 @@ ADD_YB_LIBRARY(yrpc
   SRCS ${YRPC_SRCS}
   DEPS ${YRPC_LIBS})
 
-add_library(rpc_test_util rpc_test_util.cc)
-target_link_libraries(rpc_test_util yrpc)
+ADD_YB_TEST_LIBRARY(rpc_test_util SRCS rpc_test_util.cc DEPS yrpc)
 
 #### RPC test
 PROTOBUF_GENERATE_CPP(
@@ -135,7 +137,9 @@ YRPC_GENERATE(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rtest_diff_package.proto)
-add_library(rtest_diff_package_proto ${RPC_TEST_DIFF_PACKAGE_SRCS} ${RPC_TEST_DIFF_PACKAGE_HDRS})
+ADD_YB_LIBRARY(
+    rtest_diff_package_proto
+    SRCS ${RPC_TEST_DIFF_PACKAGE_SRCS} ${RPC_TEST_DIFF_PACKAGE_HDRS})
 target_link_libraries(rtest_diff_package_proto rpc_header_proto)
 
 YRPC_GENERATE(
@@ -144,15 +148,11 @@ YRPC_GENERATE(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rtest.proto)
-add_library(rtest_yrpc rpc-test-base.cc ${RTEST_YRPC_SRCS} ${RTEST_YRPC_HDRS})
-target_link_libraries(rtest_yrpc
-  yb_test_util
-  any_yrpc
-  yrpc
-  rpc_header_proto
-  rpc_test_util
-  rtest_diff_package_proto
-  lightweight_message_proto)
+ADD_YB_LIBRARY(
+  rtest_yrpc
+  SRCS rpc-test-base.cc ${RTEST_YRPC_SRCS} ${RTEST_YRPC_HDRS}
+  DEPS yb_test_util any_yrpc yrpc rpc_header_proto rpc_test_util rtest_diff_package_proto
+       lightweight_message_proto)
 
 YRPC_GENERATE(
   ANY_YRPC_SRCS ANY_YRPC_HDRS ANY_YRPC_TGTS

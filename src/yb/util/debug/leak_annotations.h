@@ -57,11 +57,26 @@ extern "C" {
 
 namespace yb {
 namespace debug {
+
 class ScopedLSANDisabler {
  public:
-  ScopedLSANDisabler() { __lsan_disable(); }
-  ~ScopedLSANDisabler() { __lsan_enable(); }
+  ScopedLSANDisabler() {
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+    __lsan_disable();
+#endif
+#endif
+  }
+
+  ~ScopedLSANDisabler() {
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+    __lsan_enable();
+#endif
+#endif
+  }
 };
+
 } // namespace debug
 } // namespace yb
 

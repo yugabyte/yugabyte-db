@@ -30,6 +30,8 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX consensus)
+
 #########################################
 # consensus_metadata_proto
 #########################################
@@ -74,6 +76,11 @@ ADD_YB_LIBRARY(consensus_proto
   SRCS ${CONSENSUS_YRPC_SRCS}
   DEPS ${CONSENSUS_YRPC_LIBS}
   NONLINK_DEPS ${CONSENSUS_YRPC_TGTS})
+
+ADD_YB_LIBRARY(
+  consensus_error
+  SRCS consensus_error.cc
+  DEPS consensus_proto yb_util)
 
 #########################################
 # log_proto
@@ -126,12 +133,7 @@ set(CONSENSUS_SRCS
   replicate_msgs_holder.cc
   retryable_requests.cc)
 
-add_library(consensus ${CONSENSUS_SRCS})
-
-ADD_YB_LIBRARY(
-  consensus_error
-  SRCS consensus_error.cc
-  DEPS consensus_proto yb_util)
+ADD_YB_LIBRARY(consensus SRCS ${CONSENSUS_SRCS})
 
 target_link_libraries(consensus
   consensus_error
