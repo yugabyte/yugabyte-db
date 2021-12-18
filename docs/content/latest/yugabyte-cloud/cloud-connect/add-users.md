@@ -39,9 +39,11 @@ To add a database user:
 
 To add or change a password for a user, use the `ALTER ROLE` statement.
 
-For more information on managing users in YSQL, refer to [Enable users in YSQL](../../../secure/enable-authentication/ysql/).
+## Learn more
 
-For more information on managing users in YCQL, refer to [Enable users in YCQL](../../../secure/enable-authentication/ycql/).
+- [Manage Users and Roles in YugabyteDB](../../../secure/authorization/create-roles/)
+
+- [Database authorization in Yugabyte Cloud clusters](../../cloud-security/cloud-users/)
 
 ## Next steps
 
