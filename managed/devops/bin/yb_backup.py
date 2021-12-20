@@ -120,7 +120,7 @@ class SingleArgParallelCmd:
     using the given thread pool. Arguments are first deduplicated, so they have to be hashable.
     Example:
         SingleArgParallelCmd(fn, [a, b, c]).run(pool)
-        -> run in parallel Thread-1: ->  fn(a)
+        -> run in parallel Thread-1: -> fn(a)
                            Thread-2: -> fn(b)
                            Thread-3: -> fn(c)
     """
@@ -1219,6 +1219,7 @@ class YBBackup:
             bash_env_args = " ".join(["{}={}".format(env_name, pipes.quote(env_val)) for
                                      (env_name, env_val) in env_vars.items()])
             cmd = "{} {}".format(bash_env_args, cmd)
+
         if self.is_k8s():
             k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
             return self.run_program([
@@ -1270,11 +1271,16 @@ class YBBackup:
                     if data_dir:
                         data_dirs.append(data_dir)
                 break
+
         if not data_dirs:
             raise BackupException(
                 ("Did not find any data directories in tserver by querying /varz endpoint"
                  " on tserver '{}:{}'. Was looking for '{}', got this: [[ {} ]]").format(
                      tserver_ip, web_port, FS_DATA_DIRS_ARG_PREFIX, output))
+        elif self.args.verbose:
+            logging.info("Found data directories on tablet server '{}': {}".format(
+                tserver_ip, data_dirs))
+
         return data_dirs
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
@@ -1397,6 +1403,11 @@ class YBBackup:
 
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
+
+        # Upload config to every TS here to prevent parallel uploading of the config
+        # in 'find_snapshot_directories' below.
+        if self.has_cfg_file():
+            SingleArgParallelCmd(self.upload_cloud_config, tserver_ips).run(pool)
 
         parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
         tservers_processed = []
