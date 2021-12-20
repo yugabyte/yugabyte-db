@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
@@ -214,7 +215,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        verifyUniverseVersion(expectedUniverseVersion, universe);
+        if (isFirstTryForTask(taskParams())) {
+          // Universe already has a reference to the last task UUID in case of retry.
+          // Check version only when it is a first try.
+          verifyUniverseVersion(expectedUniverseVersion, universe);
+        }
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         if (universeDetails.universePaused && !isResumeOrDelete) {
           String msg = "Universe " + taskParams().universeUUID + " is currently paused";
@@ -495,7 +500,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             if (universeDetails.updateSucceeded) {
               // Clear the task UUID only if the update succeeded.
               universeDetails.updatingTaskUUID = null;
-              universeDetails.firstTry = false;
+              // Do not save the transient state in the universe.
+              universeDetails.nodeDetailsSet.forEach(
+                  n -> {
+                    n.masterState = null;
+                  });
             }
             universe.setUniverseDetails(universeDetails);
           }
@@ -1126,6 +1135,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.opType =
         isAdd ? ChangeMasterConfig.OpType.AddMaster : ChangeMasterConfig.OpType.RemoveMaster;
     params.useHostPort = useHostPort;
+    // Check before the operation for idempotency if it is a retry.
+    // Existing first-try task remains intact.
+    params.checkBeforeChange = !UniverseTaskParams.isFirstTryForTask(taskParams());
     // Create the task.
     ChangeMasterConfig changeConfig = createTask(ChangeMasterConfig.class);
     changeConfig.initialize(params);
