@@ -28,6 +28,7 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
@@ -38,9 +39,9 @@
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
-#include "commands/ybccmds.h"
 #include "commands/tablegroup.h"
 #include "commands/tablecmds.h"
+#include "commands/ybccmds.h"
 
 #include "access/htup_details.h"
 #include "utils/builtins.h"
@@ -490,6 +491,71 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		{
 			primary_key = constraint;
 		}
+	}
+
+	/*
+	 * If this is a partition table, check whether it needs to inherit the same
+	 * primary key as the parent partitioned table.
+	 */
+	if (primary_key == NULL && stmt->partbound)
+	{
+		/*
+		 * This relation is not created yet and not visible to other
+		 * backends. It doesn't really matter what lock we take here.
+		 */
+		Relation rel = relation_open(relationId, AccessShareLock);
+
+		/* Find the parent partitioned table */
+		RangeVar   *rv = (RangeVar *) lfirst(list_head(stmt->inhRelations));
+		Oid	parentOid = RangeVarGetRelid(rv, NoLock, false);
+
+		Relation parentRel = heap_open(parentOid, NoLock);
+		List *idxlist = RelationGetIndexList(parentRel);
+		ListCell *cell;
+		foreach(cell, idxlist)
+		{
+			Relation    idxRel = index_open(lfirst_oid(cell), AccessShareLock);
+			/* Fetch pg_index tuple for source index from relcache entry */
+			if (!((Form_pg_index) GETSTRUCT(idxRel->rd_indextuple))->indisprimary)
+			{
+				/*
+				 * This is not a primary key index so this doesn't matter.
+				 */
+				relation_close(idxRel, AccessShareLock);
+				continue;
+			}
+			AttrNumber *attmap;
+			IndexStmt  *idxstmt;
+			Oid         constraintOid;
+
+			attmap = convert_tuples_by_name_map(RelationGetDescr(rel),
+								RelationGetDescr(parentRel),
+								gettext_noop("could not convert row type"));
+			idxstmt =
+				generateClonedIndexStmt(NULL, RelationGetRelid(rel), idxRel,
+						attmap, RelationGetDescr(rel)->natts,
+						&constraintOid);
+
+			primary_key = makeNode(Constraint);
+			primary_key->contype      = CONSTR_PRIMARY;
+			primary_key->conname      = idxstmt->idxname;
+			primary_key->options      = idxstmt->options;
+			primary_key->indexspace   = idxstmt->tableSpace;
+
+			ListCell *idxcell;
+			foreach(idxcell, idxstmt->indexParams)
+			{
+				IndexElem* ielem = lfirst(idxcell);
+				primary_key->keys =
+					lappend(primary_key->keys, makeString(ielem->name));
+				primary_key->yb_index_params =
+					lappend(primary_key->yb_index_params, ielem);
+			}
+
+			relation_close(idxRel, AccessShareLock);
+		}
+		heap_close(parentRel, NoLock);
+		heap_close(rel, AccessShareLock);
 	}
 
 	/* By default, inherit the colocated option from the database */

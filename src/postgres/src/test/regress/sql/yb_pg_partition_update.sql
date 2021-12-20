@@ -519,3 +519,4 @@ EXPLAIN UPDATE parted SET b='6' WHERE a > 1;
 UPDATE parted SET b='6' WHERE a > 1;
 -- Verify that the updates happened successfully.
 SELECT * FROM parted ORDER BY a;
+DROP TABLE parted;

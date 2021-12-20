@@ -23,7 +23,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgRegressPartitions extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return 1800;
+    return 3000;
   }
 
   @Test
