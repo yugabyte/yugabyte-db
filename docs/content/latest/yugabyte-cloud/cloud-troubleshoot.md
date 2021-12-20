@@ -25,7 +25,7 @@ ysqlsh: could not connect to server: Operation timed out
     TCP/IP connections on port 5433?
 ```
 
-If you are trying to connect to a cluster from your local computer, add your computer to the cluster IP allow list.
+If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-basics/add-connections/). If your IP address has changed, add the new IP address.
 
 If you have a VPC configured, add one or more IP addresses from the peered VPN to the cluster [IP allow list](../cloud-basics/add-connections/).
 
