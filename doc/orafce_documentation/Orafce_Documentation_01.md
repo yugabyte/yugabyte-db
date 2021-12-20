@@ -98,6 +98,8 @@ The table below lists features compatible with Oracle databases.
 |Item|Overview|
 |:---|:---|
 |DECODE|Compares values, and if they match, returns a corresponding value|
+|GREATEST|Returns the greatest of the list of one or more expressions|
+|LEAST|Returns the least of the list of one or more expressions|
 |LNNVL|Evaluates if a value is false or unknown|
 |NANVL|Returns a substitute value when a value is not a number (NaN)|
 |NVL|Returns a substitute value when a value is NULL|

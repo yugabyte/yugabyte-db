@@ -1794,6 +1794,8 @@ SELECT TO_SINGLE_BYTE('******') FROM DUAL;
 The following functions for making comparisons are supported:
 
  - DECODE
+ - GREATEST
+ - LEAST
  - LNNVL
  - NANVL
  - NVL
@@ -1957,7 +1959,51 @@ col1  | num-word
 
 ----
 
-#### 5.5.2 LNNVL
+#### 5.5.2 GREATEST and LEAST
+
+**Description**
+
+The GREATEST and LEAST functions select the largest or smallest value from a list of any number of expressions. The expressions must all be convertible to a common data type, which will be the type of the result
+
+**Syntax**
+
+```
+GREATEST(value [, ...])
+
+LEAST(value [, ...])
+```
+
+**General rules**
+
+ - These two function are the same behavior than the POstgreSQL one except that instead of retunring NULL only when all parameters are NULL ,they return NULL when one of the parameters is NULL like in Oracle.
+
+**Example**
+
+----
+
+In the following example, col1 and col3 of table t1 are returned when col3 has a value of 2000 or less, or null values.
+
+~~~
+SELECT GREATEST ('C', 'F', 'E')
+ greatest
+----------
+ F 
+(1 row)
+~~~
+
+~~~
+\pset null ###
+SELECT LEAST ('C', NULL, 'E')
+ greatest
+----------
+ ###
+(1 row)
+~~~
+
+----
+
+
+#### 5.5.3 LNNVL
 
 **Description**
 
@@ -1991,7 +2037,7 @@ SELECT col1,col3 FROM t1 WHERE LNNVL( col3 > 2000 );
 
 ----
 
-#### 5.5.3 NANVL
+#### 5.5.4 NANVL
 
 **Description**
 
@@ -2024,7 +2070,7 @@ SELECT col1, NANVL(col3,0) FROM t1;
 
 ----
 
-#### 5.5.4 NVL
+#### 5.5.5 NVL
 
 **Description**
 
@@ -2055,7 +2101,7 @@ SELECT col2, NVL(col1,'IS NULL') "nvl" FROM t1;
 
 ----
 
-#### 5.5.5 NVL2
+#### 5.5.6 NVL2
 
 **Description**
 
