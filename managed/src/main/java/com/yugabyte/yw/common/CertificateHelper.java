@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -364,6 +365,29 @@ public class CertificateHelper {
       String keyPath = null;
       CertificateInfo.CustomServerCertInfo customServerCertInfo = null;
       List<X509Certificate> x509CACerts = getX509CertificateCertObject(certContent);
+
+      // Set certStart and certExpiry from X509Certificate if provided null
+      if (certType == Type.CustomCertHostPath) {
+        if (certStart == null || certStart.getTime() == 0) {
+          long certStartTimestamp = 0L;
+          for (X509Certificate cert : x509CACerts) {
+            if (cert.getNotBefore().getTime() > certStartTimestamp) {
+              certStartTimestamp = cert.getNotBefore().getTime();
+            }
+          }
+          certStart = new Date(certStartTimestamp);
+        }
+        if (certExpiry == null || certExpiry.getTime() == 0) {
+          long certExpiryTimestamp = Long.MAX_VALUE;
+          for (X509Certificate cert : x509CACerts) {
+            if (cert.getNotAfter().getTime() < certExpiryTimestamp) {
+              certExpiryTimestamp = cert.getNotAfter().getTime();
+            }
+          }
+          certExpiry = new Date(certExpiryTimestamp);
+        }
+      }
+
       // Verify the uploaded cert is a verified cert chain.
       verifyCertValidity(x509CACerts);
       if (certType == CertificateInfo.Type.SelfSigned) {

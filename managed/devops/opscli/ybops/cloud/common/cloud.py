@@ -357,6 +357,17 @@ class AbstractCloud(AbstractCommandParser):
         except YBOpsRuntimeError:
             logging.debug("Openssl not found, skipping certificate verification.")
             return
+
+        # Verify if root and node certs are valid
+        cert_verify = remote_shell.run_command_raw(
+            ("openssl crl2pkcs7 -nocrl -certfile {} -certfile {} "
+                "| openssl pkcs7 -print_certs -text -noout")
+            .format(root_crt_path, node_crt_path))
+        if cert_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                "Provided certs ({}, {}) are not valid."
+                .format(root_crt_path, node_crt_path))
+
         # Verify if the node cert is not expired
         validity_verify = remote_shell.run_command_raw(
             "openssl x509 -noout -checkend 86400 -in {}".format(node_crt_path))

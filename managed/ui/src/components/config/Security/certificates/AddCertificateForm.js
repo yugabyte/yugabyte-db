@@ -109,8 +109,6 @@ export default class AddCertificateForm extends Component {
     } else if (this.state.tab === 'caSigned') {
       const formValues = {
         label: vals.certName,
-        certStart: Date.now(),
-        certExpiry: vals.certExpiry.valueOf(),
         certType: 'CustomCertHostPath',
         customCertInfo: {
           nodeCertPath: vals.nodeCertPath,
@@ -139,7 +137,9 @@ export default class AddCertificateForm extends Component {
       errors.certName = 'Certificate name is required';
     }
     if (!values.certExpiry) {
-      errors.certExpiry = 'Expiration date is required';
+      if (this.state.tab !== 'caSigned') {
+        errors.certExpiry = 'Expiration date is required';
+      }
     } else {
       const timestamp = Date.parse(values.certExpiry);
       if (isNaN(timestamp) || timestamp < Date.now()) {
@@ -200,20 +200,9 @@ export default class AddCertificateForm extends Component {
       delete newErrors.nodeCertPrivate;
     } else if (this.state.tab !== newTabKey && newTabKey === 'caSigned') {
       setFieldValue('keyContent', null, false);
+      setFieldValue('certStart', null, false);
+      setFieldValue('certExpiry', null, false);
       delete newErrors.keyContent;
-      if (values.certExpiry instanceof Date) {
-        setFieldValue(
-          'certExpiry',
-          new Date(
-            values.certExpiry.toLocaleDateString('default', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric'
-            })
-          ),
-          false
-        );
-      }
     }
     setFieldTouched('keyContent', false);
     setFieldTouched('rootCACert', false);
@@ -356,27 +345,6 @@ export default class AddCertificateForm extends Component {
                     type="text"
                     label="Certificate Name"
                     required
-                  />
-                  <Field
-                    name="certExpiry"
-                    component={YBFormDatePicker}
-                    label="Root Certificate Expiration Date"
-                    formatDate={formatDate}
-                    parseDate={parseDate}
-                    format="LL"
-                    placeholder="Select Date"
-                    dayPickerProps={{
-                      localeUtils: MomentLocaleUtils,
-                      initialMonth: moment().add(1, 'y').toDate(),
-                      disabledDays: {
-                        before: new Date()
-                      }
-                    }}
-                    required
-                    onDayChange={(val) => props.setFieldValue('certExpiry', val)}
-                    pickerComponent={DatePickerInput}
-                    onDayPickerShow={() => this.setState({ isDatePickerFocused: true })}
-                    onDayPickerHide={() => this.setState({ isDatePickerFocused: false })}
                   />
                   <Field
                     name="certContent"
