@@ -3083,6 +3083,12 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "masterState" : {
+          "description" : "Master state",
+          "enum" : [ "None", "ToStart", "Configured", "ToStop" ],
+          "example" : "ToStart",
+          "type" : "string"
+        },
         "nodeExporterPort" : {
           "description" : "Node exporter port",
           "format" : "int32",
@@ -3218,6 +3224,12 @@
           "description" : "Master RCP port",
           "format" : "int32",
           "type" : "integer"
+        },
+        "masterState" : {
+          "description" : "Master state",
+          "enum" : [ "None", "ToStart", "Configured", "ToStop" ],
+          "example" : "ToStart",
+          "type" : "string"
         },
         "nodeExporterPort" : {
           "description" : "Node exporter port",
