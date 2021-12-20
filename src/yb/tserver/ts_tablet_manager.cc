@@ -218,6 +218,8 @@ DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeou
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
+DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
+
 namespace yb {
 namespace tserver {
 
@@ -411,6 +413,9 @@ Status TSTabletManager::Init() {
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
   tablet_options_.listeners = server_->options().listeners;
+  if (docdb::GetRocksDBRateLimiterSharingMode() == docdb::RateLimiterSharingMode::TSERVER) {
+    tablet_options_.rate_limiter = docdb::CreateRocksDBRateLimiter();
+  }
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the

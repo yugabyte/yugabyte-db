@@ -21,6 +21,7 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
 
 #include "yb/tablet/tablet_options.h"
@@ -107,6 +108,18 @@ rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags();
 
 Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value);
+
+// Defines how rate limiter is shared across a node
+YB_DEFINE_ENUM(RateLimiterSharingMode, (NONE)(TSERVER));
+
+// Extracts rate limiter's sharing mode depending on the value of
+// flag `FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode`;
+// `RateLimiterSharingMode::NONE` is returned if extraction failed
+RateLimiterSharingMode GetRocksDBRateLimiterSharingMode();
+
+// Creates `rocksdb::RateLimiter` taking into account related GFlags,
+// calls `rocksdb::NewGenericRateLimiter` internally
+std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter();
 
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
