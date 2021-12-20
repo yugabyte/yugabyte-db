@@ -52,12 +52,13 @@ showAsideToc: true
     </a>
   </li>
 </ul>
+
 ## Prerequisites
 
 This tutorial assumes that:
 
 - YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
-- Set up SSL/TLS depending on the platform you choose to create your local cluster . To set up a cluster in Minikube with SSL/TLS, see [SSL certificates for a cluster in Kubernetes](#set-up-a-cluster-with-minikube-optional).
+- Set up SSL/TLS depending on the platform you choose to create your local cluster. To set up a cluster in Minikube with SSL/TLS, see [SSL certificates for a cluster in Kubernetes](#set-up-a-cluster-with-minikube-optional).
 - Java Development Kit (JDK) 1.8 or later is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 - [OpenSSL](https://www.openssl.org/) 1.1.1 or later is installed.
@@ -77,11 +78,14 @@ This tutorial assumes that:
 1. Verify that SSL is enabled using `ysqlsh`.
 
    ```sh
-   $ ysqlsh
-   ysqlsh (11.2-YB-2.9.0.0-b0)
-   SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
-   Type "help" for help.
-   ```
+    $ ysqlsh
+    ```
+
+    ```output
+    ysqlsh (11.2-YB-2.9.0.0-b0)
+    SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+    Type "help" for help.
+    ```
 
 1. Check for the key and certificate files in yb-tserver.
 
@@ -125,7 +129,7 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
 
     Enter a password when you're prompted to enter one for your keystore.
 
-1. Export the truststore, `<YOURSTOREPASS>` should be the password you would have used for your keystore creation.
+1. Export the truststore. In the following command, replace `<YOURSTOREPASS>` with the password you used for your keystore creation.
 
     ```sh
     $ keytool -exportcert -keystore ybtruststore -alias ybtruststore -storepass <YOURSTOREPASS> -file ybtruststore.crt
