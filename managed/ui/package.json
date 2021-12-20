@@ -106,6 +106,7 @@
     "react-use": "15.3.4",
     "react-widgets": "4.5.0",
     "react-widgets-moment": "4.0.28",
+    "recharts": "2.1.6",
     "redux": "4.0.5",
     "redux-form": "8.3.6",
     "redux-promise": "0.5.3",
