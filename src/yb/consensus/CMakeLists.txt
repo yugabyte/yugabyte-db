@@ -118,6 +118,7 @@ set(CONSENSUS_SRCS
   consensus_round.cc
   leader_election.cc
   log_cache.cc
+  multi_raft_batcher.cc
   peer_manager.cc
   quorum_util.cc
   raft_consensus.cc

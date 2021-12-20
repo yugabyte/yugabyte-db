@@ -36,6 +36,7 @@
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/util/result.h"
 #include "yb/util/thread_restrictions.h"
 
 #if defined(__APPLE__)

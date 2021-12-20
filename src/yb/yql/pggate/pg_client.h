@@ -71,6 +71,8 @@ class PgClient {
 
   Result<client::TabletServersInfo> ListLiveTabletServers(bool primary_only);
 
+  CHECKED_STATUS ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
+
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   CHECKED_STATUS method(                             \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \

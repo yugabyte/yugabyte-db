@@ -323,5 +323,18 @@ Endpoint MiniTabletServer::bound_http_addr() const {
   return server_->first_http_address();
 }
 
+std::string MiniTabletServer::bound_http_addr_str() const {
+  return HostPort::FromBoundEndpoint(bound_http_addr()).ToString();
+}
+
+std::string MiniTabletServer::bound_rpc_addr_str() const {
+  return HostPort::FromBoundEndpoint(bound_rpc_addr()).ToString();
+}
+
+FsManager& MiniTabletServer::fs_manager() const {
+  CHECK(started_);
+  return *server_->fs_manager();
+}
+
 } // namespace tserver
 } // namespace yb

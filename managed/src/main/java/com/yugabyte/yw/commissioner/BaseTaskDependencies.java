@@ -38,4 +38,5 @@ public class BaseTaskDependencies {
   private final YBClientService ybService;
   private final TableManager tableManager;
   private final PlatformExecutorFactory executorFactory;
+  private final TaskExecutor taskExecutor;
 }

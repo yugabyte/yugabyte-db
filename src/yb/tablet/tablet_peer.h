@@ -159,7 +159,8 @@ class TabletPeer : public consensus::ConsensusContext,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
-      consensus::RetryableRequests* retryable_requests);
+      consensus::RetryableRequests* retryable_requests,
+      consensus::MultiRaftManager* multi_raft_manager);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers

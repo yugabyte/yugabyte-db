@@ -340,7 +340,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
           }
         }
         if (!found) {
-          return STATUS_FORMAT(NotFound, "Key not found: $0", i);
+          LOG(INFO) << "Key not found: " << i;
+          return false;
         }
       }
       return true;

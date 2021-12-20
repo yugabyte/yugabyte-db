@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -49,6 +50,11 @@ public class TaskInfo extends Model {
   private static final FetchGroup<TaskInfo> GET_SUBTASKS_FG =
       FetchGroup.of(TaskInfo.class, "uuid, subTaskGroupType, taskState");
 
+  public static final Set<State> COMPLETED_STATES =
+      Sets.immutableEnumSet(State.Success, State.Failure, State.Aborted);
+
+  public static final Set<State> ERROR_STATES = Sets.immutableEnumSet(State.Failure, State.Aborted);
+
   /** These are the various states of the task and taskgroup. */
   public enum State {
     @EnumValue("Created")
@@ -68,6 +74,12 @@ public class TaskInfo extends Model {
 
     @EnumValue("Unknown")
     Unknown,
+
+    @EnumValue("Abort")
+    Abort,
+
+    @EnumValue("Aborted")
+    Aborted
   }
 
   // The task UUID.
@@ -173,7 +185,7 @@ public class TaskInfo extends Model {
   }
 
   boolean hasCompleted() {
-    return taskState == State.Success || taskState == State.Failure;
+    return COMPLETED_STATES.contains(taskState);
   }
 
   public TaskType getTaskType() {
@@ -287,7 +299,7 @@ public class TaskInfo extends Model {
     UserTaskDetails taskDetails = new UserTaskDetails();
     List<TaskInfo> result = getSubTasks();
     Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
-    boolean customerTaskFailure = taskState.equals(State.Failure);
+    boolean customerTaskFailure = TaskInfo.ERROR_STATES.contains(taskState);
     for (TaskInfo taskInfo : result) {
       SubTaskGroupType subTaskGroupType = taskInfo.getSubTaskGroupType();
       if (subTaskGroupType == SubTaskGroupType.Invalid) {
@@ -297,22 +309,21 @@ public class TaskInfo extends Model {
       if (subTask == null) {
         subTask = createSubTask(subTaskGroupType);
         taskDetails.add(subTask);
-      } else if (subTask.getState().equals(State.Failure.name())
-          || subTask.getState().equals(State.Running.name())) {
-        continue;
+      } else {
+        if (TaskInfo.ERROR_STATES.contains(subTask.getState())) {
+          // If error is set, report the error.
+          continue;
+        }
+        if (State.Running.equals(subTask.getState())) {
+          // If no error but at least one them is running, report running.
+          continue;
+        }
       }
-      switch (taskInfo.getTaskState()) {
-        case Failure:
-          subTask.setState(State.Failure);
-          break;
-        case Running:
-          subTask.setState(State.Running);
-          break;
-        case Created:
-          subTask.setState(customerTaskFailure ? State.Unknown : State.Created);
-          break;
-        default:
-          break;
+      State subTaskState = taskInfo.getTaskState();
+      if (State.Created.equals(subTaskState)) {
+        subTask.setState(customerTaskFailure ? State.Unknown : State.Created);
+      } else if (!State.Success.equals(subTaskState)) {
+        subTask.setState(subTaskState);
       }
       userTasksMap.put(subTaskGroupType, subTask);
     }
@@ -345,6 +356,7 @@ public class TaskInfo extends Model {
         .where()
         .eq("task_type", TaskType.DeleteBackup)
         .ne("task_state", State.Failure)
+        .ne("task_state", State.Aborted)
         .eq("details->>'customerUUID'", customerUUID.toString())
         .eq("details->>'backupUUID'", backupUUID.toString())
         .findList();

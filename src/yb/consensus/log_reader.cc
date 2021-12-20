@@ -109,14 +109,13 @@ const int64_t LogReader::kNoSizeLimit = -1;
 
 Status LogReader::Open(Env *env,
                        const scoped_refptr<LogIndex>& index,
-                       const std::string& tablet_id,
+                       std::string log_prefix,
                        const std::string& tablet_wal_path,
-                       const std::string& peer_uuid,
                        const scoped_refptr<MetricEntity>& table_metric_entity,
                        const scoped_refptr<MetricEntity>& tablet_metric_entity,
                        std::unique_ptr<LogReader> *reader) {
   std::unique_ptr<LogReader> log_reader(new LogReader(
-      env, index, tablet_id, peer_uuid, table_metric_entity, tablet_metric_entity));
+      env, index, std::move(log_prefix), table_metric_entity, tablet_metric_entity));
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
   *reader = std::move(log_reader);
@@ -125,14 +124,12 @@ Status LogReader::Open(Env *env,
 
 LogReader::LogReader(Env* env,
                      const scoped_refptr<LogIndex>& index,
-                     string tablet_id,
-                     string peer_uuid,
+                     std::string log_prefix,
                      const scoped_refptr<MetricEntity>& table_metric_entity,
                      const scoped_refptr<MetricEntity>& tablet_metric_entity)
     : env_(env),
       log_index_(index),
-      tablet_id_(std::move(tablet_id)),
-      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid)),
+      log_prefix_(std::move(log_prefix)),
       state_(kLogReaderInitialized) {
   if (table_metric_entity) {
     read_batch_latency_ = METRIC_log_reader_read_batch_latency.Instantiate(table_metric_entity);

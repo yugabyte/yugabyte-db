@@ -6,8 +6,11 @@ YSQL uses the query layer from **PostgreSQL v11.2**, and intends to support most
 
 ## PostgreSQL Feature Support
 
-Here are the features currently supported as of YugabyteDB v2.3, Oct 2020. This list also indicates what is planned for YugabyteDB v2.5 coming out around the end of November.
+Here are the features currently supported as of YugabyteDB v2.11, Nov 2021. 
 
+- [ ] Upgrade to recent PostgeSQL 
+    - [x] v11.2 
+    - [ ] v13 ![Generic badge](https://img.shields.io/badge/Target-v2.13-green.svg)
 - [ ] All data types
     - [x] Basic types
     - [x] Autoincrement IDs (various `SERIAL` types)
@@ -19,6 +22,7 @@ Here are the features currently supported as of YugabyteDB v2.3, Oct 2020. This 
         - [x] Range types
         - [x] Composite (record) types
         - [x] Array types
+        - [x] Domain types
     - [ ] XML data type
 - [x] DDL Statements
     - [x] Tables with UNIQUE KEY, PRIMARY KEY, CONSTRAINTS
@@ -42,12 +46,12 @@ Here are the features currently supported as of YugabyteDB v2.3, Oct 2020. This 
 - [ ] Indexes
     - [x] Secondary indexes
     - [x] Partial indexes
-    - [ ] GIN Indexes
+    - [x] GIN Indexes
     - [ ] GIST Indexes
 - [ ] Transactions
     - [x] TRANSACTION blocks
     - [x] Serializable and Snapshot Isolation levels
-    - [ ] Savepoints
+    - [x] Savepoints
 - [ ] Advanced SQL Support
     - [x] Stored procedures
     - [x] User-defined functions
@@ -62,10 +66,14 @@ Here are the features currently supported as of YugabyteDB v2.3, Oct 2020. This 
         - [x] fuzzystrmatch
         - [x] spi module
         - [x] pg_stat_statement
+        - [x] orafce
+        - [x] pg_stat_monitor
+        - [x] pg_audit 
     - [x] Generic extension framework
     - [x] Partitions support
-    - [ ] Materialized Views
-    - [ ] Foreign data wrappers
+    - [x] Foreign data wrappers
+    - [ ] Materialized Views ![Generic badge](https://img.shields.io/badge/Target-v2.13-green.svg)
+
 
 ## Core DB Features
 
@@ -75,28 +83,28 @@ Here are the features currently supported as of YugabyteDB v2.3, Oct 2020. This 
     - [x] Row-level security
     - [x] SSL Support/TLS Encryption 
     - [x] Encryption at rest
-- [ ] Backup and restore
+- [x] Backup and restore
     - [x] Scan based backups using `ysql_dump`
-    - [x] Distributed backups ![Generic badge](https://img.shields.io/badge/Target-v2.5-green.svg)
-- [ ] Distributed, dynamic rebuilding of indexes
-    - [ ] Support for simple indexes ![Generic badge](https://img.shields.io/badge/Target-v2.5-green.svg)
-    - [ ] Support for unique constraints ![Generic badge](https://img.shields.io/badge/Target-v2.5-green.svg)
-- Sharding and splitting
+    - [x] Distributed backups 
+- [x] Distributed, dynamic rebuilding of indexes
+    - [x] Support for simple indexes
+    - [x] Support for unique constraints
+- [x] Sharding and splitting
     - [x] Hash sharding support
     - [x] Range sharding support
-    - [ ] Dynamic tablet splitting ![Generic badge](https://img.shields.io/badge/Target-v2.5-green.svg)
+    - [x] Dynamic tablet splitting
 - [ ] Change data capture
-    - [x] Kafka integration ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+    - [x] Kafka integration ![Generic badge](https://img.shields.io/badge/Target-v2.11.2-green.svg)
     - [ ] Generic client library for consumers
     - [ ] Elastic search integration
 - [x] Colocated tables
-- [ ] Geo-distributed deployments
+- [x] Geo-distributed deployments
     - [x] Three or more DCs (with sync replication)
     - [x] Master-slave (asynchronous replication)
     - [x] Multi-master (bidirectional replication, last writer wins semantics)
-    - [ ] Follower reads ![Generic badge](https://img.shields.io/badge/Target-v2.5-green.svg)
-    - [ ] Read replica support
-    - [ ] Row level geo-partitioning ![Generic badge](https://img.shields.io/badge/Target-v2.5-green.svg)
+    - [X] Follower reads
+    - [x] Read replica support
+    - [x] Row level geo-partitioning
 
 
 ## App Development Support
@@ -112,18 +120,35 @@ Here are the features currently supported as of YugabyteDB v2.3, Oct 2020. This 
     - [x] C
     - [x] Rust
 - [x] ORM support
-    - [x] Spring
-    - [x] Hibernate
-    - [x] Play
-    - [x] Gorm
-    - [x] Sequelize
-    - [x] SQLAlchemy
-    - [x] ActiveRecord
-    - [x] EntityFramework
-    - [x] Diesel
+    - [x] Spring (Java)
+    - [x] Hibernate (Java)
+    - [x] Play (Scala)
+    - [x] Gorm (Go)
+    - [x] Sequelize (NodeJS)
+    - [x] SQLAlchemy (Python)
+    - [x] ActiveRecord (Ruby on Rails)
+    - [x] EntityFramework (.NET)
+    - [x] Diesel (Rust)
+    - [x] TypeORM (JavaScript)
+    - [x] Dapper (.NET)
+    - [x] MyBatis (Java)
+    - [ ] Django (Python)![Generic badge](https://img.shields.io/badge/Target-v2.13-green.svg)
+    - [ ] Laravel (PHP)![Generic badge](https://img.shields.io/badge/Target-v2.13-green.svg)
+    - [ ] jOOQ (Java)![Generic badge](https://img.shields.io/badge/Target-v2.13-green.svg)
+    - [ ] Doctrine (PHP)
+    - [ ] PonyORM (Python)
+    - [ ] upper/db (Go)
+    - [ ] xorm (Go)
+    - [ ] mikro-orm (NodeJS)
+- [x] Schema migration
+    - [x] Flyway
+    - [x] Liquibase
+    - [x] SchemaHero
+    - [ ] Alembic
+    - [ ] DbUp
 - [ ] Ecosystem
     - [x] GraphQL support ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
-    - [x] Spring Data Yugabyte ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+    - [x] Spring Data Yugabyte 
 - [ ] Tools support
     - [x] psql
     - [x] pg_dump
@@ -131,6 +156,18 @@ Here are the features currently supported as of YugabyteDB v2.3, Oct 2020. This 
     - [x] DBeaver
     - [x] pgAdmin ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
     - [x] TablePlus ![Generic badge](https://img.shields.io/badge/Status-BETA-blue.svg)
+    - [ ] DBeaver
+    - [ ] DBSchema
+    - [ ] SQL Workbench/J
+    - [ ] Visual Studio Code
+    - [ ] Beekeeper Studio
+    - [ ] DbVisualizer
+    - [ ] Navicat for PostgreSQL
+    - [ ] Arctype
+    - [ ] Pgweb
+    - [ ] Postico
+    - [ ] Metabase
+    - [ ] Datagrip
 
 ## Performance
 - [ ] Parallel queries

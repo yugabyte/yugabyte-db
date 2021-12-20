@@ -434,6 +434,14 @@ message ConsensusResponsePB {
   optional fixed64 propagated_hybrid_time = 6;
 }
 
+message MultiRaftConsensusRequestPB {
+  repeated ConsensusRequestPB consensus_request = 1;
+}
+
+message MultiRaftConsensusResponsePB {
+  repeated ConsensusResponsePB consensus_response = 1;
+}
+
 // A message reflecting the status of an in-flight transaction.
 message OperationStatusPB {
   required OpIdPB op_id = 1;
@@ -613,6 +621,10 @@ message StartRemoteBootstrapResponsePB {
 service ConsensusService {
   // Analogous to AppendEntries in Raft, but only used for followers.
   rpc UpdateConsensus(ConsensusRequestPB) returns (ConsensusResponsePB);
+
+  // Similar to UpdateConsensus but takes a batch of ConsensusRequestPB
+  // and returns a batch of ConsensusResponsePB.
+  rpc MultiRaftUpdateConsensus(MultiRaftConsensusRequestPB) returns (MultiRaftConsensusResponsePB);
 
   // RequestVote() from Raft.
   rpc RequestConsensusVote(VoteRequestPB) returns (VoteResponsePB);

@@ -21,6 +21,7 @@
 #include <unordered_set>
 
 #include <gflags/gflags_declare.h>
+#include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
 

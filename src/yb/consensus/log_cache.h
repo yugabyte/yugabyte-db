@@ -44,6 +44,7 @@
 #include <vector>
 
 #include <glog/logging.h>
+#include <gtest/gtest_prod.h>
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"

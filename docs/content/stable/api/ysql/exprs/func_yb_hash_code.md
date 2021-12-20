@@ -131,7 +131,7 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb
 (6 rows)
 ```
 
-In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the YSQL level. The reason why the optimizer chose this particular filter to push down is that it has the lowest selectivity as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
+In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the YSQL level. The optimizer prefers to push down this particular filter because it selects the fewest rows as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
 
 ## Use Case Examples
 

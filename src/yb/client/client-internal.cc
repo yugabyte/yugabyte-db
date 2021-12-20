@@ -287,6 +287,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsLoadBalancerIdle);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateTransactionStatusTable);
+YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -2091,6 +2092,25 @@ Status YBClient::Data::SetReplicationInfo(
   }
   RETURN_NOT_OK(status);
   *retry = false;
+  return Status::OK();
+}
+
+Status YBClient::Data::ValidateReplicationInfo(
+    const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline) {
+  // Validate the request config.
+  ValidateReplicationInfoRequestPB req;
+  ValidateReplicationInfoResponsePB resp;
+  auto new_ri = req.mutable_replication_info();
+  new_ri->CopyFrom(replication_info);
+  Status status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "ValidateReplicationInfo",
+      &MasterServiceProxy::ValidateReplicationInfoAsync);
+  RETURN_NOT_OK(status);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   return Status::OK();
 }
 
