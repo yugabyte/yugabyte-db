@@ -337,6 +337,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
         break;
       case Restart:
         nodeState = Stopping;
+        break;
       case Certs:
         nodeState = UpdateCert;
         break;
