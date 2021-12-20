@@ -27,11 +27,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -189,6 +191,19 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       if (primaryCluster.userIntent.enableYEDIS) {
         // Create a simple redis table.
         createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
+
+      if (primaryCluster.userIntent.enableYSQL) {
+        // Create read-write test table
+        List<NodeDetails> tserverLiveNodes =
+            universe
+                .getUniverseDetails()
+                .getNodesInCluster(primaryCluster.uuid)
+                .stream()
+                .filter(nodeDetails -> nodeDetails.isTserver)
+                .collect(Collectors.toList());
+        createReadWriteTestTableTask(tserverLiveNodes.size(), true)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

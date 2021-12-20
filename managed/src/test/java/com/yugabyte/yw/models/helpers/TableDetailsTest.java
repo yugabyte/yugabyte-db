@@ -4,9 +4,11 @@ package com.yugabyte.yw.models.helpers;
 
 import static org.junit.Assert.assertEquals;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
 import org.junit.Test;
 import org.yb.ColumnSchema;
+import org.yb.ColumnSchema.SortOrder;
 
 public class TableDetailsTest {
 
@@ -180,5 +182,27 @@ public class TableDetailsTest {
       }
     }
     tableDetails.getCQLCreateTableString();
+  }
+
+  @Test
+  public void testPgSqlCreateTableOneKey() {
+    String createTable =
+        "CREATE TABLE \"dummy_table\" (\"k0\" int, \"v\" varchar, "
+            + "primary key (\"k0\")) SPLIT AT VALUES ((100), (200), (300));";
+    TableDetails tableDetails = ApiUtils.getDummyTableDetailsNoClusteringKey(oneKey, noTtl);
+    tableDetails.splitValues = ImmutableList.of("100", "200", "300");
+    assertEquals(createTable, tableDetails.getPgSqlCreateTableString(false));
+  }
+
+  @Test
+  public void testPgSqlCreateTableMultiKey() {
+    String createTable =
+        "CREATE TABLE \"dummy_table\" (\"k0\" int, \"k1\" int, \"v\" varchar, "
+            + "primary key (\"k0\" ASC, \"k1\")) "
+            + "SPLIT AT VALUES ((100, 100), (200, 200), (300, 300));";
+    TableDetails tableDetails =
+        ApiUtils.getDummyTableDetails(oneKey, oneKey, noTtl, SortOrder.ASC, true);
+    tableDetails.splitValues = ImmutableList.of("100, 100", "200, 200", "300, 300");
+    assertEquals(createTable, tableDetails.getPgSqlCreateTableString(false));
   }
 }

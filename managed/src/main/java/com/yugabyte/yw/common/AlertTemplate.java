@@ -574,6 +574,19 @@ public enum AlertTemplate {
           .thresholdConditionReadOnly(true)
           .build()),
 
+  DB_WRITE_READ_TEST_ERROR(
+      "DB write/read test error",
+      "Failed to perform test write/read YSQL operation",
+      "count by (node_prefix) "
+          + "(yb_node_ysql_write_read{node_prefix=\"__nodePrefix__\"}"
+          + " {{ query_condition }} {{ query_threshold }})",
+      "Test YSQL write/read operation failed on "
+          + "{{ $value | printf \\\"%.0f\\\" }} nodes(s) for universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
   NODE_TO_NODE_CA_CERT_EXPIRY(
       "Node to node CA cert expiry",
       "Node to node CA certificate expires soon",
@@ -850,6 +863,7 @@ public enum AlertTemplate {
           .defaultThresholdCondition(Condition.GREATER_THAN)
           .defaultThresholdUnit(STATUS)
           .build());
+
   // @formatter:on
 
   enum DefinitionSettings {

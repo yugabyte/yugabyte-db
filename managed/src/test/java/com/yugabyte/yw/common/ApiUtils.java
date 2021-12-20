@@ -505,6 +505,15 @@ public class ApiUtils {
 
   public static TableDetails getDummyTableDetails(
       int partitionKeyCount, int clusteringKeyCount, long ttl, SortOrder sortOrder) {
+    return getDummyTableDetails(partitionKeyCount, clusteringKeyCount, ttl, sortOrder, false);
+  }
+
+  public static TableDetails getDummyTableDetails(
+      int partitionKeyCount,
+      int clusteringKeyCount,
+      long ttl,
+      SortOrder sortOrder,
+      boolean clusteringFirst) {
     TableDetails table = new TableDetails();
     table.tableName = "dummy_table";
     table.keyspace = "dummy_ks";
@@ -515,7 +524,7 @@ public class ApiUtils {
       column.name = "k" + i;
       column.columnOrder = i;
       column.type = ColumnDetails.YQLDataType.INT;
-      column.isPartitionKey = i < partitionKeyCount;
+      column.isPartitionKey = clusteringFirst ? (i >= clusteringKeyCount) : (i < partitionKeyCount);
       column.isClusteringKey = !column.isPartitionKey;
       if (column.isClusteringKey) {
         column.sortOrder = sortOrder;

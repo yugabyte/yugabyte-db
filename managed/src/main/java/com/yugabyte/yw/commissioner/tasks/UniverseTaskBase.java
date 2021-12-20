@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.Streams;
@@ -12,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
@@ -80,11 +83,14 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -95,11 +101,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.slf4j.MDC;
+import org.yb.ColumnSchema.SortOrder;
 import org.yb.Common;
+import org.yb.Common.TableType;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
 import play.api.Play;
@@ -951,6 +961,46 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to create write/read test table wor write/read metric and alert. */
+  public TaskExecutor.SubTaskGroup createReadWriteTestTableTask(
+      int numPartitions, boolean ifNotExist) {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("CreateReadWriteTestTable");
+
+    CreateTable task = createTask(CreateTable.class);
+
+    ColumnDetails idColumn = new ColumnDetails();
+    idColumn.isClusteringKey = true;
+    idColumn.name = "id";
+    idColumn.type = YQLDataType.SMALLINT;
+    idColumn.sortOrder = SortOrder.ASC;
+
+    TableDetails details = new TableDetails();
+    details.tableName = "write_read_test";
+    details.keyspace = SYSTEM_PLATFORM_DB;
+    details.columns = new ArrayList<>();
+    details.columns.add(idColumn);
+    // Split at 0, 100, 200, 300 ... (numPartitions - 1) * 100
+    if (numPartitions > 1) {
+      details.splitValues =
+          IntStream.range(0, numPartitions)
+              .mapToObj(num -> String.valueOf(num * 100))
+              .collect(Collectors.toList());
+    }
+
+    CreateTable.Params params = new CreateTable.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.tableType = TableType.PGSQL_TABLE_TYPE;
+    params.tableName = details.tableName;
+    params.tableDetails = details;
+    params.ifNotExist = ifNotExist;
+
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
