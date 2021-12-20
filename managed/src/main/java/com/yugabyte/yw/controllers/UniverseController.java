@@ -1395,24 +1395,13 @@ public class UniverseController extends AuthenticatedController {
         case Certs:
           UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
           customerTaskType = CustomerTask.TaskType.UpdateCert;
+          // Create self-signed cert if null value is provided
           if (taskParams.certUUID == null) {
             if (taskParams.createNewSelfSignedRootCA) {
               taskParams.rotateRoot = true;
               taskParams.certUUID =
                   CertificateHelper.createRootCA(
                       taskParams.nodePrefix, customerUUID, appConfig.getString("yb.storage.path"));
-              if (userIntent.enableClientToNodeEncrypt) {
-                CertificateHelper.createClientCertificate(
-                    taskParams.certUUID,
-                    String.format(
-                        CertificateHelper.CERT_PATH,
-                        appConfig.getString("yb.storage.path"),
-                        customerUUID,
-                        taskParams.certUUID.toString()),
-                    CertificateHelper.DEFAULT_CLIENT,
-                    null,
-                    null);
-              }
             } else {
               return ApiResponse.error(
                   BAD_REQUEST, "certUUID is required for taskType: " + taskParams.taskType);
@@ -1433,6 +1422,20 @@ public class UniverseController extends AuthenticatedController {
                   universe.getUniverseDetails().rootCA, taskParams.certUUID)) {
             throw new IllegalArgumentException(
                 "CA certificates cannot be different when rotateRoot set to false.");
+          }
+          // Generate client certs for the provided cert to make sure it exists
+          if (userIntent.enableClientToNodeEncrypt
+              && cert.certType == CertificateInfo.Type.SelfSigned) {
+            CertificateHelper.createClientCertificate(
+                taskParams.certUUID,
+                String.format(
+                    CertificateHelper.CERT_PATH,
+                    appConfig.getString("yb.storage.path"),
+                    customerUUID,
+                    taskParams.certUUID.toString()),
+                CertificateHelper.DEFAULT_CLIENT,
+                null,
+                null);
           }
       }
 
