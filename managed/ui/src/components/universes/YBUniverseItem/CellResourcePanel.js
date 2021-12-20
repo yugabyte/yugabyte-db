@@ -28,7 +28,6 @@ export const CellResourcesPanel = (props) => {
     });
     averageWriteRate = (sum / writeMetricArray.length).toFixed(2);
   }
-
   return (
     <Row>
       <Col md={5}>

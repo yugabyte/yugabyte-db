@@ -529,6 +529,7 @@ export const UniverseView = (props) => {
       }
     });
   }
+
   return (
     <React.Fragment>
       <DeleteUniverseContainer
