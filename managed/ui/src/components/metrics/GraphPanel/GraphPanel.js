@@ -15,7 +15,7 @@ import {
 } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 
-const panelTypes = {
+export const panelTypes = {
   container: {
     title: 'Container',
     metrics: ['container_cpu_usage', 'container_memory_usage', 'container_volume_stats']

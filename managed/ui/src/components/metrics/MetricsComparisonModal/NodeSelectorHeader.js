@@ -23,7 +23,7 @@ export const NodeSelectorHeader = ({ universe }) => {
         nodeItemChanged={(nodeName) => handleNodeChange('CHANGE_FIRST_NODE', nodeName)}
       />
       <div className="node-compare">
-        <i className="node-compare-icon fa fa-compress" />
+        VS
       </div>
       <NodeSelector
         selectedUniverse={universe}
