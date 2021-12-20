@@ -8,10 +8,12 @@ import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Strings;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -25,18 +27,22 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 
 @Singleton
 public class Commissioner {
+
+  public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
 
   public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
 
@@ -65,25 +71,37 @@ public class Commissioner {
   }
 
   /**
-   * Creates a new task runnable to run the required task, and submits it to a threadpool if needed.
+   * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
+   *
+   * @param taskType the task type.
+   * @param taskParams the task parameters.
+   * @return
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     try {
-      // Claim the task if we can - check if we will go above the max local concurrent task
-      // threshold. If we can claim it, set ourselves as the owner of the task. Otherwise, do not
-      // claim the task so that some other process can claim it.
-      // TODO: enforce a limit on number of tasks here.
-      boolean claimTask = true;
-
+      final int subTaskAbortPosition = getSubTaskAbortPosition();
       // Create the task runnable object based on the various parameters passed in.
       RunnableTask taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
+      if (subTaskAbortPosition >= 0) {
+        taskRunnable.setTaskExecutionListener(
+            new TaskExecutionListener() {
+              @Override
+              public void beforeTask(TaskInfo taskInfo) {
+                if (taskInfo.getPosition() >= subTaskAbortPosition) {
+                  LOG.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
+                  throw new CancellationException("Subtask cancelled");
+                }
+              }
 
-      if (claimTask) {
-        // If we had claimed ownership of the task, submit it to the task threadpool.
-        UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
-        // Add this task to our queue.
-        runningTasks.put(taskUUID, taskRunnable);
+              @Override
+              public void afterTask(TaskInfo taskInfo, Throwable t) {
+                LOG.info("Task {} is completed", taskInfo);
+              }
+            });
       }
+      UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
+      // Add this task to our queue.
+      runningTasks.put(taskUUID, taskRunnable);
       return taskRunnable.getTaskUUID();
     } catch (Throwable t) {
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
@@ -153,6 +171,20 @@ public class Commissioner {
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);
     }
+  }
+
+  private int getSubTaskAbortPosition() {
+    int abortPosition = -1;
+    String value = (String) MDC.get(SUBTASK_ABORT_POSITION_PROPERTY);
+    if (!Strings.isNullOrEmpty(value)) {
+      try {
+        abortPosition = Integer.parseInt(value);
+      } catch (NumberFormatException e) {
+        LOG.warn("Error in parsing subtask abort position, ignoring it.", e);
+        abortPosition = -1;
+      }
+    }
+    return abortPosition;
   }
 
   /**
