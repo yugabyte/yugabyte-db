@@ -72,6 +72,7 @@ public class Util {
   public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
+  public static final String SYSTEM_PLATFORM_DB = "system_platform";
 
   public static final String AZ = "AZ";
   public static final String GCS = "GCS";

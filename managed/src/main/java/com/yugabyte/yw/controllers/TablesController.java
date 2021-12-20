@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
@@ -291,7 +292,7 @@ public class TablesController extends AuthenticatedController {
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
     for (TableInfo table : tableInfoList) {
       String tableKeySpace = table.getNamespace().getName();
-      if (table.getRelationType() != RelationType.SYSTEM_TABLE_RELATION || isSystemRedis(table)) {
+      if (!isSystemTable(table) || isSystemRedis(table)) {
         String id = table.getId().toStringUtf8();
         TableInfoResp.TableInfoRespBuilder builder =
             TableInfoResp.builder()
@@ -309,6 +310,12 @@ public class TablesController extends AuthenticatedController {
       }
     }
     return PlatformResults.withData(tableInfoRespList);
+  }
+
+  private boolean isSystemTable(TableInfo table) {
+    return table.getRelationType() == RelationType.SYSTEM_TABLE_RELATION
+        || (table.getTableType() == TableType.PGSQL_TABLE_TYPE
+            && table.getNamespace().getName().equals(SYSTEM_PLATFORM_DB));
   }
 
   private boolean isSystemRedis(TableInfo table) {
