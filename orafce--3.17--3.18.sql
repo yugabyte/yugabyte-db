@@ -16,6 +16,18 @@ AS
 'SELECT greatest($1, $2, $3)'
 LANGUAGE SQL STRICT IMMUTABLE;
 
+CREATE FUNCTION oracle.greatest(smallint, smallint)
+RETURNS smallint
+AS
+'SELECT greatest($1, $2)'
+LANGUAGE SQL STRICT IMMUTABLE;
+
+CREATE FUNCTION oracle.greatest(smallint, smallint, smallint)
+RETURNS smallint
+AS
+'SELECT greatest($1, $2, $3)'
+LANGUAGE SQL STRICT IMMUTABLE;
+
 CREATE FUNCTION oracle.greatest(numeric, numeric)
 RETURNS numeric
 AS
@@ -126,6 +138,18 @@ LANGUAGE SQL STRICT IMMUTABLE;
 
 CREATE FUNCTION oracle.least(integer, integer, integer)
 RETURNS integer
+AS
+'SELECT least($1, $2, $3)'
+LANGUAGE SQL STRICT IMMUTABLE;
+
+CREATE FUNCTION oracle.least(smallint, smallint)
+RETURNS smallint
+AS
+'SELECT least($1, $2)'
+LANGUAGE SQL STRICT IMMUTABLE;
+
+CREATE FUNCTION oracle.least(smallint, smallint, smallint)
+RETURNS smallint
 AS
 'SELECT least($1, $2, $3)'
 LANGUAGE SQL STRICT IMMUTABLE;
