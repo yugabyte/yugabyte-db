@@ -1,4 +1,4 @@
-import React, {useCallback, useContext, useEffect, useRef} from 'react';
+import React, { useContext, useEffect, useRef} from 'react';
 import { FilterContext } from './ComparisonFilterContextProvider';
 import { useQuery } from 'react-query';
 import { getQueryMetrics } from '../../../actions/graph';
@@ -11,18 +11,16 @@ export const MetricsComparisonContent = ({ universe, visible }) => {
 
   const intervalRef = useRef();
 
-  const stableDispatch = useCallback(dispatch, []);
-
-  const refreshModalGraphQuery = useCallback(() => {
+  const refreshModalGraphQuery = () => {
     const newFilter = {
       startMoment: moment().subtract(filters.value, filters.type),
       endMoment: moment()
     };
-    stableDispatch({
+    dispatch({
       type: 'CHANGE_GRAPH_FILTER',
       payload: { ...newFilter }
     });
-  }, [filters, stableDispatch]);
+  };
 
   useEffect(() => {
     if (visible) {
@@ -33,19 +31,18 @@ export const MetricsComparisonContent = ({ universe, visible }) => {
       });
       clearInterval(intervalRef.current);
     }
-  }, [visible, dispatch, refreshModalGraphQuery]);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (refreshFilters.refreshInterval !== 'off') {
-      const id = setInterval(() => {
+      intervalRef.current = setInterval(() => {
         refreshModalGraphQuery();
       }, refreshFilters.refreshInterval);
-      intervalRef.current = id;
     }
     return () => {
       clearInterval(intervalRef.current);
-    }
-  }, [refreshFilters, refreshModalGraphQuery]);
+    };
+  }, [refreshFilters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const queryParams = {};
   queryParams.start = filters.startMoment.unix();
