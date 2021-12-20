@@ -2,8 +2,10 @@
 package com.yugabyte.yw.common;
 
 import java.util.List;
+import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
 
+@Data
 public class ShellResponse {
   // Some known error codes for shell process.
   public static final int ERROR_CODE_SUCCESS = 0;
@@ -24,5 +26,9 @@ public class ShellResponse {
 
   public void setDescription(List<String> command) {
     description = StringUtils.abbreviateMiddle(String.join(" ", command), " ... ", 140);
+  }
+
+  public boolean isSuccess() {
+    return code == ERROR_CODE_SUCCESS;
   }
 }

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -10,7 +11,10 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.commons.collections.CollectionUtils;
 import org.yb.ColumnSchema;
+import org.yb.ColumnSchema.SortOrder;
 import org.yb.Schema;
 
 @ApiModel(description = "Table details")
@@ -34,6 +38,9 @@ public class TableDetails {
   @ApiModelProperty(value = "Details of all columns in the table")
   public List<ColumnDetails> columns;
 
+  @ApiModelProperty(value = "Primary key values used to split table into tablets")
+  public List<String> splitValues;
+
   /**
    * Create a new TableDetails object based on the provided Schema. tableName will still need to be
    * defined after using this constructor.
@@ -52,15 +59,59 @@ public class TableDetails {
     return tableDetails;
   }
 
-  @ApiModelProperty(
-      value =
-          "CQL create keyspace detail. This is the statement to be used to create the keyspace.")
+  /**
+   * This method produces a PgSql statement to create described table;
+   *
+   * @return a PgSql CREATE TABLE statement for the table represented by this TableDetails object
+   */
+  @JsonIgnore
+  public String getPgSqlCreateTableString(boolean ifNotExists) {
+    String queryTemplate = "CREATE TABLE %s\"%s\" (%s%s)%s;";
+    String ifNotExistsPart = ifNotExists ? "IF NOT EXISTS " : "";
+    String fieldsPart =
+        columns
+            .stream()
+            .map(column -> "\"" + column.name + "\" " + column.type.type)
+            .collect(Collectors.joining(", "));
+    List<ColumnDetails> primaryKeys =
+        columns
+            .stream()
+            .filter(columnDetails -> columnDetails.isPartitionKey || columnDetails.isClusteringKey)
+            .collect(Collectors.toList());
+    String primaryKeysPart = "";
+    if (!primaryKeys.isEmpty()) {
+      primaryKeysPart =
+          ", primary key ("
+              + primaryKeys
+                  .stream()
+                  .map(
+                      key ->
+                          key.isClusteringKey && key.sortOrder != SortOrder.NONE
+                              ? "\"" + key.name + "\" " + key.sortOrder.name()
+                              : "\"" + key.name + "\"")
+                  .collect(Collectors.joining(", "))
+              + ")";
+    }
+    String splitValuesPart = "";
+    if (CollectionUtils.isNotEmpty(splitValues)) {
+      splitValuesPart =
+          " SPLIT AT VALUES ("
+              + splitValues
+                  .stream()
+                  .map(value -> "(" + value + ")")
+                  .collect(Collectors.joining(", "))
+              + ")";
+    }
+    return String.format(
+        queryTemplate, ifNotExistsPart, tableName, fieldsPart, primaryKeysPart, splitValuesPart);
+  }
+
+  @JsonIgnore
   public String getCQLCreateKeyspaceString() {
     return "CREATE KEYSPACE IF NOT EXISTS \"" + keyspace + "\"";
   }
 
-  @ApiModelProperty(
-      value = "CQL use keyspace detail. This is the statement to be used to use the keyspace.")
+  @JsonIgnore
   public String getCQLUseKeyspaceString() {
     return "USE \"" + keyspace + "\"";
   }
@@ -72,8 +123,7 @@ public class TableDetails {
    *
    * @return a CQL CREATE TABLE statement for the table represented by this TableDetails object
    */
-  @ApiModelProperty(
-      value = "CQL create table detail. This is the statement to be used to create the table.")
+  @JsonIgnore
   public String getCQLCreateTableString() {
     List<String> partitionKeys = new ArrayList<>();
     List<String> clusteringKeys = new ArrayList<>();
