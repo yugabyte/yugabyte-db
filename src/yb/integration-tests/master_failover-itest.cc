@@ -509,8 +509,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
 
   // Disable TS heartbeats.
   LOG(INFO) << "Disabled Heartbeats";
-  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_disable_heartbeat_test_only",
-                                        "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_tserver_disable_heartbeat", "true"));
 
   // Blacklist a TS.
   ExternalMaster *leader = cluster_->GetLeaderMaster();
@@ -556,8 +555,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
                                   " to be zero.";
 
   // Now enable heartbeats.
-  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_disable_heartbeat_test_only",
-                                        "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_tserver_disable_heartbeat", "false"));
   ASSERT_OK(cluster_->SetFlagOnMasters("blacklist_progress_initial_delay_secs",
                                         std::to_string((kHeartbeatIntervalMs * 20)/1000)));
   LOG(INFO) << "Enabled heartbeats";
