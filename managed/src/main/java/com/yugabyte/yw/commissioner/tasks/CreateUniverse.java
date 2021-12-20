@@ -147,14 +147,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
-      createProvisionNodeTasks(universe, taskParams().nodeDetailsSet, false /* isShell */, false);
+      createProvisionNodeTasks(
+          universe,
+          taskParams().nodeDetailsSet,
+          false /* isShell */,
+          false /* ignore node status check */);
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
-
-      // Override master flags (on primary cluster) and tserver flags as necessary.
-      createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
-
-      createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
 
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);

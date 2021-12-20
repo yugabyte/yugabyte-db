@@ -16,13 +16,14 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.time.Duration;
-
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ChangeConfigResponse;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
+import org.yb.util.ServerInfo;
 
 @Slf4j
 public class ChangeMasterConfig extends AbstractTaskBase {
@@ -47,6 +48,9 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     // Use hostport to remove a master from quorum, when this is set. No errors are rethrown
     // as this is best effort.
     public boolean useHostPort = false;
+    // Check if the operation is already performed before it is done again.
+    // This is done to have no impact on the existing usage.
+    public boolean checkBeforeChange = false;
   }
 
   @Override
@@ -99,6 +103,19 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
     YBClient client = ybService.getClientWithConfig(config);
     try {
+      // The call changeMasterConfig is not idempotent. The client library internally keeps retrying
+      // for a long time until it gives up if the node is already added or removed.
+      // This optional check ensures that changeMasterConfig is not invoked if the operation is
+      // already done for the node.
+      if (taskParams().checkBeforeChange && isChangeMasterConfigDone(client, node, isAddMasterOp)) {
+        log.info(
+            "Config change (add={}) is already done for node {}({}:{})",
+            isAddMasterOp,
+            node.nodeName,
+            node.cloudInfo.private_ip,
+            node.masterRpcPort);
+        return;
+      }
       response =
           client.changeMasterConfig(
               node.cloudInfo.private_ip,
@@ -130,6 +147,29 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     if (response != null && response.hasError()) {
       String msg = "ChangeConfig response has error " + response.errorMessage();
       log.error(msg);
+      throw new RuntimeException(msg);
+    }
+  }
+
+  private boolean isChangeMasterConfigDone(
+      YBClient client, NodeDetails node, boolean isAddMasterOp) {
+    try {
+      ListMastersResponse response = client.listMasters();
+      List<ServerInfo> servers = response.getMasters();
+      boolean anyMatched =
+          servers.stream().anyMatch(s -> s.getHost().equals(node.cloudInfo.private_ip));
+      return anyMatched == isAddMasterOp;
+    } catch (Exception e) {
+      String msg =
+          "Error "
+              + e.getMessage()
+              + " while performing list masters for node "
+              + node.nodeName
+              + ", host:port = "
+              + node.cloudInfo.private_ip
+              + ":"
+              + node.masterRpcPort;
+      log.error(msg, e);
       throw new RuntimeException(msg);
     }
   }

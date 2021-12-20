@@ -117,9 +117,22 @@ public class NodeDetails {
     }
   }
 
+  // Intermediate master state during universe update.
+  // The state is cleared once the Universe update succeeds.
+  public enum MasterState {
+    None,
+    ToStart,
+    Configured,
+    ToStop,
+  }
+
   // The current state of the node.
   @ApiModelProperty(value = "Node state", example = "Provisioned")
   public NodeState state;
+
+  // The current intermediate state of the master process.
+  @ApiModelProperty(value = "Master state", example = "ToStart")
+  public MasterState masterState;
 
   // True if this node is a master, along with port info.
   @ApiModelProperty(value = "True if this node is a master")

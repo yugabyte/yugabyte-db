@@ -44,9 +44,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.AnsibleSetupServer,
           TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
-          TaskType.AnsibleConfigureServers, // GFlags
-          TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
@@ -63,8 +63,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_CREATE_TASK_RETRY_SEQUENCE =
       ImmutableList.of(
-          TaskType.AnsibleConfigureServers, // GFlags
-          TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver

@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -35,6 +36,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -1193,6 +1195,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Returns nodes from a given set of nodes that belong to a given cluster.
+   *
+   * @param uuid the cluster UUID.
+   * @param nodes the given nodes.
+   * @return
+   */
+  public static Set<NodeDetails> getNodesInCluster(UUID uuid, Set<NodeDetails> nodes) {
+    return nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  /**
    * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
    * are checked to determine if some tasks must be run or skipped. This state checking is ignored
    * if ignoreNodeStatus is true.
@@ -1282,6 +1295,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               createConfigureServerTasks(filteredNodes, isShellMode /* isShell */)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
+
     isNextFallThrough =
         applyOnNodesWithStatus(
             universe,
@@ -1289,6 +1303,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build(),
             filteredNodes -> {
+              Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+              if (primaryCluster != null) {
+                Set<NodeDetails> primaryClusterNodes =
+                    getNodesInCluster(primaryCluster.uuid, filteredNodes);
+                if (!primaryClusterNodes.isEmpty()) {
+                  // Override master (on primary cluster only) and tserver flags as necessary.
+                  // These are idempotent operations.
+                  createGFlagsOverrideTasks(primaryClusterNodes, ServerType.MASTER);
+                }
+              }
+              createGFlagsOverrideTasks(nodesToBeConfigured, ServerType.TSERVER);
               // All necessary nodes are created. Data moving will coming soon.
               createSetNodeStatusTasks(
                       filteredNodes,
@@ -1347,5 +1372,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Wait for new masters to be responsive.
     createWaitForServersTasks(nodesToBeStarted, ServerType.TSERVER)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
+   * Updates a master node with master addresses. It can happen before the master process is started
+   * or later.
+   *
+   * @param universe universe to which the nodes belong.
+   * @param nodesToBeConfigured nodes to be configured.
+   * @param isShellMode configure nodes in shell mode if true.
+   * @param ignoreNodeStatus ignore node status if it is set.
+   * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
+   */
+  public boolean createConfigureMasterTasks(
+      Universe universe,
+      Set<NodeDetails> nodesToBeConfigured,
+      boolean isShellMode,
+      boolean ignoreNodeStatus) {
+    return applyOnNodesWithStatus(
+        universe,
+        nodesToBeConfigured,
+        false,
+        NodeStatus.builder().masterState(MasterState.ToStart).build(),
+        nodeDetails -> {
+          createConfigureServerTasks(
+                  nodeDetails,
+                  isShellMode /* isShell */,
+                  true /* updateMasterAddrs */,
+                  true /* isMaster */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        });
   }
 }

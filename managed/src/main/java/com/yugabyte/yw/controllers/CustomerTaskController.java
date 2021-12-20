@@ -256,6 +256,7 @@ public class CustomerTaskController extends AuthenticatedController {
     UniverseTaskParams taskParams = null;
     switch (taskType) {
       case CreateUniverse:
+      case EditUniverse:
         UniverseDefinitionTaskParams params =
             Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         // Reset the error string.

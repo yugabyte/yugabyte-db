@@ -47,13 +47,14 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.AnsibleSetupServer,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
-          TaskType.SetNodeState,
+          TaskType.SetNodeStatus,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ModifyBlackList,
