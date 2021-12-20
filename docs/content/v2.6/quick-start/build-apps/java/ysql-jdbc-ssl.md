@@ -52,9 +52,62 @@ showAsideToc: true
 This tutorial assumes that:
 
 - YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
+- Set up SSL/TLS depending on the platform you choose to create your local cluster. To set up a cluster in Minikube with SSL/TLS, see [SSL certificates for a cluster in Kubernetes](#set-up-a-cluster-with-minikube-optional).
 - Java Development Kit (JDK) 1.8 or later is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 - [OpenSSL](https://www.openssl.org/) 1.1.1 or later is installed.
+
+## SSL certificates for a cluster in Kubernetes (Optional)
+
+1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](../../../../quick-start/create-local-cluster/kubernetes/).
+
+   ```sh
+   $ kubectl create namespace yb-demo
+   $ helm install yb-demo yugabytedb/yugabyte \
+   --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+   resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+   replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo
+   ```
+
+1. Verify that SSL is enabled using `ysqlsh`.
+
+   ```sh
+    $ ysqlsh
+    ```
+
+    ```output
+    ysqlsh (11.2-YB-2.9.0.0-b0)
+    SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+    Type "help" for help.
+    ```
+
+1. Check for the key and certificate files in yb-tserver.
+
+   ```sh
+   $ kubectl exec -n yb-demo -it yb-tserver-0 -- bash
+   [root@yb-tserver-0 cores]# ls -al /root/.yugabytedb/
+   ```
+
+   ```output
+   total 4
+   drwxrwxrwt 3 root root  140 Oct 22 06:04 .
+   dr-xr-x--- 1 root root 4096 Oct 22 06:19 ..
+   drwxr-xr-x 2 root root  100 Oct 22 06:04 ..2021_10_22_06_04_46.596961191
+   lrwxrwxrwx 1 root root   31 Oct 22 06:04 ..data -> ..2021_10_22_06_04_46.596961191
+   lrwxrwxrwx 1 root root   15 Oct 22 06:04 root.crt -> ..data/root.crt
+   lrwxrwxrwx 1 root root   21 Oct 22 06:04 yugabytedb.crt -> ..data/yugabytedb.crt
+   lrwxrwxrwx 1 root root   21 Oct 22 06:04 yugabytedb.key -> ..data/yugabytedb.key
+   ```
+
+1. Download these files to your system and proceed to step 2 under [Set up SSL certificates](#set-up-ssl-certificates-for-java-applications).
+
+   ```sh
+   % mkdir YBClusterCerts; cd YBClusterCerts
+   % kubectl exec -n "yb-demo" "yb-tserver-0" -- tar -C "/root/.yugabytedb" -cf - . |tar xf -
+   Defaulted container "yb-tserver" out of: yb-tserver, yb-cleanup
+   % ls
+   root.crt yugabytedb.crt yugabytedb.key
+   ```
 
 ## Set up SSL certificates for Java applications
 
@@ -68,14 +121,28 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
     $ keytool -keystore ybtruststore -alias ybtruststore -import -file ca.crt
     ```
 
+    Enter a password when you're prompted to enter one for your keystore.
+
+1. Export the truststore. In the following command, replace `<YOURSTOREPASS>` with the password you used for your keystore creation.
+
+    ```sh
+    $ keytool -exportcert -keystore ybtruststore -alias ybtruststore -storepass <YOURSTOREPASS> -file ybtruststore.crt
+    ```
+
+1. Convert and export to PEM format with `ybtruststore.pem`.
+
+   ```sh
+   $ openssl x509 -inform der -in ybtruststore.crt -out ybtruststore.pem
+   ```
+
 1. Verify the `yugabytedb.crt` client certificate with `ybtruststore`.
 
     ```sh
-    $ openssl verify -CAfile ca.crt -purpose sslclient tlstest.crt
+    $ openssl verify -CAfile ybtruststore.pem -purpose sslclient yugabytedb.crt
     ```
 
 1. Convert the client certificate to DER format.
-  
+
     ```sh
     $ openssl x509 –in yugabytedb.crt -out yugabytedb.crt.der -outform der
     ```
@@ -102,12 +169,21 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
 
 1. Open the `pom.xml` file in a text editor.
 
-1. Add the following below the `<url>` element.
+1. Add the following below the `<url>` element if you're using Java 8.
 
     ```xml
     <properties>
       <maven.compiler.source>1.8</maven.compiler.source>
       <maven.compiler.target>1.8</maven.compiler.target>
+    </properties>
+    ```
+
+    If you're using Java 11, it should be:
+
+    ```xml
+    <properties>
+      <maven.compiler.source>11</maven.compiler.source>
+      <maven.compiler.target>11</maven.compiler.target>
     </properties>
     ```
 
@@ -213,7 +289,7 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
 1. Run your new program.
 
     ```sh
-    $ java -Djavax.net.ssl.trustStore=ybtruststore -Djavax.net.ssl.trustStorePassword=yugabyte -cp "target/MySample-1.0-SNAPSHOT.jar:target/lib/*" -jar target/MySample-1.0-SNAPSHOT.jar
+    $ mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.HelloSqlSslApp
     ```
 
     You should see the following output:
@@ -224,4 +300,3 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
     Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
     Query returned: name=John, age=35, language: Java
     ```
-    
