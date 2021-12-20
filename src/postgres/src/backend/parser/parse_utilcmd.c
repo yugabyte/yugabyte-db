@@ -1772,6 +1772,16 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 			{
 				if (opt & INDOPTION_NULLS_FIRST)
 					iparam->nulls_ordering = SORTBY_NULLS_FIRST;
+
+				/*
+				 * If the index supports ordering and it is neither
+				 * SORTBY_HASH nor SORTBY_DESC, then the source index must have
+				 * been SORTBY_ASC. If we do not set it here, during index
+				 * creation, the ordering for the first attribute will wrongly
+				 * default to SORTBY_HASH.
+				 */
+				if (iparam->ordering == SORTBY_DEFAULT)
+					iparam->ordering = SORTBY_ASC;
 			}
 		}
 
