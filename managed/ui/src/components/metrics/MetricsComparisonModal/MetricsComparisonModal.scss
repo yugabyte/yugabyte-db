@@ -80,6 +80,15 @@
     .open-icon {
       padding: 15px;
     }
+
+    .metrics-comparison-panel-dropdown {
+      float: right;
+
+      button {
+        border: none;
+        background-color: transparent;
+      }
+    }
   }
 }
 
@@ -109,13 +118,11 @@
     text-align: center;
     border: 1px solid rgba(200, 200, 200, 0.5);
     border-radius: 100%;
-
-    .node-compare-icon {
-      top: calc(50% - 10px);
-      font-size: 20px;
-      position: relative;
-    }
+    font-size: 17px;
+    font-weight: bold;
+    line-height: 2.2;
   }
+
 }
 
 .metrics-filter-header {
