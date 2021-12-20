@@ -293,6 +293,8 @@ public class CustomerTask extends Model {
           return completed ? "Deleted xcluster config " : "Deleting xcluster config ";
         case EditXClusterConfig:
           return completed ? "Edited xcluster config " : "Editing xcluster config ";
+        case SyncXClusterConfig:
+          return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:
