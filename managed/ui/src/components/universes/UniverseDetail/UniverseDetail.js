@@ -32,6 +32,7 @@ import { YBMenuItem } from './compounds/YBMenuItem';
 import { MenuItemsContainer } from './compounds/MenuItemsContainer';
 import {
   isNonAvailable,
+  isEnabled,
   isDisabled,
   isNotHidden,
   getFeatureState
@@ -246,6 +247,17 @@ class UniverseDetail extends Component {
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
+    // Disable edit TLS menu item if TLS is disabled
+    if (isEnabled(editTLSAvailability)) {
+      if (Array.isArray(customer.userCertificates.data)) {
+        const rootCert = customer.userCertificates.data.find(
+            item => item.uuid === currentUniverse.data.universeDetails.rootCA
+        );
+        if (rootCert == null) {
+          editTLSAvailability = 'disabled';
+        }
+      }
+    }
 
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'
