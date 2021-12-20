@@ -30,9 +30,9 @@ You start by navigating to **Dashboard** and clicking **Create Universe**. Use t
 - Enter the set of regions as Oregon.
 - Set the replication factor to 3.
 - Set instance type to n1-standard-8
-- Add the following configuration flag for YB-Master and YB-TServer: leader_failure_max_missed_heartbeat_periods 10. Since the the data is globally replicated, RPC latencies are higher. You can use this flag to increase the failure detection interval in such a high- RPC latency deployment.
+- Add the configuration flag for YB-Master and YB-TServer as leader_failure_max_missed_heartbeat_periods 10. Since the the data is globally replicated, RPC latencies are higher. You can use this flag to increase the failure detection interval in such a high- RPC latency deployment.<br><br>
 
-![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
+  ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 
 The next step is to click **Configure Read Replica** and then enter the following into the **Read Replica > Cloud Configuration** page to create a read replica
 cluster on [AWS](../../configure-yugabyte-platform/set-up-cloud-provider/aws/):
@@ -52,17 +52,17 @@ While the universe is being created, **Dashboard** should look similar to the fo
 
 ![Universe Waiting to Create](/images/ee/universe-waiting.png)
 
-Once the universe has been created, **Dashboard** displays the primary and read replica cluster information, as well as shows these distinct clusters on the map.
+Once the universe has been created, **Dashboard** displays the primary and read replica cluster information, as well as shows the distinct clusters on the map.
 
 ### Universe nodes
 
-To see a list of nodes, navigate **Nodes**. Notice that the nodes are grouped into primary cluster and read replicas, and read replica nodes have a readonly1 identifier appended to their name.
+To see a list of nodes, navigate to **Nodes**. Notice that the nodes are grouped into primary cluster and read replicas, and read replica nodes have a readonly1 identifier appended to their name.
 
-Navigate to the cloud provider's instances page. In GCP, browse to **Compute Engine > VM Instances** and search for instances that have `helloworld3` in their name. The following illustrations shows the result corresponding to your primary cluster:
+Navigate to the cloud provider's instances page. In GCP, browse to **Compute Engine > VM Instances** and search for instances that have `helloworld3` in their name. The following illustration shows the result corresponding to your primary cluster:
 
 ![Primary Cluster Instances](/images/ee/gcp-node-list.png)
 
-In AWS, navigate to **Instances** and perform the same search. The following illustrations shows the result corresponding to your read replica cluster:
+In AWS, navigate to **Instances** and perform the same search. The following illustration shows the result corresponding to your read replica cluster:
 
 ![Read Replica Instances](/images/ee/aws-node-list.png)
 
