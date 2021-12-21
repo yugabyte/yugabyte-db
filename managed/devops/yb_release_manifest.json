@@ -19,7 +19,9 @@
     "bin/install_ansible_requirements.sh",
     "bin/install_python_requirements.sh",
     "bin/install_ybops.sh",
+    "bin/node_client_utils.py",
     "bin/py_wrapper",
+    "bin/run_node_action.py",
     "bin/run_playbook_locally.sh",
     "bin/run_role_locally.sh",
     "bin/ssh_wrapper_with_sudo.sh",
@@ -28,8 +30,6 @@
     "bin/yb_platform_backup.sh",
     "bin/ybcloud.sh",
     "bin/edit_universe_details.py",
-    "bin/support_package.py",
-    "bin/support_package_utils.py",
     "bin/filtered_logs.sh"
   ],
   "filter_plugins": [
