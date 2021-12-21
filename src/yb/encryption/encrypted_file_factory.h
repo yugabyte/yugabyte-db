@@ -11,27 +11,22 @@
 // under the License.
 //
 
-#include "yb/util/encryption_test_util.h"
+#ifndef YB_ENCRYPTION_ENCRYPTED_FILE_FACTORY_H
+#define YB_ENCRYPTION_ENCRYPTED_FILE_FACTORY_H
 
-#include "yb/util/random_util.h"
-#include "yb/util/test_macros.h"
+#include <memory>
+
+#include "yb/encryption/encryption_fwd.h"
 
 namespace yb {
 
-constexpr uint32_t kEncryptionTestNumIterations = 10;
+class Env;
 
-void DoTest(std::function<void(uint32_t, uint32_t)> file_op, int32_t size) {
-  std::vector<int32_t> indices = RandomUniformVector(0, size - 1, kEncryptionTestNumIterations);
-  std::sort(indices.begin(), indices.end());
-  int last_idx = 0;
-  for (auto i : indices) {
-    if (last_idx == i) {
-      continue;
-    }
-    ASSERT_NO_FATALS(file_op(last_idx, i));
-    last_idx = i;
-  }
-  ASSERT_NO_FATALS(file_op(last_idx, size));
-}
+namespace encryption {
 
+std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_manager);
+
+} // namespace encryption
 } // namespace yb
+
+#endif // YB_ENCRYPTION_ENCRYPTED_FILE_FACTORY_H

@@ -307,8 +307,8 @@ Status RemoteYsckMaster::GetTabletsBatch(
     shared_ptr<YsckTablet> tablet(new YsckTablet(locations.tablet_id()));
     vector<shared_ptr<YsckTabletReplica> > replicas;
     for (const master::TabletLocationsPB_ReplicaPB& replica : locations.replicas()) {
-      bool is_leader = replica.role() == consensus::RaftPeerPB::LEADER;
-      bool is_follower = replica.role() == consensus::RaftPeerPB::FOLLOWER;
+      bool is_leader = replica.role() == PeerRole::LEADER;
+      bool is_follower = replica.role() == PeerRole::FOLLOWER;
       replicas.push_back(shared_ptr<YsckTabletReplica>(
           new YsckTabletReplica(replica.ts_info().permanent_uuid(), is_leader, is_follower)));
     }

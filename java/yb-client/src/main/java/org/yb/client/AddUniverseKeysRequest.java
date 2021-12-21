@@ -19,7 +19,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import java.util.Map;
 import java.util.Iterator;
 import org.yb.util.Pair;
-import org.yb.Encryption;
+import org.yb.encryption.Encryption;
 
 import org.yb.master.Master;
 

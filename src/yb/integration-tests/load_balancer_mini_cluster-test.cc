@@ -138,7 +138,7 @@ CHECKED_STATUS GetTabletsDriveStats(DriveStats* stats,
         ts = stats->insert({replica.first,
                            std::make_pair(std::unordered_map<std::string, int>(), 0)}).first;
       }
-      if (replica.second.role == consensus::RaftPeerPB::LEADER) {
+      if (replica.second.role == PeerRole::LEADER) {
         ++ts->second.second;
       }
       if (!replica.second.fs_data_dir.empty()) {

@@ -115,6 +115,7 @@
 #include <google/protobuf/wire_format_lite.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
+#include <rapidjson/document.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
@@ -199,6 +200,7 @@
 #include "yb/util/object_pool.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/opid.fwd.h"
 #include "yb/util/path_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"

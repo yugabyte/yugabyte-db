@@ -11,18 +11,20 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_CIPHER_STREAM_H
-#define YB_UTIL_CIPHER_STREAM_H
+#ifndef YB_ENCRYPTION_CIPHER_STREAM_H
+#define YB_ENCRYPTION_CIPHER_STREAM_H
 
 #include <openssl/ossl_typ.h>
 
 #include <string>
 
+#include "yb/encryption/cipher_stream_fwd.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/cipher_stream_fwd.h"
 
 namespace yb {
+namespace encryption {
 
 class BufferAllocator;
 struct EncryptionParams;
@@ -73,6 +75,7 @@ class BlockAccessCipherStream {
   mutable simple_spinlock mutex_;
 };
 
+} // namespace encryption
 } // namespace yb
 
-#endif // YB_UTIL_CIPHER_STREAM_H
+#endif // YB_ENCRYPTION_CIPHER_STREAM_H

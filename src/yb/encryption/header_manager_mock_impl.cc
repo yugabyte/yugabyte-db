@@ -11,12 +11,11 @@
 // under the License.
 //
 
-
-
-#include "yb/util/header_manager_mock_impl.h"
-#include "yb/util/encryption_util.h"
+#include "yb/encryption/header_manager_mock_impl.h"
+#include "yb/encryption/encryption_util.h"
 
 namespace yb {
+namespace encryption {
 
 constexpr uint32_t kDefaultHeaderSize = 32;
 constexpr uint32_t kEncryptionMetaStart = 16;
@@ -62,4 +61,5 @@ bool HeaderManagerMockImpl::IsEncryptionEnabled() {
   return file_encrypted_;
 }
 
+} // namespace encryption
 } // namespace yb

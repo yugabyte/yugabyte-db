@@ -145,7 +145,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
       int webPort = tservers.get(HostAndPort.fromParts(host, replica.getRpcPort())).getWebPort();
       Metrics metrics = new Metrics(host, webPort, "server");
       long numOps = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(Common.PeerRole.LEADER.toString())) {
         assertEquals(NUM_OPS, numOps);
       } else {
         assertEquals(0, numOps);

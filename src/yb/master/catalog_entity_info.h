@@ -68,7 +68,7 @@ struct TabletReplicaDriveInfo {
 struct TabletReplica {
   TSDescriptor* ts_desc;
   tablet::RaftGroupStatePB state;
-  consensus::RaftPeerPB::Role role;
+  PeerRole role;
   consensus::RaftPeerPB::MemberType member_type;
   MonoTime time_updated;
 

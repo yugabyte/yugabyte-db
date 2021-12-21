@@ -61,7 +61,7 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
     RETURN_NOT_OK(proxy->ListMasters(req, &resp, &rpc));
 
     for (const ServerEntryPB& master : resp.masters()) {
-      if (master.role() == yb::consensus::RaftPeerPB::LEADER) {
+      if (master.role() == yb::PeerRole::LEADER) {
         auto cloud_info = master.registration().cloud_info();
         return (cloud_info.placement_cloud() == placement_cloud &&
                 cloud_info.placement_region() == placement_region &&

@@ -11,14 +11,16 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ENCRYPTION_TEST_UTIL_H
-#define YB_UTIL_ENCRYPTION_TEST_UTIL_H
+#ifndef YB_ENCRYPTION_ENCRYPTION_TEST_UTIL_H
+#define YB_ENCRYPTION_ENCRYPTION_TEST_UTIL_H
 
-#include "yb/util/encryption_util.h"
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/util/slice.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
+namespace encryption {
 
 void DoTest(std::function<void(uint32_t, uint32_t)> file_op, int32_t size);
 
@@ -29,7 +31,7 @@ void TestWrites(Writable* file, const Slice& data) {
   }, data.size());
 }
 
-template <typename Readable, typename BufType>
+template <typename BufType, typename Readable>
 void TestRandomAccessReads(Readable* file, const Slice& data) {
   auto buf = static_cast<BufType*>(EncryptionBuffer::Get()->GetBuffer(data.size()));
   DoTest([&](uint32_t begin, uint32_t end) {
@@ -40,7 +42,7 @@ void TestRandomAccessReads(Readable* file, const Slice& data) {
   }, data.size());
 }
 
-template <typename Readable, typename BufType>
+template <typename BufType, typename Readable>
 void TestSequentialReads(Readable* file, const Slice& data) {
   DoTest([&](uint32_t begin, uint32_t end) {
     auto buf = static_cast<BufType*>(EncryptionBuffer::Get()->GetBuffer(data.size()));
@@ -51,6 +53,7 @@ void TestSequentialReads(Readable* file, const Slice& data) {
   }, data.size());
 }
 
+} // namespace encryption
 } // namespace yb
 
-#endif // YB_UTIL_ENCRYPTION_TEST_UTIL_H
+#endif // YB_ENCRYPTION_ENCRYPTION_TEST_UTIL_H

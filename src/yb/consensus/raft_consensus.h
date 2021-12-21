@@ -178,9 +178,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
                               override;
 
-  RaftPeerPB::Role GetRoleUnlocked() const;
+  PeerRole GetRoleUnlocked() const;
 
-  RaftPeerPB::Role role() const override;
+  PeerRole role() const override;
 
   LeaderState GetLeaderState(bool allow_stale = false) const override;
 
@@ -205,7 +205,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void Shutdown() override;
 
   // Return the active (as opposed to committed) role.
-  RaftPeerPB::Role GetActiveRole() const;
+  PeerRole GetActiveRole() const;
 
   // Returns the replica state for tests. This should never be used outside of
   // tests, in particular calling the LockFor* methods on the returned object

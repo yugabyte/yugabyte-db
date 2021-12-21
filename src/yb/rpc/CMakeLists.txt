@@ -57,7 +57,7 @@ PROTOBUF_GENERATE_CPP(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rpc_introspection.proto)
 set(RPC_INTROSPECTION_PROTO_LIBS
-  rpc_header_proto
+  rpc_header_proto  
   protobuf)
 ADD_YB_LIBRARY(rpc_introspection_proto
   SRCS ${RPC_INTROSPECTION_PROTO_SRCS}
@@ -105,6 +105,7 @@ set(YRPC_SRCS
     ${RPC_SRCS_EXTENSIONS})
 
 set(YRPC_LIBS
+  encryption
   gutil
   libev
   lz4

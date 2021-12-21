@@ -10,11 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/util/universe_key_manager.h"
+
+#include "yb/encryption/universe_key_manager.h"
 
 #include "yb/util/status_format.h"
 
 namespace yb {
+namespace encryption {
 
 Result<std::unique_ptr<UniverseKeyManager>> UniverseKeyManager::FromKey(
     const std::string& key_id, const Slice& key_data) {
@@ -22,8 +24,8 @@ Result<std::unique_ptr<UniverseKeyManager>> UniverseKeyManager::FromKey(
   UniverseKeyRegistryPB universe_key_registry;
   universe_key_registry.set_encryption_enabled(true);
   universe_key_registry.set_latest_version_id(key_id);
-  auto encryption_params = VERIFY_RESULT(yb::EncryptionParams::FromSlice(key_data));
-  yb::EncryptionParamsPB params_pb;
+  auto encryption_params = VERIFY_RESULT(EncryptionParams::FromSlice(key_data));
+  EncryptionParamsPB params_pb;
   encryption_params->ToEncryptionParamsPB(&params_pb);
   (*universe_key_registry.mutable_universe_keys())[key_id] = params_pb;
   universe_key_manager->SetUniverseKeyRegistry(universe_key_registry);
@@ -57,7 +59,7 @@ void UniverseKeyManager::SetUniverseKeyRegistry(
   cond_.notify_all();
 }
 
-Result<yb::EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
+Result<EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
     const UniverseKeyId& version_id) {
   std::unique_lock<std::mutex> l(mutex_);
   auto it = universe_key_registry_.universe_keys().find(version_id);
@@ -70,7 +72,7 @@ Result<yb::EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion
     }
     if (it == universe_key_registry_.universe_keys().end()) {
       return STATUS_SUBSTITUTE(
-          InvalidArgument, "Key with version number $0 does not exist.", version_id);
+          InvalidArgument, "Key with version number $0 does not exist", version_id);
     }
   }
   return EncryptionParams::FromEncryptionParamsPB(it->second);
@@ -101,4 +103,5 @@ bool UniverseKeyManager::ReceivedUniverseKeys() {
   return received_universe_keys_;
 }
 
+} // namespace encryption
 } // namespace yb

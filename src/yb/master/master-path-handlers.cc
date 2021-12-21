@@ -171,7 +171,7 @@ void MasterPathHandlers::RedirectToLeader(const Webserver::WebRequest& req,
       continue;
     }
 
-    if (master.role() == consensus::RaftPeerPB::LEADER) {
+    if (master.role() == PeerRole::LEADER) {
       // URI already starts with a /, so none is needed between $1 and $2.
       if (master.registration().http_addresses().size() > 0) {
         redirect = Substitute(
@@ -1282,7 +1282,7 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
 
     auto has_leader = std::any_of(
       rm->begin(), rm->end(),
-      [](const auto &item) { return item.second.role == consensus::RaftPeerPB::LEADER; });
+      [](const auto &item) { return item.second.role == PeerRole::LEADER; });
 
     if (!has_leader) {
       leaderless_tablets.push_back(t);
@@ -1586,7 +1586,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
         string host_port = error.substr(start_pos, end_pos - start_pos);
         *output << "<td><font color='red'>" << EscapeForHtmlToString(host_port)
                 << "</font></td>\n";
-        *output << "<td><font color='red'>" << RaftPeerPB_Role_Name(RaftPeerPB::UNKNOWN_ROLE)
+        *output << "<td><font color='red'>" << PeerRole_Name(PeerRole::UNKNOWN_ROLE)
                 << "</font></td>\n";
       }
       *output << Substitute("    <td colspan=2><font color='red'><b>ERROR: $0</b></font></td>\n",
@@ -1600,7 +1600,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
       reg_text = Substitute("<b>$0</b>", reg_text);
     }
-    string raft_role = master.has_role() ? RaftPeerPB_Role_Name(master.role()) : "N/A";
+    string raft_role = master.has_role() ? PeerRole_Name(master.role()) : "N/A";
     auto delta = Env::Default()->NowMicros() - master.instance_id().start_time_us();
     string uptime = UptimeString(MonoDelta::FromMicroseconds(delta).ToSeconds());
     string cloud = reg.cloud_info().placement_cloud();
@@ -2032,7 +2032,7 @@ void MasterPathHandlers::HandlePrettyLB(
 
           // Leaders and followers have different formatting.
           // Leaders need to stand out.
-          if (replica.role == consensus::RaftPeerPB_Role_LEADER) {
+          if (replica.role == PeerRole::LEADER) {
             *output << Substitute("<button type='button' class='btn btn-default'"
                                 "style='background-image:none; border: 6px solid $0; "
                                 "font-weight: bolder'>"
@@ -2161,11 +2161,11 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
   html << "<ul>\n";
   for (const TabletReplica& location : locations) {
     string location_html = TSDescriptorToHtml(*location.ts_desc, tablet_id);
-    if (location.role == RaftPeerPB::LEADER) {
+    if (location.role == PeerRole::LEADER) {
       html << Substitute("  <li><b>LEADER: $0</b></li>\n", location_html);
     } else {
       html << Substitute("  <li>$0: $1</li>\n",
-                         RaftPeerPB_Role_Name(location.role), location_html);
+                         PeerRole_Name(location.role), location_html);
     }
   }
   html << "</ul>\n";
@@ -2215,13 +2215,13 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       for (const auto& replica : *replication_locations) {
         if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)
                           || master_->catalog_manager()->IsTablegroupParentTable(*table)) {
-          if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+          if (replica.second.role == PeerRole::LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {
             (*tablet_map)[replica.first].user_tablet_followers++;
           }
         } else {
-          if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+          if (replica.second.role == PeerRole::LEADER) {
             (*tablet_map)[replica.first].system_tablet_leaders++;
           } else {
             (*tablet_map)[replica.first].system_tablet_followers++;

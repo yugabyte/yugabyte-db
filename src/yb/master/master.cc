@@ -371,7 +371,7 @@ Status Master::InitMasterRegistration() {
   return Status::OK();
 }
 
-Status Master::ResetMemoryState(const RaftConfigPB& config) {
+Status Master::ResetMemoryState(const consensus::RaftConfigPB& config) {
   LOG(INFO) << "Memory state set to config: " << config.ShortDebugString();
 
   auto master_addr = std::make_shared<server::MasterAddresses>();
@@ -424,7 +424,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     ServerEntryPB local_entry;
     local_entry.mutable_instance_id()->CopyFrom(catalog_manager_->NodeInstance());
     RETURN_NOT_OK(GetMasterRegistration(local_entry.mutable_registration()));
-    local_entry.set_role(IsShellMode() ? RaftPeerPB::NON_PARTICIPANT : RaftPeerPB::LEADER);
+    local_entry.set_role(IsShellMode() ? PeerRole::NON_PARTICIPANT : PeerRole::LEADER);
     masters->push_back(local_entry);
     return Status::OK();
   }

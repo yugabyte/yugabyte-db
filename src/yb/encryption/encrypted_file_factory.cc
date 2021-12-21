@@ -11,14 +11,15 @@
 // under the License.
 //
 
-#include "yb/util/encrypted_file_factory.h"
+#include "yb/encryption/encrypted_file_factory.h"
 
-#include "yb/util/cipher_stream.h"
-#include "yb/util/header_manager.h"
-#include "yb/util/encrypted_file.h"
-#include "yb/util/encryption_util.h"
+#include "yb/encryption/cipher_stream.h"
+#include "yb/encryption/encrypted_file.h"
+#include "yb/encryption/encryption_util.h"
+#include "yb/encryption/header_manager.h"
 
 namespace yb {
+namespace encryption {
 
 // An encrypted file implementation for a writable file.
 class EncryptedWritableFile : public WritableFileWrapper {
@@ -33,7 +34,7 @@ class EncryptedWritableFile : public WritableFileWrapper {
 
   // Default constructor.
   EncryptedWritableFile(std::unique_ptr<WritableFile> file,
-                        std::unique_ptr<yb::BlockAccessCipherStream> stream,
+                        std::unique_ptr<encryption::BlockAccessCipherStream> stream,
                         uint32_t header_size)
       : WritableFileWrapper(std::move(file)), stream_(std::move(stream)), header_size_(header_size)
   {}
@@ -68,8 +69,8 @@ class EncryptedFileFactory : public FileFactoryWrapper {
 
   // NewRandomAccessFile opens a file for random read access.
   Status NewRandomAccessFile(const std::string& fname,
-                             std::unique_ptr<RandomAccessFile>* result) override {
-    std::unique_ptr<RandomAccessFile> underlying;
+                             std::unique_ptr<yb::RandomAccessFile>* result) override {
+    std::unique_ptr<yb::RandomAccessFile> underlying;
     RETURN_NOT_OK(FileFactoryWrapper::NewRandomAccessFile(fname, &underlying));
     return EncryptedRandomAccessFile::Create(result, header_manager_.get(), std::move(underlying));
   }
@@ -100,4 +101,5 @@ std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_m
   return encrypted_env;
 }
 
+} // namespace encryption
 } // namespace yb
