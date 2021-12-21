@@ -54,6 +54,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/asio/ip/address.hpp>
@@ -137,7 +138,10 @@
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/split_internal.h"
 #include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/template_util.h"
@@ -182,6 +186,7 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/opid.fwd.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/random.h"

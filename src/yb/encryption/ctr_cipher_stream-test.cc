@@ -17,9 +17,10 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/util/cipher_stream.h"
-#include "yb/util/encryption_util.h"
-#include "yb/util/header_manager.h"
+#include "yb/encryption/cipher_stream.h"
+#include "yb/encryption/encryption_util.h"
+#include "yb/encryption/header_manager.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -29,7 +30,7 @@
 DECLARE_bool(TEST_encryption_use_openssl_compatible_counter_overflow);
 
 namespace yb {
-namespace enterprise {
+namespace encryption {
 
 constexpr int kDataSize = 1024;
 constexpr int kNumRuns = 1000;
@@ -134,5 +135,5 @@ TEST_F(TestCipherStream, Overflow) {
   ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Corrupted bytes starting");
 }
 
-} // namespace enterprise
+} // namespace encryption
 } // namespace yb

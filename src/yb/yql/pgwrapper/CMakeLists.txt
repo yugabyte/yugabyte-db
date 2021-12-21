@@ -27,9 +27,7 @@ ADD_YB_LIBRARY(yb_pgwrapper
 set(PQ_UTILS_SRCS
     libpq_utils.cc)
 set(PQ_UTILS_DEPS
-    pgsql_protocol_proto
     pq
-    ql_protocol_proto
     yb_common_proto
     yb_pggate_flags)
 ADD_YB_LIBRARY(pq_utils

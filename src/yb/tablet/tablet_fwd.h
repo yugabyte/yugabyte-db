@@ -17,6 +17,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tablet/tablet.fwd.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -47,10 +49,8 @@ class OperationFilter;
 class SnapshotCoordinator;
 class SnapshotOperation;
 class SplitOperation;
-class TableInfoPB;
 class TabletSnapshots;
 class TabletSplitter;
-class TabletStatusPB;
 class TabletStatusListener;
 class TransactionIntentApplier;
 class TransactionCoordinator;

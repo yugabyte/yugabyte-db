@@ -13,12 +13,12 @@
 
 #include "yb/client/universe_key_client.h"
 
+#include "yb/encryption/encryption.pb.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/util/encryption.pb.h"
 
 using namespace std::chrono_literals;
 

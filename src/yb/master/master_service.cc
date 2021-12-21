@@ -533,12 +533,12 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
   Status s = server_->GetMasterRegistration(resp->mutable_registration());
   CheckRespErrorOrSetUnknown(s, resp);
   auto role = server_->catalog_manager_impl()->Role();
-  if (role == RaftPeerPB::LEADER) {
+  if (role == PeerRole::LEADER) {
     if (!l.leader_status().ok()) {
       YB_LOG_EVERY_N_SECS(INFO, 1)
           << "Patching role from leader to follower because of: " << l.leader_status()
           << THROTTLE_MSG;
-      role = RaftPeerPB::FOLLOWER;
+      role = PeerRole::FOLLOWER;
     }
   }
   resp->set_role(role);

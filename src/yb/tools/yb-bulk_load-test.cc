@@ -630,7 +630,7 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
 
     HostPort leader_tserver;
     for (const master::TabletLocationsPB::ReplicaPB& replica : tablet_location.replicas()) {
-      if (replica.role() == consensus::RaftPeerPB_Role::RaftPeerPB_Role_LEADER) {
+      if (replica.role() == PeerRole::LEADER) {
         leader_tserver = HostPortFromPB(replica.ts_info().private_rpc_addresses(0));
         break;
       }

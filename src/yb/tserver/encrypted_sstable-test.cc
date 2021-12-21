@@ -16,6 +16,12 @@
 
 #include "yb/gutil/stringprintf.h"
 
+#include "yb/encryption/encrypted_file.h"
+#include "yb/encryption/encryption_util.h"
+#include "yb/encryption/header_manager.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/internal_iterator.h"
@@ -26,14 +32,9 @@
 
 #include "yb/tserver/universe_key_test_util.h"
 
-#include "yb/util/encrypted_file.h"
-#include "yb/util/encryption_util.h"
-#include "yb/util/header_manager.h"
-#include "yb/util/header_manager_impl.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
-#include "yb/util/universe_key_manager.h"
 
 using namespace std::literals;
 
@@ -96,8 +97,7 @@ void EncryptedSSTableTest::CounterOverflow(
       ikc,
       /*skip_filters=*/ false);
 
-  std::shared_ptr<yb::UniverseKeyManager> universe_key_manager =
-      GenerateTestUniverseKeyManager();
+  auto universe_key_manager = GenerateTestUniverseKeyManager();
 
   auto header_manager = DefaultHeaderManager(universe_key_manager.get());
   auto env = yb::NewRocksDBEncryptedEnv(std::move(header_manager));
@@ -142,8 +142,8 @@ void EncryptedSSTableTest::CounterOverflow(
   auto data_file_reader = std::make_unique<rocksdb::RandomAccessFileReader>(
       std::move(random_access_data_file), env.get());
 
-  auto* eraf = down_cast<EncryptedRandomAccessFile*>(random_access_file.get());
-  auto* eraf_data = down_cast<EncryptedRandomAccessFile*>(random_access_file.get());
+  auto* eraf = down_cast<encryption::EncryptedRandomAccessFile*>(random_access_file.get());
+  auto* eraf_data = down_cast<encryption::EncryptedRandomAccessFile*>(random_access_file.get());
 
   ASSERT_TRUE(eraf != nullptr);
   ASSERT_TRUE(eraf_data != nullptr);

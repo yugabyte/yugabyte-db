@@ -10,18 +10,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
-#define YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
+#ifndef YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H
+#define YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H
 
 #include <memory>
 #include <string>
 
-#include "yb/util/header_manager.h"
+#include "yb/encryption/header_manager.h"
+
 #include "yb/util/status.h"
 
 namespace yb {
+namespace encryption {
 
-class HeaderManagerMockImpl : public yb::HeaderManager {
+class HeaderManagerMockImpl : public HeaderManager {
  public:
   HeaderManagerMockImpl();
   void SetFileEncryption(bool file_encrypted);
@@ -43,7 +45,7 @@ class HeaderManagerMockImpl : public yb::HeaderManager {
 
 std::unique_ptr<HeaderManager> GetMockHeaderManager();
 
+} // namespace encryption
 } // namespace yb
 
-
-#endif // YB_UTIL_HEADER_MANAGER_MOCK_IMPL_H
+#endif // YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H

@@ -142,7 +142,7 @@ void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_m
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
-        if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+        if (replica.second.role == PeerRole::LEADER) {
           (*txn_map)[replica.first]++;
         }
       }

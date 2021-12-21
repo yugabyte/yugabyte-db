@@ -13,13 +13,15 @@
 
 #include <openssl/evp.h>
 
+#include "yb/encryption/cipher_stream.h"
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/gutil/endian.h"
 
-#include "yb/util/cipher_stream.h"
-#include "yb/util/encryption_util.h"
 #include "yb/util/status_format.h"
 
 namespace yb {
+namespace encryption {
 
 Result<std::unique_ptr<BlockAccessCipherStream>> BlockAccessCipherStream::FromEncryptionParams(
     EncryptionParamsPtr encryption_params) {
@@ -199,4 +201,5 @@ void BlockAccessCipherStream::IncrementCounter(
   }
 }
 
+}  // namespace encryption
 }  // namespace yb

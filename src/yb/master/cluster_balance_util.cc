@@ -165,7 +165,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     }
 
     // Fill leader info.
-    if (replica.role == consensus::RaftPeerPB::LEADER) {
+    if (replica.role == PeerRole::LEADER) {
       tablet_meta.leader_uuid = ts_uuid;
       RETURN_NOT_OK(AddLeaderTablet(tablet_id, ts_uuid, replica.fs_data_dir));
     }

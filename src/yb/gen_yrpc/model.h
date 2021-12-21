@@ -49,6 +49,9 @@ bool StoredAsSlice(const google::protobuf::FieldDescriptor* field);
 bool IsPbAny(const google::protobuf::Descriptor* message);
 bool IsLwAny(const google::protobuf::Descriptor* message);
 
+std::string RemoveProtoExtension(const std::string& fname);
+std::vector<std::string> ListDependencies(const google::protobuf::FileDescriptor* file);
+
 } // namespace gen_yrpc
 } // namespace yb
 

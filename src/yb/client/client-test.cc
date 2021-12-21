@@ -2217,7 +2217,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
 
   vector<master::TSInfoPB> followers;
   for (const auto& replica : resp.tablet_locations(0).replicas()) {
-    if (replica.role() == consensus::RaftPeerPB_Role_FOLLOWER) {
+    if (replica.role() == PeerRole::FOLLOWER) {
       followers.push_back(replica.ts_info());
     }
   }
