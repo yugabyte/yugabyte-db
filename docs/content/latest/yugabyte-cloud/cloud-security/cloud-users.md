@@ -42,8 +42,8 @@ The following table describes the default YSQL roles and users in Yugabyte Cloud
 
 | Role | Description |
 | --- | --- |
-| admin | The default user for your cluster. If you added your own credentials during cluster creation, the user name will be the one you entered. Member of yb_superuser; you can use this account to perform database operations, create other yb_superuser users, create extensions, and manage your cluster. |
-| postgres | Superuser role used during database creation and for PostgreSQL operations. Not available to cloud users. |
+| admin | The default user for your cluster. If you added your own credentials during cluster creation, the user name will be the one you entered. Although not a Superuser, this role is a member of yb_superuser, and you can use it to perform database operations, create other yb_superuser users, create extensions, and manage your cluster. |
+| postgres | Superuser role created during database creation for PostgreSQL operations. Not available to cloud users. |
 | yb_extension | Role that allows non-Superuser users to create PostgreSQL extensions. |
 | yb_superuser | Yugabyte Cloud only role. This role is assigned to the default cluster user (that is, admin) to perform all the required operations on the database, including creating other yb_superuser users. For security reasons, yb_superuser does not have YugabyteDB Superuser privileges. |
 | yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (ysql_dumps). Not available to cloud users. |
@@ -64,7 +64,7 @@ The `yb_extension` role allows non-Superuser roles to [create extensions](../../
 
 ## YCQL default roles and users
 
-In YCQL, there is a single superuser called `cassandra` used during db creation. The default user (by default, `admin`) added when you created the cluster has Superuser privileges in YCQL. As a Superuser, you can delete the cassandra user if you choose to.
+In YCQL, there is a single Superuser called `cassandra` used during database creation. The default user (by default, `admin`) added when you created the cluster has Superuser privileges in YCQL. As a Superuser, you can delete the cassandra user if you choose to.
 
 ## Learn more
 
