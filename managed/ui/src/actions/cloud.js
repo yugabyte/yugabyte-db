@@ -107,6 +107,9 @@ export const FETCH_AUTH_CONFIG_RESPONSE = 'FETCH_AUTH_CONFIG_RESPONSE';
 export const CREATE_KMS_CONFIGURATION = 'CREATE_KMS_CONFIGURATION';
 export const CREATE_KMS_CONFIGURATION_RESPONSE = 'CREATE_KMS_CONFIGURATION_RESPONSE';
 
+export const EDIT_KMS_CONFIGURATION = 'EDIT_KMS_CONFIGURATION';
+export const EDIT_KMS_CONFIGURATION_RESPONSE = 'EDIT_KMS_CONFIGURATION_RESPONSE';
+
 export const DELETE_KMS_CONFIGURATION = 'DELETE_KMS_CONFIGURATION';
 export const DELETE_KMS_CONFIGURATION_RESPONSE = 'DELETE_KMS_CONFIGURATION_RESPONSE';
 
@@ -398,6 +401,22 @@ export function createKMSProviderConfig(provider, body) {
 export function createKMSProviderConfigResponse(result) {
   return {
     type: CREATE_KMS_CONFIGURATION_RESPONSE,
+    payload: result
+  };
+}
+
+export function editKMSProviderConfig(configUUID, body) {
+  const endpoint = getCustomerEndpoint() + `/kms_configs/${configUUID}/edit`;
+  const request = axios.post(endpoint, body);
+  return {
+    type: EDIT_KMS_CONFIGURATION,
+    payload: request
+  };
+}
+
+export function editKMSProviderConfigResponse(result) {
+  return {
+    type: EDIT_KMS_CONFIGURATION_RESPONSE,
     payload: result
   };
 }

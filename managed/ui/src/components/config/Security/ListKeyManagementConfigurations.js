@@ -17,6 +17,7 @@ export class ListKeyManagementConfigurations extends Component {
 
   actionList = (item, row) => {
     const { configUUID, in_use, universeDetails } = row.metadata;
+    const { isAdmin, onDelete, onEdit } = this.props;
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
         <MenuItem
@@ -26,11 +27,16 @@ export class ListKeyManagementConfigurations extends Component {
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
+        {isAdmin && (
+          <MenuItem onClick={() => onEdit(row)}>
+            <i className="fa fa-pencil"></i> Edit Configuration
+          </MenuItem>
+        )}
         <MenuItem
           title={'Delete provider'}
           disabled={in_use}
           onClick={() => {
-            !in_use && this.props.onDelete(configUUID);
+            !in_use && onDelete(configUUID);
           }}
         >
           <i className="fa fa-trash"></i> Delete Configuration
