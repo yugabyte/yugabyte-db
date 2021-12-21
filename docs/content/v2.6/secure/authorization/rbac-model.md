@@ -64,7 +64,7 @@ The following table describes the default YSQL roles and users in YugabyteDB clu
 
 | Role | Description |
 | :--- | :---------- |
-| postgres | Superuser role used during database creation and for PostgreSQL operations. |
+| postgres | Superuser role created during database creation. |
 | yb_extension | Role that allows non-Superuser users to create PostgreSQL extensions. |
 | yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (ysql_dumps). |
 
