@@ -63,6 +63,7 @@ public class BackupTable extends AbstractTaskBase {
       if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
         if (taskParams().backupList != null) {
           for (BackupTableParams backupParams : taskParams().backupList) {
+            backupParams.backupUuid = taskParams().backupUuid;
             ShellResponse response = tableManager.createBackup(backupParams);
             JsonNode jsonNode = null;
             try {
