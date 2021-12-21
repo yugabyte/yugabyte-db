@@ -1,11 +1,14 @@
 package com.yugabyte.yw.common.kms.util;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
@@ -14,10 +17,16 @@ import com.yugabyte.yw.models.Universe;
 import java.util.Base64;
 import java.util.UUID;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import play.libs.Json;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class EncryptionAtRestUtilTest extends FakeDBApplication {
+  protected static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestUtilTest.class);
+
   Customer testCustomer;
   Universe testUniverse;
 
@@ -51,6 +60,71 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
     JsonNode unencryptedObj =
         encryptionUtil.unmaskConfigData(testCustomer.uuid, encryptedObj, KeyProvider.SMARTKEY);
     assertEquals(originalObj.get("test_key").asText(), unencryptedObj.get("test_key").asText());
+  }
+
+  @Test
+  @Ignore
+  public void testUnmaskConfigDataHCVault() {
+
+    String data = "";
+    String outData = "";
+    try {
+      ObjectMapper om = new ObjectMapper();
+
+      UUID uid = UUID.fromString("f33e3c9b-75ab-4c30-80ad-cba85646ea39");
+      data = "";
+      ObjectNode originalObj = Json.newObject().put("encrypted", data);
+      JsonNode unencryptedObj = encryptionUtil.unmaskConfigData(uid, originalObj, KeyProvider.AWS);
+      outData = om.writeValueAsString(unencryptedObj);
+
+    } catch (Exception e) {
+      LOG.debug("test:: failed");
+    }
+  }
+
+  @Test
+  public void testMaskConfigDataHCVault() throws Exception {
+
+    String outData = "";
+    String jsonString =
+        "{"
+            + "\"HC_VAULT_ADDRESS\":\"http://127.0.0.1:8200\","
+            + "\"HC_VAULT_TOKEN\":\"s.fj4WtEMQ1MV1fnxQkpXA9ytV\","
+            + "\"HC_VAULT_ENGINE\":\"transit\","
+            + "\"HC_VAULT_MOUNT_PATH\":\"transit/\""
+            + "}";
+
+    try {
+      ObjectMapper om = new ObjectMapper();
+
+      UUID uid = UUID.fromString("f33e3c9b-75ab-4c30-80ad-cba85646ea39");
+
+      JsonNode originalObj = Json.parse(jsonString);
+      assertEquals("transit", originalObj.get(HashicorpEARServiceUtil.HC_VAULT_ENGINE).asText());
+
+      ObjectNode encryptedObj =
+          EncryptionAtRestUtil.maskConfigData(uid, originalObj, KeyProvider.HASHICORP);
+      assertNotNull(encryptedObj);
+      // Following fails and dumps the simulated column data for KMS_CONFIG
+      // assertEquals(jsonString, om.writeValueAsString(encryptedObj));
+
+      JsonNode unencryptedObj =
+          EncryptionAtRestUtil.unmaskConfigData(uid, encryptedObj, KeyProvider.HASHICORP);
+      assertNotNull(unencryptedObj);
+      outData = om.writeValueAsString(unencryptedObj);
+
+      assertEquals(jsonString, outData);
+
+      assertEquals(
+          originalObj.get(HashicorpEARServiceUtil.HC_VAULT_ADDRESS),
+          unencryptedObj.get(HashicorpEARServiceUtil.HC_VAULT_ADDRESS));
+      assertEquals(
+          originalObj.get(HashicorpEARServiceUtil.HC_VAULT_TOKEN),
+          unencryptedObj.get(HashicorpEARServiceUtil.HC_VAULT_TOKEN));
+    } catch (Exception e) {
+      LOG.error("test:: failed", e);
+      throw e;
+    }
   }
 
   @Test

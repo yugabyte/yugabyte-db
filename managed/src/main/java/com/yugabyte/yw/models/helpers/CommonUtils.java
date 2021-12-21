@@ -76,7 +76,8 @@ public class CommonUtils {
         || ucFieldname.contains("SECRET")
         || ucFieldname.contains("CREDENTIALS")
         || ucFieldname.contains("API")
-        || ucFieldname.contains("POLICY");
+        || ucFieldname.contains("POLICY")
+        || ucFieldname.contains("HC_VAULT_TOKEN");
   }
 
   /**
@@ -113,7 +114,7 @@ public class CommonUtils {
         config, CommonUtils::isSensitiveField, (key, value) -> getMaskedValue(key, value));
   }
 
-  private static String getMaskedValue(String key, String value) {
+  public static String getMaskedValue(String key, String value) {
     return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
         ? MASKED_FIELD_VALUE
         : value.replaceAll(maskRegex, "*");

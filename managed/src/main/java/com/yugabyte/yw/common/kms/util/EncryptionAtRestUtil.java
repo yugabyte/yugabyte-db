@@ -37,9 +37,17 @@ import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
 import play.api.Play;
 import play.libs.Json;
+import io.ebean.annotation.EnumValue;
 
 public class EncryptionAtRestUtil {
   protected static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestUtil.class);
+
+  public enum KeyType {
+    @EnumValue("CMK")
+    CMK,
+    @EnumValue("DATA_KEY")
+    DATA_KEY;
+  }
 
   private static final String BACKUP_KEYS_FILE_NAME = "backup_keys.json";
 
@@ -58,9 +66,11 @@ public class EncryptionAtRestUtil {
   }
 
   public static ObjectNode getAuthConfig(UUID configUUID, KeyProvider keyProvider) {
+
     KmsConfig config = KmsConfig.get(configUUID);
     final ObjectNode maskedConfig = (ObjectNode) config.authConfig;
     UUID customerUUID = config.customerUUID;
+
     return (ObjectNode)
         EncryptionAtRestUtil.unmaskConfigData(customerUUID, maskedConfig, keyProvider);
   }
@@ -70,6 +80,7 @@ public class EncryptionAtRestUtil {
     try {
       final ObjectMapper mapper = new ObjectMapper();
       final String salt = generateSalt(customerUUID, keyProvider);
+
       final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
       final String encryptedConfig = encryptor.encrypt(mapper.writeValueAsString(config));
       return Json.newObject().put("encrypted", encryptedConfig);
@@ -104,10 +115,12 @@ public class EncryptionAtRestUtil {
   }
 
   public static String generateSalt(UUID customerUUID, KeyProvider keyProvider) {
+
+    // fixed generateSalt to remove negative sign as string "HASHICORP" generates -ve integer.
+    final String kpValue = String.valueOf(keyProvider.name().hashCode());
     final String saltBase = "%s%s";
     final String salt =
-        String.format(
-            saltBase, customerUUID.toString().replace("-", ""), keyProvider.name().hashCode());
+        String.format(saltBase, customerUUID.toString().replace("-", ""), kpValue.replace("-", ""));
     return salt.length() % 2 == 0 ? salt : salt + "0";
   }
 
@@ -184,12 +197,14 @@ public class EncryptionAtRestUtil {
     return latestHistory;
   }
 
-  public static void removeKeyRotationHistory(UUID universeUUID, UUID configUUID) {
+  public static int removeKeyRotationHistory(UUID universeUUID, UUID configUUID) {
     // Remove key ref history for the universe
-    KmsHistory.deleteAllConfigTargetKeyRefs(
-        configUUID, universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+    int keyCount =
+        KmsHistory.deleteAllConfigTargetKeyRefs(
+            configUUID, universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
     // Remove in-memory key ref -> key val cache entry, if it exists
     EncryptionAtRestUtil.removeUniverseKeyCacheEntry(universeUUID);
+    return keyCount;
   }
 
   public static boolean configInUse(UUID configUUID) {
