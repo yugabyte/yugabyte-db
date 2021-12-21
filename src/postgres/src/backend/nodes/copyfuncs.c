@@ -4035,6 +4035,8 @@ _copyCreateTableGroupStmt(const CreateTableGroupStmt *from)
 	CreateTableGroupStmt *newnode = makeNode(CreateTableGroupStmt);
 
 	COPY_STRING_FIELD(tablegroupname);
+	COPY_STRING_FIELD(tablespacename);
+	COPY_NODE_FIELD(owner);
 	COPY_NODE_FIELD(options);
 	return newnode;
 }
