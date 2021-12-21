@@ -269,6 +269,14 @@ class MasterServiceImpl : public MasterServiceIf,
                          IsFlushTablesDoneResponsePB* resp,
                          rpc::RpcContext rpc) override;
 
+  void FlushSysCatalog(const FlushSysCatalogRequestPB* req,
+                       FlushSysCatalogResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+
+  void CompactSysCatalog(const CompactSysCatalogRequestPB* req,
+                         CompactSysCatalogResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+
   void IsInitDbDone(const IsInitDbDoneRequestPB* req,
                     IsInitDbDoneResponsePB* resp,
                     rpc::RpcContext rpc) override;

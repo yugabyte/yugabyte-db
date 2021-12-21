@@ -1433,6 +1433,18 @@ Status ClusterAdminClient::FlushTablesById(
   return Status::OK();
 }
 
+Status ClusterAdminClient::FlushSysCatalog() {
+  master::FlushSysCatalogRequestPB req;
+  auto res = InvokeRpc(&MasterServiceProxy::FlushSysCatalog, master_proxy_.get(), req);
+  return res.ok() ? Status::OK() : res.status();
+}
+
+Status ClusterAdminClient::CompactSysCatalog() {
+  master::CompactSysCatalogRequestPB req;
+  auto res = InvokeRpc(&MasterServiceProxy::CompactSysCatalog, master_proxy_.get(), req);
+  return res.ok() ? Status::OK() : res.status();
+}
+
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
   for(int iter = 0; iter < kNumberOfTryouts; ++iter) {
     const auto res_leader_ready = VERIFY_RESULT(InvokeRpcNoResponseCheck(
