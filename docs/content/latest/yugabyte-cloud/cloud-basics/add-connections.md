@@ -12,7 +12,7 @@ menu:
   latest:
     identifier: add-connections
     parent: cloud-basics
-    weight: 40
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
