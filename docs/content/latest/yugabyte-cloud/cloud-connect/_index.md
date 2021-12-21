@@ -54,7 +54,7 @@ Once you have connected to the database, you can add database users for other te
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="connect-applications/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
         <div class="title">Applications</div>
       </div>
       <div class="body">
@@ -66,7 +66,7 @@ Once you have connected to the database, you can add database users for other te
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="add-users/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/secure/create-roles.png" aria-hidden="true" />
         <div class="title">Add database users</div>
       </div>
       <div class="body">
