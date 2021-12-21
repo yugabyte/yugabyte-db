@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: create-clusters
     parent: cloud-basics
-    weight: 30
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
@@ -121,3 +121,4 @@ You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud
 - [Add database users](../../cloud-connect/add-users/)
 - [Create a database](../../cloud-connect/create-databases/)
 - [Develop applications](../../cloud-develop/)
+- [Database authorization in Yugabyte Cloud clusters](../../cloud-security/cloud-users/)
