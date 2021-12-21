@@ -1981,7 +1981,6 @@ AlterTableStmt:
 				}
 		|	ALTER INDEX qualified_name index_partition_cmd
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $3;
 					n->cmds = list_make1($4);
