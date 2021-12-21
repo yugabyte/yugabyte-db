@@ -40,6 +40,7 @@
 #include "catalog/pg_operator_d.h"
 #include "executor/nodeAgg.h"
 #include "funcapi.h"
+#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "nodes/pg_list.h"
@@ -168,6 +169,95 @@ bool is_agtype_null(agtype *agt_arg)
         return true;
     }
     return false;
+}
+
+/*
+ * graphid_recv - converts external binary format to a graphid.
+ *
+ * Copied from PGs int8recv as a graphid is an int64.
+ */
+
+PG_FUNCTION_INFO_V1(graphid_recv);
+
+Datum graphid_recv(PG_FUNCTION_ARGS)
+{
+    StringInfo buf = (StringInfo) PG_GETARG_POINTER(0);
+
+    PG_RETURN_INT64(pq_getmsgint64(buf));
+}
+
+/*
+ * graphid_send - converts a graphid to binary format.
+ *
+ * Copied from PGs int8send as a graphid is an int64.
+ */
+
+PG_FUNCTION_INFO_V1(graphid_send);
+
+Datum graphid_send(PG_FUNCTION_ARGS)
+{
+    int64 arg1 = PG_GETARG_INT64(0);
+    StringInfoData buf;
+
+    pq_begintypsend(&buf);
+    pq_sendint64(&buf, arg1);
+    PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+}
+
+/*
+ * agtype recv function copied from PGs jsonb_recv as agtype is based
+ * off of jsonb
+ *
+ * The type is sent as text in binary mode, so this is almost the same
+ * as the input function, but it's prefixed with a version number so we
+ * can change the binary format sent in future if necessary. For now,
+ * only version 1 is supported.
+ */
+PG_FUNCTION_INFO_V1(agtype_recv);
+
+Datum agtype_recv(PG_FUNCTION_ARGS)
+{
+    StringInfo buf = (StringInfo) PG_GETARG_POINTER(0);
+    int version = pq_getmsgint(buf, 1);
+    char *str = NULL;
+    int nbytes = 0;
+
+    if (version == 1)
+    {
+        str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
+    }
+    else
+    {
+        elog(ERROR, "unsupported agtype version number %d", version);
+    }
+
+    return agtype_from_cstring(str, nbytes);
+}
+
+/*
+ * agtype send function copied from PGs jsonb_send as agtype is based
+ * off of jsonb
+ *
+ * Just send agtype as a version number, then a string of text
+ */
+PG_FUNCTION_INFO_V1(agtype_send);
+
+Datum agtype_send(PG_FUNCTION_ARGS)
+{
+    agtype *agt = AG_GET_ARG_AGTYPE_P(0);
+    StringInfoData buf;
+    StringInfo agtype_text = makeStringInfo();
+    int version = 1;
+
+    (void) agtype_to_cstring(agtype_text, &agt->root, VARSIZE(agt));
+
+    pq_begintypsend(&buf);
+    pq_sendint8(&buf, version);
+    pq_sendtext(&buf, agtype_text->data, agtype_text->len);
+    pfree(agtype_text->data);
+    pfree(agtype_text);
+
+    PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
 PG_FUNCTION_INFO_V1(agtype_in);
