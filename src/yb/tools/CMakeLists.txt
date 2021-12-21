@@ -155,7 +155,6 @@ add_executable(yb-bulk_load yb-bulk_load.cc)
 target_link_libraries(yb-bulk_load
   gutil
   rocksdb
-  ql_protocol_proto
   yb_client
   bulk_load_docdb_util
   yb-generate_partitions

@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/util/encryption_util.h"
+#include "yb/encryption/encryption_util.h"
 
 #include <openssl/err.h>
 #include <openssl/rand.h>
@@ -23,11 +23,12 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/encryption/cipher_stream.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/encryption/header_manager.h"
+
 #include "yb/util/atomic.h"
-#include "yb/util/cipher_stream.h"
-#include "yb/util/encryption.pb.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/header_manager.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
@@ -52,6 +53,7 @@ DEFINE_test_flag(bool, encryption_use_openssl_compatible_counter_overflow, true,
                  "increment for newly created keys.")
 
 namespace yb {
+namespace encryption {
 
 namespace {
 
@@ -61,7 +63,7 @@ std::vector<std::unique_ptr<std::mutex>> crypto_mutexes;
 
 constexpr uint32_t kDefaultKeySize = 16;
 
-void EncryptionParams::ToEncryptionParamsPB(yb::EncryptionParamsPB* encryption_header) const {
+void EncryptionParams::ToEncryptionParamsPB(EncryptionParamsPB* encryption_header) const {
   encryption_header->set_data_key(key, key_size);
   encryption_header->set_nonce(nonce, kBlockSize - 4);
   encryption_header->set_counter(counter);
@@ -69,7 +71,7 @@ void EncryptionParams::ToEncryptionParamsPB(yb::EncryptionParamsPB* encryption_h
 }
 
 Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
-    const yb::EncryptionParamsPB& encryption_header) {
+    const EncryptionParamsPB& encryption_header) {
   auto encryption_params = std::make_unique<EncryptionParams>();
   memcpy(encryption_params->key, encryption_header.data_key().c_str(),
          encryption_header.data_key().size());
@@ -206,4 +208,5 @@ Status CompleteCreateEncryptionInfoForWrite(const std::string& header,
   return Status::OK();
 }
 
+} // namespace encryption
 } // namespace yb

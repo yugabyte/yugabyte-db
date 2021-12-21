@@ -14,11 +14,7 @@
 #include <math.h>
 #include <netinet/in.h>
 #include <openssl/bn.h>
-#include <openssl/err.h>
-#include <openssl/evp.h>
 #include <openssl/ossl_typ.h>
-#include <openssl/rand.h>
-#include <openssl/ssl.h>
 #include <pthread.h>
 #include <pwd.h>
 #include <semaphore.h>
@@ -52,7 +48,6 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
-#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -126,7 +121,6 @@
 #include <boost/optional.hpp>
 #include <boost/optional/optional.hpp>
 #include <boost/optional/optional_fwd.hpp>
-#include <boost/pointer_cast.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>

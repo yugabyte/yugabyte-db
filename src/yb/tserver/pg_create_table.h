@@ -14,8 +14,6 @@
 #ifndef YB_TSERVER_PG_CREATE_TABLE_H
 #define YB_TSERVER_PG_CREATE_TABLE_H
 
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
@@ -23,6 +21,8 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/partition.h"
 #include "yb/common/pg_types.h"
+
+#include "yb/tserver/pg_client.fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"

@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ENCRYPTED_FILE_H
-#define YB_UTIL_ENCRYPTED_FILE_H
+#ifndef YB_ENCRYPTION_ENCRYPTED_FILE_H
+#define YB_ENCRYPTION_ENCRYPTED_FILE_H
 
 #include <string.h>
 
@@ -20,11 +20,13 @@
 #include <cstdarg>
 #include <memory>
 
-#include "yb/util/cipher_stream_fwd.h"
+#include "yb/encryption/cipher_stream_fwd.h"
+
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 
 namespace yb {
+namespace encryption {
 
 class HeaderManager;
 
@@ -36,7 +38,7 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
                        std::unique_ptr<RandomAccessFile> underlying);
 
   EncryptedRandomAccessFile(std::unique_ptr<RandomAccessFile> file,
-                            std::unique_ptr<yb::BlockAccessCipherStream> stream,
+                            std::unique_ptr<BlockAccessCipherStream> stream,
                             uint64_t header_size)
       : RandomAccessFileWrapper(std::move(file)), stream_(std::move(stream)),
         header_size_(header_size) {}
@@ -73,6 +75,7 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
   std::atomic<int64_t> num_overflow_workarounds_{0};
 };
 
+} // namespace encryption
 } // namespace yb
 
-#endif // YB_UTIL_ENCRYPTED_FILE_H
+#endif // YB_ENCRYPTION_ENCRYPTED_FILE_H

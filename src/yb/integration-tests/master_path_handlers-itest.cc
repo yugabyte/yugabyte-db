@@ -168,7 +168,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
     const auto uuid = replica.ts_info().permanent_uuid();
     auto* tserver = cluster_->find_tablet_server(uuid);
     ASSERT_NOTNULL(tserver);
-    if (replica.role() == consensus::RaftPeerPB::LEADER) {
+    if (replica.role() == PeerRole::LEADER) {
       leader = tserver;
     } else {
       followers.push_back(tserver);

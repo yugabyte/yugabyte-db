@@ -14,7 +14,6 @@
 #include "yb/gen_yrpc/substitutions.h"
 
 #include <boost/algorithm/string/case_conv.hpp>
-#include <boost/algorithm/string/predicate.hpp>
 
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
@@ -29,7 +28,6 @@ namespace gen_yrpc {
 
 namespace {
 
-const std::string kProtoExtension = ".proto";
 const std::string kWireFormat = "::google::protobuf::internal::WireFormatLite";
 
 // Extract the last filename component.
@@ -55,14 +53,6 @@ std::string GenerateCloseNamespace(const string &str) {
 }
 
 } // namespace
-
-std::string RemoveProtoExtension(const std::string& fname) {
-  if (boost::ends_with(fname, kProtoExtension)) {
-    return fname.substr(0, fname.length() - kProtoExtension.length());
-  } else {
-    return fname;
-  }
-}
 
 FileSubstitutions::FileSubstitutions(const google::protobuf::FileDescriptor* file)
     : file_(file), path_no_extension_(RemoveProtoExtension(file->name())) {

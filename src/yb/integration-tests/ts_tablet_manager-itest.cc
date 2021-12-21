@@ -222,12 +222,12 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
       ASSERT_TRUE(reported_tablet.has_committed_consensus_state());
 
       string uuid = tablet_peers[replica]->permanent_uuid();
-      RaftPeerPB::Role role = GetConsensusRole(uuid, reported_tablet.committed_consensus_state());
+      PeerRole role = GetConsensusRole(uuid, reported_tablet.committed_consensus_state());
       if (replica == new_leader_idx) {
-        ASSERT_EQ(RaftPeerPB::LEADER, role)
+        ASSERT_EQ(PeerRole::LEADER, role)
             << "Tablet report: " << report.ShortDebugString();
       } else {
-        ASSERT_EQ(RaftPeerPB::FOLLOWER, role)
+        ASSERT_EQ(PeerRole::FOLLOWER, role)
             << "Tablet report: " << report.ShortDebugString();
       }
     }

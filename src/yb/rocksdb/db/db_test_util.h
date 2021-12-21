@@ -45,6 +45,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/encryption/encryption_fwd.h"
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
@@ -78,12 +80,6 @@
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 #include "yb/util/test_util.h" // For ASSERT_OK
-
-namespace yb {
-
-class UniverseKeyManager;
-
-} // namespace yb
 
 namespace rocksdb {
 
@@ -621,7 +617,7 @@ class DBTestBase : public testing::Test {
   Options last_options_;
 
   // For encryption
-  std::unique_ptr<yb::UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<yb::encryption::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> encrypted_env_;
 
   static const std::string kKeyId;

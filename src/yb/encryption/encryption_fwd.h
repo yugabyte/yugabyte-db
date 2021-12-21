@@ -11,27 +11,17 @@
 // under the License.
 //
 
-syntax = "proto3";
+#ifndef YB_ENCRYPTION_ENCRYPTION_FWD_H
+#define YB_ENCRYPTION_ENCRYPTION_FWD_H
 
-package yb;
+namespace yb {
+namespace encryption {
 
-option java_package = "org.yb";
+class HeaderManager;
+class UniverseKeyManager;
+class UniverseKeysPB;
 
-message EncryptionParamsPB {
-  bytes data_key = 1;
-  bytes nonce = 2;
-  int32 counter = 3;
-  // When computing counter increment, do we want to overflow the counter into the rest of the
-  // initialization vector as part of the new format.
-  bool openssl_compatible_counter_overflow  = 4;
-}
+}  // namespace encryption
+}  // namespace yb
 
-message UniverseKeysPB {
-  map<string, bytes> map = 1;
-}
-
-message UniverseKeyRegistryPB {
-  bool encryption_enabled = 1;
-  map<string, EncryptionParamsPB> universe_keys = 2;
-  string latest_version_id = 3;
-}
+#endif  // YB_ENCRYPTION_ENCRYPTION_FWD_H

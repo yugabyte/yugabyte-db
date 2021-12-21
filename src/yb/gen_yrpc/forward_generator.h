@@ -11,27 +11,20 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_HEADER_MANAGER_IMPL_H
-#define YB_UTIL_HEADER_MANAGER_IMPL_H
+#ifndef YB_GEN_YRPC_FORWARD_GENERATOR_H
+#define YB_GEN_YRPC_FORWARD_GENERATOR_H
 
-#include <memory>
+#include "yb/gen_yrpc/printer.h"
 
 namespace yb {
+namespace gen_yrpc {
 
-class HeaderManager;
-class UniverseKeyManager;
+class ForwardGenerator {
+ public:
+  void Header(YBPrinter printer, const google::protobuf::FileDescriptor* file);
+};
 
-// Implementation of used by FileFactory to construct header for encrypted files.
-// The header format looks like:
-//
-// magic encryption string
-// header size (4 bytes)
-// universe key id size (4 bytes)
-// universe key id
-// EncryptionParamsPB size (4 bytes)
-// EncryptionParamsPB
-std::unique_ptr<HeaderManager> DefaultHeaderManager(UniverseKeyManager* universe_key_manager);
+}  // namespace gen_yrpc
+}  // namespace yb
 
-} // namespace yb
-
-#endif // YB_UTIL_HEADER_MANAGER_IMPL_H
+#endif  // YB_GEN_YRPC_FORWARD_GENERATOR_H

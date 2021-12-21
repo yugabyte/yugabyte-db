@@ -1043,7 +1043,7 @@ Status WaitForNumVotersInConfigOnMaster(const shared_ptr<MasterServiceProxy>& ma
     if (s.ok()) {
       num_voters_found = 0;
       for (const TabletLocationsPB::ReplicaPB& r : tablet_locations.replicas()) {
-        if (r.role() == RaftPeerPB::LEADER || r.role() == RaftPeerPB::FOLLOWER) num_voters_found++;
+        if (r.role() == PeerRole::LEADER || r.role() == PeerRole::FOLLOWER) num_voters_found++;
       }
       if (num_voters_found == num_voters) break;
     }

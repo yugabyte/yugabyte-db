@@ -12,6 +12,10 @@
 
 #include "yb/cdc/cdc_service.h"
 
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -29,9 +33,6 @@
 #include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
-#include "yb/util/encrypted_file_factory.h"
-#include "yb/util/header_manager_impl.h"
-#include "yb/util/universe_key_manager.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
@@ -110,12 +111,12 @@ CDCConsumer* TabletServer::GetCDCConsumer() {
   return cdc_consumer_.get();
 }
 
-yb::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
+encryption::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
   return opts_.universe_key_manager;
 }
 
 Status TabletServer::SetUniverseKeyRegistry(
-    const yb::UniverseKeyRegistryPB& universe_key_registry) {
+    const encryption::UniverseKeyRegistryPB& universe_key_registry) {
   opts_.universe_key_manager->SetUniverseKeyRegistry(universe_key_registry);
   return Status::OK();
 }

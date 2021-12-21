@@ -44,6 +44,7 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 
 #include "yb/gen_yrpc/printer.h"
+#include "yb/gen_yrpc/forward_generator.h"
 #include "yb/gen_yrpc/messages_generator.h"
 #include "yb/gen_yrpc/proxy_generator.h"
 #include "yb/gen_yrpc/service_generator.h"
@@ -53,6 +54,21 @@ using namespace std::placeholders;
 
 namespace yb {
 namespace gen_yrpc {
+
+template <class T>
+struct HasMemberFunction_Source {
+  typedef int Yes;
+  typedef struct { Yes array[2]; } No;
+  typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT;
+
+  template <class U>
+  static auto Test(YBPrinter* printer, const google::protobuf::FileDescriptor* file, U* u)
+      -> decltype(u->Source(*printer, file), Yes(0)) {}
+  static No Test(...) {}
+
+  static constexpr bool value =
+      sizeof(Test(nullptr, nullptr, static_cast<CleanedT*>(nullptr))) == sizeof(Yes);
+};
 
 class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
  public:
@@ -76,6 +92,8 @@ class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
 
     SubstitutionContext subs;
     subs.Push(name_info.Create());
+
+    Generate<ForwardGenerator>(file, gen_context, &subs, name_info.forward());
 
     if (file->service_count() != 0) {
       Generate<ServiceGenerator>(file, gen_context, &subs, name_info.service());
@@ -101,10 +119,23 @@ class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
         file, gen_context, subs, fname + ".h",
         std::bind(&Generator::Header, &generator, _1, _2));
 
-    DoGenerate(
-        file, gen_context, subs, fname + ".cc",
-        std::bind(&Generator::Source, &generator, _1, _2));
+    GenerateSource(&generator, file, gen_context, subs, fname + ".cc");
   }
+
+  template <class Generator>
+  typename std::enable_if<HasMemberFunction_Source<Generator>::value, void>::type GenerateSource(
+      Generator* generator,
+      const google::protobuf::FileDescriptor *file,
+      google::protobuf::compiler::GeneratorContext *gen_context,
+      SubstitutionContext *subs, const std::string& fname) const {
+    DoGenerate(
+        file, gen_context, subs, fname,
+        std::bind(&Generator::Source, generator, _1, _2));
+  }
+
+  template <class Generator, class... Args>
+  typename std::enable_if<!HasMemberFunction_Source<Generator>::value, void>::type GenerateSource(
+      Generator* generator, Args&&... args) const {}
 
   template <class F>
   void DoGenerate(

@@ -11,22 +11,24 @@
 // under the License.
 //
 
-#include "yb/util/header_manager_impl.h"
+#include "yb/encryption/header_manager_impl.h"
 
 #include <string>
 
+#include "yb/encryption/cipher_stream_fwd.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/encryption/header_manager.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/util/status_fwd.h"
-#include "yb/util/cipher_stream_fwd.h"
-#include "yb/util/encryption.pb.h"
 #include "yb/util/errno.h"
-#include "yb/util/header_manager.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
-#include "yb/util/universe_key_manager.h"
 
 static const string kEncryptionMagic = "encrypt!";
 
 namespace yb {
+namespace encryption {
 
 class HeaderManagerImpl : public HeaderManager {
  public:
@@ -142,4 +144,5 @@ std::unique_ptr<HeaderManager> DefaultHeaderManager(UniverseKeyManager* universe
   return std::make_unique<HeaderManagerImpl>(universe_key_manager);
 }
 
+} // namespace encryption
 } // namespace yb

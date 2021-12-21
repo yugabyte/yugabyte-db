@@ -614,7 +614,7 @@ class CatalogManager :
 
   // Returns this CatalogManager's role in a consensus configuration. CatalogManager
   // must be initialized before calling this method.
-  consensus::RaftPeerPB::Role Role() const;
+  PeerRole Role() const;
 
   CHECKED_STATUS PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft,
                                const DumpMasterStateRequestPB* req,
