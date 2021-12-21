@@ -162,6 +162,10 @@ class SysCatalogTable {
   CHECKED_STATUS ReadPgClassInfo(const uint32_t database_oid,
                                  TableToTablespaceIdMap* table_to_tablespace_map);
 
+  CHECKED_STATUS ReadTablespaceInfoFromPgYbTablegroup(
+    const uint32_t database_oid,
+    TableToTablespaceIdMap *table_tablespace_map);
+
   // Read relnamespace OID from the pg_class catalog table.
   Result<uint32_t> ReadPgClassRelnamespace(const uint32_t database_oid,
                                            const uint32_t table_oid);
