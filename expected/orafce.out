@@ -4400,3 +4400,178 @@ SELECT oracle.unistr('wrong: \U0000db99\U00000061');
 ERROR:  invalid Unicode surrogate pair
 SELECT oracle.unistr('wrong: \U002FFFFF');
 ERROR:  invalid Unicode escape value
+----
+-- Tests for the greatest/least scalar function
+----
+-- The PostgreSQL native function returns NULL only if all parameters are nulls
+SELECT greatest(2, 6, 8);
+ greatest 
+----------
+        8
+(1 row)
+
+SELECT greatest(2, NULL, 8);
+ greatest 
+----------
+        8
+(1 row)
+
+SELECT least(2, 6, 8);
+ least 
+-------
+     2
+(1 row)
+
+SELECT least(2, NULL, 8);
+ least 
+-------
+     2
+(1 row)
+
+-- The Oracle function returns NULL on NULL input, even a single parameter
+SELECT oracle.greatest(2, 6, 8, 4);
+ greatest 
+----------
+        8
+(1 row)
+
+SELECT oracle.greatest(2, NULL, 8, 4);
+ greatest 
+----------
+      ***
+(1 row)
+
+SELECT oracle.least(2, 6, 8, 1);
+ least 
+-------
+     1
+(1 row)
+
+SELECT oracle.least(2, NULL, 8, 1);
+ least 
+-------
+   ***
+(1 row)
+
+-- Both don't like data type mix
+SELECT greatest(2, 'A', 'B', 'C');
+ERROR:  invalid input syntax for type integer: "A"
+LINE 1: SELECT greatest(2, 'A', 'B', 'C');
+                           ^
+SELECT oracle.greatest(2, 'A', 'B', 'C');
+ERROR:  invalid input syntax for type integer: "A"
+LINE 1: SELECT oracle.greatest(2, 'A', 'B', 'C');
+                                  ^
+SELECT greatest('A', 'B', '1', '2');
+ greatest 
+----------
+ B
+(1 row)
+
+SELECT oracle.greatest('A', 'B', '1', '2');
+ERROR:  could not determine polymorphic type because input has type unknown
+SELECT greatest('A', 'B', 1, 2);
+ERROR:  invalid input syntax for type integer: "A"
+LINE 1: SELECT greatest('A', 'B', 1, 2);
+                        ^
+SELECT oracle.greatest('A', 'B', 1, 2);
+ERROR:  invalid input syntax for type integer: "A"
+LINE 1: SELECT oracle.greatest('A', 'B', 1, 2);
+                               ^
+-- Test different data type
+SELECT oracle.greatest('A'::text, 'B'::text, 'C'::text, 'D'::text);
+ greatest 
+----------
+ D
+(1 row)
+
+SELECT oracle.greatest('A'::bpchar, 'B'::bpchar, 'C'::bpchar, 'D'::bpchar);
+ greatest 
+----------
+ D
+(1 row)
+
+SELECT oracle.greatest(1::bigint,2::bigint,3::bigint,4::bigint);
+ greatest 
+----------
+        4
+(1 row)
+
+SELECT oracle.greatest(1::integer,2::integer,3::integer,4::integer);
+ greatest 
+----------
+        4
+(1 row)
+
+SELECT oracle.greatest(1::smallint,2::smallint,3::smallint,4::smallint);
+ greatest 
+----------
+        4
+(1 row)
+
+SELECT oracle.greatest(1.2::numeric,2.4::numeric,2.3::numeric,2.2::numeric);
+ greatest 
+----------
+      2.4
+(1 row)
+
+SELECT oracle.greatest(1.2::double precision,2.4::double precision,2.3::double precision,2.2::double precision);
+ greatest 
+----------
+      2.4
+(1 row)
+
+SELECT oracle.greatest(1.2::real,2.4::real,2.2::real,2.3::real);
+ greatest 
+----------
+      2.4
+(1 row)
+
+SELECT oracle.least('A'::text, 'B'::text, 'C'::text, 'D'::text);
+ least 
+-------
+ A
+(1 row)
+
+SELECT oracle.least('A'::bpchar, 'B'::bpchar, 'C'::bpchar, 'D'::bpchar);
+ least 
+-------
+ A
+(1 row)
+
+SELECT oracle.least(1::bigint,2::bigint,3::bigint,4::bigint);
+ least 
+-------
+     1
+(1 row)
+
+SELECT oracle.least(1::integer,2::integer,3::integer,4::integer);
+ least 
+-------
+     1
+(1 row)
+
+SELECT oracle.least(1::smallint,2::smallint,3::smallint,4::smallint);
+ least 
+-------
+     1
+(1 row)
+
+SELECT oracle.least(1.2::numeric,2.4::numeric,2.3::numeric,2.2::numeric);
+ least 
+-------
+   1.2
+(1 row)
+
+SELECT oracle.least(1.2::double precision,2.4::double precision,2.3::double precision,2.2::double precision);
+ least 
+-------
+   1.2
+(1 row)
+
+SELECT oracle.least(1.2::real,2.4::real,2.2::real,2.3::real);
+ least 
+-------
+   1.2
+(1 row)
+

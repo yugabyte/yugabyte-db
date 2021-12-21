@@ -1031,3 +1031,43 @@ SELECT oracle.unistr('wrong: \+2FFFFF');
 SELECT oracle.unistr('wrong: \udb99\u0061');
 SELECT oracle.unistr('wrong: \U0000db99\U00000061');
 SELECT oracle.unistr('wrong: \U002FFFFF');
+----
+-- Tests for the greatest/least scalar function
+----
+-- The PostgreSQL native function returns NULL only if all parameters are nulls
+SELECT greatest(2, 6, 8);
+SELECT greatest(2, NULL, 8);
+SELECT least(2, 6, 8);
+SELECT least(2, NULL, 8);
+
+-- The Oracle function returns NULL on NULL input, even a single parameter
+SELECT oracle.greatest(2, 6, 8, 4);
+SELECT oracle.greatest(2, NULL, 8, 4);
+SELECT oracle.least(2, 6, 8, 1);
+SELECT oracle.least(2, NULL, 8, 1);
+
+-- Both don't like data type mix
+SELECT greatest(2, 'A', 'B', 'C');
+SELECT oracle.greatest(2, 'A', 'B', 'C');
+SELECT greatest('A', 'B', '1', '2');
+SELECT oracle.greatest('A', 'B', '1', '2');
+SELECT greatest('A', 'B', 1, 2);
+SELECT oracle.greatest('A', 'B', 1, 2);
+
+-- Test different data type
+SELECT oracle.greatest('A'::text, 'B'::text, 'C'::text, 'D'::text);
+SELECT oracle.greatest('A'::bpchar, 'B'::bpchar, 'C'::bpchar, 'D'::bpchar);
+SELECT oracle.greatest(1::bigint,2::bigint,3::bigint,4::bigint);
+SELECT oracle.greatest(1::integer,2::integer,3::integer,4::integer);
+SELECT oracle.greatest(1::smallint,2::smallint,3::smallint,4::smallint);
+SELECT oracle.greatest(1.2::numeric,2.4::numeric,2.3::numeric,2.2::numeric);
+SELECT oracle.greatest(1.2::double precision,2.4::double precision,2.3::double precision,2.2::double precision);
+SELECT oracle.greatest(1.2::real,2.4::real,2.2::real,2.3::real);
+SELECT oracle.least('A'::text, 'B'::text, 'C'::text, 'D'::text);
+SELECT oracle.least('A'::bpchar, 'B'::bpchar, 'C'::bpchar, 'D'::bpchar);
+SELECT oracle.least(1::bigint,2::bigint,3::bigint,4::bigint);
+SELECT oracle.least(1::integer,2::integer,3::integer,4::integer);
+SELECT oracle.least(1::smallint,2::smallint,3::smallint,4::smallint);
+SELECT oracle.least(1.2::numeric,2.4::numeric,2.3::numeric,2.2::numeric);
+SELECT oracle.least(1.2::double precision,2.4::double precision,2.3::double precision,2.2::double precision);
+SELECT oracle.least(1.2::real,2.4::real,2.2::real,2.3::real);

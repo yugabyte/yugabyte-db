@@ -10,11 +10,14 @@
 #include "nodes/primnodes.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
+#include "utils/array.h"
+#include "utils/arrayaccess.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+#include "utils/typcache.h"
 #include "orafce.h"
 #include "builtins.h"
 
@@ -27,6 +30,8 @@ static char *lc_collate_cache = NULL;
 static size_t multiplication = 1;
 
 text *def_locale = NULL;
+
+Datum ora_greatest_least(FunctionCallInfo fcinfo, bool greater);
 
 PG_FUNCTION_INFO_V1(ora_lnnvl);
 
@@ -556,4 +561,139 @@ ora_get_status(PG_FUNCTION_ARGS)
 #else
 	PG_RETURN_TEXT_P(cstring_to_text("Production"));
 #endif
+}
+
+PG_FUNCTION_INFO_V1(ora_greatest);
+
+/*
+ * ora_greatest(anyarray) returns anyelement
+ */
+Datum
+ora_greatest(PG_FUNCTION_ARGS)
+{
+	Datum		retarg;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+	else
+		retarg = ora_greatest_least(fcinfo, true);
+
+	PG_RETURN_DATUM(retarg);
+}
+
+PG_FUNCTION_INFO_V1(ora_least);
+
+/*
+ * ora_least(anyarray) returns anyelement
+ */
+Datum
+ora_least(PG_FUNCTION_ARGS)
+{
+	Datum		retarg;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+	else
+		retarg = ora_greatest_least(fcinfo, false);
+
+	PG_RETURN_DATUM(retarg);
+}
+
+
+/*
+ * ora_greatest_least(anyarray, bool) returns anyelement
+ * Boolean parameter is true for greatest and false for least.
+ */
+Datum
+ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
+{
+	Datum		retarg;
+	AnyArrayType	*array = PG_GETARG_ANY_ARRAY_P(1);
+	int		ndims = AARR_NDIM(array);
+	int		*dims = AARR_DIMS(array);
+	int		nelems;
+	int		i;
+	TypeCacheEntry *typentry;
+	int             typlen;
+	bool            typbyval;
+	char            typalign;
+	array_iter      itr;
+	Oid             element_type = AARR_ELEMTYPE(array);
+	FmgrInfo	*glt;
+	Oid		collation = PG_GET_COLLATION();
+
+	/* Get the input type's operator '>' and save at fn_extra. */
+	if (fcinfo->flinfo->fn_extra == NULL)
+	{
+		MemoryContext	oldctx;
+		Oid		gltoid;
+		Oid		typid = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+		if (greater)
+			get_sort_group_operators(typid, false, false, true, NULL, NULL, &gltoid, NULL);
+		else
+			get_sort_group_operators(typid, true, false, false, &gltoid, NULL, NULL, NULL);
+
+		oldctx = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
+		glt = palloc(sizeof(FmgrInfo));
+		fmgr_info(get_opcode(gltoid), glt);
+		MemoryContextSwitchTo(oldctx);
+
+		fcinfo->flinfo->fn_extra = glt;
+	}
+	else
+		glt = fcinfo->flinfo->fn_extra;
+
+
+	/* Let's return the first parameter by default */
+	retarg = PG_GETARG_DATUM(0);
+
+	/* Look up to the greater than operator to get type information */
+	if (greater)
+	{
+		typentry = lookup_type_cache(element_type, TYPECACHE_GT_OPR);
+		if (!OidIsValid(typentry->gt_opr))
+			ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_FUNCTION),
+				 errmsg("could not identify a greater than operator for type %s",
+						format_type_be(element_type))));
+	}
+	else
+	{
+		typentry = lookup_type_cache(element_type, TYPECACHE_LT_OPR);
+		if (!OidIsValid(typentry->lt_opr))
+			ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_FUNCTION),
+				 errmsg("could not identify a lower than operator for type %s",
+						format_type_be(element_type))));
+	}
+
+	typlen = typentry->typlen;
+	typbyval = typentry->typbyval;
+	typalign = typentry->typalign;
+
+	nelems = ArrayGetNItems(ndims, dims);
+	array_iter_setup(&itr, array);
+
+	for (i = 0; i < nelems; i++)
+	{
+		Datum           elt;
+		bool            isnull;
+		Datum		result;
+
+		/* Get elements, checking for NULL */
+		elt = array_iter_next(&itr, &isnull, i,
+							typlen, typbyval, typalign);
+		if (isnull)
+			PG_RETURN_NULL();
+
+		result = FunctionCall2Coll(glt,
+								   collation,
+								   elt,
+								   retarg);
+		if (DatumGetBool(result))
+			retarg = elt;
+	}
+
+	PG_RETURN_DATUM(retarg);
 }
