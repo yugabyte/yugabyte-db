@@ -4462,14 +4462,6 @@ SELECT oracle.greatest(2, 'A', 'B', 'C');
 ERROR:  invalid input syntax for type integer: "A"
 LINE 1: SELECT oracle.greatest(2, 'A', 'B', 'C');
                                   ^
-SELECT greatest('A', 'B', '1', '2');
- greatest 
-----------
- B
-(1 row)
-
-SELECT oracle.greatest('A', 'B', '1', '2');
-ERROR:  could not determine polymorphic type because input has type unknown
 SELECT greatest('A', 'B', 1, 2);
 ERROR:  invalid input syntax for type integer: "A"
 LINE 1: SELECT greatest('A', 'B', 1, 2);

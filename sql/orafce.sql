@@ -1049,8 +1049,6 @@ SELECT oracle.least(2, NULL, 8, 1);
 -- Both don't like data type mix
 SELECT greatest(2, 'A', 'B', 'C');
 SELECT oracle.greatest(2, 'A', 'B', 'C');
-SELECT greatest('A', 'B', '1', '2');
-SELECT oracle.greatest('A', 'B', '1', '2');
 SELECT greatest('A', 'B', 1, 2);
 SELECT oracle.greatest('A', 'B', 1, 2);
 
