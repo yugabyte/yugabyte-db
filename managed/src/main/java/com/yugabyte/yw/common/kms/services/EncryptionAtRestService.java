@@ -54,6 +54,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         .anyMatch(supportedKeySize -> supportedKeySize == keySize);
   }
 
+  /**
+   * Creates Universe key using KMS provider. If required first it creates CMK/EKE.
+   *
+   * @param universeUUID
+   * @param configUUID
+   * @param config
+   * @return
+   */
   protected abstract byte[] createKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config);
 
@@ -114,6 +122,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
       LOG.warn(errMsg);
       return null;
     }
+
     // Attempt to retrieve cached entry
     byte[] keyVal = EncryptionAtRestUtil.getUniverseKeyCacheEntry(universeUUID, keyRef);
     // Retrieve through KMS provider if no cache entry exists
@@ -168,6 +177,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
       LOG.warn(errMsg);
       return null;
     }
+    // LOG.debug("DO_NOT_PRINT::config dictionary is : {}", authConfig.toString());
     byte[] keyVal =
         validateRetrieveKeyWithService(universeUUID, configUUID, keyRef, config, authConfig);
     return keyVal;
@@ -176,8 +186,10 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {}
 
   public void cleanup(UUID universeUUID, UUID configUUID) {
-    EncryptionAtRestUtil.removeKeyRotationHistory(universeUUID, configUUID);
-    cleanupWithService(universeUUID, configUUID);
+    int keyCount = EncryptionAtRestUtil.removeKeyRotationHistory(universeUUID, configUUID);
+    if (keyCount != 0) {
+      cleanupWithService(universeUUID, configUUID);
+    }
   }
 
   protected EncryptionAtRestService(KeyProvider keyProvider) {
@@ -228,6 +240,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
       result = null;
     }
 
+    // LOG.debug("DO_NOT_PRINT::createAuthConfig returning: {}", result);
     return result;
   }
 
@@ -250,6 +263,21 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
 
   public ObjectNode getAuthConfig(UUID configUUID) {
     return EncryptionAtRestUtil.getAuthConfig(configUUID, this.keyProvider);
+  }
+
+  public boolean UpdateAuthConfigProperties(
+      UUID customerUUID, UUID configUUID, ObjectNode updatedConfig) {
+    LOG.debug(
+        "Called UpdateAuthConfigProperties for {} - {} ",
+        customerUUID.toString(),
+        configUUID.toString());
+    if (updatedConfig == null) return false;
+
+    ObjectNode updatedMaskedConfig =
+        EncryptionAtRestUtil.maskConfigData(customerUUID, updatedConfig, this.keyProvider);
+    KmsConfig result = KmsConfig.updateKMSConfig(configUUID, updatedMaskedConfig);
+
+    return (result == null) ? false : true;
   }
 
   public List<KmsHistory> getKeyRotationHistory(UUID configUUID, UUID universeUUID) {

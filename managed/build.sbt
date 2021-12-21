@@ -124,6 +124,7 @@ libraryDependencies ++= Seq(
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
+  "org.mockito" % "mockito-inline" % "3.8.0" % Test,
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.postgresql" % "postgresql" % "42.2.23",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
@@ -173,7 +174,8 @@ libraryDependencies ++= Seq(
   "io.kamon" %% "kamon-bundle" % "2.2.2",
   "io.kamon" %% "kamon-prometheus" % "2.2.2",
   "org.unix4j" % "unix4j-command" % "0.6",
-  "com.github.dikhan" % "pagerduty-client" % "3.1.2"
+  "com.github.dikhan" % "pagerduty-client" % "3.1.2",
+  "com.bettercloud" % "vault-java-driver" % "5.1.0"
 )
 // Clear default resolvers.
 appResolvers := None

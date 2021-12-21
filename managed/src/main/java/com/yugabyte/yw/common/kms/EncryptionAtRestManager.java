@@ -164,6 +164,8 @@ public class EncryptionAtRestManager {
   }
 
   public void cleanupEncryptionAtRest(UUID customerUUID, UUID universeUUID) {
+    // this calls for all configs for provider X universe, regardless of config actually used
+    // behavior is handled in cleanup call
     KmsConfig.listKMSConfigs(customerUUID)
         .forEach(
             config ->
