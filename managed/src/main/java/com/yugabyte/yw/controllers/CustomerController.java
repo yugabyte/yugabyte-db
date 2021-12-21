@@ -14,6 +14,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,8 +29,10 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertingFormData;
+import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
@@ -36,6 +40,8 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -44,6 +50,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
@@ -52,6 +59,7 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -70,6 +78,8 @@ import play.mvc.Result;
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
+
+  @Inject private AlertService alertService;
 
   @Inject private MetricService metricService;
 
@@ -171,12 +181,59 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
       if (alertingFormData.alertingData != null) {
+        long activeAlertNotificationPeriod =
+            alertingFormData.alertingData.activeAlertNotificationIntervalMs;
+        long oldActiveAlertNotificationPeriod = 0;
         if (config == null) {
           CustomerConfig.createAlertConfig(
               customerUUID, Json.toJson(alertingFormData.alertingData));
         } else {
+          AlertingData oldData = Json.fromJson(config.getData(), AlertingData.class);
+          if (oldData != null) {
+            oldActiveAlertNotificationPeriod = oldData.activeAlertNotificationIntervalMs;
+          }
           config.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.alertingData));
           config.update();
+        }
+
+        if (activeAlertNotificationPeriod != oldActiveAlertNotificationPeriod) {
+          AlertFilter alertFilter =
+              AlertFilter.builder().customerUuid(customerUUID).state(State.ACTIVE).build();
+          List<Alert> activeAlerts = alertService.list(alertFilter);
+          List<Alert> alertsToUpdate;
+          if (activeAlertNotificationPeriod > 0) {
+            // In case there was notification attempt - setting to last attempt time
+            // + interval as next notification attempt. Even if it's before now -
+            // instant notification will happen - which is what we need.
+            alertsToUpdate =
+                activeAlerts
+                    .stream()
+                    .filter(
+                        alert ->
+                            alert.getNextNotificationTime() == null
+                                && alert.getNotificationAttemptTime() != null)
+                    .map(
+                        alert ->
+                            alert.setNextNotificationTime(
+                                datePlus(
+                                    alert.getNotificationAttemptTime(),
+                                    activeAlertNotificationPeriod,
+                                    ChronoUnit.MILLIS)))
+                    .collect(Collectors.toList());
+          } else {
+            // In case we already notified on ACTIVE state and scheduled subsequent notification
+            // - clean that
+            alertsToUpdate =
+                activeAlerts
+                    .stream()
+                    .filter(
+                        alert ->
+                            alert.getNextNotificationTime() != null
+                                && alert.getNotifiedState() != null)
+                    .map(alert -> alert.setNextNotificationTime(null))
+                    .collect(Collectors.toList());
+          }
+          alertService.save(alertsToUpdate);
         }
       }
 

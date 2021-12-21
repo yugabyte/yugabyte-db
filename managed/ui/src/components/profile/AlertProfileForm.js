@@ -17,8 +17,9 @@ import { getPromiseState } from '../../utils/PromiseUtils';
 import { toast } from 'react-toastify';
 
 // TODO set predefined defaults another way not to share defaults this way
-const CHECK_INTERVAL_MS = 300000;
-const STATUS_UPDATE_INTERVAL_MS = 43200000;
+const DEFAULT_CHECK_INTERVAL_MS = 300000;
+const DEFAULT_STATUS_UPDATE_INTERVAL_MS = 43200000;
+const DEFAULT_ACTIVE_ALERT_NOTIFICATION_INTERVAL_MS = 0;
 const DEFAULT_SMTP_PORT = 587;
 
 const validationSchema = Yup.object().shape({
@@ -27,6 +28,7 @@ const validationSchema = Yup.object().shape({
     alertingEmail: Yup.string().nullable(), // This field can be one or more emails separated by commas
     checkIntervalMs: Yup.number().typeError('Must specify a number'),
     statusUpdateIntervalMs: Yup.number().typeError('Must specify a number'),
+    activeAlertNotificationIntervalMs: Yup.number().typeError('Must specify a number'),
     reportOnlyErrors: Yup.boolean().default(false).nullable()
   }),
   customSmtp: Yup.boolean(),
@@ -102,12 +104,17 @@ export default class AlertProfileForm extends Component {
         checkIntervalMs: getPromiseState(customer).isSuccess()
           ? isNonEmptyObject(customer.data.alertingData)
             ? customer.data.alertingData.checkIntervalMs
-            : CHECK_INTERVAL_MS
+            : DEFAULT_CHECK_INTERVAL_MS
           : '',
         statusUpdateIntervalMs: getPromiseState(customer).isSuccess()
           ? isNonEmptyObject(customer.data.alertingData)
             ? customer.data.alertingData.statusUpdateIntervalMs
-            : STATUS_UPDATE_INTERVAL_MS
+            : DEFAULT_STATUS_UPDATE_INTERVAL_MS
+          : '',
+        activeAlertNotificationIntervalMs: getPromiseState(customer).isSuccess()
+          ? isNonEmptyObject(customer.data.alertingData)
+            ? customer.data.alertingData.activeAlertNotificationIntervalMs
+            : DEFAULT_ACTIVE_ALERT_NOTIFICATION_INTERVAL_MS
           : '',
         sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
         reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors
@@ -203,8 +210,16 @@ export default class AlertProfileForm extends Component {
                     name="alertingData.statusUpdateIntervalMs"
                     type="text"
                     component={YBFormInput}
-                    label="Report email interval"
+                    label="Health Check email report interval"
                     placeholder="Milliseconds to send a status report email"
+                    disabled={isReadOnly}
+                  />
+                  <Field
+                    name="alertingData.activeAlertNotificationIntervalMs"
+                    type="text"
+                    component={YBFormInput}
+                    label="Active alert notification interval"
+                    placeholder="Milliseconds to send an active alert notifications"
                     disabled={isReadOnly}
                   />
                   <Field name="alertingData.reportOnlyErrors">

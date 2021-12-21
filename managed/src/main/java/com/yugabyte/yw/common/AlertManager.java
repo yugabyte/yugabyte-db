@@ -20,17 +20,20 @@ import com.yugabyte.yw.common.alerts.AlertChannelManager;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertNotificationContext;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -40,7 +43,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.AllArgsConstructor;
@@ -48,6 +54,7 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -118,7 +125,8 @@ public class AlertManager {
   }
 
   @VisibleForTesting
-  boolean sendNotificationForState(Alert alert, State state, AlertNotificationReport report) {
+  boolean sendNotificationForState(
+      Alert alert, State state, AlertNotificationReport report, AlertNotificationContext context) {
     SendNotificationStatus result = SendNotificationStatus.FAILED_TO_RESCHEDULE;
     try {
       result = sendNotification(alert, state, report).getStatus();
@@ -154,9 +162,19 @@ public class AlertManager {
 
         report.failAttempt();
       } else {
-        // TODO: No repeats for now. Later should be updated along with the according
-        // parameter introduced in AlertDestination.
-        alert.setNextNotificationTime(null);
+
+        long notificationIntervalMs = 0;
+        AlertingFormData.AlertingData alertingData =
+            context.getAlertingConfigByCustomer().get(alert.getCustomerUUID());
+        if (alertingData != null) {
+          notificationIntervalMs = alertingData.activeAlertNotificationIntervalMs;
+        }
+        Date nextNotificationTime =
+            notificationIntervalMs != 0 && state == State.ACTIVE
+                ? nowPlusWithoutMillis(notificationIntervalMs, ChronoUnit.MILLIS)
+                : null;
+
+        alert.setNextNotificationTime(nextNotificationTime);
         alert.setNotificationsFailed(0);
         alert.setNotifiedState(state);
         log.trace("Notification sent for alert {}", alert.getUuid());
@@ -194,13 +212,31 @@ public class AlertManager {
       return;
     }
 
+    Set<UUID> customerUuids =
+        toNotify.stream().map(Alert::getCustomerUUID).collect(Collectors.toSet());
+    Map<UUID, AlertingFormData.AlertingData> alertingConfigByCustomer =
+        CustomerConfig.getAlertConfigs(customerUuids)
+            .stream()
+            .filter(config -> config.getData() != null)
+            .collect(
+                Collectors.toMap(
+                    CustomerConfig::getCustomerUUID,
+                    config ->
+                        Json.fromJson(config.getData(), AlertingFormData.AlertingData.class)));
+    AlertNotificationContext context =
+        AlertNotificationContext.builder()
+            .alertingConfigByCustomer(alertingConfigByCustomer)
+            .build();
     log.debug("Sending notifications, {} alerts to proceed.", toNotify.size());
     AlertNotificationReport report = new AlertNotificationReport();
     for (Alert alert : toNotify) {
       try {
-        if (alert.getNotifiedState() == null) {
+        // Either never sent active notification OR active alert notification period is set -
+        // so need to resend.
+        if (alert.getNotifiedState() == null
+            || (alert.getState() == State.ACTIVE && alert.getNotifiedState() == State.ACTIVE)) {
           report.raiseAttempt();
-          if (!sendNotificationForState(alert, State.ACTIVE, report)) {
+          if (!sendNotificationForState(alert, State.ACTIVE, report, context)) {
             continue;
           }
         }
@@ -208,7 +244,7 @@ public class AlertManager {
         if ((alert.getNotifiedState().ordinal() < State.RESOLVED.ordinal())
             && (alert.getState() == State.RESOLVED)) {
           report.resolveAttempt();
-          sendNotificationForState(alert, State.RESOLVED, report);
+          sendNotificationForState(alert, State.RESOLVED, report, context);
         }
 
       } catch (Exception e) {
