@@ -3800,7 +3800,7 @@ Status Tablet::ForceFullRocksDBCompact() {
   auto scoped_operation = CreateAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_operation);
 
-    if (regular_db_) {
+  if (regular_db_) {
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get()));
   }
   if (intents_db_) {
