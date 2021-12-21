@@ -208,7 +208,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
 	--   for v11+ index inheritance is automatically handled when the partition is attached
         v_sql := v_sql || format(') PARTITION BY RANGE (%I) ', v_sub_control);
     ELSE
-        v_sql := v_sql || format(' INCLUDING INDEXES) ', v_sub_control);
+        v_sql := v_sql || format(' INCLUDING INDEXES) ');
     END IF;
 
     IF current_setting('server_version_num')::int < 120000 THEN
