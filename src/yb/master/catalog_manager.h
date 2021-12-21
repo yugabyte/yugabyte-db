@@ -535,15 +535,6 @@ class CatalogManager :
   // Is the table id from a table created for colocated database?
   bool IsColocatedParentTableId(const TableId& table_id) const;
 
-  // Is the table a table created for colocated database?
-  bool IsColocatedParentTable(const TableInfo& table) const override;
-
-  // Is the table a table created for a tablegroup?
-  bool IsTablegroupParentTable(const TableInfo& table) const override;
-
-  // Is the table a table created in a colocated database?
-  bool IsColocatedUserTable(const TableInfo& table) const override;
-
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
   bool IsUserCreatedTable(const TableInfo& table) const override;
@@ -1611,7 +1602,7 @@ class CatalogManager :
   // manager instance, populates it with the information read from the catalog tables and updates
   // this shared_ptr. The maps themselves are thus never updated (no inserts/deletes/updates)
   // once populated and are garbage collected once all references to them go out of scope.
-  // No clients are expected to update the managaer, they take a lock merely to copy the
+  // No clients are expected to update the manager, they take a lock merely to copy the
   // shared_ptr and read from it.
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_mutex_);
 

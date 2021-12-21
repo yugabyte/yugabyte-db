@@ -37,6 +37,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
@@ -767,8 +768,20 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !IsColocatedUserTable() &&
          l->namespace_id() != kPgSequencesDataNamespaceId;
+}
+
+bool TableInfo::IsTablegroupParentTable() const {
+  return id().find(master::kTablegroupParentTableIdSuffix) != std::string::npos;
+}
+
+bool TableInfo::IsColocatedParentTable() const {
+  return id().find(master::kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
+bool TableInfo::IsColocatedUserTable() const {
+  return colocated() && !IsColocatedParentTable() && !IsTablegroupParentTable();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
