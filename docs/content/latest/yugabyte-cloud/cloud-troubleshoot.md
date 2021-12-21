@@ -17,7 +17,7 @@ showAsideToc: true
 
 ### Connection timed out
 
-If you are connecting to a cluster and cluster does not respond, and the connection eventually times out with the following error:
+If you are connecting to a cluster and the cluster does not respond, and the connection eventually times out with the following error:
 
 ```output
 ysqlsh: could not connect to server: Operation timed out
@@ -41,7 +41,7 @@ Yugabyte Cloud clusters require an SSL connection. If you set `sslmode` to `disa
 
 ### Application fails to connect
 
-If the password contains special characters (#, %, ^), the driver may fail to parse the URL.
+If the password for the YugabyteDB database account you are using to connect contains special characters (#, %, ^), the driver may fail to parse the URL.
 
 Be sure to encode any special characters in your connection string.
 
@@ -51,15 +51,15 @@ If you have set up a VPC network and are unable to connect, verify the following
 
 #### VPC status is Failed
 
-If you are unable to successfully create the VPC, contact Yugabyte Support.
+If you are unable to successfully create the VPC, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 #### Peering connection status is Pending
 
 A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-vpcs/cloud-add-peering/#peer-aws).
 
-#### Peering connection status is Expired
+#### Peering connection status is Expired (AWS only)
 
-AWS only. The peering request was not accepted. Retry the peering connection.
+The peering request was not accepted. Retry the peering connection.
 
 #### Peering connection status is Failed
 
