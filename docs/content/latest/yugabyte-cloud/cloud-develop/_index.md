@@ -42,32 +42,7 @@ Use the examples in this section to learn how to connect your applications to Yu
       </div>
     </a>
   </div>
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="../cloud-basics/connect-application/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Connect a Spring Boot application</div>
-      </div>
-      <div class="body">
-        Connect a Spring Boot application to Yugabyte Cloud.
-      </div>
-    </a>
-  </div>
--->
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="spring-boot/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Deploy a Spring Boot application on K8s</div>
-      </div>
-      <div class="body">
-        Deploy a Spring Boot application connected to Yugabyte Cloud on Kubernetes.
-      </div>
-    </a>
-  </div>
--->
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="hasura-cloud/">
       <div class="head">

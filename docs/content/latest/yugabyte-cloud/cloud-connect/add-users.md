@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Create database users to provide clients access to the cluster's YugabyteDB database. A database user's access is determined by the roles assigned to the user. YugabyteDB uses role-based access control (RBAC) to manage authorization.
+Create database users to provide clients access to the cluster's YugabyteDB database. A database user's access is determined by the roles assigned to the user. YugabyteDB uses role-based access control (RBAC) to [manage authorization](../../cloud-security/cloud-users/).
 
 Once you have added a user to the database, send them the credentials.
 
@@ -21,7 +21,7 @@ You will also have to authorize their network so that they can access the cluste
 
 ## Create a database user
 
-When a cluster is added, an admin user is created for the database. You must add additional database users for any other users who require access the cluster database.
+When creating a YugabyteDB cluster in Yugabyte Cloud, you set up the credentials for your admin user. To allow other team members to access the database, you can add additional database users.
 
 To add a database user:
 
@@ -39,9 +39,11 @@ To add a database user:
 
 To add or change a password for a user, use the `ALTER ROLE` statement.
 
-For more information on managing users in YSQL, refer to [Enable users in YSQL](../../../secure/enable-authentication/ysql/).
+## Learn more
 
-For more information on managing users in YCQL, refer to [Enable users in YCQL](../../../secure/enable-authentication/ycql/).
+- [Manage Users and Roles in YugabyteDB](../../../secure/authorization/create-roles/)
+
+- [Database authorization in Yugabyte Cloud clusters](../../cloud-security/cloud-users/)
 
 ## Next steps
 

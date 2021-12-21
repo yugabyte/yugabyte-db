@@ -188,7 +188,7 @@ Applications
 
 : Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections), or use [VPC peering](../cloud-vpcs/) to add private IP addresses.
 
-For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters).
+For more details, refer to [Connect to clusters](../cloud-connect).
 
 ## Backups
 
