@@ -24,9 +24,6 @@
 
 #include <boost/mpl/and.hpp>
 
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/file.h"
-
 #include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -44,17 +41,22 @@ YB_STRONGLY_TYPED_BOOL(UseHardLinks);
 // TODO(unify_env): Temporary workaround until Env/Files from rocksdb and yb are unified
 // (https://github.com/yugabyte/yugabyte-db/issues/1661).
 
-// Following two functions returns OK if the file at `path` exists.
+// Following function returns OK if the file at `path` exists.
 // NotFound if the named file does not exist, the calling process does not have permission to
 //          determine whether this file exists, or if the path is invalid.
 // IOError if an IO Error was encountered.
 // Uses specified `env` environment implementation to do the actual file existence checking.
-inline CHECKED_STATUS FileExists(Env* env, const std::string& path) {
-  return env->FileExists(path) ? Status::OK() : STATUS(NotFound, "");
+inline CHECKED_STATUS CheckFileExistsResult(const Status& status) {
+  return status;
 }
 
-inline CHECKED_STATUS FileExists(rocksdb::Env* env, const std::string& path) {
-  return env->FileExists(path);
+inline CHECKED_STATUS CheckFileExistsResult(bool exists) {
+  return exists ? Status::OK() : STATUS(NotFound, "");
+}
+
+template <class Env>
+inline CHECKED_STATUS FileExists(Env* env, const std::string& path) {
+  return CheckFileExistsResult(env->FileExists(path));
 }
 
 using yb::env_util::CopyFile;

@@ -11,6 +11,8 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX bfql)
+
 # Build the code generator.
 add_executable(bfql_codegen
                directory.cc

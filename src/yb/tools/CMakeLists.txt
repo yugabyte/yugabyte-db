@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX tools)
+set(YB_PCH_DEP_LIBS opid_proto yb_test_util boost_program_options)
+
 YB_INCLUDE_EXTENSIONS()
 
 set(LINK_LIBS

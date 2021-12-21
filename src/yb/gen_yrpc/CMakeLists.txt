@@ -11,6 +11,8 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX gen_yrpc)
+
 ### RPC generator tool
 add_executable(protoc-gen-yrpc
     messages_generator.cc

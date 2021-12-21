@@ -13,6 +13,9 @@
 
 # RocksDB build.
 
+set(YB_PCH_PREFIX rocksdb)
+set(YB_PCH_DEP_LIBS yb_test_util)
+
 PROTOBUF_GENERATE_CPP(
   ROCKSDB_PROTO_SRCS ROCKSDB_PROTO_HDRS ROCKSDB_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
@@ -201,8 +204,9 @@ if ("${YB_BUILD_TYPE}" STREQUAL "asan")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_MALLOC_USABLE_SIZE")
 endif()
 
-add_library(rocksdb ${ROCKSDB_SRCS})
-target_link_libraries(rocksdb gflags gutil snappy z lz4 yb_common yb_util opid_proto)
+ADD_YB_LIBRARY(rocksdb
+               SRCS ${ROCKSDB_SRCS}
+               DEPS gflags gutil snappy z lz4 yb_common yb_util opid_proto)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc

@@ -23,9 +23,23 @@ from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
   generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
   YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
-  DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
+  DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT, \
+  DEFAULT_SSH_USER
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, scp_to_tmp
+
+
+class ConsoleLoggingErrorHandler(object):
+    def __init__(self, cloud):
+        self.cloud = cloud
+
+    def __call__(self, exception, args):
+        if args.search_pattern:
+            console_output = self.cloud.get_console_output(args)
+
+            if console_output:
+                logging.error("Dumping latest console output for {}:".format(args.search_pattern))
+                logging.error(console_output)
 
 
 class AbstractMethod(object):
@@ -74,7 +88,12 @@ class AbstractMethod(object):
             self.cloud.validate_credentials()
         self.cloud.init_cloud_api(args)
         self.preprocess_args(args)
-        self.callback(args)
+        try:
+            self.callback(args)
+        except BaseException as e:
+            if self.error_handler:
+                self.error_handler(e, args)
+            raise e
 
     def _cleanup_dir(self, path):
         for file in glob.glob("{}/*.*".format(path)):
@@ -322,6 +341,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(CreateInstancesMethod, self).__init__(base_command, "create")
         self.can_ssh = True
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
 
     def add_extra_args(self):
         """Setup the CLI options for creating instances.
@@ -361,6 +381,20 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.update_ansible_vars_with_args(args)
         self.run_ansible_create(args)
 
+        if args.boot_script:
+            logging.info(
+                'Waiting for the startup script to finish on {}'.format(args.search_pattern))
+
+            host_info = get_ssh_host_port(
+                self.wait_for_host(args), args.custom_ssh_port, default_port=True)
+            host_info['ssh_user'] = DEFAULT_SSH_USER
+            retries = 0
+            while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
+                retries += 1
+                time.sleep(2 ** retries)
+
+            logging.info('Startup script finished on {}'.format(args.search_pattern))
+
 
 class ProvisionInstancesMethod(AbstractInstancesMethod):
     """Superclass for provisioning an instance.
@@ -372,6 +406,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         self.create_method = None
         super(ProvisionInstancesMethod, self).__init__(base_command, "provision")
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
 
     def preprocess_args(self, args):
         super(ProvisionInstancesMethod, self).preprocess_args(args)
@@ -402,6 +437,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Disable running the ansible task for using custom SSH.")
         self.parser.add_argument("--install_python", action="store_true", default=False,
                                  help="Flag to set if host OS needs python installed for Ansible.")
+        self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
+                                 help="Max memory for postgress process.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -436,6 +473,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
         if args.remote_package_path:
             self.extra_vars.update({"remote_package_path": args.remote_package_path})
+        if args.pg_max_mem_mb:
+            self.extra_vars.update({"pg_max_mem_mb": args.pg_max_mem_mb})
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
@@ -633,6 +672,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
         self.supported_types = [self.YB_SERVER_TYPE]
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
 
     def prepare(self):
         super(ConfigureInstancesMethod, self).prepare()

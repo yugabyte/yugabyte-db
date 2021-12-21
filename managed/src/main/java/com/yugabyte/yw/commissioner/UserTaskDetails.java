@@ -439,8 +439,8 @@ public class UserTaskDetails {
       return description;
     }
 
-    public String getState() {
-      return state.toString();
+    public TaskInfo.State getState() {
+      return state;
     }
   }
 }

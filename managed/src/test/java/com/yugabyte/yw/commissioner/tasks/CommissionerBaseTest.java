@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -33,7 +34,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
@@ -80,7 +81,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AlertConfigurationService alertConfigurationService;
   protected YcqlQueryExecutor mockYcqlQueryExecutor;
   protected YsqlQueryExecutor mockYsqlQueryExecutor;
+  protected NodeUniverseManager mockNodeUniverseManager;
   protected TaskExecutor taskExecutor;
+  protected EncryptionAtRestManager mockEARManager;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -141,6 +144,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockApiHelper = mock(ApiHelper.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    mockNodeUniverseManager = mock(NodeUniverseManager.class);
+    mockEARManager = mock(EncryptionAtRestManager.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -166,8 +171,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))
                 .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
                 .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
+                .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(
-                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class)))
+                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
+                .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager)))
         .build();
   }
 

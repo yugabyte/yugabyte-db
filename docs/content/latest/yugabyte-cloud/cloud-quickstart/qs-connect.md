@@ -52,7 +52,7 @@ yugabyte=#
 
 ### Learn more
 
-For information on other ways to connect to your cluster, refer to [Connect to clusters](../../cloud-basics/connect-to-clusters).
+For information on other ways to connect to your cluster, refer to [Connect to clusters](../../cloud-connect).
 
 For more information on the `ysqlsh` and `ycqlsh` shells, refer to [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh/).
 
