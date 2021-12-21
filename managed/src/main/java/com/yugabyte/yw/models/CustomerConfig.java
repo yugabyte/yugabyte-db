@@ -16,6 +16,8 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,6 +32,7 @@ import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.CollectionUtils;
 import play.libs.Json;
 
 @Entity
@@ -212,6 +215,10 @@ public class CustomerConfig extends Model {
     return getConfig(customerUUID, ConfigType.ALERTS, ALERTS_PREFERENCES);
   }
 
+  public static List<CustomerConfig> getAlertConfigs(Collection<UUID> customerUUIDs) {
+    return getConfigs(customerUUIDs, ConfigType.ALERTS, ALERTS_PREFERENCES);
+  }
+
   public static CustomerConfig getSmtpConfig(UUID customerUUID) {
     return getConfig(customerUUID, ConfigType.ALERTS, SMTP_INFO);
   }
@@ -228,6 +235,20 @@ public class CustomerConfig extends Model {
         .eq("type", type.toString())
         .eq("name", name)
         .findOne();
+  }
+
+  public static List<CustomerConfig> getConfigs(
+      Collection<UUID> customerUUIDs, ConfigType type, String name) {
+    if (CollectionUtils.isEmpty(customerUUIDs)) {
+      return Collections.emptyList();
+    }
+    return CustomerConfig.find
+        .query()
+        .where()
+        .in("customer_uuid", customerUUIDs)
+        .eq("type", type.toString())
+        .eq("name", name)
+        .findList();
   }
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
