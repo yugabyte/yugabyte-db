@@ -895,6 +895,11 @@
     "AlertingData" : {
       "description" : "Alerting configuration",
       "properties" : {
+        "activeAlertNotificationIntervalMs" : {
+          "description" : "Period, which is used to send active alert notifications",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "alertingEmail" : {
           "description" : "Alert email address",
           "example" : "test@example.com",
