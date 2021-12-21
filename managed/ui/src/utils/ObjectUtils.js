@@ -357,3 +357,20 @@ export const isValidArray = isNonEmptyArray;
 // FIXME: this alias is only kept here for backward compatibility
 // FIXME: and should be removed after changing all existing uses.
 export const isValidObject = isDefinedNotNull;
+
+export const createErrorMessage = (payload) => {
+  const structuredError = payload?.response?.data?.error;
+  if (structuredError) {
+    if (typeof structuredError == 'string') {
+      return structuredError;
+    }
+    const message = Object.keys(structuredError)
+      .map((fieldName) => {
+        const messages = structuredError[fieldName];
+        return fieldName + ': ' + messages.join(', ');
+      })
+      .join('\n');
+    return message;
+  }
+  return payload.message;
+}

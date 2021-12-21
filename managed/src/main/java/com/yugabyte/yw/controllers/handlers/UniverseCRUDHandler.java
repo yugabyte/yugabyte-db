@@ -127,7 +127,7 @@ public class UniverseCRUDHandler {
     if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, c)) {
       try {
         PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
-      } catch (IllegalStateException e) {
+      } catch (IllegalStateException | UnsupportedOperationException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
     } else {
