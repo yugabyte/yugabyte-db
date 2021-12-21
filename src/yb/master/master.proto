@@ -2023,6 +2023,20 @@ message IsFlushTablesDoneResponsePB {
   optional bool success = 3;
 }
 
+message CompactSysCatalogRequestPB {
+}
+
+message CompactSysCatalogResponsePB{
+  optional MasterErrorPB error = 1;
+}
+
+message FlushSysCatalogRequestPB{
+}
+
+message FlushSysCatalogResponsePB{
+  optional MasterErrorPB error = 1;
+}
+
 // Reserve Postgres oid
 message ReservePgsqlOidsRequestPB {
   optional bytes namespace_id = 1; // The namespace id of the Postgres database.
@@ -2281,6 +2295,9 @@ service MasterService {
 
   rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
   rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);
+
+  rpc FlushSysCatalog(FlushSysCatalogRequestPB) returns (FlushSysCatalogResponsePB);
+  rpc CompactSysCatalog(CompactSysCatalogRequestPB) returns (CompactSysCatalogResponsePB);
 
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
 

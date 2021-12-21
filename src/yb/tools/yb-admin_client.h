@@ -221,6 +221,10 @@ class ClusterAdminClient {
                                  int timeout_secs,
                                  bool is_compaction);
 
+  CHECKED_STATUS FlushSysCatalog();
+
+  CHECKED_STATUS CompactSysCatalog();
+
   CHECKED_STATUS ModifyTablePlacementInfo(const client::YBTableName& table_name,
                                           const std::string& placement_info,
                                           int replication_factor,

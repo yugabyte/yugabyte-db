@@ -743,7 +743,7 @@ Status CatalogManager::Init() {
     RETURN_NOT_OK(master_->ListRaftConfigMasters(&masters_raft));
     std::vector<HostPort> hps;
     for (const auto& peer : masters_raft) {
-      if (master_->instance_pb().permanent_uuid() == peer.permanent_uuid()) {
+      if (NodeInstance().permanent_uuid() == peer.permanent_uuid()) {
         continue;
       }
       HostPort hp = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
@@ -2149,6 +2149,44 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
   LOG(INFO) << "Successfully created table " << this_table_info->ToString()
             << " per request from " << RequestorString(rpc);
   return Status::OK();
+}
+
+
+template <class Req, class Resp, class Action>
+Status CatalogManager::PerformOnSysCatalogTablet(const Req& req, Resp* resp, const Action& action) {
+  auto tablet_peer = sys_catalog_->tablet_peer();
+  auto shared_tablet = tablet_peer ? tablet_peer->shared_tablet() : nullptr;
+  if (!shared_tablet) {
+    return SetupError(
+        resp->mutable_error(),
+        MasterErrorPB::TABLET_NOT_RUNNING,
+        STATUS(NotFound, "The sys catalog tablet was not found."));
+  }
+
+  auto s = action(shared_tablet);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::FlushSysCatalog(
+    const FlushSysCatalogRequestPB* req,
+    FlushSysCatalogResponsePB* resp,
+    rpc::RpcContext* context) {
+  return PerformOnSysCatalogTablet(req, resp, [](auto shared_tablet) {
+    return shared_tablet->Flush(tablet::FlushMode::kSync);
+  });
+}
+
+Status CatalogManager::CompactSysCatalog(
+    const CompactSysCatalogRequestPB* req,
+    CompactSysCatalogResponsePB* resp,
+    rpc::RpcContext* context) {
+  return PerformOnSysCatalogTablet(req, resp, [](auto shared_tablet) {
+    return shared_tablet->ForceFullRocksDBCompact();
+  });
 }
 
 namespace {

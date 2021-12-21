@@ -760,6 +760,14 @@ class CatalogManager :
     return *universe_key_client_;
   }
 
+  CHECKED_STATUS FlushSysCatalog(const FlushSysCatalogRequestPB* req,
+                                 FlushSysCatalogResponsePB* resp,
+                                 rpc::RpcContext* rpc);
+
+  CHECKED_STATUS CompactSysCatalog(const CompactSysCatalogRequestPB* req,
+                                   CompactSysCatalogResponsePB* resp,
+                                   rpc::RpcContext* rpc);
+
   CHECKED_STATUS SplitTablet(const TabletId& tablet_id, bool select_all_tablets_for_split) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
@@ -1496,6 +1504,12 @@ class CatalogManager :
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
  private:
+  // Performs the provided action with the sys catalog shared tablet instance, or sets up an error
+  // if the tablet is not found.
+  template <class Req, class Resp, class F>
+  CHECKED_STATUS PerformOnSysCatalogTablet(
+      const Req& req, Resp* resp, const F& f);
+
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(mutex_);
 
   CHECKED_STATUS CollectTable(
