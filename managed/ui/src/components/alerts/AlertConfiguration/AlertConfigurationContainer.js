@@ -32,7 +32,7 @@ import {
 import { closeDialog, openDialog } from '../../../actions/modal';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import { AlertConfiguration } from './AlertConfiguration';
-import { createErrorMessage } from './AlertUtils';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapStateToProps = (state) => {
   return {
