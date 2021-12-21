@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -97,8 +98,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
           && !cloudAPI.isValidCreds(config, formData.get(AWS_REGION_FIELDNAME).textValue())) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
       }
-    }
-    if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
+    } else if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
       if (formData.get("base_url") == null
           || !EncryptionAtRestController.API_URL.contains(formData.get("base_url").textValue())) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid API URL.");
@@ -112,19 +112,48 @@ public class EncryptionAtRestController extends AuthenticatedController {
           throw new PlatformServiceException(BAD_REQUEST, "Invalid API Key.");
         }
       }
+    } else if (keyProvider.toUpperCase().equals(KeyProvider.HASHICORP.toString())) {
+      final String addr = HashicorpEARServiceUtil.HC_VAULT_ADDRESS;
+      final String token = HashicorpEARServiceUtil.HC_VAULT_TOKEN;
+
+      if (formData.get(addr) == null || formData.get(token) == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
+      }
+      try {
+        if (HashicorpEARServiceUtil.getVaultSecretEngine(formData) == null)
+          throw new PlatformServiceException(BAD_REQUEST, "Invalid Vault parameters");
+      } catch (Exception e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.toString());
+      }
     }
   }
 
   private void checkEditableFields(ObjectNode formData, KeyProvider keyProvider, UUID configUUID) {
+
     KmsConfig config = KmsConfig.get(configUUID);
     ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
     if (formData.get("name") != null && !config.name.equals(formData.get("name").asText())) {
       throw new PlatformServiceException(BAD_REQUEST, "KmsConfig name cannot be changed.");
     }
+
     if (keyProvider.equals(KeyProvider.AWS)) {
       if (formData.get(AWS_REGION_FIELDNAME) != null
           && !authconfig.get(AWS_REGION_FIELDNAME).equals(formData.get(AWS_REGION_FIELDNAME))) {
         throw new PlatformServiceException(BAD_REQUEST, "KmsConfig region cannot be changed.");
+      }
+    } else if (keyProvider.equals(KeyProvider.SMARTKEY)) {
+      // NO checks required
+    } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
+      final String engine = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
+      final String mPath = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
+
+      if (formData.get(engine) != null && !authconfig.get(engine).equals(formData.get(engine))) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "KmsConfig vault engine cannot be changed.");
+      }
+      if (formData.get(mPath) != null && !authconfig.get(mPath).equals(formData.get(mPath))) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "KmsConfig vault engine path cannot be changed.");
       }
     }
   }
@@ -134,6 +163,14 @@ public class EncryptionAtRestController extends AuthenticatedController {
     ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
     if (keyProvider.equals(KeyProvider.AWS)) {
       formData.set(AWS_REGION_FIELDNAME, authconfig.get(AWS_REGION_FIELDNAME));
+    } else if (keyProvider.equals(KeyProvider.SMARTKEY)) {
+      // NO changes required
+    } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
+      final String engine = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
+      final String mPath = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
+
+      formData.set(engine, authconfig.get(engine));
+      formData.set(mPath, authconfig.get(mPath));
     }
     return formData;
   }
