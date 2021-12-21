@@ -51,6 +51,9 @@ public class AlertingFormData {
 
     @ApiModelProperty(value = "Trigger an alert only for errors")
     public Boolean reportOnlyErrors = false;
+
+    @ApiModelProperty(value = "Period, which is used to send active alert notifications")
+    public long activeAlertNotificationIntervalMs = 0;
   }
 
   public AlertingData alertingData;
