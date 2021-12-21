@@ -1216,15 +1216,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   private boolean doesQueryPlanContainsSubstring(Statement stmt, String query, String substring)
       throws SQLException {
+
+    return getQueryPlanString(stmt, query).contains(substring);
+  }
+
+  protected String getQueryPlanString(Statement stmt, String query) throws SQLException {
+    LOG.info("EXPLAIN " + query);
+    StringBuilder builder = new StringBuilder();
     try (ResultSet rs = stmt.executeQuery("EXPLAIN " + query)) {
       assert (rs.getMetaData().getColumnCount() == 1); // Expecting one string column.
       while (rs.next()) {
-        if (rs.getString(1).contains(substring)) {
-          return true;
-        }
+        builder.append(rs.getString(1) + "\n");
       }
-      return false;
     }
+    LOG.info(builder.toString());
+    return builder.toString();
   }
 
   /** Whether or not this select query uses Index Scan with a given index. */
@@ -1245,6 +1251,61 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    */
   protected boolean doesNeedPgFiltering(Statement stmt, String query) throws SQLException {
     return doesQueryPlanContainsSubstring(stmt, query, "Filter:");
+  }
+
+  /**
+   * Return whether this select query uses a partitioned index in an IndexScan for ordering.
+   */
+  protected void isPartitionedOrderedIndexScan(Statement stmt,
+                                               String query,
+                                               String index)
+    throws SQLException {
+
+    String query_plan = getQueryPlanString(stmt, query);
+    assertTrue(query_plan.contains("Merge Append"));
+    assertTrue(query_plan.contains("Index Scan using " + index));
+  }
+
+  /**
+   * Return whether this select query uses a partitioned index in an
+   * Index Only Scan for ordering.
+   */
+  protected void isPartitionedOrderedIndexOnlyScan(Statement stmt,
+                                                   String query,
+                                                   String index)
+    throws SQLException {
+
+    String query_plan = getQueryPlanString(stmt, query);
+    assertTrue(query_plan.contains("Merge Append"));
+    assertTrue(query_plan.contains("Index Only Scan using " + index));
+  }
+
+  /**
+   * Return whether this select query uses the given index in an
+   * Index Scan for ordering.
+   */
+  protected void isOrderedIndexScan(Statement stmt,
+                                    String query,
+                                    String index)
+    throws SQLException {
+
+    String query_plan = getQueryPlanString(stmt, query);
+    assertFalse(query_plan.contains("Sort"));
+    assertTrue(query_plan.contains("Index Scan using " + index));
+  }
+
+  /**
+   * Return whether this select query uses the given index in an
+   * Index Only Scan for ordering.
+   */
+  protected void isOrderedIndexOnlyScan(Statement stmt,
+                                        String query,
+                                        String index)
+    throws SQLException {
+
+    String query_plan = getQueryPlanString(stmt, query);
+    assertFalse(query_plan.contains("Sort"));
+    assertTrue(query_plan.contains("Index Only Scan using " + index));
   }
 
   protected void createSimpleTableWithSingleColumnKey(String tableName) throws SQLException {
@@ -1269,6 +1330,116 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
     statement.execute(sql);
     LOG.info("Table creation finished: " + tableName);
+  }
+
+  protected void createPartitionedTable(Statement stmt,
+                                        String tablename,
+                                        YSQLPartitionType mode) throws SQLException {
+    createPartitionedTable(stmt, tablename, mode, "", "", "");
+  }
+
+  protected void createPartitionedTable(Statement stmt,
+                                        String tablename,
+                                        YSQLPartitionType mode,
+                                        String primary_keys) throws SQLException {
+    createPartitionedTable(stmt, tablename, mode, primary_keys, "", "");
+  }
+
+  protected void createPartitionedTable(Statement stmt,
+                                        String tablename,
+                                        YSQLPartitionType mode,
+                                        String unique_keys,
+                                        String unique_includes) throws SQLException {
+    createPartitionedTable(stmt, tablename, mode, "", unique_keys, unique_includes);
+  }
+
+  protected void createPartitionedTable(Statement stmt,
+                                        String tablename,
+                                        YSQLPartitionType mode,
+                                        String primary_keys,
+                                        String unique_keys,
+                                        String unique_includes)
+    throws SQLException {
+
+    String pk_constraint = primary_keys.isEmpty() ? "" : (", PRIMARY KEY(" + primary_keys  + ")");
+
+    String unique_constraint = "";
+    if (!unique_keys.isEmpty()) {
+      unique_constraint = ", UNIQUE(" + unique_keys + ")";
+      if (!unique_includes.isEmpty()) {
+        unique_constraint += " INCLUDE (" + unique_includes + ")";
+      }
+    }
+    unique_constraint += ")";
+
+    final String create_sql = "CREATE TABLE " + tablename +
+      "(k1 int, k2 text, k3 int, v1 int, v2 text" + pk_constraint +
+      unique_constraint + " PARTITION BY " + mode + " (k1)";
+
+    LOG.info("Creating table " + tablename + ", SQL statement: " + create_sql);
+    stmt.execute(create_sql);
+    LOG.info("Table creation finished: " + tablename);
+  }
+
+  protected void createPartition(Statement stmt,
+                                 String tablename,
+                                 YSQLPartitionType mode,
+                                 int partIndex) throws SQLException {
+
+    createPartition(stmt, tablename, mode, partIndex, "", "", "");
+  }
+
+  protected void createPartition(Statement stmt,
+                                 String tablename,
+                                 YSQLPartitionType mode,
+                                 int partIndex,
+                                 String primary_keys) throws SQLException {
+    createPartition(stmt, tablename, mode, partIndex, primary_keys, "", "");
+  }
+
+  protected void createPartition(Statement stmt,
+                                 String tablename,
+                                 YSQLPartitionType mode,
+                                 int partIndex,
+                                 String unique_keys,
+                                 String unique_includes) throws SQLException {
+    createPartition(stmt, tablename, mode, partIndex, "", unique_keys, unique_includes);
+  }
+
+  protected void createPartition(Statement stmt,
+                                 String tablename,
+                                 YSQLPartitionType mode,
+                                 int partIndex,
+                                 String primary_keys,
+                                 String unique_keys,
+                                 String unique_includes) throws SQLException {
+    String partition_clause = "";
+    if (mode.equals(YSQLPartitionType.HASH)) {
+      partition_clause = "WITH (modulus 2, remainder " + (partIndex - 1) + ")";
+    } else if (mode.equals(YSQLPartitionType.LIST)) {
+      partition_clause = "IN (" + partIndex + ")";
+    } else {
+      partition_clause = "FROM (" + partIndex + ") TO (" + (partIndex + 1) + ")";
+    }
+
+    String pk_constraint = primary_keys.isEmpty() ? "" : (", PRIMARY KEY(" + primary_keys  + ")");
+
+    String unique_constraint = "";
+    if (!unique_keys.isEmpty()) {
+      unique_constraint = ", UNIQUE(" + unique_keys + ")";
+      if (!unique_includes.isEmpty()) {
+        unique_constraint += " INCLUDE (" + unique_includes + ")";
+      }
+    }
+    unique_constraint += ")";
+
+    final String create_sql = "CREATE TABLE " + tablename + "_" + partIndex +
+      " PARTITION OF " + tablename + "(k1, k2, k3, v1, v2" + pk_constraint +
+      unique_constraint + " FOR VALUES " + partition_clause;
+
+    LOG.info("Creating table " + tablename + ", SQL statement: " + create_sql);
+    stmt.execute(create_sql);
+    LOG.info("Table creation finished: " + tablename);
   }
 
   /**

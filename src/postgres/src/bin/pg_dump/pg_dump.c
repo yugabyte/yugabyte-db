@@ -15801,9 +15801,18 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 
 			/*
-			 * Add a PRIMARY KEY constraint if it exists.
+			 * Add a PRIMARY KEY constraint if it exists, unless this is
+			 * table partition, and the primary key is being defined by the
+			 * parent partitioned table.
 			 */
-			if (tbinfo->primaryKeyIndex)
+			bool parent_has_primary_key = false;
+			if (tbinfo->ispartition)
+			{
+				TableInfo  *parentRel = tbinfo->parents[0];
+				parent_has_primary_key = parentRel->primaryKeyIndex;
+			}
+
+			if (tbinfo->primaryKeyIndex && !parent_has_primary_key)
 			{
 				IndxInfo *index = tbinfo->primaryKeyIndex;
 
