@@ -385,6 +385,8 @@ BOOST_PP_SEQ_FOR_EACH(
     (CreateTransactionStatusTable)
     (DeleteNotServingTablet)
     (DdlLog)
+    (FlushSysCatalog)
+    (CompactSysCatalog)
 )
 
 

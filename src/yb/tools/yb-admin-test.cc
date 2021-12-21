@@ -807,5 +807,19 @@ TEST_F(AdminCliTest, DdlLog) {
   ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE NOT A PARTITION KEY]");
 }
 
+TEST_F(AdminCliTest, FlushSysCatalog) {
+  BuildAndStart();
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  ASSERT_OK(CallAdmin("flush_sys_catalog"));
+}
+
+TEST_F(AdminCliTest, CompactSysCatalog) {
+  BuildAndStart();
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  ASSERT_OK(CallAdmin("compact_sys_catalog"));
+}
+
 }  // namespace tools
 }  // namespace yb
