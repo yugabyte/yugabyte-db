@@ -22,7 +22,7 @@
 # Redirects
 # - Default status is a 301 unless otherwise specified.
 # - First match wins: put wildcards AFTER specific paths!
-# - Wildcards include empty matches: /v1.0/* WILL match /v1.0 
+# - Wildcards include empty matches: /v1.0/* WILL match /v1.0
 #
 # docs: https://docs.netlify.com/routing/redirects/
 #
@@ -57,6 +57,11 @@
 [[redirects]]
   from = "/:version/faq/*"
   to = "/latest/faq/:splat"
+  force = true
+
+[[redirects]]
+  from = "/:version/integrations/smart-driver/"
+  to = "/latest/integrations/jdbc-driver/"
   force = true
 
 [[redirects]]
