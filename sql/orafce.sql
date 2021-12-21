@@ -1046,12 +1046,6 @@ SELECT oracle.greatest(2, NULL, 8, 4);
 SELECT oracle.least(2, 6, 8, 1);
 SELECT oracle.least(2, NULL, 8, 1);
 
--- Both don't like data type mix
-SELECT greatest(2, 'A', 'B', 'C');
-SELECT oracle.greatest(2, 'A', 'B', 'C');
-SELECT greatest('A', 'B', 1, 2);
-SELECT oracle.greatest('A', 'B', 1, 2);
-
 -- Test different data type
 SELECT oracle.greatest('A'::text, 'B'::text, 'C'::text, 'D'::text);
 SELECT oracle.greatest('A'::bpchar, 'B'::bpchar, 'C'::bpchar, 'D'::bpchar);
