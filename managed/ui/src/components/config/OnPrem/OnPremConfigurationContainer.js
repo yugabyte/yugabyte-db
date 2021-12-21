@@ -28,8 +28,7 @@ import {
   createOnPremProvider,
   createOnPremProviderResponse
 } from '../../../actions/cloud';
-import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { createErrorMessage } from '../../alerts/AlertConfiguration/AlertUtils';
+import { isNonEmptyArray, createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapStateToProps = (state) => {
   return {
