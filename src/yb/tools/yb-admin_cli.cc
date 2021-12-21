@@ -599,6 +599,20 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "flush_sys_catalog", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->FlushSysCatalog(), "Unable to flush table sys_catalog");
+        return Status::OK();
+      });
+
+  Register(
+      "compact_sys_catalog", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->CompactSysCatalog(), "Unable to compact table sys_catalog");
+        return Status::OK();
+      });
+
+  Register(
       "compact_table",
       " <table> [timeout_in_seconds] (default 20)"
       " [ADD_INDEXES] (default false)",
