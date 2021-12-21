@@ -109,17 +109,11 @@ class CatalogManagerIf {
 
   virtual bool IsUserTable(const TableInfo& table) const = 0;
 
-  virtual bool IsColocatedParentTable(const TableInfo& table) const = 0;
-
   virtual bool HasTablegroups() = 0;
 
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
 
   virtual bool IsUserIndex(const TableInfo& table) const = 0;
-
-  virtual bool IsTablegroupParentTable(const TableInfo& table) const = 0;
-
-  virtual bool IsColocatedUserTable(const TableInfo& table) const = 0;
 
   virtual TableInfoPtr GetTableInfo(const TableId& table_id) = 0;
 
