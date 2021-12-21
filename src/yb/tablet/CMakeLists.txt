@@ -70,13 +70,13 @@ set(TABLET_SRCS
 
 set(TABLET_DEPS pq_utils)
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   TABLET_PROTO_SRCS TABLET_PROTO_HDRS TABLET_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES
-    tablet.proto
-    metadata.proto)
+  NO_SERVICE_PROTO_FILES
+    metadata.proto
+    tablet.proto)
 set(TABLET_PROTO_LIBS
   protobuf
   fs_proto

@@ -39,9 +39,9 @@ option cc_enable_arenas = true;
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/encryption/encryption.proto";
 import "yb/master/master_types.proto";
 import "yb/tablet/metadata.proto";
-import "yb/util/encryption.proto";
 import "yb/cdc/cdc_consumer.proto";
 
 ////////////////////////////////////////////////////////////
@@ -579,7 +579,7 @@ message EncryptionInfoPB {
 }
 
 message AddUniverseKeysRequestPB {
-  optional UniverseKeysPB universe_keys = 1;
+  optional encryption.UniverseKeysPB universe_keys = 1;
 }
 
 message AddUniverseKeysResponsePB {
@@ -591,7 +591,7 @@ message GetUniverseKeyRegistryRequestPB {
 
 message GetUniverseKeyRegistryResponsePB {
   optional MasterErrorPB error = 1;
-  optional UniverseKeysPB universe_keys = 2;
+  optional encryption.UniverseKeysPB universe_keys = 2;
 }
 
 message HasUniverseKeyInMemoryRequestPB {
@@ -880,7 +880,7 @@ message TSHeartbeatResponsePB {
 
   optional uint64 ysql_last_breaking_catalog_version = 15;
 
-  optional UniverseKeyRegistryPB universe_key_registry = 11;
+  optional encryption.UniverseKeyRegistryPB universe_key_registry = 11;
 
   optional cdc.ConsumerRegistryPB consumer_registry = 12;
 
@@ -909,7 +909,7 @@ message TSInformationPB {
 message TabletLocationsPB {
   message ReplicaPB {
     required TSInfoPB ts_info = 1;
-    required consensus.RaftPeerPB.Role role = 2;
+    required PeerRole role = 2;
     optional consensus.RaftPeerPB.MemberType member_type = 3;
   }
 
@@ -1399,7 +1399,7 @@ message GetMasterRegistrationResponsePB {
   optional ServerRegistrationPB registration = 2;
 
   // This server's role in the consensus configuration.
-  optional consensus.RaftPeerPB.Role role = 3;
+  optional PeerRole role = 3;
 
   // Set if there an error retrieving the registration information.
   optional MasterErrorPB error = 4;

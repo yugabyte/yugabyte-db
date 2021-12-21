@@ -27,9 +27,7 @@ set(REDISSERVER_YRPC_LIBS
   yb_common_proto
   protobuf
   remote_bootstrap_proto
-  rpc_header_proto
-  redis_protocol_proto
-  wire_protocol_proto)
+  rpc_header_proto)
 ADD_YB_LIBRARY(redis_service_proto
   SRCS ${REDISSERVER_YRPC_SRCS}
   DEPS ${REDISSERVER_YRPC_LIBS}

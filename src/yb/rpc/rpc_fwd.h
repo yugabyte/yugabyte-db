@@ -107,8 +107,6 @@ typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
 class ServiceIf;
 typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
 
-class ErrorStatusPB;
-
 typedef std::function<int(const std::string&, const std::string&)> Publisher;
 
 // SteadyTimePoint is something like MonoTime, but 3rd party libraries know it and don't know about

@@ -17,7 +17,6 @@ package yb;
 option java_package = "org.yb";
 
 import "yb/common/common.proto";
-import "yb/common/ql_protocol.proto";
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.

@@ -458,7 +458,7 @@ public class YBClient implements AutoCloseable {
         d = asyncClient.getMasterRegistration(clientForHostAndPort);
         try {
           GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+          if (resp.getRole() == Common.PeerRole.LEADER) {
             return resp.getInstanceId().getPermanentUuid().toStringUtf8();
           }
         } catch (Exception e) {
@@ -496,7 +496,7 @@ public class YBClient implements AutoCloseable {
           .addCallback(new Callback<Object, GetMasterRegistrationResponse>() {
             @Override
             public Object call(GetMasterRegistrationResponse response) throws Exception {
-              if (response.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+              if (response.getRole() == Common.PeerRole.LEADER) {
                 boolean wasNullResult = result.compareAndSet(null, entry.getKey());
                 if (!wasNullResult) {
                   LOG.warn(

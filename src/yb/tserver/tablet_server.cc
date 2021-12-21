@@ -46,6 +46,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -78,7 +80,6 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
-#include "yb/util/universe_key_manager.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -240,14 +241,13 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   return Status::OK();
 }
 
-void TabletServer::SetUniverseKeys(const yb::UniverseKeysPB& universe_keys) {
+void TabletServer::SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys) {
   opts_.universe_key_manager->SetUniverseKeys(universe_keys);
 }
 
 void TabletServer::GetUniverseKeyRegistrySync() {
   universe_key_client_->GetUniverseKeyRegistrySync();
 }
-
 
 Status TabletServer::Init() {
   CHECK(!initted_.load(std::memory_order_acquire));
@@ -277,7 +277,7 @@ Status TabletServer::Init() {
   }
 
   universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
-      hps, proxy_cache_.get(), [&] (const UniverseKeysPB& universe_keys) {
+      hps, proxy_cache_.get(), [&] (const encryption::UniverseKeysPB& universe_keys) {
         opts_.universe_key_manager->SetUniverseKeys(universe_keys);
   });
   opts_.universe_key_manager->SetGetUniverseKeysCallback([&]() {
@@ -474,7 +474,7 @@ bool TabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) c
 }
 
 Status TabletServer::SetUniverseKeyRegistry(
-    const yb::UniverseKeyRegistryPB& universe_key_registry) {
+    const encryption::UniverseKeyRegistryPB& universe_key_registry) {
   return Status::OK();
 }
 

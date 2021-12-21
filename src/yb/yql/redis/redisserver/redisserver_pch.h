@@ -195,6 +195,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
 #include "yb/util/path_util.h"
 #include "yb/util/physical_time.h"

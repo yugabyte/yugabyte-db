@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -11,19 +11,19 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ENCRYPTED_FILE_FACTORY_H
-#define YB_UTIL_ENCRYPTED_FILE_FACTORY_H
+#ifndef YB_ENCRYPTION_CIPHER_STREAM_FWD_H
+#define YB_ENCRYPTION_CIPHER_STREAM_FWD_H
 
-#include <memory>
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+namespace encryption {
 
-class Env;
+YB_STRONGLY_TYPED_BOOL(EncryptionOverflowWorkaround);
 
-class HeaderManager;
+class BlockAccessCipherStream;
 
-std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_manager);
-
+} // namespace encryption
 } // namespace yb
 
-#endif // YB_UTIL_ENCRYPTED_FILE_FACTORY_H
+#endif  // YB_ENCRYPTION_CIPHER_STREAM_FWD_H

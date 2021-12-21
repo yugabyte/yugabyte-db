@@ -803,7 +803,7 @@ Status CatalogManager::Init() {
       hps.push_back(hp);
     }
     universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
-        hps, &master_->proxy_cache(), [&] (const UniverseKeysPB& universe_keys) {
+        hps, &master_->proxy_cache(), [&] (const encryption::UniverseKeysPB& universe_keys) {
           encryption_manager_->PopulateUniverseKeys(universe_keys);
         });
     universe_key_client_->GetUniverseKeyRegistryAsync();
@@ -1053,9 +1053,9 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           return;
         }
         auto role = Role();
-        if (role != RaftPeerPB::LEADER) {
+        if (role != PeerRole::LEADER) {
           LOG_WITH_PREFIX(WARNING)
-              << "Cancel creating transaction because of role: " << RaftPeerPB::Role_Name(role);
+              << "Cancel creating transaction because of role: " << PeerRole_Name(role);
           return;
         }
         SleepFor(MonoDelta::FromSeconds(1));
@@ -1668,9 +1668,9 @@ std::shared_ptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
   return sys_catalog_->tablet_peer();
 }
 
-RaftPeerPB::Role CatalogManager::Role() const {
+PeerRole CatalogManager::Role() const {
   if (!IsInitialized() || master_->opts().IsShellMode()) {
-    return RaftPeerPB::NON_PARTICIPANT;
+    return PeerRole::NON_PARTICIPANT;
   }
 
   return tablet_peer()->consensus()->role();
@@ -7955,7 +7955,7 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                                     TabletReplica* new_replica) {
   // Tablets in state NOT_STARTED or BOOTSTRAPPING don't have a consensus.
   if (consensus_state == nullptr) {
-    new_replica->role = RaftPeerPB::NON_PARTICIPANT;
+    new_replica->role = PeerRole::NON_PARTICIPANT;
     new_replica->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
   } else {
     CHECK(consensus_state != nullptr) << "No cstate: " << ts_desc->permanent_uuid()
@@ -9846,7 +9846,7 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistPB& blacklist, boo
 
     auto locs = tablet->GetReplicaLocations();
     for (const auto& replica : *locs) {
-      if (leaders_only && replica.second.role != RaftPeerPB::LEADER) {
+      if (leaders_only && replica.second.role != PeerRole::LEADER) {
         continue;
       }
       for (int i = 0; i < blacklist.hosts_size(); i++) {

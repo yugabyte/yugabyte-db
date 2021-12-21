@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_HEADER_MANAGER_H
-#define YB_UTIL_HEADER_MANAGER_H
+#ifndef YB_ENCRYPTION_HEADER_MANAGER_H
+#define YB_ENCRYPTION_HEADER_MANAGER_H
 
 #include <memory>
 
@@ -21,6 +21,8 @@
 namespace yb {
 
 class Slice;
+
+namespace encryption {
 
 struct EncryptionParams;
 typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
@@ -49,6 +51,7 @@ class HeaderManager {
   virtual bool IsEncryptionEnabled() = 0;
 };
 
+} // namespace encryption
 } // namespace yb
 
-#endif // YB_UTIL_HEADER_MANAGER_H
+#endif // YB_ENCRYPTION_HEADER_MANAGER_H

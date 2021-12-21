@@ -130,10 +130,10 @@ class MasterPathHandlers {
   typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
 
   struct ReplicaInfo {
-    consensus::RaftPeerPB::Role role;
+    PeerRole role;
     TabletId tablet_id;
 
-    ReplicaInfo(const consensus::RaftPeerPB::Role& role, const TabletId& tablet_id) {
+    ReplicaInfo(const PeerRole& role, const TabletId& tablet_id) {
       this->role = role;
       this->tablet_id = tablet_id;
     }

@@ -405,7 +405,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // After bootstrap is complete and consensus is setup this initiates the transactions
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
-  CHECKED_STATUS StartPendingOperations(consensus::RaftPeerPB::Role my_role,
+  CHECKED_STATUS StartPendingOperations(PeerRole my_role,
                                         const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<OperationDriver> CreateOperationDriver();

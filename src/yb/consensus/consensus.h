@@ -249,7 +249,7 @@ class Consensus {
                                       boost::optional<tserver::TabletServerErrorPB::Code>* error);
 
   // Returns the current Raft role of this instance.
-  virtual RaftPeerPB::Role role() const = 0;
+  virtual PeerRole role() const = 0;
 
   // Returns the leader status (see LeaderStatus type description for details).
   // If leader is ready, then also returns term, otherwise OpId::kUnknownTerm is returned.

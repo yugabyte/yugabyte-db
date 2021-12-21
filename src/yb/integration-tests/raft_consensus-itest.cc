@@ -2197,7 +2197,7 @@ void RaftConsensusITest::WaitForReplicasReportedToMaster(
     if (tablet_locations->replicas_size() == num_replicas) {
       for (const master::TabletLocationsPB_ReplicaPB& replica :
                     tablet_locations->replicas()) {
-        if (replica.role() == RaftPeerPB::LEADER) {
+        if (replica.role() == PeerRole::LEADER) {
           *has_leader = true;
         }
       }

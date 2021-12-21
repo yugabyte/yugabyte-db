@@ -103,7 +103,7 @@ int MajoritySize(int num_voters);
 // Determines the role that the peer with uuid 'uuid' plays in the cluster.
 // If the peer uuid is not a voter in the configuration, this function will return
 // NON_PARTICIPANT, regardless of whether it is listed as leader in cstate.
-RaftPeerPB::Role GetConsensusRole(const std::string& uuid,
+PeerRole GetConsensusRole(const std::string& uuid,
                                   const ConsensusStatePB& cstate);
 
 // Determines the member type that the peer with uuid 'uuid' plays in the cluster.

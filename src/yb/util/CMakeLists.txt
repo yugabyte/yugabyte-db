@@ -98,19 +98,6 @@ ADD_YB_LIBRARY(opid_proto
   DEPS protobuf yb_util yrpc
   NONLINK_DEPS ${OP_ID_PROTO_TGTS})
 
-#########################################
-# encryption_proto
-#########################################
-PROTOBUF_GENERATE_CPP(
-  ENCRYPTION_PROTO_SRCS ENCRYPTION_PROTO_HDRS ENCRYPTION_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES encryption.proto)
-ADD_YB_LIBRARY(encryption_proto
-  SRCS ${ENCRYPTION_PROTO_SRCS}
-  DEPS protobuf
-  NONLINK_DEPS ${ENCRYPTION_PROTO_TGTS})
-
 ############################################################
 # Version stamp
 ############################################################
@@ -152,7 +139,6 @@ set(UTIL_SRCS
   bytes_formatter.cc
   cache_metrics.cc
   capabilities.cc
-  ctr_cipher_stream.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -170,9 +156,6 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
-  encrypted_file.cc
-  encrypted_file_factory.cc
-  encryption_util.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -189,7 +172,6 @@ set(UTIL_SRCS
   flag_tags.cc
   flags.cc
   hdr_histogram.cc
-  header_manager_impl.cc
   hexdump.cc
   init.cc
   jsonreader.cc
@@ -264,7 +246,6 @@ set(UTIL_SRCS
   trilean.cc
   ulimit.cc
   ulimit_util.cc
-  universe_key_manager.cc
   url-coding.cc
   user.cc
   uuid.cc
@@ -292,7 +273,6 @@ set(UTIL_LIBS
   pb_util_proto
   protobuf
   version_info_proto
-  encryption_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
@@ -332,11 +312,6 @@ ADD_YB_TEST_LIBRARY(
   yb_test_util
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
   DEPS gflags glog gmock yb_util)
-
-ADD_YB_TEST_LIBRARY(
-  encryption_test_util
-  SRCS encryption_test_util.cc header_manager_mock_impl.cc
-  DEPS yb_test_util)
 
 #######################################
 # yb_test_main
@@ -489,12 +464,6 @@ target_link_libraries(proto_container_test_proto protobuf)
 
 ADD_YB_TEST(pb_util-test)
 YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
-
-ADD_YB_TEST(encrypted_env-test)
-YB_TEST_TARGET_LINK_LIBRARIES(encrypted_env-test encryption_test_util)
-
-ADD_YB_TEST(ctr_cipher_stream-test)
-YB_TEST_TARGET_LINK_LIBRARIES(ctr_cipher_stream-test encryption_test_util)
 
 ADD_YB_TEST(uint_set-test)
 YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)

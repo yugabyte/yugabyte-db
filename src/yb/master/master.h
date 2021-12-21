@@ -37,6 +37,9 @@
 #include <string>
 #include <vector>
 
+#include "yb/consensus/consensus.fwd.h"
+#include "yb/consensus/metadata.fwd.h"
+
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
 
@@ -54,8 +57,6 @@ class MaintenanceManager;
 class RpcServer;
 class ServerEntryPB;
 class ThreadPool;
-
-using yb::consensus::RaftConfigPB;
 
 namespace server {
 
@@ -133,7 +134,7 @@ class Master : public tserver::DbServerBase {
   }
 
   // Recreates the master list based on the new config peers
-  CHECKED_STATUS ResetMemoryState(const RaftConfigPB& new_config);
+  CHECKED_STATUS ResetMemoryState(const consensus::RaftConfigPB& new_config);
 
   void DumpMasterOptionsInfo(std::ostream* out);
 

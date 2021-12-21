@@ -212,7 +212,7 @@ Status TabletServerIntegrationTestBase::GetTabletLeaderUUIDFromMaster(const std:
   for (const master::TabletLocationsPB& loc : resp.tablet_locations()) {
     if (loc.tablet_id() == tablet_id) {
       for (const master::TabletLocationsPB::ReplicaPB& replica : loc.replicas()) {
-        if (replica.role() == consensus::RaftPeerPB::LEADER) {
+        if (replica.role() == PeerRole::LEADER) {
           *leader_uuid = replica.ts_info().permanent_uuid();
           return Status::OK();
         }

@@ -165,12 +165,12 @@ class RemoteTabletServer {
 
 struct RemoteReplica {
   RemoteTabletServer* ts;
-  consensus::RaftPeerPB::Role role;
+  PeerRole role;
   MonoTime last_failed_time = MonoTime::kUninitialized;
   // The state of this replica. Only updated after calling GetTabletStatus.
   tablet::RaftGroupStatePB state = tablet::RaftGroupStatePB::UNKNOWN;
 
-  RemoteReplica(RemoteTabletServer* ts_, consensus::RaftPeerPB::Role role_)
+  RemoteReplica(RemoteTabletServer* ts_, PeerRole role_)
       : ts(ts_), role(role_) {}
 
   void MarkFailed() {

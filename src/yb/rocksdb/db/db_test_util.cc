@@ -23,15 +23,16 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/rocksdb/util/logging.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
-#include "yb/util/header_manager_impl.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
-#include "yb/util/universe_key_manager.h"
 
 namespace rocksdb {
 
@@ -112,13 +113,13 @@ void DBTestBase::CreateEncryptedEnv() {
     LOG(FATAL) << "Could not write slice to file:" << status.ToString();
   }
 
-  auto res = yb::UniverseKeyManager::FromKey(kKeyId, key);
+  auto res = yb::encryption::UniverseKeyManager::FromKey(kKeyId, key);
   if (!res.ok()) {
     LOG(FATAL) << "Could not get key from bytes:" << res.status().ToString();
   }
   universe_key_manager_ = std::move(*res);
   encrypted_env_ = yb::NewRocksDBEncryptedEnv(
-      yb::DefaultHeaderManager(universe_key_manager_.get()));
+      yb::encryption::DefaultHeaderManager(universe_key_manager_.get()));
   delete env_;
   env_ = new rocksdb::SpecialEnv(encrypted_env_.get());
 }

@@ -11,15 +11,16 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_UNIVERSE_KEY_MANAGER_H
-#define YB_UTIL_UNIVERSE_KEY_MANAGER_H
+#ifndef YB_ENCRYPTION_UNIVERSE_KEY_MANAGER_H
+#define YB_ENCRYPTION_UNIVERSE_KEY_MANAGER_H
 
 #include <shared_mutex>
 
-#include "yb/util/encryption.pb.h"
-#include "yb/util/encryption_util.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/encryption/encryption_util.h"
 
 namespace yb {
+namespace encryption {
 
 // Class is responsible for saving the universe key registry from master on heartbeat for use
 // in creating new files and reading exising files.
@@ -27,7 +28,7 @@ class UniverseKeyManager {
  public:
   static Result<std::unique_ptr<UniverseKeyManager>> FromKey(
       const std::string& key_id, const Slice& key_data);
-  void SetUniverseKeyRegistry(const yb::UniverseKeyRegistryPB& universe_key_registry);
+  void SetUniverseKeyRegistry(const UniverseKeyRegistryPB& universe_key_registry);
   void SetUniverseKeys(const UniverseKeysPB& universe_keys);
   // From an existing version id, generate encryption params. Used when creating readable files.
   Result<EncryptionParamsPtr> GetUniverseParamsWithVersion(
@@ -43,7 +44,7 @@ class UniverseKeyManager {
 
  private:
   // Registry from master.
-  yb::UniverseKeyRegistryPB universe_key_registry_;
+  encryption::UniverseKeyRegistryPB universe_key_registry_;
 
   mutable std::mutex mutex_;
   std::condition_variable cond_;
@@ -54,6 +55,7 @@ class UniverseKeyManager {
   std::function<void()> get_universe_keys_callback_;
 };
 
+} // namespace encryption
 } // namespace yb
 
-#endif // YB_UTIL_UNIVERSE_KEY_MANAGER_H
+#endif // YB_ENCRYPTION_UNIVERSE_KEY_MANAGER_H

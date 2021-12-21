@@ -14,6 +14,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import org.yb.Common.PeerRole;
 import org.yb.Common.HostPortPB;
 import org.yb.consensus.Metadata;
 import org.yb.WireProtocol;
@@ -72,7 +73,7 @@ class ListMastersRequest extends YRpc<ListMastersResponse> {
         master = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
                                 rpc_addr != null ? rpc_addr.getHost() : "UNKNOWN",
                                 rpc_addr != null ? rpc_addr.getPort() : 0,
-                                entry.getRole() == Metadata.RaftPeerPB.Role.LEADER,
+                                entry.getRole() == PeerRole.LEADER,
                                 entry.hasError() ? entry.getError().getCode().name() : "ALIVE");
         masters.add(master);
       }

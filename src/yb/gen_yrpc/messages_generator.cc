@@ -881,28 +881,13 @@ class MessagesGenerator::Impl {
         "\n"
     );
 
-    bool has_dependency = false;
-    for (int i = 0; i != file->dependency_count(); ++i) {
-      std::string dependency_path = RemoveProtoExtension(file->dependency(i)->name());
-      if (dependency_path == "google/protobuf/any") {
+    auto deps = ListDependencies(file);
+    if (!deps.empty()) {
+      for (const auto& dep : deps) {
         printer(
-            "#include \"yb/rpc/any.messages.h\"\n"
+            "#include \"" + dep + ".messages.h\"\n"
         );
-        has_dependency = true;
-        continue;
       }
-      if (dependency_path == "yb/rpc/rpc_header" ||
-          dependency_path == "yb/rpc/lightweight_message" ||
-          boost::starts_with(dependency_path, "google/protobuf/")) {
-        continue;
-      }
-      printer(
-          "#include \"" + dependency_path + ".messages.h\"\n"
-      );
-      has_dependency = true;
-    }
-
-    if (has_dependency) {
       printer("\n");
     }
 

@@ -2575,7 +2575,7 @@ public class AsyncYBClient implements AutoCloseable {
           // based on some kind of policy. For now just use the first always.
           try {
             addTabletClient(uuid, addresses.get(0).getHost(), addresses.get(0).getPort(),
-                replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER));
+                replica.getRole().equals(Common.PeerRole.LEADER));
           } catch (UnknownHostException ex) {
             lookupExceptions.add(ex);
           }

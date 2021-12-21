@@ -182,6 +182,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"

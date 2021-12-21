@@ -14,6 +14,7 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_rowwise_iterator.h"

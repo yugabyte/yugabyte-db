@@ -17,6 +17,8 @@
 #include <memory>
 #include <type_traits>
 
+#include "yb/consensus/consensus.fwd.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/enums.h"
@@ -30,17 +32,13 @@ class Consensus;
 class ConsensusContext;
 class ConsensusRoundCallback;
 class MultiRaftManager;
-class ConsensusStatePB;
 class PeerProxyFactory;
 class PeerMessageQueue;
-class RaftConfigPB;
 class RaftConsensus;
 class ReplicateMsg;
 class ReplicateMsgsHolder;
 class RetryableRequests;
 class SafeOpIdWaiter;
-class VoteRequestPB;
-class VoteResponsePB;
 
 struct ConsensusOptions;
 struct ConsensusBootstrapInfo;

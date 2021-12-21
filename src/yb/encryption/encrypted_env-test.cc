@@ -16,19 +16,20 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/encryption/encryption_test_util.h"
+#include "yb/encryption/encryption_util.h"
+#include "yb/encryption/header_manager_mock_impl.h"
+
 #include "yb/gutil/casts.h"
 
-#include "yb/util/encrypted_file_factory.h"
-#include "yb/util/encryption_test_util.h"
-#include "yb/util/encryption_util.h"
-#include "yb/util/header_manager_mock_impl.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
-namespace enterprise {
+namespace encryption {
 
 constexpr uint32_t kDataSize = 1000;
 
@@ -38,7 +39,7 @@ TEST_F(TestEncryptedEnv, FileOps) {
   auto header_manager = GetMockHeaderManager();
   HeaderManager* hm_ptr = header_manager.get();
 
-  auto env = yb::NewEncryptedEnv(std::move(header_manager));
+  auto env = NewEncryptedEnv(std::move(header_manager));
   auto fname_template = "test-fileXXXXXX";
   auto bytes = RandomBytes(kDataSize);
   Slice data(bytes.data(), kDataSize);
@@ -52,13 +53,13 @@ TEST_F(TestEncryptedEnv, FileOps) {
         WritableFileOptions(), fname_template, &fname, &writable_file));
     TestWrites(writable_file.get(), data);
 
-    std::unique_ptr<RandomAccessFile> ra_file;
+    std::unique_ptr<yb::RandomAccessFile> ra_file;
     ASSERT_OK(env->NewRandomAccessFile(fname, &ra_file));
-    TestRandomAccessReads<RandomAccessFile, uint8_t>(ra_file.get(), data);
+    TestRandomAccessReads<uint8_t>(ra_file.get(), data);
 
     ASSERT_OK(env->DeleteFile(fname));
   }
 }
 
-} // namespace enterprise
+} // namespace encryption
 } // namespace yb

@@ -11,22 +11,24 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ENCRYPTION_UTIL_H
-#define YB_UTIL_ENCRYPTION_UTIL_H
+#ifndef YB_ENCRYPTION_ENCRYPTION_UTIL_H
+#define YB_ENCRYPTION_ENCRYPTION_UTIL_H
 
 #include <stdint.h>
 
 #include <cstdarg>
 #include <string>
 
+#include "yb/encryption/cipher_stream.h"
+#include "yb/encryption/header_manager.h"
+
 #include "yb/util/status_fwd.h"
-#include "yb/util/cipher_stream.h"
 #include "yb/util/file_system.h"
-#include "yb/util/header_manager.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 namespace yb {
+namespace encryption {
 
 class EncryptionParamsPB;
 class RandomAccessFile;
@@ -186,6 +188,7 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 
 OpenSSLInitializer& InitOpenSSL();
 
+} // namespace encryption
 } // namespace yb
 
-#endif // YB_UTIL_ENCRYPTION_UTIL_H
+#endif // YB_ENCRYPTION_ENCRYPTION_UTIL_H

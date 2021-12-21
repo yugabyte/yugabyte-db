@@ -395,16 +395,16 @@ void SysCatalogTable::SysCatalogStateChanged(
   LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Locked=" << context->is_config_locked_
                         << ". Reason: " << context->ToString()
                         << ". Latest consensus state: " << cstate.ShortDebugString();
-  RaftPeerPB::Role role = GetConsensusRole(tablet_peer()->permanent_uuid(), cstate);
+  PeerRole role = GetConsensusRole(tablet_peer()->permanent_uuid(), cstate);
   LOG_WITH_PREFIX(INFO) << "This master's current role is: "
-                        << RaftPeerPB::Role_Name(role);
+                        << PeerRole_Name(role);
 
   // For LEADER election case only, load the sysCatalog into memory via the callback.
   // Note that for a *single* master case, the TABLET_PEER_START is being overloaded to imply a
   // leader creation step, as there is no election done per-se.
   // For the change config case, LEADER is the one which started the operation, so new role is same
   // as its old role of LEADER and hence it need not reload the sysCatalog via the callback.
-  if (role == RaftPeerPB::LEADER &&
+  if (role == PeerRole::LEADER &&
       (context->reason == StateChangeReason::NEW_LEADER_ELECTED ||
        (cstate.config().peers_size() == 1 &&
         context->reason == StateChangeReason::TABLET_PEER_STARTED))) {

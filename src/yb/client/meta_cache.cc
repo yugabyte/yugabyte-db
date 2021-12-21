@@ -326,7 +326,7 @@ RemoteTablet::~RemoteTablet() {
     for (const auto& replica : replicas_) {
       if (replica.Failed()) {
         LOG_WITH_PREFIX(FATAL) << "Remote tablet server " << replica.ts->ToString()
-                               << " with role " << consensus::RaftPeerPB::Role_Name(replica.role)
+                               << " with role " << PeerRole_Name(replica.role)
                                << " is marked as failed";
       }
     }
@@ -443,7 +443,7 @@ void RemoteTablet::SetAliveReplicas(int alive_live_replicas, int alive_read_repl
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
   SharedLock<rw_spinlock> lock(mutex_);
   for (const RemoteReplica& replica : replicas_) {
-    if (!replica.Failed() && replica.role == RaftPeerPB::LEADER) {
+    if (!replica.Failed() && replica.role == PeerRole::LEADER) {
       return replica.ts;
     }
   }
@@ -534,9 +534,9 @@ void RemoteTablet::GetRemoteTabletServers(
         // Cannot update replica here directly because holding only shared lock on mutex.
         replica_updates.push_back(replica_update);
       } else {
-        if (replica.role == RaftPeerPB::READ_REPLICA) {
+        if (replica.role == PeerRole::READ_REPLICA) {
           num_alive_read_replicas++;
-        } else if (replica.role == RaftPeerPB::FOLLOWER || replica.role == RaftPeerPB::LEADER) {
+        } else if (replica.role == PeerRole::FOLLOWER || replica.role == PeerRole::LEADER) {
           num_alive_live_replicas++;
         }
       }
@@ -562,10 +562,10 @@ bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   std::lock_guard<rw_spinlock> lock(mutex_);
   for (RemoteReplica& replica : replicas_) {
     if (replica.ts == server) {
-      replica.role = RaftPeerPB::LEADER;
+      replica.role = PeerRole::LEADER;
       found = true;
-    } else if (replica.role == RaftPeerPB::LEADER) {
-      replica.role = RaftPeerPB::FOLLOWER;
+    } else if (replica.role == PeerRole::LEADER) {
+      replica.role = PeerRole::FOLLOWER;
     }
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
@@ -579,7 +579,7 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   std::lock_guard<rw_spinlock> lock(mutex_);
   for (RemoteReplica& replica : replicas_) {
     if (replica.ts == server) {
-      replica.role = RaftPeerPB::FOLLOWER;
+      replica.role = PeerRole::FOLLOWER;
       found = true;
     }
   }
@@ -2195,7 +2195,7 @@ std::string VersionedPartitionStartKey::ToString() const {
 std::string RemoteReplica::ToString() const {
   return Format("$0 ($1, $2)",
                 ts->permanent_uuid(),
-                consensus::RaftPeerPB::Role_Name(role),
+                PeerRole_Name(role),
                 Failed() ? "FAILED" : "OK");
 }
 

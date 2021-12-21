@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#include "yb/util/encrypted_file.h"
+#include "yb/encryption/encrypted_file.h"
 
+#include "yb/encryption/cipher_stream.h"
+#include "yb/encryption/cipher_stream_fwd.h"
+#include "yb/encryption/header_manager.h"
+#include "yb/encryption/encryption_util.h"
 
-#include "yb/util/cipher_stream_fwd.h"
 #include "yb/util/env.h"
-#include "yb/util/cipher_stream.h"
-#include "yb/util/header_manager.h"
-#include "yb/util/encryption_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/flag_tags.h"
 
@@ -29,6 +29,7 @@ TAG_FLAG(encryption_counter_overflow_read_path_workaround, advanced);
 TAG_FLAG(encryption_counter_overflow_read_path_workaround, hidden);
 
 namespace yb {
+namespace encryption {
 
 Status EncryptedRandomAccessFile::Create(
     std::unique_ptr<RandomAccessFile>* result, HeaderManager* header_manager,
@@ -90,4 +91,5 @@ Result<uint64_t> EncryptedRandomAccessFile::Size() const {
   return VERIFY_RESULT(RandomAccessFileWrapper::Size()) - header_size_;
 }
 
+} // namespace encryption
 } // namespace yb

@@ -94,7 +94,7 @@ public class TestAsyncYBClient extends BaseYBClientTest {
       Master.TabletLocationsPB.ReplicaPB.Builder replicaBuilder =
           Master.TabletLocationsPB.ReplicaPB.newBuilder();
       replicaBuilder.setTsInfo(tsInfoBuilder);
-      replicaBuilder.setRole(Metadata.RaftPeerPB.Role.FOLLOWER);
+      replicaBuilder.setRole(Common.PeerRole.FOLLOWER);
       tabletPb.addReplicas(replicaBuilder);
       builder.addTabletLocations(tabletPb);
     }

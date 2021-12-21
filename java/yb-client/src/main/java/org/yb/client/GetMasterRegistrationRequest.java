@@ -32,6 +32,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import org.yb.Common.PeerRole;
 import static org.yb.consensus.Metadata.*;
 import static org.yb.master.Master.*;
 
@@ -72,7 +73,7 @@ public class GetMasterRegistrationRequest extends YRpc<GetMasterRegistrationResp
     final GetMasterRegistrationResponsePB.Builder respBuilder =
         GetMasterRegistrationResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    RaftPeerPB.Role role = RaftPeerPB.Role.FOLLOWER;
+    PeerRole role = PeerRole.FOLLOWER;
     if (!respBuilder.hasError() || respBuilder.getError().getCode() !=
         MasterErrorPB.Code.CATALOG_MANAGER_NOT_INITIALIZED) {
       role = respBuilder.getRole();

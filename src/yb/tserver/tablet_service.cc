@@ -2914,7 +2914,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
     data_entry->set_tablet_id(status.tablet_id());
 
     std::shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-    data_entry->set_is_leader(consensus && consensus->role() == consensus::RaftPeerPB::LEADER);
+    data_entry->set_is_leader(consensus && consensus->role() == PeerRole::LEADER);
     data_entry->set_state(status.state());
 
     auto tablet = peer->shared_tablet();

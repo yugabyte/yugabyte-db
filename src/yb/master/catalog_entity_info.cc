@@ -62,7 +62,7 @@ string TabletReplica::ToString() const {
                 "total_space_used: $6, time since update: $7ms }",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
-                consensus::RaftPeerPB_Role_Name(role),
+                PeerRole_Name(role),
                 consensus::RaftPeerPB::MemberType_Name(member_type),
                 should_disable_lb_move, fs_data_dir,
                 drive_info.sst_files_size + drive_info.wal_files_size,
@@ -168,7 +168,7 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
   std::lock_guard<simple_spinlock> l(lock_);
 
   for (const auto& pair : *replica_locations_) {
-    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+    if (pair.second.role == PeerRole::LEADER) {
       return pair.second.drive_info;
     }
   }
@@ -177,7 +177,7 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
 
 TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
   for (const auto& pair : *replica_locations_) {
-    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+    if (pair.second.role == PeerRole::LEADER) {
       return pair.second.ts_desc;
     }
   }
