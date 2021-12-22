@@ -747,10 +747,20 @@ cypher_update_information *transform_cypher_set_item_list(
         TargetEntry *target_item;
         cypher_update_item *item;
         ColumnRef *ref;
-        A_Indirection *ind = (A_Indirection *)set_item->prop;
+        A_Indirection *ind;
         char *variable_name, *property_name;
         Value *property_node, *variable_node;
 
+        // ColumnRef may come according to the Parser rule.
+        if (!IsA(set_item->prop, A_Indirection))
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                            errmsg("SET clause expects a variable name"),
+                            parser_errposition(pstate, set_item->location)));
+        }
+
+        ind = (A_Indirection *)set_item->prop;
         item = make_ag_node(cypher_update_item);
 
         if (!is_ag_node(lfirst(li), cypher_set_item))
