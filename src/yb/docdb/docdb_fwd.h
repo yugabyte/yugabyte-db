@@ -41,6 +41,8 @@ class QLWriteOperation;
 class RedisWriteOperation;
 class SharedLockManager;
 class SubDocKey;
+class YQLRowwiseIteratorIf;
+class YQLStorageIf;
 
 struct ApplyTransactionState;
 struct DocDB;

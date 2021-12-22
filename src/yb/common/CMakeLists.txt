@@ -81,7 +81,6 @@ set(COMMON_SRCS
   ql_protocol_util.cc
   ql_resultset.cc
   ql_rowblock.cc
-  ql_rowwise_iterator_interface.cc
   ql_scanspec.cc
   ql_type.cc
   ql_value.cc

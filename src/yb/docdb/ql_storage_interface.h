@@ -11,21 +11,22 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_QL_STORAGE_INTERFACE_H
-#define YB_COMMON_QL_STORAGE_INTERFACE_H
+#ifndef YB_DOCDB_QL_STORAGE_INTERFACE_H
+#define YB_DOCDB_QL_STORAGE_INTERFACE_H
 
 #include <limits>
 #include <string>
 #include <type_traits>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/util/monotime.h"
 
 namespace yb {
+namespace docdb {
 
 // An interface to support various different storage backends for a QL table.
 class YQLStorageIf {
@@ -72,9 +73,9 @@ class YQLStorageIf {
                                         const TransactionOperationContext& txn_op_context,
                                         CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
-                                        YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
+                                        std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
-  virtual CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* doc_iter,
+  virtual CHECKED_STATUS InitIterator(docdb::YQLRowwiseIteratorIf* doc_iter,
                                       const PgsqlReadRequestPB& request,
                                       const Schema& schema,
                                       const QLValuePB& ybctid) const = 0;
@@ -87,7 +88,7 @@ class YQLStorageIf {
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const docdb::DocKey& start_doc_key,
-                                     YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
+                                     std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   // Create iterator for querying by ybctid.
   virtual CHECKED_STATUS GetIterator(uint64 stmt_id,
@@ -97,9 +98,10 @@ class YQLStorageIf {
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const QLValuePB& ybctid,
-                                     YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
+                                     std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 };
 
+}  // namespace docdb
 }  // namespace yb
 
-#endif // YB_COMMON_QL_STORAGE_INTERFACE_H
+#endif // YB_DOCDB_QL_STORAGE_INTERFACE_H

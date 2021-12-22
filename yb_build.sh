@@ -776,10 +776,12 @@ while [[ $# -gt 0 ]]; do
     ;;
     --target)
       make_targets+=( "$2" )
+      build_java=false
       shift
     ;;
     --targets)
       make_targets+=( "$2" )
+      build_java=false
       shift
     ;;
     --no-tcmalloc)

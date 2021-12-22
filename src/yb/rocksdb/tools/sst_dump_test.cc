@@ -132,7 +132,7 @@ TEST_F(SSTDumpToolTest, EmptyFilter) {
   snprintf(usage[1], optLength, "--command=raw");
   snprintf(usage[2], optLength, "--file=rocksdb_sst_test.sst");
 
-  rocksdb::SSTDumpTool tool;
+  rocksdb::SSTDumpTool tool(nullptr);
   ASSERT_TRUE(!tool.Run(3, usage));
 
   cleanup(file_name);

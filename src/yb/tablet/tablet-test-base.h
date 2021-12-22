@@ -45,8 +45,10 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
