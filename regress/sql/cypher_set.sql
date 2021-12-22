@@ -133,6 +133,8 @@ SELECT * FROM cypher('cypher_set', $$SET n.i = NULL$$) AS (a agtype);
 
 SELECT * FROM cypher('cypher_set', $$MATCH (n) SET wrong_var.i = 3$$) AS (a agtype);
 
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET i = 3$$) AS (a agtype);
+
 --
 -- SET refactor regression tests
 --

@@ -373,6 +373,10 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n) SET wrong_var.i = 3$$) AS (a agty
 ERROR:  undefined reference to variable wrong_var in SET clause
 LINE 1: ...ELECT * FROM cypher('cypher_set', $$MATCH (n) SET wrong_var....
                                                              ^
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET i = 3$$) AS (a agtype);
+ERROR:  SET clause expects a variable name
+LINE 1: ...ELECT * FROM cypher('cypher_set', $$MATCH (n) SET i = 3$$) A...
+                                                             ^
 --
 -- SET refactor regression tests
 --
