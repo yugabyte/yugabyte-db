@@ -18,10 +18,10 @@ jobs:
   - os: centos7
     compiler: gcc5
     build_type: release
-  - os: macos
+  - os: mac11.6
     compiler: clang
     build_type: debug
-  - os: macos
+  - os: mac11.6
     compiler: clang
     build_type: release
   - os: ubuntu18.04
