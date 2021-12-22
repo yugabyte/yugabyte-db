@@ -2020,11 +2020,11 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_force_non_transactional_writes", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Sets the boolean flag to enable or disable non transaction writes."),
+		{"yb_disable_transactional_writes", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the boolean flag to disable transaction writes."),
 			NULL
 		},
-		&yb_force_non_transactional_writes,
+		&yb_disable_transactional_writes,
 		false,
 		NULL, NULL, NULL
 	},
