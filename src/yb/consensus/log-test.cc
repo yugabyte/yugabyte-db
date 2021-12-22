@@ -1114,59 +1114,6 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
   }
 }
 
-// Test various situations where we expect different segments depending on what the
-// min log index is.
-TEST_F(LogTest, TestGetMaxIndexesToSegmentSizeMap) {
-  FLAGS_log_min_segments_to_retain = 2;
-  BuildLog();
-
-  const int kNumTotalSegments = 5;
-  const int kNumOpsPerSegment = 5;
-  OpIdPB op_id = MakeOpId(1, 10);
-  // Create 5 segments, starting from log index 10, with 5 ops per segment.
-  ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
-                                              &op_id, nullptr));
-
-  std::map<int64_t, int64_t> max_idx_to_segment_size;
-
-  // Check getting all the segments we can get rid of (5 - 2).
-  log_->GetMaxIndexesToSegmentSizeMap(10, &max_idx_to_segment_size);
-  ASSERT_EQ(3, max_idx_to_segment_size.size());
-  max_idx_to_segment_size.clear();
-
-  // Check that even when the min index is the last index from the oldest segment,
-  // we still return 3.
-  log_->GetMaxIndexesToSegmentSizeMap(14, &max_idx_to_segment_size);
-  ASSERT_EQ(3, max_idx_to_segment_size.size());
-  max_idx_to_segment_size.clear();
-
-  // Check that if the first segment is GCable, we get 2 back.
-  log_->GetMaxIndexesToSegmentSizeMap(15, &max_idx_to_segment_size);
-  ASSERT_EQ(2, max_idx_to_segment_size.size());
-  max_idx_to_segment_size.clear();
-
-  // Check that if the min index is at the very end of the only segment we can get rid of that we
-  // get 1 back.
-  log_->GetMaxIndexesToSegmentSizeMap(24, &max_idx_to_segment_size);
-  ASSERT_EQ(1, max_idx_to_segment_size.size());
-  max_idx_to_segment_size.clear();
-
-  // Check that we don't get anything back when there's nothing we want to get rid of.
-  log_->GetMaxIndexesToSegmentSizeMap(25, &max_idx_to_segment_size);
-  ASSERT_EQ(0, max_idx_to_segment_size.size());
-
-  // Sanity check that even if the min log index is the newest op that nothing breaks and that
-  // we get 0 segments back.
-  log_->GetMaxIndexesToSegmentSizeMap(35, &max_idx_to_segment_size);
-  ASSERT_EQ(0, max_idx_to_segment_size.size());
-
-  // Check that logs that would normally count for log retention won't be returned since they are
-  // too young.
-  FLAGS_log_min_seconds_to_retain = 500;
-  log_->GetMaxIndexesToSegmentSizeMap(10, &max_idx_to_segment_size);
-  ASSERT_EQ(0, max_idx_to_segment_size.size());
-}
-
 // Ensure that we can read replicate messages from the LogReader with a very
 // high (> 32 bit) log index and term. Regression test for KUDU-1933.
 TEST_F(LogTest, TestReadReplicatesHighIndex) {
