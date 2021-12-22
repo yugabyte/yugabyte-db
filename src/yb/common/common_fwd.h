@@ -40,8 +40,6 @@ class QLScanSpec;
 class TableProperties;
 class TransactionStatusManager;
 class TypeInfo;
-class YQLRowwiseIteratorIf;
-class YQLStorageIf;
 
 class Schema;
 typedef std::shared_ptr<Schema> SchemaPtr;
