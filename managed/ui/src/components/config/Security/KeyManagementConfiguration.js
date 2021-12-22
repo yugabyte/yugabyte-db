@@ -91,35 +91,80 @@ class KeyManagementConfiguration extends Component {
       });
   };
 
-  submitKMSForm = (values) => {
-    const { setKMSConfig, updateKMSConfig } = this.props;
-    const { mode } = this.state;
+  onEditSubmit = (values) => {
+    const { updateKMSConfig } = this.props;
+    const { mode, formData } = this.state;
     const { kmsProvider } = values;
-    const isEdit = this.isEditMode();
 
     if (kmsProvider) {
       const data = {};
 
-      const createConfig = (data) => {
-        if (isEdit)
-          updateKMSConfig(values.configUUID, data).then((res) => {
-            if (res) {
-              this.setState({ listView: true, mode: 'NEW', formData: {} }, () => {
-                this.monitorTaskStatus(res.payload.data.taskUUID, mode);
-              });
-            }
-          });
-        else
-          setKMSConfig(kmsProvider.value, data).then((res) => {
-            if (res) {
-              this.setState({ listView: true }, () => {
-                this.monitorTaskStatus(res.payload.data.taskUUID, mode);
-              });
-            }
-          });
+      const isFieldModified = (fieldname) => {
+        return values[fieldname] && formData[fieldname] !== values[fieldname];
       };
 
-      if (!isEdit) data.name = values.name;
+      const updateConfig = (data) => {
+        updateKMSConfig(values.configUUID, data).then((res) => {
+          if (res) {
+            this.setState({ listView: true, mode: 'NEW', formData: {} }, () => {
+              this.monitorTaskStatus(res.payload.data.taskUUID, mode);
+            });
+          }
+        });
+      };
+
+      switch (kmsProvider.value) {
+        case 'AWS':
+          if (values.AWS_KMS_ENDPOINT) data['AWS_KMS_ENDPOINT'] = values.AWS_KMS_ENDPOINT;
+
+          if (!this.state.enabledIAMProfile) {
+            if (isFieldModified('AWS_ACCESS_KEY_ID'))
+              data['AWS_ACCESS_KEY_ID'] = values.AWS_ACCESS_KEY_ID;
+            if (isFieldModified('AWS_SECRET_ACCESS_KEY'))
+              data['AWS_SECRET_ACCESS_KEY'] = values.AWS_SECRET_ACCESS_KEY;
+          }
+
+          if (values.cmkPolicyContent) {
+            readUploadedFile(values.cmkPolicyContent).then((text) => {
+              data['cmk_policy'] = text;
+              updateConfig(data);
+            });
+            return;
+          } else if (values.cmk_id) {
+            data['cmk_id'] = values.cmk_id;
+          }
+          break;
+        case 'HASHICORP':
+          data['HC_VAULT_ADDRESS'] = values.HC_VAULT_ADDRESS;
+          if (isFieldModified('HC_VAULT_TOKEN')) data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
+          break;
+        default:
+        case 'SMARTKEY':
+          data['base_url'] = values.base_url || 'api.amer.smartkey.io';
+          if (isFieldModified('api_key')) data['api_key'] = values.api_key;
+          break;
+      }
+      updateConfig(data);
+    }
+  };
+
+  onSubmit = (values) => {
+    const { setKMSConfig } = this.props;
+    const { mode } = this.state;
+    const { kmsProvider } = values;
+
+    if (kmsProvider) {
+      const data = { name: values.name };
+
+      const createConfig = (data) => {
+        setKMSConfig(kmsProvider.value, data).then((res) => {
+          if (res) {
+            this.setState({ listView: true }, () => {
+              this.monitorTaskStatus(res.payload.data.taskUUID, mode);
+            });
+          }
+        });
+      };
 
       switch (kmsProvider.value) {
         case 'AWS':
@@ -129,10 +174,7 @@ class KeyManagementConfiguration extends Component {
             data['AWS_ACCESS_KEY_ID'] = values.AWS_ACCESS_KEY_ID;
             data['AWS_SECRET_ACCESS_KEY'] = values.AWS_SECRET_ACCESS_KEY;
           }
-
-          if (!isEdit) {
-            data['AWS_REGION'] = values.region.value;
-          }
+          data['AWS_REGION'] = values.region.value;
 
           if (values.cmkPolicyContent) {
             readUploadedFile(values.cmkPolicyContent).then((text) => {
@@ -150,7 +192,7 @@ class KeyManagementConfiguration extends Component {
           data['HC_VAULT_MOUNT_PATH'] = values.HC_VAULT_MOUNT_PATH
             ? values.HC_VAULT_MOUNT_PATH
             : 'transit/';
-          if (!isEdit) data['HC_VAULT_ENGINE'] = 'transit';
+          data['HC_VAULT_ENGINE'] = 'transit';
           break;
         default:
         case 'SMARTKEY':
@@ -322,6 +364,7 @@ class KeyManagementConfiguration extends Component {
   };
 
   getHCVaultForm = () => {
+    const isEdit = this.isEditMode();
     return (
       <Fragment>
         <Row className="config-provider-row" key={'v-url-field'}>
@@ -373,6 +416,7 @@ class KeyManagementConfiguration extends Component {
               placeholder={'transit/'}
               component={YBFormInput}
               className={'kube-provider-input-field'}
+              disabled={isEdit}
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">
@@ -438,7 +482,7 @@ class KeyManagementConfiguration extends Component {
   render() {
     const { configList, featureFlags, currentUserInfo } = this.props;
     const { listView, enabledIAMProfile, formData } = this.state;
-    const isAdmin = currentUserInfo.role === 'Admin';
+    const isAdmin = ['Admin', 'SuperAdmin'].includes(currentUserInfo.role);
     const isHCVaultEnabled = featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
     if (!isHCVaultEnabled)
       kmsConfigTypes = kmsConfigTypes.filter((config) => config.value !== 'HASHICORP');
@@ -504,57 +548,65 @@ class KeyManagementConfiguration extends Component {
           initialValues={formData}
           validationSchema={validationSchema}
           onSubmit={(values) => {
-            this.submitKMSForm(values);
+            isEdit ? this.onEditSubmit(values) : this.onSubmit(values);
           }}
         >
-          {(props) => (
-            <form onSubmit={props.handleSubmit}>
-              <Row>
-                <Col lg={8}>
-                  <Row className="config-name-row" key={'name-field'}>
-                    <Col lg={3}>
-                      <div className="form-item-custom-label">Configuration Name</div>
-                    </Col>
-                    <Col lg={7}>
-                      <Field
-                        name={'name'}
-                        component={YBFormInput}
-                        placeholder={'Configuration Name'}
-                        className={'kube-provider-input-field'}
-                        disabled={isEdit}
-                      />
-                    </Col>
-                    <Col lg={1} className="config-zone-tooltip">
-                      <YBInfoTip
-                        title="Confriguration Name"
-                        content="The name of the KMS configuration (Required)."
-                      />
-                    </Col>
-                  </Row>
-                  <Row className="config-provider-row" key={'provider-field'}>
-                    <Col lg={3}>
-                      <div className="form-item-custom-label">KMS Provider</div>
-                    </Col>
-                    <Col lg={7}>
-                      <Field
-                        name="kmsProvider"
-                        placeholder="Provider name"
-                        component={YBFormSelect}
-                        options={kmsConfigTypes}
-                        className={'kube-provider-input-field'}
-                        isDisabled={isEdit}
-                      />
-                    </Col>
-                  </Row>
-                  {this.displayFormContent(props.values.kmsProvider)}
-                </Col>
-              </Row>
-              <div className="form-action-button-container">
-                <YBButton btnText="Save" btnClass="btn btn-orange" btnType="submit" />
-                <YBButton btnText="Cancel" btnClass="btn" onClick={this.showListView} />
-              </div>
-            </form>
-          )}
+          {({ handleSubmit, values, touched }) => {
+            const isSaveDisabled = isEdit && !Object.keys(touched).length;
+            return (
+              <form onSubmit={handleSubmit}>
+                <Row>
+                  <Col lg={8}>
+                    <Row className="config-name-row" key={'name-field'}>
+                      <Col lg={3}>
+                        <div className="form-item-custom-label">Configuration Name</div>
+                      </Col>
+                      <Col lg={7}>
+                        <Field
+                          name={'name'}
+                          component={YBFormInput}
+                          placeholder={'Configuration Name'}
+                          className={'kube-provider-input-field'}
+                          disabled={isEdit}
+                        />
+                      </Col>
+                      <Col lg={1} className="config-zone-tooltip">
+                        <YBInfoTip
+                          title="Confriguration Name"
+                          content="The name of the KMS configuration (Required)."
+                        />
+                      </Col>
+                    </Row>
+                    <Row className="config-provider-row" key={'provider-field'}>
+                      <Col lg={3}>
+                        <div className="form-item-custom-label">KMS Provider</div>
+                      </Col>
+                      <Col lg={7}>
+                        <Field
+                          name="kmsProvider"
+                          placeholder="Provider name"
+                          component={YBFormSelect}
+                          options={kmsConfigTypes}
+                          className={'kube-provider-input-field'}
+                          isDisabled={isEdit}
+                        />
+                      </Col>
+                    </Row>
+                    {this.displayFormContent(values.kmsProvider)}
+                  </Col>
+                </Row>
+                <div className="form-action-button-container">
+                  <YBButton
+                    disabled={isSaveDisabled}
+                    btnText="Save"
+                    btnClass="btn btn-orange"
+                    btnType="submit"
+                  />
+                  <YBButton btnText="Cancel" btnClass="btn" onClick={this.showListView} />
+                </div>
+              </form>
+            );
+          }}
         </Formik>
       </div>
     );
