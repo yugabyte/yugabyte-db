@@ -3021,10 +3021,10 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
--- agtype -> int2
 CREATE CAST (agtype AS int)
 WITH FUNCTION ag_catalog.agtype_to_int4(variadic "any");
 
+-- agtype -> int2
 CREATE FUNCTION ag_catalog.agtype_to_int2(variadic "any")
 RETURNS smallint
 LANGUAGE c
@@ -3036,6 +3036,17 @@ AS 'MODULE_PATHNAME';
 CREATE CAST (agtype AS smallint)
 WITH FUNCTION ag_catalog.agtype_to_int2(variadic "any");
 
+-- agtype -> int4[]
+CREATE FUNCTION ag_catalog.agtype_to_int4_array(variadic "any")
+    RETURNS int[]
+    LANGUAGE c
+    STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (agtype AS int[])
+    WITH FUNCTION ag_catalog.agtype_to_int4_array(variadic "any");
 --
 -- agtype - access operators
 --

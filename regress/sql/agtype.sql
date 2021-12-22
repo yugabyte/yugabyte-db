@@ -541,6 +541,13 @@ SELECT bool_to_agtype(true) = bool_to_agtype(true);
 SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 
 --
+-- Test agtype to int[]
+--
+SELECT agtype_to_int4_array(agtype_in('[1,2,3]'));
+SELECT agtype_to_int4_array(agtype_in('[1.6,2.3,3.66]'));
+SELECT agtype_to_int4_array(agtype_in('["6","7",3.66]'));
+
+--
 -- Map Literal
 --
 

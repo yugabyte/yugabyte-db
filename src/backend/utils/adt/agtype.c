@@ -2630,6 +2630,55 @@ Datum int8_to_agtype(PG_FUNCTION_ARGS)
     return integer_to_agtype(PG_GETARG_INT64(0));
 }
 
+PG_FUNCTION_INFO_V1(agtype_to_int4_array);
+
+/*
+ * Cast agtype to int4[].
+ */
+Datum agtype_to_int4_array(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    agtype_value agtv;
+    agtype_iterator_token agtv_token;
+    Datum *array_value;
+    ArrayType *result;
+    int element_size;
+    int i;
+
+    agtype_iterator *agtype_iterator = agtype_iterator_init(&agtype_in->root);
+    agtv_token = agtype_iterator_next(&agtype_iterator, &agtv, false);
+
+    if(agtv.type != AGTV_ARRAY) {
+        cannot_cast_agtype_value(agtv.type, "int4[]");
+    }
+
+    element_size = agtv.val.array.num_elems;
+    array_value = (Datum *) palloc(sizeof(Datum) * element_size);
+
+    i = 0;
+    while ((agtv_token = agtype_iterator_next(&agtype_iterator, &agtv, true)) != WAGT_END_ARRAY)
+    {
+        int32 element_value = 0;
+        if (agtv.type == AGTV_INTEGER)
+            element_value = DatumGetInt32(DirectFunctionCall1(int84,
+                                                              Int64GetDatum(agtv.val.int_value)));
+        else if (agtv.type == AGTV_FLOAT)
+            element_value = DatumGetInt32(DirectFunctionCall1(dtoi4,
+                                                              Float8GetDatum(agtv.val.float_value)));
+        else if (agtv.type == AGTV_NUMERIC)
+            element_value = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+                                                              NumericGetDatum(agtv.val.numeric)));
+        else if (agtv.type == AGTV_STRING)
+            element_value = DatumGetInt32(DirectFunctionCall1(int4in,
+                                                              CStringGetDatum(agtv.val.string.val)));
+        array_value[i++] = element_value;
+    }
+
+    result = construct_array(array_value, element_size, INT4OID, 4, true, 'i');
+
+    PG_RETURN_ARRAYTYPE_P(result);
+}
+
 /*
  * Helper function for agtype_access_operator map access.
  * Note: This function expects that a map and a scalar key are being passed.
