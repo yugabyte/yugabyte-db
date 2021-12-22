@@ -19,6 +19,8 @@
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/result.h"
 
@@ -45,7 +47,7 @@ class AbstractTablet {
 
   virtual yb::SchemaPtr GetSchema(const std::string& table_id = "") const = 0;
 
-  virtual const YQLStorageIf& QLStorage() const = 0;
+  virtual const docdb::YQLStorageIf& QLStorage() const = 0;
 
   virtual TableType table_type() const = 0;
 

@@ -14,8 +14,9 @@
 #include "yb/tablet/tablet-test-util.h"
 
 #include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/gutil/strings/join.h"
 
@@ -74,7 +75,7 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
 }
 
 Status IterateToStringList(
-    YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
+    docdb::YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
   out->clear();
   Schema schema = iter->schema();
   int fetched = 0;

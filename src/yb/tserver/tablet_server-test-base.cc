@@ -16,11 +16,12 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"

@@ -31,7 +31,7 @@ class SystemTablet : public tablet::AbstractTablet {
 
   yb::SchemaPtr GetSchema(const std::string& table_id = "") const override;
 
-  const YQLStorageIf& QLStorage() const override;
+  const docdb::YQLStorageIf& QLStorage() const override;
 
   TableType table_type() const override;
 

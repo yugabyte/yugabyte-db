@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_QL_ROWWISE_ITERATOR_INTERFACE_H
-#define YB_COMMON_QL_ROWWISE_ITERATOR_INTERFACE_H
+#ifndef YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H
+#define YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H
 
 #include <memory>
 
@@ -25,6 +25,8 @@
 namespace yb {
 
 class Slice;
+
+namespace docdb {
 
 class YQLRowwiseIteratorIf {
  public:
@@ -60,7 +62,7 @@ class YQLRowwiseIteratorIf {
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual CHECKED_STATUS GetNextReadSubDocKey(docdb::SubDocKey* sub_doc_key) const;
+  virtual CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
   virtual Result<Slice> GetTupleId() const;
@@ -80,6 +82,7 @@ class YQLRowwiseIteratorIf {
   virtual CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;
 };
 
+}  // namespace docdb
 }  // namespace yb
 
-#endif // YB_COMMON_QL_ROWWISE_ITERATOR_INTERFACE_H
+#endif // YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H

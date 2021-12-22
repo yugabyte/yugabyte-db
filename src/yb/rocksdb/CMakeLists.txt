@@ -212,7 +212,7 @@ add_library(rocksdb_tools
   tools/ldb_cmd.cc
   tools/ldb_tool.cc
   tools/sst_dump_tool.cc)
-target_link_libraries(rocksdb_tools rocksdb yb_rocksutil)
+target_link_libraries(rocksdb_tools docdb_proto rocksdb yb_rocksutil)
 
 macro(ADD_YB_ROCKSDB_TOOL tool)
   add_executable(${tool} tools/${tool}.cc)

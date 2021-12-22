@@ -36,7 +36,7 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/common.pb.h"
+#include "yb/docdb/docdb_fwd.h"
 
 #include "yb/tablet/tablet-harness.h"
 
@@ -105,7 +105,7 @@ class YBTabletTest : public YBTest {
 };
 
 CHECKED_STATUS IterateToStringList(
-    YQLRowwiseIteratorIf* iter, std::vector<std::string>* out, int limit = INT_MAX);
+    docdb::YQLRowwiseIteratorIf* iter, std::vector<std::string>* out, int limit = INT_MAX);
 
 // Dump all of the rows of the tablet into the given vector.
 CHECKED_STATUS DumpTablet(

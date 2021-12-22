@@ -1152,7 +1152,7 @@ Status SysCatalogTable::CopyPgsqlTables(
     const std::shared_ptr<tablet::TableInfo> target_table_info =
         VERIFY_RESULT(meta->GetTableInfo(target_table_id));
     const Schema source_projection = source_table_info->schema->CopyWithoutColumnIds();
-    std::unique_ptr<YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
+    std::unique_ptr<docdb::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
         tablet->NewRowIterator(source_projection, {}, source_table_id));
     QLTableRow source_row;
 

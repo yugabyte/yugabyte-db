@@ -56,7 +56,6 @@
 
 #include "yb/util/status_log.h"
 
-using yb::docdb::EntryToString;
 using yb::docdb::StorageDbType;
 
 namespace rocksdb {
@@ -71,7 +70,7 @@ std::string DocDBKVFormatter::Format(
 
 SstFileReader::SstFileReader(
     const std::string& file_path, bool verify_checksum, OutputFormat output_format,
-    const DocDBKVFormatter& formatter)
+    const DocDBKVFormatter* formatter)
     : file_name_(file_path),
       read_num_(0),
       verify_checksum_(verify_checksum),
@@ -374,7 +373,7 @@ Status SstFileReader::ReadSequential(bool print_kv,
           auto storage_type =
               (output_format_ == OutputFormat::kDecodedRegularDB ? StorageDbType::kRegular
                                                                  : StorageDbType::kIntents);
-          fprintf(stdout, "%s", docdb_kv_formatter_.Format(key, value, storage_type).c_str());
+          fprintf(stdout, "%s", docdb_kv_formatter_->Format(key, value, storage_type).c_str());
           break;
       }
     }

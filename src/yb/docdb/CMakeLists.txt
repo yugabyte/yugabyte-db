@@ -84,6 +84,7 @@ set(DOCDB_SRCS
         lock_batch.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
+        ql_rowwise_iterator_interface.cc
         redis_operation.cc
         shared_lock_manager.cc
         subdocument.cc

@@ -35,20 +35,21 @@ YB_DEFINE_ENUM(OutputFormat, (kRaw)(kHex)(kDecodedRegularDB)(kDecodedIntentsDB))
 
 class DocDBKVFormatter {
  public:
-  DocDBKVFormatter() {}
-  virtual ~DocDBKVFormatter() {}
-  virtual std::string Format(const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const;
+  virtual ~DocDBKVFormatter() = default;
+
+  virtual std::string Format(
+      const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const = 0;
 };
 
 class SSTDumpTool {
  public:
-  explicit SSTDumpTool(const rocksdb::DocDBKVFormatter& formatter = rocksdb::DocDBKVFormatter())
+  explicit SSTDumpTool(const rocksdb::DocDBKVFormatter* formatter = nullptr)
       : formatter_(formatter) {}
 
   int Run(int argc, char** argv);
 
  private:
-  const rocksdb::DocDBKVFormatter& formatter_;
+  const rocksdb::DocDBKVFormatter* formatter_;
 };
 
 }  // namespace rocksdb

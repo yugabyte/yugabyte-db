@@ -28,7 +28,6 @@
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_path.h"
@@ -39,6 +38,7 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/primitive_value_util.h"
+#include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"

@@ -33,7 +33,7 @@ yb::SchemaPtr SystemTablet::GetSchema(const std::string& table_id) const {
   return schema_;
 }
 
-const YQLStorageIf& SystemTablet::QLStorage() const {
+const docdb::YQLStorageIf& SystemTablet::QLStorage() const {
   return *yql_virtual_table_;
 }
 

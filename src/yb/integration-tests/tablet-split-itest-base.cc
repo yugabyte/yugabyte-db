@@ -16,9 +16,10 @@
 #include <signal.h>
 
 #include "yb/common/schema.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/rocksdb/db.h"
 #include "yb/tablet/tablet.h"

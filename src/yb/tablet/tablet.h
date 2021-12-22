@@ -374,13 +374,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
-  Result<std::unique_ptr<YQLRowwiseIteratorIf>> NewRowIterator(
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const Schema& projection,
       const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
       AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
-  Result<std::unique_ptr<YQLRowwiseIteratorIf>> NewRowIterator(
+
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
 
   //------------------------------------------------------------------------------------------------
@@ -505,7 +506,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Schema GetKeySchema(const std::string& table_id = "") const;
 
-  const YQLStorageIf& QLStorage() const override {
+  const docdb::YQLStorageIf& QLStorage() const override {
     return *ql_storage_;
   }
 
@@ -851,7 +852,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;
 
-  std::unique_ptr<YQLStorageIf> ql_storage_;
+  std::unique_ptr<docdb::YQLStorageIf> ql_storage_;
 
   // This is for docdb fine-grained locking.
   docdb::SharedLockManager shared_lock_manager_;

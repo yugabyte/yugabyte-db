@@ -33,13 +33,14 @@
 #include <vector>
 
 #include "yb/common/index.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/server/logical_clock.h"
 
