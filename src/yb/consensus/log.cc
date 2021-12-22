@@ -1183,23 +1183,6 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
   return Status::OK();
 }
 
-void Log::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx,
-                                        std::map<int64_t, int64_t>* max_idx_to_segment_size)
-                                        const {
-  SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
-  CHECK_EQ(kLogWriting, log_state_);
-  // We want to retain segments so we're only asking the extra ones.
-  int segments_count = std::max(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
-  if (segments_count == 0) {
-    return;
-  }
-
-  int64_t now = GetCurrentTimeMicros();
-  int64_t max_close_time_us = now - (wal_retention_secs() * 1000000);
-  reader_->GetMaxIndexesToSegmentSizeMap(min_op_idx, segments_count, max_close_time_us,
-                                         max_idx_to_segment_size);
-}
-
 LogReader* Log::GetLogReader() const {
   return reader_.get();
 }

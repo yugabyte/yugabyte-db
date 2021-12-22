@@ -926,13 +926,6 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
-Status TabletPeer::GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const {
-  RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
-  log_->GetMaxIndexesToSegmentSizeMap(min_op_idx, idx_size_map);
-  return Status::OK();
-}
-
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());

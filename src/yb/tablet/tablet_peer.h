@@ -295,12 +295,6 @@ class TabletPeer : public consensus::ConsensusContext,
   // to it.
   Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
 
-  // Returns a map of log index -> segment size, of all the segments that currently cannot be GCed
-  // because in-memory structures have anchors in them.
-  //
-  // Returns a non-ok status if the tablet isn't running.
-  CHECKED_STATUS GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const;
-
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
   // Returns a non-ok status if the tablet isn't running.
