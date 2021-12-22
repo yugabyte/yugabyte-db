@@ -546,6 +546,9 @@ class CompactionTestWithFileExpiration : public CompactionTest {
   void WriteRecordsAllExpire();
   void AssertNoFilesExpired();
   void AssertAllFilesExpired();
+  bool CheckEachDbHasExactlyNumFiles(int num_files);
+  bool CheckEachDbHasAtLeastNumFiles(int num_files);
+  bool CheckAtLeastFileExpirationsPerDb(int num_expirations);
   int table_ttl_to_use() override {
     return kTableTTLSec;
   }
@@ -622,7 +625,40 @@ void CompactionTestWithFileExpiration::AssertNoFilesExpired() {
   ASSERT_EQ(CountFilteredSSTFiles(), 0);
 }
 
+bool CompactionTestWithFileExpiration::CheckEachDbHasExactlyNumFiles(int num_files) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    if (db->GetCurrentVersionNumSSTFiles() != num_files) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CompactionTestWithFileExpiration::CheckEachDbHasAtLeastNumFiles(int num_files) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    if (db->GetCurrentVersionNumSSTFiles() < num_files) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CompactionTestWithFileExpiration::CheckAtLeastFileExpirationsPerDb(int num_expirations) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto db : dbs) {
+    auto stats = db->GetOptions().statistics;
+    if (stats->getTickerCount(rocksdb::COMPACTION_FILES_FILTERED) < num_expirations) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void CompactionTestWithFileExpiration::WriteRecordsAllExpire() {
+  // Disable auto compactions to prevent any files from accidentally expiring early.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
   ASSERT_OK(WriteAtLeastFilesPerDb(10));
@@ -831,6 +867,69 @@ TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesEx
   ASSERT_OK(ExecuteManualCompaction());
   // Assert data has expired.
   AssertAllFilesExpired();
+}
+
+TEST_F(CompactionTestWithFileExpiration, FewerFilesThanCompactionTriggerCanExpire) {
+  // Set the number of files required to trigger compactions too high to initially trigger.
+  const int kNumFilesTriggerCompaction = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger)
+      = kNumFilesTriggerCompaction;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Write fewer files than are required to trigger an auto compaction.
+  // These will be the only files that will be eligible for expiration.
+  ASSERT_OK(WriteAtLeastFilesPerDb(1));
+  LogSizeAndFilesInDbs();
+
+  LOG(INFO) << "Sleeping for table TTL seconds";
+  SleepFor(2s * kTableTTLSec);
+
+  // Write enough files to trigger an automatic compaction.
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesTriggerCompaction));
+
+  LogSizeAndFilesInDbs(true);
+  // Verify that at least one file has expired per DB.
+  ASSERT_TRUE(CheckAtLeastFileExpirationsPerDb(1));
+}
+
+// In the past, we have observed behavior of one disporportionately large file
+// being unable to be directly deleted after it expires (and preventing subsequent
+// files from also being deleted). This test verifies that large files will not
+// prevent expiration.
+TEST_F(CompactionTestWithFileExpiration, LargeFileDoesNotPreventExpiration) {
+  const int kNumFilesTriggerCompaction = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger)
+      = kNumFilesTriggerCompaction;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Write a disporportionately large amount of data, then compact into one file.
+  ASSERT_OK(WriteAtLeast(1000_KB));
+  ASSERT_OK(ExecuteManualCompaction());
+  LogSizeAndFilesInDbs();
+  ASSERT_TRUE(CheckEachDbHasExactlyNumFiles(1));
+  const auto files_compacted_without_expiration = CountUnfilteredSSTFiles();
+
+  // Add a flag to limit file size for compaction, then write several more files.
+  // At this point, there will be one large ~1000_KB file, followed by several files
+  // ~1_KB large. None of these files will be included in normal compactions
+  // (but all are eligible for deletion).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 1_KB;
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesTriggerCompaction));
+
+  LOG(INFO) << "Sleeping for table TTL seconds";
+  SleepFor(2s * kTableTTLSec);
+
+  // Write enough files to trigger an auto compaction, even though all are too large
+  // to be considered for normal compaction.
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesTriggerCompaction));
+
+  LogSizeAndFilesInDbs(true);
+  // Check that 1 or more files have expired per database.
+  ASSERT_TRUE(CheckAtLeastFileExpirationsPerDb(1));
+  // Verify that no files have been compacted other than the manual compaction and deletions.
+  ASSERT_EQ(CountUnfilteredSSTFiles(), files_compacted_without_expiration);
 }
 
 class FileExpirationWithRF3 : public CompactionTestWithFileExpiration {
