@@ -6967,16 +6967,17 @@ Datum age_round(PG_FUNCTION_ARGS)
     bool *nulls;
     Oid *types;
     agtype_value agtv_result;
-    Numeric arg;
+    Numeric arg, arg_precision;
     Numeric numeric_result;
     float8 float_result;
     bool is_null = true;
+    int precision = 0;
 
     /* extract argument values */
     nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
 
     /* check number of args */
-    if (nargs != 1)
+    if (nargs != 1 && nargs != 2)
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("round() invalid number of arguments")));
 
@@ -6996,12 +6997,28 @@ Datum age_round(PG_FUNCTION_ARGS)
         PG_RETURN_NULL();
 
     /* We need the input as a numeric so that we can pass it off to PG */
-    numeric_result = DatumGetNumeric(DirectFunctionCall2(numeric_round,
-                                                         NumericGetDatum(arg),
-                                                         Int32GetDatum(0)));
+    if (nargs == 2 && !nulls[1])
+    {
+        arg_precision = get_numeric_compatible_arg(args[1], types[1], "round",
+                                                   &is_null, NULL);
+        if (!is_null)
+        {
+            precision = DatumGetInt64(DirectFunctionCall1(numeric_int8,
+                                      NumericGetDatum(arg_precision)));
+            numeric_result = DatumGetNumeric(DirectFunctionCall2(numeric_round,
+                                             NumericGetDatum(arg),
+                                             Int32GetDatum(precision)));
+        }
+    }
+    else
+    {
+        numeric_result = DatumGetNumeric(DirectFunctionCall2(numeric_round,
+                                         NumericGetDatum(arg),
+                                         Int32GetDatum(0)));
+    }
 
     float_result = DatumGetFloat8(DirectFunctionCall1(numeric_float8_no_overflow,
-                                                      NumericGetDatum(numeric_result)));
+                                               NumericGetDatum(numeric_result)));
     /* build the result */
     agtv_result.type = AGTV_FLOAT;
     agtv_result.val.float_value = float_result;
