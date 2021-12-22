@@ -32,10 +32,9 @@ class SshParamikoClient:
 
     def connect(self):
         self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.client.load_system_host_keys()
+        self.client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
         self.client.connect(self.ip, self.port, username=YB_USERNAME,
-                            key_filename=self.key_filename)
+                            key_filename=self.key_filename, timeout=10)
 
     def close_connection(self):
         self.client.close()
