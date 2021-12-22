@@ -29,14 +29,14 @@ jobs:
     build_type: release
   - os: alma8
     compiler: gcc9
-    build_type: debug    
+    build_type: debug
   - os: alma8
     compiler: gcc9
     build_type: release
-  - os: macos
+  - os: mac11.6
     compiler: clang
     build_type: debug
-  - os: macos
+  - os: mac11.6
     compiler: clang
     build_type: release
   - os: ubuntu18.04
