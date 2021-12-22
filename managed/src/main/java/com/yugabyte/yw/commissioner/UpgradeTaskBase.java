@@ -213,6 +213,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
                 Arrays.asList(node), false /* isAdd */, true /* isLeaderBlacklist */)
             .setSubTaskGroupType(subGroupType);
       }
+
+      createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
       createSetNodeStateTask(node, NodeState.Live).setSubTaskGroupType(subGroupType);
     }
 

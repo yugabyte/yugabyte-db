@@ -185,6 +185,8 @@ public enum TaskType {
 
   WaitForLeaderBlacklistCompletion("subtasks.WaitForLeaderBlacklistCompletion"),
 
+  WaitForFollowerLag("subtasks.WaitForFollowerLag"),
+
   WaitForLoadBalance("subtasks.WaitForLoadBalance"),
 
   WaitForMasterLeader("subtasks.WaitForMasterLeader"),

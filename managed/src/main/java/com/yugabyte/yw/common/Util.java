@@ -636,4 +636,15 @@ public class Util {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
+
+  public static String getNodeIp(Universe universe, NodeDetails node) {
+    String ip = null;
+    if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
+      NodeDetails onDiskNode = universe.getNode(node.nodeName);
+      ip = onDiskNode.cloudInfo.private_ip;
+    } else {
+      ip = node.cloudInfo.private_ip;
+    }
+    return ip;
+  }
 }
