@@ -216,9 +216,21 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 				pgssEntry *bkp_entry = malloc(sizeof(pgssEntry));
 				if (!bkp_entry)
 				{
-					/* No memory, remove pending query entry from the previous bucket. */
-					elog(ERROR, "hash_entry_dealloc: out of memory");
-					entry = hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
+					pgsm_log_error("hash_entry_dealloc: out of memory");
+					/*
+					 * No memory, If the entry has calls > 1 then we change the state to finished,
+					 * as the pending query will likely finish execution during the new bucket
+					 * time window. The pending query will vanish in this case, can't list it
+					 * until it completes.
+					 *
+					 * If there is only one call to the query and it's pending, remove the
+					 * entry from the previous bucket and allow it to finish in the new bucket,
+					 * in order to avoid the query living in the old bucket forever.
+					 */
+					if (entry->counters.calls.calls > 1)
+						entry->counters.state = PGSS_FINISHED;
+					else
+						entry = hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 					continue;
 				}
 
@@ -231,8 +243,20 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 				/* Add the entry to a list of nodes to be processed later. */
 				pending_entries = lappend(pending_entries, bkp_entry);
 
-				/* Finally remove the pending query from the expired bucket id. */
-				entry = hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
+				/*
+				 * If the entry has calls > 1 then we change the state to finished in
+				 * the previous bucket, as the pending query will likely finish execution
+				 * during the new bucket time window. Can't remove it from the previous bucket
+				 * as it may have many calls and we would lose the query statistics.
+				 *
+				 * If there is only one call to the query and it's pending, remove the entry
+				 * from the previous bucket and allow it to finish in the new bucket,
+				 * in order to avoid the query living in the old bucket forever.
+				 */
+				if (entry->counters.calls.calls > 1)
+					entry->counters.state = PGSS_FINISHED;
+				else
+					entry = hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 			}
 		}
 	}
@@ -255,6 +279,7 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 			new_entry->counters = old_entry->counters;
 			SpinLockInit(&new_entry->mutex);
 			new_entry->encoding = old_entry->encoding;
+			new_entry->query_pos = old_entry->query_pos;
 		}
 
 		free(old_entry);
