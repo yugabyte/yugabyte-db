@@ -1061,7 +1061,7 @@ Status Tablet::CompleteShutdownRocksDBs(
   return regular_status.ok() ? intents_status : regular_status;
 }
 
-Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const Schema &projection,
     const ReadHybridTime read_hybrid_time,
     const TableId& table_id,
@@ -1099,7 +1099,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   return std::move(result);
 }
 
-Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));

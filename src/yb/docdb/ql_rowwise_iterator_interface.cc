@@ -11,13 +11,14 @@
 // under the License.
 //
 
-#include "yb/common/ql_rowwise_iterator_interface.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/util/result.h"
 
 namespace yb {
+namespace docdb {
 
-Status YQLRowwiseIteratorIf::GetNextReadSubDocKey(docdb::SubDocKey* sub_doc_key) const {
+Status YQLRowwiseIteratorIf::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
   return Status::OK();
 }
 
@@ -37,4 +38,5 @@ Status YQLRowwiseIteratorIf::NextRow(QLTableRow* table_row) {
   return DoNextRow(schema(), table_row);
 }
 
+}  // namespace docdb
 }  // namespace yb

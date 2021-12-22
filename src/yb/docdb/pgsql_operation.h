@@ -14,13 +14,13 @@
 #ifndef YB_DOCDB_PGSQL_OPERATION_H
 #define YB_DOCDB_PGSQL_OPERATION_H
 
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/pgsql_protocol.pb.h"
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 namespace yb {
 
