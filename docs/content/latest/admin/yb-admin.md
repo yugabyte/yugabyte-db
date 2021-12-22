@@ -508,7 +508,7 @@ Use this command to create custom placement policies only for YCQL tables or tra
 
 #### create_transaction_table
 
-Creates a transaction status table to be used within a region. This command should always be followed by [`modify_placement_info`](#modify-placement-info) to set the placement information for the newly created transaction status table.
+Creates a transaction status table to be used within a region. This command should always be followed by [`modify_table_placement_info`](#modify-table-placement-info) to set the placement information for the newly created transaction status table.
 
 **Syntax**
 
