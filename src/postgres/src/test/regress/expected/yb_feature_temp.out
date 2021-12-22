@@ -117,7 +117,7 @@ SELECT * FROM temptest;
 COMMIT;
 ERROR:  Illegal state: Transaction for catalog table write operation 'pg_type' not found
 SELECT * FROM temptest;
-ERROR:  could not open file "base/13281/t2_16959": No such file or directory
+ERROR:  could not open file "base/13281/t2_16964": No such file or directory
 BEGIN;
 CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
 ERROR:  relation "temptest" already exists
@@ -125,7 +125,7 @@ SELECT * FROM temptest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
 SELECT * FROM temptest;
-ERROR:  could not open file "base/13281/t2_16959": No such file or directory
+ERROR:  could not open file "base/13281/t2_16964": No such file or directory
 -- ON COMMIT is only allowed for TEMP
 CREATE TABLE temptest(col int) ON COMMIT DELETE ROWS;
 ERROR:  ON COMMIT can only be used on temporary tables

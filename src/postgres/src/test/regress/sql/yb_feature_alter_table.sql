@@ -487,3 +487,12 @@ insert into attach_parted_part1 values (2, 1);
 -- ...and doesn't when the partition is detached along with its own partition
 alter table target_parted detach partition attach_parted;
 insert into attach_parted_part1 values (2, 1);
+
+CREATE TABLE demo (i int);
+INSERT INTO demo VALUES (1);
+CREATE UNIQUE INDEX demoi ON demo(i);
+ALTER TABLE demo ADD CONSTRAINT demoi UNIQUE USING INDEX demoi;
+INSERT INTO demo VALUES (1);
+ALTER TABLE demo DROP CONSTRAINT demoi;
+INSERT INTO demo VALUES (1);
+SELECT * FROM demo;
