@@ -391,6 +391,12 @@ The unique identifier for the cluster.
 
 Default: `""`
 
+##### --force_global_transactions
+
+If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table.
+
+Default: `false`
+
 ---
 
 ### YSQL flags
