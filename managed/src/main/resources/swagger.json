@@ -1102,10 +1102,24 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "storageConfigUUID" : {
+          "description" : "Storage Config UUID that created this backup",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "taskUUID" : {
           "description" : "Backup UUID",
           "format" : "uuid",
           "readOnly" : true,
+          "type" : "string"
+        },
+        "universeName" : {
+          "description" : "Universe name that created this backup",
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "description" : "Universe UUID that created this backup",
+          "format" : "uuid",
           "type" : "string"
         },
         "updateTime" : {
@@ -1119,6 +1133,66 @@
         }
       },
       "required" : [ "createTime", "updateTime" ],
+      "type" : "object"
+    },
+    "BackupApiFilter" : {
+      "properties" : {
+        "dateRangeEnd" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "dateRangeStart" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "keyspaceList" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "scheduleUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "states" : {
+          "items" : {
+            "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "storageConfigUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "universeNameList" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "universeUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "dateRangeEnd", "dateRangeStart", "keyspaceList", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
       "type" : "object"
     },
     "BackupData" : {
@@ -1139,6 +1213,130 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "BackupPagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/BackupApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "createTime" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "BackupPagedApiResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/BackupResp"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
+    "BackupResp" : {
+      "properties" : {
+        "backupType" : {
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        },
+        "createTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "expiryTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "isStorageConfigPresent" : {
+          "type" : "boolean"
+        },
+        "isUniversePresent" : {
+          "type" : "boolean"
+        },
+        "keyspace" : {
+          "type" : "string"
+        },
+        "onDemand" : {
+          "type" : "boolean"
+        },
+        "respList" : {
+          "items" : {
+            "$ref" : "#/definitions/BackupResp"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "scheduleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "state" : {
+          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+          "type" : "string"
+        },
+        "storageConfigUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "storageLocation" : {
+          "type" : "string"
+        },
+        "tableNames" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "universeName" : {
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "updateTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        }
+      },
+      "required" : [ "backupType", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "keyspace", "onDemand", "respList", "scheduleUUID", "state", "storageConfigUUID", "storageLocation", "tableNames", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -6585,7 +6783,70 @@
         "tags" : [ "Table management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/backups/page" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "pageBackupList",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PageBackupsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/BackupPagedApiQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/BackupPagedApiResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List Backups (paginated)",
+        "tags" : [ "Backups" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/backups/{backupUUID}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "get",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "backupUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Backup"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get Backup",
+        "tags" : [ "Backups" ]
+      },
       "put" : {
         "description" : "Edit a backup",
         "operationId" : "editBackup",
