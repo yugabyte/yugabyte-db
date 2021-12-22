@@ -1,6 +1,6 @@
 ---
 title: Security architecture
-linkTitle: Architecture
+linkTitle: Security Architecture
 description: Security architecture of Yugabyte Cloud.
 image: /images/section_icons/index/secure.png
 menu:

@@ -111,5 +111,5 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
 ## Next steps
 
-- [Add database users](../add-users/)
+- [Add database users](../../cloud-secure-clusters/add-users/)
 - [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/)

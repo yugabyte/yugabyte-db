@@ -32,7 +32,7 @@ In this walkthrough, you will:
 
 - Git
 - Yugabyte Cloud cluster
-  - Your computer IP address must be in an [IP allow list](../../cloud-basics/add-connections/)
+  - Your computer IP address must be in an [IP allow list](../../cloud-secure-clusters/add-connections/)
 
 ## Clone the Spring Data YugabyteDB PetClinic application
 

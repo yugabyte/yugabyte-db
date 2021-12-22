@@ -145,5 +145,5 @@ For information on YSQL and the ysqlsh shell:
 
 ## Next steps
 
-- [Add database users](../add-users/)
+- [Add database users](../../cloud-secure-clusters/add-users/)
 - [Connect an application](../connect-applications/)
