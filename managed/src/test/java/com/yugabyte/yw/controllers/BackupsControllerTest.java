@@ -259,6 +259,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithInvalidParams() {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("actionType", "RESTORE");
@@ -275,6 +276,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST2");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -293,6 +295,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithInvalidStorageUUID() {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -313,6 +316,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Users user = ModelFactory.testUser(defaultCustomer, "tc@test.com", Users.Role.ReadOnly);
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -331,6 +335,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST3");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
     Backup b = Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
 
@@ -376,6 +381,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST5");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup.create(defaultCustomer.uuid, bp);
     ObjectNode bodyJson = Json.newObject();
 
@@ -461,6 +467,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(state);
     List<String> backupUUIDList = new ArrayList<>();
@@ -490,6 +497,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(state);
     List<String> backupUUIDList = new ArrayList<>();
@@ -512,6 +520,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID invalidStorageConfigUUID = UUID.randomUUID();
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = invalidStorageConfigUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.Completed);
     List<String> backupUUIDList = new ArrayList<>();
