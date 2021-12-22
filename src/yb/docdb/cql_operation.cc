@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/cql_operation.h"
 
 #include <limits>
@@ -20,22 +21,32 @@
 #include <vector>
 
 #include "yb/bfpg/tserver_opcodes.h"
+
 #include "yb/common/index.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/primitive_value_util.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
@@ -248,6 +259,8 @@ QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
       unique_index_key_schema_(unique_index_key_schema),
       txn_op_context_(txn_op_context)
 {}
+
+QLWriteOperation::~QLWriteOperation() = default;
 
 Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response) {
   request_.Swap(request);
@@ -1130,6 +1143,10 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
   return false;
 }
 
+MonoDelta QLWriteOperation::request_ttl() const {
+  return request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+}
+
 namespace {
 
 QLExpressionPB* NewKeyColumn(QLWriteRequestPB* request, const IndexInfo& index, const size_t idx) {
@@ -1609,6 +1626,9 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
     pair->set_key(doc_key.Encode().ToStringBuffer());
   }
   pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+  // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
+  // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
+  out->set_wait_policy(WAIT_ERROR);
   return Status::OK();
 }
 

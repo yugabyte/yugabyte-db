@@ -37,16 +37,20 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
+
 #include "yb/master/master_fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 
+class FsManager;
 class HostPort;
 
 namespace master {
@@ -89,7 +93,9 @@ class MiniMaster {
 
   rpc::Messenger& messenger() const;
 
-  CatalogManager& catalog_manager() const;
+  CatalogManagerIf& catalog_manager() const;
+
+  CatalogManager& catalog_manager_impl() const;
 
   tablet::TabletPeerPtr tablet_peer() const;
 
@@ -97,10 +103,14 @@ class MiniMaster {
 
   master::TSManager& ts_manager() const;
 
+  master::FlushManager& flush_manager() const;
+
   // Return UUID of this mini master.
   std::string permanent_uuid() const;
 
   std::string bound_rpc_addr_str() const;
+
+  FsManager& fs_manager() const;
 
  private:
   CHECKED_STATUS StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,

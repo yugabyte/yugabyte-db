@@ -17,6 +17,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rocksdb/util/file_util.h"
 
 #include <algorithm>
@@ -26,6 +27,8 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
+
+#include "yb/util/path_util.h"
 
 namespace rocksdb {
 

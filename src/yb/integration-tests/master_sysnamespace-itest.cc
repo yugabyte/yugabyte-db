@@ -12,12 +12,17 @@
 //
 
 #include <yb/master/master_defaults.h>
+
 #include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -58,7 +63,7 @@ class MasterSysNamespaceTest : public YBTest {
     ASSERT_FALSE(locs_pb.stale());
     ASSERT_EQ(3, locs_pb.replicas_size());
     for (const TabletLocationsPB::ReplicaPB& replica : locs_pb.replicas()) {
-      if (replica.role() == consensus::RaftPeerPB::LEADER) {
+      if (replica.role() == PeerRole::LEADER) {
         auto* leader_mini_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
         ASSERT_EQ(
             leader_mini_master->bound_rpc_addr().host(),
@@ -76,7 +81,7 @@ class MasterSysNamespaceTest : public YBTest {
                       replica.ts_info().private_rpc_addresses(0).host());
             ASSERT_EQ(cluster_->mini_master(i)->bound_rpc_addr().port(),
                       replica.ts_info().private_rpc_addresses(0).port());
-            ASSERT_EQ(consensus::RaftPeerPB::FOLLOWER, replica.role());
+            ASSERT_EQ(PeerRole::FOLLOWER, replica.role());
             break;
           }
         }
@@ -106,7 +111,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   namespace_identifier->set_name(master::kSystemNamespaceName);
   namespace_identifier->set_id(master::kSystemNamespaceId);
   std::unique_ptr<rpc::RpcController> controller(new rpc::RpcController());
-  proxy_->GetTableLocations(req, &resp, controller.get());
+  ASSERT_OK(proxy_->GetTableLocations(req, &resp, controller.get()));
 
   ASSERT_FALSE(resp.has_error());
   ASSERT_EQ(TableType::YQL_TABLE_TYPE, resp.table_type());
@@ -118,7 +123,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   GetTabletLocationsResponsePB tablet_resp;
   tablet_req.add_tablet_ids(resp.tablet_locations(0).tablet_id());
   controller->Reset();
-  proxy_->GetTabletLocations(tablet_req, &tablet_resp, controller.get());
+  ASSERT_OK(proxy_->GetTabletLocations(tablet_req, &tablet_resp, controller.get()));
   ASSERT_FALSE(tablet_resp.has_error());
   ASSERT_EQ(1, tablet_resp.tablet_locations_size());
   VerifyTabletLocations(tablet_resp.tablet_locations(0));
@@ -128,7 +133,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   GetTableSchemaResponsePB schema_resp;
   controller->Reset();
   *schema_req.mutable_table() = *table_identifier;
-  proxy_->GetTableSchema(schema_req, &schema_resp, controller.get());
+  ASSERT_OK(proxy_->GetTableSchema(schema_req, &schema_resp, controller.get()));
   ASSERT_FALSE(schema_resp.has_error());
   ASSERT_TRUE(schema_resp.create_table_done());
 

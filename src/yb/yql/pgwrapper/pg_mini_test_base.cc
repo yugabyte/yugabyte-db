@@ -18,7 +18,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
-#include "yb/util/random_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);

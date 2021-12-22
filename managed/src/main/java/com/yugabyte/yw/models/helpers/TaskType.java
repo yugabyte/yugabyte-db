@@ -102,6 +102,8 @@ public enum TaskType {
 
   CreateKMSConfig("CreateKMSConfig"),
 
+  EditKMSConfig("EditKMSConfig"),
+
   DeleteKMSConfig("DeleteKMSConfig"),
 
   UpdateDiskSize("UpdateDiskSize"),
@@ -110,9 +112,11 @@ public enum TaskType {
 
   CreateXClusterConfig("CreateXClusterConfig"),
 
+  EditXClusterConfig("EditXClusterConfig"),
+
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
-  EditXClusterConfig("EditXClusterConfig"),
+  SyncXClusterConfig("SyncXClusterConfig"),
 
   CreateSupportBundle("CreateSupportBundle"),
 
@@ -200,11 +204,15 @@ public enum TaskType {
   // Tasks belonging to subtasks.xcluster classpath
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
 
-  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
-
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
 
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
+
+  XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),
+
+  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
+
+  XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
@@ -241,6 +249,8 @@ public enum TaskType {
 
   KubernetesCheckNumPod("subtasks.KubernetesCheckNumPod"),
 
+  SetActiveUniverseKeys("subtasks.SetActiveUniverseKeys"),
+
   @Deprecated
   CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile"),
 
@@ -256,7 +266,19 @@ public enum TaskType {
 
   ResetUniverseVersion("subtasks.ResetUniverseVersion"),
 
-  DeleteCertificate("subtasks.DeleteCertificate");
+  DeleteCertificate("subtasks.DeleteCertificate"),
+
+  SetNodeStatus("subtasks.SetNodeStatus"),
+
+  CheckMasterLeader("subtasks.check.CheckMasterLeader"),
+
+  CheckMasters("subtasks.check.CheckMasters"),
+
+  CheckTServers("subtasks.check.CheckTServers"),
+
+  WaitForTServerHBs("subtasks.check.WaitForTServerHBs"),
+
+  CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig");
 
   private String relativeClassPath;
 

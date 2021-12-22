@@ -42,8 +42,10 @@ int main() {
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 using GFLAGS::ParseCommandLineFlags;
 
@@ -250,7 +252,7 @@ TEST_F(PrefixTest, TestResult) {
       std::cout << "*** Mem table: " << options.memtable_factory->Name()
                 << " number of buckets: " << num_buckets
                 << std::endl;
-      DestroyDB(kDbName, Options());
+      ASSERT_OK(DestroyDB(kDbName, Options()));
       auto db = OpenDb();
       WriteOptions write_options;
       ReadOptions read_options;
@@ -423,7 +425,7 @@ TEST_F(PrefixTest, PrefixValid) {
     while (NextOptions(num_buckets)) {
       std::cout << "*** Mem table: " << options.memtable_factory->Name()
                 << " number of buckets: " << num_buckets << std::endl;
-      DestroyDB(kDbName, Options());
+      ASSERT_OK(DestroyDB(kDbName, Options()));
       auto db = OpenDb();
       WriteOptions write_options;
       ReadOptions read_options;
@@ -438,9 +440,9 @@ TEST_F(PrefixTest, PrefixValid) {
       PutKey(db.get(), write_options, 12345, 8, v18);
       PutKey(db.get(), write_options, 12345, 9, v19);
       PutKey(db.get(), write_options, 12346, 8, v16);
-      db->Flush(FlushOptions());
-      db->Delete(write_options, TestKeyToSlice(TestKey(12346, 8)));
-      db->Flush(FlushOptions());
+      ASSERT_OK(db->Flush(FlushOptions()));
+      ASSERT_OK(db->Delete(write_options, TestKeyToSlice(TestKey(12346, 8))));
+      ASSERT_OK(db->Flush(FlushOptions()));
       read_options.prefix_same_as_start = true;
       std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
       ASSERT_OK(iter->status());
@@ -470,7 +472,7 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
   while (NextOptions(FLAGS_bucket_count)) {
     std::cout << "*** Mem table: " << options.memtable_factory->Name()
         << std::endl;
-    DestroyDB(kDbName, Options());
+    ASSERT_OK(DestroyDB(kDbName, Options()));
     auto db = OpenDb();
     WriteOptions write_options;
     ReadOptions read_options;
@@ -526,7 +528,7 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
            iter->Next()) {
         if (FLAGS_trigger_deadlock) {
           std::cout << "Behold the deadlock!\n";
-          db->Delete(write_options, iter->key());
+          ASSERT_OK(db->Delete(write_options, iter->key()));
         }
         total_keys++;
       }

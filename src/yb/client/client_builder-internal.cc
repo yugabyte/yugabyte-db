@@ -31,7 +31,16 @@
 //
 
 #include "yb/client/client_builder-internal.h"
-#include "yb/util/metrics.h"
+
+#include <map>
+#include <set>
+
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
+
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/metric_entity.h"
 
 DEFINE_int32(
     yb_client_num_reactors, 16,

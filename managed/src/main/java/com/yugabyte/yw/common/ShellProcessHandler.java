@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLED;
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import java.io.BufferedReader;
@@ -17,6 +20,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -60,7 +64,7 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description) {
-    return run(command, extraEnvVars, logCmdOutput, description, null);
+    return run(command, extraEnvVars, logCmdOutput, description, null, null);
   }
 
   public ShellResponse run(
@@ -68,7 +72,22 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description,
-      UUID uuid) {
+      UUID uuid,
+      Map<String, String> sensitiveData) {
+
+    List<String> redactedCommand = new ArrayList<>(command);
+
+    // Redacting the sensitive data in the command which is used for logging.
+    if (sensitiveData != null) {
+      sensitiveData.forEach(
+          (key, value) -> {
+            redactedCommand.add(key);
+            command.add(key);
+            command.add(value);
+            redactedCommand.add(Util.redactString(value));
+          });
+    }
+
     ProcessBuilder pb = new ProcessBuilder(command);
     Map envVars = pb.environment();
     if (extraEnvVars != null && !extraEnvVars.isEmpty()) {
@@ -80,9 +99,9 @@ public class ShellProcessHandler {
     }
 
     ShellResponse response = new ShellResponse();
-    response.code = -1;
+    response.code = ERROR_CODE_GENERIC_ERROR;
     if (description == null) {
-      response.setDescription(command);
+      response.setDescription(redactedCommand);
     } else {
       response.description = description;
     }
@@ -98,7 +117,7 @@ public class ShellProcessHandler {
       pb.redirectError(tempErrorFile);
       startMs = System.currentTimeMillis();
       LOG.info("Starting proc (abbrev cmd) - {}", response.description);
-      String fullCommand = "'" + String.join("' '", command) + "'";
+      String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
       if (appConfig.getBoolean("yb.log.logEnvVars", false) && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
@@ -161,7 +180,9 @@ public class ShellProcessHandler {
 
         response.code = process.exitValue();
         response.message =
-            (response.code == 0) ? processOutput.toString().trim() : processError.toString().trim();
+            (response.code == ERROR_CODE_SUCCESS)
+                ? processOutput.toString().trim()
+                : processError.toString().trim();
         String ansibleErrMsg =
             getAnsibleErrMsg(response.code, processOutput.toString(), processError.toString());
         if (ansibleErrMsg != null) {
@@ -169,7 +190,10 @@ public class ShellProcessHandler {
         }
       }
     } catch (IOException | InterruptedException e) {
-      response.code = -1;
+      response.code = ERROR_CODE_GENERIC_ERROR;
+      if (e instanceof InterruptedException) {
+        response.code = ERROR_CODE_EXECUTION_CANCELLED;
+      }
       LOG.error("Exception running command '{}'", response.description, e);
       response.message = e.getMessage();
       // Send a kill signal to ensure process is cleaned up in case of any failure.
@@ -181,7 +205,9 @@ public class ShellProcessHandler {
         response.durationMs = System.currentTimeMillis() - startMs;
       }
       String status =
-          (0 == response.code) ? "success" : ("failure code=" + Integer.toString(response.code));
+          (ERROR_CODE_SUCCESS == response.code)
+              ? "success"
+              : ("failure code=" + Integer.toString(response.code));
       LOG.info(
           "Completed proc '{}' status={} [ {} ms ]",
           response.description,
@@ -203,12 +229,20 @@ public class ShellProcessHandler {
   }
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars, UUID uuid) {
-    return run(command, extraEnvVars, true /*logCommandOutput*/, null, uuid);
+    return run(command, extraEnvVars, true /*logCommandOutput*/, null, uuid, null);
   }
 
   public ShellResponse run(
       List<String> command, Map<String, String> extraEnvVars, String description) {
     return run(command, extraEnvVars, true /*logCommandOutput*/, description);
+  }
+
+  public ShellResponse run(
+      List<String> command,
+      Map<String, String> extraEnvVars,
+      String description,
+      Map<String, String> sensitiveData) {
+    return run(command, extraEnvVars, true /*logCommandOutput*/, description, null, sensitiveData);
   }
 
   private static void waitForProcessExit(Process process, File outFile, File errFile)
@@ -244,7 +278,7 @@ public class ShellProcessHandler {
 
   private static String getAnsibleErrMsg(int code, String stdout, String stderr) {
 
-    if (stderr == null || code == 0) return null;
+    if (stderr == null || code == ERROR_CODE_SUCCESS) return null;
 
     String result = null;
 

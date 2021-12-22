@@ -17,6 +17,7 @@
 #include <random>
 #include <thread>
 
+#include <boost/range/iterator_range.hpp>
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -29,20 +30,16 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/yql/redis/redisserver/redis_client.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/debug/leakcheck_disabler.h"
-#include "yb/util/env.h"
-#include "yb/util/logging.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/threadlocal.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/redis/redisserver/redis_client.h"
 
 using namespace std::literals;
 

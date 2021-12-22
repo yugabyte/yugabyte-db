@@ -15,14 +15,14 @@
 
 #include <memory>
 
-#include "yb/master/catalog_manager.h"
+#include "yb/master/master_fwd.h"
+
 #include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
-#include "yb/server/webserver.h"
+
 #include "yb/tserver/tablet_server.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/metrics.h"
-#include "yb/util/status.h"
 
 namespace yb {
 
@@ -80,12 +80,12 @@ class CallHome {
   void BuildJsonAndSend();
 
   CHECKED_STATUS GetAddr();
-  inline master::Master* master() { return down_cast<master::Master*>(server_); }
-  inline tserver::TabletServer* tserver() { return down_cast<tserver::TabletServer*>(server_); }
+  master::Master* master();
+  tserver::TabletServer* tserver();
 
   CollectionLevel GetCollectionLevel();
 
-  void SendData(const string& payload);
+  void SendData(const std::string& payload);
   server::RpcAndWebServerBase* server_ = nullptr;
   yb::rpc::IoThreadPool pool_;
   std::unique_ptr<yb::rpc::Scheduler> scheduler_;

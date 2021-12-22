@@ -17,7 +17,6 @@
 #include <boost/container/small_vector.hpp>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/docdb_fwd.h"

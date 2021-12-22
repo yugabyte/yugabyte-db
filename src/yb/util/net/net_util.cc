@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/net/net_util.h"
 
 #include <ifaddrs.h>
@@ -47,6 +48,7 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -99,11 +101,18 @@ HostPort::HostPort()
     : port_(0) {
 }
 
+HostPort::HostPort(Slice host, uint16_t port)
+    : host_(host.cdata(), host.size()), port_(port) {}
+
 HostPort::HostPort(std::string host, uint16_t port)
     : host_(std::move(host)), port_(port) {}
 
 HostPort::HostPort(const Endpoint& endpoint)
     : host_(endpoint.address().to_string()), port_(endpoint.port()) {
+}
+
+HostPort::HostPort(const char* host, uint16_t port)
+    : HostPort(Slice(host), port) {
 }
 
 Status HostPort::RemoveAndGetHostPortList(

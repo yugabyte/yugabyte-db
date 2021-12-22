@@ -24,9 +24,13 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+
+#include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
@@ -35,10 +39,9 @@
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include <gtest/gtest.h>
-#include "yb/rocksdb/env.h"
-#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
@@ -284,7 +287,7 @@ void TestCustomizedTablePropertiesCollector(
     builder->Add(ikey.Encode(), kv.second);
   }
   ASSERT_OK(builder->Finish());
-  writer->Flush();
+  ASSERT_OK(writer->Flush());
 
   // -- Step 2: Read properties
   test::StringSink* fwf =
@@ -427,7 +430,7 @@ void TestInternalKeyPropertiesCollector(
     }
 
     ASSERT_OK(builder->Finish());
-    writable->Flush();
+    ASSERT_OK(writable->Flush());
 
     test::StringSink* fwf =
         static_cast<test::StringSink*>(writable->writable_file());

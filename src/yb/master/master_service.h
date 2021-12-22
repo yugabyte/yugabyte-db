@@ -246,6 +246,10 @@ class MasterServiceImpl : public MasterServiceIf,
                                  ChangeMasterClusterConfigResponsePB* resp,
                                  rpc::RpcContext rpc) override;
 
+  void ValidateReplicationInfo(const ValidateReplicationInfoRequestPB* req,
+                               ValidateReplicationInfoResponsePB* resp,
+                               rpc::RpcContext rpc) override;
+
   void GetLoadMoveCompletion(const GetLoadMovePercentRequestPB* req,
                              GetLoadMovePercentResponsePB* resp,
                              rpc::RpcContext rpc) override;
@@ -276,6 +280,14 @@ class MasterServiceImpl : public MasterServiceIf,
 
   void IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
                          IsFlushTablesDoneResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+
+  void FlushSysCatalog(const FlushSysCatalogRequestPB* req,
+                       FlushSysCatalogResponsePB* resp,
+                       rpc::RpcContext rpc) override;
+
+  void CompactSysCatalog(const CompactSysCatalogRequestPB* req,
+                         CompactSysCatalogResponsePB* resp,
                          rpc::RpcContext rpc) override;
 
   void IsInitDbDone(const IsInitDbDoneRequestPB* req,

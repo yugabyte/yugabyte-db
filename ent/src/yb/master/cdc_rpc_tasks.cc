@@ -15,12 +15,12 @@
 
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_string(certs_dir);
@@ -46,12 +46,14 @@ Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
     cdc_rpc_tasks->messenger_ = VERIFY_RESULT(messenger_builder.Build());
   }
 
+  LOG(INFO) << __func__ << " before";
   cdc_rpc_tasks->yb_client_ = VERIFY_RESULT(
       yb::client::YBClientBuilder()
           .add_master_server_addr(master_addrs)
           .default_admin_operation_timeout(
               MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
           .Build(cdc_rpc_tasks->messenger_.get()));
+  LOG(INFO) << __func__ << " after";
 
   return cdc_rpc_tasks;
 }

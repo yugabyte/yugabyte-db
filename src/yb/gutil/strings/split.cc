@@ -185,11 +185,6 @@ void AppendToImpl(map<string, string>* map_container, Splitter splitter) {
   AppendToMap(map_container, splitter);
 }
 
-template <typename Splitter>
-void AppendToImpl(hash_map<string, string>* map_container, Splitter splitter) {
-  AppendToMap(map_container, splitter);
-}
-
 // Appends the results of a call to strings::Split() to the specified container.
 // This function is used with the new strings::Split() API to implement the
 // append semantics of the legacy Split*() functions.
@@ -261,9 +256,9 @@ void ClipString(char* str, int max_len) {
   int cut_at = ClipStringHelper(str, max_len, true);
   if (cut_at != -1) {
     if (max_len > kCutStrSize) {
-      strcpy(str+cut_at, kCutStr);
+      strcpy(str+cut_at, kCutStr); // NOLINT
     } else {
-      strcpy(str+cut_at, "");
+      strcpy(str+cut_at, ""); // NOLINT
     }
   }
 }
@@ -300,7 +295,7 @@ static inline
 void SplitStringToIteratorAllowEmpty(const StringType& full,
                                      const char* delim,
                                      int pieces,
-                                     ITR& result) {
+                                     ITR& result) { // NOLINT
   string::size_type begin_index, end_index;
   begin_index = 0;
 
@@ -392,7 +387,7 @@ template <typename StringType, typename ITR>
 static inline
 void SplitStringToIteratorUsing(const StringType& full,
                                 const char* delim,
-                                ITR& result) {
+                                ITR& result) { // NOLINT
   // Optimize the common case where delim is a single character.
   if (delim[0] != '\0' && delim[1] == '\0') {
     char c = delim[0];
@@ -433,11 +428,6 @@ void SplitStringUsing(const string& full,
   SplitStringToIteratorUsing(full, delim, it);
 }
 
-void SplitStringToHashsetUsing(const string& full, const char* delim,
-                               hash_set<string>* result) {
-  AppendTo(result, strings::Split(full, AnyOf(delim), strings::SkipEmpty()));
-}
-
 void SplitStringToSetUsing(const string& full, const char* delim,
                            set<string>* result) {
   AppendTo(result, strings::Split(full, AnyOf(delim), strings::SkipEmpty()));
@@ -445,11 +435,6 @@ void SplitStringToSetUsing(const string& full, const char* delim,
 
 void SplitStringToMapUsing(const string& full, const char* delim,
                            map<string, string>* result) {
-  AppendTo(result, strings::Split(full, AnyOf(delim), strings::SkipEmpty()));
-}
-
-void SplitStringToHashmapUsing(const string& full, const char* delim,
-                               hash_map<string, string>* result) {
   AppendTo(result, strings::Split(full, AnyOf(delim), strings::SkipEmpty()));
 }
 
@@ -513,7 +498,7 @@ void SplitToVector(char* full, const char* delim, vector<const char*>* vec,
 // SplitOneStringToken()
 //   Mainly a stringified wrapper around strpbrk()
 // ----------------------------------------------------------------------
-string SplitOneStringToken(const char ** source, const char * delim) {
+string SplitOneStringToken(const char** source, const char* delim) {
   assert(source);
   assert(delim);
   if (!*source) {
@@ -600,14 +585,6 @@ void SplitStringWithEscapingToSet(const string &full,
   SplitStringWithEscapingToIterator(full, delimiters, false, &it);
 }
 
-void SplitStringWithEscapingToHashset(const string &full,
-                                      const strings::CharSet& delimiters,
-                                      hash_set<string> *result) {
-  std::insert_iterator< hash_set<string> > it(*result, result->end());
-  SplitStringWithEscapingToIterator(full, delimiters, false, &it);
-}
-
-
 // ----------------------------------------------------------------------
 // SplitOneIntToken()
 // SplitOneInt32Token()
@@ -626,25 +603,25 @@ void SplitStringWithEscapingToHashset(const string &full,
 //   Mainly a stringified wrapper around strtol/strtoul/strtod
 // ----------------------------------------------------------------------
 // Curried functions for the macro below
-static inline long strto32_0(const char * source, char ** end) {
+static inline int32_t strto32_0(const char* source, char** end) {
   return strto32(source, end, 0); }
-static inline unsigned long strtou32_0(const char * source, char ** end) {
+static inline uint32_t strtou32_0(const char* source, char** end) {
   return strtou32(source, end, 0); }
-static inline int64 strto64_0(const char * source, char ** end) {
+static inline int64 strto64_0(const char* source, char** end) {
   return strto64(source, end, 0); }
-static inline uint64 strtou64_0(const char * source, char ** end) {
+static inline uint64 strtou64_0(const char* source, char** end) {
   return strtou64(source, end, 0); }
-static inline long strto32_10(const char * source, char ** end) {
+static inline int32_t strto32_10(const char* source, char** end) {
   return strto32(source, end, 10); }
-static inline unsigned long strtou32_10(const char * source, char ** end) {
+static inline uint32_t strtou32_10(const char* source, char** end) {
   return strtou32(source, end, 10); }
-static inline int64 strto64_10(const char * source, char ** end) {
+static inline int64 strto64_10(const char* source, char** end) {
   return strto64(source, end, 10); }
-static inline uint64 strtou64_10(const char * source, char ** end) {
+static inline uint64 strtou64_10(const char* source, char** end) {
   return strtou64(source, end, 10); }
-static inline uint32 strtou32_16(const char * source, char ** end) {
+static inline uint32 strtou32_16(const char* source, char** end) {
   return strtou32(source, end, 16); }
-static inline uint64 strtou64_16(const char * source, char ** end) {
+static inline uint64 strtou64_16(const char* source, char** end) {
   return strtou64(source, end, 16); }
 
 #define DEFINE_SPLIT_ONE_NUMBER_TOKEN(name, type, function) \
@@ -653,15 +630,17 @@ bool SplitOne##name##Token(const char ** source, const char * delim, \
   assert(source);                                               \
   assert(delim);                                                \
   assert(value);                                                \
-  if (!*source)                                                 \
+  if (!*source) {                                               \
     return false;                                               \
+  }                                                             \
   /* Parse int */                                               \
   char * end;                                                   \
   *value = function(*source, &end);                             \
   if (end == *source)                                           \
     return false; /* number not present at start of string */   \
-  if (end[0] && !strchr(delim, end[0]))                         \
+  if (end[0] && !strchr(delim, end[0])) {                       \
     return false; /* Garbage characters after int */            \
+  }                                                             \
   /* Advance past token */                                      \
   if (*end != '\0')                                             \
     *source = const_cast<const char *>(end+1);                  \
@@ -1048,7 +1027,7 @@ bool SplitStringIntoKeyValuePairs(const string& line,
 const char* SplitLeadingDec32Values(const char *str, vector<int32> *result) {
   for (;;) {
     char *end = nullptr;
-    long value = strtol(str, &end, 10);
+    int64_t value = strtol(str, &end, 10);
     if (end == str)
       break;
     // Limit long values to int32 min/max.  Needed for lp64.

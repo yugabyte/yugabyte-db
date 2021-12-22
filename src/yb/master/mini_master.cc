@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/mini_master.h"
 
 #include <string>
@@ -37,7 +38,9 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
@@ -218,8 +221,12 @@ std::string MiniMaster::bound_rpc_addr_str() const {
   return bound_rpc_addr().ToString();
 }
 
-CatalogManager& MiniMaster::catalog_manager() const {
+CatalogManagerIf& MiniMaster::catalog_manager() const {
   return *master_->catalog_manager();
+}
+
+CatalogManager& MiniMaster::catalog_manager_impl() const {
+  return *master_->catalog_manager_impl();
 }
 
 tablet::TabletPeerPtr MiniMaster::tablet_peer() const {
@@ -236,6 +243,14 @@ master::SysCatalogTable& MiniMaster::sys_catalog() const {
 
 master::TSManager& MiniMaster::ts_manager() const {
   return *master_->ts_manager();
+}
+
+master::FlushManager& MiniMaster::flush_manager() const {
+  return *master_->flush_manager();
+}
+
+FsManager& MiniMaster::fs_manager() const {
+  return *master_->fs_manager();
 }
 
 } // namespace master

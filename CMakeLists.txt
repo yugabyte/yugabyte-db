@@ -39,15 +39,26 @@ message("-- CMAKE_SYSTEM_INFO_FILE: ${CMAKE_SYSTEM_INFO_FILE}")
 message("-- CMAKE_SYSTEM_NAME:      ${CMAKE_SYSTEM_NAME}")
 message("-- CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
 message("-- CMAKE_SYSTEM:           ${CMAKE_SYSTEM}")
+message("-- CMAKE_VERSION:          ${CMAKE_VERSION}")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_standard_modules")
+set(YB_PCH_ON FALSE)
+set(YB_PCH_CODEGEN FALSE)
+if("$ENV{YB_USE_PCH}" STREQUAL "1")
+  set(YB_PCH_ON TRUE)
+  if (APPLE)
+    set(CMAKE_CXX_COMPILE_OPTIONS_INSTANTIATE_TEMPLATES_PCH -fpch-instantiate-templates)
+    list(APPEND CMAKE_CXX_COMPILE_OPTIONS_CREATE_PCH -fpch-codegen -fpch-debuginfo)
+    set(YB_PCH_CODEGEN TRUE)
+  endif()
+endif()
 include(YugabyteFunctions)
 include(YugabyteTesting)
 
 ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -Wall -Wno-sign-compare -Wno-deprecated")
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
   # Certain platforms such as ARM do not use signed chars by default
   # which causes issues with certain bounds checks.
   ADD_CXX_FLAGS("-fsigned-char")
@@ -58,6 +69,14 @@ elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
 else()
   message(FATAL_ERROR "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
+
+if (NOT "$ENV{YB_TARGET_ARCH}" STREQUAL "" AND
+    NOT "$ENV{YB_TARGET_ARCH}" STREQUAL "${CMAKE_SYSTEM_PROCESSOR}")
+  message(FATAL_ERROR "YB_TARGET_ARCH is set to $ENV{YB_TARGET_ARCH} but CMAKE_SYSTEM_PROCESSOR "
+                      "is ${CMAKE_SYSTEM_PROCESSOR}.")
+endif()
+set(ENV{YB_TARGET_ARCH} "${CMAKE_SYSTEM_PROCESSOR}")
+
 ADD_CXX_FLAGS("-Winvalid-pch")
 ADD_CXX_FLAGS("-pthread -DBOOST_BIND_NO_PLACEHOLDERS")
 ADD_LINKER_FLAGS("-pthread")
@@ -125,6 +144,8 @@ set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
 set(ENV{YB_BUILD_ROOT} "${YB_BUILD_ROOT}")
 get_filename_component(YB_BUILD_ROOT_PARENT "${YB_BUILD_ROOT}" DIRECTORY)
 message("YB_BUILD_ROOT: ${YB_BUILD_ROOT}")
+
+message("YB_TARGET_ARCH: $ENV{YB_TARGET_ARCH}")
 
 DETECT_NUMBER_OF_PROCESSORS()
 
@@ -405,10 +426,6 @@ elseif(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
 else()
   message("Not specifying linker flags to not allow any undefined symbols: this is ASAN/TSAN")
 endif()
-
-# We don't want to use any stubs; that's exclusively for builds using our
-# exported client headers).
-ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 
 # compiler flags for different build types (run 'cmake -DCMAKE_BUILD_TYPE=<type> .')
 # For all builds:
@@ -753,6 +770,8 @@ add_subdirectory(src/yb/rocksdb)
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
 add_subdirectory(src/yb/common)
+add_subdirectory(src/yb/encryption)
+add_subdirectory(src/yb/gen_yrpc)
 add_subdirectory(src/yb/fs)
 add_subdirectory(src/yb/server)
 add_subdirectory(src/yb/tablet)

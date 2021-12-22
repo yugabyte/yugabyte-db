@@ -14,9 +14,8 @@
 #ifndef YB_MASTER_YQL_VTABLE_ITERATOR_H
 #define YB_MASTER_YQL_VTABLE_ITERATOR_H
 
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
-#include "yb/common/ql_scanspec.h"
-#include "yb/docdb/doc_key.h"
 
 namespace yb {
 namespace master {
@@ -40,7 +39,7 @@ class YQLVTableIterator : public YQLRowwiseIteratorIf {
 
   const Schema &schema() const override;
 
-  HybridTime RestartReadHt() override { return HybridTime::kInvalid; }
+  HybridTime RestartReadHt() override;
 
  private:
   CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) override;

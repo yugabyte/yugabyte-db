@@ -16,7 +16,8 @@
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
-#include "yb/client/yb_table_name.h"
+#include "yb/client/table.h"
+#include "yb/client/table_info.h"
 
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 
@@ -969,7 +970,8 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
   string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
 
   // Check list_cdc_streams again for the table and the status INITIATED.
-  CheckTableIsBeingReplicated({producer_cluster_table->id()}, SysCDCStreamEntryPB::INITIATED);
+  ASSERT_OK(CheckTableIsBeingReplicated(
+      {producer_cluster_table->id()}, SysCDCStreamEntryPB::INITIATED));
 
   // Setup universe replication using the bootstrap_id
   ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
@@ -980,11 +982,11 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
 
 
   // Check list_cdc_streams again for the table and the status ACTIVE.
-  CheckTableIsBeingReplicated({producer_cluster_table->id()});
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
 
   // Try restarting the producer to ensure that the status persists.
   ASSERT_OK(producer_cluster_->RestartSync());
-  CheckTableIsBeingReplicated({producer_cluster_table->id()});
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
 
   // Delete this universe so shutdown can proceed.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
@@ -1038,8 +1040,27 @@ TEST_F(XClusterAdminCliTest, TestRenameUniverseReplication) {
                                 new_replication_id,
                                 1));
 
+  // Also test that we can rename again.
+  std::string new_replication_id2 = "new_replication_id2";
+  ASSERT_OK(RunAdminToolCommand("alter_universe_replication",
+                                new_replication_id,
+                                "rename_id",
+                                new_replication_id2));
+
+  // Assert that using old universe ids fails.
+  ASSERT_NOK(RunAdminToolCommand("set_universe_replication_enabled",
+                                 kProducerClusterId,
+                                 1));
+  ASSERT_NOK(RunAdminToolCommand("set_universe_replication_enabled",
+                                 new_replication_id,
+                                 1));
+  // But using new correct name should succeed.
+  ASSERT_OK(RunAdminToolCommand("set_universe_replication_enabled",
+                                new_replication_id2,
+                                1));
+
   // Delete this universe so shutdown can proceed.
-  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", new_replication_id));
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", new_replication_id2));
   // Also delete second one too.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", collision_id));
 }

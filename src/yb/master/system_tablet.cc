@@ -13,7 +13,10 @@
 
 #include "yb/master/system_tablet.h"
 
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
+
+#include "yb/master/yql_virtual_table.h"
 
 namespace yb {
 namespace master {

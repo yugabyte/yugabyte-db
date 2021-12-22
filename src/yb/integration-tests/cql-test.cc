@@ -11,15 +11,19 @@
 // under the License.
 //
 
-#include "yb/integration-tests/cql_test_base.h"
-
 #include "yb/consensus/raft_consensus.h"
+
+#include "yb/integration-tests/cql_test_base.h"
 
 #include "yb/master/mini_master.h"
 
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -247,7 +251,7 @@ Status CheckNumAddressesInYqlPartitionsTable(CassandraSession* session, int expe
       num_addrs = std::count(replica_addresses.begin(), replica_addresses.end(), ',') + 1;
     }
 
-    EXPECT_EQ(expected_num_addrs, num_addrs);
+    EXPECT_EQ(num_addrs, expected_num_addrs);
   }
   return Status::OK();
 }
@@ -261,14 +265,14 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
   string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
                                             server::Private::kFalse);
 
-  // Shutdown the master leader, and wait for new leader to get elected.
-  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
-  ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-
   // Fail resolution of the old leader master's hostname.
   FLAGS_TEST_fail_to_fast_resolve_address = hostname;
   LOG(INFO) << "Setting FLAGS_TEST_fail_to_fast_resolve_address to: "
             << FLAGS_TEST_fail_to_fast_resolve_address;
+
+  // Shutdown the master leader, and wait for new leader to get elected.
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
 
   // Assert that a new call will succeed, but will be missing the shutdown master address.
   ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 2));

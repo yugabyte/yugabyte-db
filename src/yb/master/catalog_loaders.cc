@@ -31,7 +31,12 @@
 //
 
 #include "yb/master/catalog_loaders.h"
+
 #include "yb/master/master_util.h"
+#include "yb/master/ysql_transaction_ddl.h"
+
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
@@ -89,7 +94,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
     std::function<Status(bool)> when_done =
         std::bind(&CatalogManager::VerifyTablePgLayer, catalog_manager_, table, _1);
     WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, &catalog_manager_->ysql_transaction_,
+        std::bind(&YsqlTransactionDdl::VerifyTransaction, catalog_manager_->ysql_transaction_.get(),
                   txn, when_done)),
         "Could not submit VerifyTransaction to thread pool");
   }
@@ -317,8 +322,8 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
         std::function<Status(bool)> when_done =
             std::bind(&CatalogManager::VerifyNamespacePgLayer, catalog_manager_, ns, _1);
         WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
-            std::bind(&YsqlTransactionDdl::VerifyTransaction, &catalog_manager_->ysql_transaction_,
-                      txn, when_done)),
+            std::bind(&YsqlTransactionDdl::VerifyTransaction,
+                      catalog_manager_->ysql_transaction_.get(), txn, when_done)),
           "Could not submit VerifyTransaction to thread pool");
       }
       break;

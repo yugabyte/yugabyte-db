@@ -11,31 +11,29 @@
 // under the License.
 //
 
-#include <cassandra.h>
-
 #include <tuple>
 
-
 #include "yb/client/client.h"
-#include "yb/client/table.h"
-#include "yb/master/master.pb.h"
+#include "yb/client/table_info.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
-#include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/external_mini_cluster-itest-base.h"
 
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/jsonreader.h"
-#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -2612,7 +2610,7 @@ TEST_F(CppCassandraDriverTest, TestTokenForDoubleKey) {
 
 //------------------------------------------------------------------------------
 class CppCassandraDriverTestNoPartitionBgRefresh : public CppCassandraDriverTest {
- private:
+ protected:
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTest::ExtraMasterFlags();
     flags.push_back("--partitions_vtable_cache_refresh_secs=0");
@@ -2799,6 +2797,13 @@ class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTestNoPartit
   int NumMasters() override {
     return 3;
   }
+
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTestNoPartitionBgRefresh::ExtraMasterFlags();
+  // Just want to test the cache, so turn off automatic updating for this vtable.
+    flags.push_back("--generate_partitions_vtable_on_changes=false");
+    return flags;
+  }
 };
 
 TEST_F_EX(CppCassandraDriverTest, ManyTables, CppCassandraDriverTestThreeMasters) {
@@ -2895,10 +2900,20 @@ class CppCassandraDriverTestPartitionsVtableCache : public CppCassandraDriverTes
         &session, Format("test.key_value_$0", ++table_idx_), {"key", "value"}, {"(key)"});
   }
 
+  Status DropTable() {
+    auto session = VERIFY_RESULT(EstablishSession());
+    CassandraStatement statement(Format("DROP TABLE test.key_value_$0", table_idx_--));
+    return ResultToStatus(session.ExecuteWithResult(statement));
+  }
+
  private:
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTest::ExtraMasterFlags();
     flags.push_back(Substitute("--partitions_vtable_cache_refresh_secs=$0", kCacheRefreshSecs));
+    flags.push_back(Substitute("--generate_partitions_vtable_on_changes=$0", false));
+    flags.push_back(Substitute(
+        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=$0",
+        false));
     return flags;
   }
 
@@ -2937,19 +2952,66 @@ TEST_F_EX(CppCassandraDriverTest,
   // We are now just after a cache update, so we should expect that we only get the cached value
   // for the next kCacheRefreshSecs seconds.
 
-  // Add another table to update system.partitions again.
+  // Add a table to update system.partitions again.
   ASSERT_OK(AddTable());
 
-  // Check that we still get the same cached version.
-  auto new_result = ASSERT_RESULT(session_.ExecuteWithResult(statement));
-  auto new_results = ResultsToList(new_result);
+  // Check that we still get the same cached version as the bg task has not run yet.
+  auto new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
   ASSERT_EQ(old_results, new_results);
 
   // Wait for the cache to update.
   SleepFor(MonoDelta::FromSeconds(kCacheRefreshSecs));
   // Verify that we get the new cached value.
-  new_result = ASSERT_RESULT(session_.ExecuteWithResult(statement));
-  new_results = ResultsToList(new_result);
+  new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
+  ASSERT_NE(old_results, new_results);
+  old_results = new_results;
+
+  // Test dropping a table as well.
+  ASSERT_OK(DropTable());
+  // Should still get the old cached values.
+  new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
+  ASSERT_EQ(old_results, new_results);
+
+  // Wait for the cache to update, then verify that we get the new cached value.
+  SleepFor(MonoDelta::FromSeconds(kCacheRefreshSecs));
+  new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
+  ASSERT_NE(old_results, new_results);
+}
+
+class CppCassandraDriverTestPartitionsVtableCacheUpdateOnChanges :
+    public CppCassandraDriverTestPartitionsVtableCache {
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = CppCassandraDriverTest::ExtraMasterFlags();
+    // Test for generating system.partitions as changes occur, rather than via a bg task.
+    flags.push_back(Substitute("--partitions_vtable_cache_refresh_secs=$0", 0));
+    flags.push_back(Substitute("--generate_partitions_vtable_on_changes=$0", true));
+    flags.push_back(Substitute(
+        "--TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done=$0",
+        true));
+    return flags;
+  }
+};
+
+TEST_F_EX(CppCassandraDriverTest,
+          YQLPartitionsVtableCacheUpdateOnChanges,
+          CppCassandraDriverTestPartitionsVtableCacheUpdateOnChanges) {
+  // Get the initial system.partitions and store the result.
+  CassandraStatement statement("SELECT * FROM system.partitions");
+  auto old_result = ASSERT_RESULT(session_.ExecuteWithResult(statement));
+  auto old_results = ResultsToList(old_result);
+
+  // Add a table to update system.partitions.
+  ASSERT_OK(AddTable());
+
+  // Verify that the table is in the cache.
+  auto new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
+  ASSERT_NE(old_results, new_results);
+  old_results = new_results;
+
+  // Test dropping a table as well.
+  ASSERT_OK(DropTable());
+  // Cache should again be automatically updated.
+  new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
   ASSERT_NE(old_results, new_results);
 }
 

@@ -14,13 +14,13 @@
 #ifndef YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
 #define YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
 
-#include <gflags/gflags_declare.h>
-
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/master.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_service_base.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 
 #include "yb/rpc/rpc_context.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -66,7 +66,7 @@ void MasterServiceBase::HandleOnLeader(
     int line_number,
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
-  ScopedLeaderSharedLock l(server_->catalog_manager(), file_name, line_number, function_name);
+  ScopedLeaderSharedLock l(server_->catalog_manager_impl(), file_name, line_number, function_name);
   if (FLAGS_TEST_timeout_non_leader_master_rpcs && !l.leader_status().ok()) {
     std::this_thread::sleep_until(rpc->GetClientDeadline());
   }

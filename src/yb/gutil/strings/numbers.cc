@@ -28,20 +28,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <iomanip>
 #include <limits>
-using std::numeric_limits;
-#include <string>
 #include <sstream>
-using std::string;
+
+#include <glog/logging.h>
 
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
-#include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strtoint.h"
 #include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/gutil/strtoint.h"
+
+using std::numeric_limits;
+using std::string;
+
 
 // Reads a <double> in *text, which may not be whitespace-initiated.
 // *len is the length, or -1 if text is '\0'-terminated, which is more
@@ -1269,6 +1271,17 @@ char* DoubleToBuffer(double value, char* buffer) {
   // this assert.
   COMPILE_ASSERT(DBL_DIG < 20, DBL_DIG_is_too_big);
 
+  if (value == std::numeric_limits<double>::infinity()) {
+    strncpy(buffer, "inf", kDoubleToBufferSize);
+    return buffer;
+  } else if (value == -std::numeric_limits<double>::infinity()) {
+    strncpy(buffer, "-inf", kDoubleToBufferSize);
+    return buffer;
+  } else if (isnan(value)) {
+    strncpy(buffer, "nan", kDoubleToBufferSize);
+    return buffer;
+  }
+
   int snprintf_result =
     snprintf(buffer, kDoubleToBufferSize, "%.*g", DBL_DIG, value);
 
@@ -1276,13 +1289,21 @@ char* DoubleToBuffer(double value, char* buffer) {
   // larger than the precision we asked for.
   DCHECK(snprintf_result > 0 && snprintf_result < kDoubleToBufferSize);
 
-  if (strtod(buffer, nullptr) != value) {
-    snprintf_result =
+  // We need to make parsed_value volatile in order to force the compiler to
+  // write it out to the stack.  Otherwise, it may keep the value in a
+  // register, and if it does that, it may keep it as a long double instead
+  // of a double.  This long double may have extra bits that make it compare
+  // unequal to "value" even though it would be exactly equal if it were
+  // truncated to a double.
+  volatile double parsed_value = strtod(buffer, NULL);
+  if (parsed_value != value) {
+    int snprintf_result =
       snprintf(buffer, kDoubleToBufferSize, "%.*g", DBL_DIG+2, value);
 
     // Should never overflow; see above.
     DCHECK(snprintf_result > 0 && snprintf_result < kDoubleToBufferSize);
   }
+
   return buffer;
 }
 
@@ -1293,6 +1314,17 @@ char* FloatToBuffer(float value, char* buffer) {
   // this assert.
   COMPILE_ASSERT(FLT_DIG < 10, FLT_DIG_is_too_big);
 
+  if (value == std::numeric_limits<double>::infinity()) {
+    strncpy(buffer, "inf", kFloatToBufferSize);
+    return buffer;
+  } else if (value == -std::numeric_limits<double>::infinity()) {
+    strncpy(buffer, "-inf", kFloatToBufferSize);
+    return buffer;
+  } else if (isnan(value)) {
+    strncpy(buffer, "nan", kFloatToBufferSize);
+    return buffer;
+  }
+
   int snprintf_result =
     snprintf(buffer, kFloatToBufferSize, "%.*g", FLT_DIG, value);
 
@@ -1302,12 +1334,13 @@ char* FloatToBuffer(float value, char* buffer) {
 
   float parsed_value;
   if (!safe_strtof(buffer, &parsed_value) || parsed_value != value) {
-    snprintf_result =
-      snprintf(buffer, kFloatToBufferSize, "%.*g", FLT_DIG+2, value);
+    int snprintf_result =
+      snprintf(buffer, kFloatToBufferSize, "%.*g", FLT_DIG+3, value);
 
     // Should never overflow; see above.
     DCHECK(snprintf_result > 0 && snprintf_result < kFloatToBufferSize);
   }
+
   return buffer;
 }
 

@@ -15,6 +15,8 @@ showAsideToc: true
 
 After [creating a free cluster](../qs-add/) and [connecting to the cluster](../qs-connect/) using the cloud shell, you can create a database and load some data. This exercise assumes you are already connected to your cluster in cloud shell using the `ysqlsh` shell.
 
+For an example using YCQL, refer to [Create and explore a database](../../cloud-connect/create-databases-ycql/).
+
 ## Create a database
 
 To create a database (`yb_demo`), do the following:

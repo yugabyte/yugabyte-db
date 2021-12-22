@@ -53,7 +53,7 @@
 
 #include "yb/gutil/port.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 
 namespace yb {
@@ -192,7 +192,7 @@ class ReplicaState {
   ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const;
 
   // Returns the currently active Raft role.
-  RaftPeerPB::Role GetActiveRoleUnlocked() const;
+  PeerRole GetActiveRoleUnlocked() const;
 
   // Returns true if there is a configuration change currently in-flight but not yet
   // committed.

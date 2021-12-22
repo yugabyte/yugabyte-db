@@ -17,20 +17,39 @@
 #ifndef YB_YQL_CQL_CQLSERVER_CQL_SERVER_H
 #define YB_YQL_CQL_CQLSERVER_CQL_SERVER_H
 
+#include <stdint.h>
+#include <string.h>
+
 #include <atomic>
+#include <cstdarg>
+#include <mutex>
 #include <string>
+#include <type_traits>
+
+#include <boost/asio.hpp>
+#include <boost/container/small_vector.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/optional/optional_fwd.hpp>
+#include <boost/version.hpp>
+#include <gflags/gflags_declare.h>
+
+#include "yb/gutil/macros.h"
+
+#include "yb/rpc/service_if.h"
+
+#include "yb/server/server_base.h"
+
+#include "yb/tserver/tserver_fwd.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/faststring.h"
+#include "yb/util/math_util.h"
+#include "yb/util/memory/memory_usage.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
-#include "yb/gutil/macros.h"
-#include "yb/server/server_base.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
-
-#include <boost/asio.hpp>
-#include <boost/bind.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
 
 namespace yb {
 
@@ -43,20 +62,20 @@ class CQLServer : public server::RpcAndWebServerBase {
 
   CQLServer(const CQLServerOptions& opts,
             boost::asio::io_service* io,
-            tserver::TabletServer* tserver);
+            tserver::TabletServerIf* tserver);
 
   CHECKED_STATUS Start();
 
   void Shutdown();
 
-  tserver::TabletServer* tserver() const { return tserver_; }
+  tserver::TabletServerIf* tserver() const { return tserver_; }
 
  private:
   CQLServerOptions opts_;
   void CQLNodeListRefresh(const boost::system::error_code &e);
   void RescheduleTimer();
   boost::asio::deadline_timer timer_;
-  tserver::TabletServer* const tserver_;
+  tserver::TabletServerIf* const tserver_;
 
   std::unique_ptr<ql::CQLServerEvent> BuildTopologyChangeEvent(const std::string& event_type,
                                                                const Endpoint& addr);

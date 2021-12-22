@@ -35,21 +35,28 @@
 #include <set>
 #include <string>
 
-#include <gflags/gflags.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client-test-util.h"
 #include "yb/client/client_fwd.h"
+#include "yb/client/client-test-util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
+
 #include "yb/common/common.pb.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/catalog_manager.h"
+
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
+
 #include "yb/util/metrics.h"
+#include "yb/util/path_util.h"
+#include "yb/util/tsan_util.h"
 
 using std::multimap;
 using std::set;
@@ -78,7 +85,7 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
       const master::ReplicationInfoPB& replication_info, const string& table_suffix,
       const YBTableType table_type = YBTableType::YQL_TABLE_TYPE) {
     auto db_type = master::GetDatabaseTypeForTable(
-        client::YBTable::ClientToPBTableType(table_type));
+        client::ClientToPBTableType(table_type));
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(), db_type));
     std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));

@@ -33,29 +33,41 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/multi_raft_batcher.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
+
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations/write_operation.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/metrics.h"
-#include "yb/util/test_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
 
@@ -121,6 +133,10 @@ class TabletPeerTest : public YBTabletTest {
     addr->set_host("fake-host");
     addr->set_port(0);
 
+    multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(messenger_.get(),
+                                                                        proxy_cache_.get(),
+                                                                        config_peer.cloud_info());
+
     // "Bootstrap" and start the TabletPeer.
     tablet_peer_.reset(new TabletPeer(
         make_scoped_refptr(tablet()->metadata()), config_peer, clock(),
@@ -171,7 +187,8 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */));
+                                           nullptr /* retryable_requests */,
+                                           multi_raft_manager_.get()));
   }
 
   CHECKED_STATUS StartPeer(const ConsensusBootstrapInfo& info) {
@@ -282,6 +299,7 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.

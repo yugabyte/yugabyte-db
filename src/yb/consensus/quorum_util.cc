@@ -29,15 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/quorum_util.h"
 
 #include <set>
 #include <string>
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_meta.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -185,35 +189,35 @@ RaftPeerPB::MemberType GetConsensusMemberType(const std::string& permanent_uuid,
   return RaftPeerPB::UNKNOWN_MEMBER_TYPE;
 }
 
-RaftPeerPB::Role GetConsensusRole(const std::string& permanent_uuid,
+PeerRole GetConsensusRole(const std::string& permanent_uuid,
                                   const ConsensusStatePB& cstate) {
   if (cstate.leader_uuid() == permanent_uuid) {
     if (IsRaftConfigVoter(permanent_uuid, cstate.config())) {
-      return RaftPeerPB::LEADER;
+      return PeerRole::LEADER;
     }
-    return RaftPeerPB::NON_PARTICIPANT;
+    return PeerRole::NON_PARTICIPANT;
   }
 
   for (const RaftPeerPB& peer : cstate.config().peers()) {
     if (peer.permanent_uuid() == permanent_uuid) {
       switch (peer.member_type()) {
         case RaftPeerPB::VOTER:
-          return RaftPeerPB::FOLLOWER;
+          return PeerRole::FOLLOWER;
 
         // PRE_VOTER, PRE_OBSERVER peers are considered LEARNERs.
         case RaftPeerPB::PRE_VOTER:
         case RaftPeerPB::PRE_OBSERVER:
-          return RaftPeerPB::LEARNER;
+          return PeerRole::LEARNER;
 
         case RaftPeerPB::OBSERVER:
-          return RaftPeerPB::READ_REPLICA;
+          return PeerRole::READ_REPLICA;
 
         case RaftPeerPB::UNKNOWN_MEMBER_TYPE:
-         return RaftPeerPB::UNKNOWN_ROLE;
+         return PeerRole::UNKNOWN_ROLE;
       }
     }
   }
-  return RaftPeerPB::NON_PARTICIPANT;
+  return PeerRole::NON_PARTICIPANT;
 }
 
 Status VerifyRaftConfig(const RaftConfigPB& config, RaftConfigState type) {

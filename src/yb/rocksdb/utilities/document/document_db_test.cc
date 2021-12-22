@@ -28,17 +28,19 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/test_util.h"
+
 namespace rocksdb {
 
 class DocumentDBTest : public testing::Test {
  public:
   DocumentDBTest() {
     dbname_ = test::TmpDir() + "/document_db_test";
-    DestroyDB(dbname_, Options());
+    CHECK_OK(DestroyDB(dbname_, Options()));
   }
   ~DocumentDBTest() {
     delete db_;
-    DestroyDB(dbname_, Options());
+    CHECK_OK(DestroyDB(dbname_, Options()));
   }
 
   void AssertCursorIDs(Cursor* cursor, std::vector<int64_t> expected) {

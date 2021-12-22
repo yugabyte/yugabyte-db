@@ -17,13 +17,16 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
+#include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -162,8 +165,7 @@ Status TwoDCTestBase::GetCDCStreamForTable(
     if (!leader_mini_master.ok()) {
       return false;
     }
-    Status s = (*leader_mini_master)->master()->catalog_manager()->
-        ListCDCStreams(&req, resp);
+    Status s = (*leader_mini_master)->catalog_manager().ListCDCStreams(&req, resp);
     return s.ok() && !resp->has_error() && resp->streams_size() == 1;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
 }

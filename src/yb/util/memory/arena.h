@@ -40,21 +40,18 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
-#include <new>
 #include <vector>
 
 #include <boost/signals2/dummy_mutex.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 
-#include "yb/util/alignment.h"
-#include "yb/util/slice.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace internal {
@@ -170,7 +167,11 @@ class ArenaBase {
   uint8_t *AddSlice(const Slice& value);
 
   // Same as above.
-  void * AddBytes(const void *data, size_t len);
+  void* AddBytes(const void *data, size_t len);
+
+  Slice DupSlice(const Slice& value) {
+    return Slice(AddSlice(value), value.size());
+  }
 
   // Handy wrapper for placement-new
   template<class T, class... Args>

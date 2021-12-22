@@ -123,10 +123,9 @@ static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
 static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 {
 	Oid            dboid          = YBCGetDatabaseOid(relation);
-	Oid            relid          = RelationGetRelid(relation);
 	YBCPgTableDesc ybc_table_desc = NULL;
 
-	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(relation), &ybc_table_desc));
 
 	for (AttrNumber attnum = 1; attnum <= relation->rd_att->natts; attnum++)
 	{
@@ -450,7 +449,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		bool colocated = false;
 		bool notfound;
 		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
-														   RelationGetRelid(relation),
+														   YbGetStorageRelid(relation),
 														   &colocated),
 									 &notfound);
 		ybScan->prepare_params.querying_colocated_table |= colocated;
@@ -742,10 +741,9 @@ static void
 ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 	Relation relation = ybScan->relation;
 	Relation index = ybScan->index;
-	Oid		dboid    = YBCGetDatabaseOid(relation);
-	Oid		relid    = RelationGetRelid(relation);
+	Oid		 dboid = YBCGetDatabaseOid(relation);
 
-	HandleYBStatus(YBCPgNewSelect(dboid, relid, &ybScan->prepare_params, &ybScan->handle));
+	HandleYBStatus(YBCPgNewSelect(dboid, YbGetStorageRelid(relation), &ybScan->prepare_params, &ybScan->handle));
 
 	if (IsSystemRelation(relation))
 	{
@@ -961,12 +959,13 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 
 					/*
 						* If there's no non-nulls, the scan qual is unsatisfiable
-						* TODO(rajukumaryb): when num_nonnulls is zero, the query should not be
-						* sent to DocDB as it will return rows that will all be dropped.
 						* Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
 						*/
 					if (num_nonnulls == 0)
+					{
+						ybScan->quit_scan = true;
 						break;
+					}
 
 					/* Build temporary vars */
 					IndexScanDescData tmp_scan_desc;
@@ -1404,6 +1403,9 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
 	Relation    index    = ybScan->index;
 	IndexTuple  tup      = NULL;
+
+	if (ybScan->quit_scan)
+		return NULL;
 
 	/*
 	 * YB Scan may not be able to push down the scan key condition so we may
@@ -1846,7 +1848,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	TupleDesc      tupdesc = RelationGetDescr(relation);
 
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  RelationGetRelid(relation),
+								  YbGetStorageRelid(relation),
 								  NULL /* prepare_params */,
 								  &ybc_stmt));
 
@@ -1920,6 +1922,87 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	pfree(nulls);
 	YBCPgDeleteStatement(ybc_stmt);
 	return tuple;
+}
+
+HTSU_Result
+YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy wait_policy,
+						 EState* estate)
+{
+	if (wait_policy == LockWaitBlock) {
+		/*
+		 * Right now we don't support LockWaitBlock and default to LockWaitError. This will be resolved
+		 * once we support pessimistic locking.
+		 */
+		wait_policy = LockWaitError;
+	}
+
+	YBCPgStatement ybc_stmt;
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
+																RelationGetRelid(relation),
+																NULL /* prepare_params */,
+																&ybc_stmt));
+
+	/* Bind ybctid to identify the current row. */
+	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid, ybctid, false);
+	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, YBTupleIdAttributeNumber, ybctid_expr));
+
+	YBCPgExecParameters exec_params = {0};
+	exec_params.limit_count = 1;
+	exec_params.rowmark = mode;
+	exec_params.wait_policy = wait_policy;
+  exec_params.statement_read_time = estate->yb_exec_params.statement_read_time;
+
+	HTSU_Result res = HeapTupleMayBeUpdated;
+	MemoryContext exec_context = GetCurrentMemoryContext();
+
+	PG_TRY();
+	{
+		/*
+		 * Execute the select statement to lock the tuple with given ybctid.
+		 */
+		HandleYBStatus(YBCPgExecSelect(ybc_stmt, &exec_params /* exec_params */));
+
+		bool has_data = false;
+		Datum *values = NULL;
+		bool *nulls  = NULL;
+		YBCPgSysColumns syscols;
+
+		/*
+		 * Below is done to ensure the read request is flushed to tserver.
+		 */
+		HandleYBStatus(
+				YBCPgDmlFetch(
+						ybc_stmt,
+						0,
+						(uint64_t *) values,
+						nulls,
+						&syscols,
+						&has_data));
+		YBCPgAddIntoForeignKeyReferenceCache(RelationGetRelid(relation), ybctid);
+	}
+	PG_CATCH();
+	{
+		MemoryContext error_context = MemoryContextSwitchTo(exec_context);
+		ErrorData* edata = CopyErrorData();
+		FlushErrorState();
+
+		elog(DEBUG2, "Error when trying to lock row. wait_policy=%d message=%s", wait_policy,
+				 edata->message);
+
+		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+			res = HeapTupleUpdated;
+		else if (YBCIsTxnSkipLockingError(edata->yb_txn_errcode))
+			res = HeapTupleWouldBlock;
+		else {
+			YBCPgDeleteStatement(ybc_stmt);
+			MemoryContextSwitchTo(error_context);
+			PG_RE_THROW();
+		}
+	}
+	PG_END_TRY();
+
+	YBCPgDeleteStatement(ybc_stmt);
+	return res;
 }
 
 /*

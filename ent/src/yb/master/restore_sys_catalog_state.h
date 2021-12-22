@@ -18,6 +18,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -26,7 +27,6 @@
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/util/result.h"
 
 namespace yb {
 namespace master {

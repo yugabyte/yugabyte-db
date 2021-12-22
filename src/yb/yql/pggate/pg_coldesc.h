@@ -18,7 +18,6 @@
 #ifndef YB_YQL_PGGATE_PG_COLDESC_H_
 #define YB_YQL_PGGATE_PG_COLDESC_H_
 
-#include "yb/client/client.h"
 
 namespace yb {
 namespace pggate {

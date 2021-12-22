@@ -220,13 +220,15 @@ class KubernetesDetails():
 
 class NodeChecker():
 
-    def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
-                 namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
-                 root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth,
-                 master_http_port, tserver_http_port, ysql_server_http_port,
+    def __init__(self, node, node_name, master_index, tserver_index, identity_file, ssh_port,
+                 start_time_ms, namespace_to_config, ysql_port, ycql_port, redis_port,
+                 enable_tls_client, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
+                 enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
                  collect_metrics_script, universe_version):
         self.node = node
         self.node_name = node_name
+        self.master_index = master_index
+        self.tserver_index = tserver_index
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
@@ -245,6 +247,7 @@ class NodeChecker():
         self.ysql_port = ysql_port
         self.ycql_port = ycql_port
         self.redis_port = redis_port
+        self.enable_ysql = enable_ysql
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
         self.tserver_http_port = tserver_http_port
@@ -322,7 +325,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -hl 2>/dev/null'
+        remote_cmd = 'df -hl -x squashfs 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):
@@ -458,7 +461,13 @@ class NodeChecker():
             message = str(ex)
             return e.fill_and_return_entry([message], True)
 
-        matched = is_equal_release_build(release_build, expected)
+        try:
+            matched = is_equal_release_build(release_build, expected)
+        except RuntimeError as re:
+            return e.fill_and_return_entry(
+                ['Failed to parse node ({}) or expected ({}) build number: {}'.
+                 format(expected, release_build, str(re))],
+                True)
         if not matched:
             return e.fill_and_return_entry(
                 ['Version from platform metadata {}, version reported by instance process {}'.
@@ -662,34 +671,42 @@ class NodeChecker():
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
+    def create_ysqlsh_command_template(self):
+        ysqlsh = '{}/bin/ysqlsh'.format(YB_TSERVER_DIR)
+        port_args = "-p {}".format(self.ysql_port)
+        host = self.node
+
+        if self.enable_ysql_auth:
+            host = '__local_ysql_socket__'
+            port_args = ""
+
+        ysqlsh_cmd = "{} -h {} {} -U yugabyte".format(
+            ysqlsh, host, port_args, '"sslmode=require"' if self.enable_tls_client else '')
+
+        return ysqlsh_cmd
+
     def check_ysqlsh(self):
         logging.info("Checking ysqlsh works for node {}".format(self.node))
         e = self._new_entry("Connectivity with ysqlsh")
 
-        ysqlsh = '{}/bin/ysqlsh'.format(YB_TSERVER_DIR)
-        port_args = "-p {}".format(self.ysql_port)
-        host = self.node
-        errors = []
-        # If YSQL-auth is enabled, we'll try connecting over the UNIX domain socket in the hopes
-        # that we can circumvent md5 authentication (assumption made:
-        # "local all yugabyte trust" is in the hba file)
+        ysqlsh_cmd_template = self.create_ysqlsh_command_template()
+        ysqlsh_cmd = ysqlsh_cmd_template
+
         if self.enable_ysql_auth:
+            # If YSQL-auth is enabled, we'll try connecting over the UNIX domain socket in the hopes
+            # that we can circumvent md5 authentication (assumption made:
+            # "local all yugabyte trust" is in the hba file)
             socket_fds_output = self._remote_check_output("ls /tmp/.yb.*/.s.PGSQL.*").strip()
             socket_fds = socket_fds_output.split()
             if ("Error" not in socket_fds_output) and len(socket_fds):
                 host = os.path.dirname(socket_fds[0])
-                port_args = ""
+                ysqlsh_cmd = ysqlsh_cmd_template.replace('__local_ysql_socket__', host)
             else:
-                errors = ["Could not find local socket"]
-                return e.fill_and_return_entry(errors, True)
+                return e.fill_and_return_entry(["Could not find local socket"], True)
 
-        if not self.enable_tls_client:
-            remote_cmd = "{} -h {} {} -U yugabyte -c \"\conninfo\"".format(
-                ysqlsh, host, port_args)
-        else:
-            remote_cmd = "{} -h {} {} -U yugabyte {} -c \"\conninfo\"".format(
-                ysqlsh, host, port_args, '"sslmode=require"')
+        remote_cmd = "{} -c \"\\conninfo\"".format(ysqlsh_cmd)
 
+        errors = []
         output = self._remote_check_output(remote_cmd).strip()
         if not (output.startswith('You are connected to database')):
             errors = [output]
@@ -698,7 +715,6 @@ class NodeChecker():
     def check_clock_skew(self):
         logging.info("Checking clock synchronization on node {}".format(self.node))
         e = self._new_entry("Clock synchronization")
-        errors = []
 
         remote_cmd = "timedatectl status"
         output = self._remote_check_output(remote_cmd).strip()
@@ -711,12 +727,20 @@ class NodeChecker():
             return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
                                            True)
 
+        errors = []
+
         if ntp_enabled_answer not in ("yes", "active"):
             if ntp_enabled_answer in ("no", "inactive"):
-                return e.fill_and_return_entry(["NTP disabled"], True)
+                errors.append("NTP disabled")
+            else:
+                errors.append("Error getting NTP state {}".format(ntp_enabled_answer))
 
-            return e.fill_and_return_entry(["Error getting NTP state {}"
-                                            .format(ntp_enabled_answer)], True)
+        clock_re = re.match(r'((.|\n)*)(NTP service: )(.*)$', output, re.MULTILINE)
+        if clock_re:
+            ntp_service_answer = clock_re.group(4)
+            # Oracle8 NTP service: n/a not supported anymore
+            if ntp_service_answer in ("n/a"):
+                errors = []
 
         clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
                             output, re.MULTILINE)
@@ -728,10 +752,10 @@ class NodeChecker():
 
         if ntp_synchronized_answer != "yes":
             if ntp_synchronized_answer == "no":
-                errors = ["NTP desynchronized"]
+                errors.append("NTP desynchronized")
             else:
-                errors = ["Error getting NTP synchronization state {}"
-                          .format(ntp_synchronized_answer)]
+                errors.append("Error getting NTP synchronization state {}"
+                              .format(ntp_synchronized_answer))
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
@@ -746,6 +770,9 @@ class NodeChecker():
     def upload_collect_metrics_script(self):
         with open(self.collect_metrics_script, 'r') as file:
             script_content = file.read()
+        ysqlsh_cmd_template = ''
+        if self.enable_ysql:
+            ysqlsh_cmd_template = self.create_ysqlsh_command_template()
 
         script_content = script_content.replace('{{NODE_PRIVATE_IP}}', self.node)
         script_content = script_content.replace('{{MASTER_HTTP_PORT}}',
@@ -754,6 +781,9 @@ class NodeChecker():
                                                 str(self.tserver_http_port))
         script_content = script_content.replace('{{YSQL_SERVER_HTTP_PORT}}',
                                                 str(self.ysql_server_http_port))
+        script_content = script_content.replace('{{YSQLSH_CMD_TEMPLATE}}', ysqlsh_cmd_template)
+        script_content = script_content.replace('{{MASTER_INDEX}}', str(self.master_index))
+        script_content = script_content.replace('{{TSERVER_INDEX}}', str(self.tserver_index))
 
         script_dir = os.path.dirname(os.path.abspath(self.collect_metrics_script))
         node_script = os.path.join(script_dir, "cluster_health_" + self.node + ".sh")
@@ -795,21 +825,6 @@ def parse_release_build(release_build):
     return match
 
 
-def is_equal_release_build(release_build1, release_build2):
-    parsed_release_build_1 = parse_release_build(release_build1)
-    parsed_release_build_2 = parse_release_build(release_build2)
-    if not parsed_release_build_1 or not parsed_release_build_2:
-        return False
-
-    for i in range(1, 6):
-        component1 = int(parsed_release_build_1.group(i))
-        component2 = int(parsed_release_build_2.group(i))
-        if component1 != component2:
-            # If any component is behind or ahead, release builds are not equal.
-            return False
-    return True
-
-
 def is_equal_or_newer_release_build(current_release_build, threshold_release_build):
     parsed_current_release_build = parse_release_build(current_release_build)
     parsed_threshold_release_build = parse_release_build(threshold_release_build)
@@ -827,6 +842,11 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
             return True
     # If all components were equal, then release builds are compatible.
     return True
+
+
+def is_equal_release_build(release_build1, release_build2):
+    return (is_equal_or_newer_release_build(release_build1, release_build2) and
+            is_equal_or_newer_release_build(release_build2, release_build1))
 
 
 ###################################################################################################
@@ -983,8 +1003,12 @@ def main():
         # Technically, each cluster can have its own version, but in practice,
         # we disallow that in YW.
         universe_version = universe.clusters[0].yb_version if universe.clusters else None
-        alert_enhancements_version = is_equal_or_newer_release_build(
-            universe_version, ALERT_ENHANCEMENTS_RELEASE_BUILD)
+        try:
+            alert_enhancements_version = is_equal_or_newer_release_build(
+                universe_version, ALERT_ENHANCEMENTS_RELEASE_BUILD)
+        except RuntimeError as re:
+            logging.info("Failed to check release build: " + str(re))
+            alert_enhancements_version = True
         report = Report(universe_version)
         for c in universe.clusters:
             master_nodes = c.master_nodes
@@ -992,14 +1016,24 @@ def main():
             all_nodes = dict(master_nodes)
             all_nodes.update(dict(tserver_nodes))
             summary_nodes.update(dict(all_nodes))
+            masters_count = 0
+            tservers_count = 0
             for (node, node_name) in all_nodes.items():
+                master_index = -1
+                tserver_index = -1
+                if node in master_nodes:
+                    master_index = masters_count
+                    masters_count += 1
+                if node in tserver_nodes:
+                    tserver_index = tservers_count
+                    tservers_count += 1
                 checker = NodeChecker(
-                        node, node_name, c.identity_file, c.ssh_port,
+                        node, node_name, master_index, tserver_index, c.identity_file, c.ssh_port,
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
                         c.ycql_port, c.redis_port, c.enable_tls_client,
-                        c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth,
-                        c.master_http_port, c.tserver_http_port, c.ysql_server_http_port,
-                        c.collect_metrics_script, universe_version)
+                        c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql,
+                        c.enable_ysql_auth, c.master_http_port, c.tserver_http_port,
+                        c.ysql_server_http_port, c.collect_metrics_script, universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")

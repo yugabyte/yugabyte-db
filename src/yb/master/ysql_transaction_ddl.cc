@@ -13,17 +13,27 @@
 
 #include "yb/master/ysql_transaction_ddl.h"
 
-#include "yb/client/async_initializer.h"
 #include "yb/client/transaction_rpc.h"
+
 #include "yb/common/ql_expr.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tserver/tserver.pb.h"
-#include "yb/util/logging.h"
-#include "yb/util/monotime.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/master/sys_catalog.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/status_log.h"
 
 DEFINE_int32(ysql_transaction_bg_task_wait_ms, 200,
   "Amount of time the catalog manager background task thread waits "
@@ -55,7 +65,7 @@ void YsqlTransactionDdl::VerifyTransaction(
     LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction_metadata;
     return;
   }
-  auto client = master_->async_client_initializer().client();
+  auto client = client_future_.get();
   if (!client) {
     LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << transaction_metadata;
     return;
@@ -124,13 +134,13 @@ void YsqlTransactionDdl::TransactionReceived(
 }
 
 Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint32_t> entry_oid) {
-  auto tablet_peer = catalog_manager_->sys_catalog()->tablet_peer();
+  auto tablet_peer = sys_catalog_->tablet_peer();
   if (!tablet_peer || !tablet_peer->tablet()) {
     return STATUS(ServiceUnavailable, "SysCatalog unavailable");
   }
   const tablet::Tablet* catalog_tablet = tablet_peer->tablet();
   const Schema& pg_database_schema =
-      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema;
+      *VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema;
 
   // Use Scan to query the 'pg_database' table, filtering by our 'oid'.
   Schema projection;

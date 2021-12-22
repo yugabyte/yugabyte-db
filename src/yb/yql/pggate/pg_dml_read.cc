@@ -14,13 +14,22 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_dml_read.h"
+
+#include "yb/client/yb_op.h"
+
+#include "yb/common/partition.h"
+#include "yb/common/pg_system_attr.h"
+#include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
+
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/primitive_value.h"
+
+#include "yb/util/status_format.h"
+
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
-#include "yb/client/yb_op.h"
-#include "yb/common/pg_system_attr.h"
-#include "yb/common/row_mark.h"
-#include "yb/docdb/primitive_value.h"
 
 namespace yb {
 namespace pggate {

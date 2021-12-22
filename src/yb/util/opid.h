@@ -15,7 +15,6 @@
 #ifndef YB_UTIL_OPID_H
 #define YB_UTIL_OPID_H
 
-#include <cstdint>
 #include <iosfwd>
 #include <vector>
 

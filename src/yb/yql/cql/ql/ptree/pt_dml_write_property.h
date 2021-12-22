@@ -14,13 +14,9 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_DML_WRITE_PROPERTY_H_
 #define YB_YQL_CQL_QL_PTREE_PT_DML_WRITE_PROPERTY_H_
 
-#include "yb/common/schema.h"
-#include "yb/client/client.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.pb.h"
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_property.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 
@@ -47,12 +43,12 @@ class PTDmlWriteProperty : public PTProperty {
   // Constructor and destructor.
   // Constructor for DmlWritePropertyType::kDmlWriteProperty.
   PTDmlWriteProperty(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc,
-                  const MCSharedPtr<MCString>& lhs_,
-                  const PTExpr::SharedPtr& rhs_);
+                     YBLocationPtr loc,
+                     const MCSharedPtr<MCString>& lhs_,
+                     const PTExprPtr& rhs_);
 
   PTDmlWriteProperty(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc);
+                     YBLocationPtr loc);
 
   virtual ~PTDmlWriteProperty();
 
@@ -91,8 +87,8 @@ class PTDmlWritePropertyListNode : public TreeListNode<PTDmlWriteProperty> {
   typedef MCSharedPtr<const PTDmlWritePropertyListNode> SharedPtrConst;
 
   explicit PTDmlWritePropertyListNode(MemoryContext *memory_context,
-                                   YBLocation::SharedPtr loc,
-                                   const MCSharedPtr<PTDmlWriteProperty>& tnode = nullptr)
+                                      YBLocationPtr loc,
+                                      const MCSharedPtr<PTDmlWriteProperty>& tnode = nullptr)
       : TreeListNode<PTDmlWriteProperty>(memory_context, loc, tnode) {
   }
 
@@ -131,7 +127,7 @@ class PTDmlWritePropertyMap : public PTDmlWriteProperty {
   typedef MCSharedPtr<const PTDmlWritePropertyMap> SharedPtrConst;
 
   PTDmlWritePropertyMap(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc);
+                        YBLocationPtr loc);
 
   virtual ~PTDmlWritePropertyMap();
 

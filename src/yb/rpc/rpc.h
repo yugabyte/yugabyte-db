@@ -38,15 +38,12 @@
 #include <string>
 
 #include <boost/container/stable_vector.hpp>
-
 #include <boost/optional/optional.hpp>
 
-#include "yb/gutil/callback.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_callback.h"
 
 namespace yb {
 
@@ -266,13 +263,6 @@ class Rpcs {
   Calls calls_;
   bool shutdown_ = false;
 };
-
-template <class T, class... Args>
-RpcCommandPtr StartRpc(Args&&... args) {
-  auto rpc = std::make_shared<T>(std::forward<Args>(args)...);
-  rpc->SendRpc();
-  return rpc;
-}
 
 template <class Value>
 class RpcFutureCallback {

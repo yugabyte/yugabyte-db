@@ -13,10 +13,9 @@
 
 #include "yb/master/catalog_manager_util.h"
 
-#include <gflags/gflags.h>
+#include "yb/master/catalog_entity_info.h"
 
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
 
@@ -143,7 +142,7 @@ void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_m
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
-        if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+        if (replica.second.role == PeerRole::LEADER) {
           (*txn_map)[replica.first]++;
         }
       }
@@ -280,21 +279,30 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
   return Status::OK();
 }
 
+CatalogManagerUtil::CloudInfoSimilarity CatalogManagerUtil::ComputeCloudInfoSimilarity(
+    const CloudInfoPB& ci1, const CloudInfoPB& ci2) {
+  if (ci1.has_placement_cloud() &&
+      ci2.has_placement_cloud() &&
+      ci1.placement_cloud() != ci2.placement_cloud()) {
+      return NO_MATCH;
+  }
+
+  if (ci1.has_placement_region() &&
+      ci2.has_placement_region() &&
+      ci1.placement_region() != ci2.placement_region()) {
+      return CLOUD_MATCH;
+  }
+
+  if (ci1.has_placement_zone() &&
+      ci2.has_placement_zone() &&
+      ci1.placement_zone() != ci2.placement_zone()) {
+      return REGION_MATCH;
+  }
+  return ZONE_MATCH;
+}
+
 bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudInfoPB& ci2) {
-  bool is_cloud_same = true, is_region_same = true, is_zone_same = true;
-  if (ci1.has_placement_cloud() && ci2.has_placement_cloud()) {
-    is_cloud_same = ci1.placement_cloud() == ci2.placement_cloud();
-  }
-
-  if (ci1.has_placement_region() && ci2.has_placement_region()) {
-    is_region_same = ci1.placement_region() == ci2.placement_region();
-  }
-
-  if (ci1.has_placement_zone() && ci2.has_placement_zone()) {
-    is_zone_same = ci1.placement_zone() == ci2.placement_zone();
-  }
-
-  return is_cloud_same && is_region_same && is_zone_same;
+  return ComputeCloudInfoSimilarity(ci1, ci2) == ZONE_MATCH;
 }
 
 CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {

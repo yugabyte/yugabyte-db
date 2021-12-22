@@ -32,12 +32,17 @@
 #ifndef YB_CLIENT_VALUE_INTERNAL_H
 #define YB_CLIENT_VALUE_INTERNAL_H
 
-#include <string>
+#include <stdint.h>
 
-#include "yb/common/schema.h"
+#include <string>
+#include <unordered_set>
+
+#include "yb/common/common_fwd.h"
+
 #include "yb/gutil/macros.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
 
 namespace yb {
 namespace client {

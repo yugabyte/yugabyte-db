@@ -15,28 +15,29 @@
 #include <cmath>
 #include <cstdlib>
 #include <future>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/client/callbacks.h"
-#include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/table.h"
 
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/mini_master.h"
-#include "yb/tablet/maintenance_manager.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/master/mini_master.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 

@@ -26,6 +26,13 @@
 #include "nodes/execnodes.h"
 #include "executor/tuptable.h"
 
+/**
+ * YSQL guc variables that can be used to enable non transactional writes.
+ * e.g. 'SET yb_disable_transactional_writes=true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_disable_transactional_writes;
+
 //------------------------------------------------------------------------------
 // YugaByte modify table API.
 

@@ -16,8 +16,10 @@
 #include <vector>
 
 #include "yb/bfpg/bfpg.h"
-#include "yb/util/test_util.h"
+
 #include "yb/common/ql_value.h"
+
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace bfpg {
@@ -106,7 +108,8 @@ class BfPgsqlTest : public YBTest {
         // Converting params.
         cast_params[0] = params[pindex];
         cast_params[1] = converted_param;
-        BFExecApiTest::ExecPgsqlFunc(bfpg::kCastFuncName, cast_params, converted_param);
+        RETURN_NOT_OK(BFExecApiTest::ExecPgsqlFunc(
+            bfpg::kCastFuncName, cast_params, converted_param));
 
         // Save converted value.
         (*converted_params)[pindex] = converted_param;
@@ -198,7 +201,7 @@ TEST_F(BfPgsqlTest, TestExactMatchSignature) {
   // Convert int64 value (temp_result) to int16 value (result).
   result->set_ql_type_id(DataType::INT16);
   vector<BFTestValue::SharedPtr> temp_params = { temp_result, result };
-  BFExecApiTest::ExecPgsqlFunc(bfpg::kCastFuncName, temp_params, result);
+  ASSERT_OK(BFExecApiTest::ExecPgsqlFunc(bfpg::kCastFuncName, temp_params, result));
 
   // Check result.
   expected_int_result = int_val1 + int_val2;
@@ -301,7 +304,7 @@ TEST_F(BfPgsqlTest, TestCompatibleSignature) {
 
   // Find the opcode.
   ASSERT_OK(BFCompileApiTest::FindPgsqlOpcode("+", params, &opcode, &bfdecl, result));
-  ConvertParams(bfdecl, params, &converted_params);
+  ASSERT_OK(ConvertParams(bfdecl, params, &converted_params));
 
   // Execute the opcode.
   ASSERT_OK(BFExecApiTest::ExecPgsqlOpcode(opcode, converted_params, result));
@@ -325,7 +328,7 @@ TEST_F(BfPgsqlTest, TestCompatibleSignature) {
 
   // Find the opcode.
   ASSERT_OK(BFCompileApiTest::FindPgsqlOpcode("+", params, &opcode, &bfdecl, result));
-  ConvertParams(bfdecl, params, &converted_params);
+  ASSERT_OK(ConvertParams(bfdecl, params, &converted_params));
 
   // Execute the opcode.
   ASSERT_OK(BFExecApiTest::ExecPgsqlOpcode(opcode, converted_params, result));

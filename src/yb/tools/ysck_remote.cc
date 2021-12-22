@@ -33,9 +33,13 @@
 #include "yb/tools/ysck_remote.h"
 
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/callback.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/master.proxy.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/messenger.h"
@@ -44,6 +48,8 @@
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_bool(checksum_cache_blocks, false, "Should the checksum scanners cache the read blocks");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
@@ -155,7 +161,7 @@ class ChecksumStepper {
     auto handler = std::make_unique<ChecksumCallbackHandler>(this);
     rpc::ResponseCallback cb = std::bind(&ChecksumCallbackHandler::Run, handler.get());
     proxy_->ChecksumAsync(req_, &resp_, &rpc_, cb);
-    ignore_result(handler.release());
+    handler.release();
   }
 
   const Schema schema_;
@@ -185,7 +191,7 @@ void RemoteYsckTabletServer::RunTabletChecksumScanAsync(
   std::unique_ptr<ChecksumStepper> stepper(
       new ChecksumStepper(tablet_id, schema, uuid(), options, callback, ts_proxy_));
   stepper->Start();
-  ignore_result(stepper.release()); // Deletes self on callback.
+  stepper.release(); // Deletes self on callback.
 }
 
 Status RemoteYsckMaster::Connect() const {
@@ -301,8 +307,8 @@ Status RemoteYsckMaster::GetTabletsBatch(
     shared_ptr<YsckTablet> tablet(new YsckTablet(locations.tablet_id()));
     vector<shared_ptr<YsckTabletReplica> > replicas;
     for (const master::TabletLocationsPB_ReplicaPB& replica : locations.replicas()) {
-      bool is_leader = replica.role() == consensus::RaftPeerPB::LEADER;
-      bool is_follower = replica.role() == consensus::RaftPeerPB::FOLLOWER;
+      bool is_leader = replica.role() == PeerRole::LEADER;
+      bool is_follower = replica.role() == PeerRole::FOLLOWER;
       replicas.push_back(shared_ptr<YsckTabletReplica>(
           new YsckTabletReplica(replica.ts_info().permanent_uuid(), is_leader, is_follower)));
     }

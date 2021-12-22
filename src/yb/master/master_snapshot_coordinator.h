@@ -14,23 +14,19 @@
 #ifndef YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 #define YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_types.pb.h"
 
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 
-#include "yb/tserver/backup.pb.h"
-
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/opid.h"
 
 namespace yb {
 namespace master {

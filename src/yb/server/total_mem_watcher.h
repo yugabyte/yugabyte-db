@@ -14,9 +14,12 @@
 #ifndef YB_SERVER_TOTAL_MEM_WATCHER_H
 #define YB_SERVER_TOTAL_MEM_WATCHER_H
 
+#include <functional>
 #include <memory>
 
-#include "yb/util/status.h"
+#include "yb/gutil/macros.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace server {

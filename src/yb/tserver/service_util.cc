@@ -13,12 +13,17 @@
 
 #include "yb/tserver/service_util.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_error.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 
 #include "yb/tserver/tserver_error.h"
+
+#include "yb/util/metrics.h"
 
 namespace yb {
 namespace tserver {
@@ -53,6 +58,19 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
   auto ts_error = TabletServerError::FromStatus(s);
   SetupErrorAndRespond(
       error, s, ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR, context);
+}
+
+void SetupError(TabletServerErrorPB* error, const Status& s) {
+  auto ts_error = TabletServerError::FromStatus(s);
+  auto code = ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR;
+  if (code == TabletServerErrorPB::UNKNOWN_ERROR) {
+    consensus::ConsensusError consensus_error(s);
+    if (consensus_error.value() == consensus::ConsensusErrorPB::TABLET_SPLIT) {
+      code = TabletServerErrorPB::TABLET_SPLIT;
+    }
+  }
+  StatusToPB(s, error->mutable_status());
+  error->set_code(code);
 }
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {

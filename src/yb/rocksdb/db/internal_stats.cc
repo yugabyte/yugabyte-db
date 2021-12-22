@@ -31,9 +31,14 @@
 #include <algorithm>
 #include <utility>
 #include <vector>
-#include "yb/rocksdb/db/column_family.h"
 
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/util/histogram.h"
+#include "yb/rocksdb/util/logging.h"
+
 #include "yb/util/string_util.h"
 
 namespace rocksdb {
@@ -295,6 +300,24 @@ const DBPropertyInfo* GetPropertyInfo(const Slice& property) {
     return nullptr;
   }
   return &ppt_info_iter->second;
+}
+
+InternalStats::InternalStats(int num_levels, Env* env, ColumnFamilyData* cfd)
+    : db_stats_{},
+      cf_stats_value_{},
+      cf_stats_count_{},
+      comp_stats_(num_levels),
+      file_read_latency_(num_levels),
+      bg_error_count_(0),
+      number_levels_(num_levels),
+      env_(env),
+      cfd_(cfd),
+      started_at_(env->NowMicros()) {}
+
+InternalStats::~InternalStats() = default;
+
+HistogramImpl* InternalStats::GetFileReadHist(int level) {
+  return &file_read_latency_[level];
 }
 
 bool InternalStats::GetStringProperty(const DBPropertyInfo& property_info,

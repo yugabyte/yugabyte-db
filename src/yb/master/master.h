@@ -37,18 +37,19 @@
 #include <string>
 #include <vector>
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.fwd.h"
+#include "yb/consensus/metadata.fwd.h"
+
+#include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_options.h"
 #include "yb/master/master_tserver.h"
 #include "yb/server/server_base.h"
 #include "yb/tserver/db_server_base.h"
-#include "yb/util/metrics.h"
-#include "yb/util/promise.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -57,8 +58,6 @@ class RpcServer;
 class ServerEntryPB;
 class ThreadPool;
 
-using yb::consensus::RaftConfigPB;
-
 namespace server {
 
 struct RpcServerOptions;
@@ -66,11 +65,6 @@ struct RpcServerOptions;
 }
 
 namespace master {
-
-class CatalogManager;
-class TSManager;
-class MasterPathHandlers;
-class FlushManager;
 
 class Master : public tserver::DbServerBase {
  public:
@@ -96,11 +90,17 @@ class Master : public tserver::DbServerBase {
 
   TSManager* ts_manager() const { return ts_manager_.get(); }
 
-  enterprise::CatalogManager* catalog_manager() const { return catalog_manager_.get(); }
+  CatalogManagerIf* catalog_manager() const;
+
+  enterprise::CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
 
   FlushManager* flush_manager() const { return flush_manager_.get(); }
 
-  scoped_refptr<MetricEntity> metric_entity_cluster() { return metric_entity_cluster_; }
+  PermissionsManager& permissions_manager();
+
+  EncryptionManager& encryption_manager();
+
+  scoped_refptr<MetricEntity> metric_entity_cluster();
 
   void SetMasterAddresses(std::shared_ptr<server::MasterAddresses> master_addresses) {
     opts_.SetMasterAddresses(std::move(master_addresses));
@@ -134,7 +134,7 @@ class Master : public tserver::DbServerBase {
   }
 
   // Recreates the master list based on the new config peers
-  CHECKED_STATUS ResetMemoryState(const RaftConfigPB& new_config);
+  CHECKED_STATUS ResetMemoryState(const consensus::RaftConfigPB& new_config);
 
   void DumpMasterOptionsInfo(std::ostream* out);
 
@@ -145,6 +145,8 @@ class Master : public tserver::DbServerBase {
   // Not a full shutdown, but makes this master go into a dormant mode (state_ is still kRunning).
   // Called currently by cluster master leader which is removing this master from the quorum.
   CHECKED_STATUS GoIntoShellMode();
+
+  SysCatalogTable& sys_catalog() const;
 
   yb::client::AsyncClientInitialiser& async_client_initializer() {
     return *async_client_init_;
@@ -203,7 +205,8 @@ class Master : public tserver::DbServerBase {
 
   // The status of the master initialization. This is set
   // by the async initialization task.
-  Promise<Status> init_status_;
+  std::promise<Status> init_status_;
+  std::shared_future<Status> init_future_;
 
   MasterOptions opts_;
 
@@ -222,7 +225,7 @@ class Master : public tserver::DbServerBase {
 
   std::unique_ptr<yb::client::AsyncClientInitialiser> async_client_init_;
   std::mutex master_metrics_mutex_;
-  std::map<string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);
+  std::map<std::string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Master);
 };

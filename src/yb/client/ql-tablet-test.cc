@@ -19,28 +19,44 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_key.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/integration-tests/test_workload.h"
 
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_defaults.h"
 
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/types.h"
 
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_retention_policy.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/skewed_clock.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -48,9 +64,10 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/random_util.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -289,7 +306,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
           req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
 
           tserver::ReadResponsePB resp;
-          proxy->Read(req, &resp, &controller);
+          RETURN_NOT_OK(proxy->Read(req, &resp, &controller));
 
           const auto& ql_batch = resp.ql_batch(0);
           if (ql_batch.status() != QLResponsePB_QLStatus_YQL_STATUS_OK) {
@@ -323,7 +340,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
           }
         }
         if (!found) {
-          return STATUS_FORMAT(NotFound, "Key not found: $0", i);
+          LOG(INFO) << "Key not found: " << i;
+          return false;
         }
       }
       return true;
@@ -441,9 +459,9 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Result<scoped_refptr<master::TableInfo>> GetTableInfo(const YBTableName& table_name) {
-    auto* catalog_manager =
-        VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-    auto all_tables = catalog_manager->GetTables(master::GetTablesMode::kAll);
+    auto& catalog_manager =
+        VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    auto all_tables = catalog_manager.GetTables(master::GetTablesMode::kAll);
     for (const auto& table : all_tables) {
       if (table->name() == table_name.table_name()) {
         return table;

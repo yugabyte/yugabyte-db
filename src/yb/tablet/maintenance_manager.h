@@ -45,11 +45,10 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/tablet/tablet.pb.h"
+
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {

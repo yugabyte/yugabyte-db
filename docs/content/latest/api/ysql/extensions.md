@@ -33,7 +33,7 @@ CREATE EXTENSION fuzzystrmatch;
 SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
 ```
 
-```
+```output
  levenshtein | metaphone
 -------------+-----------
            2 | YKBT
@@ -62,6 +62,7 @@ text output here
 ```
 
 -->
+
 ### pgcrypto
 
 The `pgcrypto` extension provides various cryptographic functions.
@@ -78,7 +79,7 @@ INSERT INTO pgcrypto_example (content, digest) values ('abc', digest('abc', 'sha
 SELECT * FROM pgcrypto_example;
 ```
 
-```
+```output
                   id                  | content |                   digest
 --------------------------------------+---------+--------------------------------------------
  b8f2e2f7-0b8d-4d26-8902-fa4f5277869d | abc     | \xa9993e364706816aba3e25717850c26c9cd0d89d
@@ -87,7 +88,7 @@ SELECT * FROM pgcrypto_example;
 
 ### pg_stat_statements
 
-The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before the `pg_stat_statements` view can be queried. 
+The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before the `pg_stat_statements` view can be queried.
 
 ```sql
 CREATE EXTENSION pg_stat_statements;
@@ -152,7 +153,7 @@ For more information, refer to [`spi module`](https://www.postgresql.org/docs/cu
     SELECT * FROM spi_test ORDER BY id;
     ```
 
-    ```
+    ```output
      id | content | username |          moddate
     ----+---------+----------+----------------------------
       1 | desc1   | yugabyte | 2019-09-13 16:55:53.969907
@@ -162,11 +163,7 @@ For more information, refer to [`spi module`](https://www.postgresql.org/docs/cu
     (4 rows)
     ```
 
-    {{< note title="Note" >}}
-
-The `yugabyte` and (for compatibility) `postgres` YSQL users are created by default.
-
-    {{< /note >}}
+    The `yugabyte` and (for compatibility) `postgres` YSQL users are created by default.
 
 1. Update some rows. This should update both `username`  and `moddate` accordingly.
 
@@ -177,7 +174,7 @@ The `yugabyte` and (for compatibility) `postgres` YSQL users are created by defa
     SELECT * FROM spi_test ORDER BY id;
     ```
 
-    ```
+    ```output
     id |    content    | username |          moddate
     ----+---------------+----------+----------------------------
       1 | desc1_updated | yugabyte | 2019-09-13 16:56:27.623513
@@ -219,7 +216,7 @@ ORDER BY k;
 
 You'll see results similar to the following:
 
-```
+```output
  k  |    v     
 ----+----------
   1 |   988.53
@@ -241,13 +238,19 @@ These other functions are brought by `tablefunc`: `connectby()`; and `crosstab()
 
 The `connectby()` function displays a hierarchy of the kind that you see in an _"employees"_ table with a reflexive foreign key constraint where _"manager_id"_ refers to _"employee_id"_. Each next deeper level in the tree is indented from its parent following the well-known pattern.
 
-The `crosstab()`and  `crosstabN()` functions produce “pivot” displays. The _"N"_ in crosstabN() indicates the fact that a few, `crosstab1()', `crosstab2()', `crosstab3()`, are provided natively by the extension and that you can follow documented steps to create more.
+The `crosstab()`and  `crosstabN()` functions produce “pivot” displays. The _"N"_ in crosstabN() indicates the fact that a few, `crosstab1()`, `crosstab2()`, `crosstab3()`, are provided natively by the extension and that you can follow documented steps to create more.
 
 For more information, refer to [`tablefunc`](https://www.postgresql.org/docs/11/tablefunc.html) in the PostgreSQL docs.
 
 ## Extensions requiring installation
 
 Other extensions have to be installed manually before they can be enabled with the [`CREATE EXTENSION`](../the-sql-language/statements/ddl_create_extension) statement.
+
+{{< note title="Yugabyte Cloud" >}}
+
+You cannot install new extensions in Yugabyte Cloud. If you need a database extension that is not bundled with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or [reach out on Slack](https://yugabyte-db.slack.com/).
+
+{{< /note >}}
 
 {{< note title="Multi-node setup" >}}
 
@@ -261,11 +264,12 @@ Typically, extensions need three types of files:
 * SQL files (`<name>--<version>.sql`)
 * Control files (`<name>.control`)
 
-In order to install an extension, you need to copy these files into the respective directories of your YugabyteDB installation.
+To install an extension, you need to copy these files into the respective directories of your YugabyteDB installation.
 
 Shared library files will be in the `pkglibdir` directory, while SQL and control files should be in the `extension` subdirectory of the `libdir` directory.
+
 To find these directories on your local installation, you can use the YugabyteDB `pg_config` executable.
-First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation in the command below and then running it.  
+First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation in the following command and then run the command.
 
 ```sh
 $ alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
@@ -283,9 +287,9 @@ List SQL and control files for already-installed extensions with:
 $ ls "$(yb_pg_config --sharedir)"/extension/
 ```
 
-To get these files for your target extension, you can build it from scratch following the extension's build instructions. 
+To get these files for your target extension, build the extension from scratch following the extension's build instructions.
 
-**Or**, if you already have PostgreSQL (ideally version `11.2` for best YSQL compatibility) with that extension installed, you can find these files as follows:
+Alternatively, if you already have PostgreSQL (ideally version `11.2` for best YSQL compatibility) with that extension installed, you can find these files as follows:
 
 ```sh
 $ ls "$(pg_config --pkglibdir)" | grep <name>
@@ -348,7 +352,7 @@ $ /usr/lib/postgresql/11/bin/pg_config --version
 PostgreSQL 11.9 (Ubuntu 11.9-1.pgdg18.04+1)
 ```
 
-In this case, you should be using `/usr/lib/postgresql/11/bin/pg_config`. 
+In this case, you should be using `/usr/lib/postgresql/11/bin/pg_config`.
 
 On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
 
@@ -426,7 +430,7 @@ This might take a couple of minutes.
     SELECT name, area_km2, ST_Area(geom), ST_Area(geom)/area_km2 AS area_ratio FROM "geo_export" LIMIT 10;
     ```
 
-    ```
+    ```output
                 name            |     area_km2      |       st_area        |      area_ratio
     ----------------------------+-------------------+----------------------+----------------------
     River Valley Terwillegar   | 3.077820277027079 | 0.000416617423004673 | 0.000135361192501822
@@ -447,7 +451,7 @@ This might take a couple of minutes.
     WHERE ST_Intersects(a.geom, b.geom) AND a.name LIKE 'University of Alberta';
     ```
 
-    ```
+    ```output
             name          |          name
     -----------------------+-------------------------
     University of Alberta | University of Alberta
@@ -462,11 +466,10 @@ This might take a couple of minutes.
 
 ### postgresql-hll (PostgreSQL extension for HyperLogLog)
 
-The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces the data type `hll`, which is a HyperLogLog data structure.
-HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision.
+The [`postgresql-hll`](https://github.com/citusdata/postgresql-hll) module introduces the data type `hll`, which is a HyperLogLog data structure. HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision.
 
 First, install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance.
-It is best to use the same PostgreSQL version that is incorporated into YugabyteDB. You can see the PostgreSQL version incorporated in YugabyteDB installation by using the following `ysqlsh` command:
+Ideally, use the same PostgreSQL version as that incorporated into YugabyteDB. You can see the PostgreSQL version incorporated in a YugabyteDB installation by using the following `ysqlsh` command:
 
 ```sh
 $ ./bin/ysqlsh --version

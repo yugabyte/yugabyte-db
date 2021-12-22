@@ -24,6 +24,8 @@ namespace server {
 class Clock;
 typedef scoped_refptr<Clock> ClockPtr;
 
+class MonitoredTask;
+
 } // namespace server
 } // namespace yb
 

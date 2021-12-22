@@ -14,14 +14,20 @@
 #ifndef YB_MASTER_SYS_CATALOG_WRITER_H
 #define YB_MASTER_SYS_CATALOG_WRITER_H
 
+#include <set>
+#include <utility>
+
 #include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/master/catalog_entity_info.h"
-
 #include "yb/tablet/tablet_fwd.h"
+
+#include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/status.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 namespace master {

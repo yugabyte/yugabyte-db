@@ -18,9 +18,11 @@
 #include "yb/docdb/value_type.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 

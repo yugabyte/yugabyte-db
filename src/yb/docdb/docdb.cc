@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/docdb.h"
 
 #include <algorithm>
@@ -23,9 +24,9 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_debug.h"
@@ -38,10 +39,14 @@
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/bitmap.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
@@ -53,6 +58,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::endl;
@@ -1048,8 +1054,18 @@ CHECKED_STATUS IntentToWriteRequest(
   DocHybridTimeBuffer doc_ht_buffer;
   intent_iter->Seek(reverse_index_value);
   if (!intent_iter->Valid() || intent_iter->key() != reverse_index_value) {
+    Slice temp_slice = reverse_index_value;
+    auto value_doc_ht = DocHybridTime::DecodeFromEnd(&temp_slice);
+    temp_slice = reverse_index_key;
+    auto key_doc_ht = DocHybridTime::DecodeFromEnd(&temp_slice);
+    LOG(ERROR) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
+                << " (" << value_doc_ht << ")  for "
+                << reverse_index_key.ToDebugHexString() << "(" << key_doc_ht << ")";
+    std::this_thread::sleep_for(std::chrono::seconds(1000));
+
     LOG(DFATAL) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
-                << " for " << reverse_index_key.ToDebugHexString();
+                << " (" << value_doc_ht << ") for "
+                << reverse_index_key.ToDebugHexString() << "(" << key_doc_ht << ")";
     return Status::OK();
   }
   auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
@@ -1245,8 +1261,7 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
       }
 
       // Value of reverse index is a key of original intent record, so seek it and check match.
-      if (regular_batch &&
-          (!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
+      if (regular_batch && IsWithinBounds(key_bounds, reverse_index_value)) {
         // We store apply state only if there are some more intents left.
         // So doing this check here, instead of right after write_id was incremented.
         if (write_id >= write_id_limit) {

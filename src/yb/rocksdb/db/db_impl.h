@@ -35,10 +35,12 @@
 #include <utility>
 #include <vector>
 
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/compaction_job.h"
+#include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/flush_job.h"
 #include "yb/rocksdb/db/flush_scheduler.h"
 #include "yb/rocksdb/db/internal_stats.h"
 #include "yb/rocksdb/db/log_writer.h"
@@ -49,15 +51,12 @@
 #include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/db/write_thread.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/transaction_log.h"
-#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/event_logger.h"
-#include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/thread_local.h"
@@ -237,6 +236,12 @@ class DBImpl : public DB {
   virtual void GetColumnFamilyMetaData(
       ColumnFamilyHandle* column_family,
       ColumnFamilyMetaData* metadata) override;
+
+  // Obtains all column family options and corresponding names,
+  // dropped columns are not included into the resulting collections.
+  virtual void GetColumnFamiliesOptions(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options) override;
 
   // experimental API
   Status SuggestCompactRange(ColumnFamilyHandle* column_family,
@@ -1016,6 +1021,12 @@ class DBImpl : public DB {
       ColumnFamilyHandle* column_family, const Range* range, std::size_t n,
       TablePropertiesCollection* props) override;
 
+  // Obtains all column family options and corresponding names,
+  // dropped columns are not included into the resulting collections.
+  // REQUIREMENT: mutex_ must be held when calling this function.
+  void GetColumnFamiliesOptionsUnlocked(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options);
 #endif  // ROCKSDB_LITE
 
   // Function that Get and KeyMayExist call with no_io true or false

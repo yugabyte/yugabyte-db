@@ -176,6 +176,9 @@ public class CustomerTask extends Model {
     @EnumValue("EnableEncryptionAtRest")
     EnableEncryptionAtRest,
 
+    @EnumValue("SetActiveUniverseKeys")
+    SetActiveUniverseKeys,
+
     @EnumValue("RotateEncryptionKey")
     RotateEncryptionKey,
 
@@ -194,14 +197,20 @@ public class CustomerTask extends Model {
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
 
-    @EnumValue("DeleteXClusterConfig")
-    DeleteXClusterConfig,
-
     @EnumValue("EditXClusterConfig")
     EditXClusterConfig,
 
+    @EnumValue("DeleteXClusterConfig")
+    DeleteXClusterConfig,
+
+    @EnumValue("SyncXClusterConfig")
+    SyncXClusterConfig,
+
     @EnumValue("PrecheckNode")
-    PrecheckNode;
+    PrecheckNode,
+
+    @EnumValue("Abort")
+    Abort;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -264,6 +273,8 @@ public class CustomerTask extends Model {
           return completed ? "Set encryption key" : "Setting encryption key";
         case EnableEncryptionAtRest:
           return completed ? "Enabled encryption at rest" : "Enabling encryption at rest";
+        case SetActiveUniverseKeys:
+          return completed ? "Set active universe keys" : "Setting active universe keys";
         case RotateEncryptionKey:
           return completed
               ? "Rotated encryption at rest universe key"
@@ -282,8 +293,12 @@ public class CustomerTask extends Model {
           return completed ? "Deleted xcluster config " : "Deleting xcluster config ";
         case EditXClusterConfig:
           return completed ? "Edited xcluster config " : "Editing xcluster config ";
+        case SyncXClusterConfig:
+          return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
+        case Abort:
+          return completed ? "Task aborted " : "Aborting task ";
         default:
           return null;
       }

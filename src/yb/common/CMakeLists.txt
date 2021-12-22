@@ -30,67 +30,19 @@
 # under the License.
 #
 
-PROTOBUF_GENERATE_CPP(
+set(YB_PCH_PREFIX common)
+set(YB_PCH_DEP_LIBS gmock gutil yb_test_util yb_util)
+
+YRPC_GENERATE(
   COMMON_PROTO_SRCS COMMON_PROTO_HDRS COMMON_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES common.proto)
+  NO_SERVICE_PROTO_FILES common.proto wire_protocol.proto redis_protocol.proto ql_protocol.proto
+                         pgsql_protocol.proto)
 ADD_YB_LIBRARY(yb_common_proto
   SRCS ${COMMON_PROTO_SRCS}
   DEPS protobuf
   NONLINK_DEPS ${COMMON_PROTO_TGTS})
-
-PROTOBUF_GENERATE_CPP(
-  WIRE_PROTOCOL_PROTO_SRCS WIRE_PROTOCOL_PROTO_HDRS WIRE_PROTOCOL_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES wire_protocol.proto)
-set(WIRE_PROTOCOL_PROTO_LIBS
-  yb_common_proto
-  consensus_metadata_proto
-  protobuf)
-ADD_YB_LIBRARY(wire_protocol_proto
-  SRCS ${WIRE_PROTOCOL_PROTO_SRCS}
-  DEPS ${WIRE_PROTOCOL_PROTO_LIBS}
-  NONLINK_DEPS ${WIRE_PROTOCOL_PROTO_TGTS})
-
-PROTOBUF_GENERATE_CPP(
-  REDIS_PROTOCOL_PROTO_SRCS REDIS_PROTOCOL_PROTO_HDRS REDIS_PROTOCOL_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES redis_protocol.proto)
-ADD_YB_LIBRARY(redis_protocol_proto
-  SRCS ${REDIS_PROTOCOL_PROTO_SRCS}
-  DEPS protobuf
-  NONLINK_DEPS ${REDIS_PROTOCOL_PROTO_TGTS})
-
-PROTOBUF_GENERATE_CPP(
-  QL_PROTOCOL_PROTO_SRCS QL_PROTOCOL_PROTO_HDRS QL_PROTOCOL_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES ql_protocol.proto)
-set(QL_PROTOCOL_PROTO_LIBS
-  yb_common_proto
-  protobuf)
-ADD_YB_LIBRARY(ql_protocol_proto
-  SRCS ${QL_PROTOCOL_PROTO_SRCS}
-  DEPS ${QL_PROTOCOL_PROTO_LIBS}
-  NONLINK_DEPS ${QL_PROTOCOL_PROTO_TGTS})
-
-PROTOBUF_GENERATE_CPP(PGSQL_PROTOCOL_PROTO_SRCS
-                      PGSQL_PROTOCOL_PROTO_HDRS
-                      PGSQL_PROTOCOL_PROTO_TGTS
-                      SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-                      BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-                      PROTO_FILES pgsql_protocol.proto)
-set(PGSQL_PROTOCOL_PROTO_LIBS
-    yb_common_proto
-    ql_protocol_proto
-    protobuf)
-ADD_YB_LIBRARY(pgsql_protocol_proto
-               SRCS ${PGSQL_PROTOCOL_PROTO_SRCS}
-               DEPS ${PGSQL_PROTOCOL_PROTO_LIBS}
-               NONLINK_DEPS ${PGSQL_PROTOCOL_PROTO_TGTS})
 
 set(COMMON_BASE_SRCS
   ql_type.cc
@@ -121,6 +73,7 @@ set(COMMON_SRCS
   key_encoder.cc
   partial_row.cc
   pgsql_error.cc
+  placement_info.cc
   ql_bfunc.cc
   ql_datatype.cc
   ql_expr.cc
@@ -148,20 +101,10 @@ set(COMMON_SRCS
   ybc-internal.cc
   )
 
-# Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
-# in which it incorrectly optimizes row_key-util.cc and causes incorrect results.
-if ("${COMPILER_FAMILY}" STREQUAL "clang")
-  set_source_files_properties(row_key-util.cc PROPERTIES COMPILE_FLAGS -fwrapv)
-endif()
-
 set(COMMON_LIBS
   yb_common_proto
   yb_common_base
   consensus_metadata_proto
-  wire_protocol_proto
-  redis_protocol_proto
-  ql_protocol_proto
-  pgsql_protocol_proto
   yb_util
   yb_bfql
   yb_bfpg
@@ -191,12 +134,9 @@ ADD_YB_LIBRARY(yb_partition
   DEPS ${PARTITION_DEPS}
   )
 
-add_library(yb_common_test_util
-            transaction-test-util.cc
-            wire_protocol-test-util.cc)
-target_link_libraries(yb_common_test_util
-                      yb_common
-                      yb_docdb)
+ADD_YB_TEST_LIBRARY(yb_common_test_util
+                    SRCS transaction-test-util.cc wire_protocol-test-util.cc
+                    DEPS yb_common yb_docdb)
 
 set(YB_TEST_LINK_LIBS yb_common yb_partition yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
@@ -204,6 +144,7 @@ ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(ql_table_row-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
+ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(row_key-util-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)

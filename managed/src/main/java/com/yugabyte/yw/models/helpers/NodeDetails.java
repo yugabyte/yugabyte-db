@@ -58,6 +58,10 @@ public class NodeDetails {
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
     ToBeAdded(DELETE),
+    // Set when a new node is created in the cloud provider.
+    InstanceCreated(DELETE),
+    // Set when a node has gone through the Ansible set-up task.
+    ServerSetup(DELETE),
     // Set when a new node is provisioned and configured but before it is added into
     // the existing cluster.
     ToJoinCluster(REMOVE),
@@ -258,6 +262,8 @@ public class NodeDetails {
   public boolean isRemovable() {
     return state == NodeState.ToBeAdded
         || state == NodeState.Adding
+        || state == NodeState.InstanceCreated
+        || state == NodeState.ServerSetup
         || state == NodeState.SoftwareInstalled
         || state == NodeState.Decommissioned;
   }
@@ -287,5 +293,9 @@ public class NodeDetails {
 
   public String getNodeName() {
     return nodeName;
+  }
+
+  public UUID getNodeUUID() {
+    return nodeUuid;
   }
 }

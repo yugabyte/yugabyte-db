@@ -14,12 +14,14 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
+#include "yb/docdb/subdocument.h"
 #include "yb/docdb/value_type.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
@@ -28,6 +30,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 using yb::BinaryOutputFormat;

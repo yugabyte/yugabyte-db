@@ -35,26 +35,25 @@
 
 #include <iosfwd>
 #include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_cache.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-
-#include "yb/server/clock.h"
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/server/clock.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
-#include "yb/util/result.h"
 
 namespace yb {
 template<class T>

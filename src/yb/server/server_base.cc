@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/server/server_base.h"
 
 #include <algorithm>
@@ -37,15 +38,20 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/generic_service.h"
 #include "yb/server/glog_metrics.h"
@@ -58,23 +64,24 @@
 #include "yb/server/tcmalloc_metrics.h"
 #include "yb/server/tracing-path-handlers.h"
 #include "yb/server/webserver.h"
+
 #include "yb/util/atomic.h"
+#include "yb/util/concurrent_value.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
 #include "yb/util/spinlock_profiling.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
-#include "yb/util/encryption_util.h"
-#include "yb/gutil/sysinfo.h"
 
 DEFINE_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");
@@ -161,12 +168,12 @@ void RegisterTCMallocTracker(const char* name, const char* prop) {
 
 RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
                              const string& metric_namespace,
-                             MemTrackerPtr mem_tracker)
+                             MemTrackerPtr mem_tracker,
+                             const scoped_refptr<server::Clock>& clock)
     : name_(std::move(name)),
       mem_tracker_(std::move(mem_tracker)),
       metric_registry_(new MetricRegistry()),
-      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
-                                                      metric_namespace)),
+      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), metric_namespace)),
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
@@ -192,7 +199,10 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   }
 #endif
 
-  if (FLAGS_use_hybrid_clock) {
+  if (clock) {
+    clock_ = clock;
+    external_clock_ = true;
+  } else if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {
     clock_ = LogicalClock::CreateStartingAt(HybridTime::kInitial);
@@ -267,7 +277,9 @@ Status RpcServerBase::Init() {
   // Initialize the clock immediately. This checks that the clock is synchronized
   // so we're less likely to get into a partially initialized state on disk during startup
   // if we're having clock problems.
-  RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
+  if (!external_clock_) {
+    RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
+  }
 
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
@@ -421,8 +433,9 @@ void RpcServerBase::Shutdown() {
 RpcAndWebServerBase::RpcAndWebServerBase(
     string name, const ServerBaseOptions& options,
     const std::string& metric_namespace,
-    MemTrackerPtr mem_tracker)
-    : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker)),
+    MemTrackerPtr mem_tracker,
+    const scoped_refptr<server::Clock>& clock)
+    : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
       web_server_(new Webserver(options.webserver_opts, name_)) {
   FsManagerOpts fs_opts;
   fs_opts.metric_entity = metric_entity_;
@@ -461,7 +474,7 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
-  yb::InitOpenSSL();
+  encryption::InitOpenSSL();
 
   Status s = fs_manager_->Open();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {

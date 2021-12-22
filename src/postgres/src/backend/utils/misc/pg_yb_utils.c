@@ -109,7 +109,8 @@ CheckIsYBSupportedRelationByKind(char relkind)
 	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
 		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_PARTITIONED_TABLE ||
-		  relkind == RELKIND_PARTITIONED_INDEX || relkind == RELKIND_FOREIGN_TABLE))
+		  relkind == RELKIND_PARTITIONED_INDEX || relkind == RELKIND_FOREIGN_TABLE ||
+		  relkind == RELKIND_MATVIEW))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));
@@ -127,8 +128,8 @@ IsYBRelation(Relation relation)
 	/* Currently only support regular tables and indexes.
 	 * Temp tables and views are supported, but they are not YB relations. */
 	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX || relkind == RELKIND_PARTITIONED_TABLE ||
-	        relkind == RELKIND_PARTITIONED_INDEX) &&
-	        relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
+			relkind == RELKIND_PARTITIONED_INDEX || relkind == RELKIND_MATVIEW) &&
+			relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
 }
 
 bool
@@ -202,13 +203,12 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
                                         bool includeYBSystemColumns)
 {
 	Oid            dboid         = YBCGetDatabaseOid(rel);
-	Oid            relid         = RelationGetRelid(rel);
 	int            natts         = RelationGetNumberOfAttributes(rel);
 	Bitmapset      *pkey         = NULL;
 	YBCPgTableDesc ybc_tabledesc = NULL;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
-	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_tabledesc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(rel), &ybc_tabledesc));
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		if ((!includeYBSystemColumns && !IsRealYBColumn(rel, attnum)) ||
@@ -1325,6 +1325,9 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			*is_breaking_catalog_change = false;
 			return castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
 
+		case T_RefreshMatViewStmt:
+			return true;
+
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;
@@ -1598,11 +1601,16 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	TupleDesc	tupdesc;
 	Datum		values[3];
 	bool		nulls[3];
-	YBCPgTableDesc ybc_tabledesc = NULL;
+	bool		exists_in_yb = false;
+	YBCPgTableDesc yb_tabledesc = NULL;
 	YBCPgTableProperties yb_table_properties;
 
-	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &ybc_tabledesc));
-	HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
+	HandleYBStatus(YBCPgTableExists(MyDatabaseId, relid, &exists_in_yb));
+	if (exists_in_yb)
+	{
+		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &yb_tabledesc));
+		HandleYBStatus(YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties));
+	}
 
 	tupdesc = CreateTemplateTupleDesc(3, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
@@ -1613,10 +1621,18 @@ yb_table_properties(PG_FUNCTION_ARGS)
 					   "is_colocated", BOOLOID, -1, 0);
 	BlessTupleDesc(tupdesc);
 
-	values[0] = Int64GetDatum(yb_table_properties.num_tablets);
-	values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
-	values[2] = BoolGetDatum(yb_table_properties.is_colocated);
-	memset(nulls, 0, sizeof(nulls));
+	if (exists_in_yb)
+	{
+		values[0] = Int64GetDatum(yb_table_properties.num_tablets);
+		values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
+		values[2] = BoolGetDatum(yb_table_properties.is_colocated);
+		memset(nulls, 0, sizeof(nulls));
+	}
+	else
+	{
+		/* Table does not exist in YB, set nulls for all columns. */
+		memset(nulls, 1, sizeof(nulls));
+	}
 
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
 }
@@ -2022,4 +2038,12 @@ void YBSetParentDeathSignal()
 		}
 	}
 #endif
+}
+
+Oid YbGetStorageRelid(Relation relation) {
+	if (relation->rd_rel->relkind == RELKIND_MATVIEW && 
+		relation->rd_rel->relfilenode != InvalidOid) {
+		return relation->rd_rel->relfilenode;
+	}
+	return RelationGetRelid(relation);
 }

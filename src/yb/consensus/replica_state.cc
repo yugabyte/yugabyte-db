@@ -30,7 +30,8 @@
 // under the License.
 //
 
-#include <algorithm>
+#include "yb/consensus/replica_state.h"
+
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
@@ -38,21 +39,23 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/replica_state.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/strcat.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
-#include "yb/util/thread_restrictions.h"
-#include "yb/util/enums.h"
-#include "yb/util/atomic.h"
 
 using namespace std::literals;
 
@@ -172,7 +175,7 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
     return STATUS(IllegalState, "Replica not in running state");
   }
 
-  if (PREDICT_FALSE(GetActiveRoleUnlocked() != RaftPeerPB::LEADER)) {
+  if (PREDICT_FALSE(GetActiveRoleUnlocked() != PeerRole::LEADER)) {
     return STATUS(IllegalState, "Replica not LEADER");
   }
   lock->swap(l);
@@ -207,7 +210,7 @@ LeaderState ReplicaState::GetLeaderStateUnlocked(
     LeaderLeaseCheckMode lease_check_mode, CoarseTimePoint* now) const {
   LeaderState result;
 
-  if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+  if (GetActiveRoleUnlocked() != PeerRole::LEADER) {
     return result.MakeNotReadyLeader(LeaderStatus::NOT_LEADER);
   }
 
@@ -247,7 +250,7 @@ Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_
     ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
     return STATUS_FORMAT(IllegalState,
                          "Replica $0 is not leader of this config. Role: $1. Consensus state: $2",
-                         peer_uuid_, RaftPeerPB::Role_Name(GetActiveRoleUnlocked()), cstate);
+                         peer_uuid_, PeerRole_Name(GetActiveRoleUnlocked()), cstate);
   }
 
   return state.CreateStatus();
@@ -300,7 +303,7 @@ ConsensusStatePB ReplicaState::ConsensusStateUnlocked(ConsensusConfigType type) 
   return cmeta_->ToConsensusStatePB(type);
 }
 
-RaftPeerPB::Role ReplicaState::GetActiveRoleUnlocked() const {
+PeerRole ReplicaState::GetActiveRoleUnlocked() const {
   DCHECK(IsLocked());
   return cmeta_->active_role();
 }
@@ -1044,7 +1047,7 @@ string ReplicaState::LogPrefix() const {
                     options_.tablet_id,
                     peer_uuid_,
                     role_and_term.second,
-                    RaftPeerPB::Role_Name(role_and_term.first));
+                    PeerRole_Name(role_and_term.first));
 }
 
 ReplicaState::State ReplicaState::state() const {
@@ -1062,7 +1065,7 @@ string ReplicaState::ToStringUnlocked() const {
   DCHECK(IsLocked());
   return Format(
       "Replica: $0, State: $1, Role: $2, Watermarks: {Received: $3 Committed: $4} Leader: $5",
-      peer_uuid_, state_, RaftPeerPB::Role_Name(GetActiveRoleUnlocked()),
+      peer_uuid_, state_, PeerRole_Name(GetActiveRoleUnlocked()),
       last_received_op_id_, last_committed_op_id_, last_received_op_id_current_leader_);
 }
 
@@ -1107,7 +1110,7 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
 
 template <class Policy>
 LeaderLeaseStatus ReplicaState::GetLeaseStatusUnlocked(Policy policy) const {
-  DCHECK_EQ(GetActiveRoleUnlocked(), RaftPeerPB_Role_LEADER);
+  DCHECK_EQ(GetActiveRoleUnlocked(), PeerRole::LEADER);
 
   if (!policy.Enabled()) {
     return LeaderLeaseStatus::HAS_LEASE;

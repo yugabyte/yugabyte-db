@@ -19,6 +19,8 @@
 
 #include <boost/tokenizer.hpp>
 
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
 
@@ -26,8 +28,6 @@
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/encryption_util.h"
-#include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
 using namespace std::literals;
@@ -253,7 +253,7 @@ YB_RPC_SSL_TYPE_DEFINE(X509)
 }
 
 SecureContext::SecureContext() {
-  yb::InitOpenSSL();
+  encryption::InitOpenSSL();
 
   context_.reset(SSL_CTX_new(SSLv23_method()));
   DCHECK(context_);

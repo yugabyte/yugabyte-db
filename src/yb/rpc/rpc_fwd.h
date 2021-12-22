@@ -25,6 +25,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -33,17 +34,21 @@ namespace rpc {
 
 class Acceptor;
 class AcceptorPool;
+class AnyMessageConstPtr;
+class AnyMessagePtr;
 class ConnectionContext;
 class DelayedTask;
 class DumpRunningRpcsRequestPB;
 class DumpRunningRpcsResponsePB;
 class GrowableBufferAllocator;
+class LightweightMessage;
 class MessengerBuilder;
 class Proxy;
 class ProxyCache;
 class ProxyContext;
 class Reactor;
 class ReactorTask;
+class RpcCallParams;
 class RemoteMethod;
 class RequestHeader;
 class RpcConnectionPB;
@@ -101,8 +106,6 @@ typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
 
 class ServiceIf;
 typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
-
-class ErrorStatusPB;
 
 typedef std::function<int(const std::string&, const std::string&)> Publisher;
 

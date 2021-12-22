@@ -32,27 +32,36 @@
 #ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 #define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 
+#include <string.h>
 #include <sys/types.h>
 
+#include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 #include <thread>
+#include <vector>
+
+#include <gtest/gtest_prod.h>
+
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/stringprintf.h"
+
 #include "yb/integration-tests/mini_cluster_base.h"
+
 #include "yb/server/server_base.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
-#include "yb/util/env.h"
 
 namespace yb {
 
@@ -244,6 +253,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   string GetTabletServerAddresses() const;
 
+  string GetTabletServerHTTPAddresses() const;
+
   // Start a new master with `peer_addrs` as the master_addresses parameter.
   Result<ExternalMaster *> StartMasterWithPeers(const string& peer_addrs);
 
@@ -293,25 +304,12 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // If this cluster is configured for a single non-distributed master, return the single master or
   // NULL if the master is not started. Exits with a CHECK failure if there are multiple masters.
-  ExternalMaster* master() const {
-    if (masters_.empty())
-      return nullptr;
-
-    CHECK_EQ(masters_.size(), 1)
-        << "master() should not be used with multiple masters, use GetLeaderMaster() instead.";
-    return master(0);
-  }
+  ExternalMaster* master() const;
 
   // Return master at 'idx' or NULL if the master at 'idx' has not been started.
-  ExternalMaster* master(int idx) const {
-    CHECK_LT(idx, masters_.size());
-    return masters_[idx].get();
-  }
+  ExternalMaster* master(int idx) const;
 
-  ExternalTabletServer* tablet_server(int idx) const {
-    CHECK_LT(idx, tablet_servers_.size());
-    return tablet_servers_[idx].get();
-  }
+  ExternalTabletServer* tablet_server(int idx) const;
 
   // Return ExternalTabletServer given its UUID. If not found, returns NULL.
   ExternalTabletServer* tablet_server_by_uuid(const std::string& uuid) const;
@@ -594,18 +592,12 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   Result<int64_t> GetInt64Metric(const MetricEntityPrototype* entity_proto,
                                  const char* entity_id,
                                  const MetricPrototype* metric_proto,
-                                 const char* value_field) const {
-    return GetInt64MetricFromHost(
-        bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
-  }
+                                 const char* value_field) const;
 
   Result<int64_t> GetInt64Metric(const char* entity_proto_name,
                                  const char* entity_id,
                                  const char* metric_proto_name,
-                                 const char* value_field) const {
-    return GetInt64MetricFromHost(
-        bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
-  }
+                                 const char* value_field) const;
 
   std::string LogPrefix();
 
@@ -801,11 +793,7 @@ class ExternalTabletServer : public ExternalDaemon {
   Result<int64_t> GetInt64CQLMetric(const MetricEntityPrototype* entity_proto,
                                     const char* entity_id,
                                     const MetricPrototype* metric_proto,
-                                    const char* value_field) const {
-    return GetInt64MetricFromHost(
-        HostPort(bind_host(), cql_http_port()),
-        entity_proto, entity_id, metric_proto, value_field);
-  }
+                                    const char* value_field) const;
 
  protected:
   CHECKED_STATUS DeleteServerInfoPaths() override;

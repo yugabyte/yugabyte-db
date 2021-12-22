@@ -44,15 +44,14 @@
 #define YB_SERVER_WEBSERVER_H
 
 #include <map>
+#include <shared_mutex>
 #include <string>
 #include <vector>
-#include <mutex>
 
-#include <boost/thread/shared_mutex.hpp>
 #include "yb/server/webserver_options.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/web_callback_registry.h"
 
 struct sq_connection;
@@ -174,7 +173,7 @@ class Webserver : public WebCallbackRegistry {
   const WebserverOptions opts_;
 
   // Lock guarding the path_handlers_ map and footer_html.
-  boost::shared_mutex lock_;
+  std::shared_timed_mutex lock_;
 
   // Map of path to a PathHandler containing a list of handlers for that
   // path. More than one handler may register itself with a path so that many

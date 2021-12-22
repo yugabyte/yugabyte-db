@@ -10,7 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rocksdb/db/db_test_util.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -267,7 +269,7 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesMinPendingOutput) {
 
   LOG(INFO) << "Resuming compaction (1)  ...";
   file_create_listener_->ResumeFileName(compaction_1_output);
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 }
 
 // This reproduces an issue where we delete compacted files too late because when they were
@@ -345,7 +347,7 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByScheduledC
 
   const auto compaction_3_output = file_create_listener_->GetLastCreatedFileName();
   file_create_listener_->ResumeFileName(compaction_3_output);
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 }
 
 }  // namespace rocksdb

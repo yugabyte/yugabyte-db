@@ -36,12 +36,12 @@
 #include <mutex>
 
 #include <glog/logging.h>
+
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -74,6 +74,12 @@ TAG_FLAG(time_source, hidden);
 DEFINE_bool(fail_on_out_of_range_clock_skew, true,
             "In case transactional tables are present, crash the process if clock skew greater "
             "than the configured maximum.");
+
+DEFINE_uint64(clock_skew_force_crash_bound_usec, 60000000,
+              "If the clock skew larger than this amount (microseconds) is observed, we will force "
+              "a crash regardless of the value of fail_on_out_of_range_clock_skew. This is useful "
+              "for avoiding really large hybrid clock jumps. Set to 0 to disable the check. Note "
+              "that this check is only preformed for clock skew greater than max_clock_skew_usec.");
 
 DECLARE_uint64(max_clock_skew_usec);
 
@@ -164,14 +170,18 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
     if (delta_us > FLAGS_max_clock_skew_usec) {
       auto delta = MonoDelta::FromMicroseconds(delta_us);
       auto max_allowed = MonoDelta::FromMicroseconds(FLAGS_max_clock_skew_usec);
-      if (ANNOTATE_UNPROTECTED_READ(FLAGS_fail_on_out_of_range_clock_skew) &&
+      if ((ANNOTATE_UNPROTECTED_READ(FLAGS_fail_on_out_of_range_clock_skew) ||
+           (ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec) > 0 &&
+            delta_us > ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec))) &&
           clock_skew_control_enabled.load(std::memory_order_acquire)) {
         LOG(FATAL) << "Too big clock skew is detected: " << delta << ", while max allowed is: "
-                   << max_allowed;
+                   << max_allowed << "; clock_skew_force_crash_bound_usec="
+                   << ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec);
       } else {
         YB_LOG_EVERY_N_SECS(ERROR, 1)
             << "Too big clock skew is detected: " << delta << ", while max allowed is: "
-            << max_allowed;
+            << max_allowed << "; clock_skew_force_crash_bound_usec="
+            << ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec);
       }
     }
   } else {

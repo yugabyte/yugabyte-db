@@ -14,6 +14,10 @@
 #ifndef YB_CONSENSUS_CONSENSUS_ROUND_H
 #define YB_CONSENSUS_CONSENSUS_ROUND_H
 
+#include <stdint.h>
+
+#include <cstdint>
+
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/gutil/ref_counted.h"

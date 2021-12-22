@@ -30,13 +30,19 @@
 // under the License.
 //
 
-#include "yb/master/sys_catalog-test_base.h"
-
 #include <algorithm>
 #include <memory>
 #include <vector>
 
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/stl_util.h"
+
+#include "yb/master/catalog_manager.h"
+#include "yb/master/sys_catalog-test_base.h"
+#include "yb/master/sys_catalog.h"
+
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -83,7 +89,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
   FLAGS_cluster_uuid = "invalid_uuid";
 
-  CatalogManager catalog_manager(nullptr);
+  enterprise::CatalogManager catalog_manager(nullptr);
   {
     CatalogManager::LockGuard lock(catalog_manager.mutex_);
     ASSERT_NOK(catalog_manager.PrepareDefaultClusterConfig(0));
@@ -1062,117 +1068,6 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
 
   // Cleanup tasks.
   table->AbortTasksAndClose();
-}
-
-// Test the tablespace info parsing.
-TEST_F(SysCatalogTest, TestTablespaceJsonProcessing) {
-  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
-
-  // Variables to be used throughout the test.
-  const string& valid_json =
-      "{\"num_replicas\":3,\"placement_blocks\":"
-      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":2},"
-      "{\"cloud\":\"c2\",\"region\":\"r2\",\"zone\":\"z2\",\"min_num_replicas\":1}]}";
-
-  QLValuePB option, invalid_option;
-  option.set_string_value("replica_placement=" + valid_json);
-  invalid_option.set_string_value("read_replica_placement=" + valid_json);
-
-  vector<QLValuePB> options;
-
-  // Tablespace id does not matter, use any string.
-  const TablespaceId tablespace_id = "12345";
-
-  // Negative tests.
-  // 1. Empty input.
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 2. Invalid number of options.
-  options.push_back(option);
-  options.push_back(invalid_option);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 3. Invalid option name.
-  options.clear();
-  options.push_back(invalid_option);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 4. Empty json.
-  options.clear();
-  QLValuePB opt_empty_value;
-  opt_empty_value.set_string_value("replica_placement=[{}]");
-  options.emplace_back(opt_empty_value);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 5. Missing num_replicas field.
-  options.clear();
-  QLValuePB invalid_json_option;
-  invalid_json_option.set_string_value("replica_placement={\"placement_blocks\":"
-      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}");
-  options.emplace_back(invalid_json_option);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 6. Invalid value for num_replicas field.
-  options.clear();
-  invalid_json_option.set_string_value(
-      "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
-      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}");
-  options.emplace_back(invalid_json_option);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 7. Missing placement blocks field.
-  options.clear();
-  invalid_json_option.set_string_value("replica_placement={\"num_replicas\":3}");
-  options.emplace_back(invalid_json_option);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 8. Missing keys in placement blocks.
-  options.clear();
-  invalid_json_option.set_string_value(
-      "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
-      "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\"}]}");
-  options.emplace_back(invalid_json_option);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 9. Invalid format for "min_num_replicas".
-  options.clear();
-  invalid_json_option.set_string_value(
-        "replica_placement={\"num_replicas\":3,\"placement_blocks\":"
-        "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":\"abc\"}]}");
-  options.emplace_back(invalid_json_option);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 10. Invalid json.
-  options.clear();
-  invalid_json_option.set_string_value("replica_placement=["
-      "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_number_of_replica");
-  options.emplace_back(invalid_json_option);
-  ASSERT_NOK(sys_catalog->ParseReplicationInfo(tablespace_id, options));
-
-  // 11. Test whether total replication factor is populated correctly.
-  options.clear();
-  options.push_back(option);
-  ReplicationInfoPB result = EXPECT_RESULT(
-      sys_catalog->ParseReplicationInfo(tablespace_id, options)).value();
-  const auto live_replicas = result.live_replicas();
-  ASSERT_EQ(live_replicas.num_replicas(), 3);
-
-  // 12. Test whether the cloud/region/zone information has been populated correctly.
-  ASSERT_EQ(live_replicas.placement_blocks_size(), 2);
-  for (int i = 0; i < live_replicas.placement_blocks_size(); ++i) {
-    const auto& placement_block = live_replicas.placement_blocks(i);
-    const auto& cloud_info = placement_block.cloud_info();
-    if (cloud_info.placement_cloud() == "c1") {
-      ASSERT_EQ(cloud_info.placement_region(), "r1");
-      ASSERT_EQ(cloud_info.placement_zone(), "z1");
-      ASSERT_EQ(placement_block.min_num_replicas(), 2);
-      continue;
-    }
-    ASSERT_EQ(cloud_info.placement_cloud(), "c2");
-    ASSERT_EQ(cloud_info.placement_region(), "r2");
-    ASSERT_EQ(cloud_info.placement_zone(), "z2");
-    ASSERT_EQ(placement_block.min_num_replicas(), 1);
-  }
 }
 
 } // namespace master

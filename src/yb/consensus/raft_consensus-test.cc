@@ -35,16 +35,23 @@
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus_peers.h"
+
 #include "yb/consensus/consensus-test-util.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/peer_manager.h"
+
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
+
 #include "yb/server/logical_clock.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -117,7 +124,7 @@ class MockQueue : public PeerMessageQueue {
 
 class MockPeerManager : public PeerManager {
  public:
-  MockPeerManager() : PeerManager("", "", nullptr, nullptr, nullptr, nullptr) {}
+  MockPeerManager() : PeerManager("", "", nullptr, nullptr, nullptr, nullptr, nullptr) {}
   MOCK_METHOD1(UpdateRaftConfig, void(const consensus::RaftConfigPB& config));
   MOCK_METHOD1(SignalRequest, void(RequestTriggerMode trigger_mode));
   MOCK_METHOD0(Close, void());

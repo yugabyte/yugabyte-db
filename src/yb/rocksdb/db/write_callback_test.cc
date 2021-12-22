@@ -34,6 +34,8 @@
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/test_util.h"
+
 using std::atomic;
 using std::string;
 
@@ -295,7 +297,7 @@ TEST_F(WriteCallbackTest, WriteWithCallbackTest) {
           ASSERT_EQ(seq.load(), db_impl->GetLatestSequenceNumber());
 
           delete db;
-          DestroyDB(dbname, options);
+          ASSERT_OK(DestroyDB(dbname, options));
         }
       }
     }
@@ -358,7 +360,7 @@ TEST_F(WriteCallbackTest, WriteCallBackTest) {
   ASSERT_EQ("value.a2", value);
 
   delete db;
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
 }
 
 }  // namespace rocksdb

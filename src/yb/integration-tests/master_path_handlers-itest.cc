@@ -12,20 +12,27 @@
 //
 
 #include <chrono>
+
 #include "yb/client/schema.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/schema.h"
-#include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/tools/yb-admin_client.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
@@ -153,7 +160,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   // Choose a tablet to orphan and take note of the servers which are leaders/followers for this
   // tablet.
   google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
-  client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets);
+  ASSERT_OK(client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
   std::vector<yb::tserver::MiniTabletServer *> followers;
   yb::tserver::MiniTabletServer* leader = nullptr;
   auto orphan_tablet = tablets.Get(0);
@@ -161,7 +168,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
     const auto uuid = replica.ts_info().permanent_uuid();
     auto* tserver = cluster_->find_tablet_server(uuid);
     ASSERT_NOTNULL(tserver);
-    if (replica.role() == consensus::RaftPeerPB::LEADER) {
+    if (replica.role() == PeerRole::LEADER) {
       leader = tserver;
     } else {
       followers.push_back(tserver);
@@ -233,7 +240,7 @@ TEST_F(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint) {
 
   // Get all the tablets of this table and store them
   google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
-  client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets);
+  ASSERT_OK(client->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
 
   std::vector<std::string> tIds;
   bool isTestTrue = true;

@@ -32,17 +32,15 @@
 #ifndef YB_UTIL_TEST_MACROS_H
 #define YB_UTIL_TEST_MACROS_H
 
-#include <string>
-#include <sstream>
 #include <set>
+#include <sstream>
+#include <string>
 
 #include <boost/preprocessor/cat.hpp>
 
-#include <gtest/gtest.h>
+#include <gtest/gtest.h> // For SUCCEED/FAIL
 
-#include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
-#include "yb/util/tsan_util.h"
 
 namespace yb {
 namespace util {
@@ -182,6 +180,24 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     FAIL() << "Expected not to find substring '" << (substr) \
     << "'. Got: '" << _s << "'"; \
   } \
+  } while (0)
+
+inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs) {
+  size_t min_len = std::min(lhs.size(), rhs.size());
+  size_t i = 0;
+  for (; i != min_len; ++i) {
+    if (lhs[i] != rhs[i]) {
+      break;
+    }
+  }
+  return lhs.substr(i, std::min<size_t>(lhs.size() - i, 32)) + " vs " +
+         rhs.substr(i, std::min<size_t>(rhs.size() - i, 32));
+}
+
+#define ASSERT_STR_EQ(lhs, rhs) do { \
+    std::string _lhs = (lhs); \
+    std::string _rhs = (rhs); \
+    ASSERT_EQ(lhs, rhs) << "First diff: " << FindFirstDiff(lhs, rhs); \
   } while (0)
 
 #define ASSERT_FILE_EXISTS(env, path) do { \

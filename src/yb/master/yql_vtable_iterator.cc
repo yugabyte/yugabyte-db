@@ -12,8 +12,10 @@
 //
 
 #include "yb/master/yql_vtable_iterator.h"
+#include <iterator>
 
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -90,6 +92,10 @@ void YQLVTableIterator::Advance(bool increment) {
 }
 
 YQLVTableIterator::~YQLVTableIterator() {
+}
+
+HybridTime YQLVTableIterator::RestartReadHt() {
+  return HybridTime::kInvalid;
 }
 
 }  // namespace master

@@ -29,11 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/messenger.h"
+
+#include "yb/tserver/tablet_server-test-base.h"
+
 #include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 

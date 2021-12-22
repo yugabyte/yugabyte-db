@@ -12,14 +12,13 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include <fstream>
 #include <vector>
-#include <map>
 
-#include "yb/common/ql_type.h"
+#include <glog/logging.h>
 
 #include "yb/bfql/directory.h"
+#include "yb/common/ql_type.h"
 #include "yb/gutil/strings/substitute.h"
 
 using std::endl;
@@ -321,6 +320,7 @@ class BFCodegen {
 
     ftable << kFileStart
            << "#include \"yb/bfql/base_operator.h\"" << endl
+           << "#include \"yb/bfql/directory.h\"" << endl
            << "#include \"yb/bfql/gen_operator.h\"" << endl
            << endl
            << "#include <iostream>" << endl

@@ -14,11 +14,14 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/primitive_value_util.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 namespace docdb {

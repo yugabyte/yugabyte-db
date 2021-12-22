@@ -37,7 +37,6 @@
 #include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/client/table_handle.h"
-#include "yb/client/table.h"
 
 #include "yb/util/random.h"
 
@@ -139,9 +138,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   void AssertAllReplicasAgree(int expected_result_count);
 
-  client::YBTableType table_type() {
-    return client::YBTableType::YQL_TABLE_TYPE;
-  }
+  client::YBTableType table_type();
 
  protected:
   std::unique_ptr<ExternalMiniCluster> cluster_;

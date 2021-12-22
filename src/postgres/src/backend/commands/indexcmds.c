@@ -419,7 +419,7 @@ DefineIndex(Oid relationId,
 		IsYBRelation(rel))
 	{
 		HandleYBStatus(YBCPgIsTableColocated(databaseId,
-											 relationId,
+											 YbGetStorageRelid(rel),
 											 &is_indexed_table_colocated));
 	}
 
@@ -762,8 +762,8 @@ DefineIndex(Oid relationId,
 			{
 				char	   *new_name = "ybgin";
 
-				ereport(NOTICE,
-						(errmsg("replacing access method \"%s\" with \"%s\"",
+				ereport(LOG,
+						(errmsg("substituting access method \"%s\" for \"%s\"",
 								accessMethodName, new_name)));
 				accessMethodName = new_name;
 			}
@@ -1570,7 +1570,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
 		if (IsYBRelation(rel))
 			HandleYBStatus(YBCPgIsTableColocated(YBCGetDatabaseOid(rel),
-												 relId,
+												 YbGetStorageRelid(rel),
 												 &colocated));
 		RelationClose(rel);
 	}

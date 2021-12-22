@@ -33,13 +33,16 @@
 #ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
 #define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
 
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/metadata.pb.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
 
 namespace yb {
 class Env;

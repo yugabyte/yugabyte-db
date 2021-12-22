@@ -15,14 +15,17 @@
 #include <memory>
 #include <vector>
 
-#include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+
 #include "yb/common/entity_ids.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-#include "yb/util/metrics.h"
+
 #include "yb/util/test_util.h"
 
 namespace yb {

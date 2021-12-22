@@ -22,6 +22,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 
+#include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -323,9 +324,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
-
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+  CHECKED_STATUS ValidatePlacement(const string& placement_info);
 
   PgClient& pg_client() const {
     return pg_client_;

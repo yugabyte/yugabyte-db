@@ -16,7 +16,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
@@ -25,7 +27,7 @@ namespace ql {
 // TreeNode base class.
 //--------------------------------------------------------------------------------------------------
 
-TreeNode::TreeNode(MemoryContext *memctx, YBLocation::SharedPtr loc)
+TreeNode::TreeNode(MemoryContext *memctx, YBLocationPtr loc)
     : MCBase(memctx), loc_(loc) {
 }
 

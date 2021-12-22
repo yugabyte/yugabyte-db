@@ -20,6 +20,7 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
 #include "yb/rocksdb/table/block_based_table_builder.h"
 
 #include <assert.h>
@@ -35,6 +36,7 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -57,8 +59,10 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/xxhash.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/status_log.h"
 
@@ -450,7 +454,9 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   DCHECK(!r->closed);
   if (!ok()) return;
   if (r->props.num_entries > 0) {
-    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0);
+    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0)
+        << "New key: " << key.ToDebugHexString()
+        << ", last key: " << Slice(r->last_key).ToDebugHexString();
   }
 
   const auto should_flush_data = r->flush_block_policy->Update(key, value);

@@ -37,7 +37,9 @@ int main() {
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/arena.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/test_util.h"
 
 using GFLAGS::ParseCommandLineFlags;
 

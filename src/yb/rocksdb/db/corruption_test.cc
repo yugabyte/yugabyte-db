@@ -29,6 +29,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db.h"
 
 #include "yb/rocksdb/cache.h"
@@ -42,6 +44,8 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
@@ -59,7 +63,7 @@ class CorruptionTest : public testing::Test {
     tiny_cache_ = NewLRUCache(100);
     options_.env = &env_;
     dbname_ = test::TmpDir() + "/corruption_test";
-    DestroyDB(dbname_, options_);
+    CHECK_OK(DestroyDB(dbname_, options_));
 
     db_ = nullptr;
     options_.create_if_missing = true;
@@ -72,7 +76,7 @@ class CorruptionTest : public testing::Test {
 
   ~CorruptionTest() {
      delete db_;
-     DestroyDB(dbname_, Options());
+     CHECK_OK(DestroyDB(dbname_, Options()));
   }
 
   void CloseDb() {
@@ -109,7 +113,7 @@ class CorruptionTest : public testing::Test {
     for (int i = 0; i < n; i++) {
       if (flush_every != 0 && i != 0 && i % flush_every == 0) {
         DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
-        dbi->TEST_FlushMemTable();
+        ASSERT_OK(dbi->TEST_FlushMemTable());
       }
       // if ((i % 100) == 0) fprintf(stderr, "@ %d of %d\n", i, n);
       Slice key = Key(i, &key_space);
@@ -344,9 +348,9 @@ TEST_F(CorruptionTest, NewFileErrorDuringWrite) {
 TEST_F(CorruptionTest, TableFile) {
   Build(100);
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
-  dbi->TEST_FlushMemTable();
-  dbi->TEST_CompactRange(0, nullptr, nullptr);
-  dbi->TEST_CompactRange(1, nullptr, nullptr);
+  ASSERT_OK(dbi->TEST_FlushMemTable());
+  ASSERT_OK(dbi->TEST_CompactRange(0, nullptr, nullptr));
+  ASSERT_OK(dbi->TEST_CompactRange(1, nullptr, nullptr));
 
   Corrupt(kTableFile, 100, 1);
   Check(99, 99);
@@ -360,7 +364,7 @@ TEST_F(CorruptionTest, TableFileIndexData) {
   // build 2 tables, flush at 5000
   Build(10000, 5000);
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
-  dbi->TEST_FlushMemTable();
+  ASSERT_OK(dbi->TEST_FlushMemTable());
 
   // Corrupt top level index block of an entire file.
   Corrupt(kTableFile, -1000, 500);
@@ -401,8 +405,8 @@ TEST_F(CorruptionTest, SequenceNumberRecovery) {
 TEST_F(CorruptionTest, CorruptedDescriptor) {
   ASSERT_OK(db_->Put(WriteOptions(), "foo", "hello"));
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
-  dbi->TEST_FlushMemTable();
-  dbi->TEST_CompactRange(0, nullptr, nullptr);
+  ASSERT_OK(dbi->TEST_FlushMemTable());
+  ASSERT_OK(dbi->TEST_CompactRange(0, nullptr, nullptr));
 
   Corrupt(kDescriptorFile, 0, 1000);
   Status s = TryReopen();
@@ -420,9 +424,9 @@ TEST_F(CorruptionTest, CompactionInputError) {
   Reopen(&options);
   Build(10);
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
-  dbi->TEST_FlushMemTable();
-  dbi->TEST_CompactRange(0, nullptr, nullptr);
-  dbi->TEST_CompactRange(1, nullptr, nullptr);
+  ASSERT_OK(dbi->TEST_FlushMemTable());
+  ASSERT_OK(dbi->TEST_CompactRange(0, nullptr, nullptr));
+  ASSERT_OK(dbi->TEST_CompactRange(1, nullptr, nullptr));
   ASSERT_EQ(1, Property("rocksdb.num-files-at-level2"));
 
   Corrupt(kTableFile, 100, 1);
@@ -443,12 +447,12 @@ TEST_F(CorruptionTest, CompactionInputErrorParanoid) {
 
   // Fill levels >= 1
   for (int level = 1; level < dbi->NumberLevels(); level++) {
-    dbi->Put(WriteOptions(), "", "begin");
-    dbi->Put(WriteOptions(), "~", "end");
-    dbi->TEST_FlushMemTable();
+    ASSERT_OK(dbi->Put(WriteOptions(), "", "begin"));
+    ASSERT_OK(dbi->Put(WriteOptions(), "~", "end"));
+    ASSERT_OK(dbi->TEST_FlushMemTable());
     for (int comp_level = 0; comp_level < dbi->NumberLevels() - level;
          ++comp_level) {
-      dbi->TEST_CompactRange(comp_level, nullptr, nullptr);
+      ASSERT_OK(dbi->TEST_CompactRange(comp_level, nullptr, nullptr));
     }
   }
 
@@ -456,8 +460,8 @@ TEST_F(CorruptionTest, CompactionInputErrorParanoid) {
 
   dbi = reinterpret_cast<DBImpl*>(db_);
   Build(10);
-  dbi->TEST_FlushMemTable();
-  dbi->TEST_WaitForCompact();
+  ASSERT_OK(dbi->TEST_FlushMemTable());
+  ASSERT_OK(dbi->TEST_WaitForCompact());
   ASSERT_EQ(1, Property("rocksdb.num-files-at-level0"));
 
   CorruptTableFileAtLevel(0, 100, 1);
@@ -481,7 +485,7 @@ TEST_F(CorruptionTest, CompactionInputErrorParanoid) {
 TEST_F(CorruptionTest, UnrelatedKeys) {
   Build(10);
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
-  dbi->TEST_FlushMemTable();
+  ASSERT_OK(dbi->TEST_FlushMemTable());
   Corrupt(kTableFile, 100, 1);
 
   std::string tmp1, tmp2;
@@ -489,7 +493,7 @@ TEST_F(CorruptionTest, UnrelatedKeys) {
   std::string v;
   ASSERT_OK(db_->Get(ReadOptions(), Key(1000, &tmp1), &v));
   ASSERT_EQ(Value(1000, &tmp2).ToString(), v);
-  dbi->TEST_FlushMemTable();
+  ASSERT_OK(dbi->TEST_FlushMemTable());
   ASSERT_OK(db_->Get(ReadOptions(), Key(1000, &tmp1), &v));
   ASSERT_EQ(Value(1000, &tmp2).ToString(), v);
 }
@@ -513,16 +517,16 @@ TEST_F(CorruptionTest, FileSystemStateCorrupted) {
 
     if (iter == 0) {  // corrupt file size
       unique_ptr<WritableFile> file;
-      env_.NewWritableFile(filename, &file, EnvOptions());
-      file->Append(Slice("corrupted sst"));
+      ASSERT_OK(env_.NewWritableFile(filename, &file, EnvOptions()));
+      ASSERT_OK(file->Append(Slice("corrupted sst")));
       file.reset();
     } else {  // delete the file
-      env_.DeleteFile(filename);
+      ASSERT_OK(env_.DeleteFile(filename));
     }
 
     Status x = TryReopen(&options);
     ASSERT_TRUE(x.IsCorruption());
-    DestroyDB(dbname_, options_);
+    ASSERT_OK(DestroyDB(dbname_, options_));
     Reopen(&options);
   }
 }

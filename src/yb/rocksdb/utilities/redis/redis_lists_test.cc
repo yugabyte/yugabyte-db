@@ -35,12 +35,11 @@
 #include <iostream>
 #include <cctype>
 
-#include "redis_lists.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/random.h"
+#include "yb/rocksdb/utilities/redis/redis_lists.h"
 
-using namespace rocksdb;
-using namespace std;
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
@@ -772,7 +771,7 @@ void MakeUpper(std::string* const s) {
 ///  Use destructive=true to clean the database before use.
 ///  Use destructive=false to remember the previous state (i.e.: persistent)
 /// Should be called from main function.
-int manual_redis_test(bool destructive){
+int manual_redis_test(bool destructive) {
   RedisLists redis(RedisListsTest::kDefaultDbName,
                    RedisListsTest::options,
                    destructive);
@@ -783,16 +782,16 @@ int manual_redis_test(bool destructive){
 
   std::string command;
   while(true) {
-    cin >> command;
+    std::cin >> command;
     MakeUpper(&command);
 
     if (command == "LINSERT") {
       std::string k, t, p, v;
-      cin >> k >> t >> p >> v;
+      std::cin >> k >> t >> p >> v;
       MakeUpper(&t);
-      if (t=="BEFORE") {
+      if (t == "BEFORE") {
         std::cout << redis.InsertBefore(k, p, v) << std::endl;
-      } else if (t=="AFTER") {
+      } else if (t == "AFTER") {
         std::cout << redis.InsertAfter(k, p, v) << std::endl;
       }
     } else if (command == "LPUSH") {
@@ -844,7 +843,7 @@ int manual_redis_test(bool destructive){
       std::string k;
       int idx;
       std::string v;
-      cin >> k >> idx >> v;
+      std::cin >> k >> idx >> v;
       redis.Set(k, idx, v);
     } else if (command == "LINDEX") {
       std::string k;
@@ -855,7 +854,7 @@ int manual_redis_test(bool destructive){
       std::cout << res << std::endl;
     } else if (command == "PRINT") {      // Added by Deon
       std::string k;
-      cin >> k;
+      std::cin >> k;
       redis.Print(k);
     } else if (command == "QUIT") {
       return 0;
@@ -875,15 +874,17 @@ int manual_redis_test(bool destructive){
 
 
 namespace {
+
 // Check for "want" argument in the argument list
-bool found_arg(int argc, char* argv[], const char* want){
-  for(int i=1; i<argc; ++i){
+bool found_arg(int argc, char* argv[], const char* want) {
+  for(int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], want) == 0) {
       return true;
     }
   }
   return false;
 }
+
 }  // namespace
 
 // Will run unit tests.

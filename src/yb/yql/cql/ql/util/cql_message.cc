@@ -17,13 +17,17 @@
 #include <snappy.h>
 
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace ql {
@@ -555,6 +559,47 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
     RETURN_NOT_OK(ParseLong(&params->default_timestamp));
   }
   return Status::OK();
+}
+
+CHECKED_STATUS CQLRequest::ParseByte(uint8_t* value) {
+  static_assert(sizeof(*value) == kByteSize, "inconsistent byte size");
+  return ParseNum("CQL byte", Load8, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseShort(uint16_t* value) {
+  static_assert(sizeof(*value) == kShortSize, "inconsistent short size");
+  return ParseNum("CQL byte", NetworkByteOrder::Load16, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseInt(int32_t* value) {
+  static_assert(sizeof(*value) == kIntSize, "inconsistent int size");
+  return ParseNum("CQL int", NetworkByteOrder::Load32, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseLong(int64_t* value) {
+  static_assert(sizeof(*value) == kLongSize, "inconsistent long size");
+  return ParseNum("CQL long", NetworkByteOrder::Load64, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseString(std::string* value)  {
+  return ParseBytes("CQL string", &CQLRequest::ParseShort, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseLongString(std::string* value)  {
+  return ParseBytes("CQL long string", &CQLRequest::ParseInt, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseShortBytes(std::string* value) {
+  return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseBytes(std::string* value) {
+  return ParseBytes("CQL bytes", &CQLRequest::ParseInt, value);
+}
+
+CHECKED_STATUS CQLRequest::ParseConsistency(Consistency* consistency) {
+  static_assert(sizeof(*consistency) == kConsistencySize, "inconsistent consistency size");
+  return ParseNum("CQL consistency", NetworkByteOrder::Load16, consistency);
 }
 
 // ------------------------------ Individual CQL requests -----------------------------------

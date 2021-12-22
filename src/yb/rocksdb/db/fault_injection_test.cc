@@ -27,21 +27,21 @@
 
 #include <map>
 #include <set>
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/log_format.h"
-#include "yb/rocksdb/db/version_set.h"
+
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
@@ -109,7 +109,7 @@ Status Truncate(Env* env, const std::string& filename, uint64_t length) {
       } else {
         fprintf(stderr, "Cannot rename file %s to %s: %s\n", tmp_name.c_str(),
                 filename.c_str(), s.ToString().c_str());
-        env->DeleteFile(tmp_name);
+        RETURN_NOT_OK(env->DeleteFile(tmp_name));
       }
     }
   }
@@ -403,7 +403,7 @@ TestWritableFile::TestWritableFile(const std::string& fname,
 
 TestWritableFile::~TestWritableFile() {
   if (writable_file_opened_) {
-    Close();
+    CHECK_OK(Close());
   }
 }
 
@@ -681,7 +681,7 @@ class FaultInjectionTest : public testing::Test,
 
     FlushOptions flush_options;
     flush_options.wait = true;
-    db_->Flush(flush_options);
+    ASSERT_OK(db_->Flush(flush_options));
   }
 
   // rnd cannot be null for kResetDropRandomUnsyncedData
@@ -714,7 +714,7 @@ class FaultInjectionTest : public testing::Test,
 
     Build(write_options, 0, num_pre_sync);
     if (sync_use_compact_) {
-      db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+      ASSERT_OK(db_->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     }
     write_options.sync = false;
     Build(write_options, num_pre_sync, num_post_sync);
@@ -746,7 +746,7 @@ class FaultInjectionTest : public testing::Test,
   }
 
   void WaitCompactionFinish() {
-    static_cast<DBImpl*>(db_)->TEST_WaitForCompact();
+    ASSERT_OK(static_cast<DBImpl*>(db_)->TEST_WaitForCompact());
     ASSERT_OK(db_->Put(WriteOptions(), "", ""));
   }
 };
@@ -836,7 +836,7 @@ TEST_P(FaultInjectionTest, UninstalledCompaction) {
   options_.level0_stop_writes_trigger = 1 << 10;
   options_.level0_slowdown_writes_trigger = 1 << 10;
   options_.max_background_compactions = 1;
-  OpenDB();
+  ASSERT_OK(OpenDB());
 
   if (!sequential_order_) {
     rocksdb::SyncPoint::GetInstance()->LoadDependency({
@@ -852,7 +852,7 @@ TEST_P(FaultInjectionTest, UninstalledCompaction) {
   Build(WriteOptions(), 0, kNumKeys);
   FlushOptions flush_options;
   flush_options.wait = true;
-  db_->Flush(flush_options);
+  ASSERT_OK(db_->Flush(flush_options));
   ASSERT_OK(db_->Put(WriteOptions(), "", ""));
   TEST_SYNC_POINT("FaultInjectionTest::FaultTest:0");
   TEST_SYNC_POINT("FaultInjectionTest::FaultTest:1");

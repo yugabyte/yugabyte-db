@@ -17,28 +17,32 @@
 #include <functional>
 #include <memory>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/common/entity_ids.h"
-#include "yb/common/transaction.h"
+
+#include "yb/master/master_fwd.h"
+
 #include "yb/rpc/rpc.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
 namespace tserver {
 class GetTransactionStatusResponsePB;
 }
+
 namespace master {
-class CatalogManager;
-class Master;
 
 class YsqlTransactionDdl {
  public:
-  explicit YsqlTransactionDdl(CatalogManager* catalog_manager,
-                              Master* master)
-      : catalog_manager_(catalog_manager),
-        master_(master),
-        thread_pool_(nullptr) { }
+  YsqlTransactionDdl(
+      const SysCatalogTable* sys_catalog, std::shared_future<client::YBClient*> client_future,
+      ThreadPool* thread_pool)
+      : sys_catalog_(sys_catalog), client_future_(std::move(client_future)),
+        thread_pool_(thread_pool) {}
+
   ~YsqlTransactionDdl();
 
   void set_thread_pool(yb::ThreadPool* thread_pool) {
@@ -48,18 +52,20 @@ class YsqlTransactionDdl {
   void VerifyTransaction(const TransactionMetadata& transaction,
                          std::function<Status(bool /* is_success */)> complete_callback);
   Result<bool> PgEntryExists(TableId tableId, Result<uint32_t> entry_oid);
+
  protected:
   void TransactionReceived(const TransactionMetadata& transaction,
                            std::function<Status(bool)> complete_callback,
                            Status txn_status,
                            const tserver::GetTransactionStatusResponsePB& response);
 
-  CatalogManager* catalog_manager_;
-  Master *master_;
-  yb::rpc::Rpcs rpcs_;
-  yb::ThreadPool* thread_pool_;
+  const SysCatalogTable* sys_catalog_;
+  std::shared_future<client::YBClient*> client_future_;
+  ThreadPool* thread_pool_;
+  rpc::Rpcs rpcs_;
 };
 
 }  // namespace master
 }  // namespace yb
+
 #endif // YB_MASTER_YSQL_TRANSACTION_DDL_H

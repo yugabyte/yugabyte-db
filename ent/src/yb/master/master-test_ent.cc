@@ -13,7 +13,16 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
+#include "yb/master/master_defaults.h"
+
 #include "../../src/yb/master/master-test_base.h"
+
+#include "yb/util/result.h"
 
 DECLARE_uint64(cdc_state_table_num_tablets);
 
@@ -176,7 +185,7 @@ TEST_F(MasterTestEnt, TestCreateCDCStream) {
   ASSERT_OK(CreateCDCStream(table_id, &stream_id));
 
   GetCDCStreamResponsePB resp;
-  ASSERT_NO_FATALS(GetCDCStream(stream_id, &resp));
+  ASSERT_OK(GetCDCStream(stream_id, &resp));
   ASSERT_EQ(resp.stream().table_id(), table_id);
 }
 
@@ -189,13 +198,13 @@ TEST_F(MasterTestEnt, TestDeleteCDCStream) {
   ASSERT_OK(CreateCDCStream(table_id, &stream_id));
 
   GetCDCStreamResponsePB resp;
-  ASSERT_NO_FATALS(GetCDCStream(stream_id, &resp));
+  ASSERT_OK(GetCDCStream(stream_id, &resp));
   ASSERT_EQ(resp.stream().table_id(), table_id);
 
   ASSERT_OK(DeleteCDCStream(stream_id));
 
   resp.Clear();
-  ASSERT_NO_FATALS(GetCDCStream(stream_id, &resp));
+  ASSERT_NOK(GetCDCStream(stream_id, &resp));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
@@ -209,14 +218,14 @@ TEST_F(MasterTestEnt, TestDeleteTableWithCDCStream) {
   ASSERT_OK(CreateCDCStream(table_id, &stream_id));
 
   GetCDCStreamResponsePB resp;
-  ASSERT_NO_FATALS(GetCDCStream(stream_id, &resp));
+  ASSERT_OK(GetCDCStream(stream_id, &resp));
   ASSERT_EQ(resp.stream().table_id(), table_id);
 
   // Delete the table
   TableId id;
   ASSERT_OK(DeleteTableSync(default_namespace_name, kTableName, &id));
 
-  ASSERT_NO_FATALS(GetCDCStream(stream_id, &resp));
+  ASSERT_NOK(GetCDCStream(stream_id, &resp));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
@@ -239,10 +248,11 @@ TEST_F(MasterTestEnt, TestSetupUniverseReplication) {
   std::string producer_id = "producer_universe";
   std::vector<std::string> producer_masters {"127.0.0.1:7100"};
   std::vector<std::string> tables {"some_table_id"};
-  ASSERT_NO_FATALS(SetupUniverseReplication(producer_id, producer_masters, tables));
+  // Always fails because we don't have actual producer.
+  ASSERT_NOK(SetupUniverseReplication(producer_id, producer_masters, tables));
 
   GetUniverseReplicationResponsePB resp;
-  ASSERT_NO_FATALS(GetUniverseReplication(producer_id, &resp));
+  ASSERT_OK(GetUniverseReplication(producer_id, &resp));
   ASSERT_EQ(resp.entry().producer_id(), producer_id);
 
   ASSERT_EQ(resp.entry().producer_master_addresses_size(), 1);
@@ -259,17 +269,18 @@ TEST_F(MasterTestEnt, TestDeleteUniverseReplication) {
   std::string producer_id = "producer_universe";
   std::vector<std::string> producer_masters {"127.0.0.1:7100"};
   std::vector<std::string> tables {"some_table_id"};
-  ASSERT_NO_FATALS(SetupUniverseReplication(producer_id, producer_masters, tables));
+  // Always fails because we don't have actual producer.
+  ASSERT_NOK(SetupUniverseReplication(producer_id, producer_masters, tables));
 
   // Verify that universe was created.
   GetUniverseReplicationResponsePB resp;
-  ASSERT_NO_FATALS(GetUniverseReplication(producer_id, &resp));
+  ASSERT_OK(GetUniverseReplication(producer_id, &resp));
   ASSERT_EQ(resp.entry().producer_id(), producer_id);
 
-  ASSERT_NO_FATALS(DeleteUniverseReplication(producer_id));
+  ASSERT_OK(DeleteUniverseReplication(producer_id));
 
   resp.Clear();
-  ASSERT_NO_FATALS(GetUniverseReplication(producer_id, &resp));
+  ASSERT_NOK(GetUniverseReplication(producer_id, &resp));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }

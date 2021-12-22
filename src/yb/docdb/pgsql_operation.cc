@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/pgsql_operation.h"
 
 #include <limits>
@@ -23,17 +24,24 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
+
 #include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 DECLARE_bool(ysql_disable_index_backfill);
@@ -72,16 +80,21 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
-void AddIntent(const std::string& encoded_key, KeyValueWriteBatchPB *out) {
+void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueWriteBatchPB *out) {
   auto pair = out->mutable_read_pairs()->Add();
   pair->set_key(encoded_key);
   pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+  // Since we don't batch read RPCs that lock rows, we can get away with using a singular
+  // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
+  // wait policies field.
+  out->set_wait_policy(wait_policy);
 }
 
-CHECKED_STATUS AddIntent(const PgsqlExpressionPB& ybctid, KeyValueWriteBatchPB* out) {
+CHECKED_STATUS AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
+                         KeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
-  AddIntent(val, out);
+  AddIntent(val, wait_policy, out);
   return Status::OK();
 }
 
@@ -1109,10 +1122,10 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB
   if (request_.batch_arguments_size() > 0 && request_.has_ybctid_column_value()) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
-      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), out));
+      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), request_.wait_policy(), out));
     }
   } else {
-    AddIntent(VERIFY_RESULT(FetchEncodedDocKey(schema, request_)), out);
+    AddIntent(VERIFY_RESULT(FetchEncodedDocKey(schema, request_)), request_.wait_policy(), out);
   }
   return Status::OK();
 }

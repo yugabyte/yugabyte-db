@@ -15,21 +15,19 @@
 #define YB_MASTER_STATE_WITH_TABLETS_H
 
 #include <boost/iterator/transform_iterator.hpp>
-
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
-
-#include <boost/range/iterator_range.hpp>
-
-#include "yb/common/entity_ids.h"
+#include <boost/multi_index_container.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <glog/logging.h>
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_backup.pb.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {
@@ -108,10 +106,9 @@ class StateWithTablets {
         // Could exit here, because we have already iterated over all non-running operations.
         break;
       }
-      bool should_run = it->state == initial_state_;
+      bool should_run = it->state == initial_state_ && functor(*it);
       if (should_run) {
         VLOG(4) << "Prepare operation for " << it->ToString();
-        functor(*it);
 
         // Here we modify indexed value, so iterator could be advanced to the next element.
         // Taking next before modify.
@@ -140,6 +137,10 @@ class StateWithTablets {
 
   virtual CHECKED_STATUS CheckDoneStatus(const Status& status) {
     return status;
+  }
+
+  bool Empty() {
+    return tablets().empty();
   }
 
  protected:

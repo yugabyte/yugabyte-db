@@ -15,6 +15,8 @@
 
 #include "yb/util/result.h"
 
+#include "yb/yql/pggate/pg_tabledesc.h"
+
 namespace yb {
 namespace pggate {
 

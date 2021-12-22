@@ -37,13 +37,12 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
-#include "yb/gutil/bind.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/master.proxy.h"
+
 #include "yb/util/async_util.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/net/net_util.h"
 
 using std::shared_ptr;
 using std::string;
@@ -128,7 +127,7 @@ void GetMasterRegistrationRpc::Finished(const Status& status) {
       // If CatalogManager is not initialized, treat the node as a
       // FOLLOWER for the time being, as currently this RPC is only
       // used for the purposes of finding the leader master.
-      resp_.set_role(RaftPeerPB::FOLLOWER);
+      resp_.set_role(PeerRole::FOLLOWER);
       new_status = Status::OK();
     } else {
       out_->mutable_error()->CopyFrom(resp_.error().status());
@@ -265,7 +264,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
     }
     auto& resp = responses_[idx];
     if (new_status.ok()) {
-      if (resp.role() != RaftPeerPB::LEADER) {
+      if (resp.role() != PeerRole::LEADER) {
         // Use a STATUS(NotFound, "") to indicate that the node is not
         // the leader: this way, we can handle the case where we've
         // received a reply from all of the nodes in the cluster (no

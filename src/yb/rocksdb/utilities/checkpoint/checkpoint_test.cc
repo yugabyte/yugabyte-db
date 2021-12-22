@@ -39,6 +39,8 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/xfunc.h"
 
+#include "yb/util/test_util.h"
+
 namespace rocksdb {
 class DBTest : public testing::Test {
  protected:
@@ -240,8 +242,10 @@ TEST_F(DBTest, GetSnapshotLink) {
     delete db_;
     db_ = nullptr;
     ASSERT_OK(DestroyDB(dbname_, options));
-    ASSERT_OK(DestroyDB(snapshot_name, options));
-    env_->DeleteDir(snapshot_name);
+    if (env_->DirExists(snapshot_name)) {
+      ASSERT_OK(DestroyDB(snapshot_name, options));
+      ASSERT_OK(env_->DeleteDir(snapshot_name));
+    }
 
     // Create a database
     Status s;
@@ -308,7 +312,9 @@ TEST_F(DBTest, CheckpointCF) {
   std::vector<ColumnFamilyHandle*> cphandles;
 
   ASSERT_OK(DestroyDB(snapshot_name, options));
-  env_->DeleteDir(snapshot_name);
+  if (env_->DirExists(snapshot_name)) {
+    ASSERT_OK(env_->DeleteDir(snapshot_name));
+  }
 
   Status s;
   // Take a snapshot

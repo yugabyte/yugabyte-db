@@ -12,14 +12,13 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include <fstream>
 #include <vector>
-#include <map>
 
-#include "yb/common/ql_type.h"
+#include <glog/logging.h>
 
 #include "yb/bfpg/directory.h"
+#include "yb/common/ql_type.h"
 #include "yb/gutil/strings/substitute.h"
 
 using std::endl;
@@ -170,10 +169,13 @@ class BFCodegen {
             << "#ifndef YB_UTIL_BFPG_GEN_OPERATOR_H_" << endl
             << "#define YB_UTIL_BFPG_GEN_OPERATOR_H_" << endl
             << endl
+            << "#include <vector>" << endl
+            << endl
             << "#include \"yb/bfpg/base_operator.h\"" << endl
             << "#include \"yb/bfpg/bfunc.h\"" << endl
-            << endl
-            << "#include <vector>" << endl
+            << "#include \"yb/bfpg/bfunc_convert.h\"" << endl
+            << "#include \"yb/bfpg/bfunc_standard.h\"" << endl
+            << "#include \"yb/util/status.h\"" << endl
             << endl
             // Use namespaces.
             << "using std::vector;" << endl
@@ -318,6 +320,7 @@ class BFCodegen {
 
     ftable << kFileStart
            << "#include \"yb/bfpg/base_operator.h\"" << endl
+           << "#include \"yb/bfpg/directory.h\"" << endl
            << "#include \"yb/bfpg/gen_operator.h\"" << endl
            << endl
            << "#include <iostream>" << endl

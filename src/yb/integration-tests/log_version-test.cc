@@ -16,12 +16,12 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
-
 #include <glog/logging.h>
 
+#include "yb/client/client.h"
 
-#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 
 #include "yb/master/master.pb.h"
 

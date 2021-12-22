@@ -30,6 +30,8 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX tablet)
+
 set(TABLET_SRCS
   abstract_tablet.cc
   apply_intents_task.cc
@@ -68,13 +70,13 @@ set(TABLET_SRCS
 
 set(TABLET_DEPS pq_utils)
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   TABLET_PROTO_SRCS TABLET_PROTO_HDRS TABLET_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES
-    tablet.proto
-    metadata.proto)
+  NO_SERVICE_PROTO_FILES
+    metadata.proto
+    tablet.proto)
 set(TABLET_PROTO_LIBS
   protobuf
   fs_proto
@@ -112,6 +114,7 @@ target_link_libraries(tablet
 
 add_library(tablet_test_util
             local_tablet_writer.cc
+            tablet-harness.cc
             tablet-test-util.cc)
 target_link_libraries(tablet_test_util tablet yb_common yb_test_util yb_util)
 

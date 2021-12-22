@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#include <gflags/gflags.h>
-
 #include "yb/client/universe_key_client.h"
+
+#include "yb/encryption/encryption.pb.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/util/encryption.pb.h"
+
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/poller.h"
 
 using namespace std::chrono_literals;
 

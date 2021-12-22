@@ -17,7 +17,6 @@ package yb;
 option java_package = "org.yb";
 
 import "yb/common/common.proto";
-import "yb/common/ql_protocol.proto";
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
@@ -390,6 +389,16 @@ message PgsqlReadRequestPB {
 
   // Row mark as used by postgres for row locking.
   optional RowMarkType row_mark_type = 23;
+
+  // Used to identify 3 possibilities: WAIT_BLOCK, WAIT_SKIP or WAIT_ERROR
+  // TODO(Piyush):
+  // 1. YB doesn't support WAIT_BLOCK as of now. That will be supported with blocking infrastructure
+  //    that is to be implemented for pessmistic locking feature.
+  // 2. Default is set to WAIT_ERROR. For now, WAIT_ERROR denotes the current YB behaviour of
+  //    "abort other txn or raise conflict error when a conflict is found". When pessimistic locking
+  //    is turned on by default on YB, WAIT_ERROR will only denote the behaviour of raising conflict
+  //    error in current txn and not aborting others (like Postgres).
+  optional WaitPolicy wait_policy = 32 [default = WAIT_ERROR];
 
   // Scan partition boundary.
   // NOTE

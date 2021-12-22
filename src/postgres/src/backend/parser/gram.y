@@ -470,7 +470,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	overlay_placing substr_from substr_for
 
 %type <boolean> opt_instead
-%type <boolean> opt_unique opt_concurrently opt_verbose opt_full
+%type <boolean> opt_unique opt_concurrently opt_verbose opt_full opt_concurrently_matview
 %type <boolean> opt_freeze opt_analyze opt_default opt_recheck
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
@@ -912,6 +912,7 @@ stmt :
 			| CreateExtensionStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
+			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
 			| CreatePolicyStmt
@@ -945,6 +946,7 @@ stmt :
 			| LockStmt
 			| PrepareStmt
 			| ReassignOwnedStmt
+			| RefreshMatViewStmt
 			| RemoveAggrStmt
 			| RemoveFuncStmt
 			| RemoveOperStmt
@@ -999,7 +1001,6 @@ stmt :
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1010,7 +1011,6 @@ stmt :
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
-			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
 			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -4491,7 +4491,6 @@ opt_with_data:
 CreateMatViewStmt:
 		CREATE OptNoLog MATERIALIZED VIEW create_mv_target AS SelectStmt opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE MATERIALIZED VIEW", 1131);
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $7;
 					ctas->into = $5;
@@ -4505,7 +4504,6 @@ CreateMatViewStmt:
 				}
 		| CREATE OptNoLog MATERIALIZED VIEW IF_P NOT EXISTS create_mv_target AS SelectStmt opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE MATERIALIZED VIEW", 1131);
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ctas->query = $10;
 					ctas->into = $8;
@@ -4546,9 +4544,8 @@ OptNoLog:	UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
  *****************************************************************************/
 
 RefreshMatViewStmt:
-			REFRESH MATERIALIZED VIEW opt_concurrently qualified_name opt_with_data
+			REFRESH MATERIALIZED VIEW opt_concurrently_matview qualified_name opt_with_data
 				{
-					parser_ybc_signal_unsupported(@1, "REFRESH MATERIALIZED VIEW", 1131);
 					RefreshMatViewStmt *n = makeNode(RefreshMatViewStmt);
 					n->concurrent = $4;
 					n->relation = $5;
@@ -4557,6 +4554,17 @@ RefreshMatViewStmt:
 				}
 		;
 
+opt_concurrently_matview:
+			CONCURRENTLY
+				{
+					$$ = true;
+				}
+			| NONCONCURRENTLY
+			| /*EMPTY*/
+				{
+					$$ = false;
+				}
+		;
 
 /*****************************************************************************
  *
@@ -6251,7 +6259,6 @@ DefineStmt:
 				}
 			| CREATE TEXT_P SEARCH PARSER any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE TEXT SEARCH PARSER");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_TSPARSER;
 					n->args = NIL;
@@ -6261,7 +6268,6 @@ DefineStmt:
 				}
 			| CREATE TEXT_P SEARCH DICTIONARY any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE TEXT SEARCH DICTIONARY");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_TSDICTIONARY;
 					n->args = NIL;
@@ -6271,7 +6277,6 @@ DefineStmt:
 				}
 			| CREATE TEXT_P SEARCH TEMPLATE any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE TEXT SEARCH TEMPLATE");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_TSTEMPLATE;
 					n->args = NIL;
@@ -6281,7 +6286,6 @@ DefineStmt:
 				}
 			| CREATE TEXT_P SEARCH CONFIGURATION any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE TEXT SEARCH CONFIGURATION");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_TSCONFIGURATION;
 					n->args = NIL;
@@ -6840,7 +6844,6 @@ drop_type_any_name:
 			| VIEW									{ $$ = OBJECT_VIEW; }
 			| MATERIALIZED VIEW
 				{
-					parser_ybc_not_support(@1, "DROP MATERIALIZED VIEW");
 					$$ = OBJECT_MATVIEW;
 				}
 			| INDEX { $$ = OBJECT_INDEX; }
@@ -6857,22 +6860,18 @@ drop_type_any_name:
 			| STATISTICS { parser_ybc_not_support(@1, "DROP STATISTICS"); $$ = OBJECT_STATISTIC_EXT; }
 			| TEXT_P SEARCH PARSER
 				{
-					parser_ybc_not_support(@1, "DROP TEXT SEARCH PARSER");
 					$$ = OBJECT_TSPARSER;
 				}
 			| TEXT_P SEARCH DICTIONARY
 				{
-					parser_ybc_not_support(@1, "DROP TEXT SEARCH DICTIONARY");
 					$$ = OBJECT_TSDICTIONARY;
 				}
 			| TEXT_P SEARCH TEMPLATE
 				{
-					parser_ybc_not_support(@1, "DROP TEXT SEARCH TEMPLATE");
 					$$ = OBJECT_TSTEMPLATE;
 				}
 			| TEXT_P SEARCH CONFIGURATION
 				{
-					parser_ybc_not_support(@1, "DROP TEXT SEARCH CONFIGURATION");
 					$$ = OBJECT_TSCONFIGURATION;
 				}
 		;
@@ -9733,7 +9732,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TEXT_P SEARCH PARSER any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH PARSER");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TSPARSER;
 					n->object = (Node *) $5;
@@ -9743,7 +9741,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TEXT_P SEARCH DICTIONARY any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH DICTIONARY");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TSDICTIONARY;
 					n->object = (Node *) $5;
@@ -9753,7 +9750,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TEXT_P SEARCH TEMPLATE any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH TEMPLATE");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TSTEMPLATE;
 					n->object = (Node *) $5;
@@ -9763,7 +9759,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TEXT_P SEARCH CONFIGURATION any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH CONFIGURATION");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TSCONFIGURATION;
 					n->object = (Node *) $5;
@@ -9773,7 +9768,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TYPE_P any_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE", 1893);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TYPE;
 					n->object = (Node *) $3;
@@ -10013,7 +10007,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TEXT_P SEARCH PARSER any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH PARSER SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TSPARSER;
 					n->object = (Node *) $5;
@@ -10023,7 +10016,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TEXT_P SEARCH DICTIONARY any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH DICTIONARY SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TSDICTIONARY;
 					n->object = (Node *) $5;
@@ -10033,7 +10025,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TEXT_P SEARCH TEMPLATE any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH TEMPLATE SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TSTEMPLATE;
 					n->object = (Node *) $5;
@@ -10043,7 +10034,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TEXT_P SEARCH CONFIGURATION any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH CONFIGURATION SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TSCONFIGURATION;
 					n->object = (Node *) $5;

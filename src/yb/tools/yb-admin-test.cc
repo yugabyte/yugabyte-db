@@ -34,18 +34,15 @@
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 
 #include "yb/common/json_util.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
@@ -57,11 +54,12 @@
 
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/random_util.h"
-#include "yb/util/string_trim.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
@@ -807,6 +805,20 @@ TEST_F(AdminCliTest, DdlLog) {
   ASSERT_EQ(actions[0], "Drop column text_column");
   ASSERT_EQ(actions[1], "Drop index test_idx");
   ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE NOT A PARTITION KEY]");
+}
+
+TEST_F(AdminCliTest, FlushSysCatalog) {
+  BuildAndStart();
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  ASSERT_OK(CallAdmin("flush_sys_catalog"));
+}
+
+TEST_F(AdminCliTest, CompactSysCatalog) {
+  BuildAndStart();
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  ASSERT_OK(CallAdmin("compact_sys_catalog"));
 }
 
 }  // namespace tools

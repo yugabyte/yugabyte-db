@@ -49,7 +49,7 @@ import './UniverseDetail.scss';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
 
-const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
   return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]);
@@ -172,26 +172,24 @@ class UniverseDetail extends Component {
     this.props.router.push(currentLocation);
   };
 
-  handleSubmitManageKey = (response) => {
-    response.then((res) => {
-      if (res.payload.isAxiosError) {
-        this.setState({
-          showAlert: true,
-          alertType: 'danger',
-          alertMessage: res.payload.message
-        });
-      } else {
-        this.setState({
-          showAlert: true,
-          alertType: 'success',
-          alertMessage:
-            JSON.parse(res.payload.config.data).key_op === 'ENABLE'
-              ? 'Encryption key has been set!'
-              : 'Encryption-at-Rest has been disabled!'
-        });
-      }
-      setTimeout(() => this.setState({ showAlert: false }), 3000);
-    });
+  handleSubmitManageKey = (res) => {
+    if (res.payload.isAxiosError) {
+      this.setState({
+        showAlert: true,
+        alertType: 'danger',
+        alertMessage: res.payload.message
+      });
+    } else {
+      this.setState({
+        showAlert: true,
+        alertType: 'success',
+        alertMessage:
+          JSON.parse(res.payload.config.data).key_op === 'ENABLE'
+            ? 'Encryption key has been set!'
+            : 'Encryption-at-Rest has been disabled!'
+      });
+    }
+    setTimeout(() => this.setState({ showAlert: false }), 3000);
 
     this.props.closeModal();
   };
@@ -223,9 +221,11 @@ class UniverseDetail extends Component {
       updateBackupState,
       closeModal,
       customer,
-      customer: { currentCustomer },
+      customer: { currentCustomer, currentUser },
       params: { tab },
-      featureFlags
+      featureFlags,
+      providers,
+      accessKeys
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
@@ -241,6 +241,17 @@ class UniverseDetail extends Component {
     const isProviderK8S =
       getPromiseState(currentUniverse).isSuccess() &&
       isUniverseType(currentUniverse.data, 'kubernetes');
+
+    const providerUUID = primaryCluster?.userIntent?.provider;
+    const provider = providers.data.find((provider) => provider.uuid === providerUUID);
+
+    var onPremSkipProvisioning = false;
+    if (provider && provider.code === 'onprem') {
+      const onPremKey = accessKeys.data.find(
+        (accessKey) => accessKey.idKey.providerUUID === provider.uuid
+      );
+      onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
+    }
 
     const type =
       pathname.indexOf('edit') < 0
@@ -405,13 +416,11 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
-            {
-              featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-                <Replication currentUniverseUUID={currentUniverse.data.universeUUID}/>
-              ): (
-                <ReplicationContainer />
-              )
-            }
+            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+              <Replication currentUniverseUUID={currentUniverse.data.universeUUID} />
+            ) : (
+              <ReplicationContainer />
+            )}
           </Tab.Pane>
         ),
 
@@ -460,7 +469,11 @@ class UniverseDetail extends Component {
                 unmountOnExit={true}
                 disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
               >
-                <UniverseHealthCheckList universe={universe} currentCustomer={currentCustomer} />
+                <UniverseHealthCheckList
+                  universe={universe}
+                  currentCustomer={currentCustomer}
+                  currentUser={currentUser}
+                />
               </Tab.Pane>
             )
           ])
@@ -558,10 +571,9 @@ class UniverseDetail extends Component {
                           )}
                         </YBMenuItem>
                       )}
-
                       {!universePaused && !useSystemd && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={updateInProgress || onPremSkipProvisioning}
                           onClick={showUpgradeSystemdModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -746,6 +758,7 @@ class UniverseDetail extends Component {
                           editTLSAvailability={editTLSAvailability}
                           showManageKeyModal={showManageKeyModal}
                           manageKeyAvailability={manageKeyAvailability}
+                          isItKubernetesUniverse={isItKubernetesUniverse}
                         />
                       </>
                     )

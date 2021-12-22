@@ -30,6 +30,7 @@
 #include <sstream>
 #include <vector>
 
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"
@@ -80,6 +81,9 @@ SstFileReader::SstFileReader(
       internal_comparator_(std::make_shared<InternalKeyComparator>(BytewiseComparator())) {
   fprintf(stdout, "Process %s\n", file_path.c_str());
   init_result_ = GetTableReader(file_name_);
+}
+
+SstFileReader::~SstFileReader() {
 }
 
 extern const uint64_t kBlockBasedTableMagicNumber;

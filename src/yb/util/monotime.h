@@ -36,15 +36,7 @@
 #include <cstdint>
 #include <string>
 
-#ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
-#else
-// This is a poor module interdependency, but the stubs are header-only and
-// it's only for exported header builds, so we'll make an exception.
-#include "yb/client/stubs.h"
-#endif
-
-
 
 struct timeval;
 struct timespec;
@@ -87,6 +79,14 @@ class MonoDelta {
   int64_t ToMicroseconds() const;
   int64_t ToNanoseconds() const;
   std::chrono::steady_clock::duration ToSteadyDuration() const;
+
+  std::chrono::microseconds ToChronoMicroseconds() const {
+    return std::chrono::microseconds(ToMicroseconds());
+  }
+
+  std::chrono::milliseconds ToChronoMilliseconds() const {
+    return std::chrono::milliseconds(ToMilliseconds());
+  }
 
   MonoDelta& operator+=(const MonoDelta& rhs);
   MonoDelta& operator-=(const MonoDelta& rhs);

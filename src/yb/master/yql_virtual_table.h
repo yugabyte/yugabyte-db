@@ -14,14 +14,11 @@
 #ifndef YB_MASTER_YQL_VIRTUAL_TABLE_H
 #define YB_MASTER_YQL_VIRTUAL_TABLE_H
 
-#include "yb/common/entity_ids.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_storage_interface.h"
-#include "yb/common/schema.h"
-#include "yb/master/master.h"
+
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
-#include "yb/util/metrics.h"
 
 namespace yb {
 namespace master {
@@ -33,9 +30,10 @@ class YQLVirtualTable : public YQLStorageIf {
                            const NamespaceName &namespace_name,
                            const Master* const master,
                            const Schema& schema);
+  ~YQLVirtualTable();
 
   // Access methods.
-  const Schema& schema() const { return schema_; }
+  const Schema& schema() const { return *schema_; }
 
   const TableName& table_name() const { return table_name_; }
 
@@ -117,23 +115,23 @@ class YQLVirtualTable : public YQLStorageIf {
   // with the provided value.
   template<class T>
   CHECKED_STATUS SetColumnValue(const std::string& col_name, const T& value, QLRow* row) const {
-    int column_index = schema_.find_column(col_name);
-    if (column_index == Schema::kColumnNotFound) {
-      return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
-    }
-    const DataType data_type = schema_.column(column_index).type_info()->type();
-    row->SetColumn(column_index, util::GetValue(value, data_type));
+    auto p = VERIFY_RESULT(ColumnIndexAndType(col_name));
+    row->SetColumn(p.first, util::GetValue(value, p.second));
     return Status::OK();
   }
+
+  Result<std::pair<int, DataType>> ColumnIndexAndType(const std::string& col_name) const;
 
   // Get all live tserver descriptors sorted by their UUIDs. For cases like system.local and
   // system.peers tables to return the token map of each tserver node so that each maps to a
   // consistent token.
   void GetSortedLiveDescriptors(std::vector<std::shared_ptr<TSDescriptor>>* descs) const;
 
+  CatalogManagerIf& catalog_manager() const;
+
   const Master* const master_;
   TableName table_name_;
-  Schema schema_;
+  std::unique_ptr<Schema> schema_;
   scoped_refptr<Histogram> histogram_;
 };
 

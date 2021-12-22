@@ -29,42 +29,53 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/yb-admin_client.h"
 
 #include <sstream>
 #include <type_traits>
 
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
 #include <boost/tti/has_member_function.hpp>
-
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
+
 #include "yb/common/json_util.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/client/client.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/rpc/proxy.h"
-
-#include "yb/util/string_case.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/string_util.h"
-#include "yb/util/protobuf_util.h"
-#include "yb/util/random_util.h"
-#include "yb/util/stol_utils.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/numbers.h"
 
 #include "yb/consensus/consensus.proxy.h"
+
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/split.h"
+
+#include "yb/master/master.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/sys_catalog.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/protobuf_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
+#include "yb/util/string_case.h"
+#include "yb/util/string_util.h"
 
 DEFINE_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
@@ -84,7 +95,7 @@ DEFINE_bool(
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
 
-PB_ENUM_FORMATTERS(yb::consensus::RaftPeerPB::Role);
+PB_ENUM_FORMATTERS(yb::PeerRole);
 PB_ENUM_FORMATTERS(yb::AppStatusPB::ErrorCode);
 PB_ENUM_FORMATTERS(yb::tablet::RaftGroupStatePB);
 
@@ -725,7 +736,7 @@ Result<std::string> ClusterAdminClient::GetMasterLeaderUuid() {
       InvokeRpc(&MasterServiceProxy::ListMasters, master_proxy_.get(), ListMastersRequestPB()),
       "Could not locate master leader");
   for (const auto& master : list_resp.masters()) {
-    if (master.role() == RaftPeerPB::LEADER) {
+    if (master.role() == PeerRole::LEADER) {
       SCHECK(
           leader_uuid.empty(), ConfigurationError, "Found two LEADER's in the same raft config.");
       leader_uuid = master.instance_id().permanent_uuid();
@@ -840,11 +851,11 @@ Result<std::unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
     for (const auto& replica : locs.replicas()) {
       const auto uuid = replica.ts_info().permanent_uuid();
       switch(replica.role()) {
-        case RaftPeerPB::LEADER:
+        case PeerRole::LEADER:
           // If this is a leader, increment leader counts.
           ++leader_counts[uuid];
           break;
-        case RaftPeerPB::FOLLOWER:
+        case PeerRole::FOLLOWER:
           // If this is a follower, touch the leader count entry also so that tablet server with
           // followers only and 0 leader will be accounted for still.
           leader_counts[uuid];
@@ -998,12 +1009,12 @@ Status ClusterAdminClient::GetTabletPeer(const TabletId& tablet_id,
   CHECK_EQ(tablet_id, locations.tablet_id()) << locations.ShortDebugString();
   bool found = false;
   for (const TabletLocationsPB::ReplicaPB& replica : locations.replicas()) {
-    if (mode == LEADER && replica.role() == RaftPeerPB::LEADER) {
+    if (mode == LEADER && replica.role() == PeerRole::LEADER) {
       *ts_info = replica.ts_info();
       found = true;
       break;
     }
-    if (mode == FOLLOWER && replica.role() != RaftPeerPB::LEADER) {
+    if (mode == FOLLOWER && replica.role() != PeerRole::LEADER) {
       *ts_info = replica.ts_info();
       found = true;
       break;
@@ -1221,7 +1232,7 @@ Status ClusterAdminClient::ListTablets(
     string leader_uuid;
     const auto& locations_of_this_tablet = locations[i];
     for (const auto& replica : locations_of_this_tablet.replicas()) {
-      if (replica.role() == RaftPeerPB::LEADER) {
+      if (replica.role() == PeerRole::LEADER) {
         if (leader_host_port.empty()) {
           leader_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           leader_uuid = replica.ts_info().permanent_uuid();
@@ -1386,7 +1397,7 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(bool is_enabled) {
   req.set_is_enabled(is_enabled);
   for (const auto& master : list_resp.masters()) {
 
-    if (master.role() == RaftPeerPB::LEADER) {
+    if (master.role() == PeerRole::LEADER) {
       RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeLoadBalancerState,
           master_proxy_.get(), req));
     } else {
@@ -1424,7 +1435,7 @@ Status ClusterAdminClient::GetLoadBalancerState() {
   for (const auto& master : list_resp.masters()) {
     error.clear();
     std::unique_ptr<MasterServiceProxy> follower_proxy;
-    if (master.role() == RaftPeerPB::LEADER) {
+    if (master.role() == PeerRole::LEADER) {
       proxy = master_proxy_.get();
     } else {
       HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
@@ -1482,6 +1493,18 @@ Status ClusterAdminClient::FlushTablesById(
        << ToString(table_ids) << " tables"
        << (add_indexes ? " and associated indexes." : ".") << endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::FlushSysCatalog() {
+  master::FlushSysCatalogRequestPB req;
+  auto res = InvokeRpc(&MasterServiceProxy::FlushSysCatalog, master_proxy_.get(), req);
+  return res.ok() ? Status::OK() : res.status();
+}
+
+Status ClusterAdminClient::CompactSysCatalog() {
+  master::CompactSysCatalogRequestPB req;
+  auto res = InvokeRpc(&MasterServiceProxy::CompactSysCatalog, master_proxy_.get(), req);
+  return res.ok() ? Status::OK() : res.status();
 }
 
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {

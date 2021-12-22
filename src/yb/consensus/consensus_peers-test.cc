@@ -30,23 +30,27 @@
 // under the License.
 //
 
-#include <chrono>
-
 #include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus_peers.h"
+
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/server/hybrid_clock.h"
+
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -140,7 +144,8 @@ class ConsensusPeersTest : public YBTest {
         raft_pool_.get(), new NoOpTestPeerProxy(raft_pool_.get(), peer_pb));
     *peer = CHECK_RESULT(Peer::NewRemotePeer(
         peer_pb, kTabletId, kLeaderUuid, PeerProxyPtr(proxy_ptr), message_queue_.get(),
-        raft_pool_token_.get(), nullptr /* consensus */, messenger_.get()));
+        nullptr /* multi raft batcher */, raft_pool_token_.get(),
+        nullptr /* consensus */, messenger_.get()));
     return proxy_ptr;
   }
 
@@ -312,7 +317,8 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
   auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
       FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, PeerProxyPtr(mock_proxy),
-      message_queue_.get(), raft_pool_token_.get(), nullptr /* consensus */,
+      message_queue_.get(), nullptr /* multi raft batcher */,
+      raft_pool_token_.get(), nullptr /* consensus */,
       messenger_.get()));
 
   // Make the peer respond without making any progress -- it always returns
@@ -341,7 +347,8 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
   auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
       FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, PeerProxyPtr(mock_proxy),
-      message_queue_.get(), raft_pool_token_.get(), nullptr /* consensus */,
+      message_queue_.get(), nullptr /* multi raft batcher */, raft_pool_token_.get(),
+      nullptr /* consensus */,
       messenger_.get()));
 
   auto se = ScopeExit([&peer] {

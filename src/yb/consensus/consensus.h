@@ -33,7 +33,6 @@
 #define YB_CONSENSUS_CONSENSUS_H_
 
 #include <iosfwd>
-#include <ostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,30 +40,23 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/opid_util.h"
 
-#include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
-#include "yb/util/status.h"
+#include "yb/util/physical_time.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-
-namespace master {
-class SysCatalogTable;
-}
 
 namespace server {
 class Clock;
@@ -174,9 +166,7 @@ class Consensus {
 
   // Implement a LeaderStepDown() request.
   virtual CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req,
-                                  LeaderStepDownResponsePB* resp) {
-    return STATUS(NotSupported, "Not implemented.");
-  }
+                                  LeaderStepDownResponsePB* resp);
 
   // Wait until the node has LEADER role.
   // Returns Status::TimedOut if the role is not LEADER within 'timeout'.
@@ -256,12 +246,10 @@ class Consensus {
   // Implement a ChangeConfig() request.
   virtual CHECKED_STATUS ChangeConfig(const ChangeConfigRequestPB& req,
                                       const StdStatusCallback& client_cb,
-                                      boost::optional<tserver::TabletServerErrorPB::Code>* error) {
-    return STATUS(NotSupported, "Not implemented.");
-  }
+                                      boost::optional<tserver::TabletServerErrorPB::Code>* error);
 
   // Returns the current Raft role of this instance.
-  virtual RaftPeerPB::Role role() const = 0;
+  virtual PeerRole role() const = 0;
 
   // Returns the leader status (see LeaderStatus type description for details).
   // If leader is ready, then also returns term, otherwise OpId::kUnknownTerm is returned.
@@ -343,8 +331,6 @@ class Consensus {
  protected:
   friend class RefCountedThreadSafe<Consensus>;
   friend class tablet::TabletPeer;
-  friend class master::SysCatalogTable;
-
 
   // Fault hooks for tests. In production code this will always be null.
   std::shared_ptr<ConsensusFaultHooks> fault_hooks_;
@@ -463,16 +449,16 @@ struct StateChangeContext {
 
 class Consensus::ConsensusFaultHooks {
  public:
-  virtual CHECKED_STATUS PreStart() { return Status::OK(); }
-  virtual CHECKED_STATUS PostStart() { return Status::OK(); }
-  virtual CHECKED_STATUS PreConfigChange() { return Status::OK(); }
-  virtual CHECKED_STATUS PostConfigChange() { return Status::OK(); }
-  virtual CHECKED_STATUS PreReplicate() { return Status::OK(); }
-  virtual CHECKED_STATUS PostReplicate() { return Status::OK(); }
-  virtual CHECKED_STATUS PreUpdate() { return Status::OK(); }
-  virtual CHECKED_STATUS PostUpdate() { return Status::OK(); }
-  virtual CHECKED_STATUS PreShutdown() { return Status::OK(); }
-  virtual CHECKED_STATUS PostShutdown() { return Status::OK(); }
+  virtual CHECKED_STATUS PreStart();
+  virtual CHECKED_STATUS PostStart();
+  virtual CHECKED_STATUS PreConfigChange();
+  virtual CHECKED_STATUS PostConfigChange();
+  virtual CHECKED_STATUS PreReplicate();
+  virtual CHECKED_STATUS PostReplicate();
+  virtual CHECKED_STATUS PreUpdate();
+  virtual CHECKED_STATUS PostUpdate();
+  virtual CHECKED_STATUS PreShutdown();
+  virtual CHECKED_STATUS PostShutdown();
   virtual ~ConsensusFaultHooks() {}
 };
 
@@ -498,9 +484,7 @@ struct LeaderState {
   CHECKED_STATUS CreateStatus() const;
 };
 
-inline CHECKED_STATUS MoveStatus(LeaderState&& state) {
-  return state.CreateStatus();
-}
+CHECKED_STATUS MoveStatus(LeaderState&& state);
 
 } // namespace consensus
 } // namespace yb

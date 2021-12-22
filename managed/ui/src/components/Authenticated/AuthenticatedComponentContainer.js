@@ -37,7 +37,10 @@ import {
   getTlsCertificates,
   getTlsCertificatesResponse,
   insecureLogin,
-  insecureLoginResponse
+  insecureLoginResponse,
+  fetchUser,
+  fetchUserSuccess,
+  fetchUserFailure
 } from '../../actions/customers';
 import {
   fetchCustomerTasks,
@@ -46,6 +49,7 @@ import {
 } from '../../actions/tasks';
 import { setUniverseMetrics } from '../../actions/universe';
 import { queryMetrics } from '../../actions/graph';
+import Cookies from 'js-cookie';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -160,6 +164,17 @@ const mapDispatchToProps = (dispatch) => {
     fetchCustomerConfigs: () => {
       dispatch(fetchCustomerConfigs()).then((response) => {
         dispatch(fetchCustomerConfigsResponse(response.payload));
+      });
+    },
+
+    fetchUser: () => {
+      const userId = Cookies.get('userId') || localStorage.getItem('userId');
+      dispatch(fetchUser(userId)).then((userResponse) => {
+        if (userResponse.payload.status === 200) {
+          dispatch(fetchUserSuccess(userResponse));
+        } else {
+          dispatch(fetchUserFailure(userResponse.payload.error));
+        }
       });
     }
   };

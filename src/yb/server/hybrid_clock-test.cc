@@ -31,11 +31,12 @@
 //
 
 #include <algorithm>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/mock_hybrid_clock.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"

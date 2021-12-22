@@ -85,19 +85,14 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  const std::string& master_addrs,
                                  const std::string& producer_universe_uuid);
 
-  void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
+  void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
-  void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
+  void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
   void HandleDeleteTabletSnapshotResponse(
-      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error);
+      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) override;
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
-
-  CHECKED_STATUS CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
-                                           const TSDescriptorVector& all_ts_descs,
-                                           const vector<Partition>& partitions,
-                                           CreateTableResponsePB* resp) override;
 
   CHECKED_STATUS HandlePlacementUsingReplicationInfo(const ReplicationInfoPB& replication_info,
                                                      const TSDescriptorVector& all_ts_descs,
@@ -128,7 +123,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // List CDC streams (optionally, for a given table).
   CHECKED_STATUS ListCDCStreams(const ListCDCStreamsRequestPB* req,
-                                ListCDCStreamsResponsePB* resp);
+                                ListCDCStreamsResponsePB* resp) override;
 
   // Get CDC stream.
   CHECKED_STATUS GetCDCStream(const GetCDCStreamRequestPB* req,
@@ -188,9 +183,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
-  tablet::SnapshotCoordinator& snapshot_coordinator() {
+  tablet::SnapshotCoordinator& snapshot_coordinator() override {
     return snapshot_coordinator_;
   }
+
+  size_t GetNumLiveTServersForActiveCluster() override;
 
  private:
   friend class SnapshotLoader;
@@ -391,7 +388,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                      const Status& failure_status);
 
   // Checks if table has at least one cdc stream (includes producers for xCluster replication).
-  bool IsTableCdcProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+  bool IsTableCdcProducer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   // Checks if the table is a consumer in an xCluster replication universe.
   bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
@@ -430,7 +427,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // CDC Stream map: CDCStreamId -> CDCStreamInfo.
   typedef std::unordered_map<CDCStreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
-  CDCStreamInfoMap cdc_stream_map_;
+  CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
 
   // Map of tables -> number of cdc streams they are producers for.
   std::unordered_map<TableId, int> cdc_stream_tables_count_map_ GUARDED_BY(mutex_);
@@ -441,7 +438,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;
-  UniverseReplicationInfoMap universe_replication_map_;
+  UniverseReplicationInfoMap universe_replication_map_ GUARDED_BY(mutex_);
 
   // mutex on should_send_consumer_registry_mutex_.
   mutable simple_spinlock should_send_consumer_registry_mutex_;

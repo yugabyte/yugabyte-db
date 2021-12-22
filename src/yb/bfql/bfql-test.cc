@@ -16,10 +16,12 @@
 #include <vector>
 
 #include "yb/bfql/bfql.h"
+
+#include "yb/common/ql_value.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
-#include "yb/common/ql_value.h"
 
 namespace yb {
 namespace bfql {
@@ -109,7 +111,7 @@ class BfqlTest : public YBTest {
         // Converting params.
         cast_params[0] = params[pindex];
         cast_params[1] = converted_param;
-        BFExecApiTest::ExecQLFunc(bfql::kCastFuncName, cast_params, converted_param);
+        RETURN_NOT_OK(BFExecApiTest::ExecQLFunc(bfql::kCastFuncName, cast_params, converted_param));
 
         // Save converted value.
         (*converted_params)[pindex] = converted_param;
@@ -261,7 +263,7 @@ TEST_F(BfqlTest, TestExactMatchSignature) {
   // Convert int64 value (temp_result) to int16 value (result).
   result->set_ql_type_id(DataType::INT16);
   vector<BFTestValue::SharedPtr> temp_params = { temp_result, result };
-  BFExecApiTest::ExecQLFunc(bfql::kCastFuncName, temp_params, result);
+  ASSERT_OK(BFExecApiTest::ExecQLFunc(bfql::kCastFuncName, temp_params, result));
 
   // Check result.
   expected_int_result = int_val1 + int_val2;
@@ -364,7 +366,7 @@ TEST_F(BfqlTest, TestCompatibleSignature) {
 
   // Find the opcode.
   ASSERT_OK(BFCompileApiTest::FindQLOpcode("+", params, &opcode, &bfdecl, result));
-  ConvertParams(bfdecl, params, &converted_params);
+  ASSERT_OK(ConvertParams(bfdecl, params, &converted_params));
 
   // Execute the opcode.
   ASSERT_OK(BFExecApiTest::ExecQLOpcode(opcode, converted_params, result));
@@ -388,7 +390,7 @@ TEST_F(BfqlTest, TestCompatibleSignature) {
 
   // Find the opcode.
   ASSERT_OK(BFCompileApiTest::FindQLOpcode("+", params, &opcode, &bfdecl, result));
-  ConvertParams(bfdecl, params, &converted_params);
+  ASSERT_OK(ConvertParams(bfdecl, params, &converted_params));
 
   // Execute the opcode.
   ASSERT_OK(BFExecApiTest::ExecQLOpcode(opcode, converted_params, result));

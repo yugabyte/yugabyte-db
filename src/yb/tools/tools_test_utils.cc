@@ -14,8 +14,11 @@
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/util/jsonreader.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
 DEFINE_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
@@ -24,11 +27,13 @@ namespace yb {
 namespace tools {
 
 Status RunBackupCommand(
-    const HostPort& pg_hp, const std::string& master_addresses, const std::string& tmp_dir,
+    const HostPort& pg_hp, const std::string& master_addresses,
+    const std::string& tserver_http_addresses, const std::string& tmp_dir,
     const std::vector<std::string>& extra_args) {
   std::vector <std::string> args = {
       "python3", GetToolPath("../../../managed/devops/bin", "yb_backup.py"),
       "--masters", master_addresses,
+      "--ts_web_hosts_ports", tserver_http_addresses,
       "--remote_yb_admin_binary", GetToolPath("yb-admin"),
       "--remote_ysql_dump_binary", GetPgToolPath("ysql_dump"),
       "--remote_ysql_shell_binary", GetPgToolPath("ysqlsh"),

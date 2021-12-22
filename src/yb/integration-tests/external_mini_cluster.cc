@@ -32,43 +32,65 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
-
 #include <atomic>
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
-#include <chrono>
+#include <unordered_map>
+#include <vector>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
+
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/mathlimits.h"
+
+#include "yb/gutil/algorithm.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/singleton.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
-#include "yb/gutil/singleton.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
-#include "yb/server/server_base.pb.h"
+#include "yb/master/sys_catalog.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/server_base.pb.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/net/socket.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
@@ -1113,6 +1135,17 @@ string ExternalMiniCluster::GetTabletServerAddresses() const {
   return peer_addrs;
 }
 
+string ExternalMiniCluster::GetTabletServerHTTPAddresses() const {
+  string peer_addrs = "";
+  for (const auto& ts : tablet_servers_) {
+    if (!peer_addrs.empty()) {
+      peer_addrs += ",";
+    }
+    peer_addrs += HostPortToString(ts->bind_host(), ts->http_port());
+  }
+  return peer_addrs;
+}
+
 Status ExternalMiniCluster::StartMasters() {
   int num_masters = opts_.num_masters;
 
@@ -1578,13 +1611,14 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
     return STATUS(IllegalState, "No running masters");
   }
   rpc::Rpcs rpcs;
-  auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(
+  auto rpc = std::make_shared<GetLeaderMasterRpc>(
       Bind(&LeaderMasterCallback, &leader_master_hp, &sync),
       addrs,
       deadline,
       messenger_,
       proxy_cache_.get(),
       &rpcs);
+  rpc->SendRpc();
   RETURN_NOT_OK(sync.Wait());
   rpcs.Shutdown();
   bool found = false;
@@ -1801,6 +1835,26 @@ Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
                                            TabletServerErrorPB::Code_Name(resp.error().code())));
   }
   return Status::OK();
+}
+
+ExternalMaster* ExternalMiniCluster::master() const {
+  if (masters_.empty())
+    return nullptr;
+
+  CHECK_EQ(masters_.size(), 1)
+      << "master() should not be used with multiple masters, use GetLeaderMaster() instead.";
+  return master(0);
+}
+
+// Return master at 'idx' or NULL if the master at 'idx' has not been started.
+ExternalMaster* ExternalMiniCluster::master(int idx) const {
+  CHECK_LT(idx, masters_.size());
+  return masters_[idx].get();
+}
+
+ExternalTabletServer* ExternalMiniCluster::tablet_server(int idx) const {
+  CHECK_LT(idx, tablet_servers_.size());
+  return tablet_servers_[idx].get();
 }
 
 //------------------------------------------------------------
@@ -2107,7 +2161,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   }
 
   if (!success) {
-    ignore_result(p->Kill(SIGKILL));
+    WARN_NOT_OK(p->Kill(SIGKILL), "Killing process failed");
     return STATUS(TimedOut,
         Substitute("Timed out after $0s waiting for process ($1) to write info file ($2)",
                    kProcessStartTimeoutSeconds, exe_, info_path));
@@ -2181,7 +2235,7 @@ void ExternalDaemon::Shutdown() {
       static const int kWaitMs = 100;
       LOG(INFO) << "Sending signal " << kHeapProfileSignal << " to " << ProcessNameAndPidStr()
                 << " to capture a heap profile. Waiting for " << kWaitMs << " ms afterwards.";
-      ignore_result(process_->Kill(kHeapProfileSignal));
+      WARN_NOT_OK(process_->Kill(kHeapProfileSignal), "Killing process failed");
       std::this_thread::sleep_for(std::chrono::milliseconds(kWaitMs));
     }
 
@@ -2189,7 +2243,7 @@ void ExternalDaemon::Shutdown() {
       // We put 'SIGTERM' in quotes because an unquoted one would be treated as a test failure
       // by our regular expressions in common-test-env.sh.
       LOG(INFO) << "Terminating " << ProcessNameAndPidStr() << " using 'SIGTERM' signal";
-      ignore_result(process_->Kill(SIGTERM));
+      WARN_NOT_OK(process_->Kill(SIGTERM), "Killing process failed");
       int total_delay_ms = 0;
       int current_delay_ms = 10;
       for (int i = 0; i < 10 && IsProcessAlive(); ++i) {
@@ -2206,7 +2260,7 @@ void ExternalDaemon::Shutdown() {
 
     if (IsProcessAlive()) {
       LOG(INFO) << "Killing " << ProcessNameAndPidStr() << " with SIGKILL";
-      ignore_result(process_->Kill(SIGKILL));
+      WARN_NOT_OK(process_->Kill(SIGKILL), "Killing process failed");
     }
   }
   int ret = 0;
@@ -2362,6 +2416,22 @@ Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
     return STATUS_FORMAT(RemoteError, "Failed to get gflag $0 value.", flag);
   }
   return resp.value();
+}
+
+Result<int64_t> ExternalDaemon::GetInt64Metric(const MetricEntityPrototype* entity_proto,
+                                               const char* entity_id,
+                                               const MetricPrototype* metric_proto,
+                                               const char* value_field) const {
+  return GetInt64MetricFromHost(
+      bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
+}
+
+Result<int64_t> ExternalDaemon::GetInt64Metric(const char* entity_proto_name,
+                                               const char* entity_id,
+                                               const char* metric_proto_name,
+                                               const char* value_field) const {
+  return GetInt64MetricFromHost(
+      bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
 }
 
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
@@ -2588,6 +2658,15 @@ Status ExternalTabletServer::Restart(
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
   return Start(start_cql_proxy, true /* set_proxy_addrs */, flags);
+}
+
+Result<int64_t> ExternalTabletServer::GetInt64CQLMetric(const MetricEntityPrototype* entity_proto,
+                                                        const char* entity_id,
+                                                        const MetricPrototype* metric_proto,
+                                                        const char* value_field) const {
+  return GetInt64MetricFromHost(
+      HostPort(bind_host(), cql_http_port()),
+      entity_proto, entity_id, metric_proto, value_field);
 }
 
 Status ExternalTabletServer::SetNumDrives(uint16_t num_drives) {

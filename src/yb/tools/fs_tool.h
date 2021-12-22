@@ -33,13 +33,10 @@
 #ifndef YB_TOOLS_FS_TOOL_H
 #define YB_TOOLS_FS_TOOL_H
 
-#include <iostream>
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

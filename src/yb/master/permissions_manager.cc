@@ -11,19 +11,21 @@
 // under the License.
 //
 
-#include <mutex>
+#include "yb/master/permissions_manager.h"
 
-#include "yb/util/crypt.h"
+#include <mutex>
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
-#include "yb/master/permissions_manager.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/util/crypt.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
 using std::shared_ptr;

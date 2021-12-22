@@ -20,8 +20,19 @@
 
 #pragma once
 
-#include "yb/rocksdb/db.h"
+#include <stddef.h>
+#include <stdint.h>
+
+#include <memory>
+#include <stack>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/write_batch_base.h"
 
 namespace rocksdb {
 namespace experimental {

@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.UrlValidator;
+import org.apache.commons.validator.routines.DomainValidator;
 
 @Singleton
 public class CustomerConfigValidator {
@@ -56,6 +57,8 @@ public class CustomerConfigValidator {
   private static final String[] GCS_URL_SCHEMES = {"http", "https", "gs"};
 
   private static final String[] AZ_URL_SCHEMES = {"http", "https"};
+
+  private static final String[] TLD_OVERRIDE = {"local"};
 
   private static final String AWS_HOST_BASE_FIELDNAME = "AWS_HOST_BASE";
 
@@ -105,6 +108,10 @@ public class CustomerConfigValidator {
   public abstract static class ConfigFieldValidator extends ConfigValidator {
 
     protected final String fieldName;
+
+    static {
+      DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
+    }
 
     public ConfigFieldValidator(String type, String name, String fieldName) {
       super(type, name);
@@ -239,7 +246,9 @@ public class CustomerConfigValidator {
         String type, String name, String fieldName, String[] schemes, boolean emptyAllowed) {
       super(type, name, fieldName);
       this.emptyAllowed = emptyAllowed;
-      urlValidator = new UrlValidator(schemes, UrlValidator.ALLOW_LOCAL_URLS);
+      DomainValidator domainValidator = DomainValidator.getInstance(true);
+      urlValidator =
+          new UrlValidator(schemes, null, UrlValidator.ALLOW_LOCAL_URLS, domainValidator);
     }
 
     @Override

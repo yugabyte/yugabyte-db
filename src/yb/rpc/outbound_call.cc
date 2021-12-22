@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/outbound_call.h"
 
 #include <algorithm>
@@ -41,6 +42,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/proxy_base.h"
@@ -48,6 +50,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -55,6 +58,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
@@ -144,7 +148,7 @@ void InvokeCallbackTask::Done(const Status& status) {
 OutboundCall::OutboundCall(const RemoteMethod* remote_method,
                            const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                            std::shared_ptr<const OutboundMethodMetrics> method_metrics,
-                           google::protobuf::Message* response_storage,
+                           AnyMessagePtr response_storage,
                            RpcController* controller,
                            RpcMetrics* rpc_metrics,
                            ResponseCallback callback,
@@ -211,21 +215,20 @@ void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* 
   buffer_consumption_ = ScopedTrackedConsumption();
 }
 
-Status OutboundCall::SetRequestParam(
-    const Message& message, const MemTrackerPtr& mem_tracker) {
-  using serialization::SerializeHeader;
-  using serialization::SerializeMessage;
+Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
+#if 0
+  RequestHeader header;
+  RETURN_NOT_OK(InitHeader(&header));
+  auto se = ScopeExit([&header] {
+    // Prevent header to free its RemoteMethodPB pointer incorrectly when header
+    // goes out of scope, because RemoteMethodPB is owned by the containing remote_method_.
+    header.release_remote_method();
+  });
 
-  size_t message_size = 0;
-  auto status = SerializeMessage(message,
-                                 /* param_buf */ nullptr,
-                                 /* additional_size */ 0,
-                                 /* use_cached_size */ false,
-                                 /* offset */ 0,
-                                 &message_size);
-  if (!status.ok()) {
-    return status;
-  }
+  buffer_ = VERIFY_RESULT(SerializeRequest(req.SerializedSize(), 0, header, req));
+#endif
+  auto req_size = req.SerializedSize();
+  size_t message_size = SerializedMessageSize(req_size, 0);
 
   using Output = google::protobuf::io::CodedOutputStream;
   auto timeout_ms = VERIFY_RESULT(TimeoutMs());
@@ -262,9 +265,7 @@ Status OutboundCall::SetRequestParam(
   if (mem_tracker) {
     buffer_consumption_ = ScopedTrackedConsumption(mem_tracker, buffer_.size());
   }
-
-  RETURN_NOT_OK(SerializeMessage(
-      message, &buffer_, /* additional_size */ 0, /* use_cached_size */ true, header_size));
+  RETURN_NOT_OK(SerializeMessage(req, req_size, buffer_, 0, header_size));
   if (method_metrics_) {
     IncrementCounterBy(method_metrics_->request_bytes, buffer_.size());
   }
@@ -407,9 +408,9 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
     // TODO: here we're deserializing the call response within the reactor thread,
     // which isn't great, since it would block processing of other RPCs in parallel.
     // Should look into a way to avoid this.
-    if (!pb_util::ParseFromArray(response_, r.data(), r.size()).IsOk()) {
-      SetFailed(STATUS(IOError, "Invalid response, missing fields",
-                                response_->InitializationErrorString()));
+    auto status = response_.ParseFromSlice(r);
+    if (!status.ok()) {
+      SetFailed(status);
       return;
     }
     if (SetState(FINISHED_SUCCESS)) {
@@ -475,6 +476,9 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
     if (status_.IsRemoteError()) {
       CHECK(err_pb);
       error_pb_ = std::move(err_pb);
+      if (error_pb_->has_code()) {
+        status_ = status_.CloneAndAddErrorCode(RpcError(error_pb_->code()));
+      }
     } else {
       CHECK(!err_pb);
     }
@@ -614,7 +618,7 @@ Status CallResponse::ParseFrom(CallData* call_data) {
 
   response_data_ = std::move(*call_data);
   Slice source(response_data_.data(), response_data_.size());
-  RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &entire_message));
+  RETURN_NOT_OK(ParseYBMessage(source, &header_, &entire_message));
 
   // Use information from header to extract the payload slices.
   const size_t sidecars = header_.sidecar_offsets_size();
@@ -644,6 +648,11 @@ Status CallResponse::ParseFrom(CallData* call_data) {
   parsed_ = true;
   return Status::OK();
 }
+
+const std::string kRpcErrorCategoryName = "rpc error";
+
+StatusCategoryRegisterer rpc_error_category_registerer(
+    StatusCategoryDescription::Make<RpcErrorTag>(&kRpcErrorCategoryName));
 
 }  // namespace rpc
 }  // namespace yb

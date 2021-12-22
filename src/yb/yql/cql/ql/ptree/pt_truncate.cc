@@ -19,7 +19,9 @@
 
 #include "yb/client/table.h"
 
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_require_drop_privs_for_truncate);
@@ -44,7 +46,7 @@ Status PTTruncateStmt::Analyze(SemContext *sem_context) {
 
   // Processing table name.
   bool is_system_ignored = false;
-  RETURN_NOT_OK(name()->AnalyzeName(sem_context, OBJECT_TABLE));
+  RETURN_NOT_OK(name()->AnalyzeName(sem_context, ObjectType::TABLE));
 
   // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
   if (FLAGS_ycql_require_drop_privs_for_truncate) {

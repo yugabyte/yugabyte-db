@@ -14,7 +14,10 @@
 #ifndef YB_DOCDB_DOCDB_FWD_H
 #define YB_DOCDB_DOCDB_FWD_H
 
+#include "yb/docdb/docdb.fwd.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -31,7 +34,6 @@ class DocWriteBatch;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class KeyBytes;
-class KeyValueWriteBatchPB;
 class ManualHistoryRetentionPolicy;
 class PgsqlWriteOperation;
 class PrimitiveValue;

@@ -15,21 +15,31 @@
 #include <thread>
 
 #include <boost/range/adaptors.hpp>
-
 #include <gtest/gtest.h>
 
+#include "yb/client/table_info.h"
+
 #include "yb/consensus/consensus.h"
+
+#include "yb/gutil/strings/join.h"
+
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/cluster_itest_util.h"
-#include "yb/master/catalog_manager.h"
+
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
+
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -398,17 +408,10 @@ TEST_F_EX(CqlTabletSplitTest, SecondaryIndexWithDrop, CqlTabletSplitTestMultiMas
     if (iter > 1) {
       // Test tracking split tablets in case of leader master failover.
       const auto leader_master_idx = cluster_->LeaderMasterIdx();
-      const auto sys_catalog_tablet_peer_leader = cluster_->mini_master(leader_master_idx)
-                                                ->master()
-                                                ->catalog_manager()
-                                                ->sys_catalog()
-                                                ->tablet_peer();
+      const auto sys_catalog_tablet_peer_leader =
+          cluster_->mini_master(leader_master_idx)->tablet_peer();
       const auto sys_catalog_tablet_peer_follower =
-          cluster_->mini_master((leader_master_idx + 1) % cluster_->num_masters())
-              ->master()
-              ->catalog_manager()
-              ->sys_catalog()
-              ->tablet_peer();
+          cluster_->mini_master((leader_master_idx + 1) % cluster_->num_masters())->tablet_peer();
       LOG(INFO) << "Iteration " << iter << ": stepping down master leader";
       ASSERT_OK(StepDown(
           sys_catalog_tablet_peer_leader, sys_catalog_tablet_peer_follower->permanent_uuid(),

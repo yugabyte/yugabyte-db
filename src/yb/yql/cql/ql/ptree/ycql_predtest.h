@@ -19,7 +19,6 @@
 #define YB_YQL_CQL_QL_PTREE_YCQL_PREDTEST_H
 
 #include "yb/yql/cql/ql/ptree/column_arg.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
 namespace ql {

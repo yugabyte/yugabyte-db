@@ -31,22 +31,24 @@
 //
 
 #include <gtest/gtest.h>
-#include <gflags/gflags.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus_queue.h"
+
 #include "yb/consensus/consensus-test-util.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/consensus/log-test-base.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/log_util.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/fs/fs_manager.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -754,14 +756,14 @@ TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) 
 
   for (int i = 31; i <= 53; i++) {
     if (i <= 45) {
-      AppendReplicateMsg(72, i, 1024);
+      ASSERT_OK(AppendReplicateMsg(72, i, 1024));
       continue;
     }
     if (i <= 51) {
-      AppendReplicateMsg(73, i, 1024);
+      ASSERT_OK(AppendReplicateMsg(73, i, 1024));
       continue;
     }
-    AppendReplicateMsg(76, i, 1024);
+    ASSERT_OK(AppendReplicateMsg(76, i, 1024));
   }
 
   WaitForLocalPeerToAckIndex(53);

@@ -16,8 +16,6 @@
 #ifndef YB_UTIL_YB_PG_ERRCODES_H
 #define YB_UTIL_YB_PG_ERRCODES_H
 
-#include <stdint.h>
-
 #include <string>
 
 /* These macro definitions have been taken from elog.h */

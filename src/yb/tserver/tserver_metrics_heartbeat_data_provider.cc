@@ -13,12 +13,20 @@
 
 #include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
 
+#include "yb/consensus/log.h"
+
 #include "yb/master/master.pb.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_service.service.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
 
 DEFINE_int32(tserver_heartbeat_metrics_interval_ms, 5000,
              "Interval (in milliseconds) at which tserver sends its metrics in a heartbeat to "

@@ -2,19 +2,19 @@
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ExtraMigrationManager;
-import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.models.Customer;
@@ -22,7 +22,6 @@ import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
-import ch.qos.logback.core.joran.spi.JoranException;
 import io.ebean.Ebean;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
@@ -52,7 +51,8 @@ public class AppInit {
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
       PlatformMetricsProcessor platformMetricsProcessor,
-      SettableRuntimeConfigFactory sConfigFactory)
+      SettableRuntimeConfigFactory sConfigFactory,
+      Config config)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
@@ -82,9 +82,10 @@ public class AppInit {
         if (storagePath == null || storagePath.length() == 0) {
           throw new RuntimeException(("yb.storage.path is not set in application.conf"));
         }
-
-        LogUtil.updateLoggingFromConfig(sConfigFactory);
       }
+
+      // temporarily revert due to PLAT-2434
+      // LogUtil.updateLoggingFromConfig(sConfigFactory, config);
 
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();

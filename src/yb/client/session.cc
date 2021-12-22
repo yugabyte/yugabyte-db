@@ -13,6 +13,7 @@
 
 #include "yb/client/session.h"
 
+#include "yb/client/async_rpc.h"
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
@@ -23,8 +24,13 @@
 #include "yb/common/consistent_read_point.h"
 
 #include "yb/consensus/consensus_error.h"
+
 #include "yb/tserver/tserver_error.h"
+
+#include "yb/util/debug-util.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

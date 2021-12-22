@@ -4383,6 +4383,13 @@ RollbackToSavepoint(const char *name)
 void
 BeginInternalSubTransaction(const char *name)
 {
+	/*
+	 * The subtransaction corresponding to the buffered operations must be
+	 * current and in the INPROGRESS state for correct error handling.
+	 * An error thrown while/after switching over to a new subtransaction
+	 * would lead to a fatal error or unpredictable behavior.
+	 */
+	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -4454,6 +4461,13 @@ BeginInternalSubTransaction(const char *name)
 void
 ReleaseCurrentSubTransaction(void)
 {
+	/*
+	 * The subtransaction corresponding to the buffered operations must be
+	 * current and in the INPROGRESS state for correct error handling.
+	 * An error thrown while/after commiting/releasing it would lead to a
+	 * fatal error or unpredictable behavior.
+	 */
+	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -6064,14 +6078,23 @@ xact_redo(XLogReaderState *record)
 		elog(PANIC, "xact_redo: unknown op code %u", info);
 }
 
-void YBSaveDdlHandle(YBCPgStatement handle) {
+void YBSaveDdlHandle(YBCPgStatement handle)
+{
 	CurrentTransactionState->YBPostponedDdlOps = lappend(CurrentTransactionState->YBPostponedDdlOps, handle);
 }
 
-List* YBGetDdlHandles() {
+List* YBGetDdlHandles()
+{
 	return CurrentTransactionState->YBPostponedDdlOps;
 }
 
-void YBClearDdlHandles() {
+void YBClearDdlHandles()
+{
 	CurrentTransactionState->YBPostponedDdlOps = NULL;
+}
+
+void YbClearCurrentTransactionId()
+{
+	CurrentTransactionState->transactionId = InvalidTransactionId;
+	MyPgXact->xid = InvalidTransactionId;
 }

@@ -28,13 +28,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef UTIL_GTL_CHARMAP_H_
-#define UTIL_GTL_CHARMAP_H_
+#ifndef YB_GUTIL_CHARMAP_H
+#define YB_GUTIL_CHARMAP_H
 
 #include <string.h>
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/type_traits.h"
 
 class Charmap {
@@ -70,7 +70,7 @@ class Charmap {
   }
 
   // Returns true if and only if a character exists in both maps.
-  bool IntersectsWith(const Charmap & c) const {
+  bool IntersectsWith(const Charmap& c) const {
     for (int i = 0; i < 8; ++i) {
       if ((m_[i] & c.m_[i]) != 0)
         return true;
@@ -99,4 +99,4 @@ class Charmap {
 };
 DECLARE_POD(Charmap);
 
-#endif  // UTIL_GTL_CHARMAP_H_
+#endif  // YB_GUTIL_CHARMAP_H

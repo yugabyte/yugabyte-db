@@ -14,14 +14,16 @@
 #ifndef YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
 #define YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
 
-#include <libpq-fe.h>
-
 #include <memory>
+#include <string>
+
+#include "libpq-fe.h" // NOLINT
 
 #include "yb/common/common.pb.h"
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 
 namespace yb {

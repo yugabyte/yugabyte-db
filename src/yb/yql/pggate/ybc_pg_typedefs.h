@@ -16,7 +16,8 @@
 #ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 #define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
-#include "yb/common/ybc_util.h"
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 
@@ -286,6 +287,7 @@ typedef struct PgExecParameters {
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
   int rowmark = -1;
+  int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   char *bfinstr = NULL;
   uint64_t* statement_read_time = NULL;
   char *partition_key = NULL;
@@ -296,6 +298,7 @@ typedef struct PgExecParameters {
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
+  int wait_policy; // Cast to LockWaitPolicy for C use
   char *bfinstr;
   uint64_t* statement_read_time;
   char *partition_key;

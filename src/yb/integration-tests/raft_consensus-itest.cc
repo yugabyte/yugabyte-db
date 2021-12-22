@@ -35,8 +35,6 @@
 #include <unordered_set>
 
 #include <boost/optional.hpp>
-
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
@@ -47,15 +45,20 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/value_type.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
@@ -68,17 +71,20 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 
-#include "yb/server/server_base.pb.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/server_base.pb.h"
 
 #include "yb/util/oid_generator.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -1736,7 +1742,7 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
     resp.Clear();
     rpc.Reset();
     rpc.set_timeout(MonoDelta::FromSeconds(10));
-    ignore_result(ts->tserver_proxy->Write(req, &resp, &rpc));
+    WARN_NOT_OK(ts->tserver_proxy->Write(req, &resp, &rpc), "Write failed");
     VLOG(1) << "Response from server " << replica_idx << ": "
             << resp.ShortDebugString();
   }
@@ -2191,7 +2197,7 @@ void RaftConsensusITest::WaitForReplicasReportedToMaster(
     if (tablet_locations->replicas_size() == num_replicas) {
       for (const master::TabletLocationsPB_ReplicaPB& replica :
                     tablet_locations->replicas()) {
-        if (replica.role() == RaftPeerPB::LEADER) {
+        if (replica.role() == PeerRole::LEADER) {
           *has_leader = true;
         }
       }

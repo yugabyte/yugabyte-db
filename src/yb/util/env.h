@@ -28,13 +28,15 @@
 #define YB_UTIL_ENV_H
 
 #include <stdint.h>
-#include <cstdarg>
+
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "yb/gutil/callback_forward.h"
-#include "yb/util/file_system.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/file_system.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/ulimit.h"
 
@@ -398,7 +400,7 @@ class Env {
   //
   // Returning an error won't halt the walk, but it will cause it to return
   // with an error status when it's done.
-  typedef Callback<Status(FileType, const std::string&, const std::string&)> WalkCallback;
+  using WalkCallback = std::function<Status(FileType, const std::string&, const std::string&)>;
 
   // Whether to walk directories in pre-order or post-order.
   enum DirectoryOrder {
@@ -412,8 +414,8 @@ class Env {
   // The walk will not cross filesystem boundaries. It won't change the
   // working directory, nor will it follow symbolic links.
   virtual CHECKED_STATUS Walk(const std::string& root,
-                      DirectoryOrder order,
-                      const WalkCallback& cb) = 0;
+                              DirectoryOrder order,
+                              const WalkCallback& cb) = 0;
 
   // Canonicalize 'path' by applying the following conversions:
   // - Converts a relative path into an absolute one using the cwd.

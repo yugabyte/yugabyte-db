@@ -22,8 +22,6 @@
 #ifndef YB_UTIL_DATE_TIME_H_
 #define YB_UTIL_DATE_TIME_H_
 
-
-#include <locale>
 #include <regex>
 
 #include "yb/util/monotime.h"

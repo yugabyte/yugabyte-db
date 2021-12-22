@@ -24,6 +24,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(TEST_strand_done_inject_delay_ms);
 

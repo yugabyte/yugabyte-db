@@ -27,10 +27,12 @@
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
@@ -64,15 +66,15 @@ TEST_F(CompactFilesTest, ObsoleteFiles) {
   options.listeners.emplace_back(collector);
 
   DB* db = nullptr;
-  DestroyDB(db_name_, options);
+  ASSERT_OK(DestroyDB(db_name_, options));
   Status s = DB::Open(options, db_name_, &db);
   assert(s.ok());
   assert(db);
 
   // create couple files
   for (int i = 1000; i < 2000; ++i) {
-    db->Put(WriteOptions(), ToString(i),
-            std::string(kWriteBufferSize / 10, 'a' + (i % 26)));
+    ASSERT_OK(db->Put(WriteOptions(), ToString(i),
+                      std::string(kWriteBufferSize / 10, 'a' + (i % 26))));
   }
 
   auto l0_files = collector->GetFlushedFiles();
@@ -98,15 +100,15 @@ TEST_F(CompactFilesTest, CapturingPendingFiles) {
   options.listeners.emplace_back(collector);
 
   DB* db = nullptr;
-  DestroyDB(db_name_, options);
+  ASSERT_OK(DestroyDB(db_name_, options));
   Status s = DB::Open(options, db_name_, &db);
   assert(s.ok());
   assert(db);
 
   // Create 5 files.
   for (int i = 0; i < 5; ++i) {
-    db->Put(WriteOptions(), "key" + ToString(i), "value");
-    db->Flush(FlushOptions());
+    ASSERT_OK(db->Put(WriteOptions(), "key" + ToString(i), "value"));
+    ASSERT_OK(db->Flush(FlushOptions()));
   }
 
   auto l0_files = collector->GetFlushedFiles();
@@ -124,8 +126,8 @@ TEST_F(CompactFilesTest, CapturingPendingFiles) {
 
   // In the meantime flush another file.
   TEST_SYNC_POINT("CompactFilesTest.CapturingPendingFiles:0");
-  db->Put(WriteOptions(), "key5", "value");
-  db->Flush(FlushOptions());
+  ASSERT_OK(db->Put(WriteOptions(), "key5", "value"));
+  ASSERT_OK(db->Flush(FlushOptions()));
   TEST_SYNC_POINT("CompactFilesTest.CapturingPendingFiles:1");
 
   compaction_thread.join();

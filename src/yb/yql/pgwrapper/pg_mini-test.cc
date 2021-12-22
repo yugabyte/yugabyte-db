@@ -16,25 +16,38 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/pgsql_error.h"
+
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rocksdb/db.h"
+
+#include "yb/server/skewed_clock.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
+
 #include "yb/tools/tools_test_utils.h"
 
-#include "yb/util/logging.h"
-#include "yb/yql/pggate/pggate_flags.h"
-
-#include "yb/common/pgsql_error.h"
+#include "yb/util/atomic.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using namespace std::literals;
 
@@ -42,7 +55,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_double(TEST_respond_write_failed_probability);
-DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(txn_max_apply_batch_records);
@@ -581,22 +594,19 @@ void PgMiniTest::TestInsertSelectRowLock(IsolationLevel isolation, RowMarkType r
 
   ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
   ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  // Sleep to ensure that read done in txn doesn't face kReadRestart after INSERT (a sleep will
+  // ensure sufficient gap between write time and read point - more than clock skew).
+  std::this_thread::sleep_for(kSleepTime);
   ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", kKeys));
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
+  ASSERT_OK(result);
   if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-    // TODO: change to ASSERT_OK and expect kKeys rows when issue #2809 is fixed.
-    ASSERT_NOK(result);
-    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
-    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
-        << result.status();
-    ASSERT_STR_CONTAINS(result.status().ToString(), "Value write after transaction start");
-    ASSERT_OK(read_conn.Execute("ABORT"));
+    ASSERT_EQ(PQntuples(result.get().get()), kKeys);
   } else {
-    ASSERT_OK(result);
     // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys + 1 rows are expected for Yugabyte.
     ASSERT_EQ(PQntuples(result.get().get()), kKeys + 1);
-    ASSERT_OK(read_conn.Execute("COMMIT"));
   }
+  ASSERT_OK(read_conn.Execute("COMMIT"));
 }
 
 void PgMiniTest::TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType row_mark) {
@@ -619,6 +629,9 @@ void PgMiniTest::TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType r
 
   ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
   ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  // Sleep to ensure that read done in txn doesn't face kReadRestart after DELETE (a sleep will
+  // ensure sufficient gap between write time and read point - more than clock skew).
+  std::this_thread::sleep_for(kSleepTime);
   ASSERT_OK(write_conn.ExecuteFormat("DELETE FROM t WHERE i = $0", RandomUniformInt(0, kKeys - 1)));
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
   if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
@@ -626,7 +639,8 @@ void PgMiniTest::TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType r
     ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
     ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
         << result.status();
-    ASSERT_STR_CONTAINS(result.status().ToString(), "Value write after transaction start");
+    ASSERT_STR_CONTAINS(result.status().ToString(),
+                        "could not serialize access due to concurrent update");
     ASSERT_OK(read_conn.Execute("ABORT"));
   } else {
     ASSERT_OK(result);
@@ -948,7 +962,8 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
   }
 
   // Check that `FOR KEY SHARE` prevents rows from being deleted even in case not all key
-  // components are specified.
+  // components are specified (for SERIALIZABLE isolation level). For REPEATABLE READ, only rows
+  // returned to the user are locked.
   void TestRowKeyShareLock(const std::string& cur_name = "") {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
@@ -959,36 +974,97 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
         "INSERT INTO t VALUES (1, 2, 3, 4), (1, 2, 30, 40), (1, 3, 4, 5), (10, 2, 3, 4)"));
 
     // Transaction 1.
-    // SELECT FOR KEY SHARE locks all sub doc keys of (1, 2)
-    // as not all key components are specified.
+    // For SERIALIZABLE level:
+    //   SELECT FOR KEY SHARE locks the sub doc key prefix (1, 2) as not all key components are
+    //   specified. This also means that no new rows with this matching prefix can be inserted.
+    // For REPEATABLE READ level:
+    //   Only tuples returned by the SELECT statement are locked.
     ASSERT_OK(StartTxn(&conn));
     RowLock(&conn, "SELECT * FROM t WHERE h = 1 AND r1 = 2 FOR KEY SHARE", cur_name);
 
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 30"));
-    // Doc key (1, 3, 4) in not locked.
+
+    // Doc key (1, 3, 4) is not locked in both isolation levels.
     ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 3 AND r2 = 4"));
+
+    // New rows with prefix that matches (1, 2) can't be inserted in SERIALIZABLE level.
+    if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "INSERT INTO t VALUES (1, 2, 100, 100)"));
+      // Doc key (1, 2, 2) doesn't exist. But still it conflicts beause of a kStrongRead intent
+      // taken on (1, 2) as part of the "fetching" the row when taking for key share locks (which
+      // only requires kWeakRead).
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2"));
+    } else {
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "INSERT INTO t VALUES (1, 2, 100, 100)"));
+      // Delete the row again
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 100"));
+
+      // Doc key (1, 2, 2) doesn't exist.
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2"));
+    }
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     // Transaction 2.
-    // SELECT FOR KEY SHARE locks all sub doc keys of () as not all key components are specified.
+    // For SERIALIZABLE level:
+    //   SELECT FOR KEY SHARE locks the sub doc key prefix () as no prefix of the pk is specified.
+    // For REPEATABLE READ level:
+    //   Only tuples returned by the SELECT statement are locked.
     ASSERT_OK(StartTxn(&conn));
     RowLock(&conn, "SELECT * FROM t WHERE r2 = 2 FOR KEY SHARE", cur_name);
 
-    ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
-    ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 10 AND r1 = 2 AND r2 = 3"));
+    if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 10 AND r1 = 2 AND r2 = 3"));
+      // Doc key (1, 2, 2) doesn't exist.
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2"));
+    } else {
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 10 AND r1 = 2 AND r2 = 3"));
+      // Re-add the rows
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "INSERT INTO t VALUES (1, 2, 3, 4), (10, 2, 3, 4)"));
+
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "INSERT INTO t VALUES (1, 2, 100, 100)"));
+      // Delete the row again
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 100"));
+
+      // Doc key (1, 2, 2) doesn't exist.
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2"));
+    }
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     // Transaction 3.
-    // SELECT FOR KEY SHARE locks all sub doc keys of (1) as not all key components are specified.
+    // For SERIALIZABLE level:
+    //   SELECT FOR KEY SHARE locks the sub doc key prefix (1) as not all key components are
+    //   specified.
+    // For REPEATABLE READ level:
+    //   Only tuples returned by the SELECT statement are locked.
     ASSERT_OK(StartTxn(&conn));
     RowLock(&conn, "SELECT * FROM t WHERE h = 1 AND r2 = 2 FOR KEY SHARE", cur_name);
 
-    ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
-    // Doc key  (10, 2, 3) in not locked.
+    // Doc key (10, 2, 3) is not locked.
     ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 10 AND r1 = 2 AND r2 = 3"));
+
+    if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "INSERT INTO t VALUES (1, 2, 100, 100)"));
+
+      // Doc key (1, 2, 2) doesn't exist.
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2"));
+    } else {
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
+      // Re-add deleted row
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "INSERT INTO t VALUES (1, 2, 3, 4)"));
+
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "INSERT INTO t VALUES (1, 2, 100, 100)"));
+      // Delete the row again
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 100"));
+
+      // Doc key (1, 2, 2) doesn't exist.
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2"));
+    }
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
@@ -999,6 +1075,9 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
     ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 30"));
+
+    // Doc key (1, 2, 2) doesn't exist.
+    ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
@@ -1083,6 +1162,47 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
       lock_stmt = Format("FETCH ALL $0", cur_name);
     }
     ASSERT_RESULT(connection->Fetch(lock_stmt));
+  }
+
+  void TestInOperatorLock() {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE t (h INT, r1 INT, r2 INT, PRIMARY KEY(h, r1 ASC, r2 ASC))"));
+    ASSERT_OK(conn.Execute(
+        "INSERT INTO t VALUES (1, 11, 1),(1, 12, 1),(1, 13, 1),(2, 11, 2),(2, 12, 2),(2, 13, 2)"));
+    ASSERT_OK(StartTxn(&conn));
+    auto res = ASSERT_RESULT(conn.Fetch(
+        "SELECT * FROM t WHERE h = 1 AND r1 IN (11, 12) AND r2 = 1 FOR KEY SHARE"));
+
+    auto extra_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(extra_conn.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
+    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
+    ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1"));
+    ASSERT_OK(extra_conn.Execute("COMMIT"));
+
+    ASSERT_OK(conn.Execute("COMMIT;"));
+
+    ASSERT_OK(conn.Execute("BEGIN;"));
+    res = ASSERT_RESULT(conn.Fetch(
+        "SELECT * FROM t WHERE h IN (1, 2) AND r1 = 11 FOR KEY SHARE"));
+
+    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
+    ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 11 AND r2 = 2"));
+    ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2"));
+    ASSERT_OK(extra_conn.Execute("COMMIT"));
+
+    ASSERT_OK(conn.Execute("COMMIT;"));
+    const auto count = ASSERT_RESULT(conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+    ASSERT_EQ(4, count);
   }
 
   static Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
@@ -1341,16 +1461,11 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestNoT
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   const std::string kDatabaseName = "testdb";
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
-  scoped_refptr<master::TabletInfo> sys_tablet;
   std::array<int, 4> num_tables;
 
-  {
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  auto* catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables[0] = tablet_lock->pb.table_ids_size();
@@ -1367,12 +1482,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   }
   // Make sure that the system catalog tablet table_ids is persisted.
   ASSERT_OK(cluster_->RestartSync());
-  {
-    // Refresh stale local variables after RestartSync.
-    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables[3] = tablet_lock->pb.table_ids_size();
@@ -1386,8 +1497,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   const std::string kDatabaseName = "testdb";
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
@@ -1403,7 +1513,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   // Make sure that the table deletions are persisted.
   ASSERT_OK(cluster_->RestartSync());
   // Refresh stale local variable after RestartSync.
-  catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
 }
 
@@ -1413,15 +1523,10 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
   int num_tables_before, num_tables_after;
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
-  scoped_refptr<master::TabletInfo> sys_tablet;
+  auto sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
 
-  {
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables_before = tablet_lock->pb.table_ids_size();
@@ -1444,12 +1549,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(cluster_->RestartSync());
-  {
-    // Refresh stale local variables after RestartSync.
-    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
   {
     auto tablet_lock = sys_tablet->LockForWrite();
@@ -1584,7 +1685,7 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
 };
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefetchTest) {
-  constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
   constexpr int kBlockSize = 1000;
   constexpr int kReads = 3;
 
@@ -1592,7 +1693,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefetchTest) {
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigReadWithCompaction), PgMiniBigPrefetchTest) {
-  constexpr int kRows = RegularBuildVsSanitizers(1000000, 10000);
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
   constexpr int kBlockSize = 1000;
   constexpr int kReads = 3;
 
@@ -1608,7 +1709,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest)
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
-  SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability_in_tests);
+  SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
   FLAGS_TEST_force_master_leader_resolution = true;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -1958,44 +2059,16 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
   ASSERT_OK(conn1.CommitTransaction());
 }
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(InOperatorLock), PgMiniTestNoTxnRetry) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
-  ASSERT_OK(conn.Execute("CREATE TABLE t (h INT, r1 INT, r2 INT, PRIMARY KEY(h, r1 ASC, r2 ASC))"));
-  ASSERT_OK(conn.Execute(
-      "INSERT INTO t VALUES (1, 11, 1),(1, 12, 1),(1, 13, 1),(2, 11, 2),(2, 12, 2),(2, 13, 2)"));
-  ASSERT_OK(conn.Execute("BEGIN;"));
-  auto res = ASSERT_RESULT(conn.Fetch(
-      "SELECT * FROM t WHERE h = 1 AND r1 IN (11, 12) AND r2 = 1 FOR KEY SHARE"));
+TEST_F_EX(
+  PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SnapshotInOperatorLock),
+  PgMiniTestTxnHelperSnapshot) {
+  TestInOperatorLock();
+}
 
-  auto extra_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(extra_conn.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
-  ASSERT_OK(extra_conn.Execute("BEGIN"));
-  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
-  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-  ASSERT_OK(extra_conn.Execute("BEGIN"));
-  ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1"));
-  ASSERT_OK(extra_conn.Execute("COMMIT"));
-
-  ASSERT_OK(conn.Execute("COMMIT;"));
-
-  ASSERT_OK(conn.Execute("BEGIN;"));
-  res = ASSERT_RESULT(conn.Fetch(
-      "SELECT * FROM t WHERE h IN (1, 2) AND r1 = 11 FOR KEY SHARE"));
-
-  ASSERT_OK(extra_conn.Execute("BEGIN"));
-  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
-  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-  ASSERT_OK(extra_conn.Execute("BEGIN"));
-  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 11 AND r2 = 1"));
-  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-  ASSERT_OK(extra_conn.Execute("BEGIN"));
-  ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2"));
-  ASSERT_OK(extra_conn.Execute("COMMIT"));
-
-  ASSERT_OK(conn.Execute("COMMIT;"));
-  const auto count = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
-  ASSERT_EQ(4, count);
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableInOperatorLock),
+    PgMiniTestTxnHelperSerializable) {
+  TestInOperatorLock();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2403,8 +2476,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
   }, 10s, "Wait leader change"));
 
   ASSERT_OK(tools::RunBackupCommand(
-      pg_host_port(), cluster_->GetMasterAddresses(), *tmp_dir,
-      {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
+      pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
+      *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
        "create"}));
 }
 

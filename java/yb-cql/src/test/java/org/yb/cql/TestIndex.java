@@ -54,6 +54,11 @@ public class TestIndex extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndex.class);
 
   @Override
+  protected int getNumShardsPerTServer() {
+    return 1;
+  }
+
+  @Override
   public int getTestMethodTimeoutSec() {
     // Usual time for a test ~90 seconds. But can be much more on Jenkins.
     return super.getTestMethodTimeoutSec()*10;
@@ -1618,6 +1623,8 @@ public class TestIndex extends BaseCQLTest {
                     "  WITH TRANSACTIONS = {'enabled' : true};");
     session.execute("CREATE INDEX test_order_by_idx ON test_order_by(b, c)" +
                     "  INCLUDE (non_index_cluster_column);");
+    waitForReadPermsOnAllIndexes("test_order_by");
+
     // Run one valid query to make sure the setup is correct.
     runValidSelect("SELECT * FROM test_order_by WHERE b = 3 ORDER BY c;");
     // Test invalid ORDER BY for non-existing column.
@@ -1631,6 +1638,8 @@ public class TestIndex extends BaseCQLTest {
     session.execute("CREATE TABLE test_jsonb_order_by(i INT, j JSONB, k INT, PRIMARY KEY (i, k))" +
                     "  WITH TRANSACTIONS = { 'enabled' : true };");
     session.execute("CREATE INDEX test_jsonb_order_by_idx ON test_jsonb_order_by(k, j->>'x');");
+    waitForReadPermsOnAllIndexes("test_jsonb_order_by");
+
     // Run one valid query to make sure the setup is correct.
     runValidSelect("SELECT * FROM test_jsonb_order_by WHERE k = 1 ORDER BY j->>'x';");
     // Test invalid ORDER BY non existing column "j->>'y'".
@@ -2448,12 +2457,15 @@ public class TestIndex extends BaseCQLTest {
 
     // Cannot pass NULL into IN-list via PreparedStatement API.
     if (!tp.usePreparedQueries()) {
-      runInvalidStmt("SELECT * FROM test_in WHERE name IN (null)",
-                     "null is not supported inside collections");
-      runInvalidStmt("SELECT * FROM test_in WHERE name NOT IN ('', null)",
-                     "null is not supported inside collections");
-      runInvalidStmt("SELECT * FROM test_in WHERE name NOT IN (null)",
-                     "null is not supported inside collections");
+      assertQuery(tp, "SELECT * FROM test_in WHERE name IN (null)",
+                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a80310, NULL, NULL]");
+
+      assertQuery(tp, "SELECT * FROM test_in WHERE name NOT IN ('', null)",
+                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]");
+
+      assertQuery(tp, "SELECT * FROM test_in WHERE name NOT IN (null)",
+                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e3, , ]" +
+                  "Row[5b6962dd-3f90-4c93-8f61-eabfa4a803e2, first, second]");
     }
 
     // Create test table and index.

@@ -14,26 +14,31 @@
 
 #include <signal.h>
 
-#include <vector>
-#include <string>
-#include <random>
 #include <fstream>
+#include <random>
 #include <regex>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/env_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/thread.h"
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEFINE_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_bool(pg_verbose_error_log, false,
@@ -205,7 +210,6 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (FLAGS_pg_stat_statements_enabled) {
     metricsLibs.push_back("pg_stat_statements");
   }
-  metricsLibs.push_back("pg_stat_monitor");
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
@@ -427,6 +431,10 @@ Status PgWrapper::Start() {
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&pg_proc_.get(), /* yb_enabled */ true);
   RETURN_NOT_OK(pg_proc_->Start());
+  if (!FLAGS_postmaster_cgroup.empty()) {
+    std::string path = FLAGS_postmaster_cgroup + "/cgroup.procs";
+    pg_proc_->AddPIDToCGroup(path, pg_proc_->pid());
+  }
   LOG(INFO) << "PostgreSQL server running as pid " << pg_proc_->pid();
   return Status::OK();
 }
@@ -602,6 +610,9 @@ PgSupervisor::PgSupervisor(PgProcessConf conf)
     : conf_(std::move(conf)) {
 }
 
+PgSupervisor::~PgSupervisor() {
+}
+
 Status PgSupervisor::Start() {
   std::lock_guard<std::mutex> lock(mtx_);
   RETURN_NOT_OK(ExpectStateUnlocked(PgProcessState::kNotStarted));
@@ -660,7 +671,8 @@ CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
         LOG(WARNING) << "Didn't find postgres in " << cmdline;
       }
     }
-    ignore_result(Env::Default()->DeleteFile(postmaster_pid_filename));
+    WARN_NOT_OK(Env::Default()->DeleteFile(postmaster_pid_filename),
+                "Failed to remove postmaster pid file");
   }
   return Status::OK();
 }

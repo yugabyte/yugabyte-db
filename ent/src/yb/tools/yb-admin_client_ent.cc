@@ -22,13 +22,18 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/json_util.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/gutil/strings/util.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
@@ -42,7 +47,8 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/timestamp.h"
-#include "yb/util/encryption_util.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");
@@ -990,8 +996,8 @@ Status ClusterAdminClient::IsEncryptionEnabled() {
 Status ClusterAdminClient::AddUniverseKeyToAllMasters(
     const std::string& key_id, const std::string& universe_key) {
 
-  RETURN_NOT_OK(EncryptionParams::IsValidKeySize(
-      universe_key.size() - EncryptionParams::kBlockSize));
+  RETURN_NOT_OK(encryption::EncryptionParams::IsValidKeySize(
+      universe_key.size() - encryption::EncryptionParams::kBlockSize));
 
   master::AddUniverseKeysRequestPB req;
   master::AddUniverseKeysResponsePB resp;

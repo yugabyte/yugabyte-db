@@ -28,11 +28,13 @@
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
@@ -982,7 +984,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchMerge) {
 
   std::string dbname = test::TmpDir() + "/write_batch_with_index_test";
 
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
   Status s = DB::Open(options, dbname, &db);
   ASSERT_OK(s);
 
@@ -1019,7 +1021,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchMerge) {
   }
 
   delete db;
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
 }
 
 TEST_F(WriteBatchWithIndexTest, TestGetFromBatchMerge2) {
@@ -1030,7 +1032,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchMerge2) {
 
   std::string dbname = test::TmpDir() + "/write_batch_with_index_test";
 
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
   Status s = DB::Open(options, dbname, &db);
   ASSERT_OK(s);
 
@@ -1079,7 +1081,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchMerge2) {
   ASSERT_TRUE(s.IsMergeInProgress());
 
   delete db;
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
 }
 
 TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDB) {
@@ -1088,7 +1090,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDB) {
   options.create_if_missing = true;
   std::string dbname = test::TmpDir() + "/write_batch_with_index_test";
 
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
   Status s = DB::Open(options, dbname, &db);
   ASSERT_OK(s);
 
@@ -1123,13 +1125,13 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDB) {
   s = batch.GetFromBatchAndDB(db, read_options, "x", &value);
   ASSERT_TRUE(s.IsNotFound());
 
-  db->Delete(write_options, "x");
+  ASSERT_OK(db->Delete(write_options, "x"));
 
   s = batch.GetFromBatchAndDB(db, read_options, "x", &value);
   ASSERT_TRUE(s.IsNotFound());
 
   delete db;
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
 }
 
 TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDBMerge) {
@@ -1141,7 +1143,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDBMerge) {
 
   options.merge_operator = MergeOperators::CreateFromStringId("stringappend");
 
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
   Status s = DB::Open(options, dbname, &db);
   assert(s.ok());
 
@@ -1255,7 +1257,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDBMerge) {
 
   db->ReleaseSnapshot(snapshot);
   delete db;
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
 }
 
 TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDBMerge2) {
@@ -1267,7 +1269,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDBMerge2) {
 
   options.merge_operator = MergeOperators::CreateFromStringId("stringappend");
 
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
   Status s = DB::Open(options, dbname, &db);
   assert(s.ok());
 
@@ -1303,7 +1305,7 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDBMerge2) {
   ASSERT_TRUE(s.IsNotFound());
 
   delete db;
-  DestroyDB(dbname, options);
+  ASSERT_OK(DestroyDB(dbname, options));
 }
 
 void AssertKey(std::string key, WBWIIterator* iter) {

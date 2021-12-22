@@ -31,6 +31,8 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/logging.h"
 
+#include "yb/util/test_util.h"
+
 namespace rocksdb {
 
 namespace {
@@ -43,7 +45,7 @@ enum BatchOperation { OP_PUT = 0, OP_DELETE = 1 };
 class SpecialTimeEnv : public EnvWrapper {
  public:
   explicit SpecialTimeEnv(Env* base) : EnvWrapper(base) {
-    base->GetCurrentTime(&current_time_);
+    CHECK_OK(base->GetCurrentTime(&current_time_));
   }
 
   void Sleep(int64_t sleep_time) { current_time_ += sleep_time; }
@@ -67,12 +69,12 @@ class TtlTest : public testing::Test {
     options_.max_grandparent_overlap_factor = 0;
     // compaction should take place always from level0 for determinism
     db_ttl_ = nullptr;
-    DestroyDB(dbname_, Options());
+    CHECK_OK(DestroyDB(dbname_, Options()));
   }
 
   ~TtlTest() {
     CloseTtl();
-    DestroyDB(dbname_, Options());
+    CHECK_OK(DestroyDB(dbname_, Options()));
   }
 
   // Open database with TTL support when TTL not provided with db_ttl_ pointer
@@ -80,12 +82,14 @@ class TtlTest : public testing::Test {
     ASSERT_TRUE(db_ttl_ ==
                 nullptr);  //  db should be closed before opening again
     ASSERT_OK(DBWithTTL::Open(options_, dbname_, &db_ttl_));
+    read_only_ = false;
   }
 
   // Open database with TTL support when TTL provided with db_ttl_ pointer
   void OpenTtl(int32_t ttl) {
     ASSERT_TRUE(db_ttl_ == nullptr);
     ASSERT_OK(DBWithTTL::Open(options_, dbname_, &db_ttl_, ttl));
+    read_only_ = false;
   }
 
   // Open with TestFilter compaction filter
@@ -100,6 +104,7 @@ class TtlTest : public testing::Test {
   void OpenReadOnlyTtl(int32_t ttl) {
     ASSERT_TRUE(db_ttl_ == nullptr);
     ASSERT_OK(DBWithTTL::Open(options_, dbname_, &db_ttl_, ttl, true));
+    read_only_ = true;
   }
 
   void CloseTtl() {
@@ -151,8 +156,8 @@ class TtlTest : public testing::Test {
           ASSERT_TRUE(false);
       }
     }
-    db_ttl_->Write(wopts, &batch);
-    db_ttl_->Flush(flush_opts);
+    ASSERT_OK(db_ttl_->Write(wopts, &batch));
+    ASSERT_OK(db_ttl_->Flush(flush_opts));
   }
 
   // Puts num_entries starting from start_pos_map from kvmap_ into the database
@@ -175,19 +180,25 @@ class TtlTest : public testing::Test {
                             : db_ttl_->Put(wopts, cf, "keymock", "valuemock"));
     if (flush) {
       if (cf == nullptr) {
-        db_ttl_->Flush(flush_opts);
+        ASSERT_OK(db_ttl_->Flush(flush_opts));
       } else {
-        db_ttl_->Flush(flush_opts, cf);
+        ASSERT_OK(db_ttl_->Flush(flush_opts, cf));
       }
     }
   }
 
   // Runs a manual compaction
   void ManualCompact(ColumnFamilyHandle* cf = nullptr) {
+    Status status;
     if (cf == nullptr) {
-      db_ttl_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+      status = db_ttl_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
     } else {
-      db_ttl_->CompactRange(CompactRangeOptions(), cf, nullptr, nullptr);
+      status = db_ttl_->CompactRange(CompactRangeOptions(), cf, nullptr, nullptr);
+    }
+    if (read_only_) {
+      ASSERT_TRUE(status.IsNotSupported());
+    } else {
+      ASSERT_OK(status);
     }
   }
 
@@ -387,6 +398,7 @@ class TtlTest : public testing::Test {
   KVMap::iterator kv_it_;
   const std::string kNewValue_ = "new_value";
   unique_ptr<CompactionFilter> test_comp_filter_;
+  bool read_only_ = false;
 }; // class TtlTest
 
 // If TTL is non positive or not provided, the behaviour is TTL = infinity
@@ -590,7 +602,7 @@ TEST_F(TtlTest, ColumnFamiliesTest) {
   options.create_if_missing = true;
   options.env = env_.get();
 
-  DB::Open(options, dbname_, &db);
+  ASSERT_OK(DB::Open(options, dbname_, &db));
   ColumnFamilyHandle* handle;
   ASSERT_OK(db->CreateColumnFamily(ColumnFamilyOptions(options),
                                    "ttl_column_family", &handle));

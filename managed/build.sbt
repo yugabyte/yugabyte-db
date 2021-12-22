@@ -70,31 +70,6 @@ def validateResolver(
   resolver
 }
 
-def clean_ui(baseDirectory: File): Int = {
-  ybLog("Cleaning UI...")
-  Process("rm -rf node_modules", baseDirectory / "ui")!
-}
-
-def build_ui(baseDirectory: File): Int = {
-  ybLog("Building UI...")
-  Process("npm ci", baseDirectory / "ui")!
-}
-
-def get_venv_dir(): String = {
-  if (USE_PYTHON3) "venv" else "python_virtual_env"
-}
-
-def clean_venv(baseDirectory: File): Int = {
-  ybLog("Cleaning virtual env...")
-  val venvDir: String = get_venv_dir()
-  Process("rm -rf " + venvDir, baseDirectory / "devops")!
-}
-
-def build_venv(baseDirectory: File): Int = {
-  ybLog("Building virtual env...")
-  Process("./bin/install_python_requirements.sh", baseDirectory / "devops").!
-  Process("./bin/install_ansible_requirements.sh --force", baseDirectory / "devops").!
-}
 
 // ------------------------------------------------------------------------------------------------
 // Task Keys
@@ -111,6 +86,13 @@ lazy val runPlatform = inputKey[Unit]("Run Yugabyte Platform with UI")
 lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console setting")
 
 lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
+
+lazy val buildVenv = taskKey[Int]("Build venv")
+lazy val buildUI = taskKey[Int]("Build UI")
+
+lazy val cleanUI = taskKey[Int]("Clean UI")
+lazy val cleanVenv = taskKey[Int]("Clean venv")
+
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
 
@@ -282,15 +264,15 @@ externalResolvers := {
 
 (Compile / compilePlatform) := {
   (Compile / compile).value
-  build_venv(baseDirectory.value)
-  build_ui(baseDirectory.value)
+  buildVenv.value
+  buildUI.value
   versionGenerate.value
 }
 
 cleanPlatform := {
   clean.value
-  clean_venv(baseDirectory.value)
-  clean_ui(baseDirectory.value)
+  cleanVenv.value
+  cleanUI.value
 }
 
 versionGenerate := {
@@ -302,9 +284,39 @@ versionGenerate := {
   status
 }
 
+buildVenv := {
+  ybLog("Building virtual env...")
+  val status = Process("./bin/install_python_requirements.sh", baseDirectory.value / "devops").!
+  Process("./bin/install_ansible_requirements.sh --force", baseDirectory.value / "devops").!
+  status
+}
+
+buildUI := {
+  ybLog("Building UI...")
+  val status = Process("npm ci", baseDirectory.value / "ui").!
+  status
+}
+
 compileJavaGenClient := {
   val buildType = sys.env.get("BUILD_TYPE").getOrElse("release")
   val status = Process("mvn install", new File(baseDirectory.value + "/client/java/generated")).!
+  status
+}
+
+cleanUI := {
+  ybLog("Cleaning UI...")
+  val status = Process("rm -rf node_modules", baseDirectory.value / "ui").!
+  status
+}
+
+def get_venv_dir(): String = {
+  if (USE_PYTHON3) "venv" else "python_virtual_env"
+}
+
+cleanVenv := {
+  ybLog("Cleaning virtual env...")
+  val venvDir: String = get_venv_dir()
+  val status = Process("rm -rf " + venvDir, baseDirectory.value / "devops").!
   status
 }
 
@@ -347,7 +359,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.11-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.13-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:

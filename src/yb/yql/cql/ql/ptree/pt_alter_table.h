@@ -18,15 +18,12 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_ALTER_TABLE_H_
 #define YB_YQL_CQL_QL_PTREE_PT_ALTER_TABLE_H_
 
-#include "yb/common/schema.h"
-#include "yb/master/master.pb.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
-#include "yb/yql/cql/ql/ptree/pt_name.h"
-#include "yb/yql/cql/ql/ptree/pt_update.h"
-#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+
 namespace yb {
 namespace ql {
 
@@ -54,7 +51,7 @@ class PTAlterColumnDefinition : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTAlterColumnDefinition(MemoryContext *memctx,
-              YBLocation::SharedPtr loc,
+              YBLocationPtr loc,
               PTQualifiedName::SharedPtr name,
               const MCSharedPtr<MCString>& new_name,
               const PTBaseType::SharedPtr& datatype,
@@ -115,7 +112,7 @@ class PTAlterTable : public TreeNode {
 
   // Node type.
   PTAlterTable(MemoryContext *memctx,
-               YBLocation::SharedPtr loc,
+               YBLocationPtr loc,
                PTQualifiedName::SharedPtr name,
                const PTListNode::SharedPtr& commands);
   virtual ~PTAlterTable();

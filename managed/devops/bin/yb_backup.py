@@ -77,13 +77,13 @@ RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
 SHA_TOOL_PATH = '/usr/bin/sha256sum'
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
-TSERVER_CONF_PATH = os.path.join(YB_HOME_DIR, 'tserver/conf/server.conf')
-K8S_DATA_DIRS = ["/mnt/disk0", "/mnt/disk1"]
 DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
 DEFAULT_REMOTE_YSQL_DUMP_PATH = os.path.join(YB_HOME_DIR, 'master/postgres/bin/ysql_dump')
 DEFAULT_REMOTE_YSQL_SHELL_PATH = os.path.join(YB_HOME_DIR, 'master/bin/ysqlsh')
 DEFAULT_YB_USER = 'yugabyte'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+
+DEFAULT_TS_WEB_PORT = 9000
 
 
 class BackupException(Exception):
@@ -154,7 +154,7 @@ class SingleArgParallelCmd:
     using the given thread pool. Arguments are first deduplicated, so they have to be hashable.
     Example:
         SingleArgParallelCmd(fn, [a, b, c]).run(pool)
-        -> run in parallel Thread-1: ->  fn(a)
+        -> run in parallel Thread-1: -> fn(a)
                            Thread-2: -> fn(b)
                            Thread-3: -> fn(c)
     """
@@ -327,9 +327,14 @@ def get_db_name_cmd(dump_file):
     return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
 
 
+def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
+    return "sed -i '{}' {}".format(reg_exp, pipes.quote(dump_file))
+
+
 def replace_db_name_cmd(dump_file, old_name, new_name):
-    return "sed -i 's|DATABASE {}|DATABASE {}|;s|\\\\connect {}|\\\\connect {}|' {}".format(
-        old_name, new_name, old_name, new_name, pipes.quote(dump_file))
+    return apply_sed_edit_reg_exp_cmd(
+        dump_file, "s|DATABASE {0}|DATABASE {1}|;s|\\\\connect {0}|\\\\connect {1}|".format(
+                   old_name, new_name))
 
 
 def get_table_names_str(keyspaces, tables, delimeter, space):
@@ -583,6 +588,7 @@ class YBBackup:
         self.server_ips_with_uploaded_cloud_cfg = {}
         self.k8s_namespace_to_cfg = {}
         self.timer = BackupTimer()
+        self.tserver_ip_to_web_port = {}
         self.parse_arguments()
 
     def sleep_or_raise(self, num_retry, timeout, ex):
@@ -651,6 +657,9 @@ class YBBackup:
         parser.add_argument(
             '--masters', required=True,
             help="Comma separated list of masters for the cluster")
+        parser.add_argument(
+            '--ts_web_hosts_ports', help="Custom TS HTTP hosts and ports. "
+                                         "In form: <IP>:<Port>,<IP>:<Port>")
         parser.add_argument(
             '--k8s_config', required=False,
             help="Namespace to use for kubectl in case of kubernetes deployment")
@@ -762,12 +771,16 @@ class YBBackup:
         parser.add_argument(
             '--restore_time', required=False,
             help='The Unix microsecond timestamp to which to restore the snapshot.')
-        parser.add_argument('--upload', dest='upload', action='store_true')
+        parser.add_argument('--upload', dest='upload', action='store_true', default=True)
         # Please note that we have to use this weird naming (i.e. underscore in the argument name)
-        # style to keep it in sync with other arguments in this script.
+        # style to keep it in sync with YB processes G-flags.
         parser.add_argument('--no_upload', dest='upload', action='store_false',
                             help="Skip uploading snapshot")
-        parser.set_defaults(upload=True)
+        parser.add_argument(
+            '--edit_ysql_dump_sed_reg_exp', required=False,
+            help="Regular expression for 'sed' tool to edit on fly YSQL dump file(s) during the "
+                 "backup restoring. Example: \"s|OWNER TO yugabyte|OWNER TO admin|\". WARNING: "
+                 "Contact support team before use! No any backward compatibility guaranties.")
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -853,6 +866,12 @@ class YBBackup:
             self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
             if self.k8s_namespace_to_cfg is None:
                 raise BackupException("Couldn't load k8s configs")
+
+        if self.args.ts_web_hosts_ports:
+            logging.info('TS Web hosts/ports: %s' % (self.args.ts_web_hosts_ports))
+            for host_port in self.args.ts_web_hosts_ports.split(','):
+                (host, port) = host_port.split(':')
+                self.tserver_ip_to_web_port[host] = port
 
     def table_names_str(self, delimeter='.', space=' '):
         return get_table_names_str(self.args.keyspace, self.args.table, delimeter, space)
@@ -1025,7 +1044,9 @@ class YBBackup:
         local_binary = None if self.args.ysql_enable_auth else self.args.local_ysql_dump_binary
 
         return self.run_tool(local_binary, self.args.remote_ysql_dump_binary,
-                             self.get_ysql_dump_std_args(),
+                             # Latest tools do not need '--masters', but keep it for backward
+                             # compatibility with older YB releases.
+                             self.get_ysql_dump_std_args() + ['--masters=' + self.args.masters],
                              cmd_line_args, run_ip=run_at_ip, env_vars=certs_env)
 
     def run_ysql_shell(self, cmd_line_args):
@@ -1312,6 +1333,7 @@ class YBBackup:
             bash_env_args = " ".join(["{}={}".format(env_name, pipes.quote(env_val)) for
                                      (env_name, env_val) in env_vars.items()])
             cmd = "{} {}".format(bash_env_args, cmd)
+
         if self.is_k8s():
             k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
             return self.run_program([
@@ -1347,62 +1369,33 @@ class YBBackup:
 
     def find_data_dirs(self, tserver_ip):
         """
-        Finds the data directories on the given tserver. This just reads a config file on the target
-        server.
+        Finds the data directories on the given tserver. This queries the /varz endpoint of tserver
+        and extracts FS_DATA_DIRS_ARG_NAME flag from response.
         :param tserver_ip: tablet server ip
         :return: a list of top-level YB data directories
         """
-        # TODO(bogdan): figure out at runtime??
-        if self.is_k8s():
-            return K8S_DATA_DIRS
-
-        if self.args.no_ssh:
-            return self.find_local_data_dirs(tserver_ip)
-
-        grep_output = self.run_ssh_cmd(
-            ['egrep', '^' + FS_DATA_DIRS_ARG_PREFIX, TSERVER_CONF_PATH],
-            tserver_ip).strip()
+        web_port = (self.tserver_ip_to_web_port[tserver_ip]
+                    if tserver_ip in self.tserver_ip_to_web_port else DEFAULT_TS_WEB_PORT)
+        output = self.run_program(['curl', "{}:{}/varz".format(tserver_ip, web_port)])
         data_dirs = []
-        for line in grep_output.split("\n"):
+        for line in output.split('\n'):
             if line.startswith(FS_DATA_DIRS_ARG_PREFIX):
                 for data_dir in line[len(FS_DATA_DIRS_ARG_PREFIX):].split(','):
                     data_dir = data_dir.strip()
                     if data_dir:
                         data_dirs.append(data_dir)
+                break
+
         if not data_dirs:
             raise BackupException(
-                ("Did not find any data directories in tablet server config at '{}' on server "
-                 "'{}'. Was looking for '{}', got this: [[ {} ]]").format(
-                    TSERVER_CONF_PATH, tserver_ip, FS_DATA_DIRS_ARG_PREFIX, grep_output))
+                ("Did not find any data directories in tserver by querying /varz endpoint"
+                 " on tserver '{}:{}'. Was looking for '{}', got this: [[ {} ]]").format(
+                     tserver_ip, web_port, FS_DATA_DIRS_ARG_PREFIX, output))
+        elif self.args.verbose:
+            logging.info("Found data directories on tablet server '{}': {}".format(
+                tserver_ip, data_dirs))
+
         return data_dirs
-
-    def find_local_data_dirs(self, tserver_ip):
-        ps_output = self.run_ssh_cmd(['ps', '-o', 'command'], tserver_ip)
-        for line in ps_output.split('\n'):
-            args = line.split(' ')
-            if args[0].endswith('yb-tserver'):
-                fs_data_dirs = []
-                ip = None
-                for i in range(1, len(args)):
-                    if args[i].startswith(FS_DATA_DIRS_ARG_PREFIX):
-                        for data_dir in args[i][len(FS_DATA_DIRS_ARG_PREFIX):].split(','):
-                            data_dir = data_dir.strip()
-                            if data_dir:
-                                fs_data_dirs.append(data_dir)
-                    elif args[i].startswith(RPC_BIND_ADDRESSES_ARG_PREFIX):
-                        ip_port = args[i][len(RPC_BIND_ADDRESSES_ARG_PREFIX):]
-                        ip = ip_port.split(':')[0]
-                    elif args[i] == FS_DATA_DIRS_ARG_NAME:
-                        data_dir = args[i + 1].strip()
-                        if data_dir:
-                            fs_data_dirs.append(data_dir)
-                    elif args[i] == RPC_BIND_ADDRESSES_ARG_NAME:
-                        ip = args[i + 1]
-
-                if ip == tserver_ip:
-                    logging.info("Found data directories on server {}: {}".format(ip, fs_data_dirs))
-                    return fs_data_dirs
-        raise BackupException("Unable to find data directories on server {}".format(tserver_ip))
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
                                tablets_by_tserver_ip, table_ids):
@@ -1524,6 +1517,11 @@ class YBBackup:
 
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
+
+        # Upload config to every TS here to prevent parallel uploading of the config
+        # in 'find_snapshot_directories' below.
+        if self.has_cfg_file():
+            SingleArgParallelCmd(self.upload_cloud_config, tserver_ips).run(pool)
 
         parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
         tservers_processed = []
@@ -2146,9 +2144,23 @@ class YBBackup:
                 old_db_name = self.run_ssh_cmd(cmd, self.get_main_host_ip()).strip()
 
             new_db_name = keyspace_name(self.args.keyspace[0])
-            logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
-                         old_db_name, new_db_name))
-            cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
+            if new_db_name == old_db_name:
+                logging.info("[app] Skip renaming because YSQL DB name was not changed: "
+                             "'{}'".format(old_db_name))
+            else:
+                logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
+                             old_db_name, new_db_name))
+                cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
+
+                if self.args.local_yb_admin_binary:
+                    self.run_program(cmd)
+                else:
+                    self.run_ssh_cmd(cmd, self.get_main_host_ip())
+
+        if self.args.edit_ysql_dump_sed_reg_exp:
+            logging.info("[app] Applying sed regular expression '{}' to {}".format(
+                         self.args.edit_ysql_dump_sed_reg_exp, dump_file_path))
+            cmd = apply_sed_edit_reg_exp_cmd(dump_file_path, self.args.edit_ysql_dump_sed_reg_exp)
 
             if self.args.local_yb_admin_binary:
                 self.run_program(cmd)

@@ -10,20 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <gtest/gtest.h>
-
-#include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/master.proxy.h"
-#include "yb/rpc/rpc_controller.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
@@ -65,7 +61,7 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
     RETURN_NOT_OK(proxy->ListMasters(req, &resp, &rpc));
 
     for (const ServerEntryPB& master : resp.masters()) {
-      if (master.role() == yb::consensus::RaftPeerPB::LEADER) {
+      if (master.role() == yb::PeerRole::LEADER) {
         auto cloud_info = master.registration().cloud_info();
         return (cloud_info.placement_cloud() == placement_cloud &&
                 cloud_info.placement_region() == placement_region &&

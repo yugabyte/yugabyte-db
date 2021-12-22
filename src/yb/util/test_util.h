@@ -33,18 +33,18 @@
 #ifndef YB_UTIL_TEST_UTIL_H
 #define YB_UTIL_TEST_UTIL_H
 
+#include <dirent.h>
+
 #include <atomic>
 #include <string>
-#include <thread>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/port_picker.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/tsan_util.h"
+#include "yb/util/test_macros.h" // For convenience
 
 #define ASSERT_EVENTUALLY(expr) do { \
   AssertEventually(expr); \
@@ -242,6 +242,25 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
 }
 
 int CalcNumTablets(int num_tablet_servers);
+
+template<uint32_t limit>
+struct LengthLimitedStringPrinter {
+  explicit LengthLimitedStringPrinter(const std::string& str_)
+      : str(str_) {
+  }
+  const std::string& str;
+};
+
+using Max500CharsPrinter = LengthLimitedStringPrinter<500>;
+
+template<uint32_t limit>
+std::ostream& operator<<(std::ostream& os, const LengthLimitedStringPrinter<limit>& printer) {
+  const auto& s = printer.str;
+  if (s.length() <= limit) {
+    return os << s;
+  }
+  return os.write(s.c_str(), limit) << "... (" << (s.length() - limit) << " more characters)";
+}
 
 class StopOnFailure {
  public:

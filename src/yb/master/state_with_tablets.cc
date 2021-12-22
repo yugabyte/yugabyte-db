@@ -14,8 +14,10 @@
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/logging.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(bool, mark_snasphot_as_failed, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");

@@ -54,8 +54,8 @@
 #define YB_GUTIL_SPINLOCK_H
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
 // This isn't originally in the base:: namespace in tcmalloc,

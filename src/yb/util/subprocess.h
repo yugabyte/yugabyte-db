@@ -34,20 +34,21 @@
 
 #include <signal.h>
 #include <spawn.h>
-#include <dirent.h>
 
-#include <string>
-#include <vector>
-#include <mutex>
 #include <map>
+#include <mutex>
+#include <string>
 #include <unordered_set>
+#include <vector>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/enums.h"
-#include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -187,6 +188,9 @@ class Subprocess {
   // Issues Start() then Wait() and collects the output from the child process
   // (stdout or stderr) into the output parameter.
   CHECKED_STATUS Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
+
+  // Writes pid to cgroup specified by path
+  void AddPIDToCGroup(const string& path, pid_t pid);
 
  private:
 

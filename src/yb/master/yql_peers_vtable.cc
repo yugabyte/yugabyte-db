@@ -14,12 +14,17 @@
 #include "yb/master/yql_peers_vtable.h"
 
 #include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 
+#include "yb/master/master.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"
 
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -68,7 +73,7 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
   const auto& proxy_uuid = request.proxy_uuid();
 
   // Populate the YQL rows.
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
 
   struct Entry {
     size_t index;

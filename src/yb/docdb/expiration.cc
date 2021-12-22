@@ -13,6 +13,8 @@
 
 #include "yb/docdb/expiration.h"
 
+#include "yb/server/hybrid_clock.h"
+
 #include "yb/util/result.h"
 
 namespace yb {

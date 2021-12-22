@@ -17,30 +17,38 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <algorithm>
 
 #include <boost/algorithm/string.hpp>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
-
 #include "yb/integration-tests/redis_table_test_base.h"
+
+#include "yb/master/flush_manager.h"
+
+#include "yb/rpc/io_thread_pool.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/util/cast.h"
+#include "yb/util/enums.h"
+#include "yb/util/metrics.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/protobuf.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/value_changer.h"
 
 #include "yb/yql/redis/redisserver/redis_client.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
-
-#include "yb/rpc/io_thread_pool.h"
-
-#include "yb/util/cast.h"
-#include "yb/util/enums.h"
-#include "yb/util/protobuf.h"
-#include "yb/util/test_util.h"
-#include "yb/util/value_changer.h"
-
-#include "yb/master/flush_manager.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
@@ -214,7 +222,7 @@ class TestRedisService : public RedisTableTestBase {
           ASSERT_EQ(expected.size(), replies.size())
               << "Originator: " << __FILE__ << ":" << line << std::endl
               << "Expected: " << yb::ToString(expected) << std::endl
-              << " Replies: " << reply.ToString();
+              << " Replies: " << Max500CharsPrinter(reply.ToString());
           for (size_t i = 0; i < expected.size(); i++) {
             DVLOG(3) << "Checking " << replies[i].ToString();
             if (expected[i].get_type() == RedisReplyType::kString &&
@@ -305,7 +313,7 @@ class TestRedisService : public RedisTableTestBase {
     req.set_is_compaction(false);
     table_name().SetIntoTableIdentifierPB(req.add_tables());
     master::FlushTablesResponsePB resp;
-    RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->flush_manager()->
+    RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->flush_manager().
                   FlushTables(&req, &resp));
 
     master::IsFlushTablesDoneRequestPB wait_req;
@@ -315,9 +323,7 @@ class TestRedisService : public RedisTableTestBase {
     for (int k = 0; k < 20; ++k) {
       master::IsFlushTablesDoneResponsePB wait_resp;
       RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())
-                        ->master()
-                        ->flush_manager()
-                        ->IsFlushTablesDone(&wait_req, &wait_resp));
+                        ->flush_manager().IsFlushTablesDone(&wait_req, &wait_resp));
       if (wait_resp.done()) {
         return Status::OK();
       }
@@ -940,7 +946,8 @@ void TestRedisService::DoRedisTest(int line,
             << reply.as_string() << ", of type: " << to_underlying(reply.get_type());
     num_callbacks_called_++;
     ASSERT_EQ(reply_type, reply.get_type())
-        << "Originator: " << __FILE__ << ":" << line << ", reply: " << reply.ToString();
+        << "Originator: " << __FILE__ << ":" << line << ", reply: "
+        << Max500CharsPrinter(reply.ToString());
     callback(reply);
   });
 }

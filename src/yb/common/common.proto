@@ -482,6 +482,23 @@ enum RowMarkType
   ROW_MARK_ABSENT = 15;
 }
 
+// This enum matches enum LockWaitPolicy defined in src/include/nodes/lockoptions.h.
+// The "Lock" prefix is removed to keep this generic for any intent in conflict_resolution.cc (not
+// just those written for Pg's explicit row locks).
+enum WaitPolicy
+{
+  // Wait for the intent to become available (default behavior)
+  WAIT_BLOCK = 0;
+
+  // Skip operation if intents can't be locked (SKIP LOCKED)
+  WAIT_SKIP = 1;
+
+  // Raise an error if a intent cannot be locked (NOWAIT)
+  // Abort self if conflicting with a higher priority txn. Else abort the other txn. This is
+  // default behaviour as of date.
+  WAIT_ERROR = 2;
+}
+
 enum TransactionStatus {
   CREATED = 1;
   PENDING = 2;
@@ -814,3 +831,31 @@ message DeletePlanPB {
   optional string filter = 4;
   optional int32 output_width = 5;
 }
+
+// The possible roles for peers.
+enum PeerRole {
+  // Indicates this node is a follower in the configuration, i.e. that it participates
+  // in majorities and accepts Consensus::Update() calls.
+  FOLLOWER = 0;
+
+  // Indicates this node is the current leader of the configuration, i.e. that it
+  // participates in majorities and accepts Consensus::Append() calls.
+  LEADER = 1;
+
+  // New peers joining a quorum will be in this role for both PRE_VOTER and PRE_OBSERVER
+  // while the tablet data is being remote bootstrapped. The peer does not participate
+  // in starting elections or majorities.
+  LEARNER = 2;
+
+  // Indicates that this node is not a participant of the configuration, i.e. does
+  // not accept Consensus::Update() or Consensus::Update() and cannot
+  // participate in elections or majorities. This is usually the role of a node
+  // that leaves the configuration.
+  NON_PARTICIPANT = 3;
+
+  // This peer is a read (async) replica and gets informed of the quorum write
+  // activity and provides time-line consistent reads.
+  READ_REPLICA = 4;
+
+  UNKNOWN_ROLE = 7;
+};

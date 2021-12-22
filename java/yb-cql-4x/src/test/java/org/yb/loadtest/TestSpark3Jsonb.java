@@ -106,7 +106,7 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
       // check that column pruning works
       assertTrue(explain_text.contains("id,address,phone->'key'->1->'m'->2->'b'"));
       // check that jsonb column filter is pushed down
-      assertTrue(explain_text.contains("Cassandra Filters: [[phone->'key'->1->'m'->2->>'b' ="));
+      assertTrue(explain_text.contains("phone->'key'->1->'m'->2->>'b'"));
 
       Dataset<Row> rows = spark.sql(query);
 

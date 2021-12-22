@@ -14,10 +14,10 @@
 #ifndef YB_MASTER_SYSTEM_TABLET_H
 #define YB_MASTER_SYSTEM_TABLET_H
 
-#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/schema.h"
-#include "yb/master/yql_virtual_table.h"
+
+#include "yb/master/master_fwd.h"
+
 #include "yb/tablet/abstract_tablet.h"
 
 namespace yb {

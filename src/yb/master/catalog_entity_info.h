@@ -40,21 +40,18 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
-#include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master_error.h"
-#include "yb/master/master_types.pb.h"
 #include "yb/master/tasks_tracker.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {
 
-YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
 // Drive usage information on a current replica of a tablet.
@@ -71,7 +68,7 @@ struct TabletReplicaDriveInfo {
 struct TabletReplica {
   TSDescriptor* ts_desc;
   tablet::RaftGroupStatePB state;
-  consensus::RaftPeerPB::Role role;
+  PeerRole role;
   consensus::RaftPeerPB::MemberType member_type;
   MonoTime time_updated;
 
@@ -130,7 +127,7 @@ class MetadataCowWrapper {
 
   // Pretty printing.
   virtual std::string ToString() const {
-    return strings::Substitute(
+    return Format(
         "Object type = $0 (id = $1)", PersistentDataEntryPB::type(), id());
   }
 
@@ -196,8 +193,6 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntryTy
   void set_state(SysTabletsEntryPB::State state, const std::string& msg);
 };
 
-typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
-
 // The information about a single tablet which exists in the cluster,
 // including its state and locations.
 //
@@ -218,8 +213,6 @@ typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
                    public MetadataCowWrapper<PersistentTabletInfo> {
  public:
-  typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
-
   TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id);
   virtual const TabletId& id() const override { return tablet_id_; }
 
@@ -230,8 +223,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
   // configuration whose tablet servers have ever heartbeated to this Master.
-  void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
-  std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
+  void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
 
@@ -297,7 +290,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
-  std::shared_ptr<ReplicaMap> replica_locations_ GUARDED_BY(lock_);
+  std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_);
 
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
@@ -457,7 +450,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void GetTabletsInRange(
       const std::string& partition_key_start, const std::string& partition_key_end,
       TabletInfos* ret,
-      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
+      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
+  // Iterates through tablets_ and not partitions_, so there may be duplicates of key ranges.
+  void GetInactiveTabletsInRange(
+      const std::string& partition_key_start, const std::string& partition_key_end,
+      TabletInfos* ret,
+      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
 
   std::size_t NumPartitions() const;
   // Return whether given partition start keys match partitions_.
@@ -512,18 +510,18 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
   bool HasTasks() const;
-  bool HasTasks(MonitoredTask::Type type) const;
-  void AddTask(std::shared_ptr<MonitoredTask> task);
+  bool HasTasks(server::MonitoredTask::Type type) const;
+  void AddTask(std::shared_ptr<server::MonitoredTask> task);
 
   // Returns true if no running tasks left.
-  bool RemoveTask(const std::shared_ptr<MonitoredTask>& task);
+  bool RemoveTask(const std::shared_ptr<server::MonitoredTask>& task);
 
   void AbortTasks();
   void AbortTasksAndClose();
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
-  std::unordered_set<std::shared_ptr<MonitoredTask>> GetTasks();
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks();
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
@@ -580,7 +578,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::atomic<bool> is_system_{false};
 
   // List of pending tasks (e.g. create/alter tablet requests).
-  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
@@ -908,7 +906,6 @@ class ScopedInfoCommitter {
 
 // Convenience typedefs.
 // Table(t)InfoMap ordered for deterministic locking.
-typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;

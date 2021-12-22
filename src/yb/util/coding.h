@@ -26,11 +26,11 @@
 
 #include <stdint.h>
 #include <string.h>
+
 #include <string>
 
 #include <boost/container/small_vector.hpp>
 
-#include "yb/util/coding_consts.h"
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
 

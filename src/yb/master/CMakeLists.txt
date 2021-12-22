@@ -30,18 +30,14 @@
 # under the License.
 #
 
-YB_INCLUDE_EXTENSIONS()
+set(YB_PCH_PREFIX master)
 
-YRPC_GENERATE(
-  MASTER_TYPES_YRPC_SRCS MASTER_TYPES_YRPC_HDRS MASTER_TYPES_YRPC_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES master_types.proto)
 YRPC_GENERATE(
   MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES master.proto)
+  PROTO_FILES master.proto
+  NO_SERVICE_PROTO_FILES master_types.proto)
 set(MASTER_YRPC_LIBS
   consensus_metadata_proto
   yrpc
@@ -49,13 +45,13 @@ set(MASTER_YRPC_LIBS
   rpc_header_proto
   tablet_proto
   tserver_proto
-  wire_protocol_proto
-  yb_pgwrapper
   cdc_consumer_proto)
 ADD_YB_LIBRARY(master_proto
-  SRCS ${MASTER_YRPC_SRCS} ${MASTER_TYPES_YRPC_SRCS}
+  SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
-  NONLINK_DEPS ${MASTER_YRPC_TGTS} ${MASTER_TYPES_YRPC_TGTS})
+  NONLINK_DEPS ${MASTER_YRPC_TGTS})
+
+YB_INCLUDE_EXTENSIONS()
 
 set(MASTER_PROTO_LIBS
   master_proto
@@ -175,7 +171,8 @@ ADD_YB_LIBRARY(master_util
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
-  master-test_base.cc)
+  master-test_base.cc
+  master-test-util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
   master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})

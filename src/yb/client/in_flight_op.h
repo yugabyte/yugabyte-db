@@ -14,12 +14,16 @@
 #ifndef YB_CLIENT_IN_FLIGHT_OP_H
 #define YB_CLIENT_IN_FLIGHT_OP_H
 
+#include <string>
+
+#include <gflags/gflags_declare.h>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/util/locks.h"
 #include "yb/util/enums.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace client {

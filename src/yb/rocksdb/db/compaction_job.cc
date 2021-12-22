@@ -59,6 +59,7 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
@@ -71,6 +72,7 @@
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/result.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 

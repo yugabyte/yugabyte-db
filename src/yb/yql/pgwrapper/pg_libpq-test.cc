@@ -15,22 +15,31 @@
 #include <fstream>
 #include <thread>
 
+#include "yb/client/client_fwd.h"
+#include "yb/client/table_info.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/common.pb.h"
+#include "yb/common/pgsql_error.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/master_defaults.h"
+
+#include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-
-#include "yb/client/client_fwd.h"
-#include "yb/client/yb_table_name.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/pgsql_error.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/tserver/tserver.pb.h"
 
 using namespace std::literals;
 
@@ -1201,6 +1210,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
+              master::IncludeInactive::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1234,6 +1244,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
         client->LookupTabletById(
             colocated_tablet_id,
             colocated_table,
+              master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               tablet_found = result.ok();
@@ -1486,6 +1497,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
+              master::IncludeInactive::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1514,6 +1526,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               alt_tablet_found = result.ok();
@@ -1557,6 +1570,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup.tablet_id,
             tablegroup.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               orig_tablet_found = result.ok();
@@ -1575,6 +1589,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               second_tablet_found = result.ok();

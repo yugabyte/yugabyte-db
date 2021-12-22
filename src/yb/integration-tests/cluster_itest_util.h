@@ -41,27 +41,43 @@
 #ifndef YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
 #define YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
 
+#include <inttypes.h>
+
+#include <cstdint>
+#include <iosfwd>
+#include <limits>
 #include <memory>
+#include <ostream>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
+
 #include <boost/optional/optional_fwd.hpp>
 
-#include "yb/gutil/ref_counted.h"
 #include "yb/client/client_fwd.h"
+
 #include "yb/common/entity_ids.h"
-#include "yb/consensus/consensus.h"
+#include "yb/common/hybrid_time.h"
+
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
-#include "yb/consensus/opid_util.h"
 #include "yb/consensus/leader_lease.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/master/master.proxy.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 
 using namespace std::literals;
@@ -152,13 +168,11 @@ Result<std::vector<OpId>> GetLastOpIdForEachReplica(
     consensus::OperationType op_type = consensus::OperationType::UNKNOWN_OP);
 
 // Like the above, but for a single replica.
-inline Result<OpId> GetLastOpIdForReplica(
+Result<OpId> GetLastOpIdForReplica(
     const TabletId& tablet_id,
     TServerDetails* replica,
     consensus::OpIdType opid_type,
-    const MonoDelta& timeout) {
-  return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
-}
+    const MonoDelta& timeout);
 
 // Creates server vector from map.
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);

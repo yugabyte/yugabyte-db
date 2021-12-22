@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -11,12 +12,15 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Query;
@@ -59,11 +63,11 @@ public class CustomerTaskController extends AuthenticatedController {
             .query()
             .where()
             .eq("parent_uuid", parentUUID)
-            .eq("task_state", TaskInfo.State.Failure.name())
+            .in("task_state", TaskInfo.ERROR_STATES)
             .orderBy("position desc");
     List<TaskInfo> result = new ArrayList<>(subTaskQuery.findList());
 
-    if ((parentTask.getTaskState() == TaskInfo.State.Failure) && result.isEmpty()) {
+    if (TaskInfo.ERROR_STATES.contains(parentTask.getTaskState()) && result.isEmpty()) {
       JsonNode taskError = parentTask.getTaskDetails().get("errorString");
       if ((taskError != null) && !StringUtils.isEmpty(taskError.asText())) {
         // Parent task hasn't `sub_task_group_type` set but can have some error details
@@ -239,42 +243,51 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Retry a task",
-      notes = "Retry a Create Universe task.",
+      value = "Retry a Universe task",
+      notes = "Retry a Universe task.",
       response = UniverseResp.class)
   public Result retryTask(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    CustomerTask.getOrBadRequest(customer.uuid, taskUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
+    TaskType taskType = taskInfo.getTaskType();
 
-    if (taskInfo.getTaskType() != TaskType.CreateUniverse) {
-      String errMsg =
-          String.format(
-              "Invalid task type: %s. Only 'Create Universe' task retries are supported.",
-              taskInfo.getTaskType().toString());
+    UniverseTaskParams taskParams = null;
+    switch (taskType) {
+      case CreateUniverse:
+        UniverseDefinitionTaskParams params =
+            Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
+        // Reset the error string.
+        params.setErrorString(null);
+        taskParams = params;
+        break;
+      default:
+        String errMsg =
+            String.format(
+                "Invalid task type: %s. Only Universe task retries are supported.", taskType);
+        return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+      String errMsg = String.format("Invalid task state: Task %s cannot retried", taskUUID);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-
-    JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
-    UniverseDefinitionTaskParams params =
-        Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
-    params.firstTry = false;
-    Universe universe = Universe.getOrBadRequest(params.universeUUID);
-
-    UUID newTaskUUID = commissioner.submit(taskInfo.getTaskType(), params);
+    taskParams.firstTry = false;
+    taskParams.previousTaskUUID = taskUUID;
+    UUID newTaskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
-        "Submitted retry task to create universe for {}:{}, task uuid = {}.",
+        "Submitted retry task to universe for {}:{}, task uuid = {}.",
         universe.universeUUID,
         universe.name,
         newTaskUUID);
 
-    // Add this task uuid to the user universe.
     CustomerTask.create(
         customer,
         universe.universeUUID,
         newTaskUUID,
         CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.Create,
+        customerTask.getType(),
         universe.name);
     LOG.info(
         "Saved task uuid "
@@ -283,8 +296,20 @@ public class CustomerTaskController extends AuthenticatedController {
             + universe.universeUUID
             + ":"
             + universe.name);
-
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(taskParams), newTaskUUID);
     return PlatformResults.withData(new UniverseResp(universe, newTaskUUID));
+  }
+
+  @ApiOperation(
+      value = "Abort a task",
+      notes = "Aborts a running task",
+      response = YBPSuccess.class)
+  public Result abortTask(UUID customerUUID, UUID taskUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    boolean isSuccess = commissioner.abortTask(taskUUID);
+    if (!isSuccess) {
+      return YBPSuccess.withMessage("Task is not running.");
+    }
+    return YBPSuccess.withMessage("Task is being aborted.");
   }
 }

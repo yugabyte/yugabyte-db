@@ -13,24 +13,24 @@
 
 #include "yb/consensus/retryable_requests.h"
 
-#include <boost/multi_index_container.hpp>
-#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
 
-#include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_round.h"
 
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

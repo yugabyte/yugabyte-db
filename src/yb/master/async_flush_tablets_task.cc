@@ -10,17 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/async_flush_tablets_task.h"
 
+#include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.h"
 #include "yb/master/flush_manager.h"
-
+#include "yb/master/master.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
-
-#include "yb/util/format.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace master {
@@ -75,7 +73,7 @@ void AsyncFlushTablets::HandleResponse(int attempt) {
     VLOG(1) << "TS " << permanent_uuid() << ": flush tablets complete";
   }
 
-  if (state() == MonitoredTaskState::kComplete) {
+  if (state() == server::MonitoredTaskState::kComplete) {
     // TODO: this class should not know CatalogManager API,
     //       remove circular dependency between classes.
     master_->flush_manager()->HandleFlushTabletsResponse(

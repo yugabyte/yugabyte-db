@@ -13,16 +13,18 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/integration-tests/yb_table_test_base.h"
+#include "yb/client/client.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/master.proxy.h"
-#include "yb/rpc/rpc_controller.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_table_test_base.h"
+
 #include "yb/tools/yb-admin_client.h"
+
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

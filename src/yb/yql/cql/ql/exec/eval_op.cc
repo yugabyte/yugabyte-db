@@ -15,6 +15,8 @@
 
 #include "yb/yql/cql/ql/exec/executor.h"
 
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+
 namespace yb {
 namespace ql {
 

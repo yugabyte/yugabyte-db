@@ -32,24 +32,29 @@
 
 #include <vector>
 
+#include "yb/common/index.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
+
+#include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/consensus-test-util.h"
+
 #include "yb/server/logical_clock.h"
-#include "yb/server/metadata.h"
-#include "yb/tablet/tablet_bootstrap_if.h"
+
 #include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/tostring.h"
-#include "yb/tablet/tablet_options.h"
-#include "yb/util/env_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(skip_flushed_entries);
 DECLARE_int32(retryable_request_timeout_secs);

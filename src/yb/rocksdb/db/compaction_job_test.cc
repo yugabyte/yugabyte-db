@@ -28,6 +28,7 @@
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/cache.h"
@@ -38,7 +39,9 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
 #include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
@@ -165,8 +168,8 @@ class CompactionJobTest : public testing::Test {
                      /* marked_for_compaction */ false);
 
     mutex_.Lock();
-    versions_->LogAndApply(versions_->GetColumnFamilySet()->GetDefault(),
-                           mutable_cf_options_, &edit, &mutex_);
+    ASSERT_OK(versions_->LogAndApply(versions_->GetColumnFamilySet()->GetDefault(),
+                                     mutable_cf_options_, &edit, &mutex_));
     mutex_.Unlock();
   }
 

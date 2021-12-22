@@ -15,15 +15,21 @@
 #include <string>
 #include <vector>
 
-#include "yb/client/table.h"
+#include "yb/client/table_info.h"
+
 #include "yb/common/schema.h"
-#include "yb/gutil/strings/join.h"
+
 #include "yb/integration-tests/backfill-test-util.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

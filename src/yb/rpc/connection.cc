@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/connection.h"
 
 #include <thread>
@@ -36,11 +37,14 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"

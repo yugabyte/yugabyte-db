@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: create-clusters
     parent: cloud-basics
-    weight: 30
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---
@@ -22,9 +22,9 @@ To create a cluster, on the **Clusters** page, click **Add Cluster** to start th
 
 {{< note title="Note" >}}
 
-Before creating a paid cluster, create a billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
+Before creating a cluster, create a billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/). You don't need a billing profile to create your free cluster.
 
-If you want to use dedicated VPCs for network isolation and security, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) to set up VPC Peering with your client VPC. This has to be done before you create your cluster.
+If you want to use dedicated VPCs for network isolation and security, you need to create the VPC before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-vpcs/).
 
 {{< /note >}}
 
@@ -52,7 +52,7 @@ Use the **Free** cluster to get started with YugabyteDB. Although it's not suita
 - Automated and on-demand backups
 - Create as many as you need
 
-If you haven't already provided payment information, you'll need to add it before you can create a paid cluster.
+If you haven't already provided payment information, you'll need to add it before you can create a standard cluster.
 
 ![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster1-type.png)
 
@@ -64,19 +64,17 @@ Select **Yugabyte Cloud Free** or **Yugabyte Cloud** and click **Next** to displ
 
 Set the following options:
 
-- **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact Yugabyte Support.) 
+- **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact Yugabyte Support.)
 - **Cluster Name**: Enter a name for the cluster.
 - **Region**: Choose the Region where the cluster will be located.
 
 If you are creating a **Paid** cluster, set the following additional options:
 
-- **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failues: 
+- **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures:
 
   - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
   - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
   - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
-
-- **Network Access**: If you want to use dedicated VPCs for network isolation and security, contact Yugabyte Support to set up [VPC Peering](../../cloud-network/vpc-peers) with your client VPC. Note this has to be done before you create your cluster.
 
 - **Cluster Configuration**:
 
@@ -84,13 +82,15 @@ If you are creating a **Paid** cluster, set the following additional options:
   - vCPU/Node - enter the number of virtual CPUs per node.
   - Disk size/Node - enter the disk size per node in GB.
 
-The cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/). 
+- **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 
-Paid clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure). 
+The cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+
+Paid clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
 
 ### Database Admin Credentials
 
-The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster. (You can add additional users once the cluster is provisioned.)
+The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster. (You can [add additional users](../../cloud-connect/add-users/) once the cluster is provisioned.)
 
 ![Add Cluster Wizard - Admin Settings](/images/yb-cloud/cloud-addcluster-admin.png)
 
@@ -106,18 +106,19 @@ Save your credentials in a safe place. If you lose these credentials you will no
 
 ## Viewing the cluster
 
-After you complete the wizard, the [**Clusters**](../../cloud-clusters/) page appears with the provisioning of your new cluster in progress. 
+After you complete the wizard, the [**Clusters**](../../cloud-clusters/) page appears with the provisioning of your new cluster in progress.
 
 ![Cluster being provisioned](/images/yb-cloud/cloud-cluster-provisioning.png)
 
-Once the cluster is ready, the cluster [Overview](../../cloud-clusters/overview) is displayed.
+Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud with the credentials you specified.
 
 ## Next steps
 
 - [Assign IP allow lists](../add-connections/)
-- [Add database users](../add-users/)
-- [Connect to your cluster](../connect-to-clusters)
-- [Create a database](../create-databases)
-- [Connect an application](../connect-application)
+- [Connect to your cluster](../../cloud-connect/)
+- [Add database users](../../cloud-connect/add-users/)
+- [Create a database](../../cloud-connect/create-databases/)
+- [Develop applications](../../cloud-develop/)
+- [Database authorization in Yugabyte Cloud clusters](../../cloud-security/cloud-users/)

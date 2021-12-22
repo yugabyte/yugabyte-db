@@ -13,29 +13,27 @@
 
 #include <thread>
 
-#include "yb/common/index.h"
 #include "yb/common/common.pb.h"
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/internal_stats.h"
-
-#include "yb/common/partial_row.h"
+#include "yb/common/index.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
+
 #include "yb/gutil/casts.h"
+
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/db/internal_stats.h"
 
 #include "yb/server/hybrid_clock.h"
 

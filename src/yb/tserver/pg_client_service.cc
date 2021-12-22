@@ -13,10 +13,10 @@
 
 #include "yb/tserver/pg_client_service.h"
 
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -36,6 +36,9 @@
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 
@@ -276,6 +279,24 @@ class PgClientServiceImpl::Impl {
       server.ToPB(resp->mutable_servers()->Add());
     }
     return Status::OK();
+  }
+
+  CHECKED_STATUS ValidatePlacement(
+      const PgValidatePlacementRequestPB& req, PgValidatePlacementResponsePB* resp,
+      rpc::RpcContext* context) {
+    master::ReplicationInfoPB replication_info;
+    master::PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
+
+    for (const auto& block : req.placement_infos()) {
+      auto pb = live_replicas->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud(block.cloud());
+      pb->mutable_cloud_info()->set_placement_region(block.region());
+      pb->mutable_cloud_info()->set_placement_zone(block.zone());
+      pb->set_min_num_replicas(block.min_num_replicas());
+    }
+    live_replicas->set_num_replicas(req.num_replicas());
+
+    return client().ValidateReplicationInfo(replication_info);
   }
 
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \

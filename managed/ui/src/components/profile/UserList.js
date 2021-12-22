@@ -21,8 +21,9 @@ import {
   deleteUser,
   deleteUserResponse
 } from '../../actions/customers';
-import {toast} from "react-toastify";
-import {createErrorMessage} from "../alerts/AlertConfiguration/AlertUtils";
+import { toast } from 'react-toastify';
+import { createErrorMessage } from '../alerts/AlertConfiguration/AlertUtils';
+import { timeFormatter } from '../../utils/TableFormatters';
 
 class UserList extends Component {
   constructor(props) {
@@ -153,7 +154,9 @@ class UserList extends Component {
                 <TableHeaderColumn dataField="uuid" isKey hidden />
                 <TableHeaderColumn dataField="email">Email</TableHeaderColumn>
                 <TableHeaderColumn dataField="role">Role</TableHeaderColumn>
-                <TableHeaderColumn dataField="creationDate">Created At</TableHeaderColumn>
+                <TableHeaderColumn dataField="creationDate" dataFormat={timeFormatter}>
+                  Created At
+                </TableHeaderColumn>
                 <TableHeaderColumn
                   columnClassName="table-actions-cell"
                   dataFormat={(cell, row) => this.actionsDropdown(row)}

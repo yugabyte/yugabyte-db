@@ -14,16 +14,30 @@
 #ifndef YB_MASTER_PERMISSIONS_MANAGER_H
 #define YB_MASTER_PERMISSIONS_MANAGER_H
 
+#include <stdint.h>
+
+#include <set>
+#include <type_traits>
+#include <utility>
+
+#include <gflags/gflags_declare.h>
+#include <glog/logging.h>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/roles_permissions.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/catalog_entity_info.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/integral_types.h"
+
 #include "yb/master/catalog_manager.h"
 
 #include "yb/rpc/rpc.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/debug/lock_debug.h"
+#include "yb/util/math_util.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/unique_lock.h"
 
 namespace yb {

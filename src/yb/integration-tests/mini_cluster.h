@@ -35,18 +35,24 @@
 
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/gutil/macros.h"
+
 #include "yb/integration-tests/mini_cluster_base.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/server/skewed_clock.h"
-#include "yb/tablet/tablet.h"
+
+#include "yb/master/master_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/tserver/tablet_server_options.h"
+
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
-#include "yb/util/tsan_util.h"
 
 namespace yb {
 
@@ -188,10 +194,13 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerFsRoot(int idx);
 
-  string GetTabletServerDrive(int idx, int drive_index);
+  std::string GetTabletServerDrive(int idx, int drive_index);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
-  string GetMasterAddresses() const;
+  std::string GetMasterAddresses() const;
+
+    // The comma separated string of the tserver adresses host/ports from current list of tservers.
+  std::string GetTserverHTTPAddresses() const;
 
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
 
@@ -256,15 +265,19 @@ class MiniCluster : public MiniClusterBase {
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
 
+MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> JumpClocks(
+    MiniCluster* cluster, std::chrono::milliseconds delta);
+
 void StepDownAllTablets(MiniCluster* cluster);
 void StepDownRandomTablet(MiniCluster* cluster);
 
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 
-std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id);
+std::unordered_set<std::string> ListTabletIdsForTable(
+    MiniCluster* cluster, const std::string& table_id);
 
-std::unordered_set<string> ListActiveTabletIdsForTable(
-    MiniCluster* cluster, const string& table_id);
+std::unordered_set<std::string> ListActiveTabletIdsForTable(
+    MiniCluster* cluster, const std::string& table_id);
 
 std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter);
@@ -290,7 +303,7 @@ std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
     MiniCluster* cluster);
 
 CHECKED_STATUS WaitUntilTabletHasLeader(
-    MiniCluster* cluster, const string& tablet_id, MonoTime deadline);
+    MiniCluster* cluster, const std::string& tablet_id, MonoTime deadline);
 
 CHECKED_STATUS WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
@@ -346,6 +359,9 @@ Result<int> ServerWithLeaders(MiniCluster* cluster);
 // Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
+
+CHECKED_STATUS WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseTimePoint deadline);
 
 }  // namespace yb
 

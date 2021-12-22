@@ -34,24 +34,30 @@
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus.pb.h"
+
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_index.h"
+#include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replica_state.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/consensus/log_reader.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/server/logical_clock.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -180,7 +186,8 @@ class RaftConsensusQuorumTest : public YBTest {
           proxy_factory.get(),
           queue.get(),
           pool_token.get(),
-          logs_[i]);
+          logs_[i],
+          nullptr);
 
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,
@@ -404,10 +411,9 @@ class RaftConsensusQuorumTest : public YBTest {
     std::unique_ptr<LogReader> log_reader;
     EXPECT_OK(log::LogReader::Open(fs_managers_[idx]->env(),
                                    scoped_refptr<log::LogIndex>(),
-                                   kTestTablet,
+                                   "Log reader: ",
                                    fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
                                                                                 kTestTablet),
-                                   fs_managers_[idx]->uuid(),
                                    table_metric_entity_.get(),
                                    tablet_metric_entity_.get(),
                                    &log_reader));
@@ -481,9 +487,7 @@ class RaftConsensusQuorumTest : public YBTest {
   }
 
   void VerifyNoCommitsBeforeReplicates(const log::LogEntries& entries) {
-    std::unordered_set<OpIdPB,
-                       OpIdHashFunctor,
-                       OpIdEqualsFunctor> replication_ops;
+    std::unordered_set<OpIdPB, OpIdHashFunctor, OpIdEqualsFunctor> replication_ops;
 
     for (const auto& entry : entries) {
       if (entry->has_replicate()) {

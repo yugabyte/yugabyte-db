@@ -39,30 +39,27 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/partition.h"
-#include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
 
-#include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/callback.h"
+
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/metadata.pb.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
-#include "yb/util/status_callback.h"
 
 namespace yb {
 namespace tablet {
@@ -81,8 +78,8 @@ struct TableInfo {
   TableType table_type;
 
   // The table schema, secondary index map, index info (for index table only) and schema version.
-  Schema schema;
-  IndexMap index_map;
+  std::unique_ptr<Schema> schema;
+  std::unique_ptr<IndexMap> index_map;
   std::unique_ptr<IndexInfo> index_info;
   uint32_t schema_version = 0;
 
@@ -98,7 +95,7 @@ struct TableInfo {
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
-  TableInfo() = default;
+  TableInfo();
   TableInfo(std::string table_id,
             std::string namespace_name,
             std::string table_name,
@@ -230,90 +227,25 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   // Returns the name, type, schema, index map, schema, etc of the table.
-  std::string namespace_name(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    if (table_id.empty()) {
-      return primary_table_info()->namespace_name;
-    }
-    const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
-    return table_info->namespace_name;
-  }
+  std::string namespace_name(const TableId& table_id = "") const;
 
-  std::string table_name(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    if (table_id.empty()) {
-      return primary_table_info()->table_name;
-    }
-    const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
-    return table_info->table_name;
-  }
+  std::string table_name(const TableId& table_id = "") const;
 
-  TableType table_type(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    if (table_id.empty()) {
-      return primary_table_info()->table_type;
-    }
-    const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
-    return table_info->table_type;
-  }
+  TableType table_type(const TableId& table_id = "") const;
 
-  yb::SchemaPtr schema(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    const TableInfoPtr table_info =
-        table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
-    return yb::SchemaPtr(table_info, &table_info->schema);
-  }
+  yb::SchemaPtr schema(const TableId& table_id = "") const;
 
-  std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    const TableInfoPtr table_info =
-        table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
-    return std::shared_ptr<IndexMap>(table_info, &table_info->index_map);
-  }
+  std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const;
 
-  uint32_t schema_version(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    const TableInfoPtr table_info =
-        table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
-    return table_info->schema_version;
-  }
+  uint32_t schema_version(const TableId& table_id = "") const;
 
-  const std::string& indexed_table_id(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    static const std::string kEmptyString = "";
-    std::lock_guard<MutexType> lock(data_mutex_);
-    const TableInfoPtr table_info = table_id.empty() ?
-        primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
-    const auto* index_info = table_info->index_info.get();
-    return index_info ? index_info->indexed_table_id() : kEmptyString;
-  }
+  const std::string& indexed_table_id(const TableId& table_id = "") const;
 
-  bool is_local_index(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    std::lock_guard<MutexType> lock(data_mutex_);
-    const TableInfoPtr table_info = table_id.empty() ?
-        primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
-    const auto* index_info = table_info->index_info.get();
-    return index_info && index_info->is_local();
-  }
+  bool is_local_index(const TableId& table_id = "") const;
 
-  bool is_unique_index(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    std::lock_guard<MutexType> lock(data_mutex_);
-    const TableInfoPtr table_info = table_id.empty() ?
-        primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
-    const auto* index_info = table_info->index_info.get();
-    return index_info && index_info->is_unique();
-  }
+  bool is_unique_index(const TableId& table_id = "") const;
 
-  std::vector<ColumnId> index_key_column_ids(const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    std::lock_guard<MutexType> lock(data_mutex_);
-    const TableInfoPtr table_info = table_id.empty() ?
-        primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
-    const auto* index_info = table_info->index_info.get();
-    return index_info ? index_info->index_key_column_ids() : std::vector<ColumnId>();
-  }
+  std::vector<ColumnId> index_key_column_ids(const TableId& table_id = "") const;
 
   // Returns the partition schema of the Raft group's tables.
   std::shared_ptr<PartitionSchema> partition_schema() const {
@@ -323,12 +255,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   std::shared_ptr<std::vector<DeletedColumn>> deleted_cols(
-      const TableId& table_id = "") const {
-    DCHECK_NE(state_, kNotLoadedYet);
-    const TableInfoPtr table_info =
-        table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
-    return std::shared_ptr<std::vector<DeletedColumn>>(table_info, &table_info->deleted_cols);
-  }
+      const TableId& table_id = "") const;
 
   const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
   std::string intents_rocksdb_dir() const { return kv_store_.rocksdb_dir + kIntentsDBSuffix; }

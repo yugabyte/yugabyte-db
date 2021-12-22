@@ -39,35 +39,46 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/async_initializer.h"
+#include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
+
+#include "yb/consensus/consensus_meta.h"
+
+#include "yb/gutil/bind.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_util.h"
+#include "yb/master/master-path-handlers.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.service.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
-#include "yb/master/master-path-handlers.h"
+#include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/server/rpc_server.h"
+
 #include "yb/tablet/maintenance_manager.h"
+
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
-#include "yb/tserver/remote_bootstrap_service.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/shared_lock.h"
-#include "yb/client/async_initializer.h"
 
 DEFINE_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
@@ -131,6 +142,7 @@ Master::Master(const MasterOptions& opts)
     catalog_manager_(new enterprise::CatalogManager(this)),
     path_handlers_(new MasterPathHandlers(this)),
     flush_manager_(new FlushManager(this, catalog_manager())),
+    init_future_(init_status_.get_future()),
     opts_(opts),
     registration_initialized_(false),
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -280,7 +292,7 @@ void Master::InitCatalogManagerTask() {
   if (!s.ok()) {
     LOG(ERROR) << ToString() << ": Unable to init master catalog manager: " << s.ToString();
   }
-  init_status_.Set(s);
+  init_status_.set_value(s);
 }
 
 Status Master::InitCatalogManager() {
@@ -295,7 +307,7 @@ Status Master::InitCatalogManager() {
 Status Master::WaitForCatalogManagerInit() {
   CHECK_EQ(state_, kRunning);
 
-  return init_status_.Get();
+  return init_future_.get();
 }
 
 Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& timeout) {
@@ -359,7 +371,7 @@ Status Master::InitMasterRegistration() {
   return Status::OK();
 }
 
-Status Master::ResetMemoryState(const RaftConfigPB& config) {
+Status Master::ResetMemoryState(const consensus::RaftConfigPB& config) {
   LOG(INFO) << "Memory state set to config: " << config.ShortDebugString();
 
   auto master_addr = std::make_shared<server::MasterAddresses>();
@@ -412,7 +424,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     ServerEntryPB local_entry;
     local_entry.mutable_instance_id()->CopyFrom(catalog_manager_->NodeInstance());
     RETURN_NOT_OK(GetMasterRegistration(local_entry.mutable_registration()));
-    local_entry.set_role(IsShellMode() ? RaftPeerPB::NON_PARTICIPANT : RaftPeerPB::LEADER);
+    local_entry.set_role(IsShellMode() ? PeerRole::NON_PARTICIPANT : PeerRole::LEADER);
     masters->push_back(local_entry);
     return Status::OK();
   }
@@ -501,7 +513,7 @@ scoped_refptr<Histogram> Master::GetMetric(
 
 Status Master::GoIntoShellMode() {
   maintenance_manager_->Shutdown();
-  RETURN_NOT_OK(catalog_manager()->GoIntoShellMode());
+  RETURN_NOT_OK(catalog_manager_impl()->GoIntoShellMode());
   return Status::OK();
 }
 
@@ -509,8 +521,28 @@ const std::shared_future<client::YBClient*>& Master::client_future() const {
   return async_client_init_->get_client_future();
 }
 
+scoped_refptr<MetricEntity> Master::metric_entity_cluster() {
+  return metric_entity_cluster_;
+}
+
 client::LocalTabletFilter Master::CreateLocalTabletFilter() {
   return client::LocalTabletFilter();
+}
+
+CatalogManagerIf* Master::catalog_manager() const {
+  return catalog_manager_.get();
+}
+
+SysCatalogTable& Master::sys_catalog() const {
+  return *catalog_manager_->sys_catalog();
+}
+
+PermissionsManager& Master::permissions_manager() {
+  return *catalog_manager_->permissions_manager();
+}
+
+EncryptionManager& Master::encryption_manager() {
+  return catalog_manager_->encryption_manager();
 }
 
 } // namespace master

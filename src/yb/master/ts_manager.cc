@@ -39,7 +39,6 @@
 
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/util/shared_lock.h"
 
 using std::shared_ptr;
 using std::string;

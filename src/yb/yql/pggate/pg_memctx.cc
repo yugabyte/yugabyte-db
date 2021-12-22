@@ -15,6 +15,8 @@
 
 #include "yb/yql/pggate/pg_memctx.h"
 
+#include "yb/util/status.h"
+
 #include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {

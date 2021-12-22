@@ -72,11 +72,16 @@ public class Util {
   public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
+  public static final String SYSTEM_PLATFORM_DB = "system_platform";
 
   public static final String AZ = "AZ";
   public static final String GCS = "GCS";
   public static final String S3 = "S3";
   public static final String NFS = "NFS";
+
+  public static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
+  public static final String BLACKLIST_LEADER_WAIT_TIME_MS =
+      "yb.upgrade.blacklist_leader_wait_time_ms";
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.

@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
@@ -27,7 +28,8 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/util/metrics.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"

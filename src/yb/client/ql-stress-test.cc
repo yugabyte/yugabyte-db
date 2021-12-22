@@ -11,21 +11,29 @@
 // under the License.
 //
 
+#include "yb/bfql/gen_opcodes.h"
+
 #include "yb/client/client.h"
+#include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/rejection_score_source.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/rocksdb/metadata.h"
@@ -35,16 +43,21 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/bfql/gen_opcodes.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/format.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
-
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 

@@ -14,15 +14,15 @@
 #ifndef YB_CLIENT_SESSION_H
 #define YB_CLIENT_SESSION_H
 
+#include <future>
 #include <unordered_set>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/error.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/hybrid_time.h"
 
-#include "yb/util/async_util.h"
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 

@@ -50,10 +50,8 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/docdb.h"
 
-#include "yb/gutil/mathlimits.h"
-#include "yb/gutil/stl_util.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -63,6 +61,14 @@
 #include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/history_cutoff_operation.h"
+#include "yb/tablet/operations/operation_driver.h"
+#include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/tablet/operations/split_operation.h"
+#include "yb/tablet/operations/truncate_operation.h"
+#include "yb/tablet/operations/update_txn_operation.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -70,18 +76,15 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/transaction_participant.h"
 
-#include "yb/tablet/operations/change_metadata_operation.h"
-#include "yb/tablet/operations/history_cutoff_operation.h"
-#include "yb/tablet/operations/operation_driver.h"
-#include "yb/tablet/operations/split_operation.h"
-#include "yb/tablet/operations/truncate_operation.h"
-#include "yb/tablet/operations/write_operation.h"
-#include "yb/tablet/operations/update_txn_operation.h"
-
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -186,7 +189,8 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
-    consensus::RetryableRequests* retryable_requests) {
+    consensus::RetryableRequests* retryable_requests,
+    consensus::MultiRaftManager* multi_raft_manager) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -267,7 +271,8 @@ Status TabletPeer::InitTabletPeer(
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
-        retryable_requests);
+        retryable_requests,
+        multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));

@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/yql/pggate/ybc_pggate.h"
+
 #include <algorithm>
 #include <string>
 
@@ -20,17 +22,16 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ybc-internal.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/thread.h"
+#include "yb/util/yb_partition.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "yb/yql/pggate/pggate.h"
-#include "yb/yql/pggate/pggate_thread_local_vars.h"
-#include "yb/yql/pggate/pg_txn_manager.h"
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_memctx.h"
-
 #include "yb/yql/pggate/pg_value.h"
+#include "yb/yql/pggate/pggate.h"
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DECLARE_bool(client_suppress_created_logs);
@@ -940,6 +941,13 @@ YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
 
 YBCStatus YBCPgRollbackSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->RollbackSubTransaction(id));
+}
+
+//------------------------------------------------------------------------------------------------
+// System validation.
+//------------------------------------------------------------------------------------------------
+YBCStatus YBCPgValidatePlacement(const char *placement_info) {
+  return ToYBCStatus(pgapi->ValidatePlacement(placement_info));
 }
 
 // Referential Integrity Caching

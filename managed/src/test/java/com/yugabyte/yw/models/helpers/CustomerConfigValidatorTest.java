@@ -85,6 +85,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com:443, true",
     // location - correct, aws_host_base - correct -> allowed
+    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, minio.rmn.local:30000, true",
+    // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, https://s3.amazonaws.com, true",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, "

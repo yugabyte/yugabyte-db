@@ -57,13 +57,11 @@ class ChangeMetadataOperation
                                       tserver::ChangeMetadataRequestPB> {
  public:
   ChangeMetadataOperation(Tablet* tablet, log::Log* log,
-                          const tserver::ChangeMetadataRequestPB* request = nullptr)
-      : ExclusiveSchemaOperation(tablet, request), log_(log) {
-  }
+                          const tserver::ChangeMetadataRequestPB* request = nullptr);
 
-  explicit ChangeMetadataOperation(const tserver::ChangeMetadataRequestPB* request)
-      : ChangeMetadataOperation(nullptr, nullptr, request) {
-  }
+  explicit ChangeMetadataOperation(const tserver::ChangeMetadataRequestPB* request);
+
+  ~ChangeMetadataOperation();
 
   void set_schema(const Schema* schema) { schema_ = schema; }
   const Schema* schema() const { return schema_; }

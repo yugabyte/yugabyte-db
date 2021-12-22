@@ -22,8 +22,10 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/db_test_util.h"
+#include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #if !defined(ROCKSDB_LITE)
+#include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 namespace rocksdb {
@@ -162,7 +164,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionSingleSortedRun) {
   for (int num = 0; num < 16; num++) {
     // Write 100KB file. And immediately it should be compacted to one file.
     GenerateNewFile(&rnd, &key_idx);
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
     ASSERT_EQ(NumSortedRuns(0), 1);
   }
 }
@@ -196,15 +198,15 @@ TEST_P(DBTestUniversalCompactionWithParam, OptimizeFiltersForHits) {
                  Env::Priority::LOW);
 
   for (int num = 0; num < options.level0_file_num_compaction_trigger; num++) {
-    Put(Key(num * 10), "val");
+    ASSERT_OK(Put(Key(num * 10), "val"));
     if (num) {
-      dbfull()->TEST_WaitForFlushMemTable();
+      ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
     }
-    Put(Key(30 + num * 10), "val");
-    Put(Key(60 + num * 10), "val");
+    ASSERT_OK(Put(Key(30 + num * 10), "val"));
+    ASSERT_OK(Put(Key(60 + num * 10), "val"));
   }
-  Put("", "");
-  dbfull()->TEST_WaitForFlushMemTable();
+  ASSERT_OK(Put("", ""));
+  ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
 
   // Query set of non existing keys
   for (int i = 5; i < 90; i += 10) {
@@ -224,7 +226,7 @@ TEST_P(DBTestUniversalCompactionWithParam, OptimizeFiltersForHits) {
 
   // Unblock compaction and wait it for happening.
   sleeping_task_low.WakeUp();
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   // The same queries will not trigger bloom filter
   for (int i = 5; i < 90; i += 10) {
@@ -328,7 +330,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionTrigger) {
   //   Now we have 3 files at level 0, with size 4, 2.4, 2. Let's generate a
   //   new file of size 1.
   GenerateNewFile(1, &rnd, &key_idx);
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   // Level-0 compaction is triggered, but no file will be picked up.
   ASSERT_EQ(NumSortedRuns(1), 4);
 
@@ -337,7 +339,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionTrigger) {
   //   a new file of size 1.
   filter->expect_full_compaction_.store(true);
   GenerateNewFile(1, &rnd, &key_idx);
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   // All files at level 0 will be compacted into a single one.
   ASSERT_EQ(NumSortedRuns(1), 1);
 
@@ -371,7 +373,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionSizeAmplification)
       ASSERT_OK(Put(1, Key(key_idx), RandomString(&rnd, 10000)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable(handles_[1]));
     ASSERT_EQ(NumSortedRuns(1), num + 1);
   }
   ASSERT_EQ(NumSortedRuns(1), 2);
@@ -381,7 +383,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionSizeAmplification)
   // but will instead trigger size amplification.
   ASSERT_OK(Flush(1));
 
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   // Verify that size amplification did occur
   ASSERT_EQ(NumSortedRuns(1), 1);
@@ -408,8 +410,8 @@ TEST_P(DBTestUniversalCompactionWithParam, CompactFilesOnUniversalCompaction) {
   for (int key = 1024 * kEntriesPerBuffer; key >= 0; --key) {
     ASSERT_OK(Put(1, ToString(key), RandomString(&rnd, kTestValueSize)));
   }
-  dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable(handles_[1]));
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   ColumnFamilyMetaData cf_meta;
   dbfull()->GetColumnFamilyMetaData(handles_[1], &cf_meta);
   std::vector<std::string> compaction_input_file_names;
@@ -490,7 +492,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionTargetLevel) {
   compact_options.change_level = true;
   compact_options.target_level = 4;
   compact_options.exclusive_manual_compaction = exclusive_manual_compaction_;
-  db_->CompactRange(compact_options, nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
   ASSERT_EQ("0,0,0,0,1", FilesPerLevel(0));
 }
 
@@ -525,7 +527,7 @@ TEST_P(DBTestUniversalCompactionMultiLevels, UniversalCompactionMultiLevels) {
     ASSERT_OK(Put(1, Key(i % num_keys), Key(i)));
   }
 
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   for (int i = num_keys; i < num_keys * 2; i++) {
     ASSERT_EQ(Get(1, Key(i % num_keys)), Key(i));
@@ -572,7 +574,7 @@ TEST_P(DBTestUniversalCompactionMultiLevels, UniversalCompactionTrivialMove) {
   std::vector<std::string> values;
 
   ASSERT_OK(Flush(1));
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   ASSERT_GT(trivial_move, 0);
   ASSERT_GT(non_trivial_move, 0);
@@ -637,7 +639,7 @@ TEST_P(DBTestUniversalCompactionParallel, UniversalCompactionParallel) {
   for (int i = 0; i < num_keys * 2; i++) {
     ASSERT_OK(Put(1, Key(i % num_keys), Key(i)));
   }
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
   ASSERT_EQ(num_compactions_running.load(), 0);
@@ -681,14 +683,14 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionOptions) {
       ASSERT_OK(Put(1, Key(key_idx), RandomString(&rnd, 990)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable(handles_[1]));
 
     if (num < options.level0_file_num_compaction_trigger - 1) {
       ASSERT_EQ(NumSortedRuns(1), num + 1);
     }
   }
 
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   ASSERT_EQ(NumSortedRuns(1), 1);
 }
 
@@ -719,7 +721,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionStopStyleSimilarSi
       ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
     ASSERT_EQ(NumSortedRuns(), num + 1);
   }
 
@@ -729,7 +731,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionStopStyleSimilarSi
     ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
     key_idx++;
   }
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   // Suppose each file flushed from mem table has size 1. Now we compact
   // (level0_file_num_compaction_trigger+1)=4 files and should have a big
   // file of size 4.
@@ -742,7 +744,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionStopStyleSimilarSi
   //   First, clean up memtable before inserting new data. This will generate
   //   a level-0 file, with size around 0.4 (according to previously written
   //   data amount).
-  dbfull()->Flush(FlushOptions());
+  ASSERT_OK(dbfull()->Flush(FlushOptions()));
   for (int num = 0; num < options.level0_file_num_compaction_trigger - 3;
        num++) {
     // Write 110KB (11 values, each 10K)
@@ -750,7 +752,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionStopStyleSimilarSi
       ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
     ASSERT_EQ(NumSortedRuns(), num + 3);
   }
 
@@ -760,7 +762,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionStopStyleSimilarSi
     ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
     key_idx++;
   }
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   // Before compaction, we have 4 files at level 0, with size 4, 0.4, 1, 1.
   // After compaction, we should have 3 files, with size 4, 0.4, 2.
   ASSERT_EQ(NumSortedRuns(), 3);
@@ -771,7 +773,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionStopStyleSimilarSi
     ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
     key_idx++;
   }
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   // Level-0 compaction is triggered, but no file will be picked up.
   ASSERT_EQ(NumSortedRuns(), 4);
 }
@@ -801,8 +803,8 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionCompressRatio1) {
       ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
   }
   ASSERT_LT(TotalSize(), 110000U * 2 * 0.9);
 
@@ -813,8 +815,8 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionCompressRatio1) {
       ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
   }
   ASSERT_LT(TotalSize(), 110000 * 4 * 0.9);
 
@@ -826,8 +828,8 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionCompressRatio1) {
       ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
   }
   ASSERT_LT(TotalSize(), 110000 * 6 * 0.9);
 
@@ -839,8 +841,8 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionCompressRatio1) {
       ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
   }
   ASSERT_GT(TotalSize(), 110000 * 11 * 0.8 + 110000 * 2);
 }
@@ -870,8 +872,8 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionCompressRatio2) {
       ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
+    ASSERT_OK(dbfull()->TEST_WaitForCompact());
   }
   ASSERT_LT(TotalSize(), 120000U * 12 * 0.8 + 120000 * 2);
 }
@@ -917,7 +919,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionTrivialMoveTest1) 
   std::vector<std::string> values;
 
   ASSERT_OK(Flush(1));
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   ASSERT_GT(trivial_move, 0);
   ASSERT_GT(non_trivial_move, 0);
@@ -962,7 +964,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionTrivialMoveTest2) 
   std::vector<std::string> values;
 
   ASSERT_OK(Flush(1));
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   ASSERT_GT(trivial_move, 0);
   ASSERT_EQ(non_trivial_move, 0);
@@ -986,13 +988,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionFourPaths) {
   options.num_levels = 1;
   options = CurrentOptions(options);
 
-  std::vector<std::string> filenames;
-  env_->GetChildren(options.db_paths[1].path, &filenames);
-  // Delete archival files.
-  for (size_t i = 0; i < filenames.size(); ++i) {
-    env_->DeleteFile(options.db_paths[1].path + "/" + filenames[i]);
-  }
-  env_->DeleteDir(options.db_paths[1].path);
+  ASSERT_OK(DeleteRecursively(env_, options.db_paths[1].path));
   Reopen(options);
 
   Random rnd(301);
@@ -1111,10 +1107,10 @@ TEST_P(DBTestUniversalCompactionWithParam, IncreaseUniversalCompactionNumLevels)
   for (int i = 0; i <= max_key1; i++) {
     // each value is 10K
     ASSERT_OK(Put(1, Key(i), RandomString(&rnd, 10000)));
-    dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable(handles_[1]));
   }
   ASSERT_OK(Flush(1));
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   // Stage 2: reopen with universal compaction, num_levels=4
   options.compaction_style = kCompactionStyleUniversal;
@@ -1128,10 +1124,10 @@ TEST_P(DBTestUniversalCompactionWithParam, IncreaseUniversalCompactionNumLevels)
   for (int i = max_key1 + 1; i <= max_key2; i++) {
     // each value is 10K
     ASSERT_OK(Put(1, Key(i), RandomString(&rnd, 10000)));
-    dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable(handles_[1]));
   }
   ASSERT_OK(Flush(1));
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   verify_func(max_key2);
   // Compaction to non-L0 has happened.
@@ -1146,7 +1142,7 @@ TEST_P(DBTestUniversalCompactionWithParam, IncreaseUniversalCompactionNumLevels)
   compact_options.change_level = true;
   compact_options.target_level = 0;
   compact_options.exclusive_manual_compaction = exclusive_manual_compaction_;
-  dbfull()->CompactRange(compact_options, handles_[1], nullptr, nullptr);
+  ASSERT_OK(dbfull()->CompactRange(compact_options, handles_[1], nullptr, nullptr));
   // Need to restart it once to remove higher level records in manifest.
   ReopenWithColumnFamilies({"default", "pikachu"}, options);
   // Final reopen
@@ -1159,10 +1155,10 @@ TEST_P(DBTestUniversalCompactionWithParam, IncreaseUniversalCompactionNumLevels)
   for (int i = max_key2 + 1; i <= max_key3; i++) {
     // each value is 10K
     ASSERT_OK(Put(1, Key(i), RandomString(&rnd, 10000)));
-    dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable(handles_[1]));
   }
   ASSERT_OK(Flush(1));
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   verify_func(max_key3);
 }
 
@@ -1185,13 +1181,7 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionSecondPathRatio) {
       new SpecialSkipListFactory(KNumKeysByGenerateNewFile - 1));
   options = CurrentOptions(options);
 
-  std::vector<std::string> filenames;
-  env_->GetChildren(options.db_paths[1].path, &filenames);
-  // Delete archival files.
-  for (size_t i = 0; i < filenames.size(); ++i) {
-    env_->DeleteFile(options.db_paths[1].path + "/" + filenames[i]);
-  }
-  env_->DeleteDir(options.db_paths[1].path);
+  ASSERT_OK(DeleteRecursively(env_, options.db_paths[1].path));
   Reopen(options);
 
   Random rnd(301);
@@ -1295,7 +1285,7 @@ TEST_P(DBTestUniversalManualCompactionOutputPathId,
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
   MakeTables(3, "p", "q", 1);
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
   ASSERT_EQ(2, TotalLiveFiles(1));
   ASSERT_EQ(2, GetSstFileCount(options.db_paths[0].path));
   ASSERT_EQ(0, GetSstFileCount(options.db_paths[1].path));
@@ -1304,7 +1294,7 @@ TEST_P(DBTestUniversalManualCompactionOutputPathId,
   CompactRangeOptions compact_options;
   compact_options.target_path_id = 1;
   compact_options.exclusive_manual_compaction = exclusive_manual_compaction_;
-  db_->CompactRange(compact_options, handles_[1], nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(compact_options, handles_[1], nullptr, nullptr));
   ASSERT_EQ(1, TotalLiveFiles(1));
   ASSERT_EQ(0, GetSstFileCount(options.db_paths[0].path));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
@@ -1327,7 +1317,7 @@ TEST_P(DBTestUniversalManualCompactionOutputPathId,
   // Full compaction to DB path 0
   compact_options.target_path_id = 0;
   compact_options.exclusive_manual_compaction = exclusive_manual_compaction_;
-  db_->CompactRange(compact_options, handles_[1], nullptr, nullptr);
+  ASSERT_OK(db_->CompactRange(compact_options, handles_[1], nullptr, nullptr));
   ASSERT_EQ(1, TotalLiveFiles(1));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[0].path));
   ASSERT_EQ(0, GetSstFileCount(options.db_paths[1].path));
@@ -1370,13 +1360,13 @@ void DBTestUniversalCompaction::GenerateFilesAndCheckCompactionResult(
       key_idx++;
     }
     ASSERT_OK(Flush());
-    dbfull()->TEST_WaitForFlushMemTable();
+    ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
     ASSERT_EQ(NumSortedRuns(0), num + 1);
   }
 
   ASSERT_OK(dbfull()->EnableAutoCompaction({dbfull()->DefaultColumnFamily()}));
 
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 
   ASSERT_EQ(NumSortedRuns(0), num_output_files);
 }

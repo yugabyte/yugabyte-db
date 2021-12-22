@@ -12,21 +12,34 @@
 //
 
 #include <algorithm>
+#include <functional>
+#include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
+
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/algorithm.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/master/master.pb.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 #include "yb/util/test_util.h"
-#include "yb/client/yb_table_name.h"
-#include "yb/rpc/rpc_controller.h"
+#include "yb/util/tsan_util.h"
 
 using std::shared_ptr;
 using std::string;

@@ -35,6 +35,7 @@
 
 #include <memory>
 #include <vector>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -47,15 +48,17 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/tools/data_gen_util.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 

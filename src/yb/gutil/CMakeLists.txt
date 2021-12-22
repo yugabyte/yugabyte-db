@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX gutil)
+set(YB_PCH_DEP_LIBS gmock)
+
 set(GUTIL_SRCS
   bits.cc
   callback_internal.cc
@@ -53,7 +56,6 @@ set(GUTIL_SRCS
   strings/join.cc
   strings/memutil.cc
   strings/numbers.cc
-  strings/serialize.cc
   strings/split.cc
   strings/strcat.cc
   strings/stringpiece.cc
@@ -81,13 +83,20 @@ if (NOT APPLE)
     rt) # clock_gettime() requires -lrt
 endif()
 
+# Disable warnings which trigger a lot in the Google code:
+set(GUTIL_COMPILE_FLAGS "-funsigned-char -Wno-deprecated -Wno-char-subscripts")
+
 ADD_YB_LIBRARY(gutil
   SRCS ${GUTIL_SRCS}
   DEPS ${GUTIL_LIBS}
-  # Disable warnings which trigger a lot in the Google code:
-  COMPILE_FLAGS "-funsigned-char -Wno-deprecated -Wno-char-subscripts")
+  COMPILE_FLAGS "${GUTIL_COMPILE_FLAGS}")
 
 ADD_YB_TEST(sysinfo-test)
+set_target_properties(sysinfo-test PROPERTIES COMPILE_FLAGS "${GUTIL_COMPILE_FLAGS}")
+
 
 add_yb_test(strings/string_util-test)
+set_target_properties(string_util-test PROPERTIES COMPILE_FLAGS "${GUTIL_COMPILE_FLAGS}")
+
 add_yb_test(hash/jenkins-test)
+set_target_properties(jenkins-test PROPERTIES COMPILE_FLAGS "${GUTIL_COMPILE_FLAGS}")

@@ -14,11 +14,11 @@
 
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
-#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
 

@@ -26,7 +26,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/common/ybc_util.h"
 
-#include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/async_initializer.h"
 #include "yb/server/server_base_options.h"
@@ -76,7 +75,8 @@ struct PgApiContext {
   std::unique_ptr<rpc::ProxyCache> proxy_cache;
 
   PgApiContext();
-  PgApiContext(PgApiContext&&) = default;
+  PgApiContext(PgApiContext&&);
+  ~PgApiContext();
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -488,7 +488,6 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
-  //------------------------------------------------------------------------------------------------
   // Column reference.
   CHECKED_STATUS NewColumnRef(
       PgStatement *handle, int attr_num, const PgTypeEntity *type_entity,
@@ -536,6 +535,10 @@ class PgApiImpl {
   void SetTimeout(int timeout_ms);
 
   Result<client::TabletServersInfo> ListTabletServers();
+
+  //------------------------------------------------------------------------------------------------
+  // System Validation.
+  CHECKED_STATUS ValidatePlacement(const char *placement_info);
 
  private:
   // Control variables.

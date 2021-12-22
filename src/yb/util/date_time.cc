@@ -14,6 +14,7 @@
 //
 // DateTime parser and serializer
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/util/date_time.h"
 
 #include <unicode/gregocal.h>
@@ -351,10 +352,10 @@ Result<MonoDelta> DateTime::IntervalFromString(const std::string& str) {
     std::smatch m;
     if (std::regex_match(str, m, reg)) {
       // All regex's have the name 4 capture groups, in order.
-      const int day = m.str(1).empty() ? 0 : stoi(m.str(1));
-      const int hours = m.str(2).empty() ? 0 : stoi(m.str(2));
-      const int minutes = m.str(3).empty() ? 0 : stoi(m.str(3));
-      const int seconds = m.str(4).empty() ? 0 : stoi(m.str(4));
+      const auto day = m.str(1).empty() ? 0 : stol(m.str(1));
+      const auto hours = m.str(2).empty() ? 0 : stol(m.str(2));
+      const auto minutes = m.str(3).empty() ? 0 : stol(m.str(3));
+      const auto seconds = m.str(4).empty() ? 0 : stol(m.str(4));
       // Convert to microseconds.
       return MonoDelta::FromSeconds(seconds + (60 * (minutes + 60 * (hours + 24 * day))));
     }

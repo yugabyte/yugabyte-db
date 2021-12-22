@@ -24,11 +24,13 @@
 #include "yb/client/tablet_rpc.h"
 
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 
@@ -159,11 +161,10 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
                  this,
                  this,
                  tablet,
-                 // TODO(tsplit): decide whether we need to get info about stale table partitions
-                 // here.
                  /* table =*/ nullptr,
                  mutable_retrier(),
-                 trace_.get()),
+                 trace_.get(),
+                 master::IncludeInactive::kTrue),
         callback_(std::move(callback)) {
     req_.Swap(req);
   }

@@ -31,18 +31,25 @@
 //
 
 #include <cstddef>
+
 #include <glog/logging.h>
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/common/ql_protocol_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/operations/snapshot_operation.h"
-#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_snapshots.h"
+
 #include "yb/util/opid.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace tablet {

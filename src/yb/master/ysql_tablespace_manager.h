@@ -15,11 +15,13 @@
 
 #include <unordered_map>
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/common/entity_ids.h"
-#include "yb/master/master.pb.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include <boost/optional/optional.hpp>
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/master/master_fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

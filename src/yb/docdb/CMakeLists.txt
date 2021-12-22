@@ -11,13 +11,15 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX docdb)
+
 # docdb_proto
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
         DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        PROTO_FILES docdb.proto)
+        NO_SERVICE_PROTO_FILES docdb.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}

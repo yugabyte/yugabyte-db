@@ -10,15 +10,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/docdb_util.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/env.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"

@@ -16,9 +16,6 @@
 #ifndef YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
 #define YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
 
-#include <yb/tserver/tserver_service.pb.h>
-#include "yb/tablet/transaction_coordinator.h"
-
 #include "yb/tablet/operations/operation.h"
 
 namespace yb {

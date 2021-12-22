@@ -15,6 +15,9 @@
 
 #include <deque>
 
+#include <gflags/gflags.h>
+
+#include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
@@ -24,8 +27,9 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
-#include "yb/util/metrics.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -123,8 +127,8 @@ class SingleLocalityPool {
       ++preparing_transactions_;
     }
     IncrementGauge(gauge_preparing_);
-    InFlightOpsGroupsWithMetadata ops_info;
-    if (new_txn->Prepare(
+    internal::InFlightOpsGroupsWithMetadata ops_info;
+    if (new_txn->batcher_if().Prepare(
         &ops_info, ForceConsistentRead::kFalse, TransactionRpcDeadline(), Initial::kFalse,
         std::bind(&SingleLocalityPool::TransactionReady, this, _1, new_txn, old_taken))) {
       TransactionReady(Status::OK(), new_txn, old_taken);

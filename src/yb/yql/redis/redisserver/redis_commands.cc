@@ -16,7 +16,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
-
 #include <gflags/gflags.h>
 
 #include "yb/client/client.h"
@@ -24,6 +23,10 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/common/redis_constants_common.h"
+
+#include "yb/gutil/strings/join.h"
 
 #include "yb/master/master.pb.h"
 #include "yb/master/master_util.h"
@@ -351,7 +354,7 @@ void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
     response.push_back(redisserver::EncodeAsInteger(end_key_exclusive - 1).ToBuffer());
 
     for (const auto &replica : location.replicas()) {
-      if (replica.role() == consensus::RaftPeerPB::LEADER) {
+      if (replica.role() == PeerRole::LEADER) {
         auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
         ts_info.push_back(redisserver::EncodeAsBulkString(host).ToBuffer());
 

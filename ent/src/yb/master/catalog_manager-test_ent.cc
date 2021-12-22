@@ -11,6 +11,7 @@
 // under the License.
 
 #include "../../src/yb/master/catalog_manager-test_base.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -124,7 +125,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     }
     LOG(INFO) << "Leader distribution: 4 0 0";
 
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
     string placeholder;
     // Only the affinitized zone contains tablet leaders, should be no movement.
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
@@ -140,7 +141,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     }
     LOG(INFO) << "Leader distribution: 0 2 2";
 
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     std::map<string, int> from_count;
     std::unordered_set<string> tablets_moved;
@@ -199,7 +200,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     }
     LOG(INFO) << "Leader distribution: 4 0 0";
 
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     std::map<string, int> to_count;
     std::unordered_set<string> tablets_moved;
@@ -267,7 +268,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     }
 
     LOG(INFO) << "The replica count for each read_only tserver is: ts3: 4, ts4: 0";
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     string placeholder;
 
@@ -276,7 +277,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
 
     ResetState();
     cb_->SetOptions(READ_ONLY, read_only_placement_uuid);
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
     // Now load balance an read_only replica.
     string expected_from_ts = ts_descs_[3]->permanent_uuid();
     string expected_to_ts = ts_descs_[4]->permanent_uuid();
@@ -312,13 +313,13 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     }
 
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
     string placeholder;
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
     cb_->SetOptions(READ_ONLY, read_only_placement_uuid);
     ResetState();
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
     LOG(INFO) << "Finishing TestLeaderBalancingWithReadOnly";
   }
@@ -335,13 +336,13 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
 
   void AddRunningReplicaEnt(TabletInfo* tablet, std::shared_ptr<yb::master::TSDescriptor> ts_desc,
                             bool is_live) {
-    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
-      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    std::shared_ptr<TabletReplicaMap> replicas =
+      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    consensus::RaftPeerPB::Role role = is_live ?
-        consensus::RaftPeerPB::FOLLOWER :
-        consensus::RaftPeerPB::LEARNER;
+    PeerRole role = is_live ?
+        PeerRole::FOLLOWER :
+        PeerRole::LEARNER;
     NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, role, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);

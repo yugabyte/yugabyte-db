@@ -366,6 +366,13 @@ function(add_executable name)
   if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
     add_dependencies(${name} latest_symlink)
   endif()
+
+  yb_process_pch(${name})
+endfunction()
+
+function(add_library name)
+  _add_library("${name}" ${ARGN})
+  yb_process_pch(${name})
 endfunction()
 
 macro(YB_SETUP_CLANG)
@@ -497,6 +504,46 @@ function(SHOW_FOUND_BOOST_DETAILS BOOST_LIBRARY_TYPE)
   message("    Boost_LIB_DIAGNOSTIC_DEFINITIONS: ${Boost_LIB_DIAGNOSTIC_DEFINITIONS}")
 endfunction()
 
+# Setup target to use precompiled headers.
+function(yb_process_pch target)
+  if("${YB_PCH_PREFIX}" STREQUAL "" OR NOT ${YB_PCH_ON})
+    return()
+  endif()
+
+  set(TARGET_PROPERTY "PCH_FIRST_TARGET_FOR_${YB_PCH_PREFIX}")
+
+  get_property(EXISTING_TARGET GLOBAL PROPERTY "${TARGET_PROPERTY}")
+
+  if (NOT "${EXISTING_TARGET}" STREQUAL "")
+    target_precompile_headers(${target} REUSE_FROM "${EXISTING_TARGET}")
+    if (${YB_PCH_CODEGEN})
+      target_link_libraries(${target} "${YB_PCH_PREFIX}_pch_obj")
+    endif()
+    return()
+  endif()
+
+  message("Use PCH for ${target}: ${YB_PCH_PREFIX}")
+  set_property(GLOBAL PROPERTY "${TARGET_PROPERTY}" ${target})
+  set(PCH_FILE ${CMAKE_CURRENT_SOURCE_DIR}/${YB_PCH_PATH}${YB_PCH_PREFIX}_pch.h)
+  target_precompile_headers(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${PCH_FILE}>")
+
+  if (${YB_PCH_CODEGEN})
+    _add_library("${YB_PCH_PREFIX}_pch_obj" OBJECT IMPORTED GLOBAL)
+    set(PCH_OBJ_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${target}.dir")
+    set(PCH_OBJ_FILE "${PCH_OBJ_DIR}/cmake_pch.hxx.pch.o")
+    if(NOT EXISTS "${PCH_OBJ_FILE}")
+      file(MAKE_DIRECTORY "${PCH_OBJ_DIR}")
+      file(TOUCH "${PCH_OBJ_FILE}")
+    endif()
+    set_target_properties(${YB_PCH_PREFIX}_pch_obj PROPERTIES IMPORTED_OBJECTS "${PCH_OBJ_FILE}")
+    if (NOT "${YB_PCH_DEP_LIBS}" STREQUAL "")
+      target_link_libraries(${YB_PCH_PREFIX}_pch_obj INTERFACE "${YB_PCH_DEP_LIBS}")
+    endif()
+    target_link_libraries(${YB_PCH_PREFIX}_pch_obj INTERFACE "${YB_BASE_LIBS}")
+    target_link_libraries(${target} "${YB_PCH_PREFIX}_pch_obj")
+  endif()
+endfunction()
+
 # A wrapper around add_library() for YugabyteDB libraries.
 #
 # Required arguments:
@@ -555,11 +602,11 @@ function(parse_build_root_basename)
   string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
   list(LENGTH YB_BUILD_ROOT_BASENAME_COMPONENTS YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH)
   if(YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH LESS 3 OR
-     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 4)
+     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 5)
     message(
         FATAL_ERROR
         "Wrong number of components of the build root basename: "
-        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3 or 4 components. "
+        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3, 4, or 5 components. "
         "Basename: ${YB_BUILD_ROOT_BASENAME}")
   endif()
   list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
@@ -593,4 +640,16 @@ function(parse_build_root_basename)
         "'${YB_LINKING_TYPE}'. Expected 'static' or 'dynamic'.")
   endif()
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
+
+  if (YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 3)
+    list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 3 YB_TARGET_ARCH_FROM_BUILD_ROOT)
+    if(NOT "${YB_TARGET_ARCH_FROM_BUILD_ROOT}" STREQUAL "ninja")
+      if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${YB_TARGET_ARCH_FROM_BUILD_ROOT}")
+        message(
+            FATAL_ERROR
+            "Target architecture inferred from build root is '${YB_TARGET_ARCH_FROM_BUILD_ROOT}', "
+            "but CMAKE_SYSTEM_PROCESSOR is ${CMAKE_SYSTEM_PROCESSOR}")
+      endif()
+    endif()
+  endif()
 endfunction()

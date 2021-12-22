@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/yb-admin_cli.h"
 
 #include <memory>
@@ -37,10 +38,15 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/common/json_util.h"
-#include "yb/tools/yb-admin_client.h"
-#include "yb/util/flags.h"
-#include "yb/util/stol_utils.h"
+
 #include "yb/master/master_defaults.h"
+
+#include "yb/tools/yb-admin_client.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 
 DEFINE_string(master_addresses, "localhost:7100",
@@ -589,6 +595,20 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                                                       timeout_secs,
                                                       false /* is_compaction */),
                               Substitute("Unable to flush table $0", args[0]));
+        return Status::OK();
+      });
+
+  Register(
+      "flush_sys_catalog", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->FlushSysCatalog(), "Unable to flush table sys_catalog");
+        return Status::OK();
+      });
+
+  Register(
+      "compact_sys_catalog", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->CompactSysCatalog(), "Unable to compact table sys_catalog");
         return Status::OK();
       });
 

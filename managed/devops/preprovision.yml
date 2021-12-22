@@ -52,6 +52,12 @@
 
       - name: Update apt cache
         raw: apt-get -y update
+
+      # Needed for /usr/bin/python as Python 2.7
+      - name: Install python-minimal
+        apt:
+          name: python-minimal
+          state: present
       when: ansible_distribution == "Ubuntu"
     # have to save this in another var since it won't play well with overriding
     # ansible_ssh_pipelining in the task below
@@ -100,4 +106,7 @@
     - name: install latest version of selinux-policy
       shell:
         cmd: sudo dnf reinstall --refresh -y selinux-policy
+      register: result
+      until: result.rc == 0
+      retries: 10
       when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'

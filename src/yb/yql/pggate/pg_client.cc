@@ -15,12 +15,20 @@
 
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/rpc/poller.h"
+#include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/result.h"
+#include "yb/util/shared_mem.h"
+#include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
@@ -228,6 +236,12 @@ class PgClient::Impl {
     return result;
   }
 
+  CHECKED_STATUS ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
+    tserver::PgValidatePlacementResponsePB resp;
+    RETURN_NOT_OK(proxy_->ValidatePlacement(*req, &resp, PrepareAdminController()));
+    return ResponseStatus(resp);
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   CHECKED_STATUS method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -333,6 +347,10 @@ Result<int32> PgClient::TabletServerCount(bool primary_only) {
 
 Result<client::TabletServersInfo> PgClient::ListLiveTabletServers(bool primary_only) {
   return impl_->ListLiveTabletServers(primary_only);
+}
+
+Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
+  return impl_->ValidatePlacement(req);
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

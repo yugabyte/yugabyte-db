@@ -13,10 +13,13 @@
 //
 //
 
-#include "yb/client/tablet_rpc.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/tablet_rpc.h"
+
+#include "yb/master/master.pb.h"
 
 #include "yb/util/test_util.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 namespace client {
@@ -62,7 +65,7 @@ TEST_F(TabletRpcTest, TabletInvokerSelectTabletServerRace) {
   TabletServerMap ts_map;
 
   for (auto* replica : {&replica1, &replica2}) {
-    replica->set_role(consensus::RaftPeerPB_Role::RaftPeerPB_Role_FOLLOWER);
+    replica->set_role(PeerRole::FOLLOWER);
     replica->set_member_type(consensus::RaftPeerPB_MemberType::RaftPeerPB_MemberType_VOTER);
 
     const auto& uuid = replica->ts_info().permanent_uuid();

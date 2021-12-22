@@ -121,37 +121,26 @@ This feature is in active development. YSQL and YCQL support different features,
 
 ### YSQL limitations
 
-* Currently, you can only recover from the following YSQL operations:
-  * Data changes
-  * CREATE and DROP TABLE
-  * ALTER TABLE - only ADD, DROP, and RENAME COLUMN
-  * CREATE and DROP INDEX
+* For Sequences, restoring to a state before the sequence table was created/dropped doesn't work. This is being tracked by issue [#10249](https://github.com/yugabyte/yugabyte-db/issues/10249).
 
-* The following types of ALTER TABLE aren't supported currently:
-  * ALTER TABLE RENAME TABLE
-  * Other types of ALTER TABLE supported by YSQL but not mentioned above
+* Colocated Tables aren't supported and databases with colocated tables cannot be restored to a previous point in time. Tracked by issue [#8259](https://github.com/yugabyte/yugabyte-db/issues/8259).
 
-* Colocated Tables aren't supported and databases with colocated tables cannot be restored to a previous point in time.
+* Cluster-wide changes such as roles and permissions, tablespaces, etc. aren't supported. Please note however that database-level operations such as changing ownership of a table of a database, row-level security, etc. can be restored as their scope is not cluster-wide. Tablespaces are tracked [here](https://github.com/yugabyte/yugabyte-db/issues/10257) while roles and privileges are tracked [here](https://github.com/yugabyte/yugabyte-db/issues/10349).
 
-* Restoring DDLs is quite slow currently. Efforts are being made to speed up YSQL restores.
+* Support for Triggers and Stored Procedures is to be investigated. Tracked by issue [#10350](https://github.com/yugabyte/yugabyte-db/issues/10350).
 
-* Cluster-wide changes such as roles and permissions, tablespaces, etc. aren't supported.
-
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
-
-* Support for other types of ALTER TABLE
-* Graceful handling of cluster-wide changes such as roles and permissions, and tablespaces
+* In case of software upgrades/downgrades, we don't support restoring back in time to the previous version.
 
 ### YCQL limitations
 
-Currently, you can recover from the following YCQL operations:
+* Support for YCQL roles and permissions is yet to be added. Tracked by issue [#8453](https://github.com/yugabyte/yugabyte-db/issues/8453).
 
-* Data changes
-* CREATE and DROP TABLE
-* ALTER TABLE (including ADD, DROP, and RENAME COLUMN)
-* CREATE and DROP INDEX
+### Common limitations
 
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
+* Currently, we don't support some aspects of PITR in conjunction with xCluster replication. It is being tracked by issue [#10820](https://github.com/yugabyte/yugabyte-db/issues/10820).
 
-* YCQL roles and permissions
-* Support for automatic tablet splitting
+* TRUNCATE TABLE is a limitation tracked [here](https://github.com/yugabyte/yugabyte-db/issues/7130).
+
+* We don't support DDL restores to a previous point in time using external backups. This is being tracked [here](https://github.com/yugabyte/yugabyte-db/issues/8847).
+
+Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120).

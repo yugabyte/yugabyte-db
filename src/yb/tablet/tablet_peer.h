@@ -48,20 +48,18 @@
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
-#include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/operations/operation_tracker.h"
-#include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/operations/write_operation_context.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
 
 using yb::consensus::StateChangeContext;
@@ -161,7 +159,8 @@ class TabletPeer : public consensus::ConsensusContext,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
-      consensus::RetryableRequests* retryable_requests);
+      consensus::RetryableRequests* retryable_requests,
+      consensus::MultiRaftManager* multi_raft_manager);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -406,7 +405,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // After bootstrap is complete and consensus is setup this initiates the transactions
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
-  CHECKED_STATUS StartPendingOperations(consensus::RaftPeerPB::Role my_role,
+  CHECKED_STATUS StartPendingOperations(PeerRole my_role,
                                         const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<OperationDriver> CreateOperationDriver();

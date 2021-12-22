@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/messenger.h"
 
 #include <sys/types.h>
@@ -45,6 +46,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/reactor.h"
@@ -54,11 +56,11 @@
 #include "yb/rpc/rpc_util.h"
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
-#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/dns_resolver.h"
@@ -475,8 +477,7 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
   }
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
   if (it == rpc_endpoints_.end()) {
-    auto remote_method = serialization::ParseRemoteMethod(
-        call->serialized_remote_method());
+    auto remote_method = ParseRemoteMethod(call->serialized_remote_method());
     Status s;
     ErrorStatusPB::RpcErrorCodePB error_code = ErrorStatusPB::ERROR_NO_SUCH_SERVICE;
     if (remote_method.ok()) {

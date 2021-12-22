@@ -13,8 +13,9 @@
 
 #include "yb/master/ysql_tablespace_manager.h"
 
+#include "yb/master/catalog_entity_info.h"
+
 #include "yb/util/atomic.h"
-#include "yb/util/logging.h"
 
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
