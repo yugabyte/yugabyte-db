@@ -56,25 +56,9 @@ The following attributes would be required in order to build such a service.
 While this scenario has regulatory compliance requirements where data needs to be resident in certain geographies, the exact same technique applies for the goal of moving data closer to users in order to achieve low latency and high performance. Hence, high performance is listed above as a requirement.
 {{< /note >}}
 
-## Step 1. Create table with partitions
+## Step 1. Create tablespaces
 
-First, we create the parent table that contains a `geo_partition` column which is used to create list-based partitions for each geographic region we want to partition data into as shown in the following diagram:
-
-![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-1.png)
-
-1. Create the parent table.
-
-    ```sql
-    CREATE TABLE transactions (
-        user_id   INTEGER NOT NULL,
-        account_id INTEGER NOT NULL,
-        geo_partition VARCHAR,
-        account_type VARCHAR NOT NULL,
-        amount NUMERIC NOT NULL,
-        txn_type VARCHAR NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW()
-    ) PARTITION BY LIST (geo_partition);
-    ```
+First, we create tablespaces and transaction tables for each geographic region we wish to partition data into:
 
 1. Create tablespaces for each region.
 
@@ -99,6 +83,69 @@ First, we create the parent table that contains a `geo_partition` column which i
       {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1b","min_num_replicas":1},
       {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1c","min_num_replicas":1}]}'
     );
+    ```
+
+1. Create transaction tables for use within each region.
+
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        create_transaction_table transactions_eu_central_1
+    ```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        create_transaction_table transactions_us_west_2
+    ```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        create_transaction_table transactions_ap_south_1
+    ```
+
+The addresses should be replaced with the addresses of your YB-Master servers.
+
+1. Assign placement for each transaction table.
+
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        transactions_eu_central_1 \
+        aws.eu-central-1.eu-central-1a,aws.eu-central-1.eu-central-1b,aws.eu-central-1.eu-central-1c 3
+    ```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        modify_table_placement_info system transactions_us_west_2 \
+        aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c 3
+    ```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        modify_table_placement_info system transactions_ap_south_1 \
+        aws.ap-south-1.ap-south-1a,aws.ap-south-1.ap-south-1b,aws.ap-south-1.ap-south-1c 3
+    ```
+
+The addresses should be replaced with the addresses of your YB-Master servers.
+
+## Step 2. Create table with partitions
+
+First, we create the parent table that contains a `geo_partition` column which is used to create list-based partitions for each geographic region we want to partition data into as shown in the following diagram:
+
+![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-1.png)
+
+1. Create the parent table.
+
+    ```sql
+    CREATE TABLE transactions (
+        user_id   INTEGER NOT NULL,
+        account_id INTEGER NOT NULL,
+        geo_partition VARCHAR,
+        account_type VARCHAR NOT NULL,
+        amount NUMERIC NOT NULL,
+        txn_type VARCHAR NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+    ) PARTITION BY LIST (geo_partition);
     ```
 
 1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third partition for US region called `transactions_us`.
@@ -147,7 +194,7 @@ The data is now arranged as follows:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-2.png)
 
-## Step 2. Pinning user transactions to geographic locations
+## Step 3. Pinning user transactions to geographic locations
 
 Now, the setup should automatically be able to pin rows to the appropriate regions based on the  value set in the `geo_partition` column. This is shown in the following diagram:
 
@@ -270,7 +317,7 @@ txn_type      | debit
 created_at    | 2020-11-07 21:45:26.067444
 ```
 
-## Step 3. Users travelling across geographic locations
+## Step 4. Users travelling across geographic locations
 
 In order to make things interesting, let us say user 100, whose first transaction was performed in the EU region travels to India and the US, and performs two other transactions. This can be simulated by using the following statements.
 
@@ -346,7 +393,133 @@ txn_type      | debit
 created_at    | 2020-11-07 21:28:11.056236
 ```
 
-## Step 4. Adding a new geographic location
+## Step 5. Running transactions
+
+So far, we have only been running `SELECT` and [single-row
+transactions](../../architecture/transactions/transactions-overview/#single-row-transactions). With geo-partitioning, there is a new complication introduced for general distributed transactions as shown below.
+
+Let's say we want to run the following transaction:
+```sql
+BEGIN;
+INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
+INSERT INTO transactions VALUES (100, 10003, 'EU', 'checking', 400.00, 'credit');
+COMMIT;
+```
+
+If we attempt to run this while connected to a node in us-west-2:
+```sql
+BEGIN;
+```
+```
+BEGIN
+```
+```sql
+INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
+```
+```
+ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
+```
+
+we get an error similar to the above. This is because, since we have created a transaction table for us-west-2, by default, YugabyteDB assumes that we want to run a transaction local to the region (using the transaction status table `system.transactions_us_west_2` which we created in Step 1), but such a transaction cannot modify data outside of us-west-2.
+
+However, if we instead connect to a node in eu-central-1 and run the exact same transaction:
+
+```sql
+BEGIN;
+```
+```
+BEGIN
+```
+```sql
+INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.0, 'debit');
+```
+```
+INSERT 1 0
+```
+```sql
+INSERT INTO transactions VALUES (100, 10003, 'EU', 'checking', 400.0, 'credit');
+```
+```
+INSERT 1 0
+```
+```sql
+COMMIT;
+```
+```
+COMMIT
+```
+
+we are now able to finish and commit the transaction without error.
+
+Sometimes though, we might want to run a transaction that writes data to multiple regions, for example:
+
+```sql
+BEGIN;
+INSERT INTO transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
+INSERT INTO transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
+COMMIT;
+```
+
+Running this transaction will fail whether we run it from us-west-2 or eu-central-1. The solution is to mark the transaction as a global transaction as follows:
+```sql
+SET force_global_transaction = TRUE;
+```
+```
+SET
+```
+```sql
+BEGIN;
+```
+```
+BEGIN
+```
+```sql
+INSERT INTO transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
+```
+```
+INSERT 1 0
+```
+```sql
+INSERT INTO transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
+```
+```
+INSERT 1 0
+```
+```sql
+COMMIT;
+```
+```
+COMMIT
+```
+
+Setting `force_global_transaction = TRUE` tells YugabyteDB to use the `system.transactions` transaction table instead, which is presumed to be globally replicated, and lets us run distributed transactions that span multiple regions.
+
+{{< note title="Note" >}}
+While all distributed transactions can run without problems under `force_global_transaction = TRUE`, such transactions may incur significantly higher latencies when committing the transaction, since YugabyteDB must perform consensus across multiple regions to write to `system.transactions`. This should only be used when necessary, and `force_global_transaction = FALSE` (the default setting) should be used whenever possible.
+{{< /note >}}
+
+Finally, let's say we want to delete the very last row we just inserted. If we run the following query connected to eu-central-1 as a local transaction:
+
+```sql
+SET force_global_transaction = FALSE;
+```
+```sql
+DELETE FROM transactions WHERE user_id = 200 AND account_id = 10005;
+```
+```
+ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
+```
+
+the query will once again error out. This is because we are deleting from the main table (`transactions` rather than `transactions_eu_west_1`) and not specifying the partition column (there's no `geo_partition = 'EU'` clause), which means that YugabyteDB is unable to tell that the row being deleted is in fact located in eu-central-1. To fix this, we could instead run:
+
+```sql
+DELETE FROM transactions_eu_west_1 WHERE user_id = 200 AND account_id = 10005;
+```
+```
+DELETE 1
+```
+
+## Step 6. Adding a new geographic location
 
 Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can simply add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
 
@@ -357,7 +530,19 @@ CREATE TABLESPACE sa_east_1_tablespace WITH (
       {"cloud":"aws","region":"sa-east-1","zone":"sa-east-1b","min_num_replicas":1},
       {"cloud":"aws","region":"sa-east-1","zone":"sa-east-1c","min_num_replicas":1}]}'
     );
-
+```
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+    create_transaction_table transactions_sa_east_1
+```
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+    transactions_sa_east_1 \
+    aws.sa-east-1.sa-east-1a,aws.sa-east-1.sa-east-1b,aws.sa-east-1.sa-east-1c 3
+```
+```sql
 CREATE TABLE transactions_brazil
     PARTITION OF transactions
       (user_id, account_id, geo_partition, account_type,
@@ -365,6 +550,8 @@ CREATE TABLE transactions_brazil
        PRIMARY KEY (user_id HASH, account_id, geo_partition))
     FOR VALUES IN ('Brazil') TABLESPACE sa_east_1_tablespace;
 ```
+
+The addresses should be replaced with the addresses of your YB-Master servers.
 
 And with that, the new region is ready to store transactions of the residents of Brazil.
 
