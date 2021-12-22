@@ -565,7 +565,7 @@ set -euo pipefail
         fi
         actual_archive_sha256sum=$( (
             [[ $OSTYPE == linux* ]] && sha256sum '{archive_path}' ||
-            shasum --portable --algorithm 256 '{archive_path}'
+            shasum --algorithm 256 '{archive_path}'
         ) | awk '{{ print $1 }}' )
         if [[ $actual_archive_sha256sum != '{expected_archive_sha256sum}' ]]; then
           echo "Archive SHA256 sum of '{archive_path}' is $actual_archive_sha256sum, which" \
