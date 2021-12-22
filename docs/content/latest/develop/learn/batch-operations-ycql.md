@@ -106,7 +106,7 @@ SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
 SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
 ```
 
-- Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have up to 6 rows. 
+- Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have up to 6 rows.
 
 ```sql
 SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);
@@ -135,4 +135,4 @@ Usage:
     [ --table_ttl_seconds -1 ]
 ```
 
-Browse the [Java source code for the batch application](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraBatchKeyValue.java) to see how everything fits together.
+Browse the [Java source code for the batch application](https://github.com/yugabyte/yb-sample-apps/blob/master/src/main/java/com/yugabyte/sample/apps/CassandraBatchKeyValue.java) to see how everything fits together.
