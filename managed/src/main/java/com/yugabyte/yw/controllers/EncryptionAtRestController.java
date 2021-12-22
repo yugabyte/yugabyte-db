@@ -65,6 +65,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
   public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
   public static final String AWS_KMS_ENDPOINT_FIELDNAME = "AWS_KMS_ENDPOINT";
+  public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
+  public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
 
   @Inject EncryptionAtRestManager keyManager;
 
@@ -99,11 +101,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
       }
     } else if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
-      if (formData.get("base_url") == null
-          || !EncryptionAtRestController.API_URL.contains(formData.get("base_url").textValue())) {
+      if (formData.get(SMARTKEY_BASE_URL_FIELDNAME) == null
+          || !EncryptionAtRestController.API_URL.contains(
+              formData.get(SMARTKEY_BASE_URL_FIELDNAME).textValue())) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid API URL.");
       }
-      if (formData.get("api_key") != null) {
+      if (formData.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
         try {
           Function<ObjectNode, String> token =
               new SmartKeyEARService()::retrieveSessionAuthorization;
@@ -160,17 +163,32 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   private ObjectNode addNonEditableFieldsData(
       ObjectNode formData, UUID configUUID, KeyProvider keyProvider) {
-    ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
     if (keyProvider.equals(KeyProvider.AWS)) {
-      formData.set(AWS_REGION_FIELDNAME, authconfig.get(AWS_REGION_FIELDNAME));
+      formData.set(AWS_REGION_FIELDNAME, authConfig.get(AWS_REGION_FIELDNAME));
+      if (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) == null
+          && authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
+        formData.set(AWS_ACCESS_KEY_ID_FIELDNAME, authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME));
+      }
+      if (formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) == null
+          && authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null) {
+        formData.set(
+            AWS_SECRET_ACCESS_KEY_FIELDNAME, authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME));
+      }
     } else if (keyProvider.equals(KeyProvider.SMARTKEY)) {
-      // NO changes required
+      if (formData.get(SMARTKEY_API_KEY_FIELDNAME) == null
+          && authConfig.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
+        formData.set(SMARTKEY_API_KEY_FIELDNAME, authConfig.get(SMARTKEY_API_KEY_FIELDNAME));
+      }
     } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
       final String engine = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
       final String mPath = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
-
-      formData.set(engine, authconfig.get(engine));
-      formData.set(mPath, authconfig.get(mPath));
+      final String token = HashicorpEARServiceUtil.HC_VAULT_TOKEN;
+      formData.set(engine, authConfig.get(engine));
+      formData.set(mPath, authConfig.get(mPath));
+      if (formData.get(token) == null && authConfig.get(token) != null) {
+        formData.set(token, authConfig.get(token));
+      }
     }
     return formData;
   }
