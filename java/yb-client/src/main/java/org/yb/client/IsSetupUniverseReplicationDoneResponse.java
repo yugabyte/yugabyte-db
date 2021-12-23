@@ -2,19 +2,19 @@ package org.yb.client;
 
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
-import org.yb.master.Master.MasterErrorPB;
+import org.yb.master.MasterTypes;
+import org.yb.master.MasterTypes.MasterErrorPB;
 
 @InterfaceAudience.Public
 public class IsSetupUniverseReplicationDoneResponse extends YRpcResponse {
-  private final Master.MasterErrorPB serverError;
+  private final MasterTypes.MasterErrorPB serverError;
   private final boolean done;
   private final AppStatusPB replicationError;
 
   public IsSetupUniverseReplicationDoneResponse(
     long elapsedMillis,
     String tsUUID,
-    Master.MasterErrorPB serverError,
+    MasterTypes.MasterErrorPB serverError,
     boolean done,
     AppStatusPB replicationError) {
     super(elapsedMillis, tsUUID);

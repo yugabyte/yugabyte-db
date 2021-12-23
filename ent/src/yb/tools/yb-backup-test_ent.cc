@@ -15,7 +15,9 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/client/client-test-util.h"

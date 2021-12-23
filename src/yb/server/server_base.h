@@ -35,8 +35,6 @@
 #include <memory>
 #include <string>
 
-#include "yb/common/wire_protocol.pb.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -99,9 +97,7 @@ class RpcServerBase {
   // Return a PB describing the status of the server (version info, bound ports, etc)
   virtual void GetStatusPB(ServerStatusPB* status) const;
 
-  CloudInfoPB MakeCloudInfoPB() const {
-    return options_.MakeCloudInfoPB();
-  }
+  CloudInfoPB MakeCloudInfoPB() const;
 
   const ServerBaseOptions& options() const {
     return options_;

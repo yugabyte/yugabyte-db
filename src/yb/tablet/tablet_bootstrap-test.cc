@@ -49,8 +49,6 @@
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 
-#include "yb/tserver/tserver.pb.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
@@ -246,7 +244,7 @@ class BootstrapTest : public LogTestBase {
     config.set_opid_index(consensus::kInvalidOpIdIndex);
     consensus::RaftPeerPB* peer = config.add_peers();
     peer->set_permanent_uuid(meta->fs_manager()->uuid());
-    peer->set_member_type(consensus::RaftPeerPB::VOTER);
+    peer->set_member_type(consensus::PeerMemberType::VOTER);
 
     std::unique_ptr<ConsensusMetadata> cmeta;
     RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(meta->fs_manager(), meta->raft_group_id(),

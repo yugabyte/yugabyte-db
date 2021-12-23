@@ -5,11 +5,11 @@ package com.yugabyte.yw.forms;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import java.util.UUID;
-import org.yb.Common;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 
 public class TableDefinitionTaskParams extends TableTaskParams {
-  public Common.TableType tableType = null;
+  public TableType tableType = null;
   public TableDetails tableDetails = null;
 
   public static TableDefinitionTaskParams createFromResponse(

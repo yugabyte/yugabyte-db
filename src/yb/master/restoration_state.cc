@@ -14,10 +14,13 @@
 #include "yb/master/restoration_state.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_state.h"
 
 #include "yb/tserver/tserver_error.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 namespace master {

@@ -15,7 +15,7 @@
 #define YB_MASTER_CATALOG_MANAGER_IF_H
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 
 #include "yb/consensus/consensus_fwd.h"
 

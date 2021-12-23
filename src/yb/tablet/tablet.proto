@@ -36,6 +36,7 @@ package yb.tablet;
 option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
+import "yb/common/common_types.proto";
 import "yb/tablet/metadata.proto";
 
 message TabletStatusPB {

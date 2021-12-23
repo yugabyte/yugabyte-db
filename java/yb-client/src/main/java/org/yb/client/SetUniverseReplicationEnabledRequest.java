@@ -15,6 +15,7 @@ package org.yb.client;
 import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class SetUniverseReplicationEnabledRequest
@@ -62,7 +63,7 @@ public class SetUniverseReplicationEnabledRequest
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     SetUniverseReplicationEnabledResponse response =
       new SetUniverseReplicationEnabledResponse(deadlineTracker.getElapsedMillis(), tsUUID, error);

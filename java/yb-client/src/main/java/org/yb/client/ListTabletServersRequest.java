@@ -37,7 +37,7 @@ import static org.yb.master.Master.*;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
 import org.yb.util.ServerInfo;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet.HostPortPB;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import java.util.ArrayList;

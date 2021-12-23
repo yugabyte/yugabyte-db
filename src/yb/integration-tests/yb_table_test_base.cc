@@ -21,6 +21,10 @@
 
 #include "yb/common/ql_value.h"
 
+#include "yb/master/master.proxy.h"
+
+#include "yb/tools/yb-admin_client.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 

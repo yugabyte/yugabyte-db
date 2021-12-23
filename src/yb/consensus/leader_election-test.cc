@@ -199,21 +199,21 @@ void LeaderElectionTest::InitNoOpPeerProxies(int num_voters,
   ASSERT_EQ(voter_uuids_.size(), num_voters + num_pre_voters + num_pre_observers + num_observers);
   for (const string& uuid : voter_uuids_) {
     RaftPeerPB* peer_pb = config_.add_peers();
-    RaftPeerPB::MemberType member_type;
+    PeerMemberType member_type;
     if (num_voters > 0) {
-      member_type = RaftPeerPB::VOTER;
+      member_type = PeerMemberType::VOTER;
       num_voters--;
     } else if (num_pre_voters > 0) {
-      member_type = RaftPeerPB::PRE_VOTER;
+      member_type = PeerMemberType::PRE_VOTER;
       num_pre_voters--;
     } else if (num_pre_observers > 0) {
-      member_type = RaftPeerPB::PRE_OBSERVER;
+      member_type = PeerMemberType::PRE_OBSERVER;
       num_pre_observers--;
     } else if (num_observers > 0) {
-      member_type = RaftPeerPB::OBSERVER;
+      member_type = PeerMemberType::OBSERVER;
       num_observers--;
     } else {
-      member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+      member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
       LOG(FATAL) << "Invalid member type";
     }
     peer_pb->set_member_type(member_type);
@@ -239,21 +239,21 @@ void LeaderElectionTest::InitDelayableMockedProxies(int num_voters,
   ASSERT_EQ(voter_uuids_.size(), num_voters + num_pre_voters + num_pre_observers + num_observers);
   for (const string& uuid : voter_uuids_) {
     RaftPeerPB* peer_pb = config_.add_peers();
-    RaftPeerPB::MemberType member_type;
+    PeerMemberType member_type;
     if (num_voters > 0) {
-      member_type = RaftPeerPB::VOTER;
+      member_type = PeerMemberType::VOTER;
       num_voters--;
     } else if (num_pre_voters > 0) {
-      member_type = RaftPeerPB::PRE_VOTER;
+      member_type = PeerMemberType::PRE_VOTER;
       num_pre_voters--;
     } else if (num_pre_observers >0) {
-      member_type = RaftPeerPB::PRE_OBSERVER;
+      member_type = PeerMemberType::PRE_OBSERVER;
       num_pre_observers--;
     } else if (num_observers > 0) {
-      member_type = RaftPeerPB::OBSERVER;
+      member_type = PeerMemberType::OBSERVER;
       num_observers--;
     } else {
-      member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+      member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
       LOG(FATAL) << "Invalid member type";
     }
     peer_pb->set_member_type(member_type);

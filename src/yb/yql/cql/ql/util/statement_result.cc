@@ -18,6 +18,7 @@
 
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"

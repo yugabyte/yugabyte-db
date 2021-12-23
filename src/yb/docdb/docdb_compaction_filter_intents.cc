@@ -17,10 +17,13 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/common.pb.h"
+
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 

@@ -38,6 +38,8 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_error.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
@@ -63,7 +65,7 @@ string TabletReplica::ToString() const {
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
                 PeerRole_Name(role),
-                consensus::RaftPeerPB::MemberType_Name(member_type),
+                consensus::PeerMemberType_Name(member_type),
                 should_disable_lb_move, fs_data_dir,
                 drive_info.sst_files_size + drive_info.wal_files_size,
                 MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());

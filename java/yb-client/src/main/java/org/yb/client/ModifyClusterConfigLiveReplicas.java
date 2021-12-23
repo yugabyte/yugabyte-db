@@ -13,8 +13,8 @@
 
 package org.yb.client;
 
-import org.yb.master.Master.PlacementInfoPB;
-import org.yb.master.Master.SysClusterConfigEntryPB;
+import org.yb.master.CatalogEntityInfo.PlacementInfoPB;
+import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 
 public class ModifyClusterConfigLiveReplicas extends AbstractModifyMasterClusterConfig {
 

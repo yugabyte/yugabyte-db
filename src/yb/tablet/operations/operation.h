@@ -41,8 +41,8 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -247,6 +247,7 @@ struct RequestTraits {
   static Request* MutableRequest(consensus::ReplicateMsg* replicate);
 };
 
+consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type);
 
 template <OperationType op_type, class Request, class Base = Operation>
 class OperationBase : public Base {
@@ -279,8 +280,7 @@ class OperationBase : public Base {
   }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override {
-    auto result = std::make_shared<consensus::ReplicateMsg>();
-    result->set_op_type(static_cast<consensus::OperationType>(op_type));
+    auto result = CreateReplicateMsg(op_type);
     auto* request = request_holder_.release();
     if (request) {
       RequestTraits<Request>::SetAllocatedRequest(result.get(), request);

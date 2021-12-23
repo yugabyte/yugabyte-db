@@ -39,7 +39,7 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
 
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/escaping.h"

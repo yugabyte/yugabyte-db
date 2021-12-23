@@ -15,16 +15,17 @@ package org.yb.client;
 import com.google.protobuf.Message;
 import java.util.Set;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.Common;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicationResponse> {
 
   private final String replicationGroupName;
   private final Set<String> sourceTableIDs;
-  private final Set<Common.HostPortPB> sourceMasterAddresses;
+  private final Set<CommonNet.HostPortPB> sourceMasterAddresses;
 
   SetupUniverseReplicationRequest(
     YBTable table,
@@ -68,7 +69,7 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     SetupUniverseReplicationResponse response =
       new SetupUniverseReplicationResponse(deadlineTracker.getElapsedMillis(), tsUUID, error);

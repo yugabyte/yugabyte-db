@@ -23,7 +23,11 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
+#include "yb/master/master.proxy.h"
+
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/server_base.proxy.h"
 
 #include "yb/util/opid.h"
 #include "yb/util/status_log.h"

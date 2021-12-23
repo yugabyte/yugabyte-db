@@ -36,9 +36,10 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/common_types.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
-import "yb/tserver/tserver.proto";
+import "yb/tserver/tserver_types.proto";
 
 message ChangeMetadataRequestPB {
   // UUID of server this request is addressed to.
@@ -235,26 +236,6 @@ message DeleteTabletRequestPB {
 
 message DeleteTabletResponsePB {
   optional TabletServerErrorPB error = 1;
-}
-
-// Enum of the server's Tablet Manager state: currently this is only
-// used for assertions, but this can also be sent to the master.
-enum TSTabletManagerStatePB {
-  UNKNOWN = 999;
-
-  // Indicates that Tablet Manager is initializing.
-  MANAGER_INITIALIZING = 0;
-
-  // Indicates that Tablet Manager is running and can create new
-  // tablets.
-  MANAGER_RUNNING = 1;
-
-  // Indicates that tablet manager is shutting down and no new tablets
-  // can be created.
-  MANAGER_QUIESCING = 2;
-
-  // Tablet Manager has shutdown.
-  MANAGER_SHUTDOWN = 3;
 }
 
 // TODO: rename this to FlushOrCompactTabletsRequestPB

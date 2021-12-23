@@ -21,11 +21,13 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/tablet_server.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 

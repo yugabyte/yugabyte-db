@@ -19,6 +19,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.util.Pair;
 
 import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 
 public class HasUniverseKeyInMemoryRequest extends YRpc<HasUniverseKeyInMemoryResponse> {
   private String universeKeyId;
@@ -51,7 +52,7 @@ public class HasUniverseKeyInMemoryRequest extends YRpc<HasUniverseKeyInMemoryRe
     final Master.HasUniverseKeyInMemoryResponsePB.Builder respBuilder =
             Master.HasUniverseKeyInMemoryResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    Master.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
+    MasterTypes.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
     HasUniverseKeyInMemoryResponse response = new HasUniverseKeyInMemoryResponse(
             deadlineTracker.getElapsedMillis(), uuid, serverError, respBuilder.getHasKey());
     return new Pair<HasUniverseKeyInMemoryResponse, Object>(response, serverError);

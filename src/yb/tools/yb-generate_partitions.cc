@@ -20,6 +20,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 

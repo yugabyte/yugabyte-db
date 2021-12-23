@@ -17,6 +17,7 @@
 #include "yb/common/index.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/index_column.h"
 #include "yb/common/schema.h"
 
 #include "yb/util/result.h"
@@ -31,29 +32,29 @@ namespace yb {
 
 // When DocDB receive messages from older clients, those messages won't have "column_name" and
 // "colexpr" attributes.
-IndexInfo::IndexColumn::IndexColumn(const IndexInfoPB::IndexColumnPB& pb)
+IndexColumn::IndexColumn(const IndexInfoPB::IndexColumnPB& pb)
     : column_id(ColumnId(pb.column_id())),
       column_name(pb.column_name()), // Default to empty.
       indexed_column_id(ColumnId(pb.indexed_column_id())),
       colexpr(pb.colexpr()) /* Default to empty message */ {
 }
 
-void IndexInfo::IndexColumn::ToPB(IndexInfoPB::IndexColumnPB* pb) const {
+void IndexColumn::ToPB(IndexInfoPB::IndexColumnPB* pb) const {
   pb->set_column_id(column_id);
   pb->set_column_name(column_name);
   pb->set_indexed_column_id(indexed_column_id);
   pb->mutable_colexpr()->CopyFrom(colexpr);
 }
 
-std::string IndexInfo::IndexColumn::ToString() const {
+std::string IndexColumn::ToString() const {
   return YB_STRUCT_TO_STRING(column_id, column_name, indexed_column_id, colexpr);
 }
 
 namespace {
 
-vector<IndexInfo::IndexColumn> IndexColumnFromPB(
+vector<IndexColumn> IndexColumnFromPB(
     const RepeatedPtrField<IndexInfoPB::IndexColumnPB>& columns) {
-  vector<IndexInfo::IndexColumn> cols;
+  vector<IndexColumn> cols;
   cols.reserve(columns.size());
   for (const auto& column : columns) {
     cols.emplace_back(column);
@@ -88,7 +89,7 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       use_mangled_column_name_(pb.use_mangled_column_name()),
       where_predicate_spec_(pb.has_where_predicate_spec() ?
         std::make_shared<IndexInfoPB::WherePredicateSpecPB>(pb.where_predicate_spec()) : nullptr) {
-  for (const IndexInfo::IndexColumn &index_col : columns_) {
+  for (const auto& index_col : columns_) {
     // Mark column as covered if the index column is the column itself.
     // Do not mark a column as covered when indexing by an expression of that column.
     // - When an expression such as "jsonb->>'field'" is used, then the "jsonb" column should not
@@ -102,6 +103,13 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
     }
   }
 }
+
+IndexInfo::IndexInfo() = default;
+
+IndexInfo::IndexInfo(const IndexInfo& rhs) = default;
+IndexInfo::IndexInfo(IndexInfo&& rhs) = default;
+
+IndexInfo::~IndexInfo() = default;
 
 void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_table_id(table_id_);
@@ -194,7 +202,7 @@ int32_t IndexInfo::IsExprCovered(const string& expr_name) const {
 // Check for dependency is used for DDL operations, so it does not need to be fast. As a result,
 // the dependency list does not need to be cached in a member id list for fast access.
 bool IndexInfo::CheckColumnDependency(ColumnId column_id) const {
-  for (const IndexInfo::IndexColumn &index_col : columns_) {
+  for (const auto& index_col : columns_) {
     // The protobuf data contains IDs of all columns that this index is referencing.
     // Examples:
     // 1. Index by column
@@ -228,6 +236,16 @@ int32_t IndexInfo::FindKeyIndex(const string& key_expr_name) const {
   }
 
   return -1;
+}
+
+std::string IndexInfo::ToString() const {
+  IndexInfoPB pb;
+  ToPB(&pb);
+  return pb.ShortDebugString();
+}
+
+const IndexColumn& IndexInfo::column(const size_t idx) const {
+  return columns_[idx];
 }
 
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {

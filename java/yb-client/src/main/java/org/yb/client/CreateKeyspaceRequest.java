@@ -18,8 +18,8 @@ import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.Common.HostPortPB;
-import org.yb.Common.YQLDatabase;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.consensus.Consensus;
 import org.yb.consensus.Metadata;
 import org.yb.consensus.Metadata.RaftPeerPB;

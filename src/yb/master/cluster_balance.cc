@@ -1516,11 +1516,11 @@ Status ClusterLoadBalancer::SendReplicaChanges(
   return Status::OK();
 }
 
-consensus::RaftPeerPB::MemberType ClusterLoadBalancer::GetDefaultMemberType() {
+consensus::PeerMemberType ClusterLoadBalancer::GetDefaultMemberType() {
   if (state_->options_->type == LIVE) {
-    return consensus::RaftPeerPB::PRE_VOTER;
+    return consensus::PeerMemberType::PRE_VOTER;
   } else {
-    return consensus::RaftPeerPB::PRE_OBSERVER;
+    return consensus::PeerMemberType::PRE_OBSERVER;
   }
 }
 

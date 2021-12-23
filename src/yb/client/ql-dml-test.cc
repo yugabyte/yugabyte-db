@@ -22,6 +22,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/master/master_util.h"
 
