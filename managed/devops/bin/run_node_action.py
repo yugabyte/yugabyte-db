@@ -97,10 +97,10 @@ actions = {
 
 def parse_args():
     parent_parser = argparse.ArgumentParser(add_help=False)
-    parent_parser.add_argument('--node_name', type=str, help='Node name')
-    parent_parser.add_argument('--is_master', action='store_true',
-                               help='Indicates that node is a master')
     main_parser = argparse.ArgumentParser()
+    main_parser.add_argument('--node_name', type=str, help='Node name')
+    main_parser.add_argument('--is_master', action='store_true',
+                             help='Indicates that node is a master')
     node_type_subparsers = main_parser.add_subparsers(title="node type",
                                                       dest="node_type")
     node_type_subparsers.required = True
