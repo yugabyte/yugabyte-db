@@ -228,6 +228,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     response.code = -1;
     ShellResponse podResponse =
         kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
+    processShellResponse(response);
     JsonNode podInfos = parseShellResponseAsJson(podResponse);
     boolean flag = false;
     for (JsonNode podInfo : podInfos.path("items")) {

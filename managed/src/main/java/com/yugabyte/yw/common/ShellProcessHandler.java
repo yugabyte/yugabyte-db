@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,8 @@ import org.slf4j.MarkerFactory;
 @Singleton
 public class ShellProcessHandler {
   public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
+
+  private static final Duration DESTROY_GRACE_TIMEOUT = Duration.ofMinutes(5);
 
   private final play.Configuration appConfig;
   private final boolean cloudLoggingEnabled;
@@ -198,7 +201,16 @@ public class ShellProcessHandler {
       response.message = e.getMessage();
       // Send a kill signal to ensure process is cleaned up in case of any failure.
       if (process != null && process.isAlive()) {
-        process.destroyForcibly();
+        // Only destroy sends SIGTERM to the process.
+        process.destroy();
+        try {
+          process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
+        } catch (InterruptedException e1) {
+          LOG.error(
+              "Process could not be destroyed gracefully within the specified time '{}'",
+              response.description);
+          process.destroyForcibly();
+        }
       }
     } finally {
       if (startMs > 0) {
