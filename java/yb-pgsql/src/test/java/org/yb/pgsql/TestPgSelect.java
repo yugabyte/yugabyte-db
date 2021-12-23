@@ -535,19 +535,18 @@ public class TestPgSelect extends BasePgSQLTest {
     }
   }
 
+  public long getNumStatusCalls() throws Exception {
+    final String kGetStatusKey =
+        "handler_latency_yb_tserver_TabletServerService_GetTransactionStatus";
+    return getTServerMetric(kGetStatusKey).count;
+  }
+
   public void doSelect(boolean use_ordered_by, boolean get_count, Statement statement,
                        boolean enable_follower_read, List<Row> rows_list,
                        long expected_num_tablet_requests, long max_status_calls) throws Exception {
     String follower_read_setting = (enable_follower_read ? "on" : "off");
     int row_count = rows_list.size();
-    LOG.info("Sleeping to stabilize GetTransactionstatus metrics");
-    final int kSleepToStabilizeInProcessCallsMs = 500;
-    Thread.sleep(kSleepToStabilizeInProcessCallsMs);
     LOG.info("Reading rows with follower reads " + follower_read_setting);
-    final String kGetStatusKey =
-        "handler_latency_yb_tserver_TabletServerService_GetTransactionStatus";
-    long old_num_status_calls = getTServerMetric(kGetStatusKey).count;
-    LOG.info("Number of total Status calls before : " + old_num_status_calls);
     long old_count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
     long old_count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
     if (get_count) {
@@ -574,13 +573,11 @@ public class TestPgSelect extends BasePgSQLTest {
                  !enable_follower_read || row_count == 0
                      ? 0
                      : (get_count ? expected_num_tablet_requests : row_count));
-    LOG.info("Sleeping to stabilize GetTransactionstatus metrics");
-    Thread.sleep(kSleepToStabilizeInProcessCallsMs);
-    long num_status_calls = getTServerMetric(kGetStatusKey).count;
+
+    long num_status_calls = getNumStatusCalls();
     LOG.info("Number of total Status calls : " + num_status_calls
-                + " . new calls are " + (num_status_calls - old_num_status_calls)
                 + " Expected to be less than " + max_status_calls);
-    assertTrue(num_status_calls - old_num_status_calls <= max_status_calls);
+    assertTrue(num_status_calls <= max_status_calls);
   }
 
   public void testConsistentPrefix(int kNumRows, boolean use_ordered_by, boolean get_count)
@@ -609,19 +606,22 @@ public class TestPgSelect extends BasePgSQLTest {
       final int kNumTablets = 3;
       final int kNumRowsPerTablet = (int)Math.ceil(kNumRows / (1.0 * kNumTablets));
       final int kNumTabletRequests = kNumTablets * (int)Math.ceil(kNumRowsPerTablet / 1024.0);
-      final int kOpDurationMs = 2500;
+      final long kOpDurationMs = BuildTypeUtil.adjustTimeout(2500);
 
       Thread.sleep(kOpDurationMs);
 
       statement.execute("SET yb_read_from_followers = true;");
+
+      long cumulative_max_status_calls = getNumStatusCalls();
 
       // Set staleness so that the read happens before the initial writes have started.
       long staleness_ms = System.currentTimeMillis() + kOpDurationMs - startWriteMs;
       statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
       LOG.info("Using staleness of " + staleness_ms + " ms.");
       long max_status_calls = 0;  // No txns in progress.
+      cumulative_max_status_calls += max_status_calls;
       doSelect(use_ordered_by, get_count, statement, true, Collections.emptyList(),
-               kNumTablets, max_status_calls);
+               kNumTablets, cumulative_max_status_calls);
 
 
       // Set staleness so that the read happens after the initial writes are done.
@@ -629,7 +629,9 @@ public class TestPgSelect extends BasePgSQLTest {
       statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
       LOG.info("Using staleness of " + staleness_ms + " ms.");
       max_status_calls = 0;  // No txns in progress.
-      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests, 0);
+      cumulative_max_status_calls += max_status_calls;
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests,
+               cumulative_max_status_calls);
 
       Connection write_connection = getConnectionBuilder().connect();
       ArrayList<Statement> write_txns = new ArrayList<Statement>();
@@ -645,7 +647,9 @@ public class TestPgSelect extends BasePgSQLTest {
       Thread.sleep(kOpDurationMs);
 
       max_status_calls = kNumTabletRequests * kNumRowsDeleted;
-      doSelect(use_ordered_by, get_count, statement, false, all_rows, 0, max_status_calls);
+      cumulative_max_status_calls += max_status_calls;
+      doSelect(use_ordered_by, get_count, statement, false, all_rows, 0,
+               cumulative_max_status_calls);
 
       // Set staleness so the read happens after the initial writes are done. Before deletes start.
       staleness_ms = System.currentTimeMillis() - (doneWriteMs + startDeleteMs) / 2;
@@ -654,8 +658,9 @@ public class TestPgSelect extends BasePgSQLTest {
       // Shouldn't call GetTransactionStatus for each pending Transaction(s) during follower reads.
       // But we may do up to 1 call per tablet to calculate MinRunningHybridTime.
       max_status_calls = kNumTabletRequests;
+      cumulative_max_status_calls += max_status_calls;
       doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests,
-               max_status_calls);
+               cumulative_max_status_calls);
 
       long startCommitMs = System.currentTimeMillis();
       for (int i = 0; i < kNumRowsDeleted; i++) {
@@ -670,7 +675,9 @@ public class TestPgSelect extends BasePgSQLTest {
       // no GetTransactionStatus calls. If not, there may be a call made for each row. +1 for
       // computing MinHybridTime.
       max_status_calls = kNumTabletRequests + kNumRowsDeleted;
-      doSelect(use_ordered_by, get_count, statement, false, unchanged_rows, 0, max_status_calls);
+      cumulative_max_status_calls += max_status_calls;
+      doSelect(use_ordered_by, get_count, statement, false, unchanged_rows, 0,
+               cumulative_max_status_calls);
 
       // Set staleness so that the read happens before deletes are committed.
       staleness_ms = System.currentTimeMillis() - (writtenDeleteMs + startCommitMs) / 2;
@@ -679,8 +686,9 @@ public class TestPgSelect extends BasePgSQLTest {
       // Transactions should have already been known to have committed.
       // Max 1 call allowed per tablet for computing MinRunningHybridTime
       max_status_calls = kNumTabletRequests;
+      cumulative_max_status_calls += max_status_calls;
       doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests,
-               max_status_calls);
+               cumulative_max_status_calls);
 
       // Set staleness so that the read happens after deletes are committed.
       staleness_ms = System.currentTimeMillis() - (committedDeleteMs + kOpDurationMs / 2);
@@ -688,8 +696,9 @@ public class TestPgSelect extends BasePgSQLTest {
       LOG.info("Using staleness of " + staleness_ms + " ms.");
       // Max 1 call allowed per tablet for computing MinRunningHybridTime
       max_status_calls = kNumTabletRequests;
+      cumulative_max_status_calls += max_status_calls;
       doSelect(use_ordered_by, get_count, statement, true, unchanged_rows, kNumTabletRequests,
-               max_status_calls);
+               cumulative_max_status_calls);
     }
   }
 
