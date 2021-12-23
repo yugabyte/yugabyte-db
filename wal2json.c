@@ -135,8 +135,8 @@ static void pg_decode_truncate(LogicalDecodingContext *ctx,
 					ReorderBufferChange *change);
 #endif
 
-static void columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Oid reloid);
-static void tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Oid reloid);
+static void columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Relation relation);
+static void tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Relation relation);
 static void pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool addcomma);
 static void identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs);
 static bool parse_table_identifier(List *qualified_tables, char separator, List **select_tables);
@@ -949,7 +949,7 @@ pg_decode_commit_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
  * replident: is this tuple a replica identity?
  */
 static void
-tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Oid reloid)
+tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Relation relation)
 {
 	JsonDecodingData	*data;
 	int					natt;
@@ -1169,7 +1169,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 				ScanKeyInit(&scankeys[0],
 							Anum_pg_attrdef_adrelid,
 							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(reloid));
+							ObjectIdGetDatum(relation->rd_id));
 				ScanKeyInit(&scankeys[1],
 							Anum_pg_attrdef_adnum,
 							BTEqualStrategyNumber, F_INT2EQ,
@@ -1187,7 +1187,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 					{
 						result = TextDatumGetCString(DirectFunctionCall2(pg_get_expr,
 																	def_value,
-																	ObjectIdGetDatum(tuple->t_tableOid)));
+																	ObjectIdGetDatum(relation->rd_id)));
 
 						appendStringInfo(&coldefaults, "%s\"%s\"", comma, result);
 						pfree(result);
@@ -1346,9 +1346,9 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 /* Print columns information */
 static void
-columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Oid reloid)
+columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Relation relation)
 {
-	tuple_to_stringinfo(ctx, tupdesc, tuple, NULL, false, addcomma, reloid);
+	tuple_to_stringinfo(ctx, tupdesc, tuple, NULL, false, addcomma, relation);
 }
 
 /* Print replica identity information */
@@ -1356,7 +1356,7 @@ static void
 identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs)
 {
 	/* Last parameter does not matter */
-	tuple_to_stringinfo(ctx, tupdesc, tuple, bs, true, false, InvalidOid);
+	tuple_to_stringinfo(ctx, tupdesc, tuple, bs, true, false, NULL);
 }
 
 /* Print primary key information */
@@ -1751,17 +1751,17 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
 			{
-				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, change->data.tp.relnode.relNode);
+				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation);
 				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, false);
 			}
 			else
 			{
-				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, false, change->data.tp.relnode.relNode);
+				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, false, relation);
 			}
 			break;
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			/* Print the new tuple */
-			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, change->data.tp.relnode.relNode);
+			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation);
 			if (data->include_pk && OidIsValid(relation->rd_replidindex) &&
 					relation->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT)
 				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, true);
