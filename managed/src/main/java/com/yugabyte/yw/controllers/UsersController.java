@@ -164,10 +164,10 @@ public class UsersController extends AuthenticatedController {
     Users user = Users.getOrBadRequest(userUUID);
     checkUserOwnership(customerUUID, userUUID, user);
     if (UserType.ldap == user.getUserType() && user.getLdapSpecifiedRole()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Can't change role for LDAP user.");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
     }
     if (Role.SuperAdmin == user.getRole()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot change super admin role.");
     }
     user.setRole(Role.valueOf(role));
     user.save();
@@ -194,15 +194,15 @@ public class UsersController extends AuthenticatedController {
   })
   public Result changePassword(UUID customerUUID, UUID userUUID) {
     Users user = Users.getOrBadRequest(userUUID);
+    if (UserType.ldap == user.getUserType()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
+    }
     checkUserOwnership(customerUUID, userUUID, user);
     Form<UserRegisterFormData> form =
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (UserType.ldap == user.getUserType()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
-    }
     if (formData.getEmail().equals(user.email)) {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
@@ -238,6 +238,9 @@ public class UsersController extends AuthenticatedController {
     UserProfileFormData formData = form.get();
 
     if (StringUtils.isNotEmpty(formData.getPassword())) {
+      if (UserType.ldap == user.getUserType()) {
+        throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
+      }
       passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
       if (!formData.getPassword().equals(formData.getConfirmPassword())) {
         throw new PlatformServiceException(
