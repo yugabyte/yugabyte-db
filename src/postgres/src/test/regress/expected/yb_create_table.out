@@ -665,21 +665,24 @@ set yb_enable_create_with_table_oid=1;
 create table with_invalid_table_oid (a int) with (table_oid = 0);
 ERROR:  user tables must have an OID >= 16384
 create table with_invalid_table_oid (a int) with (table_oid = -1);
-ERROR:  value -1 out of bounds for option "table_oid"
-DETAIL:  Valid values are between "1" and "2147483647".
+ERROR:  invalid value for OID option "table_oid"
+HINT:  Value cannot be negative.
 create table with_invalid_table_oid (a int) with (table_oid = 123);
 ERROR:  user tables must have an OID >= 16384
+create table with_invalid_table_oid (a int) with (table_oid = 4294967296);
+ERROR:  invalid value for OID option "table_oid"
+HINT:  Value exceeds Oid range.
 create table with_invalid_table_oid (a int) with (table_oid = 'test');
-ERROR:  user tables must have an OID >= 16384
-create table with_table_oid (a int) with (table_oid = 1234567);
+ERROR:  invalid value for OID option "table_oid"
+create table with_table_oid (a int) with (table_oid = 4294967295);
 select relname, oid from pg_class where relname = 'with_table_oid';
-    relname     |   oid
-----------------+---------
- with_table_oid | 1234567
+    relname     |    oid
+----------------+------------
+ with_table_oid | 4294967295
 (1 row)
 
-create table with_table_oid_duplicate (a int) with (table_oid = 1234567);
-ERROR:  table OID 1234567 is in use
+create table with_table_oid_duplicate (a int) with (table_oid = 4294967295);
+ERROR:  table OID 4294967295 is in use
 -- Test temp tables with (table_oid = x)
 -- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 begin;

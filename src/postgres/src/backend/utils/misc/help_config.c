@@ -34,6 +34,7 @@ typedef union
 	struct config_bool _bool;
 	struct config_real real;
 	struct config_int integer;
+	struct config_oid oid;
 	struct config_string string;
 	struct config_enum _enum;
 } mixedStruct;
@@ -107,6 +108,13 @@ printMixedStruct(mixedStruct *structToPrint)
 				   structToPrint->integer.reset_val,
 				   structToPrint->integer.min,
 				   structToPrint->integer.max);
+			break;
+
+		case PGC_OID:
+			printf("OID\t%d\t%d\t%d\t",
+				   structToPrint->oid.reset_val,
+				   structToPrint->oid.min,
+				   structToPrint->oid.max);
 			break;
 
 		case PGC_REAL:

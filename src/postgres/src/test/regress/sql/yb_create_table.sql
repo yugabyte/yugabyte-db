@@ -519,12 +519,13 @@ set yb_enable_create_with_table_oid=1;
 create table with_invalid_table_oid (a int) with (table_oid = 0);
 create table with_invalid_table_oid (a int) with (table_oid = -1);
 create table with_invalid_table_oid (a int) with (table_oid = 123);
+create table with_invalid_table_oid (a int) with (table_oid = 4294967296);
 create table with_invalid_table_oid (a int) with (table_oid = 'test');
 
-create table with_table_oid (a int) with (table_oid = 1234567);
+create table with_table_oid (a int) with (table_oid = 4294967295);
 select relname, oid from pg_class where relname = 'with_table_oid';
 
-create table with_table_oid_duplicate (a int) with (table_oid = 1234567);
+create table with_table_oid_duplicate (a int) with (table_oid = 4294967295);
 
 -- Test temp tables with (table_oid = x)
 -- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
