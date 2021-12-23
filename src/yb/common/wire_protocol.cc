@@ -486,29 +486,30 @@ UsePrivateIpMode GetMode() {
   return UsePrivateIpMode::never;
 }
 
-bool UsePublicIp(const CloudInfoPB& connect_to,
-                 const CloudInfoPB& connect_from) {
+PublicAddressAllowed UsePublicIp(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
   auto mode = GetMode();
 
   if (mode == UsePrivateIpMode::never) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (connect_to.placement_cloud() != connect_from.placement_cloud()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (mode == UsePrivateIpMode::cloud) {
-    return false;
+    return PublicAddressAllowed::kFalse;
   }
   if (connect_to.placement_region() != connect_from.placement_region()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (mode == UsePrivateIpMode::region) {
-    return false;
+    return PublicAddressAllowed::kFalse;
   }
   if (connect_to.placement_zone() != connect_from.placement_zone()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
-  return mode != UsePrivateIpMode::zone;
+  return mode == UsePrivateIpMode::zone
+      ? PublicAddressAllowed::kFalse
+      : PublicAddressAllowed::kTrue;
 }
 
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration) {
@@ -524,7 +525,7 @@ const HostPortPB& DesiredHostPort(
     const CloudInfoPB& connect_from) {
   return GetHostPort(broadcast_addresses,
                      private_host_ports,
-                     PublicAddressAllowed(UsePublicIp(connect_to, connect_from)));
+                     UsePublicIp(connect_to, connect_from));
 }
 
 const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
