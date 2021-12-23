@@ -11,20 +11,20 @@
 
 package com.yugabyte.yw.common.kms.util;
 
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.SecretEngineType;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-
 import java.util.List;
 import java.util.UUID;
 
-import com.bettercloud.vault.VaultException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
+
+import com.bettercloud.vault.VaultException;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.SecretEngineType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,7 +144,8 @@ public class HashicorpEARServiceUtil {
     return true;
   }
 
-  private static void updateAuthConfigObj(
+  /** extracts ttl and updates in authConfig, made public for testing purpose */
+  public static void updateAuthConfigObj(
       UUID universeUUID, UUID configUUID, VaultSecretEngineBase engine, ObjectNode authConfig) {
     LOG.debug(
         "updateAuthConfigObj called for {} - {}", universeUUID.toString(), configUUID.toString());
@@ -168,7 +169,10 @@ public class HashicorpEARServiceUtil {
         LOG.debug("Token properties are not changed");
         return;
       }
-      LOG.debug("Updating HC_VAULT_TTL_EXPIRY 2 with {} and {}", ttlInfo.get(0), ttlInfo.get(1));
+      LOG.debug(
+          "Updating HC_VAULT_TTL_EXPIRY for Decrypt with {} and {}",
+          ttlInfo.get(0),
+          ttlInfo.get(1));
 
       authConfig.put(HashicorpEARServiceUtil.HC_VAULT_TTL, (long) ttlInfo.get(0));
       authConfig.put(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY, (long) ttlInfo.get(1));
@@ -198,8 +202,7 @@ public class HashicorpEARServiceUtil {
       final String engineKey = getVaultKeyForUniverse(universeUUID, configUUID);
       VaultSecretEngineBase vaultSecretEngine =
           VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
-      // TODO: PLAT-2580 enable below line
-      // updateAuthConfigObj(universeUUID, configUUID, vaultSecretEngine, authConfig);
+      updateAuthConfigObj(universeUUID, configUUID, vaultSecretEngine, authConfig);
 
       return vaultSecretEngine.decryptString(engineKey, encryptedUniverseKey);
     } catch (VaultException e) {

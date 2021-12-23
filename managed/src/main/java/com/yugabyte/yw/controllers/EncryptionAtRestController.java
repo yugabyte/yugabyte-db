@@ -65,8 +65,14 @@ public class EncryptionAtRestController extends AuthenticatedController {
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
   public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
   public static final String AWS_KMS_ENDPOINT_FIELDNAME = "AWS_KMS_ENDPOINT";
+
   public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
   public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
+
+  public static final String HC_ADDR_FNAME = HashicorpEARServiceUtil.HC_VAULT_ADDRESS;
+  public static final String HC_TOKEN_FNAME = HashicorpEARServiceUtil.HC_VAULT_TOKEN;
+  public static final String HC_ENGINE_FNAME = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
+  public static final String HC_MPATH_FNAME = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
 
   @Inject EncryptionAtRestManager keyManager;
 
@@ -116,10 +122,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
       }
     } else if (keyProvider.toUpperCase().equals(KeyProvider.HASHICORP.toString())) {
-      final String addr = HashicorpEARServiceUtil.HC_VAULT_ADDRESS;
-      final String token = HashicorpEARServiceUtil.HC_VAULT_TOKEN;
 
-      if (formData.get(addr) == null || formData.get(token) == null) {
+      if (formData.get(HC_ADDR_FNAME) == null || formData.get(HC_TOKEN_FNAME) == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
       }
       try {
@@ -147,14 +151,14 @@ public class EncryptionAtRestController extends AuthenticatedController {
     } else if (keyProvider.equals(KeyProvider.SMARTKEY)) {
       // NO checks required
     } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
-      final String engine = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
-      final String mPath = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
 
-      if (formData.get(engine) != null && !authconfig.get(engine).equals(formData.get(engine))) {
+      if (formData.get(HC_ENGINE_FNAME) != null
+          && !authconfig.get(HC_ENGINE_FNAME).equals(formData.get(HC_ENGINE_FNAME))) {
         throw new PlatformServiceException(
             BAD_REQUEST, "KmsConfig vault engine cannot be changed.");
       }
-      if (formData.get(mPath) != null && !authconfig.get(mPath).equals(formData.get(mPath))) {
+      if (formData.get(HC_MPATH_FNAME) != null
+          && !authconfig.get(HC_MPATH_FNAME).equals(formData.get(HC_MPATH_FNAME))) {
         throw new PlatformServiceException(
             BAD_REQUEST, "KmsConfig vault engine path cannot be changed.");
       }
@@ -181,13 +185,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
         formData.set(SMARTKEY_API_KEY_FIELDNAME, authConfig.get(SMARTKEY_API_KEY_FIELDNAME));
       }
     } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
-      final String engine = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
-      final String mPath = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
-      final String token = HashicorpEARServiceUtil.HC_VAULT_TOKEN;
-      formData.set(engine, authConfig.get(engine));
-      formData.set(mPath, authConfig.get(mPath));
-      if (formData.get(token) == null && authConfig.get(token) != null) {
-        formData.set(token, authConfig.get(token));
+
+      formData.set(HC_ENGINE_FNAME, authConfig.get(HC_ENGINE_FNAME));
+      formData.set(HC_MPATH_FNAME, authConfig.get(HC_MPATH_FNAME));
+
+      if (formData.get(HC_TOKEN_FNAME) == null && authConfig.get(HC_TOKEN_FNAME) != null) {
+        formData.set(HC_TOKEN_FNAME, authConfig.get(HC_TOKEN_FNAME));
       }
     }
     return formData;

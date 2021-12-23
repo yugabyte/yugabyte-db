@@ -11,26 +11,30 @@
 package com.yugabyte.yw.common.kms.util.hashicorpvault;
 
 import static org.junit.Assert.assertEquals;
-
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.models.KmsConfig;
-
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.UUID;
 
-import static org.junit.Assert.assertTrue;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
+import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.models.KmsConfig;
+
 import org.junit.Before;
 import org.junit.Test;
-import java.util.UUID;
-import play.libs.Json;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import play.libs.Json;
 
 public class VaultEARServiceUtilTest extends FakeDBApplication {
   protected static final Logger LOG = LoggerFactory.getLogger(VaultEARServiceUtilTest.class);
@@ -75,31 +79,37 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
           + "}";
 
   UUID testUniverseID = UUID.randomUUID();
-  // EncryptionAtRestConfig config;
+  UUID customerID = UUID.randomUUID();
+  UUID testConfigID = UUID.randomUUID();
   KmsConfig config;
+
+  boolean LOCAL_MOCK_RUN = false;
 
   @Before
   public void setUp() {
+    LOCAL_MOCK_RUN = MOCK_RUN;
     config = new KmsConfig();
     config.authConfig = Json.parse(jsonString);
+    config.customerUUID = customerID;
+    config.configUUID = testConfigID;
   }
 
   @Test
   public void testGetVaultSecretEngine() {
     String key = "key1";
     byte[] data = "TestData".getBytes();
+    ObjectNode cfg = config.authConfig.deepCopy();
 
     try {
       VaultSecretEngineBase transitEngine;
-      if (MOCK_RUN) {
+      if (LOCAL_MOCK_RUN) {
         transitEngine = mock(VaultTransit.class);
         byte[] edata = "ENCRYPTED_TestData".getBytes();
 
         when(transitEngine.encryptString(key, data)).thenReturn(edata);
         when(transitEngine.decryptString(key, edata)).thenReturn(data);
       } else {
-        transitEngine =
-            HashicorpEARServiceUtil.getVaultSecretEngine((ObjectNode) config.authConfig);
+        transitEngine = HashicorpEARServiceUtil.getVaultSecretEngine(cfg);
       }
 
       byte[] eData = transitEngine.encryptString(key, data);
@@ -111,5 +121,47 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
       LOG.error("Exception occured :" + exception);
       assertTrue(false);
     }
+  }
+
+  @Test
+  public void testUpdateAuthConfigObj() throws Exception {
+
+    VaultAccessor vAccessor;
+    VaultSecretEngineBase transitEngine;
+    ObjectNode cfg = config.authConfig.deepCopy();
+
+    if (LOCAL_MOCK_RUN) {
+      vAccessor = mock(VaultAccessor.class);
+      when(vAccessor.getTokenExpiryFromVault()).thenReturn(Arrays.asList(0L, 120L));
+      transitEngine = new VaultTransit(vAccessor, mountPath, KeyType.CMK);
+    } else {
+      transitEngine = HashicorpEARServiceUtil.getVaultSecretEngine(cfg);
+    }
+
+    HashicorpEARServiceUtil.updateAuthConfigObj(testUniverseID, testConfigID, transitEngine, cfg);
+
+    JsonNode ttl = cfg.get(HashicorpEARServiceUtil.HC_VAULT_TTL);
+    JsonNode ttlExpiry = cfg.get(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY);
+    assertNotNull(ttl);
+    assertNotNull(ttlExpiry);
+    assertEquals(0L, (long) Long.valueOf(ttl.asText()));
+  }
+
+  @Test
+  public void testUpdateAuthConfigObjFail() throws Exception {
+
+    VaultAccessor vAccessor;
+    VaultSecretEngineBase transitEngine;
+    ObjectNode cfg = config.authConfig.deepCopy();
+    if (!LOCAL_MOCK_RUN) return;
+
+    vAccessor = mock(VaultAccessor.class);
+    when(vAccessor.getTokenExpiryFromVault()).thenThrow(NullPointerException.class);
+    transitEngine = new VaultTransit(vAccessor, mountPath, KeyType.CMK);
+    HashicorpEARServiceUtil.updateAuthConfigObj(testUniverseID, testConfigID, transitEngine, cfg);
+    JsonNode ttl = cfg.get(HashicorpEARServiceUtil.HC_VAULT_TTL);
+    JsonNode ttlExpiry = cfg.get(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY);
+    assertNull(ttl);
+    assertNull(ttlExpiry);
   }
 }
