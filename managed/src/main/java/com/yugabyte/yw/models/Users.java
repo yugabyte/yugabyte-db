@@ -18,11 +18,14 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.Random;
+import java.nio.charset.Charset;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.extern.slf4j.Slf4j;
 import org.joda.time.DateTime;
 import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
@@ -30,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.mvc.Http.Status;
 
+@Slf4j
 @Entity
 @ApiModel(description = "A user associated with a customer")
 public class Users extends Model {
@@ -266,6 +270,21 @@ public class Users extends Model {
     users.setLdapSpecifiedRole(false);
     users.save();
     return users;
+  }
+
+  /**
+   * Delete Users identified via email
+   *
+   * @param email
+   * @return void
+   */
+  public static void deleteUser(String email) {
+    Users userToDelete = Users.find.query().where().eq("email", email).findOne();
+    if (userToDelete != null && userToDelete.userType.equals(UserType.ldap)) {
+      log.info("Deleting user id {} with email address {}", userToDelete.uuid, userToDelete.email);
+      userToDelete.delete();
+    }
+    return;
   }
 
   /**
