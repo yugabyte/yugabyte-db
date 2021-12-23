@@ -22,6 +22,8 @@ import subprocess
 import traceback
 import time
 import json
+import signal
+import sys
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
@@ -586,6 +588,9 @@ def get_instance_profile_credentials():
 
 class YBBackup:
     def __init__(self):
+        signal.signal(signal.SIGINT, self.cleanup_on_exit)
+        signal.signal(signal.SIGTERM, self.cleanup_on_exit)
+        self.pools = []
         self.leader_master_ip = ''
         self.ysql_ip = ''
         self.live_tserver_ip = ''
@@ -595,6 +600,16 @@ class YBBackup:
         self.timer = BackupTimer()
         self.tserver_ip_to_web_port = {}
         self.parse_arguments()
+
+    def cleanup_on_exit(self, signum, frame):
+        for pool in self.pools:
+            logging.info("Terminating threadpool ...")
+            try:
+                pool.terminate()
+            except Exception as ex:
+                logging.error("Failed to terminate pool: {}".format(ex))
+        # Runs clean-up callbacks registered to atexit.
+        sys.exit()
 
     def sleep_or_raise(self, num_retry, timeout, ex):
         if num_retry > 0:
@@ -802,6 +817,7 @@ class YBBackup:
         if self.args.storage_type == 'nfs':
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
             pool = ThreadPool(self.args.parallelism)
+            self.pools.append(pool)
             tablets_by_leader_ip = []
 
             output = self.run_yb_admin(['list_all_tablet_servers'])
@@ -1533,6 +1549,7 @@ class YBBackup:
         :param snapshot_filepath: the top-level directory under which to upload the data directories
         """
         pool = ThreadPool(self.args.parallelism)
+        self.pools.append(pool)
 
         tablets_by_leader_ip = {}
         for (tablet_id, leader_ip) in tablet_leaders:
@@ -2351,7 +2368,7 @@ class YBBackup:
     def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_to_download,
                                       snapshot_id, table_ids):
         pool = ThreadPool(self.args.parallelism)
-
+        self.pools.append(pool)
         self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
         tserver_ips = list(tablets_by_tserver_to_download.keys())
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
@@ -2569,4 +2586,15 @@ class YBBackup:
 
 
 if __name__ == "__main__":
-    YBBackup().run()
+    # Registers the signal handlers.
+    yb_backup = YBBackup()
+    pool = ThreadPool(1)
+    try:
+        # Main thread cannot be blocked to handle signals.
+        future = pool.apply_async(yb_backup.run)
+        while not future.ready():
+            # Prevent blocking by waiting with timeout.
+            future.wait(timeout=1)
+    finally:
+        logging.info("Terminating parent threadpool ...")
+        pool.terminate()
