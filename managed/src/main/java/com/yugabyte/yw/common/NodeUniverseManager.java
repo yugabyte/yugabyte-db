@@ -118,6 +118,11 @@ public class NodeUniverseManager extends DevopsBase {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+    if (node.isMaster) {
+      commandArgs.add("--is_master");
+    }
+    commandArgs.add("--node_name");
+    commandArgs.add(node.nodeName);
     if (getNodeDeploymentMode(node, universe).equals(Common.CloudType.kubernetes)) {
 
       // Get namespace.  First determine isMultiAz.
@@ -145,11 +150,6 @@ public class NodeUniverseManager extends DevopsBase {
     } else {
       throw new RuntimeException("Cloud type unknown");
     }
-    if (node.isMaster) {
-      commandArgs.add("--is_master");
-    }
-    commandArgs.add("--node_name");
-    commandArgs.add(node.nodeName);
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
     LOG.debug("Executing command: " + commandArgs);
