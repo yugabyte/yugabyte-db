@@ -71,6 +71,7 @@
 
 // YB includes
 #include "catalog/catalog.h"
+#include "utils/guc.h"
 #include "pg_yb_utils.h"
 
 /* State shared by transformCreateStmt and its subroutines */
@@ -398,19 +399,26 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 					errmsg("create table with table_oid is not allowed"),
 					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
-			cxt.relOid = strtol(defGetString(def), NULL, 10);
+
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &cxt.relOid, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"table_oid\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+
 			Oid max_system_relid = (yb_test_system_catalogs_creation
 									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
 			if (!cxt.isSystem && cxt.relOid < FirstNormalObjectId)
 			{
 				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("user tables must have an OID >= %d", FirstNormalObjectId)));
 			}
 			else if (cxt.isSystem && cxt.relOid > max_system_relid)
 			{
 				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("system tables must have an OID <= %d "
 								"(exactly as defined in the relevant BKI header file!)",
 								max_system_relid)));
@@ -2113,7 +2121,7 @@ transformIndexConstraints(CreateStmtContext *cxt)
 					 max_system_relid);
 
 			if (bms_is_member(oid, oids_used))
-				elog(ERROR, "table OID %d is used multiple times", oid);
+				elog(ERROR, "table OID %u is used multiple times", oid);
 
 			oids_used = bms_add_member(oids_used, oid);
 		}

@@ -30,6 +30,7 @@ typedef enum relopt_type
 {
 	RELOPT_TYPE_BOOL,
 	RELOPT_TYPE_INT,
+	RELOPT_TYPE_OID,
 	RELOPT_TYPE_REAL,
 	RELOPT_TYPE_STRING
 } relopt_type;
@@ -82,6 +83,7 @@ typedef struct relopt_value
 		bool		bool_val;
 		int			int_val;
 		double		real_val;
+		Oid			oid_val;
 		char	   *string_val; /* allocated separately */
 	}			values;
 } relopt_value;
@@ -108,6 +110,14 @@ typedef struct relopt_real
 	double		min;
 	double		max;
 } relopt_real;
+
+typedef struct relopt_oid
+{
+	relopt_gen	gen;
+	Oid			default_val;
+	Oid			min;
+	Oid			max;
+} relopt_oid;
 
 /* validation routines for strings */
 typedef void (*validate_string_relopt) (const char *value);
@@ -176,6 +186,15 @@ typedef struct
 			var = option.values.int_val;						\
 		else													\
 			var = ((relopt_int *) option.gen)->default_val;		\
+		(wasset) != NULL ? *(wasset) = option.isset : (dummyret)NULL; \
+	} while (0)
+
+#define HANDLE_OID_RELOPTION(optname, var, option, wasset)		\
+	do {														\
+		if (option.isset)										\
+			var = option.values.oid_val;						\
+		else													\
+			var = ((relopt_oid *) option.gen)->default_val;		\
 		(wasset) != NULL ? *(wasset) = option.isset : (dummyret)NULL; \
 	} while (0)
 
@@ -252,6 +271,8 @@ extern void add_bool_reloption(bits32 kinds, const char *name, const char *desc,
 				   bool default_val);
 extern void add_int_reloption(bits32 kinds, const char *name, const char *desc,
 				  int default_val, int min_val, int max_val);
+extern void add_oid_reloption(bits32 kinds, const char *name, const char *desc,
+				  Oid default_val, Oid min_val, Oid max_val);
 extern void add_real_reloption(bits32 kinds, const char *name, const char *desc,
 				   double default_val, double min_val, double max_val);
 extern void add_string_reloption(bits32 kinds, const char *name, const char *desc,
