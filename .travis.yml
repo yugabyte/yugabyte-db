@@ -15,9 +15,3 @@ jobs:
     - sudo make install -j$(nproc)
     - make installcheck
     after_failure: cat regress/regression.diffs
-  - name: documentation
-    language: python
-    install:
-    - pip install sphinx sphinx_rtd_theme
-    before_script: cd doc
-    script: make html
