@@ -21,6 +21,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/tablet/operation_filter.h"
 #include "yb/tablet/operations/operation.h"
+#include "yb/tserver/backup.pb.h"
 #include "yb/util/locks.h"
 
 namespace yb {

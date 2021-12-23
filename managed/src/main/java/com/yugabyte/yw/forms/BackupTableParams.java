@@ -10,7 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")

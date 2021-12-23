@@ -19,7 +19,7 @@ option java_package = "org.yb.tserver";
 
 import "google/protobuf/any.proto";
 import "yb/common/common.proto";
-import "yb/tserver/tserver.proto";
+import "yb/tserver/tserver_types.proto";
 
 service TabletServerBackupService {
   rpc TabletSnapshotOp(TabletSnapshotOpRequestPB) returns (TabletSnapshotOpResponsePB);

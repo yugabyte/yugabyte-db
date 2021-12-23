@@ -210,9 +210,7 @@ class Master : public tserver::DbServerBase {
 
   MasterOptions opts_;
 
-  ServerRegistrationPB registration_;
-  // True once registration_ has been initialized.
-  std::atomic<bool> registration_initialized_;
+  AtomicUniquePtr<ServerRegistrationPB> registration_;
 
   // The maintenance manager for this master.
   std::shared_ptr<MaintenanceManager> maintenance_manager_;

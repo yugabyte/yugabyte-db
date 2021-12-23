@@ -32,9 +32,10 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.yb.Common.PeerRole;
+import org.yb.CommonTypes.PeerRole;
 import static org.yb.consensus.Metadata.*;
 import static org.yb.master.Master.*;
+import static org.yb.master.MasterTypes.*;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;

@@ -15,6 +15,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/ql_value.h"
 #include "yb/common/transaction.h"
 
 #include "yb/master/catalog_manager_if.h"

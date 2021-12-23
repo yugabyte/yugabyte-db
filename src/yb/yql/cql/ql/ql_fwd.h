@@ -15,11 +15,14 @@
 #ifndef YB_YQL_CQL_QL_QL_FWD_H_
 #define YB_YQL_CQL_QL_QL_FWD_H_
 
+#include <memory>
+
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace ql {
 
+class QLProcessor;
 class QLSession;
 class Statement;
 

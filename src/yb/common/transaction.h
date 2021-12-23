@@ -29,7 +29,8 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/optional/optional.hpp>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/transaction.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 

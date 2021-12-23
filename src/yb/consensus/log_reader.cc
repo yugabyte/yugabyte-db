@@ -39,6 +39,7 @@
 
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_index.h"
+#include "yb/consensus/log_util.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 

@@ -20,6 +20,8 @@
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
 
+#include "yb/tablet/read_result.h"
+
 #include "yb/util/trace.h"
 
 namespace yb {

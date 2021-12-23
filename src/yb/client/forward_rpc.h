@@ -16,6 +16,8 @@
 
 #include "yb/client/tablet_rpc.h"
 
+#include "yb/common/common_types.pb.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_context.h"
 

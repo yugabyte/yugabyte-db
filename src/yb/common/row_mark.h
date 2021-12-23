@@ -16,7 +16,7 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/transaction.pb.h"
 
 namespace yb {
 

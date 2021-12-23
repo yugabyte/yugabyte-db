@@ -35,7 +35,9 @@
 
 #include <vector>
 
-#include "yb/common/wire_protocol.pb.h"
+#include "yb/common/common_fwd.h"
+
+#include <google/protobuf/repeated_field.h>
 
 #include "yb/gutil/endian.h"
 

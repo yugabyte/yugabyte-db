@@ -24,8 +24,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/master/master_defaults.h"
-
-#include "yb/tserver/tserver.pb.h"
+#include "yb/master/master.pb.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"

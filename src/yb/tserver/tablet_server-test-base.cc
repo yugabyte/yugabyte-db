@@ -38,6 +38,7 @@
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"

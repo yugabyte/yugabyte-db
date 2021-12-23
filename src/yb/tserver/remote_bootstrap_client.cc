@@ -113,6 +113,7 @@ namespace tserver {
 
 using consensus::ConsensusMetadata;
 using consensus::ConsensusStatePB;
+using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using env_util::CopyFile;
@@ -465,7 +466,8 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
         continue;
       }
 
-      if (peer.member_type() == RaftPeerPB::VOTER || peer.member_type() == RaftPeerPB::OBSERVER) {
+      if (peer.member_type() == PeerMemberType::VOTER ||
+          peer.member_type() == PeerMemberType::OBSERVER) {
         return Status::OK();
       } else {
         SleepFor(MonoDelta::FromMilliseconds(backoff_ms));

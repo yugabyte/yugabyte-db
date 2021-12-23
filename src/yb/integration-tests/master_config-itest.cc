@@ -295,7 +295,7 @@ TEST_F(MasterChangeConfigTest, TestRemoveDeadMaster) {
   SetCurLogIndex();
 
   s = cluster_->ChangeConfig(remove_master, consensus::REMOVE_SERVER,
-                             consensus::RaftPeerPB::PRE_VOTER, true /* use_hostport */);
+                             consensus::PeerMemberType::PRE_VOTER, true /* use_hostport */);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
 
   // REMOVE_SERVER causes the op index to increase by one.
@@ -433,7 +433,7 @@ TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {
 
   SetCurLogIndex();
   ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER,
-                                           consensus::RaftPeerPB::PRE_OBSERVER),
+                                           consensus::PeerMemberType::PRE_OBSERVER),
                     "Add Change Config returned error");
   ++num_masters_;
 

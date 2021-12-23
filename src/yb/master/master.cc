@@ -53,6 +53,7 @@
 #include "yb/master/flush_manager.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
 #include "yb/master/master.service.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
@@ -144,7 +145,6 @@ Master::Master(const MasterOptions& opts)
     flush_manager_(new FlushManager(this, catalog_manager())),
     init_future_(init_status_.get_future()),
     opts_(opts),
-    registration_initialized_(false),
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
     metric_entity_cluster_(METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(),
                                                              "yb.cluster")),
@@ -353,20 +353,20 @@ void Master::Shutdown() {
 }
 
 Status Master::GetMasterRegistration(ServerRegistrationPB* reg) const {
-  if (!registration_initialized_.load(std::memory_order_acquire)) {
+  auto* registration = registration_.get();
+  if (!registration) {
     return STATUS(ServiceUnavailable, "Master startup not complete");
   }
-  reg->CopyFrom(registration_);
+  reg->CopyFrom(*registration);
   return Status::OK();
 }
 
 Status Master::InitMasterRegistration() {
-  CHECK(!registration_initialized_.load());
+  CHECK(!registration_.get());
 
-  ServerRegistrationPB reg;
-  RETURN_NOT_OK(GetRegistration(&reg));
-  registration_.Swap(&reg);
-  registration_initialized_.store(true);
+  auto reg = std::make_unique<ServerRegistrationPB>();
+  RETURN_NOT_OK(GetRegistration(reg.get()));
+  registration_.reset(reg.release());
 
   return Status::OK();
 }

@@ -13,6 +13,7 @@
 
 #include "yb/master/yql_indexes_vtable.h"
 
+#include "yb/common/index_column.h"
 #include "yb/common/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"

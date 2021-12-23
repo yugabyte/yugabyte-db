@@ -16,7 +16,7 @@
 
 #include <future>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
 
 #include "yb/master/master_fwd.h"
 

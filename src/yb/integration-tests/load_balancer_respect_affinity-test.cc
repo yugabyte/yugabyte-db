@@ -22,6 +22,8 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/master/master.proxy.h"
+
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/result.h"

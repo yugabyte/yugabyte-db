@@ -21,6 +21,7 @@
 
 #include "pg_type_d.h" // NOLINT
 
+#include "yb/common/value.pb.h"
 #include "yb/common/ybc_util.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"

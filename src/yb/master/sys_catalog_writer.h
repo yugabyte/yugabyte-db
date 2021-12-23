@@ -19,12 +19,13 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_protocol.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/status.h"
 #include "yb/util/type_traits.h"
@@ -36,9 +37,9 @@ bool IsWrite(QLWriteRequestPB::QLStmtType op_type);
 
 class SysCatalogWriter {
  public:
-  SysCatalogWriter(const TabletId& tablet_id, const Schema& schema_with_ids, int64_t leader_term);
+  SysCatalogWriter(const Schema& schema_with_ids, int64_t leader_term);
 
-  ~SysCatalogWriter() = default;
+  ~SysCatalogWriter();
 
   CHECKED_STATUS Mutate(QLWriteRequestPB::QLStmtType op_type) {
     return Status::OK();
@@ -59,8 +60,8 @@ class SysCatalogWriter {
                                      const uint32_t target_schema_version,
                                      bool is_upsert);
 
-  const tserver::WriteRequestPB& req() const {
-    return req_;
+  tserver::WriteRequestPB& req() {
+    return *req_;
   }
 
   int64_t leader_term() const {
@@ -100,9 +101,8 @@ class SysCatalogWriter {
       QLWriteRequestPB::QLStmtType op_type);
 
   const Schema& schema_with_ids_;
-  tserver::WriteRequestPB req_;
+  std::unique_ptr<tserver::WriteRequestPB> req_;
   const int64_t leader_term_;
-
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogWriter);
 };

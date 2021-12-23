@@ -37,9 +37,11 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/crc16.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"

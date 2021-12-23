@@ -21,6 +21,7 @@
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
@@ -77,6 +78,9 @@ const char* kUseInitialSysCatalogSnapshotEnvVar = "YB_USE_INITIAL_SYS_CATALOG_SN
 // ------------------------------------------------------------------------------------------------
 // InitialSysCatalogSnapshotWriter
 // ------------------------------------------------------------------------------------------------
+
+InitialSysCatalogSnapshotWriter::InitialSysCatalogSnapshotWriter() = default;
+InitialSysCatalogSnapshotWriter::~InitialSysCatalogSnapshotWriter() = default;
 
 void InitialSysCatalogSnapshotWriter::AddMetadataChange(
     tserver::ChangeMetadataRequestPB metadata_change) {

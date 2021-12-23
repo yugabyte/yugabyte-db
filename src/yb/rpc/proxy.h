@@ -44,7 +44,6 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/growable_buffer.h"
-#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/proxy_base.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"

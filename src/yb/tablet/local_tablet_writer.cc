@@ -21,6 +21,9 @@
 
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -41,8 +44,12 @@ class AutoIncrementingCounter {
 
 } // namespace
 
-LocalTabletWriter::LocalTabletWriter(Tablet* tablet) : tablet_(tablet) {
+LocalTabletWriter::LocalTabletWriter(Tablet* tablet)
+    : tablet_(tablet), req_(std::make_unique<tserver::WriteRequestPB>()),
+      resp_(std::make_unique<tserver::WriteResponsePB>()) {
 }
+
+LocalTabletWriter::~LocalTabletWriter() = default;
 
 // Perform a write against the local tablet.
 // Returns a bad Status if the applied operation had a per-row error.
@@ -53,16 +60,17 @@ Status LocalTabletWriter::Write(QLWriteRequestPB* request) {
 }
 
 Status LocalTabletWriter::WriteBatch(Batch* batch) {
+  req_->Clear();
   for (auto& req : *batch) {
     req.set_schema_version(tablet_->metadata()->schema_version());
     QLSetHashCode(&req);
   }
-  req_.mutable_ql_write_batch()->Swap(batch);
+  req_->mutable_ql_write_batch()->Swap(batch);
 
   auto operation = std::make_unique<WriteOperation>(
       OpId::kUnknownTerm, CoarseTimePoint::max() /* deadline */, this,
-      tablet_, &resp_);
-  *operation->AllocateRequest() = req_;
+      tablet_, resp_.get());
+  operation->set_client_request(req_.get());
   write_promise_ = std::promise<Status>();
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 
@@ -85,7 +93,7 @@ void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t ter
 
   // Return the status of first failed op.
   int op_idx = 0;
-  for (const auto& result : resp_.ql_response_batch()) {
+  for (const auto& result : resp_->ql_response_batch()) {
     if (result.status() != QLResponsePB::YQL_STATUS_OK) {
       write_promise_.set_value(STATUS_FORMAT(
           RuntimeError, "Op $0 failed: $1 ($2)", op_idx, result.error_message(),

@@ -16,12 +16,15 @@
 #include <string>
 
 #include "yb/cdc/cdc_service.h"
+
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/rpc_controller.h"

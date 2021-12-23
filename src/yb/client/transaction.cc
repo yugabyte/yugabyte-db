@@ -35,6 +35,8 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"

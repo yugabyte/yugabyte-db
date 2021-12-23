@@ -16,7 +16,7 @@
 
 #include <boost/intrusive/list.hpp>
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/util/opid.h"
 #include "yb/util/status.h"

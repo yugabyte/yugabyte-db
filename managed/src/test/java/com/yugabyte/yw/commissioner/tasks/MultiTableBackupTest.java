@@ -31,7 +31,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;

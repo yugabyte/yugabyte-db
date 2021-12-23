@@ -13,14 +13,14 @@
 
 package org.yb.client;
 
-import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 
 public class AreLeadersOnPreferredOnlyResponse extends YRpcResponse {
-  private Master.MasterErrorPB serverError;
+  private MasterTypes.MasterErrorPB serverError;
 
   public AreLeadersOnPreferredOnlyResponse(long ellapsedMillis,
                                            String masterUUID,
-                                           Master.MasterErrorPB error) {
+                                           MasterTypes.MasterErrorPB error) {
     super(ellapsedMillis, masterUUID);
     serverError = error;
   }

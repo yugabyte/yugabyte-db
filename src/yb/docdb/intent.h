@@ -14,12 +14,47 @@
 #ifndef YB_DOCDB_INTENT_H_
 #define YB_DOCDB_INTENT_H_
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/value.h"
 
 namespace yb {
 namespace docdb {
+
+// "Intent types" are used for single-tablet operations and cross-shard transactions. For example,
+// multiple write-only operations don't need to conflict. However, if one operation is a
+// read-modify-write snapshot isolation operation, then a write-only operation cannot proceed in
+// parallel with it. Conflicts between intent types are handled according to the conflict matrix at
+// https://goo.gl/Wbc663.
+
+// "Weak" intents are obtained for parent nodes of a node that is a transaction is working with.
+// E.g. if we're writing "a.b.c", we'll obtain weak write intents on "a" and "a.b", but a strong
+// write intent on "a.b.c".
+constexpr int kWeakIntentFlag         = 0b000;
+
+// "Strong" intents are obtained on the node that an operation is working with. See the example
+// above.
+constexpr int kStrongIntentFlag       = 0b010;
+
+constexpr int kReadIntentFlag         = 0b000;
+constexpr int kWriteIntentFlag        = 0b001;
+
+// We put weak intents before strong intents to be able to skip weak intents while checking for
+// conflicts.
+//
+// This was not always the case.
+// kObsoleteIntentTypeSet corresponds to intent type set values stored in such a way that
+// strong/weak and read/write bits are swapped compared to the current format.
+YB_DEFINE_ENUM(IntentType,
+    ((kWeakRead,      kWeakIntentFlag |  kReadIntentFlag))
+    ((kWeakWrite,     kWeakIntentFlag | kWriteIntentFlag))
+    ((kStrongRead,  kStrongIntentFlag |  kReadIntentFlag))
+    ((kStrongWrite, kStrongIntentFlag | kWriteIntentFlag))
+);
+
+constexpr int kIntentTypeSetMapSize = 1 << kIntentTypeMapSize;
+typedef EnumBitSet<IntentType> IntentTypeSet;
 
 // DecodeIntentKey result.
 // intent_prefix - intent prefix (SubDocKey (no HT)).

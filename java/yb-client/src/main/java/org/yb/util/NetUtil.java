@@ -38,7 +38,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet.HostPortPB;
 
 import java.util.Arrays;
 import java.util.HashSet;

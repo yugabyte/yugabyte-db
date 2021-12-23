@@ -20,6 +20,8 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/docdb/value_type.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_entity_info.h"

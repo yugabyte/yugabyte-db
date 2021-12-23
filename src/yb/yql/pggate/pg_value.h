@@ -16,7 +16,6 @@
 #define YB_YQL_PGGATE_PG_VALUE_H_
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
 
 #include "yb/util/status_fwd.h"
 

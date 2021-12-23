@@ -16,7 +16,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.Common;
+import org.yb.CommonTypes.TableType;
 
 @Slf4j
 public class CreateCassandraTable extends UniverseTaskBase {
@@ -44,7 +44,7 @@ public class CreateCassandraTable extends UniverseTaskBase {
 
       // Create table task
       createTableTask(
-              Common.TableType.YQL_TABLE_TYPE,
+              TableType.YQL_TABLE_TYPE,
               taskParams().tableDetails.tableName,
               taskParams().tableDetails)
           .setSubTaskGroupType(SubTaskGroupType.CreatingTable);
