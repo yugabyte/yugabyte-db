@@ -56,7 +56,10 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
       List<Object> ttlInfo = engine.getTTL();
       result = config;
 
-      LOG.debug("Updating HC_VAULT_TTL_EXPIRY 1");
+      LOG.debug(
+          "Updating HC_VAULT_TTL_EXPIRY for createAuthConfigWithService with {} and {}",
+          ttlInfo.get(0),
+          ttlInfo.get(1));
       result.put(HashicorpEARServiceUtil.HC_VAULT_TTL, (long) ttlInfo.get(0));
       result.put(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY, (long) ttlInfo.get(1));
 
@@ -184,8 +187,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
       final ObjectNode authConfig = getAuthConfig(configUUID);
       byte[] key =
           validateRetrieveKeyWithService(universeUUID, configUUID, keyRef, config, authConfig);
-      // TODO: PLAT-2580 enable below line
-      // updateCurrentAuthConfigProperties(configUUID, authConfig);
+      updateCurrentAuthConfigProperties(configUUID, authConfig);
       return key;
     } catch (Exception e) {
       final String errMsg = "Error occurred while retrieving encryption key";
