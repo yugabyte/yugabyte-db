@@ -39,6 +39,8 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/partition.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/metadata.pb.h"

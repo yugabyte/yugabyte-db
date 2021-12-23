@@ -23,6 +23,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/index.h"
+#include "yb/common/index_column.h"
 #include "yb/common/ql_type.h"
 
 #include "yb/gutil/casts.h"

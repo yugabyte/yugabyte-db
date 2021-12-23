@@ -17,6 +17,7 @@
 
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 
 #include "yb/yql/cql/ql/ptree/column_arg.h"

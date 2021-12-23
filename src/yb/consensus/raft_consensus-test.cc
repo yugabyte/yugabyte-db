@@ -115,7 +115,7 @@ class MockQueue : public PeerMessageQueue {
                                       ConsensusRequestPB* request,
                                       ReplicateMsgsHolder* msgs_holder,
                                       bool* needs_remote_bootstrap,
-                                      RaftPeerPB::MemberType* member_type,
+                                      PeerMemberType* member_type,
                                       bool* last_exchange_successful));
   MOCK_METHOD2(ResponseFromPeer, bool(const std::string& peer_uuid,
                                       const ConsensusResponsePB& response));

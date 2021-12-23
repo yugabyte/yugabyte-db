@@ -20,7 +20,7 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 
 namespace yb {
 namespace client {

@@ -84,7 +84,7 @@ import org.mockito.Matchers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.client.GetTableSchemaResponse;

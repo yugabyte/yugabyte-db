@@ -20,7 +20,7 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/ql_datatype.h"
 
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"

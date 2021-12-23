@@ -185,8 +185,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public void mockWaits(YBClient mockClient, int version) {
     try {
       // PlacementUtil mock.
-      Master.SysClusterConfigEntryPB.Builder configBuilder =
-          Master.SysClusterConfigEntryPB.newBuilder().setVersion(version);
+      CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+          CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(version);
       GetMasterClusterConfigResponse gcr =
           new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
       when(mockClient.getMasterClusterConfig()).thenReturn(gcr);

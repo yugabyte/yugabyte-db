@@ -36,40 +36,41 @@ package yb.consensus;
 
 option java_package = "org.yb.consensus";
 
-import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 
 // ===========================================================================
 //  Consensus Metadata
 // ===========================================================================
 
+enum PeerMemberType {
+  UNKNOWN_MEMBER_TYPE = 999;
+
+  // Any server added into a running consensus with the intention of becoming a VOTER, should be
+  // added as a PRE_VOTER. Such a server stays as a PRE_VOTER (for a specific tablet) till it is
+  // remote bootstrapped, after which it is promoted to VOTER. While in this mode, a server will
+  // not vote nor try to become a leader.
+  PRE_VOTER = 0;
+  VOTER = 1;
+
+  // Any server added into a running consensus with the intention of becoming an async replica
+  // (OBSERVER), Such a server stays as a PRE_OBSERVER (for a specific tablet) till it is
+  // remote bootstrapped, after which it is promoted to OBSERVER. While in this mode, a server
+  // will not vote nor try to become a leader.
+  PRE_OBSERVER = 2;
+
+  // Async replication mode. An OBSERVER doesn't participate in any decisions regarding the
+  // consensus configuration. It only accepts update requests and allows read requests.
+  OBSERVER = 3;
+};
+
 // A peer in a configuration.
 message RaftPeerPB {
-  enum MemberType {
-    UNKNOWN_MEMBER_TYPE = 999;
-
-    // Any server added into a running consensus with the intention of becoming a VOTER, should be
-    // added as a PRE_VOTER. Such a server stays as a PRE_VOTER (for a specific tablet) till it is
-    // remote bootstrapped, after which it is promoted to VOTER. While in this mode, a server will
-    // not vote nor try to become a leader.
-    PRE_VOTER = 0;
-    VOTER = 1;
-
-    // Any server added into a running consensus with the intention of becoming an async replica
-    // (OBSERVER), Such a server stays as a PRE_OBSERVER (for a specific tablet) till it is
-    // remote bootstrapped, after which it is promoted to OBSERVER. While in this mode, a server
-    // will not vote nor try to become a leader.
-    PRE_OBSERVER = 2;
-
-    // Async replication mode. An OBSERVER doesn't participate in any decisions regarding the
-    // consensus configuration. It only accepts update requests and allows read requests.
-    OBSERVER = 3;
-  };
   // Permanent uuid is optional: RaftPeerPB/RaftConfigPB instances may
   // be created before the permanent uuid is known (e.g., when
   // manually specifying a configuration for Master/CatalogManager);
   // permament uuid can be retrieved at a later time through RPC.
   optional bytes permanent_uuid = 1;
-  optional MemberType member_type = 2;
+  optional PeerMemberType member_type = 2;
   repeated HostPortPB last_known_private_addr = 3;
   repeated HostPortPB last_known_broadcast_addr = 4;
   optional CloudInfoPB cloud_info = 5;

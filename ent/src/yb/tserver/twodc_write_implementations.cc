@@ -50,7 +50,7 @@ namespace tserver {
 namespace enterprise {
 
 CHECKED_STATUS CombineExternalIntents(
-    const TransactionStatePB& transaction_state,
+    const tablet::TransactionStatePB& transaction_state,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
     google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB> *out) {
 
@@ -142,14 +142,12 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
   ~BatchedWriteImplementation() = default;
 
   Status ProcessRecord(const std::string& tablet_id, const cdc::CDCRecordPB& record) override {
-    WriteRequestPB* write_request;
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
-      std::deque<std::unique_ptr<WriteRequestPB>> queue;
-      records_.emplace(tablet_id, std::move(queue));
+      it = records_.emplace(tablet_id, std::deque<std::unique_ptr<WriteRequestPB>>()).first;
     }
 
-    auto& queue = records_.at(tablet_id);
+    auto& queue = it->second;
 
     auto max_batch_records = FLAGS_cdc_max_apply_batch_num_records != 0 ?
         FLAGS_cdc_max_apply_batch_num_records : std::numeric_limits<uint32_t>::max();
@@ -165,12 +163,12 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
       req->set_external_hybrid_time(record.time());
       queue.push_back(std::move(req));
     }
-    write_request = queue.back().get();
+    auto* write_request = queue.back().get();
 
     return AddRecord(record, write_request->mutable_write_batch());
   }
 
-  std::unique_ptr <WriteRequestPB> GetNextWriteRequest() override {
+  std::unique_ptr<WriteRequestPB> GetNextWriteRequest() override {
     if (records_.empty()) {
       return nullptr;
     }
@@ -185,7 +183,6 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
 
  private:
   std::map<std::string, std::deque<std::unique_ptr<WriteRequestPB>>> records_;
-
 };
 
 void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy) {

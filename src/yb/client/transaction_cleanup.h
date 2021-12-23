@@ -38,8 +38,6 @@
 
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/shared_lock.h"
 
 namespace yb {

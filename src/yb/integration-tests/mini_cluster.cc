@@ -38,6 +38,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
@@ -49,6 +50,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/db/db_impl.h"

@@ -204,6 +204,8 @@ class KeyBytes {
     util::AppendDoubleToKey(x, &data_);
   }
 
+  void AppendGroupEnd();
+
   void RemoveValueTypeSuffix(ValueType value_type);
 
   size_t size() const { return data_.size(); }
@@ -275,6 +277,7 @@ inline bool operator!=(const KeyBytes& lhs, const KeyBytes& rhs) {
 }
 
 void AppendDocHybridTime(const DocHybridTime& time, KeyBytes* key);
+void AppendHash(uint16_t hash, KeyBytes* key);
 
 }  // namespace docdb
 }  // namespace yb

@@ -14,8 +14,10 @@
 #define YB_CONSENSUS_MULTI_RAFT_BATCHER_H_
 
 #include <memory>
+
+#include "yb/common/common_net.pb.h"
+
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -42,7 +44,7 @@ using HeartbeatResponseCallback = std::function<void(const Status&)>;
 //   FLAGS_multi_raft_batch_size
 // - To improve efficency multiple batches may be processed concurrently
 //   but only a single batch is being built at any given time
-class MultiRaftHeartbeatBatcher: public std::enable_shared_from_this<MultiRaftHeartbeatBatcher> {
+class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftHeartbeatBatcher> {
  public:
   MultiRaftHeartbeatBatcher(const yb::HostPort& hostport,
                             rpc::ProxyCache* proxy_cache,
@@ -70,12 +72,7 @@ class MultiRaftHeartbeatBatcher: public std::enable_shared_from_this<MultiRaftHe
 
   // Tracks all the metadata for a single batch request, including a list of all
   // ResponseCallbackData registered by each local peer with this batch in AddRequestToBatch().
-  struct MultiRaftConsensusData {
-    MultiRaftConsensusRequestPB batch_req;
-    MultiRaftConsensusResponsePB batch_res;
-    rpc::RpcController controller;
-    std::vector<ResponseCallbackData> response_callback_data;
-  };
+  struct MultiRaftConsensusData;
 
   void PrepareAndSendBatchRequest();
 

@@ -27,9 +27,11 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/index.h"
+#include "yb/common/index_column.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"

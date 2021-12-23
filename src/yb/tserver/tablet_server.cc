@@ -72,6 +72,7 @@
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"

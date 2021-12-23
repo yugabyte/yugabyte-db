@@ -25,9 +25,9 @@
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/logging.h"

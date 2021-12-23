@@ -33,7 +33,7 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.Common.YQLDatabase;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.master.Master;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;

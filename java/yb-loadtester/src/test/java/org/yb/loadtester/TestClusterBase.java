@@ -21,7 +21,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Common;
+import org.yb.CommonNet;
 import org.yb.client.*;
 import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.Metrics;
@@ -439,9 +439,9 @@ public class TestClusterBase extends BaseCQLTest {
   private void removeTServers(Map<HostAndPort, MiniYBDaemon> originalTServers,
       boolean killMaster) throws Exception {
     // Retrieve existing config, set blacklist and reconfigure cluster.
-    List<Common.HostPortPB> blacklisted_hosts = new ArrayList<>();
+    List<CommonNet.HostPortPB> blacklisted_hosts = new ArrayList<>();
     for (Map.Entry<HostAndPort, MiniYBDaemon> ts : originalTServers.entrySet()) {
-      Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
+      CommonNet.HostPortPB hostPortPB = CommonNet.HostPortPB.newBuilder()
         .setHost(ts.getKey().getHost())
         .setPort(ts.getKey().getPort())
         .build();
@@ -527,9 +527,9 @@ public class TestClusterBase extends BaseCQLTest {
 
   private void leaderBlacklistTServer(HostAndPort hps[], int offset) throws Exception {
     // Retrieve existing config, set leader blacklist and reconfigure cluster.
-    List<Common.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
+    List<CommonNet.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
     HostAndPort hp = hps[offset];
-    Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
+    CommonNet.HostPortPB hostPortPB = CommonNet.HostPortPB.newBuilder()
       .setHost(hp.getHost())
       .setPort(hp.getPort())
       .build();
@@ -584,8 +584,8 @@ public class TestClusterBase extends BaseCQLTest {
         }
 
         // Verify that no leader blacklisted tservers are leaders.
-        Common.HostPortPB leader_host = tabletLocation.getLeaderReplica().getRpcHostPort();
-        for (Common.HostPortPB leader_blacklist_host : leader_blacklist_hosts) {
+        CommonNet.HostPortPB leader_host = tabletLocation.getLeaderReplica().getRpcHostPort();
+        for (CommonNet.HostPortPB leader_blacklist_host : leader_blacklist_hosts) {
           if (leader_host.equals(leader_blacklist_host)) {
             LOG.info("Leader blacklisted tserver " + tsUuid + " is still a leader for tablet " +
                 tabletLocation);
@@ -620,9 +620,9 @@ public class TestClusterBase extends BaseCQLTest {
 
   private void leaderWhitelistTServer(HostAndPort hps[], int offset) throws Exception {
     // Retrieve existing config, set leader blacklist and reconfigure cluster.
-    List<Common.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
+    List<CommonNet.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
     HostAndPort hp = hps[offset];
-    Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
+    CommonNet.HostPortPB hostPortPB = CommonNet.HostPortPB.newBuilder()
       .setHost(hp.getHost())
       .setPort(hp.getPort())
       .build();

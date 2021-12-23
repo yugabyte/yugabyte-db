@@ -14,8 +14,11 @@
 #include "yb/client/meta_data_cache.h"
 
 #include "yb/client/client.h"
+#include "yb/client/permissions.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/common/roles_permissions.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -65,6 +68,17 @@ Status GenerateUnauthorizedError(const std::string& canonical_resource,
 }
 
 } // namespace
+
+YBMetaDataCache::YBMetaDataCache(client::YBClient* client,
+                                 bool create_roles_permissions_cache) : client_(client)  {
+  if (create_roles_permissions_cache) {
+    permissions_cache_ = std::make_shared<client::internal::PermissionsCache>(client);
+  } else {
+    LOG(INFO) << "Creating a metadata cache without a permissions cache";
+  }
+}
+
+YBMetaDataCache::~YBMetaDataCache() = default;
 
 Status YBMetaDataCache::GetTable(const YBTableName& table_name,
                                  std::shared_ptr<YBTable>* table,
@@ -193,7 +207,7 @@ Status YBMetaDataCache::HasResourcePermission(const std::string& canonical_resou
                                               const PermissionType& permission,
                                               const NamespaceName& keyspace,
                                               const TableName& table,
-                                              const internal::CacheCheckMode check_mode) {
+                                              const CacheCheckMode check_mode) {
   if (!permissions_cache_) {
     LOG(WARNING) << "Permissions cache disabled. This only should be used in unit tests";
     return Status::OK();
@@ -215,7 +229,7 @@ Status YBMetaDataCache::HasResourcePermission(const std::string& canonical_resou
 
   if (!permissions_cache_->HasCanonicalResourcePermission(canonical_resource, object_type,
                                                           role_name, permission)) {
-    if (check_mode == internal::CacheCheckMode::RETRY) {
+    if (check_mode == CacheCheckMode::RETRY) {
       // We could have failed to find the permission because our cache is stale. If we are asked
       // to retry, we update the cache and try again.
       RETURN_NOT_OK(client_->GetPermissions(permissions_cache_.get()));
@@ -236,13 +250,13 @@ Status YBMetaDataCache::HasTablePermission(const NamespaceName& keyspace_name,
                                            const TableName& table_name,
                                            const RoleName& role_name,
                                            const PermissionType permission,
-                                           const internal::CacheCheckMode check_mode) {
+                                           const CacheCheckMode check_mode) {
 
   // Check wihtout retry. In case our cache is stale, we will check again by issuing a recursive
   // call to this method.
   if (HasResourcePermission(get_canonical_keyspace(keyspace_name),
                             ql::ObjectType::SCHEMA, role_name, permission,
-                            keyspace_name, "", internal::CacheCheckMode::NO_RETRY).ok()) {
+                            keyspace_name, "", CacheCheckMode::NO_RETRY).ok()) {
     return Status::OK();
   }
 
@@ -253,9 +267,9 @@ Status YBMetaDataCache::HasTablePermission(const NamespaceName& keyspace_name,
                                    keyspace_name, table_name,
                                    check_mode);
 
-  if (check_mode == internal::CacheCheckMode::RETRY && s.IsNotAuthorized()) {
+  if (check_mode == CacheCheckMode::RETRY && s.IsNotAuthorized()) {
     s = HasTablePermission(keyspace_name, table_name, role_name, permission,
-                           internal::CacheCheckMode::NO_RETRY);
+                           CacheCheckMode::NO_RETRY);
   }
   return s;
 }

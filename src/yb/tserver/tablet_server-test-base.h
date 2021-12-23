@@ -34,7 +34,6 @@
 #define YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 
 #include "yb/rpc/rpc_fwd.h"

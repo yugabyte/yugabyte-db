@@ -34,7 +34,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/pg_client.fwd.h"
 
 namespace yb {
 namespace tserver {

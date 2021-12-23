@@ -19,7 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 import play.db.ebean.Transactional;
 
 @Slf4j
@@ -45,7 +45,8 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
 
     try {
-      Master.SysClusterConfigEntryPB config = client.getMasterClusterConfig().getConfig();
+      CatalogEntityInfo.SysClusterConfigEntryPB config =
+          client.getMasterClusterConfig().getConfig();
 
       syncXClusterConfigs(config, targetUniverse.universeUUID);
 
@@ -60,7 +61,8 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
   }
 
   @Transactional
-  private void syncXClusterConfigs(Master.SysClusterConfigEntryPB config, UUID targetUniverseUUID) {
+  private void syncXClusterConfigs(
+      CatalogEntityInfo.SysClusterConfigEntryPB config, UUID targetUniverseUUID) {
 
     Set<Pair<UUID, String>> foundXClusterConfigs = new HashSet<>();
 

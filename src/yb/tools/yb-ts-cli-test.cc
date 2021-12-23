@@ -41,6 +41,8 @@
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
 
+#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 

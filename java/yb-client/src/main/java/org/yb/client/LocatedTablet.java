@@ -42,8 +42,8 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.master.Master.TabletLocationsPB;
 import org.yb.master.Master.TabletLocationsPB.ReplicaPB;
-import org.yb.Common.HostPortPB;
-import org.yb.Common.PeerRole;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.CommonTypes.PeerRole;
 
 /**
  * Information about the locations of tablets in a YB table.
@@ -178,7 +178,7 @@ public class LocatedTablet {
       return pb.getTsInfo().getPlacementUuid().toStringUtf8();
     }
 
-    public org.yb.Common.CloudInfoPB getCloudInfo() {
+    public org.yb.CommonNet.CloudInfoPB getCloudInfo() {
       return pb.getTsInfo().getCloudInfo();
     }
   }

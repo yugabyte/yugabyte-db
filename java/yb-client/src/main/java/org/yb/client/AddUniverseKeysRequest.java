@@ -22,6 +22,7 @@ import org.yb.util.Pair;
 import org.yb.encryption.Encryption;
 
 import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 
 public class AddUniverseKeysRequest extends YRpc<AddUniverseKeysResponse> {
   private Map<String, byte[]> universeKeys;
@@ -60,7 +61,7 @@ public class AddUniverseKeysRequest extends YRpc<AddUniverseKeysResponse> {
     final Master.AddUniverseKeysResponsePB.Builder respBuilder =
             Master.AddUniverseKeysResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    Master.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
+    MasterTypes.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
     AddUniverseKeysResponse response = new AddUniverseKeysResponse(
             deadlineTracker.getElapsedMillis(), uuid, serverError);
     return new Pair<AddUniverseKeysResponse, Object>(response, serverError);

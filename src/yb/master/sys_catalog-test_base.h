@@ -47,7 +47,6 @@
 #include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
-#include "yb/common/common.pb.h"
 
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;

@@ -7,11 +7,13 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.pb.h"

@@ -19,7 +19,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/value_type.h"
+#include "yb/docdb/intent.h"
 
 #include "yb/util/monotime.h"
 

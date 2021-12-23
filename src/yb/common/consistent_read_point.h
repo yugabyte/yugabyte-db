@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/read_hybrid_time.h"
 

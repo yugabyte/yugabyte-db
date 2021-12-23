@@ -22,6 +22,7 @@
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/tserver/tserver_admin.pb.h"
 

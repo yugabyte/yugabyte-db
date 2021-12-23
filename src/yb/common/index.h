@@ -29,7 +29,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 
 namespace yb {
@@ -37,23 +37,11 @@ namespace yb {
 // A class to maintain the information of an index.
 class IndexInfo {
  public:
-  // Index column mapping.
-  struct IndexColumn {
-    ColumnId column_id;         // Column id in the index table.
-    std::string column_name;    // Column name in the index table - colexpr.MangledName().
-    ColumnId indexed_column_id; // Corresponding column id in indexed table.
-    QLExpressionPB colexpr;     // Index expression.
-
-    explicit IndexColumn(const IndexInfoPB::IndexColumnPB& pb);
-    IndexColumn() {}
-
-    void ToPB(IndexInfoPB::IndexColumnPB* pb) const;
-
-    std::string ToString() const;
-  };
-
   explicit IndexInfo(const IndexInfoPB& pb);
-  IndexInfo() {}
+  IndexInfo(const IndexInfo& rhs);
+  IndexInfo(IndexInfo&& rhs);
+  IndexInfo();
+  ~IndexInfo();
 
   void ToPB(IndexInfoPB* pb) const;
 
@@ -64,7 +52,7 @@ class IndexInfo {
   bool is_unique() const { return is_unique_; }
 
   const std::vector<IndexColumn>& columns() const { return columns_; }
-  const IndexColumn& column(const size_t idx) const { return columns_[idx]; }
+  const IndexColumn& column(const size_t idx) const;
   size_t hash_column_count() const { return hash_column_count_; }
   size_t range_column_count() const { return range_column_count_; }
   size_t key_column_count() const { return hash_column_count_ + range_column_count_; }
@@ -77,7 +65,7 @@ class IndexInfo {
   }
   IndexPermissions index_permissions() const { return index_permissions_; }
 
-  std::shared_ptr<const IndexInfoPB::WherePredicateSpecPB>& where_predicate_spec() const {
+  std::shared_ptr<const IndexInfoPB_WherePredicateSpecPB>& where_predicate_spec() const {
     return where_predicate_spec_;
   }
 
@@ -119,11 +107,7 @@ class IndexInfo {
     return backfill_error_message_;
   }
 
-  std::string ToString() const {
-    IndexInfoPB pb;
-    ToPB(&pb);
-    return pb.ShortDebugString();
-  }
+  std::string ToString() const;
 
   // Same as "IsExprCovered" but only search the key columns.
   int32_t FindKeyIndex(const std::string& key_name) const;
@@ -160,7 +144,7 @@ class IndexInfo {
   bool use_mangled_column_name_ = false;
   bool has_index_by_expr_ = false;
 
-  mutable std::shared_ptr<const IndexInfoPB::WherePredicateSpecPB> where_predicate_spec_ = nullptr;
+  mutable std::shared_ptr<const IndexInfoPB_WherePredicateSpecPB> where_predicate_spec_ = nullptr;
 };
 
 // A map to look up an index by its index table id.

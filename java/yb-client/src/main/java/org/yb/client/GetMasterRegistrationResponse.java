@@ -34,8 +34,8 @@ package org.yb.client;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.consensus.Metadata;
-import org.yb.master.Master;
-import org.yb.Common;
+import org.yb.master.MasterTypes;
+import org.yb.CommonTypes;
 
 /**
  * Response for {@link GetMasterRegistrationRequest}.
@@ -43,7 +43,7 @@ import org.yb.Common;
 @InterfaceAudience.Private
 public class GetMasterRegistrationResponse extends YRpcResponse {
 
-  private final Common.PeerRole role;
+  private final CommonTypes.PeerRole role;
   private final WireProtocol.ServerRegistrationPB serverRegistration;
   private final WireProtocol.NodeInstancePB instanceId;
 
@@ -56,7 +56,7 @@ public class GetMasterRegistrationResponse extends YRpcResponse {
    * @param instanceId Node instance (permanent uuid and
    */
   public GetMasterRegistrationResponse(long elapsedMillis, String tsUUID,
-                                       Common.PeerRole role,
+                                       CommonTypes.PeerRole role,
                                        WireProtocol.ServerRegistrationPB serverRegistration,
                                        WireProtocol.NodeInstancePB instanceId) {
     super(elapsedMillis, tsUUID);
@@ -68,10 +68,10 @@ public class GetMasterRegistrationResponse extends YRpcResponse {
   /**
    * Returns this master's role in the config.
    *
-   * @see Common.PeerRole
+   * @see CommonTypes.PeerRole
    * @return Node's role in the cluster, or FOLLOWER if the node is not initialized.
    */
-  public Common.PeerRole getRole() {
+  public CommonTypes.PeerRole getRole() {
     return role;
   }
 

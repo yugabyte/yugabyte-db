@@ -55,6 +55,7 @@
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
@@ -133,13 +134,18 @@ using tserver::TabletServerServiceProxy;
 using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 
+TServerDetails::TServerDetails() : registration(new master::TSRegistrationPB) {
+}
+
+TServerDetails::~TServerDetails() = default;
+
 const string& TServerDetails::uuid() const {
   return instance_id.permanent_uuid();
 }
 
 std::string TServerDetails::ToString() const {
   return Format("TabletServer: $0, Rpc address: $1", instance_id.permanent_uuid(),
-                DesiredHostPort(registration.common(), CloudInfoPB()));
+                DesiredHostPort(registration->common(), CloudInfoPB()));
 }
 
 client::YBSchema SimpleIntKeyYBSchema() {
@@ -246,7 +252,7 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
     *actual_index = 0;
   }
 
-  vector<OpIdType> opid_types{consensus::OpIdType::RECEIVED_OPID};
+  vector<consensus::OpIdType> opid_types{consensus::OpIdType::RECEIVED_OPID};
   if (must_be_committed) {
     // In this mode we require that last received and committed op ids from all servers converge
     // on the same value.
@@ -427,7 +433,7 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
 
     std::unique_ptr<TServerDetails> peer(new TServerDetails());
     peer->instance_id.CopyFrom(entry.instance_id());
-    peer->registration.CopyFrom(entry.registration());
+    peer->registration->CopyFrom(entry.registration());
 
     CreateTsClientProxies(host_port,
                           proxy_cache,
@@ -476,14 +482,14 @@ Status WaitUntilCommittedConfigNumVotersIs(int config_size,
                                            const std::string& tablet_id,
                                            const MonoDelta& timeout) {
   return WaitUntilCommittedConfigMemberTypeIs(config_size, replica, tablet_id, timeout,
-                                              RaftPeerPB::VOTER);
+                                              consensus::PeerMemberType::VOTER);
 }
 
 Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
                                            const TServerDetails* replica,
                                            const std::string& tablet_id,
                                            const MonoDelta& timeout,
-                                           RaftPeerPB::MemberType member_type) {
+                                           consensus::PeerMemberType member_type) {
   DCHECK_ONLY_NOTNULL(replica);
 
   MonoTime start = MonoTime::Now();
@@ -511,7 +517,7 @@ Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
   }
   return STATUS(TimedOut, Substitute("Number of replicas of type $0 does not equal $1 after "
                                      "waiting for $2. Last consensus state: $3. Last status: $4",
-                                     RaftPeerPB::MemberType_Name(member_type), config_size,
+                                     PeerMemberType_Name(member_type), config_size,
                                      timeout.ToString(), cstate.ShortDebugString(), s.ToString()));
 }
 
@@ -909,7 +915,7 @@ namespace {
 Status AddServer(const TServerDetails* leader,
                  const std::string& tablet_id,
                  const TServerDetails* replica_to_add,
-                 consensus::RaftPeerPB::MemberType member_type,
+                 consensus::PeerMemberType member_type,
                  const boost::optional<int64_t>& cas_config_opid_index,
                  const MonoDelta& timeout,
                  TabletServerErrorPB::Code* error_code,
@@ -925,7 +931,7 @@ Status AddServer(const TServerDetails* leader,
   RaftPeerPB* peer = req.mutable_server();
   peer->set_permanent_uuid(replica_to_add->uuid());
   peer->set_member_type(member_type);
-  CopyRegistration(replica_to_add->registration.common(), peer);
+  CopyRegistration(replica_to_add->registration->common(), peer);
   if (cas_config_opid_index) {
     req.set_cas_config_opid_index(*cas_config_opid_index);
   }

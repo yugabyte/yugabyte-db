@@ -85,7 +85,7 @@ public class ProtobufHelper {
                                                 .map(ProtobufHelper::QLTypeToPb)
                                                 .collect(Collectors.toList()));
     // User-defined types have additional information (set declared keyspace and type name).
-    if (yqlType.getMain() == Common.DataType.USER_DEFINED_TYPE) {
+    if (yqlType.getMain() == Value.DataType.USER_DEFINED_TYPE) {
       Common.QLTypePB.UDTypeInfo.Builder udtBuilder = Common.QLTypePB.UDTypeInfo.newBuilder();
       udtBuilder.setName(yqlType.getUdtName());
       udtBuilder.setKeyspaceName(yqlType.getUdtKeyspaceName());
@@ -273,25 +273,25 @@ public class ProtobufHelper {
   }
 
   /**
-   * Convert a {@link com.google.common.net.HostAndPort} to {@link org.yb.Common.HostPortPB}
+   * Convert a {@link com.google.common.net.HostAndPort} to {@link org.yb.CommonNet.HostPortPB}
    * protobuf message for serialization.
    * @param hostAndPort The host and port object. Both host and port must be specified.
    * @return An initialized HostPortPB object.
    */
-  public static Common.HostPortPB hostAndPortToPB(HostAndPort hostAndPort) {
-    return Common.HostPortPB.newBuilder()
+  public static CommonNet.HostPortPB hostAndPortToPB(HostAndPort hostAndPort) {
+    return CommonNet.HostPortPB.newBuilder()
         .setHost(hostAndPort.getHost())
         .setPort(hostAndPort.getPort())
         .build();
   }
 
   /**
-   * Convert a {@link org.yb.Common.HostPortPB} to {@link com.google.common.net.HostAndPort}.
+   * Convert a {@link org.yb.CommonNet.HostPortPB} to {@link com.google.common.net.HostAndPort}.
    * @param hostPortPB The fully initialized HostPortPB object. Must have both host and port
    *                   specified.
    * @return An initialized initialized HostAndPort object.
    */
-  public static HostAndPort hostAndPortFromPB(Common.HostPortPB hostPortPB) {
+  public static HostAndPort hostAndPortFromPB(CommonNet.HostPortPB hostPortPB) {
     return HostAndPort.fromParts(hostPortPB.getHost(), hostPortPB.getPort());
   }
 }

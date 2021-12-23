@@ -45,6 +45,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master.proxy.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/types.h"
@@ -55,6 +56,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 

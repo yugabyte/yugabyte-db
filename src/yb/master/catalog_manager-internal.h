@@ -37,11 +37,7 @@
 
 #include "yb/master/master_error.h"
 
-#include "yb/tserver/tserver.pb.h"
-
 namespace yb {
-
-using tserver::TabletServerErrorPB;
 
 namespace master {
 

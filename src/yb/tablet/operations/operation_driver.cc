@@ -42,6 +42,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -81,7 +82,6 @@ using std::shared_ptr;
 using consensus::Consensus;
 using consensus::ConsensusRound;
 using consensus::ReplicateMsg;
-using consensus::DriverType;
 using log::Log;
 using server::Clock;
 

@@ -18,6 +18,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.util.Pair;
 
 import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 
 public class IsEncryptionEnabledRequest extends YRpc<IsEncryptionEnabledResponse> {
 
@@ -47,7 +48,7 @@ public class IsEncryptionEnabledRequest extends YRpc<IsEncryptionEnabledResponse
     final Master.IsEncryptionEnabledResponsePB.Builder respBuilder =
             Master.IsEncryptionEnabledResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    Master.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
+    MasterTypes.MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
     IsEncryptionEnabledResponse response = new IsEncryptionEnabledResponse(
             deadlineTracker.getElapsedMillis(), uuid, respBuilder.getEncryptionEnabled(),
             respBuilder.getKeyId(), serverError);

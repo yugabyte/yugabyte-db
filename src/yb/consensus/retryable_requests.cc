@@ -21,7 +21,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tablet/operations.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
@@ -154,20 +154,20 @@ std::chrono::seconds RangeTimeLimit() {
 
 class ReplicateData {
  public:
-  ReplicateData() : client_id_(ClientId::Nil()), write_request_(nullptr) {}
+  ReplicateData() : client_id_(ClientId::Nil()), write_(nullptr) {}
 
-  explicit ReplicateData(const tserver::WriteRequestPB* write_request, const OpIdPB& op_id)
-      : client_id_(write_request->client_id1(), write_request->client_id2()),
-        write_request_(write_request), op_id_(OpId::FromPB(op_id)) {
+  explicit ReplicateData(const tablet::WritePB* write, const OpIdPB& op_id)
+      : client_id_(write->client_id1(), write->client_id2()),
+        write_(write), op_id_(OpId::FromPB(op_id)) {
 
   }
 
   static ReplicateData FromMsg(const ReplicateMsg& replicate_msg) {
-    if (!replicate_msg.has_write_request()) {
+    if (!replicate_msg.has_write()) {
       return ReplicateData();
     }
 
-    return ReplicateData(&replicate_msg.write_request(), replicate_msg.id());
+    return ReplicateData(&replicate_msg.write(), replicate_msg.id());
   }
 
   bool operator!() const {
@@ -182,12 +182,12 @@ class ReplicateData {
     return client_id_;
   }
 
-  const tserver::WriteRequestPB& write_request() const {
-    return *write_request_;
+  const tablet::WritePB& write() const {
+    return *write_;
   }
 
   RetryableRequestId request_id() const {
-    return write_request_->request_id();
+    return write_->request_id();
   }
 
   const yb::OpId& op_id() const {
@@ -196,13 +196,13 @@ class ReplicateData {
 
  private:
   ClientId client_id_;
-  const tserver::WriteRequestPB* write_request_;
+  const tablet::WritePB* write_;
   yb::OpId op_id_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
   return out << data.client_id() << '/' << data.request_id() << ": "
-             << data.write_request().ShortDebugString() << " op_id: " << data.op_id();
+             << data.write().ShortDebugString() << " op_id: " << data.op_id();
 }
 
 } // namespace
@@ -226,7 +226,7 @@ class RetryableRequests::Impl {
     ClientRetryableRequests& client_retryable_requests = clients_[data.client_id()];
 
     CleanupReplicatedRequests(
-        data.write_request().min_running_request_id(), &client_retryable_requests);
+        data.write().min_running_request_id(), &client_retryable_requests);
 
     if (data.request_id() < client_retryable_requests.min_running_request_id) {
       round->NotifyReplicationFinished(
@@ -360,7 +360,7 @@ class RetryableRequests::Impl {
     VLOG_WITH_PREFIX(4) << "Bootstrapped " << data;
 
     CleanupReplicatedRequests(
-       data.write_request().min_running_request_id(), &client_retryable_requests);
+       data.write().min_running_request_id(), &client_retryable_requests);
 
     AddReplicated(
         yb::OpId::FromPB(replicate_msg.id()), data, entry_time, &client_retryable_requests);

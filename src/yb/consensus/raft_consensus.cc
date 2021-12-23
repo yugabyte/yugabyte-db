@@ -50,6 +50,7 @@
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
@@ -60,8 +61,6 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/clock.h"
-
-#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -879,7 +878,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
 
   if (!new_leader_uuid.empty()) {
     const auto* peer = FindPeer(state_->GetActiveConfigUnlocked(), new_leader_uuid);
-    if (peer && peer->member_type() == RaftPeerPB::VOTER) {
+    if (peer && peer->member_type() == PeerMemberType::VOTER) {
       auto timeout_ms = FLAGS_protege_synchronization_timeout_ms;
       if (timeout_ms != 0 &&
           queue_->PeerLastReceivedOpId(new_leader_uuid) < GetLatestOpIdFromLog()) {
@@ -2483,12 +2482,12 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                         Substitute("Server must have member_type specified. Request: $0",
                                    req.ShortDebugString()));
         }
-        if (server.member_type() != RaftPeerPB::PRE_VOTER &&
-            server.member_type() != RaftPeerPB::PRE_OBSERVER) {
+        if (server.member_type() != PeerMemberType::PRE_VOTER &&
+            server.member_type() != PeerMemberType::PRE_OBSERVER) {
           return STATUS(InvalidArgument,
               Substitute("Server with UUID $0 must be of member_type PRE_VOTER or PRE_OBSERVER. "
                          "member_type received: $1", server_uuid,
-                         RaftPeerPB::MemberType_Name(server.member_type())));
+                         PeerMemberType_Name(server.member_type())));
         }
         if (server.last_known_private_addr().empty()) {
           return STATUS(InvalidArgument, "server must have last_known_addr specified",
@@ -2546,16 +2545,16 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
             Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
                        server_uuid, new_config.ShortDebugString()));
         }
-        if (new_peer->member_type() != RaftPeerPB::PRE_OBSERVER &&
-            new_peer->member_type() != RaftPeerPB::PRE_VOTER) {
+        if (new_peer->member_type() != PeerMemberType::PRE_OBSERVER &&
+            new_peer->member_type() != PeerMemberType::PRE_VOTER) {
           return STATUS(IllegalState, Substitute("Cannot change role of server with UUID $0 "
                                                  "because its member type is $1",
                                                  server_uuid, new_peer->member_type()));
         }
-        if (new_peer->member_type() == RaftPeerPB::PRE_OBSERVER) {
-          new_peer->set_member_type(RaftPeerPB::OBSERVER);
+        if (new_peer->member_type() == PeerMemberType::PRE_OBSERVER) {
+          new_peer->set_member_type(PeerMemberType::OBSERVER);
         } else {
-          new_peer->set_member_type(RaftPeerPB::VOTER);
+          new_peer->set_member_type(PeerMemberType::VOTER);
         }
 
         VLOG(3) << "config after CHANGE_ROLE: " << new_config.DebugString();

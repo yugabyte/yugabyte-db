@@ -48,6 +48,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 

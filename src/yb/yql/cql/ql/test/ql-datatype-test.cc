@@ -13,6 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/decimal.h"

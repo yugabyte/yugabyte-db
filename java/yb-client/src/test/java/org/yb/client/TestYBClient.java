@@ -46,12 +46,12 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
-import org.yb.Common.HostPortPB;
-import org.yb.Common.TableType;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.CommonTypes.TableType;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.YBTestRunner;
-import org.yb.tserver.Tserver.TabletServerErrorPB;
+import org.yb.tserver.TserverTypes.TabletServerErrorPB;
 import org.yb.util.Pair;
 import org.yb.util.Timeouts;
 import static org.yb.AssertionWrappers.assertEquals;
@@ -435,14 +435,14 @@ public class TestYBClient extends BaseYBClientTest {
     });
     LOG.info("created mini cluster");
 
-    List<org.yb.Common.CloudInfoPB> leaders = new ArrayList<org.yb.Common.CloudInfoPB>();
+    List<org.yb.CommonNet.CloudInfoPB> leaders = new ArrayList<org.yb.CommonNet.CloudInfoPB>();
 
-    org.yb.Common.CloudInfoPB.Builder cloudInfoBuilder = org.yb.Common.CloudInfoPB.newBuilder().
-    setPlacementCloud("testCloud").setPlacementRegion("testRegion");
+    org.yb.CommonNet.CloudInfoPB.Builder cloudInfoBuilder = org.yb.CommonNet.CloudInfoPB.
+        newBuilder().setPlacementCloud("testCloud").setPlacementRegion("testRegion");
 
-    org.yb.Common.CloudInfoPB ci0 = cloudInfoBuilder.setPlacementZone("testZone0").build();
-    org.yb.Common.CloudInfoPB ci1 = cloudInfoBuilder.setPlacementZone("testZone1").build();
-    org.yb.Common.CloudInfoPB ci2 = cloudInfoBuilder.setPlacementZone("testZone2").build();
+    org.yb.CommonNet.CloudInfoPB ci0 = cloudInfoBuilder.setPlacementZone("testZone0").build();
+    org.yb.CommonNet.CloudInfoPB ci1 = cloudInfoBuilder.setPlacementZone("testZone1").build();
+    org.yb.CommonNet.CloudInfoPB ci2 = cloudInfoBuilder.setPlacementZone("testZone2").build();
 
     // First, making the first two zones affinitized leaders.
     leaders.add(ci0);

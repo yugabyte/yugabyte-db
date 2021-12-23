@@ -37,6 +37,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/docdb/cql_operation.h"
@@ -82,15 +83,14 @@ using tserver::WriteResponsePB;
 using strings::Substitute;
 
 template <>
-void RequestTraits<tserver::WriteRequestPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, tserver::WriteRequestPB* request) {
-  replicate->set_allocated_write_request(request);
+void RequestTraits<WritePB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, WritePB* request) {
+  replicate->set_allocated_write(request);
 }
 
 template <>
-tserver::WriteRequestPB* RequestTraits<tserver::WriteRequestPB>::MutableRequest(
-    consensus::ReplicateMsg* replicate) {
-  return replicate->mutable_write_request();
+WritePB* RequestTraits<WritePB>::MutableRequest(consensus::ReplicateMsg* replicate) {
+  return replicate->mutable_write();
 }
 
 WriteOperation::WriteOperation(
@@ -196,6 +196,16 @@ void WriteOperation::ReleaseDocDbLocks() {
 WriteOperation::~WriteOperation() {
 }
 
+void WriteOperation::set_client_request(tserver::WriteRequestPB* req) {
+  client_request_ = req;
+  read_time_ = ReadHybridTime::FromReadTimePB(*req);
+}
+
+void WriteOperation::set_client_request(std::unique_ptr<tserver::WriteRequestPB> req) {
+  set_client_request(req.get());
+  client_request_holder_ = std::move(req);
+}
+
 void WriteOperation::ResetRpcFields() {
   response_ = nullptr;
 }
@@ -205,13 +215,6 @@ HybridTime WriteOperation::WriteHybridTime() const {
     return HybridTime(request()->external_hybrid_time());
   }
   return Operation::WriteHybridTime();
-}
-
-void WriteOperation::SetTablet(Tablet* tablet) {
-  Operation::SetTablet(tablet);
-  if (!request()->has_tablet_id()) {
-    mutable_request()->set_tablet_id(tablet->tablet_id());
-  }
 }
 
 }  // namespace tablet

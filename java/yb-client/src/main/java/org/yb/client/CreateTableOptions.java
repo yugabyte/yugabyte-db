@@ -32,7 +32,7 @@
 package org.yb.client;
 
 import org.yb.Common;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 
 import com.google.common.collect.Lists;
 import org.yb.annotations.InterfaceAudience;

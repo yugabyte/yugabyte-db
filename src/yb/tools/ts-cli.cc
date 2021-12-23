@@ -51,9 +51,11 @@
 #include "yb/server/secure.h"
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/tablet/tablet.pb.h"
+
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"

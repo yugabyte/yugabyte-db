@@ -13,6 +13,7 @@
 
 #include "yb/master/yql_local_vtable.h"
 
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 

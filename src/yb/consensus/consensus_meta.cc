@@ -36,6 +36,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"

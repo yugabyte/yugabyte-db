@@ -22,7 +22,6 @@
 #include "yb/cdc/cdc_service.service.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/monotime.h"

@@ -39,7 +39,6 @@
 #include <vector>
 
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -53,7 +52,9 @@
 
 namespace yb {
 
+class Env;
 class FsManager;
+class RandomAccessFile;
 
 namespace tablet {
 class TabletPeer;

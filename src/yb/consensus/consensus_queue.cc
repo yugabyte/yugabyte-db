@@ -63,6 +63,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
@@ -170,7 +171,7 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
       "is_last_exchange_successful: $5 needs_remote_bootstrap: $6 member_type: $7 "
       "num_sst_files: $8 last_applied: $9 }",
       uuid, is_new, last_received, next_index, last_known_committed_idx,
-      is_last_exchange_successful, needs_remote_bootstrap, RaftPeerPB::MemberType_Name(member_type),
+      is_last_exchange_successful, needs_remote_bootstrap, PeerMemberType_Name(member_type),
       num_sst_files, last_applied);
 }
 
@@ -428,7 +429,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         ConsensusRequestPB* request,
                                         ReplicateMsgsHolder* msgs_holder,
                                         bool* needs_remote_bootstrap,
-                                        RaftPeerPB::MemberType* member_type,
+                                        PeerMemberType* member_type,
                                         bool* last_exchange_successful) {
   static constexpr uint64_t kSendUnboundedLogOps = std::numeric_limits<uint64_t>::max();
   DCHECK(request->ops().empty()) << request->ShortDebugString();
@@ -531,7 +532,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
     peer->current_retransmissions++;
 
-    if (peer->member_type == RaftPeerPB::VOTER) {
+    if (peer->member_type == PeerMemberType::VOTER) {
       is_voter = true;
     }
   }
@@ -744,9 +745,9 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     return STATUS(IllegalState, "Peer does not need to remotely bootstrap", uuid);
   }
 
-  if (peer->member_type == RaftPeerPB::VOTER || peer->member_type == RaftPeerPB::OBSERVER) {
+  if (peer->member_type == PeerMemberType::VOTER || peer->member_type == PeerMemberType::OBSERVER) {
     LOG(INFO) << "Remote bootstrapping peer " << uuid << " with type "
-              << RaftPeerPB::MemberType_Name(peer->member_type);
+              << PeerMemberType_Name(peer->member_type);
   }
 
   req->Clear();
@@ -1106,7 +1107,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       }
       peer->member_type = peer_pb.member_type();
     } else {
-      peer->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+      peer->member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
     }
 
     // Application level errors should be handled elsewhere

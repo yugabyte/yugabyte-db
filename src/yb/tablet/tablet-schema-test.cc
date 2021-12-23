@@ -51,6 +51,7 @@
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/env.h"
 #include "yb/util/status_log.h"

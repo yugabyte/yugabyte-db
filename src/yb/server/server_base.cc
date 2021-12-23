@@ -318,6 +318,10 @@ void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
   VersionInfo::GetVersionInfoPB(status->mutable_version_info());
 }
 
+CloudInfoPB RpcServerBase::MakeCloudInfoPB() const {
+  return options_.MakeCloudInfoPB();
+}
+
 Status RpcServerBase::DumpServerInfo(const string& path,
                                      const string& format) const {
   ServerStatusPB status;

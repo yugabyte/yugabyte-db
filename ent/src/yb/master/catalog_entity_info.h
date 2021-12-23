@@ -14,8 +14,6 @@
 #define ENT_SRC_YB_MASTER_CATALOG_ENTITY_INFO_H
 
 #include "../../../../src/yb/master/catalog_entity_info.h"
-#include "yb/master/cdc_rpc_tasks.h"
-#include "yb/master/master_backup.pb.h"
 
 #include "yb/common/snapshot.h"
 

@@ -48,7 +48,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/gutil/macros.h"
 
@@ -64,6 +64,7 @@ namespace yb {
 
 class MetricEntity;
 class MemTracker;
+class OpIdPB;
 
 namespace consensus {
 

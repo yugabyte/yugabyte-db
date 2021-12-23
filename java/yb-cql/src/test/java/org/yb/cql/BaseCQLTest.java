@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
-import org.yb.Common;
+import org.yb.CommonTypes;
 import org.yb.IndexInfo;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
@@ -831,7 +831,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
         for (IndexInfo index : indexes) {
           if (index.getIndexPermissions() !=
-                Common.IndexPermissions.INDEX_PERM_READ_WRITE_AND_DELETE) {
+                CommonTypes.IndexPermissions.INDEX_PERM_READ_WRITE_AND_DELETE) {
             LOG.info("Found index with permissions=" + index.getIndexPermissions() +
               " != INDEX_PERM_READ_WRITE_AND_DELETE");
             return false;

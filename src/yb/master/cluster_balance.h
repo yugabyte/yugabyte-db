@@ -172,7 +172,7 @@ class ClusterLoadBalancer {
       const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid = "");
 
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
-  consensus::RaftPeerPB::MemberType GetDefaultMemberType();
+  consensus::PeerMemberType GetDefaultMemberType();
 
   //
   // Higher level methods and members.

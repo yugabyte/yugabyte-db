@@ -19,7 +19,7 @@
 #include <glog/logging.h>
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/value_type.h"
+#include "yb/docdb/intent.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"

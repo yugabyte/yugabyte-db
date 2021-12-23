@@ -17,14 +17,13 @@
 #include <memory>
 
 #include "yb/client/client_fwd.h"
-#include "yb/common/common.pb.h"
 #include "yb/docdb/docdb.h"
 
 #include "yb/tablet/apply_intents_task.h"
 #include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/bitmap.h"
 #include "yb/util/operation_counter.h"

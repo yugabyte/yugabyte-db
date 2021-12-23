@@ -40,7 +40,7 @@ import org.yb.annotations.InterfaceStability;
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public class IndexInfo {
-  private final Common.IndexPermissions indexPermissions;
+  private final CommonTypes.IndexPermissions indexPermissions;
 
   /**
    * Constructs an IndexInfo java object using IndexInfoPB.
@@ -50,7 +50,7 @@ public class IndexInfo {
     this.indexPermissions = index_info_pb.getIndexPermissions();
   }
 
-  public Common.IndexPermissions getIndexPermissions() {
+  public CommonTypes.IndexPermissions getIndexPermissions() {
     return indexPermissions;
   }
 }

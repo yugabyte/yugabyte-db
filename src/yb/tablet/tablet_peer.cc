@@ -42,12 +42,14 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/consensus_frontier.h"
 
@@ -692,7 +694,7 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
 }
 
 std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
-    tserver::TransactionStatePB* request) {
+    TransactionStatePB* request) {
   auto result = std::make_unique<UpdateTxnOperation>(tablet());
   result->TakeRequest(request);
   return result;
@@ -986,7 +988,7 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
   switch (replicate_msg->op_type()) {
     case consensus::WRITE_OP:
-      DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
+      DCHECK(replicate_msg->has_write()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
       // We use separate preparing token only on leader, so here it could be empty.
       return std::make_unique<WriteOperation>(
@@ -1003,7 +1005,7 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       return std::make_unique<UpdateTxnOperation>(tablet());
 
     case consensus::TRUNCATE_OP:
-      DCHECK(replicate_msg->has_truncate_request()) << "TRUNCATE_OP replica"
+      DCHECK(replicate_msg->has_truncate()) << "TRUNCATE_OP replica"
           " operation must receive an TruncateRequestPB";
       return std::make_unique<TruncateOperation>(tablet());
 

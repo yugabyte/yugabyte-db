@@ -41,9 +41,9 @@
 #include "yb/consensus/log.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/async_util.h"

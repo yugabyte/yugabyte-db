@@ -35,7 +35,7 @@ package yb.cdc;
 
 option java_package = "org.yb.cdc";
 
-import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 
 message ProducerTabletListPB {
   // List of tablet ids for a given producer table.

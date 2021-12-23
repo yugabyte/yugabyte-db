@@ -35,6 +35,9 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/common/transaction.pb.h"
+
 #include "yb/util/monotime.h"
 
 namespace yb {

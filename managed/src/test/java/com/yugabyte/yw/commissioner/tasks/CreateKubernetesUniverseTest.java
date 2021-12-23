@@ -47,7 +47,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.Common;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
@@ -226,7 +226,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     YBTable mockTable = mock(YBTable.class);
     when(mockTable.getName()).thenReturn("redis");
-    when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);
+    when(mockTable.getTableType()).thenReturn(TableType.REDIS_TABLE_TYPE);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     try {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);

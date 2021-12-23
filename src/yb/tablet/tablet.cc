@@ -40,14 +40,18 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/index_column.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
+#include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 
@@ -81,13 +85,17 @@
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/read_result.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
+
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
@@ -421,9 +429,8 @@ Tablet::Tablet(const TabletInitData& data)
         data.transaction_participant_context, this, tablet_metrics_entity_);
     // Create transaction manager for secondary index update.
     if (has_index) {
-      transaction_manager_.emplace(client_future_.get(),
-                                   scoped_refptr<server::Clock>(clock_),
-                                   local_tablet_filter_);
+      transaction_manager_ = std::make_unique<client::TransactionManager>(
+          client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
     }
   }
 
@@ -1111,7 +1118,7 @@ Status Tablet::ApplyRowOperations(
   const auto& write_request =
       operation->consensus_round() && operation->consensus_round()->replicate_msg()
           // Online case.
-          ? operation->consensus_round()->replicate_msg()->write_request()
+          ? operation->consensus_round()->replicate_msg()->write()
           // Bootstrap case.
           : *operation->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
@@ -1283,31 +1290,26 @@ namespace {
 // Separate Redis / QL / row operations write batches from write_request in preparation for the
 // write transaction. Leave just the tablet id behind. Return Redis / QL / row operations, etc.
 // in batch_request.
-void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_request) {
-  batch_request->Swap(write_request);
-  write_request->set_allocated_tablet_id(batch_request->release_tablet_id());
-  if (batch_request->has_read_time()) {
-    write_request->set_allocated_read_time(batch_request->release_read_time());
+void SetupKeyValueBatch(WritePB* out_request, WriteRequestPB* user_request) {
+  out_request->set_unused_tablet_id(""); // Backward compatibility.
+  auto& out_write_batch = *out_request->mutable_write_batch();
+  if (user_request->has_write_batch()) {
+    out_write_batch.Swap(user_request->mutable_write_batch());
   }
-  if (batch_request->write_batch().has_transaction()) {
-    write_request->mutable_write_batch()->mutable_transaction()->Swap(
-        batch_request->mutable_write_batch()->mutable_transaction());
+  out_write_batch.set_deprecated_may_have_metadata(true);
+  if (user_request->has_request_id()) {
+    out_request->set_client_id1(user_request->client_id1());
+    out_request->set_client_id2(user_request->client_id2());
+    out_request->set_request_id(user_request->request_id());
+    out_request->set_min_running_request_id(user_request->min_running_request_id());
   }
-  if (batch_request->write_batch().has_subtransaction()) {
-    write_request->mutable_write_batch()->mutable_subtransaction()->Swap(
-        batch_request->mutable_write_batch()->mutable_subtransaction());
+  out_request->set_batch_idx(user_request->batch_idx());
+  // Actually, in production code, we could check for external hybrid time only when there are
+  // no ql, pgsql, redis operations.
+  // But in CDCServiceTest we have ql write batch with external time.
+  if (user_request->has_external_hybrid_time()) {
+    out_request->set_external_hybrid_time(user_request->external_hybrid_time());
   }
-  write_request->mutable_write_batch()->set_deprecated_may_have_metadata(true);
-  if (batch_request->has_request_id()) {
-    write_request->set_client_id1(batch_request->client_id1());
-    write_request->set_client_id2(batch_request->client_id2());
-    write_request->set_request_id(batch_request->request_id());
-    write_request->set_min_running_request_id(batch_request->min_running_request_id());
-  }
-  if (batch_request->has_external_hybrid_time()) {
-    write_request->set_external_hybrid_time(batch_request->external_hybrid_time());
-  }
-  write_request->set_batch_idx(batch_request->batch_idx());
 }
 
 } // namespace
@@ -1323,9 +1325,7 @@ void Tablet::KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteOperation> op
 
   docdb::DocOperations& doc_ops = operation->doc_ops();
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
-  WriteRequestPB batch_request;
-  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
-  auto* redis_write_batch = batch_request.mutable_redis_write_batch();
+  auto* redis_write_batch = operation->client_request()->mutable_redis_write_batch();
 
   doc_ops.reserve(redis_write_batch->size());
   for (size_t i = 0; i < redis_write_batch->size(); i++) {
@@ -1465,9 +1465,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
   }
 
   docdb::DocOperations& doc_ops = operation->doc_ops();
-  WriteRequestPB batch_request;
-  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
-  auto* ql_write_batch = batch_request.mutable_ql_write_batch();
+  auto* ql_write_batch = operation->client_request()->mutable_ql_write_batch();
 
   doc_ops.reserve(ql_write_batch->size());
 
@@ -1475,7 +1473,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
       CreateTransactionOperationContext(
           operation->request()->write_batch().transaction(),
           /* is_ysql_catalog_table */ false,
-          operation->request()->write_batch().subtransaction());
+          &operation->request()->write_batch().subtransaction());
   if (!txn_op_ctx.ok()) {
     WriteOperation::StartSynchronization(std::move(operation), txn_op_ctx.status());
     return;
@@ -1591,7 +1589,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
           WriteOperation::StartSynchronization(std::move(operation), child_data.status());
           return;
         }
-        txn = std::make_shared<YBTransaction>(&transaction_manager_.get(), *child_data);
+        txn = std::make_shared<YBTransaction>(transaction_manager_.get(), *child_data);
         session->SetTransaction(txn);
       } else {
         child_transaction_data = nullptr;
@@ -1728,7 +1726,7 @@ Status Tablet::HandlePgsqlReadRequest(
       CreateTransactionOperationContext(
           transaction_metadata,
           table_info->schema->table_properties().is_ysql_catalog_table(),
-          subtransaction_metadata);
+          &subtransaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandlePgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
@@ -1895,10 +1893,8 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
 
 CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
   docdb::DocOperations& doc_ops = operation->doc_ops();
-  WriteRequestPB batch_request;
 
-  SetupKeyValueBatch(operation->mutable_request(), &batch_request);
-  auto* pgsql_write_batch = batch_request.mutable_pgsql_write_batch();
+  auto* pgsql_write_batch = operation->client_request()->mutable_pgsql_write_batch();
 
   doc_ops.reserve(pgsql_write_batch->size());
 
@@ -1929,7 +1925,7 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
         txn_op_ctx = CreateTransactionOperationContext(
             operation->request()->write_batch().transaction(),
             table_info->schema->table_properties().is_ysql_catalog_table(),
-            operation->request()->write_batch().subtransaction());
+            &operation->request()->write_batch().subtransaction());
         RETURN_NOT_OK(txn_op_ctx);
       }
       auto write_op = std::make_unique<PgsqlWriteOperation>(*table_info->schema, *txn_op_ctx);
@@ -1989,7 +1985,6 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
     return;
   }
 
-  const WriteRequestPB* key_value_write_request = operation->request();
   if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
     auto write_permit = GetPermitToWrite(operation->deadline());
     if (!write_permit.ok()) {
@@ -2002,23 +1997,33 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
     operation->UseSubmitToken(std::move(write_permit));
   }
 
-  if (!key_value_write_request->redis_write_batch().empty()) {
-    KeyValueBatchFromRedisWriteBatch(std::move(operation));
-    return;
-  }
+  auto* client_request = operation->client_request();
+  if (client_request) {
+    auto* request = operation->AllocateRequest();
+    SetupKeyValueBatch(request, client_request);
 
-  if (!key_value_write_request->ql_write_batch().empty()) {
-    KeyValueBatchFromQLWriteBatch(std::move(operation));
-    return;
-  }
+    if (!client_request->redis_write_batch().empty()) {
+      KeyValueBatchFromRedisWriteBatch(std::move(operation));
+      return;
+    }
 
-  if (!key_value_write_request->pgsql_write_batch().empty()) {
-    KeyValueBatchFromPgsqlWriteBatch(std::move(operation));
-    return;
-  }
+    if (!client_request->ql_write_batch().empty()) {
+      KeyValueBatchFromQLWriteBatch(std::move(operation));
+      return;
+    }
 
-  if (key_value_write_request->has_write_batch()) {
-    if (!key_value_write_request->write_batch().read_pairs().empty()) {
+    if (!client_request->pgsql_write_batch().empty()) {
+      KeyValueBatchFromPgsqlWriteBatch(std::move(operation));
+      return;
+    }
+
+    if (client_request->has_write_batch() && client_request->has_external_hybrid_time()) {
+      WriteOperation::StartSynchronization(std::move(operation), Status::OK());
+      return;
+    }
+  } else {
+    const auto* request = operation->request();
+    if (request && request->has_write_batch() && !request->write_batch().read_pairs().empty()) {
       auto scoped_operation = CreateNonAbortableScopedRWOperation();
       if (!scoped_operation.ok()) {
         operation->CompleteWithStatus(MoveStatus(scoped_operation));
@@ -2029,16 +2034,14 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
                              [](auto operation, const Status& status) {
         WriteOperation::StartSynchronization(std::move(operation), status);
       });
-    } else {
-      DCHECK(key_value_write_request->has_external_hybrid_time());
-      WriteOperation::StartSynchronization(std::move(operation), Status::OK());
+      return;
     }
-    return;
   }
 
   // Empty write should not happen, but we could handle it.
   // Just report it as error in release mode.
-  LOG(DFATAL) << "Empty write";
+  LOG(DFATAL) << "Empty write: " << AsString(operation->client_request()) << ", "
+              << AsString(operation->request());
 
   operation->CompleteWithStatus(Status::OK());
 }
@@ -2279,9 +2282,8 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
     if (!operation->index_map().empty()) {
       if (current_table_info->schema->table_properties().is_transactional() &&
           !transaction_manager_) {
-        transaction_manager_.emplace(client_future_.get(),
-                                     scoped_refptr<server::Clock>(clock_),
-                                     local_tablet_filter_);
+        transaction_manager_ = std::make_unique<client::TransactionManager>(
+            client_future_.get(), scoped_refptr<server::Clock>(clock_), local_tablet_filter_);
       }
       CreateNewYBMetaDataCache();
     }
@@ -3427,6 +3429,10 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   return result;
 }
 
+const yb::SchemaPtr Tablet::schema() const {
+  return metadata_->schema();
+}
+
 Status Tablet::DebugDump(vector<string> *lines) {
   switch (table_type_) {
     case TableType::PGSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
@@ -3907,7 +3913,7 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     const TransactionMetadataPB& transaction_metadata,
     bool is_ysql_catalog_table,
-    const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
+    const SubTransactionMetadataPB* subtransaction_metadata) const {
   if (!txns_enabled_)
     return TransactionOperationContext();
 
@@ -3926,7 +3932,7 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
 Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     const boost::optional<TransactionId>& transaction_id,
     bool is_ysql_catalog_table,
-    const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
+    const SubTransactionMetadataPB* subtransaction_metadata) const {
   if (!txns_enabled_) {
     return TransactionOperationContext();
   }
@@ -3963,7 +3969,7 @@ Status Tablet::CreateReadIntents(
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       transaction_metadata,
       /* is_ysql_catalog_table */ pgsql_batch.size() > 0 && is_sys_catalog_,
-      subtransaction_metadata));
+      &subtransaction_metadata));
 
   for (const auto& ql_read : ql_batch) {
     docdb::QLReadOperation doc_op(ql_read, txn_op_ctx);
@@ -4077,6 +4083,10 @@ void Tablet::InitRocksDBOptions(
 
 rocksdb::Env& Tablet::rocksdb_env() const {
   return *tablet_options_.rocksdb_env;
+}
+
+const std::string& Tablet::tablet_id() const {
+  return metadata_->raft_group_id();
 }
 
 Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {

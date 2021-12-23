@@ -30,12 +30,22 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <glog/logging.h>
+#include <google/protobuf/arenastring.h>
 #include <google/protobuf/compiler/code_generator.h>
 #include <google/protobuf/compiler/plugin.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
+#include <google/protobuf/extension_set.h>
+#include <google/protobuf/generated_message_table_driven.h>
+#include <google/protobuf/generated_message_util.h>
+#include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
+#include <google/protobuf/message.h>
+#include <google/protobuf/message_lite.h>
+#include <google/protobuf/metadata.h>
+#include <google/protobuf/repeated_field.h>
+#include <google/protobuf/stubs/port.h>
 #include <google/protobuf/wire_format_lite.h>
 
 #include "yb/gutil/int128.h"

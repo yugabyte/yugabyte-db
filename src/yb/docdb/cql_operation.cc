@@ -23,6 +23,7 @@
 #include "yb/bfpg/tserver_opcodes.h"
 
 #include "yb/common/index.h"
+#include "yb/common/index_column.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_protocol_util.h"
@@ -1227,7 +1228,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         " since predicate was satisfied earlier AND (isn't satisfied now (OR) the key has changed)";
 
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
-        const IndexInfo::IndexColumn& index_column = index->column(idx);
+        const auto& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
 
         // For old message expr_case() == NOT SET.
@@ -1266,7 +1267,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
 
   // Prepare the new index key.
   for (size_t idx = 0; idx < index->key_column_count(); idx++) {
-    const IndexInfo::IndexColumn& index_column = index->column(idx);
+    const auto& index_column = index->column(idx);
     bool column_changed = true;
 
     // Column_id should be used without executing "colexpr" for the following cases (we want
@@ -1331,7 +1332,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
 
   // Prepare the covering columns.
   for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
-    const IndexInfo::IndexColumn& index_column = index->column(idx);
+    const auto& index_column = index->column(idx);
     auto result = new_row.GetValue(index_column.indexed_column_id);
     bool column_changed = true;
 
@@ -1404,7 +1405,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
       auto it = values.find(idx);
       if (it != values.end()) {
-        const IndexInfo::IndexColumn& index_column = index->column(idx);
+        const auto& index_column = index->column(idx);
         QLColumnValuePB* const covering_column = index_request->add_column_values();
         covering_column->set_column_id(index_column.column_id);
         *covering_column->mutable_expr()->mutable_value() = std::move(it->second);

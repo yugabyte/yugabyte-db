@@ -14,6 +14,8 @@
 //
 #include "yb/common/transaction.h"
 
+#include "yb/common/common.pb.h"
+
 #include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
 

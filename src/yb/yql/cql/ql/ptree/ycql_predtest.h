@@ -20,6 +20,8 @@
 
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 
+#include "yb/common/common_fwd.h"
+
 namespace yb {
 namespace ql {
 

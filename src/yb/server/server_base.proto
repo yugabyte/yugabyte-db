@@ -35,7 +35,7 @@ package yb.server;
 
 option java_package = "org.yb.server";
 
-import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/util/version_info.proto";
 

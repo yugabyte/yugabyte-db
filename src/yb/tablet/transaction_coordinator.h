@@ -65,7 +65,7 @@ class TransactionCoordinatorContext {
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      tserver::TransactionStatePB* request) = 0;
+      TransactionStatePB* request) = 0;
   virtual void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
@@ -93,7 +93,7 @@ class TransactionCoordinator {
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     int64_t leader_term;
-    const tserver::TransactionStatePB& state;
+    const TransactionStatePB& state;
     const OpId& op_id;
     HybridTime hybrid_time;
 
@@ -104,7 +104,7 @@ class TransactionCoordinator {
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
-    const tserver::TransactionStatePB& state;
+    const TransactionStatePB& state;
     const OpId& op_id;
 
     std::string ToString() const;

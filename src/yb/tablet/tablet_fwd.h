@@ -57,13 +57,17 @@ class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
 class TransactionParticipantContext;
+class TransactionStatePB;
 class TruncateOperation;
+class TruncatePB;
 class UpdateTxnOperation;
 class WriteOperation;
 class WriteOperationContext;
 
 struct CreateSnapshotData;
 struct DocDbOpIds;
+struct PgsqlReadRequestResult;
+struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
 struct TabletMetrics;

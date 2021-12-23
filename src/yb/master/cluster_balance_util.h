@@ -21,9 +21,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "yb/common/common.pb.h"
-
-#include "yb/master/master.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 DECLARE_int32(leader_balance_threshold);

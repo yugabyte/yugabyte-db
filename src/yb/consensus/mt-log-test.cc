@@ -122,9 +122,9 @@ class MultiThreadedLogTest : public LogTestBase {
           replicate->set_op_type(WRITE_OP);
           replicate->set_hybrid_time(clock_->Now().ToUint64());
 
-          tserver::WriteRequestPB* request = replicate->mutable_write_request();
-          AddTestRowInsert(index, 0, "this is a test insert", request);
-          request->set_tablet_id(kTestTablet);
+          tserver::WriteRequestPB request;
+          AddTestRowInsert(index, 0, "this is a test insert", &request);
+          request.set_tablet_id(kTestTablet);
           batch_replicates.push_back(replicate);
         }
 

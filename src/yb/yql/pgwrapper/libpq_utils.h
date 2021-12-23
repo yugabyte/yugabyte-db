@@ -19,7 +19,7 @@
 
 #include "libpq-fe.h" // NOLINT
 
-#include "yb/common/common.pb.h"
+#include "yb/common/transaction.pb.h"
 
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"

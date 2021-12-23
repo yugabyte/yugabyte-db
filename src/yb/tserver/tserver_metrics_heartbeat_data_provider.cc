@@ -18,6 +18,7 @@
 #include "yb/master/master.pb.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server.h"

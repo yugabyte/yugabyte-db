@@ -34,14 +34,13 @@
 
 #include <boost/intrusive/list.hpp>
 
-#include "yb/client/transaction_manager.h"
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
@@ -59,12 +58,12 @@
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operation_filter.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/util/locks.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -72,6 +71,7 @@
 
 namespace yb {
 
+class FsManager;
 class MemTracker;
 class MetricEntity;
 class RowChangeList;
@@ -423,9 +423,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // has a very small number of rows.
   CHECKED_STATUS DebugDump(vector<std::string>* lines = nullptr);
 
-  const yb::SchemaPtr schema() const {
-    return metadata_->schema();
-  }
+  const yb::SchemaPtr schema() const;
 
   // Returns a reference to the key projection of the tablet schema.
   // The schema keys are immutable.
@@ -446,7 +444,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   rocksdb::Env& rocksdb_env() const;
 
-  const std::string& tablet_id() const override { return metadata_->raft_group_id(); }
+  const std::string& tablet_id() const override;
 
   bool system() const override {
     return false;
@@ -718,12 +716,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const TransactionMetadataPB& transaction_metadata,
       bool is_ysql_catalog_table,
-      const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
+      const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
       bool is_ysql_catalog_table,
-      const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
+      const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
   // Pause abortable/non-abortable new read/write operations and wait for all
   // abortable/non-abortable pending read/write operations to finish.
@@ -898,7 +896,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_future<client::YBClient*> client_future_;
 
   // Created only when secondary indexes are present.
-  boost::optional<client::TransactionManager> transaction_manager_;
+  std::unique_ptr<client::TransactionManager> transaction_manager_;
 
   // This object should not be accessed directly to avoid race conditions.
   // Use methods YBMetaDataCache, CreateNewYBMetaDataCache, and ResetYBMetaDataCache to read it

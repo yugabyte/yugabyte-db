@@ -33,7 +33,7 @@
 
 #include "yb/master/mini_master.h"
 
-#include "yb/tools/yb-admin_client.h"
+#include "yb/tools/tools_fwd.h"
 
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"

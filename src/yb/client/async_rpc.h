@@ -20,9 +20,12 @@
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/metrics_fwd.h"
 

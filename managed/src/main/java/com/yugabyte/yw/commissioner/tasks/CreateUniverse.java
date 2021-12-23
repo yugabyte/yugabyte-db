@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.Common;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
 
 @Slf4j
@@ -189,7 +189,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       if (primaryCluster.userIntent.enableYEDIS) {
         // Create a simple redis table.
-        createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+        createTableTask(TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

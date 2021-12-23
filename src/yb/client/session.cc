@@ -192,7 +192,7 @@ void BatcherFlushDone(
   retry_batcher->SetDeadline(done_batcher->deadline());
   for (auto& error : errors) {
     VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
-            << " due to: " << error->status();
+                      << " due to: " << error->status();
     const auto op = error->shared_failed_op();
     op->ResetTablet();
     retry_batcher->Add(op);

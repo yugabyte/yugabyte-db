@@ -34,7 +34,6 @@
 
 #include <string>
 
-#include "yb/common/common.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/tools/ysck.h"
 #include "yb/util/monotime.h"

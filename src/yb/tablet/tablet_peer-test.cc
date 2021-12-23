@@ -47,6 +47,7 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/multi_raft_batcher.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
@@ -61,6 +62,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver.pb.h"
@@ -128,7 +130,7 @@ class TabletPeerTest : public YBTabletTest {
 
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(tablet()->metadata()->fs_manager()->uuid());
-    config_peer.set_member_type(RaftPeerPB::VOTER);
+    config_peer.set_member_type(consensus::PeerMemberType::VOTER);
     auto addr = config_peer.mutable_last_known_private_addr()->Add();
     addr->set_host("fake-host");
     addr->set_port(0);
@@ -236,7 +238,7 @@ class TabletPeerTest : public YBTabletTest {
     WriteResponsePB resp;
     auto operation = std::make_unique<WriteOperation>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
-    *operation->AllocateRequest() = req;
+    operation->set_client_request(const_cast<WriteRequestPB*>(&req));
 
     CountDownLatch rpc_latch(1);
     operation->set_completion_callback(

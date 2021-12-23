@@ -22,6 +22,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/value.pb.h"
 
 #include "yb/gutil/callback_forward.h"
 

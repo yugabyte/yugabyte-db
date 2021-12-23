@@ -40,6 +40,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/index.h"
+#include "yb/common/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.pb.h"
@@ -56,6 +57,7 @@
 
 #include "yb/tablet/tablet-harness.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server.h"
@@ -277,7 +279,7 @@ RaftConfigPB MiniTabletServer::CreateLocalConfig() const {
   RaftConfigPB config;
   RaftPeerPB* peer = config.add_peers();
   peer->set_permanent_uuid(server_->instance_pb().permanent_uuid());
-  peer->set_member_type(RaftPeerPB::VOTER);
+  peer->set_member_type(consensus::PeerMemberType::VOTER);
   auto host_port = peer->mutable_last_known_private_addr()->Add();
   host_port->set_host(bound_rpc_addr().address().to_string());
   host_port->set_port(bound_rpc_addr().port());

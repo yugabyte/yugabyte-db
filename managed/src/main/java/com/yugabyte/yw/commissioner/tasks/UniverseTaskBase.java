@@ -111,7 +111,7 @@ import org.apache.commons.collections.MapUtils;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.Common;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
 import play.api.Play;
@@ -981,7 +981,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param tableDetails table options and related details.
    */
   public SubTaskGroup createTableTask(
-      Common.TableType tableType, String tableName, TableDetails tableDetails) {
+      TableType tableType, String tableName, TableDetails tableDetails) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("CreateTable", executor);
     CreateTable task = createTask(CreateTable.class);
     CreateTable.Params params = new CreateTable.Params();

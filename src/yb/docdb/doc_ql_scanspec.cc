@@ -13,12 +13,14 @@
 
 #include "yb/docdb/doc_ql_scanspec.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/rocksdb/db/compaction.h"
 

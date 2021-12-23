@@ -21,7 +21,7 @@
 
 #include "yb/bfql/tserver_opcodes.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
 
 #include "yb/gutil/macros.h"
 

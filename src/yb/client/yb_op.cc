@@ -55,7 +55,6 @@
 #include "yb/docdb/primitive_value_util.h"
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"

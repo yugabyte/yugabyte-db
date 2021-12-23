@@ -39,6 +39,7 @@
 
 #include "yb/gutil/stl_util.h"
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/sys_catalog-test_base.h"
 #include "yb/master/sys_catalog.h"

@@ -13,6 +13,7 @@
 
 #include "yb/master/system_tablet.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 

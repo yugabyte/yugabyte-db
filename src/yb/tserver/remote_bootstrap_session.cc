@@ -43,6 +43,7 @@
 #include "yb/gutil/type_traits.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
@@ -67,6 +68,7 @@ using std::vector;
 using std::string;
 
 using consensus::MinimumOpId;
+using consensus::PeerMemberType;
 using consensus::RaftPeerPB;
 using log::LogAnchorRegistry;
 using log::ReadableLogSegment;
@@ -130,18 +132,18 @@ Status RemoteBootstrapSession::ChangeRole() {
     }
 
     switch(peer_pb.member_type()) {
-      case RaftPeerPB::OBSERVER: FALLTHROUGH_INTENDED;
-      case RaftPeerPB::VOTER:
+      case PeerMemberType::OBSERVER: FALLTHROUGH_INTENDED;
+      case PeerMemberType::VOTER:
         LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
-                   << RaftPeerPB::MemberType_Name(peer_pb.member_type())
+                   << PeerMemberType_Name(peer_pb.member_type())
                    << " Not changing its role after remote bootstrap";
 
         // Even though this is an error, we return Status::OK() so the remote server doesn't
         // tombstone its tablet.
         return Status::OK();
 
-      case RaftPeerPB::PRE_OBSERVER: FALLTHROUGH_INTENDED;
-      case RaftPeerPB::PRE_VOTER: {
+      case PeerMemberType::PRE_OBSERVER: FALLTHROUGH_INTENDED;
+      case PeerMemberType::PRE_VOTER: {
         consensus::ChangeConfigRequestPB req;
         consensus::ChangeConfigResponsePB resp;
 
@@ -158,14 +160,14 @@ Status RemoteBootstrapSession::ChangeRole() {
         // If another ChangeConfig is being processed, our request will be rejected.
         return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       }
-      case RaftPeerPB::UNKNOWN_MEMBER_TYPE:
+      case PeerMemberType::UNKNOWN_MEMBER_TYPE:
         return STATUS(IllegalState, Substitute("Unable to change role for peer $0 in config for "
                                                "tablet $1. Peer has an invalid member type $2",
                                                peer_pb.permanent_uuid(), tablet_peer_->tablet_id(),
-                                               RaftPeerPB::MemberType_Name(peer_pb.member_type())));
+                                               PeerMemberType_Name(peer_pb.member_type())));
     }
     LOG(FATAL) << "Unexpected peer member type "
-               << RaftPeerPB::MemberType_Name(peer_pb.member_type());
+               << PeerMemberType_Name(peer_pb.member_type());
   }
   return STATUS(IllegalState, Substitute("Unable to find peer $0 in config for tablet $1",
                                          requestor_uuid_, tablet_peer_->tablet_id()));

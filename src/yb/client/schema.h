@@ -52,7 +52,8 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/value.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.pb.h"
 
 #include "yb/util/status_fwd.h"
 

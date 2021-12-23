@@ -25,7 +25,7 @@ import org.springframework.shell.core.annotation.CliCommand;
 import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
 import org.yb.ColumnSchema;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.Schema;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.AsyncYBClient.AsyncYBClientBuilder;

@@ -18,6 +18,7 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master.proto";
 

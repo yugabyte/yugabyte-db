@@ -23,6 +23,7 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"

@@ -9,30 +9,19 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+//
 
-#include "yb/master/async_ts_rpc_tasks.h"
-
-#include "yb/util/logging.h"
-#include "yb/master/master.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/tserver/backup.proxy.h"
+#ifndef ENT_SRC_YB_TOOLS_TOOLS_FWD_H
+#define ENT_SRC_YB_TOOLS_TOOLS_FWD_H
 
 namespace yb {
-namespace master {
+namespace tools {
 namespace enterprise {
 
-using std::shared_ptr;
+class ClusterAdminClient;
 
-Status RetryingTSRpcTask::ResetTSProxy() {
-  RETURN_NOT_OK(super::ResetTSProxy());
+}  // namespace enterprise
+}  // namespace tools
+}  // namespace yb
 
-  shared_ptr<tserver::TabletServerBackupServiceProxy> ts_backup_proxy;
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_backup_proxy));
-  ts_backup_proxy_.swap(ts_backup_proxy);
-
-  return Status::OK();
-}
-
-} // namespace enterprise
-} // namespace master
-} // namespace yb
+#endif // ENT_SRC_YB_TOOLS_TOOLS_FWD_H

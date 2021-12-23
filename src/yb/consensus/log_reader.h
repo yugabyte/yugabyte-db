@@ -39,8 +39,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_metrics.h"
-#include "yb/consensus/log_util.h"
+#include "yb/consensus/log_fwd.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
@@ -49,6 +50,9 @@
 #include "yb/util/monotime.h"
 
 namespace yb {
+
+class Env;
+struct OpId;
 
 namespace cdc {
 class CDCServiceTestMaxRentionTime_TestLogRetentionByOpId_MaxRentionTime_Test;
@@ -107,7 +111,7 @@ class LogReader {
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
-      ReplicateMsgs* replicates,
+      consensus::ReplicateMsgs* replicates,
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
   static const int64_t kNoSizeLimit;
 

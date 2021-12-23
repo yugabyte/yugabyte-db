@@ -143,7 +143,7 @@ class TransactionParticipant : public TransactionStatusManager {
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     int64_t leader_term = -1;
-    const tserver::TransactionStatePB& state;
+    const TransactionStatePB& state;
     const OpId& op_id;
     HybridTime hybrid_time;
     bool sealed = false;

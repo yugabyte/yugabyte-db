@@ -43,12 +43,10 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_types.h"
 #include "yb/consensus/retryable_requests.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/leader_lease.h"
 
 #include "yb/gutil/port.h"

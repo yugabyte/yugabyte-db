@@ -22,9 +22,10 @@ namespace yb {
 namespace server {
 
 class Clock;
-typedef scoped_refptr<Clock> ClockPtr;
-
+class GenericServiceProxy;
 class MonitoredTask;
+
+using ClockPtr = scoped_refptr<Clock>;
 
 } // namespace server
 } // namespace yb

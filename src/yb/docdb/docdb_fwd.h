@@ -52,6 +52,8 @@ struct LockBatchEntry;
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
 
+enum class ValueType;
+
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 
 // Automatically decode keys that are stored in string-typed PrimitiveValues when converting a

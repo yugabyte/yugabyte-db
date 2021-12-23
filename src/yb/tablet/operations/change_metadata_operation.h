@@ -37,9 +37,16 @@
 #include <string>
 
 #include "yb/common/index.h"
+
 #include "yb/consensus/log_fwd.h"
+
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/operations/operation.h"
+
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_admin.pb.h"
+
 #include "yb/util/locks.h"
 
 namespace yb {

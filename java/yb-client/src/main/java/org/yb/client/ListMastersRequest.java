@@ -14,8 +14,8 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.yb.Common.PeerRole;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonTypes.PeerRole;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.consensus.Metadata;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;

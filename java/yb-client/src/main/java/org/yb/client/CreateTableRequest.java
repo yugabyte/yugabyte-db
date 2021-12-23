@@ -33,7 +33,7 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.yb.Common.PartitionSchemaPB;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.Master;

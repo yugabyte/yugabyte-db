@@ -20,6 +20,8 @@
 
 #include "yb/tablet/transaction_participant_context.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/trace.h"

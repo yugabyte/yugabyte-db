@@ -26,6 +26,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/redis_protocol.pb.h"
 

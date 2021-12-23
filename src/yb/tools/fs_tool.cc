@@ -53,6 +53,7 @@
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/env.h"

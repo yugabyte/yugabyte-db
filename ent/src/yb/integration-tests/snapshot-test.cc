@@ -16,6 +16,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 
@@ -37,6 +38,7 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 

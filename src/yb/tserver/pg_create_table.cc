@@ -22,6 +22,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/tserver/pg_client.pb.h"
 

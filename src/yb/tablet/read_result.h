@@ -9,11 +9,30 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+//
 
-#ifndef ENT_SRC_YB_MASTER_ASYNC_RPC_TASKS_H
-#define ENT_SRC_YB_MASTER_ASYNC_RPC_TASKS_H
+#ifndef YB_TABLET_READ_RESULT_H
+#define YB_TABLET_READ_RESULT_H
 
-#include "../../../../src/yb/master/async_rpc_tasks.h"
-#include "yb/master/async_snapshot_tasks.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 
-#endif // ENT_SRC_YB_MASTER_ASYNC_RPC_TASKS_H
+namespace yb {
+namespace tablet {
+
+struct QLReadRequestResult {
+  QLResponsePB response;
+  faststring rows_data;
+  HybridTime restart_read_ht;
+};
+
+struct PgsqlReadRequestResult {
+  PgsqlResponsePB response;
+  faststring rows_data;
+  HybridTime restart_read_ht;
+};
+
+} // namespace tablet
+} // namespace yb
+
+#endif // YB_TABLET_READ_RESULT_H

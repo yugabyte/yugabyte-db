@@ -17,7 +17,7 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/util/status_fwd.h"
 

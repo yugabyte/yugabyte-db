@@ -38,6 +38,8 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.Common;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
 import org.yb.consensus.Metadata;
 import org.yb.master.Master;
 
@@ -86,7 +88,7 @@ public class TestAsyncYBClient extends BaseYBClientTest {
       tabletPb.setStale(false);
       tabletPb.setTabletId(ByteString.copyFromUtf8("some id " + i));
       Master.TSInfoPB.Builder tsInfoBuilder = Master.TSInfoPB.newBuilder();
-      Common.HostPortPB.Builder hostBuilder = Common.HostPortPB.newBuilder();
+      CommonNet.HostPortPB.Builder hostBuilder = CommonNet.HostPortPB.newBuilder();
       hostBuilder.setHost(badHostname + i);
       hostBuilder.setPort(i);
       tsInfoBuilder.addPrivateRpcAddresses(hostBuilder);
@@ -94,7 +96,7 @@ public class TestAsyncYBClient extends BaseYBClientTest {
       Master.TabletLocationsPB.ReplicaPB.Builder replicaBuilder =
           Master.TabletLocationsPB.ReplicaPB.newBuilder();
       replicaBuilder.setTsInfo(tsInfoBuilder);
-      replicaBuilder.setRole(Common.PeerRole.FOLLOWER);
+      replicaBuilder.setRole(CommonTypes.PeerRole.FOLLOWER);
       tabletPb.addReplicas(replicaBuilder);
       builder.addTabletLocations(tabletPb);
     }

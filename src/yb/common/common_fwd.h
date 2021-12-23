@@ -55,6 +55,7 @@ class QLType;
 class QLValue;
 
 struct DeletedColumn;
+struct IndexColumn;
 struct OpId;
 struct QLTableColumn;
 struct ReadHybridTime;
@@ -67,6 +68,7 @@ using QLTypePtr = std::shared_ptr<QLType>;
 
 enum class PgSystemAttrNum : int;
 enum class QLNameOption : int8_t;
+enum class YBHashSchema;
 
 enum SortingType : uint8_t {
   kNotSpecified = 0,

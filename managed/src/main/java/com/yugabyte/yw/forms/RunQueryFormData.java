@@ -2,9 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
-import static org.yb.Common.TableType.PGSQL_TABLE_TYPE;
-
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 public class RunQueryFormData {
@@ -12,5 +10,5 @@ public class RunQueryFormData {
 
   @Constraints.Required() public String db_name;
 
-  public TableType tableType = PGSQL_TABLE_TYPE;
+  public TableType tableType = TableType.PGSQL_TABLE_TYPE;
 }

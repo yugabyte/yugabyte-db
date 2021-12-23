@@ -17,6 +17,7 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
 

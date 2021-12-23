@@ -48,6 +48,8 @@
 #include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/common_types.pb.h"
+
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_fwd.h"

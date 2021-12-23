@@ -15,8 +15,8 @@ package org.yb.client;
 
 import java.util.List;
 
-import org.yb.Common.CloudInfoPB;
-import org.yb.master.Master;
+import org.yb.CommonNet.CloudInfoPB;
+import org.yb.master.CatalogEntityInfo;
 
 /**
  * Class for changing the affinitized leader information for the master's cluster config.
@@ -33,9 +33,10 @@ public class ModifyClusterConfigAffinitizedLeaders extends AbstractModifyMasterC
   }
 
   @Override
-  protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder(config);
+  protected CatalogEntityInfo.SysClusterConfigEntryPB modifyConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder(config);
 
     // Modify the affinitized leaders information in the cluster config.
     configBuilder.getReplicationInfoBuilder().clearAffinitizedLeaders()

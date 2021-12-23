@@ -14,10 +14,8 @@
 #define ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
 
 #include "../../../../src/yb/master/catalog_manager.h"
-#include "yb/master/cdc_rpc_tasks.h"
-#include "yb/master/master_backup.pb.h"
-#include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/snapshot_coordinator_context.h"
 
 namespace yb {
 
@@ -274,12 +272,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       CollectFlags flags);
 
   Result<SysRowEntries> CollectEntriesForSnapshot(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override {
-    return CollectEntries(
-        tables,
-        CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
-                     CollectFlag::kSucceedIfCreateInProgress});
-  }
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override;
 
   server::Clock* Clock() override;
 

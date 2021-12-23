@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 
 #include "yb/util/status_fwd.h"
 

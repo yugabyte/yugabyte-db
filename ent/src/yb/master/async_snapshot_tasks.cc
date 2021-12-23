@@ -54,10 +54,8 @@ AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(Master *master,
                                              const scoped_refptr<TabletInfo>& tablet,
                                              const string& snapshot_id,
                                              tserver::TabletSnapshotOpRequestPB::Operation op)
-  : enterprise::RetryingTSRpcTask(master,
-                                  callback_pool,
-                                  new PickLeaderReplica(tablet),
-                                  tablet->table().get()),
+  : RetryingTSRpcTask(
+        master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get()),
     tablet_(tablet),
     snapshot_id_(snapshot_id),
     operation_(op) {

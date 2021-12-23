@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static org.yb.Common.DataType;
+import static org.yb.Value.DataType;
 
 /**
  * Describes all the QLTypes available to build table schemas.

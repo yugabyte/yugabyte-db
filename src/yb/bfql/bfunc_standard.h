@@ -35,7 +35,6 @@
 #include <string>
 #include <unordered_set>
 
-#include "yb/common/common.pb.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"

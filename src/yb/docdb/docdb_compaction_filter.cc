@@ -22,6 +22,7 @@
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 

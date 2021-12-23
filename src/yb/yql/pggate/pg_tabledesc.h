@@ -21,8 +21,6 @@
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/tserver/pg_client.pb.h"
-
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 

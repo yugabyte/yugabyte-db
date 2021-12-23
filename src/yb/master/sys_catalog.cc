@@ -58,6 +58,7 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
@@ -77,11 +78,13 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -673,7 +676,7 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto operation = std::make_unique<tablet::WriteOperation>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
       tablet_peer()->tablet(), resp.get());
-  *operation->AllocateRequest() = writer->req();
+  operation->set_client_request(&writer->req());
   operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(latch, resp));
 

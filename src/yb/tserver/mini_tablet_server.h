@@ -35,7 +35,10 @@
 #include <string>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+
 #include "yb/encryption/encryption_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/tablet_server_options.h"

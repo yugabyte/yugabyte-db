@@ -38,6 +38,8 @@
 
 #include <boost/atomic.hpp>
 
+#include "yb/common/common_types.pb.h"
+
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_round.h"
 

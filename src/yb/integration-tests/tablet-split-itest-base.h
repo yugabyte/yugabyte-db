@@ -16,35 +16,29 @@
 
 #include <chrono>
 
-#include <boost/range/adaptors.hpp>
-
-#include "yb/client/client-test-util.h"
-#include "yb/client/ql-dml-test-base.h"
-#include "yb/client/snapshot_test_util.h"
-#include "yb/client/session.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/table_info.h"
-#include "yb/client/table.h"
-#include "yb/client/transaction.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/txn-test-base.h"
-#include "yb/client/yb_op.h"
 
-#include "yb/common/ql_expr.h"
-#include "yb/consensus/consensus.h"
+#include "yb/docdb/docdb_fwd.h"
 
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/test_workload.h"
+#include "yb/master/catalog_manager_if.h"
 
-#include "yb/master/catalog_manager.h"
+#include "yb/tablet/tablet_fwd.h"
 
-#include "yb/rpc/messenger.h"
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/size_literals.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_int32(replication_factor);
-
 namespace yb {
+
+class TestWorkload;
+
+namespace client {
+
+class SnapshotTestUtil;
+
+}
 
 Result<size_t> SelectRowsCount(
     const client::YBSessionPtr& session, const client::TableHandle& table);
@@ -61,7 +55,8 @@ CHECKED_STATUS DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet
 template <class MiniClusterType>
 class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType> {
  protected:
-  static constexpr std::chrono::duration<int64> kRpcTimeout = 60s * kTimeMultiplier;
+  static constexpr std::chrono::duration<int64> kRpcTimeout =
+      std::chrono::seconds(60) * kTimeMultiplier;
   static constexpr int kDefaultNumRows = 500;
   // We set small data block size, so we don't have to write much data to have multiple blocks.
   // We need multiple blocks to be able to detect split key (see BlockBasedTable::GetMiddleKey).
@@ -108,7 +103,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   }
 
   Result<TableId> GetTestTableId() {
-    return VERIFY_RESULT(this->client_->GetYBTableInfo(client::kTableName)).table_id;
+    return GetTableId(this->client_.get(), client::kTableName);
   }
 
   // Make sure table contains only keys 1...num_keys without gaps.
@@ -127,7 +122,9 @@ extern template class TabletSplitITestBase<ExternalMiniCluster>;
 
 class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
  public:
-  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
+  TabletSplitITest();
+  ~TabletSplitITest();
+
   void SetUp() override;
 
   Result<TabletId> CreateSingleTabletAndSplit(size_t num_rows);
@@ -138,9 +135,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
     return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
   }
 
-  Result<master::TabletInfos> GetTabletInfosForTable(const TableId& table_id) {
-    return VERIFY_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets();
-  }
+  Result<master::TabletInfos> GetTabletInfosForTable(const TableId& table_id);
 
   // By default we wait until all split tablets are cleanup. expected_split_tablets could be
   // overridden if needed to test behaviour of split tablet when its deletion is disabled.
@@ -194,8 +189,10 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   // If num_replicas_online is 0, uses replication factor.
   CHECKED_STATUS CheckPostSplitTabletReplicasData(
       size_t num_rows, size_t num_replicas_online = 0, size_t num_active_tablets = 2);
+
  protected:
-  MonoDelta split_completion_timeout_ = 40s * kTimeMultiplier;
+  MonoDelta split_completion_timeout_ = std::chrono::seconds(40) * kTimeMultiplier;
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
 
 

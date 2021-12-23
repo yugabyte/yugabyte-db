@@ -28,7 +28,11 @@
 #include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
 
-#include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/yql/cql/ql/ql_fwd.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/util_fwd.h"
 
 namespace yb {
 namespace ql {
@@ -102,7 +106,7 @@ class ClockHolder {
   server::ClockPtr clock_;
 };
 
-class TestQLProcessor : public ClockHolder, public QLProcessor {
+class TestQLProcessor : public ClockHolder {
  public:
   // Public types.
   typedef std::unique_ptr<TestQLProcessor> UniPtr;
@@ -116,7 +120,7 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
 
   void RunAsyncDone(
       Callback<void(const Status&)> cb, const Status& s,
-      const ExecutedResult::SharedPtr& result) {
+      const ExecutedResultPtr& result) {
     result_ = result;
     cb.Run(s);
   }
@@ -131,58 +135,38 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   CHECKED_STATUS Run(const Statement& stmt, const StatementParameters& params);
 
   // Construct a row_block and send it back.
-  std::shared_ptr<QLRowBlock> row_block() const {
-    LOG(INFO) << (result_ == NULL ? "Result is NULL." : "Got result.")
-              << " Return type = " << static_cast<int>(ExecutedResult::Type::ROWS);
-    if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
-      return std::shared_ptr<QLRowBlock>(static_cast<RowsResult*>(result_.get())->GetRowBlock());
-    }
-    return nullptr;
-  }
+  std::shared_ptr<QLRowBlock> row_block() const;
 
-  const ExecutedResult::SharedPtr& result() const { return result_; }
+  const ExecutedResultPtr& result() const { return result_; }
 
-  const RowsResult* rows_result() const {
-    if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
-      return static_cast<const RowsResult*>(result_.get());
-    }
-    return nullptr;
-  }
+  const RowsResult* rows_result() const;
 
-  std::string CurrentKeyspace() const { return ql_env_.CurrentKeyspace(); }
+  std::string CurrentKeyspace() const;
 
-  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
-    return ql_env_.UseKeyspace(keyspace_name);
-  }
+  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);
 
-  void RemoveCachedTableDesc(const client::YBTableName& table_name) {
-    ql_env_.RemoveCachedTableDesc(table_name);
-  }
+  void RemoveCachedTableDesc(const client::YBTableName& table_name);
 
   const ParseTreePtr& GetLastParseTree() const {
-    return parse_tree;
+    return parse_tree_;
   }
+
+  QLProcessor& ql_processor() {
+    return *processor_;
+  }
+
+  const TreeNodePtr& GetLastParseTreeRoot() const;
 
  private:
   void RunAsyncInternal(const std::string& stmt, const StatementParameters& params,
-                        StatementExecutedCallback cb, bool reparsed = false) {
-    // This method mainly duplicates QLProcessor::RunAsync(), but uses local ParseTree object
-    // to make it available for checks in the test after the statement execution.
-    const Status s = Prepare(stmt, &parse_tree, reparsed);
-    if (PREDICT_FALSE(!s.ok())) {
-      return cb.Run(s, nullptr /* result */);
-    }
-    // Do not make a copy of stmt and params when binding to the RunAsyncDone callback because when
-    // error occurs due to stale matadata, the statement needs to be reexecuted. We should pass the
-    // original references which are guaranteed to still be alive when the statement is reexecuted.
-    ExecuteAsync(*parse_tree, params, Bind(&QLProcessor::RunAsyncDone, Unretained(this),
-        ConstRef(stmt), ConstRef(params), Unretained(parse_tree.get()), cb));
-  }
+                        StatementExecutedCallback cb, bool reparsed = false);
+
+  std::unique_ptr<QLProcessor> processor_;
 
   // Execute result.
-  ExecutedResult::SharedPtr result_;
+  ExecutedResultPtr result_;
 
-  ParseTreePtr parse_tree;
+  ParseTreePtr parse_tree_;
 };
 
 // Base class for all QL test cases.

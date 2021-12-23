@@ -19,6 +19,7 @@
 
 #include "yb/client/table.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 

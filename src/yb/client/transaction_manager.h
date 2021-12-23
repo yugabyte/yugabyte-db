@@ -22,8 +22,8 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/clock.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 

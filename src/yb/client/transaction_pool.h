@@ -16,7 +16,7 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/transaction.pb.h"
 #include "yb/common/read_hybrid_time.h"
 
 namespace yb {

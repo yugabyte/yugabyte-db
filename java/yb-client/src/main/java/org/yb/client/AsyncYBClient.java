@@ -106,12 +106,14 @@ import org.jboss.netty.util.Timeout;
 import org.jboss.netty.util.TimerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Common;
-import org.yb.Common.YQLDatabase;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.master.Master;
 import org.yb.master.Master.GetTableLocationsResponsePB;
 import org.yb.util.AsyncUtil;
@@ -579,7 +581,7 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields the response to the config change.
    */
   public Deferred<ChangeMasterClusterConfigResponse> changeMasterClusterConfig(
-      Master.SysClusterConfigEntryPB config) {
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
     checkIsClosed();
     ChangeMasterClusterConfigRequest rpc = new ChangeMasterClusterConfigRequest(
         this.masterTable, config);
@@ -800,7 +802,7 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<SetupUniverseReplicationResponse> setupUniverseReplication(
     String replicationGroupName,
     Set<String> sourceTableIDs,
-    Set<Common.HostPortPB> sourceMasterAddresses) {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) {
     checkIsClosed();
     SetupUniverseReplicationRequest request =
       new SetupUniverseReplicationRequest(
@@ -848,7 +850,7 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<AlterUniverseReplicationResponse>
   alterUniverseReplicationSourceMasterAddresses(
     String replicationGroupName,
-    Set<Common.HostPortPB> sourceMasterAddresses) {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) {
     return alterUniverseReplication(
       replicationGroupName,
       new HashSet<>(),
@@ -887,7 +889,7 @@ public class AsyncYBClient implements AutoCloseable {
     String replicationGroupName,
     Set<String> sourceTableIDsToAdd,
     Set<String> sourceTableIDsToRemove,
-    Set<Common.HostPortPB> sourceMasterAddresses,
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
     String newReplicationGroupName) {
     int addedTables = sourceTableIDsToAdd.isEmpty() ? 0 : 1;
     int removedTables = sourceTableIDsToRemove.isEmpty() ? 0 : 1;
@@ -2560,7 +2562,7 @@ public class AsyncYBClient implements AutoCloseable {
             new ArrayList<>(tabletLocations.getReplicasCount());
         for (Master.TabletLocationsPB.ReplicaPB replica : tabletLocations.getReplicasList()) {
 
-          List<Common.HostPortPB> addresses = replica.getTsInfo().getBroadcastAddressesList();
+          List<CommonNet.HostPortPB> addresses = replica.getTsInfo().getBroadcastAddressesList();
           if (addresses.isEmpty()) {
             addresses = replica.getTsInfo().getPrivateRpcAddressesList();
           }
@@ -2575,7 +2577,7 @@ public class AsyncYBClient implements AutoCloseable {
           // based on some kind of policy. For now just use the first always.
           try {
             addTabletClient(uuid, addresses.get(0).getHost(), addresses.get(0).getPort(),
-                replica.getRole().equals(Common.PeerRole.LEADER));
+                replica.getRole().equals(CommonTypes.PeerRole.LEADER));
           } catch (UnknownHostException ex) {
             lookupExceptions.add(ex);
           }
@@ -2698,8 +2700,8 @@ public class AsyncYBClient implements AutoCloseable {
       return tabletId.toString(Charset.defaultCharset());
     }
 
-    List<Common.HostPortPB> getAddressesFromPb(Master.TabletLocationsPB tabletLocations) {
-      List<Common.HostPortPB> addresses = new ArrayList<Common.HostPortPB>(tabletLocations
+    List<CommonNet.HostPortPB> getAddressesFromPb(Master.TabletLocationsPB tabletLocations) {
+      List<CommonNet.HostPortPB> addresses = new ArrayList<CommonNet.HostPortPB>(tabletLocations
           .getReplicasCount());
       for (Master.TabletLocationsPB.ReplicaPB replica : tabletLocations.getReplicasList()) {
         if (replica.getTsInfo().getBroadcastAddressesList().isEmpty()) {

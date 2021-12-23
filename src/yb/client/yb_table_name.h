@@ -19,7 +19,8 @@
 
 #include <gflags/gflags_declare.h>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+
 #include "yb/master/master_types.pb.h"
 
 namespace yb {

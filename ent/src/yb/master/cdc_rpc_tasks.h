@@ -16,9 +16,9 @@
 
 #include <stdlib.h>
 
-#include "yb/common/common.pb.h"
+#include <google/protobuf/repeated_field.h>
+
 #include "yb/common/entity_ids.h"
-#include "yb/master/master.proxy.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"

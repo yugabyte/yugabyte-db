@@ -37,6 +37,7 @@ import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.Common;
+import org.yb.CommonTypes;
 import org.yb.consensus.Metadata;
 import org.yb.master.Master;
 import org.yb.util.NetUtil;
@@ -178,7 +179,7 @@ final class GetMasterRegistrationReceived {
       tsInfoBuilder.addPrivateRpcAddresses(ProtobufHelper.hostAndPortToPB(hostAndPort));
       tsInfoBuilder.setPermanentUuid(r.getInstanceId().getPermanentUuid());
       replicaBuilder.setTsInfo(tsInfoBuilder);
-      if (r.getRole().equals(Common.PeerRole.LEADER)) {
+      if (r.getRole().equals(CommonTypes.PeerRole.LEADER)) {
         replicaBuilder.setRole(r.getRole());
         Master.TabletLocationsPB.Builder locationBuilder = Master.TabletLocationsPB.newBuilder();
         locationBuilder.setPartition(

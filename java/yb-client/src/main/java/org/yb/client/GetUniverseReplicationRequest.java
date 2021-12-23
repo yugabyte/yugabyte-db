@@ -14,7 +14,9 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class GetUniverseReplicationRequest extends YRpc<GetUniverseReplicationResponse> {
@@ -54,8 +56,8 @@ public class GetUniverseReplicationRequest extends YRpc<GetUniverseReplicationRe
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
-    final Master.SysUniverseReplicationEntryPB info = builder.getEntry();
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final CatalogEntityInfo.SysUniverseReplicationEntryPB info = builder.getEntry();
 
     GetUniverseReplicationResponse response =
       new GetUniverseReplicationResponse(deadlineTracker.getElapsedMillis(), tsUUID, error, info);

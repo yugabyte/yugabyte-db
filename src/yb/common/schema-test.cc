@@ -35,8 +35,10 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/test_macros.h"
 

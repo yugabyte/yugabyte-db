@@ -41,6 +41,11 @@ void AppendDocHybridTime(const DocHybridTime& doc_ht, KeyBytes* key) {
   doc_ht.AppendEncodedInDocDbFormat(key->mutable_data());
 }
 
+void AppendHash(uint16_t hash, KeyBytes* key) {
+  key->AppendValueType(ValueType::kUInt16Hash);
+  key->AppendUInt16(hash);
+}
+
 void KeyBytes::AppendUInt64AsVarInt(uint64_t value) {
   unsigned char buf[util::kMaxVarIntBufferSize];
   size_t len = 0;
@@ -106,6 +111,10 @@ void KeyBytes::AppendDescendingUInt32(uint32_t x) {
 
 void KeyBytes::AppendUInt16(uint16_t x) {
   AppendUInt16ToKey(x, &data_);
+}
+
+void KeyBytes::AppendGroupEnd() {
+  AppendValueType(ValueType::kGroupEnd);
 }
 
 void KeyBytes::Truncate(size_t new_size) {

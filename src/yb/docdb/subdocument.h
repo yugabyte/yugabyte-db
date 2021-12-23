@@ -42,27 +42,17 @@ class SubDocument : public PrimitiveValue {
  public:
 
   explicit SubDocument(ValueType value_type);
-  SubDocument() : SubDocument(ValueType::kObject) {}
+  SubDocument();
 
   ~SubDocument();
 
-  explicit SubDocument(ListExtendOrder extend_order) : SubDocument(ValueType::kArray) {
-    extend_order_ = extend_order;
-  }
+  explicit SubDocument(ListExtendOrder extend_order);
 
   // Copy constructor. This is potentially very expensive!
   SubDocument(const SubDocument& other);
 
   explicit SubDocument(const std::vector<PrimitiveValue> &elements,
-                       ListExtendOrder extend_order = ListExtendOrder::APPEND) {
-    type_ = ValueType::kArray;
-    extend_order_ = extend_order;
-    complex_data_structure_ = new ArrayContainer();
-    array_container().reserve(elements.size());
-    for (auto& elt : elements) {
-      array_container().emplace_back(elt);
-    }
-  }
+                       ListExtendOrder extend_order = ListExtendOrder::APPEND);
 
   SubDocument& operator =(const SubDocument& other) {
     this->~SubDocument();
@@ -74,9 +64,8 @@ class SubDocument : public PrimitiveValue {
   // for tests.
   template<typename T>
   SubDocument(std::initializer_list<std::initializer_list<T>> elements) {
-    type_ = ValueType::kObject;
     complex_data_structure_ = nullptr;
-    EnsureContainerAllocated();
+    EnsureObjectAllocated();
     for (const auto& key_value : elements) {
       CHECK_EQ(2, key_value.size());
       auto iter = key_value.begin();
@@ -173,14 +162,7 @@ class SubDocument : public PrimitiveValue {
   // @return true if a child object was deleted, false if it did not exist.
   bool DeleteChild(const PrimitiveValue& key);
 
-  int object_num_keys() const {
-    DCHECK(IsObjectType(type_));
-    if (!has_valid_object_container()) {
-      return 0;
-    }
-    assert(object_container().size() <= std::numeric_limits<int>::max());
-    return static_cast<int>(object_container().size());
-  }
+  int object_num_keys() const;
 
   // Construct a SubDocument from a QLValuePB.
   static SubDocument FromQLValuePB(const QLValuePB& value,
@@ -200,23 +182,17 @@ class SubDocument : public PrimitiveValue {
   void MoveFrom(SubDocument* other);
 
   void EnsureContainerAllocated();
+  void EnsureObjectAllocated();
 
-  bool container_allocated() const {
-    CHECK(IsCollectionType(type_));
-    return complex_data_structure_ != nullptr;
-  }
+  bool container_allocated() const;
 
   bool has_valid_container() const {
     return complex_data_structure_ != nullptr;
   }
 
-  bool has_valid_object_container() const {
-    return (IsObjectType(type_)) && has_valid_container();
-  }
+  bool has_valid_object_container() const;
 
-  bool has_valid_array_container() const {
-    return type_ == ValueType::kArray && has_valid_container();
-  }
+  bool has_valid_array_container() const;
 
   friend void SubDocumentToStreamInternal(ostream& out, const SubDocument& subdoc, int indent);
   friend void SubDocCollectionToStreamInternal(ostream& out,

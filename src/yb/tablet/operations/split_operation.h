@@ -25,6 +25,8 @@
 #include "yb/tablet/operation_filter.h"
 #include "yb/tablet/operations/operation.h"
 
+#include "yb/tserver/tserver_admin.pb.h"
+
 namespace yb {
 namespace tablet {
 

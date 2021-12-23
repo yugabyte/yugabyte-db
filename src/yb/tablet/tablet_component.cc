@@ -16,6 +16,7 @@
 #include "yb/common/index.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 namespace yb {
 namespace tablet {

@@ -25,9 +25,12 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -100,9 +103,9 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
     }
 
     case consensus::OperationType::WRITE_OP: {
-      if (msg->write_request().write_batch().has_transaction()) {
+      if (msg->write().write_batch().has_transaction()) {
         auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
-            msg->write_request().write_batch().transaction().transaction_id()));
+            msg->write().write_batch().transaction().transaction_id()));
         const auto txn_status = txn_map.find(txn_id);
         if (txn_status == txn_map.end()) {
           return STATUS(IllegalState, "Unexpected transaction ID", txn_id.ToString());
@@ -156,7 +159,7 @@ Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
 
   // Order ReplicateMsgs based on commit time.
   for (const auto &msg : msgs) {
-    if (!msg->write_request().has_external_hybrid_time()) {
+    if (!msg->write().has_external_hybrid_time()) {
       // If the message came from an external source, ignore it when producing change list.
       // Note that checkpoint, however, will be updated and will account for external message too.
       bool stop = VERIFY_RESULT(SetCommittedRecordIndexForReplicateMsg(
@@ -244,9 +247,9 @@ Result<TxnStatusMap> BuildTxnStatusMap(const ReplicateMsgs& messages,
   // corresponding APPLYING record does not exist in WAL as yet.
   for (const auto& msg : messages) {
     if (msg->op_type() == consensus::OperationType::WRITE_OP
-        && msg->write_request().write_batch().has_transaction()) {
+        && msg->write().write_batch().has_transaction()) {
       auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
-          msg->write_request().write_batch().transaction().transaction_id()));
+          msg->write().write_batch().transaction().transaction_id()));
 
       if (!txn_map.count(txn_id)) {
         TransactionStatusResult txn_status(TransactionStatus::PENDING, HybridTime::kMin);
@@ -298,7 +301,7 @@ CHECKED_STATUS PopulateWriteRecord(const ReplicateMsgPtr& msg,
                                    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                                    ReplicateIntents replicate_intents,
                                    GetChangesResponsePB* resp) {
-  const auto& batch = msg->write_request().write_batch();
+  const auto& batch = msg->write().write_batch();
   const auto& schema = *tablet_peer->tablet()->schema();
   // Write batch may contain records from different rows.
   // For CDC, we need to split the batch into 1 CDC record per row of the table.

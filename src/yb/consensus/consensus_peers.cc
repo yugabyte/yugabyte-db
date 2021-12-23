@@ -55,7 +55,6 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet_error.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -221,7 +220,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
   bool last_exchange_successful = false;
-  RaftPeerPB::MemberType member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+  PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
   int64_t commit_index_before = update_request_.has_committed_op_id() ?
       update_request_.committed_op_id().index() : kMinimumOpIdIndex;
   ReplicateMsgsHolder msgs_holder;
@@ -265,7 +264,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // If the peer doesn't need remote bootstrap, but it is a PRE_VOTER or PRE_OBSERVER in the config,
   // we need to promote it.
   if (last_exchange_successful &&
-      (member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER)) {
+      (member_type == PeerMemberType::PRE_VOTER || member_type == PeerMemberType::PRE_OBSERVER)) {
     if (PREDICT_TRUE(consensus_)) {
       auto uuid = peer_pb_.permanent_uuid();
       // Remove these here, before we drop the locks.
@@ -705,7 +704,7 @@ Status SetPermanentUuidForRemotePeer(
       auto status = request.controller.status();
       if (status.ok()) {
         remote_peer->set_permanent_uuid(request.resp.node_instance().permanent_uuid());
-        remote_peer->set_member_type(RaftPeerPB::VOTER);
+        remote_peer->set_member_type(PeerMemberType::VOTER);
         if (request.resp.has_registration()) {
           CopyRegistration(request.resp.registration(), remote_peer);
         } else {

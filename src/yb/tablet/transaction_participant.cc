@@ -44,6 +44,8 @@
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/transaction_status_resolver.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"

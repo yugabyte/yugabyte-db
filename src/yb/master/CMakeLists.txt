@@ -37,7 +37,7 @@ YRPC_GENERATE(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES master.proto
-  NO_SERVICE_PROTO_FILES master_types.proto)
+  NO_SERVICE_PROTO_FILES master_types.proto catalog_entity_info.proto)
 set(MASTER_YRPC_LIBS
   consensus_metadata_proto
   yrpc

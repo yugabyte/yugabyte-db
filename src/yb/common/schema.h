@@ -46,7 +46,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/id_mapping.h"

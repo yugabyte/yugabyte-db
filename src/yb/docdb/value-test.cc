@@ -12,6 +12,7 @@
 //
 
 #include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"

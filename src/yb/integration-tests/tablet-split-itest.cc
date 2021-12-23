@@ -16,14 +16,16 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/integration-tests/tablet-split-itest-base.h"
+#include "yb/client/table.h"
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_util.h"
 
 #include "yb/docdb/doc_key.h"
@@ -35,6 +37,8 @@
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/redis_table_test_base.h"
+#include "yb/integration-tests/tablet-split-itest-base.h"
+#include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
@@ -55,9 +59,9 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
@@ -107,6 +111,7 @@ DECLARE_int32(outstanding_tablet_split_limit);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_nodes_per_cloud);
+DECLARE_int32(replication_factor);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,

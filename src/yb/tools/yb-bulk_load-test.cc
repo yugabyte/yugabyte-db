@@ -44,7 +44,6 @@
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
 
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/path_util.h"

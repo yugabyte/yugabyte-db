@@ -72,15 +72,16 @@
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/crc.h"
@@ -447,7 +448,7 @@ class WriteOperationCompletionCallback {
     if (status.IsAlreadyPresent() &&
         operation_->ql_write_ops()->empty() &&
         operation_->pgsql_write_ops()->empty() &&
-        operation_->request()->redis_write_batch().empty()) {
+        operation_->client_request()->redis_write_batch().empty()) {
       status = Status::OK();
     }
 
@@ -1270,7 +1271,7 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
     return;
   }
 
-  auto operation = std::make_unique<TruncateOperation>(tablet.peer->tablet(), req);
+  auto operation = std::make_unique<TruncateOperation>(tablet.peer->tablet(), &req->truncate());
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1705,7 +1706,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   auto operation = std::make_unique<WriteOperation>(
       tablet.leader_term, context.GetClientDeadline(), tablet.peer.get(),
       tablet.peer->tablet(), resp);
-  *operation->AllocateRequest() = *req;
+  operation->set_client_request(std::make_unique<tserver::WriteRequestPB>(*req));
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
   if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
@@ -2189,21 +2190,21 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         leader_peer.peer->tablet(), nullptr /* response */,
         docdb::OperationKind::kRead);
 
-    WriteRequestPB& write_req = *operation->AllocateRequest();
-    *write_req.mutable_write_batch()->mutable_transaction() = req->transaction();
+    auto& write = *operation->AllocateRequest();
+    auto& write_batch = *write.mutable_write_batch();
+    *write_batch.mutable_transaction() = req->transaction();
     if (has_row_mark) {
-      write_req.mutable_write_batch()->set_row_mark_type(batch_row_mark);
-      read_context->read_time.ToPB(write_req.mutable_read_time());
+      write_batch.set_row_mark_type(batch_row_mark);
+      operation->set_read_time(read_context->read_time);
     }
-    write_req.set_tablet_id(req->tablet_id());
-    write_req.mutable_write_batch()->set_deprecated_may_have_metadata(true);
-    write_req.set_batch_idx(req->batch_idx());
+    write.set_unused_tablet_id(""); // For backward compatibility.
+    write_batch.set_deprecated_may_have_metadata(true);
+    write.set_batch_idx(req->batch_idx());
     // TODO(dtxn) write request id
 
-    auto* write_batch = write_req.mutable_write_batch();
     auto status = leader_peer.peer->tablet()->CreateReadIntents(
         req->transaction(), req->subtransaction(), req->ql_batch(), req->pgsql_batch(),
-        write_batch);
+        &write_batch);
     if (!status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), status, &read_context->context);
       return;

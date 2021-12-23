@@ -463,7 +463,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
       // Verify that both tablets either belong to zone1 or zone2.
       for (LocatedTablet.Replica replica : replicas) {
-        org.yb.Common.CloudInfoPB cloudInfo = replica.getCloudInfo();
+        org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
         if (cloudInfo.getPlacementCloud().equals("cloud1")) {
           assertTrue(cloudInfo.getPlacementRegion().equals("region1"));
           assertTrue(cloudInfo.getPlacementZone().equals("zone1"));
@@ -487,7 +487,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
       // Verify that tablets can be present in any zone.
       for (LocatedTablet.Replica replica : replicas) {
-        org.yb.Common.CloudInfoPB cloudInfo = replica.getCloudInfo();
+        org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
         if (cloudInfo.getPlacementCloud().equals("cloud1")) {
           assertTrue(cloudInfo.getPlacementRegion().equals("region1"));
           assertTrue(cloudInfo.getPlacementZone().equals("zone1"));

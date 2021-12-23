@@ -14,22 +14,23 @@
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterTypes;
 
 @InterfaceAudience.Public
 public class GetMasterClusterConfigResponse extends YRpcResponse {
-  private Master.SysClusterConfigEntryPB clusterConfig;
-  private Master.MasterErrorPB serverError;
+  private CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
+  private MasterTypes.MasterErrorPB serverError;
 
   public GetMasterClusterConfigResponse(
-      long ellapsedMillis, String masterUUID, Master.SysClusterConfigEntryPB config,
-      Master.MasterErrorPB error) {
+      long ellapsedMillis, String masterUUID, CatalogEntityInfo.SysClusterConfigEntryPB config,
+      MasterTypes.MasterErrorPB error) {
     super(ellapsedMillis, masterUUID);
     serverError = error;
     clusterConfig = config;
   }
 
-  public Master.SysClusterConfigEntryPB getConfig() {
+  public CatalogEntityInfo.SysClusterConfigEntryPB getConfig() {
     return clusterConfig;
   }
 

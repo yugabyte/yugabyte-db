@@ -21,7 +21,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "yb/common/common.pb.h"
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"

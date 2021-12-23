@@ -59,6 +59,7 @@
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/server/webserver.h"
@@ -1737,7 +1738,7 @@ class JsonTabletDumper : public Visitor<PersistentTabletInfo>, public JsonDumper
       for (const RaftPeerPB& peer : cs.config().peers()) {
         jw_->StartObject();
         jw_->String("type");
-        jw_->String(RaftPeerPB::MemberType_Name(peer.member_type()));
+        jw_->String(PeerMemberType_Name(peer.member_type()));
 
         jw_->String("server_uuid");
         jw_->String(peer.permanent_uuid());

@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <set>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/row.h"
