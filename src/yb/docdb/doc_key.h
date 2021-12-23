@@ -308,7 +308,7 @@ void AppendDocKeyItems(const Collection& doc_key_items, KeyBytes* result) {
   for (const auto& item : doc_key_items) {
     item.AppendToKey(result);
   }
-  result->AppendValueType(ValueType::kGroupEnd);
+  result->AppendGroupEnd();
 }
 
 class DocKeyEncoderAfterHashStep {
@@ -343,8 +343,7 @@ class DocKeyEncoderAfterTableIdStep {
   DocKeyEncoderAfterHashStep Hash(uint16_t hash, const Collection& hashed_group) {
     // We are not setting the "more items in group" bit on the hash field because it is not part
     // of "hashed" or "range" groups.
-    out_->AppendValueType(ValueType::kUInt16Hash);
-    out_->AppendUInt16(hash);
+    AppendHash(hash, out_);
     AppendDocKeyItems(hashed_group, out_);
 
     return DocKeyEncoderAfterHashStep(out_);

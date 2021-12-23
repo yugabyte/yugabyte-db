@@ -57,6 +57,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"

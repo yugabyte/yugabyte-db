@@ -18,7 +18,9 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.pb.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"

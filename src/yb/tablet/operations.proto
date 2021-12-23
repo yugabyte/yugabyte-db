@@ -1,0 +1,68 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.tablet;
+
+option java_package = "org.yb.tablet";
+
+import "yb/common/transaction.proto";
+import "yb/docdb/docdb.proto";
+
+message TransactionStatePB {
+  optional bytes transaction_id = 1;
+  optional TransactionStatus status = 2;
+
+  // tablets has different meaning, depending on status:
+  // COMMITTED - list of involved tablets
+  // APPLYING - single entry, status tablet of this transaction
+  // APPLIED - single entry, tablet that applied this transaction
+  // Not used is other cases.
+  repeated bytes tablets = 3;
+
+  // Relevant only in SEALED state.
+  // Number of batches that should be replicated at appropriate tablet to interpret transaction as
+  // committed.
+  repeated int64 tablet_batches = 5;
+
+  // Relevant only in APPLYING state.
+  optional fixed64 commit_hybrid_time = 4;
+
+  // Relevant only in CLEANUP and APPLYING status, true when we perform request
+  // for a transaction that was previously sealed.
+  optional bool sealed = 6;
+
+  // Set of subtransaction IDs which are aborted.
+  optional AbortedSubTransactionSetPB aborted = 7;
+}
+
+message TruncatePB {
+}
+
+message WritePB {
+  // TODO(proto3) reserved 2, 3, 5, 6, 8, 9, 10, 12, 13, 18;
+
+  optional bytes unused_tablet_id = 1;
+
+  optional docdb.KeyValueWriteBatchPB write_batch = 7;
+
+  // Use 2 int64 to represent UUID.
+  optional fixed64 client_id1 = 14;
+  optional fixed64 client_id2 = 15;
+  optional int64 request_id = 16;
+  optional int64 min_running_request_id = 17;
+
+  optional fixed64 external_hybrid_time = 19;
+
+  optional uint64 batch_idx = 20;
+}

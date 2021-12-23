@@ -51,8 +51,6 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
-#include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"

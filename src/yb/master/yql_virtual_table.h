@@ -21,6 +21,8 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
 
+#include "yb/util/metrics_fwd.h"
+
 namespace yb {
 namespace master {
 

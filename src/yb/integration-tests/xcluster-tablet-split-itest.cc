@@ -12,8 +12,15 @@
 //
 
 #include "yb/cdc/cdc_service.proxy.h"
+
+#include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/tablet-split-itest-base.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master.proxy.h"
 #include "yb/tools/admin-test-base.h"
 #include "yb/tserver/mini_tablet_server.h"
 

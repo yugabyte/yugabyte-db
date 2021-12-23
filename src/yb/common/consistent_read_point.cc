@@ -12,6 +12,8 @@
 //
 #include "yb/common/consistent_read_point.h"
 
+#include "yb/common/common.pb.h"
+
 namespace yb {
 
 ConsistentReadPoint::ConsistentReadPoint(const scoped_refptr<ClockBase>& clock)

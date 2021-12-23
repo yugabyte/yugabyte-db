@@ -45,7 +45,6 @@
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.service.h"
 
 #include "yb/gutil/ref_counted.h"

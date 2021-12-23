@@ -19,6 +19,8 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/optional/optional.hpp>
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
@@ -29,6 +31,9 @@ YB_STRONGLY_TYPED_UUID(SnapshotScheduleId);
 
 using SnapshotSchedulesToObjectIdsMap =
     std::unordered_map<SnapshotScheduleId, std::vector<std::string>, SnapshotScheduleIdHash>;
+
+using RestorationCompleteTimeMap = std::unordered_map<
+    TxnSnapshotRestorationId, HybridTime, TxnSnapshotRestorationIdHash>;
 
 } // namespace yb
 

@@ -45,19 +45,17 @@
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/cdc_consumer_split_driver.h"
@@ -600,7 +598,7 @@ class CatalogManager :
   // Handles the config creation for a given placement.
   CHECKED_STATUS HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
                                                    const TSDescriptorVector& ts_descs,
-                                                   consensus::RaftPeerPB::MemberType member_type,
+                                                   consensus::PeerMemberType member_type,
                                                    consensus::RaftConfigPB* config);
 
     // Set the current committed config.
@@ -1090,7 +1088,7 @@ class CatalogManager :
       const TSDescriptorVector& ts_descs,
       int nreplicas, consensus::RaftConfigPB* config,
       std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts,
-      consensus::RaftPeerPB::MemberType member_type);
+      consensus::PeerMemberType member_type);
 
   void HandleAssignPreparingTablet(TabletInfo* tablet,
                                    DeferredAssignmentActions* deferred);
@@ -1215,7 +1213,7 @@ class CatalogManager :
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
   void SendAddServerRequest(
-      const scoped_refptr<TabletInfo>& tablet, consensus::RaftPeerPB::MemberType member_type,
+      const scoped_refptr<TabletInfo>& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid);
 
   void GetPendingServerTasksUnlocked(const TableId &table_uuid,

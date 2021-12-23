@@ -14,11 +14,15 @@
 
 #include <string>
 
+#include "yb/common/common.pb.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/fast_varint.h"

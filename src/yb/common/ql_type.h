@@ -19,7 +19,7 @@
 #define YB_COMMON_QL_TYPE_H_
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -28,7 +28,6 @@ namespace yb {
 // Used internally in QLType and only set for user-defined types.
 class UDTypeInfo {
  public:
-
   UDTypeInfo(std::string keyspace_name, std::string name)
       : keyspace_name_(keyspace_name), name_(name) {
   }
@@ -242,40 +241,13 @@ class QLType {
 
   // Check whether the type id exists among type ids of all UDTs referenced by this UDT.
   static bool DoesUserDefinedTypeIdExist(const QLTypePB& type_pb,
-                                    const bool transitive,
-                                    const std::string& udt_id) {
-    if (type_pb.main() == USER_DEFINED_TYPE) {
-      if (type_pb.udtype_info().id() == udt_id) {
-        return true;
-      }
-      if (!transitive) {
-        return false; // Do not check params of the UDT if only looking for direct dependencies.
-      }
-    }
-
-    for (const auto& param : type_pb.params()) {
-      if (DoesUserDefinedTypeIdExist(param, transitive, udt_id)) {
-        return true;
-      }
-    }
-    return false;
-  }
+                                         const bool transitive,
+                                         const std::string& udt_id);
 
   // Get the type ids of all UDTs referenced by this UDT.
   static void GetUserDefinedTypeIds(const QLTypePB& type_pb,
                                     const bool transitive,
-                                    std::vector<std::string>* udt_ids) {
-    if (type_pb.main() == USER_DEFINED_TYPE) {
-      udt_ids->push_back(type_pb.udtype_info().id());
-      if (!transitive) {
-        return; // Do not check params of the UDT if only looking for direct dependencies.
-      }
-    }
-
-    for (const auto& param : type_pb.params()) {
-      GetUserDefinedTypeIds(param, transitive, udt_ids);
-    }
-  }
+                                    std::vector<std::string>* udt_ids);
 
   // Returns the type of given field, or nullptr if that field is not found in this UDT.R
   Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const;

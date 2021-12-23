@@ -29,9 +29,9 @@ public class TestClusterFullMoveWithPlacement extends TestClusterBase {
 
   @Test(timeout = TEST_TIMEOUT_SEC * 1000)
   public void testSysCatalogAffinityWithFullMove() throws Exception {
-    List<org.yb.Common.CloudInfoPB> leaders = new ArrayList<org.yb.Common.CloudInfoPB>();
+    List<org.yb.CommonNet.CloudInfoPB> leaders = new ArrayList<org.yb.CommonNet.CloudInfoPB>();
 
-    org.yb.Common.CloudInfoPB cloudInfo = org.yb.Common.CloudInfoPB.newBuilder().
+    org.yb.CommonNet.CloudInfoPB cloudInfo = org.yb.CommonNet.CloudInfoPB.newBuilder().
             setPlacementCloud("c").setPlacementRegion("r").setPlacementZone("z").build();
 
     leaders.add(cloudInfo);

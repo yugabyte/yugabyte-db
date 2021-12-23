@@ -35,7 +35,6 @@
 #include <string>
 
 #include "yb/client/schema.h"
-#include "yb/common/common.pb.h"
 
 namespace yb {
 namespace client {

@@ -15,9 +15,11 @@
 
 #include "yb/common/transaction_error.h"
 
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 

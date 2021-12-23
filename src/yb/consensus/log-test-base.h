@@ -245,7 +245,7 @@ class LogTestBase : public YBTest {
     replicate->mutable_id()->CopyFrom(opid);
     replicate->mutable_committed_op_id()->CopyFrom(committed_opid);
     replicate->set_hybrid_time(clock_->Now().ToUint64());
-    WriteRequestPB *batch_request = replicate->mutable_write_request();
+    auto *batch_request = replicate->mutable_write();
 
     if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
       ASSERT_TRUE(!txn_id.IsNil());
@@ -277,7 +277,6 @@ class LogTestBase : public YBTest {
       FAIL() << "Unexpected operation type: " << consensus::OperationType_Name(op_type);
     }
 
-    batch_request->set_tablet_id(kTestTablet);
     AppendReplicateBatch(replicate, sync);
   }
 

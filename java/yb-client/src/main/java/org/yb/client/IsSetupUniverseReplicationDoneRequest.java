@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class IsSetupUniverseReplicationDoneRequest
@@ -46,7 +47,7 @@ public class IsSetupUniverseReplicationDoneRequest
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
     final boolean done = builder.hasDone() ? builder.getDone() : false;
     final AppStatusPB replicationError =
       builder.hasReplicationError() ? builder.getReplicationError() : null;

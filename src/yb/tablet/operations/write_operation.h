@@ -43,6 +43,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/tablet/operations/operation.h"
+#include "yb/tablet/operations.pb.h"
 #include "yb/tablet/tablet.pb.h"
 
 #include "yb/util/locks.h"
@@ -75,7 +76,7 @@ using docdb::LockBatch;
 // on the WAL.
 //
 // NOTE: this class isn't thread safe.
-class WriteOperation : public OperationBase<OperationType::kWrite, tserver::WriteRequestPB>  {
+class WriteOperation : public OperationBase<OperationType::kWrite, WritePB>  {
  public:
   WriteOperation(int64_t term,
                  CoarseTimePoint deadline, WriteOperationContext* context,
@@ -129,8 +130,6 @@ class WriteOperation : public OperationBase<OperationType::kWrite, tserver::Writ
     return force_txn_path_;
   }
 
-  void SetTablet(Tablet* tablet) override;
-
   bool use_mvcc() const override {
     return true;
   }
@@ -140,10 +139,6 @@ class WriteOperation : public OperationBase<OperationType::kWrite, tserver::Writ
   // Decodes the operations in the request PB and acquires row locks for each of the
   // affected rows.
   CHECKED_STATUS Prepare() override;
-
-  ReadHybridTime read_time() {
-    return ReadHybridTime::FromReadTimePB(*request());
-  }
 
   HybridTime restart_read_ht() const {
     return restart_read_ht_;
@@ -173,6 +168,22 @@ class WriteOperation : public OperationBase<OperationType::kWrite, tserver::Writ
 
   void set_preparing_token(ScopedOperation&& preparing_token) {
     preparing_token_ = std::move(preparing_token);
+  }
+
+  void set_client_request(tserver::WriteRequestPB* req);
+
+  void set_client_request(std::unique_ptr<tserver::WriteRequestPB> req);
+
+  void set_read_time(const ReadHybridTime& read_time) {
+    read_time_ = read_time;
+  }
+
+  const ReadHybridTime& read_time() const {
+    return read_time_;
+  }
+
+  tserver::WriteRequestPB* client_request() {
+    return client_request_;
   }
 
  private:
@@ -241,6 +252,9 @@ class WriteOperation : public OperationBase<OperationType::kWrite, tserver::Writ
   // Pointers to the rpc context, request and response, lifecycle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
   // operation was not initiated by an RPC call.
+  tserver::WriteRequestPB* client_request_ = nullptr;
+  ReadHybridTime read_time_;
+  std::unique_ptr<tserver::WriteRequestPB> client_request_holder_;
   tserver::WriteResponsePB* response_;
 
   docdb::OperationKind kind_;

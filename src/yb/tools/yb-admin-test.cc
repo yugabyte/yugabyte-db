@@ -50,6 +50,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/tools/admin-test-base.h"

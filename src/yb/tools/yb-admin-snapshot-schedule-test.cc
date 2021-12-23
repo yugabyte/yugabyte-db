@@ -21,6 +21,7 @@
 #include "yb/integration-tests/load_balancer_test_util.h"
 
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 

@@ -35,8 +35,6 @@
 #include <map>
 #include <string>
 
-#include "yb/consensus/consensus.pb.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 

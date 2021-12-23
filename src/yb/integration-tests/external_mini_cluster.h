@@ -45,8 +45,9 @@
 
 #include "yb/common/entity_ids_types.h"
 
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -54,10 +55,10 @@
 
 #include "yb/integration-tests/mini_cluster_base.h"
 
-#include "yb/server/server_base.proxy.h"
+#include "yb/server/server_fwd.h"
 
-#include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
@@ -71,6 +72,7 @@ class ExternalTabletServer;
 class HostPort;
 class MetricPrototype;
 class MetricEntityPrototype;
+class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
 
@@ -83,7 +85,6 @@ class ServerStatusPB;
 }  // namespace server
 
 using yb::consensus::ChangeConfigType;
-using yb::consensus::ConsensusServiceProxy;
 
 struct ExternalMiniClusterOptions {
 
@@ -285,7 +286,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // When use_hostport is true, the master is deemed as dead and its UUID is not used.
   CHECKED_STATUS ChangeConfig(ExternalMaster* master,
       ChangeConfigType type,
-      consensus::RaftPeerPB::MemberType member_type = consensus::RaftPeerPB::PRE_VOTER,
+      consensus::PeerMemberType member_type = consensus::PeerMemberType::PRE_VOTER,
       bool use_hostport = false);
 
   // Performs an RPC to the given master to get the number of masters it is tracking in-memory.
@@ -399,7 +400,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Result<tserver::ListTabletsResponsePB> ListTablets(ExternalTabletServer* ts);
 
-  Result<std::vector<tserver::ListTabletsForTabletServerResponsePB::Entry>> GetTablets(
+  Result<std::vector<tserver::ListTabletsForTabletServerResponsePB_Entry>> GetTablets(
       ExternalTabletServer* ts);
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
@@ -497,7 +498,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // commit in the current term as leader).
   CHECKED_STATUS WaitForLeaderToAllowChangeConfig(
       const string& uuid,
-      ConsensusServiceProxy* leader_proxy);
+      consensus::ConsensusServiceProxy* leader_proxy);
 
   // Return master address for specified port.
   std::string MasterAddressForPort(uint16_t port) const;

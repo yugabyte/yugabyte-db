@@ -59,7 +59,9 @@
 #include "yb/gutil/strings/split.h"
 
 #include "yb/master/master.pb.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master.proxy.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
@@ -676,13 +678,14 @@ Status ClusterAdminClient::ChangeConfig(
 
   // Parse the optional fields.
   if (member_type) {
-    RaftPeerPB::MemberType member_type_val;
+    consensus::PeerMemberType member_type_val;
     string uppercase_member_type;
     ToUpperCase(*member_type, &uppercase_member_type);
-    if (!RaftPeerPB::MemberType_Parse(uppercase_member_type, &member_type_val)) {
+    if (!PeerMemberType_Parse(uppercase_member_type, &member_type_val)) {
       return STATUS(InvalidArgument, "Unrecognized member_type", *member_type);
     }
-    if (member_type_val != RaftPeerPB::PRE_VOTER && member_type_val != RaftPeerPB::PRE_OBSERVER) {
+    if (member_type_val != consensus::PeerMemberType::PRE_VOTER &&
+        member_type_val != consensus::PeerMemberType::PRE_OBSERVER) {
       return STATUS(InvalidArgument, "member_type should be PRE_VOTER or PRE_OBSERVER");
     }
     peer_pb.set_member_type(member_type_val);
@@ -954,7 +957,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(peer_uuid);
   // Ignored by ChangeConfig if request != ADD_SERVER.
-  peer_pb.set_member_type(RaftPeerPB::PRE_VOTER);
+  peer_pb.set_member_type(consensus::PeerMemberType::PRE_VOTER);
   HostPortPB *peer_host_port = peer_pb.mutable_last_known_private_addr()->Add();
   peer_host_port->set_port(peer_port);
   peer_host_port->set_host(peer_host);

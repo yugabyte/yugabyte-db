@@ -21,6 +21,7 @@
 
 #include "yb/rpc/rpc_context.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_create_table.h"
 
 #include "yb/util/result.h"

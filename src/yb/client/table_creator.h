@@ -19,11 +19,11 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/partition.h"
+#include "yb/common/common_fwd.h"
 
 #include "yb/gutil/macros.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/util/monotime.h"
 
@@ -135,7 +135,7 @@ class YBTableCreator {
 
   // Return index_info for caller to fill index information.
   IndexInfoPB* mutable_index_info() {
-    return &index_info_;
+    return index_info_.get();
   }
 
   // Set the timeout for the operation. This includes any waiting
@@ -184,18 +184,17 @@ class YBTableCreator {
 
   const YBSchema* schema_ = nullptr;
 
-  PartitionSchemaPB partition_schema_;
+  std::unique_ptr<PartitionSchemaPB> partition_schema_;
 
   std::vector<Partition> partitions_;
 
   int num_replicas_ = 0;
 
-  master::ReplicationInfoPB replication_info_;
-  bool has_replication_info_ = false;
+  std::unique_ptr<master::ReplicationInfoPB> replication_info_;
 
   // When creating index, proxy server construct index_info_, and master server will write it to
   // the data-table being indexed.
-  IndexInfoPB index_info_;
+  std::unique_ptr<IndexInfoPB> index_info_;
 
   bool skip_index_backfill_ = false;
 

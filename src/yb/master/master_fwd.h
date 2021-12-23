@@ -51,10 +51,12 @@ class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
 class CDCConsumerSplitDriverIf;
+class CDCRpcTasks;
 class ClusterConfigInfo;
 class ClusterLoadBalancer;
 class FlushManager;
 class Master;
+class MasterBackupServiceProxy;
 class MasterOptions;
 class MasterPathHandlers;
 class MasterServiceProxy;
@@ -66,6 +68,7 @@ class SnapshotState;
 class SysCatalogTable;
 class SysConfigInfo;
 class SysRowEntries;
+class TSDescriptor;
 class TSManager;
 class TabletSplitCompleteHandlerIf;
 class UDTypeInfo;
@@ -74,6 +77,7 @@ class YQLVirtualTable;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
+struct CDCConsumerStreamInfo;
 struct SplitTabletIds;
 struct TableDescription;
 struct TabletReplica;
@@ -110,6 +114,7 @@ using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
 using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
+using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 
 namespace enterprise {
 

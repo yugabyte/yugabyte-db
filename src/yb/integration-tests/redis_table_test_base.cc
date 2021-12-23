@@ -19,7 +19,9 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/redis_protocol.pb.h"
 
@@ -60,7 +62,7 @@ void RedisTableTestBase::CreateTable() {
     client::YBSchema schema;
     PartitionSchema partition_schema;
     CHECK_OK(client_->GetTableSchema(RedisTableTestBase::table_name(), &schema, &partition_schema));
-    ASSERT_EQ(partition_schema.hash_schema(), kRedisHash);
+    ASSERT_EQ(partition_schema.hash_schema(), YBHashSchema::kRedisHash);
     table_exists_ = true;
   }
 }

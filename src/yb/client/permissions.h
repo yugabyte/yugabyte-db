@@ -79,11 +79,6 @@ struct RoleAuthInfo {
 using RolesPermissionsMap = std::unordered_map<RoleName, RolePermissions>;
 using RolesAuthInfoMap = std::unordered_map<RoleName, RoleAuthInfo>;
 
-enum class CacheCheckMode {
-  NO_RETRY,
-  RETRY,
-};
-
 class PermissionsCache {
  public:
   explicit PermissionsCache(client::YBClient* client,

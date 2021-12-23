@@ -50,6 +50,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/algorithm.h"
@@ -73,6 +75,10 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/server_base.pb.h"
+#include "yb/server/server_base.proxy.h"
+
+#include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"
@@ -643,7 +649,7 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
 
 Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
                                          ChangeConfigType type,
-                                         RaftPeerPB::MemberType member_type,
+                                         consensus::PeerMemberType member_type,
                                          bool use_hostport) {
   if (type != consensus::ADD_SERVER && type != consensus::REMOVE_SERVER) {
     return STATUS(InvalidArgument, Substitute("Invalid Change Config type $0", type));

@@ -30,6 +30,7 @@
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/debug-util.h"

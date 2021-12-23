@@ -48,10 +48,10 @@
 #include "yb/util/status.h"
 #include "yb/util/type_traits.h"
 #include "yb/common/entity_ids.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master.pb.h"
 #include "yb/tools/yb-admin_cli.h"
-#include "yb/consensus/consensus.pb.h"
-#include "yb/master/master.proxy.h"
-#include "yb/master/master_backup.proxy.h"
 #include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
@@ -304,7 +304,7 @@ class ClusterAdminClient {
 
   // Fetch the latest list of tablet servers from the Master.
   CHECKED_STATUS ListTabletServers(
-      google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry>* servers);
+      google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB_Entry>* servers);
 
   // Look up the RPC address of the server with the specified UUID from the Master.
   Result<HostPort> GetFirstRpcAddressForTS(const std::string& uuid);

@@ -19,7 +19,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 
 #include "yb/master/master_fwd.h"
 

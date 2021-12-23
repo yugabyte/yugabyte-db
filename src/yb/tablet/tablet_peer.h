@@ -45,12 +45,12 @@
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_types.h"
-#include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant_context.h"
@@ -60,6 +60,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/semaphore.h"
 
 using yb::consensus::StateChangeContext;
@@ -203,7 +204,7 @@ class TabletPeer : public consensus::ConsensusContext,
   void UpdateClock(HybridTime hybrid_time) override;
 
   std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      tserver::TransactionStatePB* request) override;
+      TransactionStatePB* request) override;
 
   void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;

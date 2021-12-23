@@ -15,9 +15,10 @@ package org.yb.client;
 import com.google.protobuf.Message;
 import java.util.Set;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.Common;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicationResponse> {
@@ -33,7 +34,7 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
     String replicationGroupName,
     Set<String> sourceTableIDsToAdd,
     Set<String> sourceTableIDsToRemove,
-    Set<Common.HostPortPB> sourceMasterAddresses,
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
     String newReplicationGroupName) {
     super(table);
     this.replicationGroupName = replicationGroupName;
@@ -79,7 +80,7 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     AlterUniverseReplicationResponse response =
       new AlterUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),

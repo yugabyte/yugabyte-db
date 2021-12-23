@@ -18,7 +18,8 @@ import java.util.List;
 import java.util.TreeSet;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.master.Master;
 
 
@@ -61,10 +62,11 @@ public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClus
   }
 
   @Override
-  protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
+  protected CatalogEntityInfo.SysClusterConfigEntryPB modifyConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
     // Modify the blacklist.
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder(config);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder(config);
 
     // Use a TreeSet so we can prune duplicates while keeping HostPortPB as storage.
     TreeSet<HostPortPB> finalHosts =
@@ -99,8 +101,8 @@ public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClus
       finalHosts.removeAll(removeHosts);
     }
     // Change the blacklist in the local config copy.
-    Master.BlacklistPB blacklist =
-        Master.BlacklistPB.newBuilder().addAllHosts(finalHosts).build();
+    CatalogEntityInfo.BlacklistPB blacklist =
+        CatalogEntityInfo.BlacklistPB.newBuilder().addAllHosts(finalHosts).build();
 
     if (isLeaderBlacklist) {
       configBuilder.setLeaderBlacklist(blacklist);

@@ -23,7 +23,7 @@
 #include <glog/logging.h>
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_backup.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"

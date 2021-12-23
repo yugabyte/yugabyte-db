@@ -69,6 +69,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/bind.h"
@@ -2097,6 +2098,10 @@ Result<YBTablePtr> YBClient::OpenTable(const YBTableName& name) {
   YBTablePtr result;
   RETURN_NOT_OK(OpenTable(name, &result));
   return result;
+}
+
+Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name) {
+  return VERIFY_RESULT(client->GetYBTableInfo(table_name)).table_id;
 }
 
 }  // namespace client

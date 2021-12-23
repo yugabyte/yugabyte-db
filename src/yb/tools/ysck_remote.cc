@@ -46,6 +46,8 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
@@ -75,6 +77,15 @@ using client::YBTableName;
 
 MonoDelta GetDefaultTimeout() {
   return MonoDelta::FromMilliseconds(FLAGS_timeout_ms);
+}
+
+RemoteYsckTabletServer::RemoteYsckTabletServer(const std::string& id,
+                                               const HostPort& address,
+                                               rpc::ProxyCache* proxy_cache)
+    : YsckTabletServer(id),
+      address_(address.ToString()),
+      generic_proxy_(new server::GenericServiceProxy(proxy_cache, address)),
+      ts_proxy_(new tserver::TabletServerServiceProxy(proxy_cache, address)) {
 }
 
 Status RemoteYsckTabletServer::Connect() const {
