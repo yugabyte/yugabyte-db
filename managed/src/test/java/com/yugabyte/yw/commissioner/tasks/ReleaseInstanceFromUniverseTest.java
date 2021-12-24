@@ -38,7 +38,7 @@ import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
