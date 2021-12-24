@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -35,6 +36,8 @@ import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.CallableSql;
+import io.ebean.Ebean;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -49,6 +52,7 @@ import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.persistence.PersistenceException;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
@@ -664,6 +668,23 @@ public class AlertConfigurationTest extends FakeDBApplication {
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),
         "errorJson: {\"customerUUID\":[\"can't change for configuration 'Memory Consumption'\"]}");
+  }
+
+  @Test
+  public void testTransactions() {
+    AlertConfiguration configuration = createTestConfiguration();
+    CallableSql dropTable = Ebean.createCallableSql("drop table maintenance_window");
+    Ebean.execute(dropTable);
+
+    configuration.setMaintenanceWindowUuids(ImmutableSet.of(UUID.randomUUID()));
+
+    assertThat(
+        () -> alertConfigurationService.save(configuration),
+        thrown(
+            PersistenceException.class, containsString("Table \"MAINTENANCE_WINDOW\" not found")));
+
+    AlertConfiguration updated = alertConfigurationService.get(configuration.getUuid());
+    assertThat(updated.getMaintenanceWindowUuids(), nullValue());
   }
 
   private void testValidationCreate(Consumer<AlertConfiguration> modifier, String expectedMessage) {
