@@ -26,12 +26,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -40,7 +38,7 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EditUniverseTest extends UniverseModifyBaseTest {

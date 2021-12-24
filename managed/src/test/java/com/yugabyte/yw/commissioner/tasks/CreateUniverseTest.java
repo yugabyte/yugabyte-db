@@ -32,7 +32,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateUniverseTest extends UniverseModifyBaseTest {

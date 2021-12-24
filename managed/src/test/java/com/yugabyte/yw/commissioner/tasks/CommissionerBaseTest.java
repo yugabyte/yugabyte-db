@@ -50,7 +50,7 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;

@@ -9,6 +9,8 @@
  */
 package com.yugabyte.yw.common;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
 import org.hamcrest.TypeSafeMatcher;
@@ -19,21 +21,28 @@ public class ThrownMatcher extends TypeSafeMatcher<Runnable> {
 
   private final String expected;
   private final String expectedMessage;
+  private final Matcher<String> messageAssertion;
   private String actual;
   private String actualMessage;
 
-  public ThrownMatcher(String s, String expectedMessage) {
+  public ThrownMatcher(String s, String expectedMessage, Matcher<String> messageAssertion) {
     expected = s;
     this.expectedMessage = expectedMessage;
+    this.messageAssertion = messageAssertion;
   }
 
   public static Matcher<Runnable> thrown(Class<? extends Throwable> expected) {
-    return new ThrownMatcher(expected.getName(), null);
+    return new ThrownMatcher(expected.getName(), null, null);
+  }
+
+  public static Matcher<Runnable> thrown(
+      Class<? extends Throwable> expected, Matcher<String> messageAssertion) {
+    return new ThrownMatcher(expected.getName(), null, messageAssertion);
   }
 
   public static Matcher<Runnable> thrown(
       Class<? extends Throwable> expected, String expectedMessage) {
-    return new ThrownMatcher(expected.getName(), expectedMessage);
+    return new ThrownMatcher(expected.getName(), expectedMessage, null);
   }
 
   @Override
@@ -47,8 +56,17 @@ public class ThrownMatcher extends TypeSafeMatcher<Runnable> {
       actual = t.getClass().getName();
       actualMessage = t.getMessage();
       return actual.equals(expected)
-          && (expectedMessage == null || actualMessage.equals(expectedMessage));
+          && (expectedMessage == null || actualMessage.equals(expectedMessage))
+          && assertMessage();
     }
+  }
+
+  private boolean assertMessage() {
+    if (messageAssertion == null) {
+      return true;
+    }
+    assertThat(actualMessage, messageAssertion);
+    return true;
   }
 
   @Override
