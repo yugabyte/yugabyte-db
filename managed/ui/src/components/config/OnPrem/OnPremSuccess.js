@@ -127,6 +127,7 @@ class NewOnPremSuccess extends Component {
 
     const { configuredProviders, selectedProviderUUID, universeList } = this.props;
     const currentProvider = configuredProviders.data.find((provider) => provider.uuid === selectedProviderUUID);
+    this.props.setSelectedProvider(currentProvider.uuid);
     this.setState({ currentProvider }, () => {
       this.fetchInstanceAndNodeList();
     });
