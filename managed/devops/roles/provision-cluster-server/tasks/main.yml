@@ -135,6 +135,10 @@
       - cloud_type != "onprem"
   when: not systemd_option
 
+- include_tasks: "setup-cgroup.yml"
+  # setting up cgroup on YB DB nodes requires installing additional packages from external repos.
+  when: not air_gap
+
 - block:
   # Give yugabyte user sudo access to start/stop/restart master and tserver
   - name: Add yugabyte sudo user without password
