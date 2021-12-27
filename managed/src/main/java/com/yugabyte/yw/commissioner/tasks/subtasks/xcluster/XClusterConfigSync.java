@@ -8,6 +8,7 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import io.ebean.annotation.Transactional;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,6 @@ import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
-import play.db.ebean.Transactional;
 
 @Slf4j
 public class XClusterConfigSync extends XClusterConfigTaskBase {
