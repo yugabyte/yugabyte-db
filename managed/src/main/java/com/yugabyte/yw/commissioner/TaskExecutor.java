@@ -864,6 +864,15 @@ public class TaskExecutor {
       }
     }
 
+    /**
+     * Clears the already added subtask groups so that they are not run when the RunnableTask is
+     * re-run.
+     */
+    public void reset() {
+      subTaskGroups.clear();
+      subTaskPosition = 0;
+    }
+
     @Override
     protected Instant getAbortTime() {
       return abortTime;

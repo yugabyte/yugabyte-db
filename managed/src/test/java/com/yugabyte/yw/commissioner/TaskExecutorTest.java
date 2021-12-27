@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
@@ -114,7 +115,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testTaskSubmission() throws InterruptedException {
     ITask task = mockTaskCommon();
-    TaskExecutor.RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
@@ -126,7 +127,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void testTaskFailure() throws InterruptedException {
     ITask task = mockTaskCommon();
     doThrow(new RuntimeException("Error occurred in task")).when(task).run();
-    TaskExecutor.RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID outTaskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(outTaskUUID);
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
@@ -154,7 +155,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(task)
         .run();
 
-    TaskExecutor.RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
@@ -186,7 +187,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .run();
 
     doThrow(new RuntimeException("Error occurred in subtask")).when(subTask).run();
-    TaskExecutor.RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
@@ -217,7 +218,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(task)
         .run();
 
-    TaskExecutor.RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     try {
       assertThrows(RuntimeException.class, () -> taskExecutor.abort(taskUUID));
@@ -262,7 +263,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(subTask1)
         .run();
 
-    TaskExecutor.RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     if (!latch1.await(200, TimeUnit.SECONDS)) {
@@ -312,7 +313,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .run();
 
     AtomicInteger test = new AtomicInteger(0);
-    TaskExecutor.RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     taskRunner.setTaskExecutionListener(
         new TaskExecutionListener() {
@@ -343,5 +344,45 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
     assertEquals(TaskInfo.State.Aborted, subTaskInfos.get(1).getTaskState());
+  }
+
+  @Test
+  public void testRunnableTaskReset() {
+    ITask task = mockTaskCommon();
+    ITask subTask1 = mockTaskCommon();
+    ITask subTask2 = mockTaskCommon();
+    AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
+    doAnswer(
+            inv -> {
+              RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
+              // Invoke subTask from the parent task.
+              SubTaskGroup subTasksGroup = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup.addSubTask(subTask1);
+              runnable.addSubTaskGroup(subTasksGroup);
+              runnable.reset();
+              subTasksGroup = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup.addSubTask(subTask2);
+              runnable.addSubTaskGroup(subTasksGroup);
+              runnable.runSubTasks();
+              return null;
+            })
+        .when(task)
+        .run();
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    taskUUIDRef.set(taskRunner.getTaskUUID());
+    UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
+    verify(subTask1, times(0)).run();
+    verify(subTask2, times(1)).run();
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertEquals(1, subTasksByPosition.size());
+    Set<TaskInfo.State> subTaskStates =
+        subTasksByPosition.get(0).stream().map(TaskInfo::getTaskState).collect(Collectors.toSet());
+    assertEquals(2, subTaskStates.size());
+    assertTrue(subTaskStates.contains(TaskInfo.State.Created));
+    assertTrue(subTaskStates.contains(TaskInfo.State.Success));
   }
 }

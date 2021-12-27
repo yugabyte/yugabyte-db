@@ -20,6 +20,10 @@ public class SubTaskGroupQueue {
   public SubTaskGroupQueue(UUID userTaskUUID) {
     taskExecutor = Play.current().injector().instanceOf(TaskExecutor.class);
     runnableTask = taskExecutor.getRunnableTask(userTaskUUID);
+    // Some tasks like UpgradeUniverse to resize disk create more than one instance of this class in
+    // the same task. The expectation for each new instance is to get an empty queue of subtask
+    // groups but has reference to the parent task.
+    runnableTask.reset();
   }
 
   public SubTaskGroupQueue(RunnableTask runnableTask) {
