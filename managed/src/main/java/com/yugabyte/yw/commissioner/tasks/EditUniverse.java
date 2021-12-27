@@ -122,12 +122,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               .stream()
               .filter(n -> n.masterState == MasterState.ToStop)
               .collect(Collectors.toSet());
+      boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
       for (Cluster cluster : taskParams().clusters) {
         editCluster(
             universe,
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
-            getNodesInCluster(cluster.uuid, removedMasters));
+            getNodesInCluster(cluster.uuid, removedMasters),
+            updateMasters);
       }
 
       // Wait for the master leader to hear from all tservers.
@@ -159,7 +161,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       Universe universe,
       Cluster cluster,
       Set<NodeDetails> newMasters,
-      Set<NodeDetails> mastersToStop) {
+      Set<NodeDetails> mastersToStop,
+      boolean updateMasters) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
 
@@ -344,7 +347,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.
       createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);
+    }
 
+    if (updateMasters) {
       // Change the master addresses in the conf file for all tservers.
       Set<NodeDetails> allTservers = new HashSet<>(newTservers);
       allTservers.addAll(liveNodes);
@@ -389,6 +394,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createDestroyServerTasks(nodesToBeRemoved, false /* isForceDelete */, true /* deleteNode */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
+
+    // Clear blacklisted tservers.
+    createModifyBlackListTask(null, tserversToBeRemoved, false /* isLeaderBlacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
