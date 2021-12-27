@@ -11,6 +11,7 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -30,7 +31,6 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 import lombok.extern.slf4j.Slf4j;
-import play.db.ebean.Transactional;
 
 @Slf4j
 @Table(
