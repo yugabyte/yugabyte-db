@@ -8,8 +8,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -60,6 +62,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForLoadBalance,
+          TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
+          TaskType.ModifyBlackList,
           TaskType.UniverseUpdateSucceeded);
 
   private void assertTaskSequence(
@@ -88,12 +93,14 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
+    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
         new ChangeMasterClusterConfigResponse(1111, "", null);
 
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+          .thenReturn(Boolean.TRUE);
     } catch (Exception e) {
     }
     mockWaits(mockClient);

@@ -33,7 +33,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
@@ -78,13 +77,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       if (performUniversePreflightChecks(taskParams().clusters)) {
         // Select master nodes, if needed.
         selectMasters();
+        boolean updateMasters =
+            !PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet).isEmpty()
+                || !PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet).isEmpty();
 
         // Update the user intent.
         writeUserIntentToUniverse(false);
 
         for (Cluster cluster : taskParams().clusters) {
           addDefaultGFlags(cluster.userIntent);
-          editCluster(universe, cluster);
+          editCluster(universe, cluster, updateMasters);
         }
 
         // Update the DNS entry for this universe, based in primary provider info.
@@ -112,7 +114,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     log.info("Finished {} task.", getName());
   }
 
-  private void editCluster(Universe universe, Cluster cluster) {
+  private void editCluster(Universe universe, Cluster cluster, boolean updateMasters) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
 
@@ -131,6 +133,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
     }
 
+    Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(nodes);
+
     // Update any tags on nodes that are not going to be removed and not being added.
     Cluster existingCluster = universe.getCluster(cluster.uuid);
     if (!cluster.areTagsSame(existingCluster)) {
@@ -139,7 +143,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           existingCluster.userIntent.instanceTags,
           cluster.userIntent.instanceTags);
       createUpdateInstanceTagsTasks(
-          PlacementInfoUtil.getLiveNodes(nodes),
+          liveNodes,
           Util.getKeysNotPresent(
               existingCluster.userIntent.instanceTags, cluster.userIntent.instanceTags));
     }
@@ -305,17 +309,24 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.
       createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);
+    }
 
-      // Change the master addresses in the conf file for the new tservers.
-      createConfigureServerTasks(newTservers, false /* isShell */, true /* updateMasterAddrs */);
+    if (updateMasters) {
+      // Change the master addresses in the conf file for all tservers.
+      Set<NodeDetails> allTservers = new HashSet<>(newTservers);
+      allTservers.addAll(liveNodes);
+
+      createConfigureServerTasks(allTservers, false /* isShell */, true /* updateMasterAddrs */);
       createSetFlagInMemoryTasks(
-              newTservers,
+              allTservers,
               ServerType.TSERVER,
               true /* force flag update */,
               null /* no gflag to update */,
               true /* updateMasterAddrs */)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    }
 
+    if (!newMasters.isEmpty()) {
       // Change the master addresses in the conf file for the new masters.
       createConfigureServerTasks(
           newMasters, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */);
@@ -336,6 +347,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createDestroyServerTasks(nodesToBeRemoved, false /* isForceDelete */, true /* deleteNode */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
+
+    // Clear blacklisted tservers.
+    createModifyBlackListTask(null, tserversToBeRemoved, false /* isLeaderBlacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
