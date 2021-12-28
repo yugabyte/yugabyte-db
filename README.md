@@ -20,6 +20,7 @@
 * [Setup](#setup)
 * [Building from source code](#building-from-source)
 * [How to contribute](#how-to-contribute)
+* [Report a Bug](#report-a-bug)
 * [Support, discussions and forums](#support-discussions-and-forums)
 * [License](#license)
 * [Copyright notice](#copyright-notice)
@@ -240,6 +241,10 @@ make USE_PGXS=1 install
 We welcome and strongly encourage community participation and contributions, and are always looking for new members that are as dedicated to serving the community as we are.
 
 The [Contributing Guide](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md) contains the guidelines on how you can contribute.
+
+### Report a Bug
+
+Please report all bugs to Percona's Jira: https://jira.percona.com/projects/PG/issues
 
 
 ### Support, discussions and forums
