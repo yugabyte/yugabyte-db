@@ -30,6 +30,10 @@ class AlertItem extends Component {
       statusText = 'Failed';
       statusVerbClassName = 'yb-fail-color';
       statusIconClassName = 'fa-warning yb-fail-color';
+    } else if (taskInfo.status === 'Aborted') {
+      statusText = 'Aborted';
+      statusVerbClassName = 'yb-fail-color';
+      statusIconClassName = 'fa-warning yb-fail-color';
     } else {
       statusText = 'Unknown';
       statusVerbClassName = 'yb-unknown-color';
