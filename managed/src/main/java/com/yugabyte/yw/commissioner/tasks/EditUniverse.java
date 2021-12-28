@@ -13,6 +13,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
@@ -41,6 +43,8 @@ import lombok.extern.slf4j.Slf4j;
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
 @Slf4j
+@Abortable
+@Retryable
 public class EditUniverse extends UniverseDefinitionTaskBase {
 
   @Inject
