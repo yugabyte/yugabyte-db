@@ -220,9 +220,8 @@ class DocKeyColumnPathBuilder {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response) {
+Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
-  request_.Swap(request);
   response_ = response;
 
   doc_key_ = VERIFY_RESULT(FetchDocKey(schema_, request_));

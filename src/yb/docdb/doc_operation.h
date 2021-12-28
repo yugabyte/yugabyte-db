@@ -78,6 +78,8 @@ class DocOperation {
 template <DocOperationType OperationType, class RequestPB>
 class DocOperationBase : public DocOperation {
  public:
+  explicit DocOperationBase(std::reference_wrapper<const RequestPB> request) : request_(request) {}
+
   Type OpType() override {
     return OperationType;
   }
@@ -87,7 +89,7 @@ class DocOperationBase : public DocOperation {
   }
 
  protected:
-  RequestPB request_;
+  const RequestPB& request_;
 };
 
 typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;

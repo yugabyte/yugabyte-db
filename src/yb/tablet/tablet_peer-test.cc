@@ -58,12 +58,11 @@
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
 
-#include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tserver.pb.h"
 
@@ -236,15 +235,14 @@ class TabletPeerTest : public YBTabletTest {
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     WriteResponsePB resp;
-    auto operation = std::make_unique<WriteOperation>(
+    auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
-    operation->set_client_request(const_cast<WriteRequestPB*>(&req));
+    query->set_client_request(req);
 
     CountDownLatch rpc_latch(1);
-    operation->set_completion_callback(
-        MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
+    query->set_callback(MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
 
-    tablet_peer->WriteAsync(std::move(operation));
+    tablet_peer->WriteAsync(std::move(query));
     rpc_latch.Wait();
     CHECK(!resp.has_error())
         << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp.DebugString();

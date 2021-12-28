@@ -62,7 +62,8 @@ class TruncateOperation;
 class TruncatePB;
 class UpdateTxnOperation;
 class WriteOperation;
-class WriteOperationContext;
+class WriteQuery;
+class WriteQueryContext;
 
 struct CreateSnapshotData;
 struct DocDbOpIds;

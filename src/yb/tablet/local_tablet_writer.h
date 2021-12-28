@@ -41,7 +41,7 @@
 
 #include "yb/gutil/macros.h"
 
-#include "yb/tablet/operations/write_operation_context.h"
+#include "yb/tablet/write_query_context.h"
 
 #include "yb/tserver/tserver_fwd.h"
 
@@ -53,7 +53,7 @@ namespace tablet {
 //
 // This is useful for unit-testing the Tablet code paths with no consensus
 // implementation or thread pools.
-class LocalTabletWriter : public WriteOperationContext {
+class LocalTabletWriter : public WriteQueryContext {
  public:
   typedef google::protobuf::RepeatedPtrField<QLWriteRequestPB> Batch;
 

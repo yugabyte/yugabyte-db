@@ -22,6 +22,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tserver.pb.h"
 
@@ -67,12 +68,12 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
   }
   req_->mutable_ql_write_batch()->Swap(batch);
 
-  auto operation = std::make_unique<WriteOperation>(
+  auto query = std::make_unique<WriteQuery>(
       OpId::kUnknownTerm, CoarseTimePoint::max() /* deadline */, this,
       tablet_, resp_.get());
-  operation->set_client_request(req_.get());
+  query->set_client_request(*req_);
   write_promise_ = std::promise<Status>();
-  tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
+  tablet_->AcquireLocksAndPerformDocOperations(std::move(query));
 
   return write_promise_.get_future().get();
 }
@@ -90,6 +91,8 @@ void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t ter
   CHECK_OK(tablet_->ApplyRowOperations(state));
 
   tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
+
+  state->CompleteWithStatus(Status::OK());
 
   // Return the status of first failed op.
   int op_idx = 0;
