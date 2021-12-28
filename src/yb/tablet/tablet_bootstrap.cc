@@ -1372,8 +1372,7 @@ class TabletBootstrap {
 
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
-    WriteOperation operation(OpId::kUnknownTerm, CoarseTimePoint::max(), /* context */ nullptr);
-    *operation.AllocateRequest() = *write;
+    WriteOperation operation(tablet_.get(), write);
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
     operation.set_hybrid_time(hybrid_time);
