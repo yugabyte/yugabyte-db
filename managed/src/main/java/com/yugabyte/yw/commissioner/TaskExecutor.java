@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
@@ -19,6 +21,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.client.CollectorRegistry;
@@ -133,6 +136,9 @@ public class TaskExecutor {
 
   private final String taskOwner;
 
+  // Skip or perform abortable check for subtasks.
+  private final boolean skipSubTaskAbortableCheck;
+
   private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
       "ybp_commissioner_task_waiting_sec";
 
@@ -196,6 +202,35 @@ public class TaskExecutor {
         .observe(getDurationSeconds(startTime, endTime));
   }
 
+  static Class<? extends ITask> getTaskClass(TaskType taskType) {
+    checkNotNull(taskType, "Task type must be non-null");
+    return TASK_TYPE_TO_CLASS_MAP.get(taskType);
+  }
+
+  // It looks for the annotation starting from the current class to its super classes until it
+  // finds. If it is not found, it returns false, else the value of enabled is returned. It is
+  // possible to override an annotation already defined in the superclass.
+  static boolean isTaskAbortable(Class<? extends ITask> taskClass) {
+    checkNotNull(taskClass, "Task class must be non-null");
+    Optional<Abortable> optional = CommonUtils.isAnnotatedWith(taskClass, Abortable.class);
+    if (optional.isPresent()) {
+      return optional.get().enabled();
+    }
+    return false;
+  }
+
+  // It looks for the annotation starting from the current class to its super classes until it
+  // finds. If it is not found, it returns false, else the value of enabled is returned. It is
+  // possible to override an annotation already defined in the superclass.
+  static boolean isTaskRetryable(Class<? extends ITask> taskClass) {
+    checkNotNull(taskClass, "Task class must be non-null");
+    Optional<Retryable> optional = CommonUtils.isAnnotatedWith(taskClass, Retryable.class);
+    if (optional.isPresent()) {
+      return optional.get().enabled();
+    }
+    return false;
+  }
+
   @Inject
   public TaskExecutor(
       ApplicationLifecycle lifecycle,
@@ -204,6 +239,7 @@ public class TaskExecutor {
     this.executorServiceProvider = executorServiceProvider;
     this.replicationManager = replicationManager;
     this.taskOwner = Util.getHostname();
+    this.skipSubTaskAbortableCheck = true;
     lifecycle.addStopHook(
         () ->
             CompletableFuture.supplyAsync(() -> TaskExecutor.this.shutdown(Duration.ofMinutes(5))));
@@ -347,7 +383,7 @@ public class TaskExecutor {
     }
     RunnableTask runnableTask = optional.get();
     ITask task = runnableTask.task;
-    if (!task.isAbortable()) {
+    if (!isTaskAbortable(task.getClass())) {
       throw new RuntimeException("Task " + task.getName() + " is not abortable");
     }
     // Signal abort to the task.
@@ -558,12 +594,17 @@ public class TaskExecutor {
             Duration timeout = runnableSubTask.getTimeLimit();
             Instant abortTime = runnableTask.getAbortTime();
             // If the subtask execution takes long, it is interrupted.
-            if ((!timeout.isZero() && elapsed.compareTo(timeout) > 0)
-                || (abortTime != null
-                    && Duration.between(abortTime, Instant.now()).compareTo(defaultAbortTaskTimeout)
-                        > 0
-                    && runnableSubTask.task.isAbortable())) {
+            if (!timeout.isZero() && elapsed.compareTo(timeout) > 0) {
+              // Report failure to the parent task.
               t = e;
+            } else if (abortTime != null
+                && Duration.between(abortTime, Instant.now()).compareTo(defaultAbortTaskTimeout) > 0
+                && (skipSubTaskAbortableCheck
+                    || isTaskAbortable(runnableSubTask.task.getClass()))) {
+              // Report aborted to the parent task.
+              t = new CancellationException(e.getMessage());
+            }
+            if (t != null) {
               future.cancel(true);
               // Update the subtask state to aborted if the execution timed out.
               runnableSubTask.setTaskState(TaskInfo.State.Aborted);

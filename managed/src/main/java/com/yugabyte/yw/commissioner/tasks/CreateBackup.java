@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
@@ -54,6 +55,7 @@ import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 
 @Slf4j
+@Abortable
 public class CreateBackup extends UniverseTaskBase {
 
   @Inject
