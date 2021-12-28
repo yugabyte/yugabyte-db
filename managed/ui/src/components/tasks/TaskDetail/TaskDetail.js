@@ -32,10 +32,11 @@ class TaskDetail extends Component {
 
   retryTaskClicked = (currentTaskUUID) => {
     this.props.retryCurrentTask(currentTaskUUID).then((response) => {
-      const taskResponse = response?.payload?.response;
-      if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
+      const status = response?.payload?.response?.status || response?.payload?.status;
+      if (status === 200 || status === 201) {
         browserHistory.push('/tasks');
       } else {
+        const taskResponse = response?.payload?.response;
         const toastMessage = taskResponse?.data?.error
           ? taskResponse?.data?.error
           : taskResponse?.statusText;
