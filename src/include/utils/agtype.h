@@ -522,6 +522,7 @@ agtype_value *get_agtype_value(char *funcname, agtype *agt_arg,
                                enum agtype_value_type type, bool error);
 bool is_agtype_null(agtype *agt_arg);
 agtype_value *string_to_agtype_value(char *s);
+agtype_value *integer_to_agtype_value(int64 int_value);
 void add_agtype(Datum val, bool is_null, agtype_in_state *result, Oid val_type,
                 bool key_scalar);
 

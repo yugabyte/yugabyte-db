@@ -147,7 +147,7 @@ static Numeric get_numeric_compatible_arg(Datum arg, Oid type, char *funcname,
 agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
                                                  int variadic_offset,
                                                  int expected_nargs);
-static agtype_value *integer_to_agtype_value(int64 int_value);
+
 static int64 get_int64_from_int_datums(Datum d, Oid type, char *funcname,
                                        bool *is_agnull);
 
@@ -1755,7 +1755,7 @@ agtype_value *string_to_agtype_value(char *s)
 }
 
 /* helper function to create an agtype_value integer from an integer */
-static agtype_value *integer_to_agtype_value(int64 int_value)
+agtype_value *integer_to_agtype_value(int64 int_value)
 {
     agtype_value *agtv = palloc0(sizeof(agtype_value));
 
