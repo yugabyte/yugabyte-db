@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_WRITE_OPERATION_CONTEXT_H
-#define YB_TABLET_OPERATIONS_WRITE_OPERATION_CONTEXT_H
+#ifndef YB_TABLET_WRITE_QUERY_CONTEXT_H
+#define YB_TABLET_WRITE_QUERY_CONTEXT_H
 
 #include "yb/common/hybrid_time.h"
 
@@ -21,16 +21,16 @@
 namespace yb {
 namespace tablet {
 
-class WriteOperationContext {
+class WriteQueryContext {
  public:
   // When operation completes, its callback is executed.
   virtual void Submit(std::unique_ptr<Operation> operation, int64_t term) = 0;
   virtual Result<HybridTime> ReportReadRestart() = 0;
 
-  virtual ~WriteOperationContext() {}
+  virtual ~WriteQueryContext() {}
 };
 
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_WRITE_OPERATION_CONTEXT_H
+#endif  // YB_TABLET_WRITE_QUERY_CONTEXT_H

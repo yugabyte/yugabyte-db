@@ -66,7 +66,8 @@ set(TABLET_SRCS
   tablet_metadata.cc
   tablet_retention_policy.cc
   preparer.cc
-  ${TABLET_SRCS_EXTENSIONS})
+  write_query.cc
+  )
 
 set(TABLET_DEPS pq_utils)
 

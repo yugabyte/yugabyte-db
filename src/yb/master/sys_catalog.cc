@@ -81,6 +81,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -673,14 +674,13 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   }
 
   auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation = std::make_unique<tablet::WriteOperation>(
+  auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
       tablet_peer()->tablet(), resp.get());
-  operation->set_client_request(&writer->req());
-  operation->set_completion_callback(
-      tablet::MakeLatchOperationCompletionCallback(latch, resp));
+  query->set_client_request(writer->req());
+  query->set_callback(tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
-  tablet_peer()->WriteAsync(std::move(operation));
+  tablet_peer()->WriteAsync(std::move(query));
   peer_write_count->Increment();
 
   {

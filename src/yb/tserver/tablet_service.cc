@@ -78,6 +78,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
@@ -256,7 +257,6 @@ double TEST_delay_create_transaction_probability = 0;
 namespace yb {
 namespace tserver {
 
-
 using client::internal::ForwardReadRpc;
 using client::internal::ForwardWriteRpc;
 using consensus::ChangeConfigRequestPB;
@@ -361,16 +361,6 @@ bool RejectWrite(tablet::TabletPeer* tablet_peer, const std::string& message, do
   return false;
 }
 
-void AdjustYsqlOperationTransactionality(
-    size_t ysql_batch_size,
-    const TabletPeer* tablet_peer,
-    tablet::WriteOperation* operation) {
-  // Operations on YSQL system catalog tables are always considered transactional.
-  if (ysql_batch_size > 0 && tablet_peer->tablet()->is_sys_catalog()) {
-    operation->set_force_txn_path();
-  }
-}
-
 } // namespace
 
 template<class Resp>
@@ -425,19 +415,19 @@ bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
-class WriteOperationCompletionCallback {
+class WriteQueryCompletionCallback {
  public:
-  WriteOperationCompletionCallback(
+  WriteQueryCompletionCallback(
       tablet::TabletPeerPtr tablet_peer,
       std::shared_ptr<rpc::RpcContext> context,
       WriteResponsePB* response,
-      tablet::WriteOperation* operation,
+      tablet::WriteQuery* query,
       const server::ClockPtr& clock,
       bool trace = false)
       : tablet_peer_(std::move(tablet_peer)),
         context_(std::move(context)),
         response_(response),
-        operation_(operation),
+        query_(query),
         clock_(clock),
         include_trace_(trace),
         trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
@@ -446,9 +436,9 @@ class WriteOperationCompletionCallback {
     VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
     // When we don't need to return any data, we could return success on duplicate request.
     if (status.IsAlreadyPresent() &&
-        operation_->ql_write_ops()->empty() &&
-        operation_->pgsql_write_ops()->empty() &&
-        operation_->client_request()->redis_write_batch().empty()) {
+        query_->ql_write_ops()->empty() &&
+        query_->pgsql_write_ops()->empty() &&
+        query_->client_request()->redis_write_batch().empty()) {
       status = Status::OK();
     }
 
@@ -466,7 +456,7 @@ class WriteOperationCompletionCallback {
     // Retrieve the rowblocks returned from the QL write operations and return them as RPC
     // sidecars. Populate the row schema also.
     faststring rows_data;
-    for (const auto& ql_write_op : *operation_->ql_write_ops()) {
+    for (const auto& ql_write_op : *query_->ql_write_ops()) {
       const auto& ql_write_req = ql_write_op->request();
       auto* ql_write_resp = ql_write_op->response();
       const QLRowBlock* rowblock = ql_write_op->rowblock();
@@ -476,18 +466,18 @@ class WriteOperationCompletionCallback {
       ql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(rows_data));
     }
 
-    if (!operation_->pgsql_write_ops()->empty()) {
+    if (!query_->pgsql_write_ops()->empty()) {
       // Retrieve the resultset returned from the PGSQL write operations and return them as RPC
       // sidecars.
 
       size_t sidecars_size = 0;
-      for (const auto& pgsql_write_op : *operation_->pgsql_write_ops()) {
+      for (const auto& pgsql_write_op : *query_->pgsql_write_ops()) {
         sidecars_size += pgsql_write_op->result_buffer().size();
       }
 
       if (sidecars_size != 0) {
         context_->ReserveSidecarSpace(sidecars_size);
-        for (const auto& pgsql_write_op : *operation_->pgsql_write_ops()) {
+        for (const auto& pgsql_write_op : *query_->pgsql_write_ops()) {
           auto* pgsql_write_resp = pgsql_write_op->response();
           const faststring& result_buffer = pgsql_write_op->result_buffer();
           if (!result_buffer.empty()) {
@@ -513,7 +503,7 @@ class WriteOperationCompletionCallback {
   tablet::TabletPeerPtr tablet_peer_;
   const std::shared_ptr<rpc::RpcContext> context_;
   WriteResponsePB* const response_;
-  tablet::WriteOperation* const operation_;
+  tablet::WriteQuery* const query_;
   server::ClockPtr clock_;
   const bool include_trace_;
   scoped_refptr<Trace> trace_;
@@ -1703,26 +1693,24 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     }
   }
 
-  auto operation = std::make_unique<WriteOperation>(
+  auto query = std::make_unique<tablet::WriteQuery>(
       tablet.leader_term, context.GetClientDeadline(), tablet.peer.get(),
       tablet.peer->tablet(), resp);
-  operation->set_client_request(std::make_unique<tserver::WriteRequestPB>(*req));
+  query->set_client_request(*req);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
   if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
     LOG(INFO) << "Responding with a failure to " << req->DebugString();
-    operation->set_completion_callback(nullptr);
     SetupErrorAndRespond(resp->mutable_error(), STATUS(LeaderHasNoLease, "TEST: Random failure"),
                          context_ptr.get());
   } else {
-    operation->set_completion_callback(WriteOperationCompletionCallback(
-        tablet.peer, context_ptr, resp, operation.get(), server_->Clock(), req->include_trace()));
+    query->set_callback(WriteQueryCompletionCallback(
+        tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace()));
   }
 
-  AdjustYsqlOperationTransactionality(
-      req->pgsql_write_batch_size(), tablet.peer.get(), operation.get());
+  query->AdjustYsqlQueryTransactionality(req->pgsql_write_batch_size());
 
-  tablet.peer->WriteAsync(std::move(operation));
+  tablet.peer->WriteAsync(std::move(query));
 }
 
 Status TabletServiceImpl::CheckPeerIsReady(
@@ -2185,17 +2173,17 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 
   if (serializable_isolation || has_row_mark) {
     auto deadline = read_context->context.GetClientDeadline();
-    auto operation = std::make_unique<WriteOperation>(
+    auto query = std::make_unique<tablet::WriteQuery>(
         leader_peer.leader_term, deadline, leader_peer.peer.get(),
         leader_peer.peer->tablet(), nullptr /* response */,
         docdb::OperationKind::kRead);
 
-    auto& write = *operation->AllocateRequest();
+    auto& write = *query->operation().AllocateRequest();
     auto& write_batch = *write.mutable_write_batch();
     *write_batch.mutable_transaction() = req->transaction();
     if (has_row_mark) {
       write_batch.set_row_mark_type(batch_row_mark);
-      operation->set_read_time(read_context->read_time);
+      query->set_read_time(read_context->read_time);
     }
     write.set_unused_tablet_id(""); // For backward compatibility.
     write_batch.set_deprecated_may_have_metadata(true);
@@ -2210,12 +2198,11 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       return;
     }
 
-    AdjustYsqlOperationTransactionality(
-        req->pgsql_batch_size(), leader_peer.peer.get(), operation.get());
+    query->AdjustYsqlQueryTransactionality(req->pgsql_batch_size());
 
-    operation->set_completion_callback(ReadOperationCompletionCallback(
+    query->set_callback(ReadOperationCompletionCallback(
         this, leader_peer.peer, std::move(read_context)));
-    leader_peer.peer->WriteAsync(std::move(operation));
+    leader_peer.peer->WriteAsync(std::move(query));
     return;
   }
 
