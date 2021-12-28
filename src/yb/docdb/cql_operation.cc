@@ -251,11 +251,13 @@ CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timest
 
 } // namespace
 
-QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
+QLWriteOperation::QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                                   std::shared_ptr<const Schema> schema,
                                    std::reference_wrapper<const IndexMap> index_map,
                                    const Schema* unique_index_key_schema,
                                    const TransactionOperationContext& txn_op_context)
-    : schema_(std::move(schema)),
+    : DocOperationBase(request),
+      schema_(std::move(schema)),
       index_map_(index_map),
       unique_index_key_schema_(unique_index_key_schema),
       txn_op_context_(txn_op_context)
@@ -263,8 +265,7 @@ QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
 
 QLWriteOperation::~QLWriteOperation() = default;
 
-Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response) {
-  request_.Swap(request);
+Status QLWriteOperation::Init(QLResponsePB* response) {
   response_ = response;
   insert_into_unique_index_ = request_.type() == QLWriteRequestPB::QL_STMT_INSERT &&
                               unique_index_key_schema_ != nullptr;
@@ -276,7 +277,7 @@ Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response)
   bool write_static_columns = false;
   bool write_non_static_columns = false;
   // TODO(Amit): Remove the DVLOGS after backfill features stabilize.
-  DVLOG(4) << "Processing request " << yb::ToString(*request);
+  DVLOG(4) << "Processing request " << yb::ToString(request_);
   for (const auto& column : request_.column_values()) {
     DVLOG(4) << "Looking at column : " << yb::ToString(column);
     auto schema_column = schema_->column_by_id(ColumnId(column.column_id()));

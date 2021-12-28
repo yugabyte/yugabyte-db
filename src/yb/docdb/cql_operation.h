@@ -35,14 +35,15 @@ class QLWriteOperation :
     public DocOperationBase<DocOperationType::QL_WRITE_OPERATION, QLWriteRequestPB>,
     public DocExprExecutor {
  public:
-  QLWriteOperation(std::shared_ptr<const Schema> schema,
+  QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                   std::shared_ptr<const Schema> schema,
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContext& txn_op_context);
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
-  CHECKED_STATUS Init(QLWriteRequestPB* request, QLResponsePB* response);
+  CHECKED_STATUS Init(QLResponsePB* response);
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
