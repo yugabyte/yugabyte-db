@@ -163,6 +163,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     responseJson.put("targetUUID", targetUUID.toString());
     responseJson.put("type", taskType.name());
     responseJson.put("typeName", taskType.getFriendlyName());
+    responseJson.put("abortable", false);
+    responseJson.put("retryable", false);
     if (percentComplete == 100.0) {
       // Sleep 3 seconds so that the completed time is greater than
       // creation time.

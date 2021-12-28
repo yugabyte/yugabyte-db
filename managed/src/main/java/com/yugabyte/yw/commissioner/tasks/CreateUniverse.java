@@ -16,6 +16,8 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -42,6 +44,8 @@ import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
 
 @Slf4j
+@Abortable
+@Retryable
 public class CreateUniverse extends UniverseDefinitionTaskBase {
 
   private static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
