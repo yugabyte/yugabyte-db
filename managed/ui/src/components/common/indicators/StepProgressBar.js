@@ -6,7 +6,7 @@ import './stylesheets/StepProgressBar.scss';
 export default class StepProgressBar extends Component {
   isFailedIndex = (taskDetails) => {
     return taskDetails.findIndex((element) => {
-      return element.state === 'Failure';
+      return element.state === 'Failure' || element.state === 'Aborted';
     });
   };
 
@@ -54,6 +54,8 @@ export default class StepProgressBar extends Component {
         return 'running';
       } else if (type === 'Failure') {
         return 'failed';
+      } else if (type === 'Aborted') {
+        return 'failed';
       }
       return null;
     };
@@ -62,15 +64,17 @@ export default class StepProgressBar extends Component {
 
     const tasksTotal = taskDetailsNormalized.length;
     const taskIndex = taskDetailsNormalized.findIndex((element) => {
-      return element.state === 'Running' || element.state === 'Failure';
+      return (
+        element.state === 'Running' || element.state === 'Failure' || element.state === 'Aborted'
+      );
     });
 
     const progressbarClass =
       this.isFailedIndex(taskDetailsNormalized) > -1
         ? 'failed'
         : this.isRunningIndex(taskDetailsNormalized) > -1
-          ? 'running'
-          : 'finished';
+        ? 'running'
+        : 'finished';
     const barWidth =
       taskIndex === -1
         ? '100%'

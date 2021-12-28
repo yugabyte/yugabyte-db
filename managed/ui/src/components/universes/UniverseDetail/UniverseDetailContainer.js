@@ -12,6 +12,8 @@ import {
   updateBackupStateResponse
 } from '../../../actions/universe';
 import {
+  abortTask,
+  abortTaskResponse,
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure
@@ -128,6 +130,17 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(getAlertsFailure(response.payload));
         }
       });
+    },
+    abortCurrentTask: (taskUUID) => {
+      return dispatch(abortTask(taskUUID)).then((response) => {
+        return dispatch(abortTaskResponse(response.payload));
+      });
+    },
+    hideTaskAbortModal: () => {
+      dispatch(closeDialog());
+    },
+    showTaskAbortModal: () => {
+      dispatch(openDialog('confirmAbortTask'));
     }
   };
 };

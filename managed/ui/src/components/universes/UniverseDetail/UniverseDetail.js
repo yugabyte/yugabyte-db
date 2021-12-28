@@ -440,6 +440,10 @@ class UniverseDetail extends Component {
               isCommunityEdition={!!customer.INSECURE_apiToken}
               fetchCustomerTasks={this.props.fetchCustomerTasks}
               refreshUniverseData={this.getUniverseInfo}
+              abortCurrentTask={this.props.abortCurrentTask}
+              hideTaskAbortModal={this.props.hideTaskAbortModal}
+              showTaskAbortModal={this.props.showTaskAbortModal}
+              visibleModal={visibleModal}
             />
           </Tab.Pane>
         )

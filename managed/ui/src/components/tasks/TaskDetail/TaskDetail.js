@@ -140,7 +140,7 @@ class TaskDetail extends Component {
       taskFailureDetails = failedTasks.data.failedSubTasks.map((subTask) => {
         let errorString = <span />;
         // Show retry only for the last failed task.
-        if (subTask.subTaskState === 'Failure') {
+        if (subTask.subTaskState === 'Failure' || subTask.subTaskState === 'Aborted') {
           if (subTask.errorString === 'null') {
             subTask.errorString = "Task failed";
           }

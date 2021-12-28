@@ -50,7 +50,11 @@ export class UniverseTaskList extends Component {
       universeTaskUUIDs = currentUniverseTasks
         .map(function (task) {
           universeTaskHistoryArray.push(task);
-          return task.status !== 'Failure' && task.percentComplete !== 100 ? task.id : false;
+          return task.status !== 'Aborted' &&
+            task.status !== 'Failure' &&
+            task.percentComplete !== 100
+            ? task.id
+            : false;
         })
         .filter(Boolean);
     }
@@ -64,6 +68,10 @@ export class UniverseTaskList extends Component {
           isCommunityEdition={isCommunityEdition}
           overrideContent={errorPlatformMessage}
           title={'Task History'}
+          abortCurrentTask={this.props.abortCurrentTask}
+          hideTaskAbortModal={this.props.hideTaskAbortModal}
+          showTaskAbortModal={this.props.showTaskAbortModal}
+          visibleModal={this.props.visibleModal}
         />
       );
     }

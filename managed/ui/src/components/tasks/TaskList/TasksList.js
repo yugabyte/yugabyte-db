@@ -23,6 +23,10 @@ export default class TasksList extends Component {
       <TaskListTable
         taskList={customerTaskList || []}
         overrideContent={INSECURE_apiToken && errorPlatformMessage}
+        abortCurrentTask={this.props.abortCurrentTask}
+        hideTaskAbortModal={this.props.hideTaskAbortModal}
+        showTaskAbortModal={this.props.showTaskAbortModal}
+        visibleModal={this.props.visibleModal}
       />
     );
   }
