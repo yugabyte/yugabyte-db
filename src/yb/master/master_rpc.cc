@@ -38,7 +38,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
@@ -105,7 +105,7 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
 };
 
 void GetMasterRegistrationRpc::SendRpc() {
-  MasterServiceProxy proxy(&retrier().proxy_cache(), addr_);
+  MasterClusterProxy proxy(&retrier().proxy_cache(), addr_);
   GetMasterRegistrationRequestPB req;
   proxy.GetMasterRegistrationAsync(
       req, &resp_, PrepareController(),

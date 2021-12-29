@@ -14,7 +14,7 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.master.Master;
+import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
@@ -37,8 +37,8 @@ public class SetUniverseReplicationEnabledRequest
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.SetUniverseReplicationEnabledRequestPB.Builder builder =
-      Master.SetUniverseReplicationEnabledRequestPB.newBuilder()
+    final MasterReplicationOuterClass.SetUniverseReplicationEnabledRequestPB.Builder builder =
+      MasterReplicationOuterClass.SetUniverseReplicationEnabledRequestPB.newBuilder()
         .setProducerId(replicationGroupName)
         .setIsEnabled(enabled);
 
@@ -58,8 +58,8 @@ public class SetUniverseReplicationEnabledRequest
   @Override
   Pair<SetUniverseReplicationEnabledResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.SetUniverseReplicationEnabledResponsePB.Builder builder =
-      Master.SetUniverseReplicationEnabledResponsePB.newBuilder();
+    final MasterReplicationOuterClass.SetUniverseReplicationEnabledResponsePB.Builder builder =
+      MasterReplicationOuterClass.SetUniverseReplicationEnabledResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 

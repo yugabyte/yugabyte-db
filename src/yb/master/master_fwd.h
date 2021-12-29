@@ -26,7 +26,6 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/master.fwd.h"
 #include "yb/master/master_backup.fwd.h"
 
 #include "yb/util/enums.h"
@@ -56,10 +55,17 @@ class ClusterConfigInfo;
 class ClusterLoadBalancer;
 class FlushManager;
 class Master;
-class MasterBackupServiceProxy;
+class MasterBackupProxy;
 class MasterOptions;
 class MasterPathHandlers;
-class MasterServiceProxy;
+class MasterAdminProxy;
+class MasterClientProxy;
+class MasterClusterProxy;
+class MasterDclProxy;
+class MasterDdlProxy;
+class MasterEncryptionProxy;
+class MasterHeartbeatProxy;
+class MasterReplicationProxy;
 class NamespaceInfo;
 class PermissionsManager;
 class RetryingTSRpcTask;

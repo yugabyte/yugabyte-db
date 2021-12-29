@@ -20,8 +20,6 @@ import java.util.TreeSet;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.Master;
-
 
 @InterfaceAudience.Public
 public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClusterConfig {

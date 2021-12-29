@@ -260,12 +260,16 @@ void CheckForward(CalculatorServiceProxy* proxy,
 // Test making successful RPC calls.
 TEST_F(RpcStubTest, TestIncoherence) {
   static const std::string kServer1Name = "Server1";
+  TestServerOptions server1options;
+  server1options.endpoint = Endpoint(IpAddress::from_string("127.0.0.11"), 0);
   static const std::string kServer2Name = "Server2";
+  TestServerOptions server2options;
+  server2options.endpoint = Endpoint(IpAddress::from_string("127.0.0.12"), 0);
 
-  auto server1 = StartTestServer(kServer1Name, IpAddress::from_string("127.0.0.11"));
+  auto server1 = StartTestServer(server1options, kServer1Name);
   auto proxy1holder = CreateCalculatorProxyHolder(server1.bound_endpoint());
   auto& proxy1 = *proxy1holder.proxy;
-  auto server2 = StartTestServer(kServer2Name, IpAddress::from_string("127.0.0.12"));
+  auto server2 = StartTestServer(server2options, kServer2Name);
   auto proxy2holder = CreateCalculatorProxyHolder(server2.bound_endpoint());
   auto& proxy2 = *proxy2holder.proxy;
 
@@ -787,7 +791,9 @@ TEST_F(RpcStubTest, IPv6) {
   }
 
   ASSERT_FALSE(server_address.is_unspecified());
-  auto server = StartTestServer("Server", server_address);
+  TestServerOptions options;
+  options.endpoint = Endpoint(server_address, 0);
+  auto server = StartTestServer(options, "Server");
   ASSERT_TRUE(server.bound_endpoint().address().is_v6());
   auto proxy_holder = CreateCalculatorProxyHolder(server.bound_endpoint());
   auto& proxy = *proxy_holder.proxy;
@@ -1014,6 +1020,22 @@ TEST_F(RpcStubTest, Lightweight) {
   req.Clear();
   ASSERT_STR_EQ(AsString(*lw_req), req_str);
   ASSERT_STR_EQ(AsString(resp.short_debug_string()), req_str);
+}
+
+TEST_F(RpcStubTest, CustomServiceName) {
+  SendSimpleCall();
+
+  rpc_test::ConcatRequestPB req;
+  req.set_lhs("yuga");
+  req.set_rhs("byte");
+  rpc_test::ConcatResponsePB resp;
+
+  RpcController controller;
+  controller.set_timeout(30s);
+
+  rpc_test::AbacusServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+  ASSERT_OK(proxy.Concat(req, &resp, &controller));
+  ASSERT_EQ(resp.result(), "yugabyte");
 }
 
 } // namespace rpc

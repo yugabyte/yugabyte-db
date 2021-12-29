@@ -25,7 +25,6 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/cluster_balance.h"
-#include "yb/master/master.proxy.h"
 
 #include "yb/tools/yb-admin_client.h"
 

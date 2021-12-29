@@ -27,7 +27,7 @@
 
 #include "yb/client/async_initializer.h"
 
-#include "yb/master/master.fwd.h"
+#include "yb/master/master_client.fwd.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_context.h"

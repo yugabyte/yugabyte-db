@@ -115,7 +115,9 @@ class RemoteYsckMaster : public YsckMaster {
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   const std::shared_ptr<server::GenericServiceProxy> generic_proxy_;
-  std::shared_ptr<master::MasterServiceProxy> proxy_;
+  std::shared_ptr<master::MasterClientProxy> client_proxy_;
+  std::shared_ptr<master::MasterClusterProxy> cluster_proxy_;
+  std::shared_ptr<master::MasterDdlProxy> ddl_proxy_;
 };
 
 } // namespace tools

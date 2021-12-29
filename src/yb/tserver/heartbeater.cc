@@ -58,9 +58,9 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_rpc.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
@@ -122,7 +122,6 @@ using google::protobuf::RepeatedPtrField;
 using yb::HostPortPB;
 using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
-using yb::master::MasterServiceProxy;
 using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::vector;
@@ -198,7 +197,7 @@ class Heartbeater::Thread {
   HostPort leader_master_hostport_;
 
   // Current RPC proxy to the leader master.
-  std::unique_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<master::MasterHeartbeatProxy> proxy_;
 
   // The most recent response from a heartbeat.
   master::TSHeartbeatResponsePB last_hb_response_;
@@ -340,7 +339,8 @@ Status Heartbeater::Thread::ConnectToMaster() {
   LOG_WITH_PREFIX(INFO) << "Connected to a leader master server at " << leader_master_hostport_;
 
   // Save state in the instance.
-  proxy_.reset(new MasterServiceProxy(&server_->proxy_cache(), leader_master_hostport_));
+  proxy_ = std::make_unique<master::MasterHeartbeatProxy>(
+      &server_->proxy_cache(), leader_master_hostport_);
   return Status::OK();
 }
 

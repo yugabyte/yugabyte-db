@@ -42,7 +42,6 @@ import "yb/consensus/consensus_types.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/backup.proto";
-import "yb/tserver/tserver_admin.proto";
 import "yb/tserver/tserver_types.proto";
 import "yb/util/opid.proto";
 
@@ -136,11 +135,11 @@ message ReplicateMsg {
 
   required OperationType op_type = 4;
   optional tablet.WritePB write = 5;
-  optional tserver.ChangeMetadataRequestPB change_metadata_request = 6;
+  optional tablet.ChangeMetadataRequestPB change_metadata_request = 6;
   optional tablet.TransactionStatePB transaction_state = 10;
   optional tserver.TabletSnapshotOpRequestPB snapshot_request = 11;
   optional tablet.TruncatePB truncate = 12;
-  optional tserver.SplitTabletRequestPB split_request = 14;
+  optional tablet.SplitTabletRequestPB split_request = 14;
   optional ChangeConfigRecordPB change_config_record = 7;
   optional HistoryCutoffPB history_cutoff = 13;
 

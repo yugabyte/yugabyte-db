@@ -72,7 +72,8 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -2096,8 +2097,8 @@ TEST_F(RaftConsensusITest, TestStepDownWithSlowFollower) {
   }
 
   // Wait until the paused tservers have stopped heartbeating.
-  ASSERT_OK(WaitUntilNumberOfAliveTServersEqual(1, cluster_->master_proxy().get(),
-                                                MonoDelta::FromSeconds(20)));
+  ASSERT_OK(WaitUntilNumberOfAliveTServersEqual(
+      1, cluster_->GetMasterProxy<master::MasterClusterProxy>(), MonoDelta::FromSeconds(20)));
 
   // Step down should respond quickly despite the hung requests.
   ASSERT_OK(LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(3)));
@@ -2180,7 +2181,8 @@ Status RaftConsensusITest::GetTabletLocations(const string& tablet_id, const Mon
   GetTabletLocationsRequestPB req;
   *req.add_tablet_ids() = tablet_id;
   GetTabletLocationsResponsePB resp;
-  RETURN_NOT_OK(cluster_->master_proxy()->GetTabletLocations(req, &resp, &rpc));
+  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>().GetTabletLocations(
+      req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -3407,7 +3409,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   }
 
   // Add SPLIT_OP to the leader.
-  tserver::SplitTabletRequestPB req;
+  tablet::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id_);
   req.set_new_tablet1_id(GenerateObjectId());
   req.set_new_tablet2_id(GenerateObjectId());

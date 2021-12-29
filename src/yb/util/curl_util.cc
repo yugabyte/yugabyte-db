@@ -36,6 +36,8 @@
 
 #include <vector>
 
+#include <glog/logging.h>
+
 #include "yb/util/faststring.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"

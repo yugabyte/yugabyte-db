@@ -49,7 +49,7 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/tablet/tablet-harness.h"
 #include "yb/tablet/tablet.h"
@@ -314,7 +314,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
 }
 
 static void AssertMonotonicReportSeqno(int64_t* report_seqno,
-                                       const TabletReportPB &report) {
+                                       const TabletReportPB& report) {
   ASSERT_LT(*report_seqno, report.sequence_number());
   *report_seqno = report.sequence_number();
 }

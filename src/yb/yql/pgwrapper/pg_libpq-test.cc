@@ -23,8 +23,8 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.pb.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
@@ -1053,6 +1053,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
 }
 
 namespace {
+
 Result<master::TabletLocationsPB> GetColocatedTabletLocations(
     client::YBClient* client,
     std::string database_name,

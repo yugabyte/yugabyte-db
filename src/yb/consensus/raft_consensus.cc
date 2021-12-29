@@ -363,7 +363,6 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       rpc_factory.get(),
       queue.get(),
       raft_pool_token.get(),
-      log,
       multi_raft_manager);
 
   return std::make_shared<RaftConsensus>(

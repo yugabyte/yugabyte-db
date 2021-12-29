@@ -57,6 +57,8 @@ class RpcController;
 class Rpcs;
 class Poller;
 class Protocol;
+class Proxy;
+class ProxySource;
 class RefinedStream;
 class Scheduler;
 class SecureContext;

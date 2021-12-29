@@ -18,7 +18,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"

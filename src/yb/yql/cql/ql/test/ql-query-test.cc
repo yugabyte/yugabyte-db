@@ -28,7 +28,6 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/util/decimal.h"

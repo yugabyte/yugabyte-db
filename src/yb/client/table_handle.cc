@@ -25,7 +25,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/util/format.h"
 #include "yb/util/result.h"

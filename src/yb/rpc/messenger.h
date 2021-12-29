@@ -336,7 +336,7 @@ class Messenger : public ProxyContext {
 
   // RPC services that handle inbound requests.
   mutable RWOperationCounter rpc_services_counter_;
-  std::unordered_map<std::string, RpcServicePtr> rpc_services_;
+  std::unordered_multimap<std::string, RpcServicePtr> rpc_services_;
   RpcEndpointMap rpc_endpoints_;
 
   std::vector<std::unique_ptr<Reactor>> reactors_;
