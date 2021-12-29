@@ -79,6 +79,7 @@ YRPC_GENERATE(
     metadata.proto
     operations.proto
     tablet.proto
+    tablet_types.proto
   )
 set(TABLET_PROTO_LIBS
   docdb_proto

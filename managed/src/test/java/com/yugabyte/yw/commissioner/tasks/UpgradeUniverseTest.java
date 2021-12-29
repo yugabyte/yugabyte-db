@@ -89,7 +89,6 @@ import org.mockito.junit.MockitoRule;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 

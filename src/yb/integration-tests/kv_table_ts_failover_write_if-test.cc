@@ -79,9 +79,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
 
   void SetUp() override {
     YBTableTestBase::SetUp();
-    ASSERT_OK(itest::CreateTabletServerMap(external_mini_cluster()->master_proxy().get(),
-                                           &external_mini_cluster()->proxy_cache(),
-                                           &ts_map_));
+    ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(external_mini_cluster()));
     ts_details_.clear();
     for (int i = 0; i < external_mini_cluster()->num_tablet_servers(); ++i) {
       std::string ts_id = external_mini_cluster()->tablet_server(i)->uuid();

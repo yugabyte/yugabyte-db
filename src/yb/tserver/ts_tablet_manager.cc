@@ -69,7 +69,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
@@ -687,7 +687,7 @@ namespace {
 
 // Creates SplitTabletsCreationMetaData for two new tablets for `tablet` splitting based on request.
 SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
-    const SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
+    const tablet::SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
   SplitTabletsCreationMetaData metas;
 
   const auto& split_partition_key = request.split_partition_key();

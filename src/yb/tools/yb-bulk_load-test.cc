@@ -34,7 +34,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -122,8 +122,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new master::MasterServiceProxy(
-        &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr())));
+    proxy_ = std::make_unique<master::MasterClientProxy>(
+        &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
 
     // Create the namespace.
     ASSERT_OK(client_->CreateNamespace(kNamespace));
@@ -387,7 +387,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   YBSchema schema_;
   std::unique_ptr<YBTableName> table_name_;
   std::shared_ptr<YBTable> table_;
-  std::unique_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<master::MasterClientProxy> proxy_;
   std::unique_ptr<rpc::Messenger> client_messenger_;
   std::unique_ptr<YBPartitionGenerator> partition_generator_;
   std::vector<std::string> master_addresses_;

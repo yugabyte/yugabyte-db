@@ -18,7 +18,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/server/clock.h"
 
 #include "yb/tserver/tserver_util_fwd.h"

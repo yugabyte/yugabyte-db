@@ -18,6 +18,7 @@
 
 #include "yb/common/value.pb.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/util/net/net_fwd.h"

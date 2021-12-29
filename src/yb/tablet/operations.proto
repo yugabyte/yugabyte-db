@@ -16,8 +16,10 @@ package yb.tablet;
 
 option java_package = "org.yb.tablet";
 
+import "yb/common/common.proto";
 import "yb/common/transaction.proto";
 import "yb/docdb/docdb.proto";
+import "yb/tablet/metadata.proto";
 
 message TransactionStatePB {
   optional bytes transaction_id = 1;
@@ -65,4 +67,60 @@ message WritePB {
   optional fixed64 external_hybrid_time = 19;
 
   optional uint64 batch_idx = 20;
+}
+
+message ChangeMetadataRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 5;
+
+  required bytes tablet_id = 1;
+
+  // TODO: Replace with the table descriptor
+  // (Schema, Column IDs, Column Attributes)
+  optional SchemaPB schema = 2;
+
+  repeated IndexInfoPB indexes = 7;
+
+  optional uint32 schema_version = 3;
+  optional string new_table_name = 4;
+
+  optional fixed64 propagated_hybrid_time = 6;
+
+  optional tablet.TableInfoPB add_table = 8;
+
+  optional uint32 wal_retention_secs = 9;
+
+  optional bytes remove_table_id = 10;
+
+  // Note that we don't use the value of this and just check has_mark_backfill_done.
+  optional bool mark_backfill_done = 11;
+
+  // Used for alter schema on a non-primary table (e.g. colocated user table).
+  optional bytes alter_table_id = 12;
+
+  // Used to update schema of a colocated user table upon backfill completion.
+  optional bytes backfill_done_table_id = 13;
+
+  // Transactions will be aborted except the one with this id which triggered the AlterTable.
+  optional bytes transaction_id = 14; // 16 byte uuid
+
+  // Used for AlterTable to determine if active transactions on the tablet needs to be aborted.
+  optional bool should_abort_active_txns = 16 [ default = false ];
+}
+
+message SplitTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  required bytes tablet_id = 3;
+
+  required bytes new_tablet1_id = 4;
+
+  required bytes new_tablet2_id = 5;
+
+  required bytes split_partition_key = 6;
+
+  required bytes split_encoded_key = 7;
 }

@@ -21,7 +21,7 @@
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

@@ -156,7 +156,6 @@ using consensus::OpIdToString;
 using consensus::ReplicateMsg;
 using consensus::MakeOpIdPB;
 using strings::Substitute;
-using tserver::ChangeMetadataRequestPB;
 using tserver::WriteRequestPB;
 using tserver::TabletSnapshotOpRequestPB;
 
@@ -823,7 +822,7 @@ class TabletBootstrap {
   //     encountering an entry with an index lower than or equal to the index of an operation that
   //     is already present in pending_replicates.
   //   - Ignores entries that have already been flushed into regular and intents RocksDBs.
-  //   - Updates committed OpId based on the commmited OpId from the entry and calls
+  //   - Updates committed OpId based on the comsmited OpId from the entry and calls
   //     ApplyCommittedPendingReplicates.
   //   - Updates the "monotonic counter" used for assigning internal keys in YCQL arrays.
   CHECKED_STATUS HandleReplicateMessage(
@@ -956,7 +955,7 @@ class TabletBootstrap {
   }
 
   CHECKED_STATUS PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
-    tserver::SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
+    SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
     // We might be asked to replay SPLIT_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set.
     if (split_request->tablet_id() != tablet_->tablet_id()) {

@@ -36,7 +36,7 @@ import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 
-import static org.yb.master.Master.AlterTableRequestPB;
+import static org.yb.master.MasterDdlOuterClass.AlterTableRequestPB;
 
 /**
  * This builder must be used to alter a table. At least one change must be specified.

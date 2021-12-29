@@ -124,12 +124,12 @@ ADD_YB_TEST_LIBRARY(rpc_test_util SRCS rpc_test_util.cc DEPS yrpc)
 
 #### RPC test
 PROTOBUF_GENERATE_CPP(
-  LIGHTWEIGHT_MESSAGE_SRCS LIGHTWEIGHT_MESSAGE_HDRS LIGHTWEIGHT_MESSAGE_TGTS
+  RPC_BASE_SRCS RPC_BASE_HDRS RPC_BASE_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES lightweight_message.proto)
-add_library(lightweight_message_proto ${LIGHTWEIGHT_MESSAGE_SRCS} ${LIGHTWEIGHT_MESSAGE_HDRS})
-target_link_libraries(lightweight_message_proto protobuf)
+  PROTO_FILES lightweight_message.proto service.proto)
+add_library(rpc_base_proto ${RPC_BASE_SRCS} ${RPC_BASE_HDRS})
+target_link_libraries(rpc_base_proto protobuf)
 
 YRPC_GENERATE(
   RPC_TEST_DIFF_PACKAGE_SRCS RPC_TEST_DIFF_PACKAGE_HDRS RPC_TEST_DIFF_PACKAGE_TGTS
@@ -153,7 +153,7 @@ ADD_YB_LIBRARY(
   rtest_yrpc
   SRCS rpc-test-base.cc ${RTEST_YRPC_SRCS} ${RTEST_YRPC_HDRS}
   DEPS yb_test_util any_yrpc yrpc rpc_header_proto rpc_test_util rtest_diff_package_proto
-       lightweight_message_proto)
+       rpc_base_proto)
 
 YRPC_GENERATE(
   ANY_YRPC_SRCS ANY_YRPC_HDRS ANY_YRPC_TGTS
@@ -163,7 +163,7 @@ YRPC_GENERATE(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES any.proto)
 add_library(any_yrpc ${ANY_YRPC_SRCS} ${ANY_YRPC_HDRS})
-target_link_libraries(any_yrpc yrpc lightweight_message_proto)
+target_link_libraries(any_yrpc yrpc rpc_base_proto)
 
 # Tests
 set(YB_TEST_LINK_LIBS rtest_yrpc yrpc rpc_test_util any_yrpc ${YB_MIN_TEST_LIBS})

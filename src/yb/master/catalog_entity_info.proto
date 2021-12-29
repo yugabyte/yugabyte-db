@@ -387,6 +387,10 @@ message SysRowEntry {
   optional bytes data = 3;
 }
 
+message SysRowEntries {
+  repeated SysRowEntry entries = 1;
+}
+
 message DdlLogEntryPB {
   optional TableType table_type = 1;
   optional string namespace_name = 2;

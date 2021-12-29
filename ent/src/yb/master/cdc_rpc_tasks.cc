@@ -18,7 +18,7 @@
 
 #include "yb/gutil/bind.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"

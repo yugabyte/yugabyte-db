@@ -32,7 +32,7 @@ namespace master {
 using rpc::RpcContext;
 
 MasterBackupServiceImpl::MasterBackupServiceImpl(Master* server)
-    : MasterBackupServiceIf(server->metric_entity()),
+    : MasterBackupIf(server->metric_entity()),
       MasterServiceBase(server) {
 }
 

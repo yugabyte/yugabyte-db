@@ -31,11 +31,6 @@
 
 #include <boost/intrusive_ptr.hpp>
 
-#include <glog/logging.h> // TODO Remove after separating status_log.h
-
-#include "yb/gutil/strings/substitute.h" // TODO Remove after separating status_format.h
-
-#include "yb/util/format.h" // TODO Remove after separating status_format.h
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"

@@ -33,7 +33,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_controller.h"

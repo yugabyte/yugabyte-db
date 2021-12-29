@@ -28,7 +28,7 @@
 #include "yb/integration-tests/redis_table_test_base.h"
 
 #include "yb/master/flush_manager.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_admin.pb.h"
 
 #include "yb/rpc/io_thread_pool.h"
 

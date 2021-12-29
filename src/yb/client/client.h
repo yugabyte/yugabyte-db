@@ -58,6 +58,9 @@
 #include "yb/gutil/port.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 

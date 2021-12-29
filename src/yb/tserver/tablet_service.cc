@@ -554,7 +554,8 @@ TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
     : TabletServerAdminServiceIf(server->MetricEnt()), server_(server) {}
 
 void TabletServiceAdminImpl::BackfillDone(
-    const ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp, rpc::RpcContext context) {
+    const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+    rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "BackfillDone", req, resp, &context)) {
     return;
   }
@@ -872,7 +873,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   context.RespondSuccess();
 }
 
-void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
+void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* req,
                                          ChangeMetadataResponsePB* resp,
                                          rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "ChangeMetadata", req, resp, &context)) {
@@ -1487,7 +1488,7 @@ void TabletServiceAdminImpl::AddTableToTablet(
   }
   DVLOG(3) << "Received AddTableToTablet RPC: " << yb::ToString(*req);
 
-  tserver::ChangeMetadataRequestPB change_req;
+  tablet::ChangeMetadataRequestPB change_req;
   *change_req.mutable_add_table() = req->add_table();
   change_req.set_tablet_id(tablet_id);
   Status s = tablet::SyncReplicateChangeMetadataOperation(
@@ -1509,7 +1510,7 @@ void TabletServiceAdminImpl::RemoveTableFromTablet(
     return;
   }
 
-  tserver::ChangeMetadataRequestPB change_req;
+  tablet::ChangeMetadataRequestPB change_req;
   change_req.set_remove_table_id(req->remove_table_id());
   change_req.set_tablet_id(req->tablet_id());
   Status s = tablet::SyncReplicateChangeMetadataOperation(
@@ -1522,7 +1523,7 @@ void TabletServiceAdminImpl::RemoveTableFromTablet(
 }
 
 void TabletServiceAdminImpl::SplitTablet(
-    const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
+    const tablet::SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
     return;
   }

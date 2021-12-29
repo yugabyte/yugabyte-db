@@ -28,7 +28,8 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/yb_op.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/tools_test_utils.h"
 #include "yb/util/format.h"
@@ -1099,7 +1100,7 @@ TEST_F_EX(YBBackupTest,
   master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
-  ASSERT_OK(cluster_->master_proxy()->SplitTablet(req, &resp, &rpc));
+  ASSERT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
 
   // Wait for split to complete.
   constexpr int num_tablets = 4;

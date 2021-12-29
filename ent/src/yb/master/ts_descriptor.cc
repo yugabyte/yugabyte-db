@@ -11,7 +11,8 @@
 // under the License.
 
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/master/catalog_entity_info.pb.h"
 
 using std::set;
 
