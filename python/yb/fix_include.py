@@ -1,4 +1,5 @@
 import argparse
+import cpp_parser
 import enum
 import json
 import multiprocessing
@@ -13,11 +14,15 @@ import tempfile
 import time
 import typing
 
-PREFIXES = ['../../ent/src/', '../../src/', 'src/']
 EXTERNAL_PREFIXES = ['/usr/include/c++/v1/', '/usr/include/', '/include/rapidjson/', '/include/',
                      '/include-fixed/']
 
-nodes = {}
+build_dir = os.getcwd()
+root_dir = os.path.dirname(os.path.dirname(build_dir))
+prefixes = [os.path.join(root_dir, 'ent/src/'), os.path.join(root_dir, 'src/'),
+            os.path.join(build_dir, 'src/')]
+
+nodes: typing.Dict[str, 'Node'] = {}
 missing = set()
 node_stack = []
 compdb = {}
@@ -75,7 +80,7 @@ class Node:
         self.prefix_idx = prefix_idx
         self.refs: typing.Set[str] = set()
         self.state = NodeState.IDLE
-        self.parsed: typing.Union[ParsedFile, None] = None
+        self.parsed: typing.Union[cpp_parser.ParsedFile, None] = None
         self.included_by: typing.Set[Node] = set()
         self.includes = set()
         self.not_cleaned_includes = 0
@@ -91,7 +96,7 @@ class Node:
                 return
             self.state = NodeState.PROCESSING
             with open(self.fname) as inp:
-                self.parsed = parse(self.fname, inp)
+                self.parsed = cpp_parser.parse(self.fname, inp)
             for include in self.parsed.includes:
                 self.refs.add(include.name)
                 if include.name in nodes:
@@ -140,7 +145,7 @@ def extract_includes(includes: typing.Dict[str, typing.Tuple[bool, str]], filter
     for include, (system, tail) in includes.items():
         if filter(include, system):
             todel.append(include)
-            result.append(gen_line(include, system) + tail)
+            result.append(cpp_parser.gen_line(include, system) + tail)
     for include in todel:
         del includes[include]
     result.sort(key=extract_include_key)
@@ -157,19 +162,14 @@ class GeneratedSource:
         self.includes = {}
 
     def append(self, line: str):
-        m = INCLUDE_RE.match(line)
-        system = False
-        if not m:
-            m = SYSTEM_INCLUDE_RE.match(line)
-            system = True
-        if m:
+        parsed_include = cpp_parser.parse_include_line(line)
+        if parsed_include is not None:
             if len(self.includes) == 0:
                 self.header_lines += self.footer_lines
                 self.footer_lines.clear()
-            include = m[1]
-            if include in self.includes:
+            if parsed_include.file in self.includes:
                 return
-            self.includes[include] = (system, m[2])
+            self.includes[parsed_include.file] = (parsed_include.system, parsed_include.tail)
             return
         self.footer_lines.append(line)
 
@@ -187,8 +187,8 @@ class GeneratedSource:
         includes = dict(self.includes)
         result += extract_includes(
             includes, lambda include, system: self.fname.endswith(replace_ext(include, '.cc')))
-        result += extract_includes(includes, is_c_system_header)
-        result += extract_includes(includes, is_cpp_system_header)
+        result += extract_includes(includes, cpp_parser.is_c_system_header)
+        result += extract_includes(includes, cpp_parser.is_cpp_system_header)
         result += extract_includes(includes, lambda include, system: system)
         prefix = None
         local_includes = extract_includes(includes, lambda include, system: True)
@@ -220,7 +220,7 @@ class SourceFile:
         self.checked: typing.Set[typing.Tuple[string, Step]] = set()
         self.unchecked: typing.List[CheckableInclude] = []
         self.running: typing.Union[CheckableInclude, None] = None
-        self.includes: typing.Union[typing.List[Include], None] = None
+        self.includes: typing.Union[typing.List[cpp_parser.Include], None] = None
         self.step = Step.REMOVE
         self.injected_includes = set()
 
@@ -254,6 +254,13 @@ class SourceFile:
             if not include.trivial:
                 self.debug_print("Skipping non trivial include: {}", include)
                 continue
+            if include.name.endswith('_fwd.h') and \
+                    os.path.dirname(self.fname).endswith(os.path.dirname(include.name)):
+                self.debug_print("Skipping fwd header in the same dir: {}", include)
+                continue
+            if not include.trivial:
+                self.debug_print("Skipping non trivial include: {}", include)
+                continue
             if (include.name, self.step) in self.checked or include.line_no in self.modified_lines:
                 self.debug_print("Skipping checked include: {}", include)
                 continue
@@ -267,7 +274,8 @@ class SourceFile:
                     if include.name in refs:
                         unique = False
                         break
-            if not unique:
+            if not unique or include.name.startswith('boost/preprocessor') or \
+                    include.name.startswith('yb/gutil/'):
                 self.debug_print("Skipping non unique include: {}", include)
                 continue
             if self.step == Step.INLINE:
@@ -281,7 +289,7 @@ class SourceFile:
     def load_from_disk(self):
         with open(self.fname) as inp:
             lines = inp.read().split('\n')
-        parsed = parse(self.fname, lines)
+        parsed = cpp_parser.parse(self.fname, lines)
         if not parsed.trivial:
             return
         injected_includes = self.injected_includes
@@ -304,7 +312,7 @@ class SourceFile:
                     break
         self.lines = lines
         if parsed is None:
-            parsed = parse(self.fname, self.lines)
+            parsed = cpp_parser.parse(self.fname, self.lines)
         self.includes = parsed.includes
 
     def cleaned(self):
@@ -335,7 +343,7 @@ class SourceFile:
         compdb_key = self.fname
         if is_header(self.fname):
             dirname = os.path.dirname(self.fname)
-            if dirname == '../../src/yb/rocksdb':
+            if dirname == os.path.join(build_dir, 'src/yb/rocksdb'):
                 dirname = os.path.join(dirname, 'db')
             compdb_key = os.path.join(dirname, header_cc)
         if compdb_key not in compdb:
@@ -402,7 +410,7 @@ class SourceFile:
             self.node.removed_includes.append(self.lines[modified_line])
         existing = set([x.name for x in self.includes])
         self.lines = self.generate_lines(None)
-        parsed = parse(self.fname, self.lines)
+        parsed = cpp_parser.parse(self.fname, self.lines)
         if not parsed.trivial:
             print("{} became non trivial", self.fname)
         else:
@@ -452,10 +460,11 @@ def process_prefix(fname, external):
             idx = fname.find(EXTERNAL_PREFIXES[i])
             if idx != -1:
                 return i, idx + len(EXTERNAL_PREFIXES[i])
+
     else:
-        for i in range(len(PREFIXES)):
-            if fname.startswith(PREFIXES[i]):
-                return i, len(PREFIXES[i])
+        for i in range(len(prefixes)):
+            if fname.startswith(prefixes[i]):
+                return i, len(prefixes[i])
     return None, None
 
 
@@ -518,7 +527,7 @@ def cleanup():
 
 def source_file(fname: str):
     global filter_re
-    if not fname.startswith('../../src/'):
+    if fname.startswith(build_dir):
         return False
     if filter_re is None:
         return True
@@ -541,10 +550,11 @@ def parse_deps():
                 first = False
             elif fname.endswith(".h") or fname.endswith(".hpp") or \
                     fname.find('/usr/include/c++/v1/') != -1:
-                external = fname.startswith('/') or fname.startswith('postgres')
+                external = not fname.startswith(root_dir) or \
+                           fname.startswith(os.path.join(build_dir, 'postgres'))
                 prefix_idx, prefix_len = process_prefix(fname, external)
                 if prefix_idx is None:
-                    error("Not found prefix for {}", fname)
+                    error("Not found prefix for {}, external: {}", fname, external)
                 ref_name = fname[prefix_len:]
                 if ref_name not in nodes or prefix_idx < nodes[ref_name].prefix_idx:
                     nodes[ref_name] = Node(ref_name, fname, external, prefix_idx)
