@@ -1656,7 +1656,7 @@ static bool dfs_find_a_path_between(VLE_local_context *vlelctx)
     end_vertex_id = vlelctx->veid;
 
     /* while we have edges to process */
-    while (!IS_STACK_EMPTY(edge_stack))
+    while (!(IS_STACK_EMPTY(edge_stack)))
     {
         graphid edge_id;
         graphid next_vertex_id;
@@ -1783,7 +1783,7 @@ static bool dfs_find_a_path_from(VLE_local_context *vlelctx)
     path_stack = vlelctx->dfs_path_stack;
 
     /* while we have edges to process */
-    while (!IS_STACK_EMPTY(edge_stack))
+    while (!(IS_STACK_EMPTY(edge_stack)))
     {
         graphid edge_id;
         graphid next_vertex_id;

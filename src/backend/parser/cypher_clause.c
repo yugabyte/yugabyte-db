@@ -1548,9 +1548,9 @@ static RangeTblEntry *append_VLE_Func_to_FromClause(cypher_parsestate *cpstate,
                                                     Node *n)
 {
     ParseState *pstate = &cpstate->pstate;
-    RangeTblEntry *rte;
+    RangeTblEntry *rte = NULL;
+    List *namespace = NULL;
     int rtindex;
-    List *namespace;
 
     /*
      * Following PG's FROM clause logic, just in case we need to expand it in

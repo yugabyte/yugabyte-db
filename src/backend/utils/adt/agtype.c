@@ -7011,10 +7011,10 @@ PG_FUNCTION_INFO_V1(age_round);
 
 Datum age_round(PG_FUNCTION_ARGS)
 {
-    int nargs;
-    Datum *args;
-    bool *nulls;
-    Oid *types;
+    Datum *args = NULL;
+    bool *nulls = NULL;
+    Oid *types = NULL;
+    int nargs = 0;
     agtype_value agtv_result;
     Numeric arg, arg_precision;
     Numeric numeric_result;
@@ -7027,12 +7027,17 @@ Datum age_round(PG_FUNCTION_ARGS)
 
     /* check number of args */
     if (nargs != 1 && nargs != 2)
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("round() invalid number of arguments")));
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("round() invalid number of arguments")));
+    }
 
     /* check for a null input */
     if (nargs < 0 || nulls[0])
+    {
         PG_RETURN_NULL();
+    }
 
     /*
      * round() supports integer, float, and numeric or the agtype integer,
@@ -7043,7 +7048,9 @@ Datum age_round(PG_FUNCTION_ARGS)
 
     /* check for a agtype null input */
     if (is_null)
+    {
         PG_RETURN_NULL();
+    }
 
     /* We need the input as a numeric so that we can pass it off to PG */
     if (nargs == 2 && !nulls[1])
@@ -7057,6 +7064,12 @@ Datum age_round(PG_FUNCTION_ARGS)
             numeric_result = DatumGetNumeric(DirectFunctionCall2(numeric_round,
                                              NumericGetDatum(arg),
                                              Int32GetDatum(precision)));
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("round() invalid NULL precision value")));
         }
     }
     else
