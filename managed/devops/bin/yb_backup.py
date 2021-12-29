@@ -1325,11 +1325,8 @@ class YBBackup:
                     logging.info(msg.format(table_id, tserver_ip, tablet_dirs))
 
                 if not tablet_dirs:
-                    logging.error("No tablet directory found for table '{}' on "
-                                  "tablet server '{}'.".format(table_id, tserver_ip))
-
-                    raise BackupException("Tablets for table " + table_id
-                                          + " not found on tablet server " + tserver_ip)
+                    logging.warning("No tablet directory found for table '{}' on "
+                                    "tablet server '{}'.".format(table_id, tserver_ip))
 
         for tserver_ip in tablets_by_tserver_ip:
             tablets = tablets_by_tserver_ip[tserver_ip]
