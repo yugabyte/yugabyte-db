@@ -46,9 +46,11 @@
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_client.fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
 
 #include "yb/util/env.h"
@@ -56,28 +58,16 @@
 
 namespace yb {
 
-namespace client {
-class YBClient;
-class YBClientBuilder;
-}
-
 namespace master {
 class MiniMaster;
-class TSDescriptor;
-class TabletLocationsPB;
 }
 
 namespace server {
 class SkewedClockDeltaChanger;
 }
 
-namespace tablet {
-class TabletPeer;
-}
-
 namespace tserver {
 class MiniTabletServer;
-class TSTabletManager;
 }
 
 struct MiniClusterOptions {

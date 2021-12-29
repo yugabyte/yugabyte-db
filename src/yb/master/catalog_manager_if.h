@@ -21,6 +21,11 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/master_admin.fwd.h"
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_cluster.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_replication.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"

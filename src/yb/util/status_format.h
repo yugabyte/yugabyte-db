@@ -16,11 +16,10 @@
 #ifndef YB_UTIL_STATUS_FORMAT_H
 #define YB_UTIL_STATUS_FORMAT_H
 
-// TODO Should be migrated to separate header
-// #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/strings/substitute.h"
 
-// #include "yb/util/format.h"
-// #include "yb/util/status.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
 
 #define STATUS_SUBSTITUTE(status_type, ...) \
     (Status(Status::BOOST_PP_CAT(k, status_type), \

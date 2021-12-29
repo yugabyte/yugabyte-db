@@ -16,7 +16,7 @@
 #include "yb/gutil/map-util.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_cluster.pb.h"
 
 #include "yb/util/atomic.h"
 

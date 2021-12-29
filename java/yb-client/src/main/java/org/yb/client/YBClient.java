@@ -60,7 +60,6 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.Master;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 

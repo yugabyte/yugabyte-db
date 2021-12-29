@@ -49,7 +49,6 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/log.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/test_consensus_context.h"

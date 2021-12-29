@@ -170,9 +170,7 @@ class LightweightSerialization<google::protobuf::internal::WireFormatLite::TYPE_
   }
 };
 
-inline CHECKED_STATUS ParseFailed(const char* field_name) {
-  return STATUS_FORMAT(Corruption, "Failed to parse '$0'", field_name);
-}
+CHECKED_STATUS ParseFailed(const char* field_name);
 
 template <class Serialization, size_t TagSize, class Value>
 inline size_t RepeatedSize(const Value& value) {

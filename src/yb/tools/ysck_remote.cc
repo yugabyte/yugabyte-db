@@ -39,7 +39,9 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/messenger.h"
@@ -227,7 +229,7 @@ Status RemoteYsckMaster::RetrieveTabletServers(TSMap* tablet_servers) {
   RpcController rpc;
 
   rpc.set_timeout(GetDefaultTimeout());
-  RETURN_NOT_OK(proxy_->ListTabletServers(req, &resp, &rpc));
+  RETURN_NOT_OK(cluster_proxy_->ListTabletServers(req, &resp, &rpc));
   tablet_servers->clear();
   for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
     const HostPortPB& addr = DesiredHostPort(e.registration().common(), CloudInfoPB());
@@ -244,7 +246,7 @@ Status RemoteYsckMaster::RetrieveTablesList(vector<shared_ptr<YsckTable> >* tabl
   RpcController rpc;
 
   rpc.set_timeout(GetDefaultTimeout());
-  RETURN_NOT_OK(proxy_->ListTables(req, &resp, &rpc));
+  RETURN_NOT_OK(ddl_proxy_->ListTables(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -310,7 +312,7 @@ Status RemoteYsckMaster::GetTabletsBatch(
   req.set_partition_key_start(*last_partition_key);
 
   rpc.set_timeout(GetDefaultTimeout());
-  RETURN_NOT_OK(proxy_->GetTableLocations(req, &resp, &rpc));
+  RETURN_NOT_OK(client_proxy_->GetTableLocations(req, &resp, &rpc));
   if (resp.creating()) {
     return STATUS_FORMAT(TryAgain, "Table $0 is being created", table_name);
   }
@@ -351,7 +353,7 @@ Status RemoteYsckMaster::GetTableInfo(const TableId& table_id,
   req.mutable_table()->set_table_id(table_id);
 
   rpc.set_timeout(GetDefaultTimeout());
-  RETURN_NOT_OK(proxy_->GetTableSchema(req, &resp, &rpc));
+  RETURN_NOT_OK(ddl_proxy_->GetTableSchema(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -368,7 +370,9 @@ RemoteYsckMaster::RemoteYsckMaster(
     : messenger_(std::move(messenger)),
       proxy_cache_(new rpc::ProxyCache(messenger_.get())),
       generic_proxy_(new server::GenericServiceProxy(proxy_cache_.get(), address)),
-      proxy_(new master::MasterServiceProxy(proxy_cache_.get(), address)) {}
+      client_proxy_(new master::MasterClientProxy(proxy_cache_.get(), address)),
+      cluster_proxy_(new master::MasterClusterProxy(proxy_cache_.get(), address)),
+      ddl_proxy_(new master::MasterDdlProxy(proxy_cache_.get(), address)) {}
 
 RemoteYsckMaster::~RemoteYsckMaster() {
   messenger_->Shutdown();

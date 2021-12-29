@@ -60,8 +60,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -127,7 +126,6 @@ namespace yb {
 using consensus::RaftPeerPB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
-using master::MasterServiceProxy;
 using master::TabletLocationsPB;
 using master::TabletLocationsPB_ReplicaPB;
 using master::TSInfoPB;
@@ -1284,7 +1282,7 @@ class LookupByIdRpc : public LookupRpc {
     }
     req_.set_include_inactive(include_inactive_);
 
-    master_proxy()->GetTabletLocationsAsync(
+    master_client_proxy()->GetTabletLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupByIdRpc::Finished, this, Status::OK()));
   }
@@ -1370,7 +1368,7 @@ class LookupFullTableRpc : public LookupRpc {
     req_.mutable_table()->set_table_id(table()->id());
     // The end partition key is left unset intentionally so that we'll prefetch
     // some additional tablets.
-    master_proxy()->GetTableLocationsAsync(
+    master_client_proxy()->GetTableLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupFullTableRpc::Finished, this, Status::OK()));
   }
@@ -1478,7 +1476,7 @@ class LookupByKeyRpc : public LookupRpc {
 
     // The end partition key is left unset intentionally so that we'll prefetch
     // some additional tablets.
-    master_proxy()->GetTableLocationsAsync(
+    master_client_proxy()->GetTableLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupByKeyRpc::Finished, this, Status::OK()));
   }

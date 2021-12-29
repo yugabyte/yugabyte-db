@@ -35,7 +35,6 @@
 #include <mutex>
 
 #include "yb/consensus/consensus_peers.h"
-#include "yb/consensus/log.h"
 
 #include "yb/gutil/map-util.h"
 
@@ -56,14 +55,12 @@ PeerManager::PeerManager(
     PeerProxyFactory* peer_proxy_factory,
     PeerMessageQueue* queue,
     ThreadPoolToken* raft_pool_token,
-    const log::LogPtr& log,
     consensus::MultiRaftManager* multi_raft_manager)
     : tablet_id_(tablet_id),
       local_uuid_(local_uuid),
       peer_proxy_factory_(peer_proxy_factory),
       queue_(queue),
       raft_pool_token_(raft_pool_token),
-      log_(log),
       multi_raft_manager_(multi_raft_manager) {
 }
 

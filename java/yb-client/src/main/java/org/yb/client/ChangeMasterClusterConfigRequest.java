@@ -23,7 +23,7 @@ import org.yb.consensus.Consensus;
 import org.yb.consensus.Metadata;
 import org.yb.consensus.Metadata.RaftPeerPB;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.Master;
+import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
 
 import java.util.ArrayList;
@@ -42,8 +42,8 @@ class ChangeMasterClusterConfigRequest extends YRpc<ChangeMasterClusterConfigRes
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.ChangeMasterClusterConfigRequestPB.Builder builder =
-      Master.ChangeMasterClusterConfigRequestPB.newBuilder();
+    final MasterClusterOuterClass.ChangeMasterClusterConfigRequestPB.Builder builder =
+      MasterClusterOuterClass.ChangeMasterClusterConfigRequestPB.newBuilder();
     builder.setClusterConfig(clusterConfig);
 
     return toChannelBuffer(header, builder.build());
@@ -60,8 +60,8 @@ class ChangeMasterClusterConfigRequest extends YRpc<ChangeMasterClusterConfigRes
   @Override
   Pair<ChangeMasterClusterConfigResponse, Object> deserialize(CallResponse callResponse,
                                                  String masterUUID) throws Exception {
-    final Master.ChangeMasterClusterConfigResponsePB.Builder respBuilder =
-      Master.ChangeMasterClusterConfigResponsePB.newBuilder();
+    final MasterClusterOuterClass.ChangeMasterClusterConfigResponsePB.Builder respBuilder =
+      MasterClusterOuterClass.ChangeMasterClusterConfigResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasErr = respBuilder.hasError();
     ChangeMasterClusterConfigResponse response =

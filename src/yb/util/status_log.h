@@ -14,9 +14,9 @@
 #ifndef YB_UTIL_STATUS_LOG_H
 #define YB_UTIL_STATUS_LOG_H
 
-// TODO Should be migrated to separate header
-// #include "yb/util/status.h"
-// #include <glog/logging.h>
+#include <glog/logging.h>
+
+#include "yb/util/status.h"
 
 #define YB_DFATAL_OR_RETURN_NOT_OK(s) do { \
     LOG_IF(DFATAL, !s.ok()) << s; \

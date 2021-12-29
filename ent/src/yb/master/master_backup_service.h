@@ -29,7 +29,7 @@ namespace master {
       rpc::RpcContext rpc) override;
 
 // Implementation of the master backup service. See master_backup.proto.
-class MasterBackupServiceImpl : public MasterBackupServiceIf,
+class MasterBackupServiceImpl : public MasterBackupIf,
                                 public MasterServiceBase {
  public:
   explicit MasterBackupServiceImpl(Master* server);

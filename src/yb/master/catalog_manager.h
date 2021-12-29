@@ -59,6 +59,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/cdc_consumer_split_driver.h"
+#include "yb/master/master_dcl.fwd.h"
+#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -166,7 +168,7 @@ class CatalogManager :
   // Create Postgres sys catalog table.
   CHECKED_STATUS CreateYsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
 
-  CHECKED_STATUS ReplicatePgMetadataChange(const tserver::ChangeMetadataRequestPB* req);
+  CHECKED_STATUS ReplicatePgMetadataChange(const tablet::ChangeMetadataRequestPB* req);
 
   // Reserve Postgres oids for a Postgres database.
   CHECKED_STATUS ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,

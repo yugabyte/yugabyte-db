@@ -33,7 +33,7 @@
 
 using namespace std::literals;
 
-METRIC_DECLARE_histogram(handler_latency_yb_master_MasterService_GetTabletLocations);
+METRIC_DECLARE_histogram(handler_latency_yb_master_MasterClient_GetTabletLocations);
 
 DECLARE_int64(meta_cache_lookup_throttling_max_delay_ms);
 DECLARE_int64(meta_cache_lookup_throttling_step_ms);
@@ -82,7 +82,7 @@ int64_t CountLookups(MiniCluster* cluster) {
   for (int i = 0; i != cluster->num_masters(); ++i) {
     auto new_leader_master = cluster->mini_master(i);
     auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateHistogram(
-        &METRIC_handler_latency_yb_master_MasterService_GetTabletLocations);
+        &METRIC_handler_latency_yb_master_MasterClient_GetTabletLocations);
     result += histogram->TotalCount();
   }
   return result;

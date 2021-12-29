@@ -16,6 +16,7 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
 
 enum RelationType {
@@ -146,4 +147,54 @@ message MasterErrorPB {
   // message that may be more useful to present in log messages, etc,
   // though its error code is less specific.
   required AppStatusPB status = 2;
+}
+
+message NamespaceIdentifierPB {
+  // The namespace ID to fetch info.
+  optional bytes id = 1;
+
+  // The namespace name to fetch info.
+  optional string name = 2;
+
+  // Database type.
+  optional YQLDatabase database_type = 3 [ default = YQL_DATABASE_CQL ];
+}
+
+message TableIdentifierPB {
+  // The table ID to fetch info.
+  optional bytes table_id = 1;
+
+  // The table name to fetch info.
+  optional string table_name = 2;
+
+  // The table namespace (if empty - using default namespace).
+  optional NamespaceIdentifierPB namespace = 3;
+}
+
+// Sent by the TS when it first heartbeats with a master. This sends the
+// master all of the necessary information about the current instance
+// of the TS.
+message TSRegistrationPB {
+  optional ServerRegistrationPB common = 1;
+
+  // Capabilities supported byt this TS.
+  repeated fixed32 capabilities = 2;
+}
+
+message TServerMetricsPB {
+  optional int64 total_sst_file_size = 1;
+  optional int64 total_ram_usage = 2;
+  optional double read_ops_per_sec = 3;
+  optional double write_ops_per_sec = 4;
+  optional int64 uncompressed_sst_file_size = 5;
+  optional uint64 uptime_seconds = 6;
+  optional uint64 num_sst_files = 7;
+
+  message PathMetrics {
+    // Device path provided by user in --fs_data_dirs
+    required bytes path_id = 1;
+    optional uint64 used_space = 2;
+    optional uint64 total_space = 3;
+  }
+  repeated PathMetrics path_metrics = 8;
 }

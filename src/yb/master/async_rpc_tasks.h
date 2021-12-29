@@ -729,7 +729,7 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   bool SendRequest(int attempt) override;
   void Finished(const Status& status) override;
 
-  tserver::SplitTabletRequestPB req_;
+  tablet::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
   TabletSplitCompleteHandlerIf* tablet_split_complete_handler_;
 };

@@ -44,14 +44,14 @@ class InitialSysCatalogSnapshotWriter {
 
   // Collect all Raft group metadata changes needed by PostgreSQL tables so we can replay them
   // when creating a new cluster (to avoid running initdb).
-  void AddMetadataChange(tserver::ChangeMetadataRequestPB metadata_change);
+  void AddMetadataChange(tablet::ChangeMetadataRequestPB metadata_change);
 
   CHECKED_STATUS WriteSnapshot(
       tablet::Tablet* sys_catalog_tablet,
       const std::string& dest_path);
 
  private:
-  std::vector<tserver::ChangeMetadataRequestPB> initdb_metadata_changes_;
+  std::vector<tablet::ChangeMetadataRequestPB> initdb_metadata_changes_;
 };
 
 CHECKED_STATUS RestoreInitialSysCatalogSnapshot(

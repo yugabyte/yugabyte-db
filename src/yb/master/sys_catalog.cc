@@ -70,9 +70,9 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/write_operation.h"

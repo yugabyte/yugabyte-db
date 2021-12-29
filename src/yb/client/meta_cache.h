@@ -54,6 +54,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -78,13 +79,6 @@ namespace yb {
 
 class Histogram;
 class YBPartialRow;
-
-namespace master {
-class MasterServiceProxy;
-class TabletLocationsPB_ReplicaPB;
-class TabletLocationsPB;
-class TSInfoPB;
-} // namespace master
 
 namespace client {
 

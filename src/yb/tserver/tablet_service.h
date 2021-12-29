@@ -223,7 +223,7 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     DeleteTabletResponsePB* resp,
                     rpc::RpcContext context) override;
 
-  void AlterSchema(const ChangeMetadataRequestPB* req,
+  void AlterSchema(const tablet::ChangeMetadataRequestPB* req,
                    ChangeMetadataResponsePB* resp,
                    rpc::RpcContext context) override;
 
@@ -259,13 +259,13 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   // Called on the Index table(s) once the backfill is complete.
   void BackfillDone(
-      const ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       rpc::RpcContext context) override;
 
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source
   // tablet.
   void SplitTablet(
-      const SplitTabletRequestPB* req,
+      const tablet::SplitTabletRequestPB* req,
       SplitTabletResponsePB* resp,
       rpc::RpcContext context) override;
 

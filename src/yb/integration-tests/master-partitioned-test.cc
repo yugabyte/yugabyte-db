@@ -32,7 +32,7 @@
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -52,7 +52,6 @@ using yb::client::YBTableCreator;
 using yb::client::YBTableName;
 using yb::itest::CreateTabletServerMap;
 using yb::itest::TabletServerMap;
-using yb::master::MasterServiceProxy;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -349,7 +348,7 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
 
   // Now perform an RPC that involves a SHARED_LEADER_LOCK and confirm that it fails.
   yb::master::Master* m = cluster_->mini_master(old_leader_idx)->master();
-  MasterServiceProxy proxy(&m->proxy_cache(), m->rpc_server()->GetRpcHostPort()[0]);
+  master::MasterClusterProxy proxy(&m->proxy_cache(), m->rpc_server()->GetRpcHostPort()[0]);
 
   RpcController controller;
   controller.Reset();

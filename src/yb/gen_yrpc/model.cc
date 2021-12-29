@@ -243,6 +243,7 @@ std::vector<std::string> ListDependencies(const google::protobuf::FileDescriptor
     }
     if (dependency_path == "yb/rpc/rpc_header" ||
         dependency_path == "yb/rpc/lightweight_message" ||
+        dependency_path == "yb/rpc/service" ||
         boost::starts_with(dependency_path, "google/protobuf/")) {
       continue;
     }

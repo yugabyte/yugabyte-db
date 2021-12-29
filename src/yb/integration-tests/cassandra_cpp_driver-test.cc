@@ -1221,7 +1221,7 @@ void TestBackfillIndexTable(
   WARN_NOT_OK(WaitForBackfillSafeTimeOn(test->cluster_.get(), table_name, kMaxWait),
       "Could not get safe time. May be OK, if the backfill is already done.");
   WARN_NOT_OK(WaitForBackfillSatisfyCondition(
-      test->cluster_.get()->master_proxy(), table_name,
+      test->cluster_->GetMasterProxy<master::MasterDdlProxy>(), table_name,
       [kLowerBound](Result<master::BackfillJobPB> backfill_job) -> Result<bool> {
         if (!backfill_job) {
           return backfill_job.status();

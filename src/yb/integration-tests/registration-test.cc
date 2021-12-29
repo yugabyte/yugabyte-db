@@ -46,7 +46,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/master-test-util.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 

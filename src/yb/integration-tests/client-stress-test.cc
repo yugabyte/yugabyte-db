@@ -52,7 +52,7 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/rpc/rpc.h"

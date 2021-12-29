@@ -153,7 +153,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
     tserver::GetSharedDataResponsePB resp;
     rpc::RpcController controller;
     controller.set_timeout(30s);
-    CHECK_OK(proxy->GetSharedData(req, &resp, &controller));
+    CHECK_OK(proxy.GetSharedData(req, &resp, &controller));
     CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object_));
     memcpy(pointer_cast<char*>(&*tserver_shared_object_), resp.data().c_str(), resp.data().size());
   }

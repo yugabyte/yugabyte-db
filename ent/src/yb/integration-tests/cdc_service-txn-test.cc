@@ -26,7 +26,7 @@
 
 #include "yb/integration-tests/cdc_test_util.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"

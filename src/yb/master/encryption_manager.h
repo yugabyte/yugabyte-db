@@ -18,7 +18,9 @@
 
 #include "yb/encryption/encryption_fwd.h"
 
+#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 

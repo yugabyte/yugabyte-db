@@ -26,6 +26,8 @@
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/master/master_cluster.proxy.h"
+
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -82,8 +84,7 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
                                                  kValueSizeBytes, kMaxReadErrors);
 
   auto* const emc = external_mini_cluster();
-  TabletServerMap ts_map;
-  ASSERT_OK(itest::CreateTabletServerMap(emc->master_proxy().get(), &emc->proxy_cache(), &ts_map));
+  TabletServerMap ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(emc));
 
   vector<TabletId> tablet_ids;
   {

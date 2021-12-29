@@ -15,7 +15,7 @@ package org.yb.client;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterEncryptionOuterClass;
 import org.yb.util.Pair;
 
 import com.google.protobuf.Message;
@@ -35,8 +35,8 @@ class ChangeEncryptionInfoInMemoryRequest extends YRpc<ChangeEncryptionInfoInMem
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.ChangeEncryptionInfoRequestPB.Builder builder =
-            Master.ChangeEncryptionInfoRequestPB.newBuilder()
+    final MasterEncryptionOuterClass.ChangeEncryptionInfoRequestPB.Builder builder =
+            MasterEncryptionOuterClass.ChangeEncryptionInfoRequestPB.newBuilder()
                     .setEncryptionEnabled(this.encryptionEnabled)
                     .setVersionId(this.versionId)
                     .setInMemory(true);
@@ -56,8 +56,8 @@ class ChangeEncryptionInfoInMemoryRequest extends YRpc<ChangeEncryptionInfoInMem
   @Override
   Pair<ChangeEncryptionInfoInMemoryResponse, Object> deserialize(
           CallResponse callResponse, String uuid) throws Exception {
-    final Master.ChangeEncryptionInfoResponsePB.Builder respBuilder =
-            Master.ChangeEncryptionInfoResponsePB.newBuilder();
+    final MasterEncryptionOuterClass.ChangeEncryptionInfoResponsePB.Builder respBuilder =
+            MasterEncryptionOuterClass.ChangeEncryptionInfoResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasError = respBuilder.hasError();
     ChangeEncryptionInfoInMemoryResponse response =

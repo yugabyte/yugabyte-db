@@ -24,7 +24,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/status.h"

@@ -39,8 +39,8 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -778,7 +778,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
 
-  RETURN_NOT_OK(cluster_->master_proxy()->SplitTablet(req, &resp, &rpc));
+  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }

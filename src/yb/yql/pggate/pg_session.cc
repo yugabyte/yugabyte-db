@@ -87,9 +87,6 @@ using client::YBTableName;
 using client::YBTableType;
 
 using yb::master::GetNamespaceInfoResponsePB;
-using yb::master::IsInitDbDoneRequestPB;
-using yb::master::IsInitDbDoneResponsePB;
-using yb::master::MasterServiceProxy;
 
 using yb::tserver::TServerSharedObject;
 

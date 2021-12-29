@@ -47,7 +47,6 @@ import org.jboss.netty.channel.ConnectTimeoutException;
 import org.jboss.netty.handler.timeout.ReadTimeoutException;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
 import org.yb.master.MasterTypes;
 import org.yb.rpc.RpcHeader;
 import org.yb.tserver.Tserver;

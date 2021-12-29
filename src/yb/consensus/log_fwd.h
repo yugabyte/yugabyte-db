@@ -32,6 +32,7 @@ class LogReader;
 class LogSegmentFooterPB;
 class LogSegmentHeaderPB;
 class ReadableLogSegment;
+class WritableLogSegment;
 
 struct LogAnchor;
 struct LogEntryMetadata;

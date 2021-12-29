@@ -51,8 +51,8 @@
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/master_util.h"
 
 #include "yb/util/metrics.h"

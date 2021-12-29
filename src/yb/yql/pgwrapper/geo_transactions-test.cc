@@ -23,7 +23,7 @@
 
 #include "yb/gutil/strings/join.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/tserver/mini_tablet_server.h"

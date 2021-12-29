@@ -40,8 +40,8 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.ImmutableList;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.master.Master.TabletLocationsPB;
-import org.yb.master.Master.TabletLocationsPB.ReplicaPB;
+import org.yb.master.MasterClientOuterClass.TabletLocationsPB;
+import org.yb.master.MasterClientOuterClass.TabletLocationsPB.ReplicaPB;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.CommonTypes.PeerRole;
 

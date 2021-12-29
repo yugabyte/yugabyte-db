@@ -43,6 +43,9 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+
+#include "yb/master/master_cluster.proxy.h"
+
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
@@ -110,12 +113,7 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
-  int master_leader = 0;
-  ASSERT_OK(cluster_->GetLeaderMasterIndex(&master_leader));
-
-  ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy(master_leader).get(),
-                                         &cluster_->proxy_cache(),
-                                         &ts_map_));
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
   client_ = ASSERT_RESULT(cluster_->CreateClient());
 }
 

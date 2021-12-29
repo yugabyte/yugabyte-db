@@ -19,7 +19,6 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/master/master.pb.h"
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/tablet/tablet_fwd.h"

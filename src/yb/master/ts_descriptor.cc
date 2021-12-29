@@ -36,10 +36,12 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"

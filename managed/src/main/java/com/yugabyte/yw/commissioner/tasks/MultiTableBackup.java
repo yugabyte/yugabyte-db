@@ -50,7 +50,7 @@ import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 

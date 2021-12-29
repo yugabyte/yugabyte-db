@@ -61,8 +61,10 @@
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -114,7 +116,6 @@ using consensus::kInvalidOpIdIndex;
 using consensus::LeaderLeaseCheckMode;
 using consensus::LeaderLeaseStatus;
 using master::ListTabletServersResponsePB;
-using master::MasterServiceProxy;
 using master::TabletLocationsPB;
 using rpc::Messenger;
 using rpc::RpcController;
@@ -367,7 +368,7 @@ Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
 }
 
 Status WaitUntilNumberOfAliveTServersEqual(int n_tservers,
-                                           MasterServiceProxy* master_proxy,
+                                           const master::MasterClusterProxy& master_proxy,
                                            const MonoDelta& timeout) {
 
   master::ListTabletServersRequestPB req;
@@ -382,7 +383,7 @@ Status WaitUntilNumberOfAliveTServersEqual(int n_tservers,
   MonoTime start = MonoTime::Now();
   MonoDelta passed = MonoDelta::FromMilliseconds(0);
   while (true) {
-    Status s = master_proxy->ListTabletServers(req, &resp, &controller);
+    Status s = master_proxy.ListTabletServers(req, &resp, &controller);
 
     if (s.ok() &&
         controller.status().ok() &&
@@ -413,20 +414,26 @@ Status WaitUntilNumberOfAliveTServersEqual(int n_tservers,
                                      n_tservers, timeout.ToMilliseconds()));
 }
 
-Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
-                             rpc::ProxyCache* proxy_cache,
-                             TabletServerMap* ts_map) {
+Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster) {
+  auto proxy = cluster->num_masters() > 1
+      ? cluster->GetLeaderMasterProxy<master::MasterClusterProxy>()
+      : cluster->GetMasterProxy<master::MasterClusterProxy>();
+  return CreateTabletServerMap(proxy, &cluster->proxy_cache());
+}
+
+Result<TabletServerMap> CreateTabletServerMap(
+    const master::MasterClusterProxy& proxy, rpc::ProxyCache* proxy_cache) {
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
   rpc::RpcController controller;
 
-  RETURN_NOT_OK(master_proxy->ListTabletServers(req, &resp, &controller));
+  RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, &controller));
   RETURN_NOT_OK(controller.status());
   if (resp.has_error()) {
     return STATUS(RemoteError, "Response had an error", resp.error().ShortDebugString());
   }
 
-  ts_map->clear();
+  TabletServerMap result;
   for (const ListTabletServersResponsePB::Entry& entry : resp.servers()) {
     HostPort host_port = HostPortFromPB(DesiredHostPort(
         entry.registration().common(), CloudInfoPB()));
@@ -443,9 +450,9 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
                           &peer->generic_proxy);
 
     const auto& key = peer->instance_id.permanent_uuid();
-    CHECK(ts_map->emplace(key, std::move(peer)).second) << "duplicate key: " << key;
+    CHECK(result.emplace(key, std::move(peer)).second) << "duplicate key: " << key;
   }
-  return Status::OK();
+  return result;
 }
 
 Status GetConsensusState(const TServerDetails* replica,
@@ -994,7 +1001,7 @@ Status ListRunningTabletIds(const TServerDetails* ts,
   return Status::OK();
 }
 
-Status GetTabletLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
+Status GetTabletLocations(ExternalMiniCluster* cluster,
                           const string& tablet_id,
                           const MonoDelta& timeout,
                           master::TabletLocationsPB* tablet_locations) {
@@ -1003,7 +1010,8 @@ Status GetTabletLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
   *req.add_tablet_ids() = tablet_id;
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
-  RETURN_NOT_OK(master_proxy->GetTabletLocations(req, &resp, &rpc));
+  RETURN_NOT_OK(cluster->GetMasterProxy<master::MasterClientProxy>().GetTabletLocations(
+      req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -1016,7 +1024,7 @@ Status GetTabletLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
   return Status::OK();
 }
 
-Status GetTableLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
+Status GetTableLocations(ExternalMiniCluster* cluster,
                          const YBTableName& table_name,
                          const MonoDelta& timeout,
                          const RequireTabletsRunning require_tablets_running,
@@ -1027,17 +1035,19 @@ Status GetTableLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
-  RETURN_NOT_OK(master_proxy->GetTableLocations(req, table_locations, &rpc));
+  RETURN_NOT_OK(cluster->GetMasterProxy<master::MasterClientProxy>().GetTableLocations(
+      req, table_locations, &rpc));
   if (table_locations->has_error()) {
     return StatusFromPB(table_locations->error().status());
   }
   return Status::OK();
 }
 
-Status WaitForNumVotersInConfigOnMaster(const shared_ptr<MasterServiceProxy>& master_proxy,
-                                        const std::string& tablet_id,
-                                        int num_voters,
-                                        const MonoDelta& timeout) {
+Status WaitForNumVotersInConfigOnMaster(
+    ExternalMiniCluster* cluster,
+    const std::string& tablet_id,
+    int num_voters,
+    const MonoDelta& timeout) {
   Status s;
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
@@ -1045,7 +1055,7 @@ Status WaitForNumVotersInConfigOnMaster(const shared_ptr<MasterServiceProxy>& ma
   while (true) {
     TabletLocationsPB tablet_locations;
     MonoDelta time_remaining = deadline.GetDeltaSince(MonoTime::Now());
-    s = GetTabletLocations(master_proxy, tablet_id, time_remaining, &tablet_locations);
+    s = GetTabletLocations(cluster, tablet_id, time_remaining, &tablet_locations);
     if (s.ok()) {
       num_voters_found = 0;
       for (const TabletLocationsPB::ReplicaPB& r : tablet_locations.replicas()) {
@@ -1187,12 +1197,13 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
   return Status::OK();
 }
 
-Status GetLastOpIdForMasterReplica(const shared_ptr<ConsensusServiceProxy>& consensus_proxy,
-                                   const string& tablet_id,
-                                   const string& dest_uuid,
-                                   const consensus::OpIdType opid_type,
-                                   const MonoDelta& timeout,
-                                   OpIdPB* opid) {
+Status GetLastOpIdForMasterReplica(
+    const shared_ptr<consensus::ConsensusServiceProxy>& consensus_proxy,
+    const string& tablet_id,
+    const string& dest_uuid,
+    const consensus::OpIdType opid_type,
+    const MonoDelta& timeout,
+    OpIdPB* opid) {
   GetLastOpIdRequestPB opid_req;
   GetLastOpIdResponsePB opid_resp;
   RpcController controller;

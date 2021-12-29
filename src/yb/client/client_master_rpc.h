@@ -16,7 +16,10 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_error.h"
+
 #include "yb/rpc/rpc.h"
 
 namespace yb {
@@ -43,8 +46,57 @@ class ClientMasterRpcBase : public rpc::Rpc {
   }
 
  protected:
-  std::shared_ptr<master::MasterServiceProxy> master_proxy() {
-    return client_data_->master_proxy();
+  template <class Proxy>
+  std::shared_ptr<Proxy> master_proxy() {
+    return master_proxy_helper(static_cast<const Proxy*>(nullptr));
+  }
+
+  std::shared_ptr<master::MasterAdminProxy> master_admin_proxy() {
+    return client_data_->master_admin_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterAdminProxy*) {
+    return master_admin_proxy();
+  }
+
+  std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy() {
+    return client_data_->master_cluster_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterClusterProxy*) {
+    return master_cluster_proxy();
+  }
+
+  std::shared_ptr<master::MasterDclProxy> master_dcl_proxy() {
+    return client_data_->master_dcl_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterDclProxy*) {
+    return master_dcl_proxy();
+  }
+
+  std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy() {
+    return client_data_->master_ddl_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterDdlProxy*) {
+    return master_ddl_proxy();
+  }
+
+  std::shared_ptr<master::MasterClientProxy> master_client_proxy() {
+    return client_data_->master_client_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterClientProxy*) {
+    return master_client_proxy();
+  }
+
+  std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy() {
+    return client_data_->master_replication_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterReplicationProxy*) {
+    return master_replication_proxy();
   }
 
   virtual void CallRemoteMethod() = 0;

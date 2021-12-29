@@ -45,7 +45,7 @@ import org.yb.util.MiscUtil.ThrowingCallable;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.YBBackupException;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 
 import java.io.File;
 import java.net.InetSocketAddress;
@@ -1724,7 +1724,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** UUID of the first table with specified name. **/
   private String getTableUUID(String tableName)  throws Exception {
-    for (Master.ListTablesResponsePB.TableInfo table :
+    for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table :
         miniCluster.getClient().getTablesList().getTableInfoList()) {
       if (table.getName().equals(tableName)) {
         return table.getId().toStringUtf8();

@@ -54,6 +54,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"

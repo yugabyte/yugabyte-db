@@ -36,7 +36,6 @@
 
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"

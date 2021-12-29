@@ -216,17 +216,6 @@ void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* 
 }
 
 Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
-#if 0
-  RequestHeader header;
-  RETURN_NOT_OK(InitHeader(&header));
-  auto se = ScopeExit([&header] {
-    // Prevent header to free its RemoteMethodPB pointer incorrectly when header
-    // goes out of scope, because RemoteMethodPB is owned by the containing remote_method_.
-    header.release_remote_method();
-  });
-
-  buffer_ = VERIFY_RESULT(SerializeRequest(req.SerializedSize(), 0, header, req));
-#endif
   auto req_size = req.SerializedSize();
   size_t message_size = SerializedMessageSize(req_size, 0);
 
@@ -281,7 +270,6 @@ const ErrorStatusPB* OutboundCall::error_pb() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return error_pb_.get();
 }
-
 
 string OutboundCall::StateName(State state) {
   return RpcCallState_Name(state);

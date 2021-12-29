@@ -40,6 +40,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 
+#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/tasks_tracker.h"

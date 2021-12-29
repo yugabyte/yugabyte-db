@@ -28,7 +28,6 @@
 #include "yb/docdb/pgsql_operation.h"
 
 #include "yb/master/catalog_loaders.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"

@@ -63,6 +63,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -75,10 +76,6 @@ class MetricEntityPrototype;
 class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
-
-namespace master {
-class MasterServiceProxy;
-}  // namespace master
 
 namespace server {
 class ServerStatusPB;
@@ -347,38 +344,35 @@ class ExternalMiniCluster : public MiniClusterBase {
   }
 
   // Get the master leader consensus proxy.
-  std::shared_ptr<consensus::ConsensusServiceProxy> GetLeaderConsensusProxy();
-
-  // Get the master leader master service proxy.
-  std::shared_ptr<master::MasterServiceProxy> GetLeaderMasterProxy();
+  consensus::ConsensusServiceProxy GetLeaderConsensusProxy();
 
   // Get the given master's consensus proxy.
-  std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(ExternalDaemon* daemon);
+  consensus::ConsensusServiceProxy GetConsensusProxy(ExternalDaemon* daemon);
 
   template <class T>
-  std::shared_ptr<T> GetProxy(ExternalDaemon* daemon);
+  T GetProxy(ExternalDaemon* daemon);
 
   template <class T>
-  std::shared_ptr<T> GetTServerProxy(int i) {
+  T GetTServerProxy(int i) {
     return GetProxy<T>(tablet_server(i));
   }
 
   template <class T>
-  std::shared_ptr<T> GetMasterProxy(int i) {
-    return GetProxy<T>(master(i));
+  T GetMasterProxy() {
+    CHECK_EQ(masters_.size(), 1);
+    return GetMasterProxy<T>(0);
   }
 
   template <class T>
-  std::shared_ptr<T> GetLeaderMasterProxy() {
-    return GetProxy<T>(GetLeaderMaster());
+  T GetMasterProxy(size_t idx) {
+    CHECK_LT(idx, masters_.size());
+    return GetProxy<T>(master(idx));
   }
 
-  // If the cluster is configured for a single non-distributed master, return a proxy to that
-  // master. Requires that the single master is running.
-  std::shared_ptr<master::MasterServiceProxy> master_proxy();
-
-  // Returns an RPC proxy to the master at 'idx'. Requires that the master at 'idx' is running.
-  std::shared_ptr<master::MasterServiceProxy> master_proxy(int idx);
+  template <class T>
+  T GetLeaderMasterProxy() {
+    return GetProxy<T>(GetLeaderMaster());
+  }
 
   // Returns an generic proxy to the master at 'idx'. Requires that the master at 'idx' is running.
   std::shared_ptr<server::GenericServiceProxy> master_generic_proxy(int idx) const;
@@ -838,8 +832,8 @@ struct MasterComparator {
 };
 
 template <class T>
-std::shared_ptr<T> ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
-  return std::make_shared<T>(proxy_cache_.get(), daemon->bound_rpc_addr());
+T ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
+  return T(proxy_cache_.get(), daemon->bound_rpc_addr());
 }
 
 CHECKED_STATUS RestartAllMasters(ExternalMiniCluster* cluster);

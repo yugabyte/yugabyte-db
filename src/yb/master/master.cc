@@ -52,9 +52,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master-path-handlers.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
-#include "yb/master/master.service.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
@@ -230,9 +228,14 @@ Status Master::Start() {
 }
 
 Status Master::RegisterServices() {
-  std::unique_ptr<ServiceIf> master_service(new MasterServiceImpl(this));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_svc_queue_length,
-                                                     std::move(master_service)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterAdminService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClientService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDclService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDdlService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterEncryptionService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
 
   std::unique_ptr<ServiceIf> master_tablet_service(
       new MasterTabletServiceImpl(master_tablet_server_.get(), this));
@@ -476,7 +479,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
 
 Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   HostPort hp(hp_pb.host(), hp_pb.port());
-  MasterServiceProxy proxy(proxy_cache_.get(), hp);
+  MasterClusterProxy proxy(proxy_cache_.get(), hp);
   RemovedMasterUpdateRequestPB req;
   RemovedMasterUpdateResponsePB resp;
   rpc::RpcController controller;

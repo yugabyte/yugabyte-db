@@ -49,8 +49,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/master-test-util.h"
 
 #include "yb/master/cdc_consumer_registry_service.h"
@@ -342,7 +341,7 @@ TEST_P(TwoDCTest, SetupUniverseReplication) {
 TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 1));
   rpc::RpcController rpc;
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),
       ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -445,9 +444,6 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
-  auto producer_master_proxy = std::make_shared<master::MasterServiceProxy>(
-      &producer_client()->proxy_cache(),
-      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   std::unique_ptr<client::YBClient> client;
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
@@ -551,7 +547,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
     setup_universe_req.add_producer_bootstrap_ids(iter->second);
   }
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),
       ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -1283,7 +1279,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
-    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client()->proxy_cache(),
         ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
     ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
@@ -1318,7 +1314,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
-    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client()->proxy_cache(),
         ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
     ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
@@ -1367,7 +1363,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
-    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client()->proxy_cache(),
         ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
     ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
@@ -1396,7 +1392,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
-    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client()->proxy_cache(),
         ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
     ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
@@ -1665,7 +1661,7 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   auto stream_id = stream_resp.streams(0).stream_id();
 
   rpc::RpcController rpc;
-  auto producer_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto producer_proxy = std::make_shared<master::MasterReplicationProxy>(
       &producer_client()->proxy_cache(),
       ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -1678,7 +1674,7 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
       delete_cdc_stream_req, &delete_cdc_stream_resp, &rpc));
 
   // Try to delete the universe.
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),
       ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
   rpc.Reset();
@@ -1734,7 +1730,7 @@ TEST_P(TwoDCTest, TestAlterWhenProducerIsInaccessible) {
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),
       ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 

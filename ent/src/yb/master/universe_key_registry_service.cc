@@ -16,7 +16,8 @@
 #include "yb/encryption/encryption_util.h"
 #include "yb/encryption/encryption.pb.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
+
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
 

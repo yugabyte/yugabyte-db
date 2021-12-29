@@ -38,7 +38,7 @@ option java_package = "org.yb.tserver";
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
-import "yb/tablet/metadata.proto";
+import "yb/tablet/tablet_types.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
 import "yb/tserver/tserver_types.proto";

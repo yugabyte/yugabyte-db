@@ -18,9 +18,10 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/roles_permissions.h"
 
-#include "yb/master/master_fwd.h"
+#include "yb/master/master_dcl.fwd.h"
 
 #include "yb/rpc/io_thread_pool.h"
 

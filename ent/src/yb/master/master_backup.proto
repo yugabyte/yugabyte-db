@@ -18,7 +18,6 @@ option java_package = "org.yb.master";
 
 import "yb/common/wire_protocol.proto";
 import "yb/master/catalog_entity_info.proto";
-import "yb/master/master.proto";
 import "yb/master/master_types.proto";
 
 message BackupRowEntryPB {
@@ -214,7 +213,7 @@ message DeleteSnapshotScheduleResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-service MasterBackupService {
+service MasterBackup {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
   rpc ListSnapshots(ListSnapshotsRequestPB) returns (ListSnapshotsResponsePB);

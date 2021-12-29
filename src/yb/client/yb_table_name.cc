@@ -20,7 +20,6 @@
 #include "yb/common/redis_constants_common.h"
 
 #include "yb/master/master_util.h"
-#include "yb/master/master.pb.h"
 
 namespace yb {
 namespace client {

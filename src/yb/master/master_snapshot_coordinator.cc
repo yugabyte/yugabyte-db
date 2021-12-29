@@ -28,6 +28,7 @@
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
 #include "yb/master/snapshot_coordinator_context.h"

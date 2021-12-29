@@ -19,7 +19,7 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"

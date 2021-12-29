@@ -34,7 +34,6 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
-#include "yb/master/master.pb.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -51,8 +50,6 @@ using yb::consensus::ChangeConfigRequestPB;
 using yb::consensus::ChangeConfigResponsePB;
 using yb::consensus::ConsensusServiceProxy;
 using yb::consensus::RaftPeerPB;
-using yb::master::ListMastersRequestPB;
-using yb::master::ListMastersResponsePB;
 using yb::tserver::TabletServerErrorPB;
 
 using namespace std::chrono_literals;

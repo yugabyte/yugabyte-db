@@ -37,7 +37,7 @@ import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.LocatedTablet;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.YBTestRunnerNonTsanOnly;
@@ -514,7 +514,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
   YBTable getTableFromName(final String table) throws Exception {
     final YBClient client = miniCluster.getClient();
-    List<Master.ListTablesResponsePB.TableInfo> tables =
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables =
       client.getTablesList(table).getTableInfoList();
     assertEquals("More than one table found with name " + table, 1, tables.size());
     return client.openTableByUUID(

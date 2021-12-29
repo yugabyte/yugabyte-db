@@ -23,6 +23,10 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/rpc/service.pb.h"
+
+#include "yb/util/format.h"
+
 namespace yb {
 namespace gen_yrpc {
 
@@ -172,7 +176,13 @@ Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field
 Substitutions CreateSubstitutions(const google::protobuf::ServiceDescriptor* service) {
   Substitutions result;
   result.emplace_back("service_name", service->name());
-  result.emplace_back("full_service_name", service->full_name());
+  std::string full_service_name = service->full_name();
+  result.emplace_back("original_full_service_name", full_service_name);
+  auto custom_service_name = service->options().GetExtension(rpc::custom_service_name);
+  if (!custom_service_name.empty()) {
+    full_service_name = custom_service_name;
+  }
+  result.emplace_back("full_service_name", full_service_name);
   result.emplace_back("service_method_count", std::to_string(service->method_count()));
   result.emplace_back("service_method_enum", service->name() + "RpcMethodIndexes");
 

@@ -1,0 +1,136 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/master/catalog_entity_info.proto";
+import "yb/master/master_types.proto";
+import "yb/rpc/service.proto";
+
+// TODO: rename to FlushOrCompact TablesRequestPB
+// https://github.com/YugaByte/yugabyte-db/issues/729
+message FlushTablesRequestPB {
+  repeated TableIdentifierPB tables = 1;
+
+  // Whether we want to compact the tablets instead of flushing them.
+  optional bool is_compaction = 2;
+
+  // Whether we want to include index tables in this flush. If there are index tables in the tables
+  // field this field must be set to false, otherwise the request will fail.
+  optional bool add_indexes = 3;
+}
+
+message FlushTablesResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bytes flush_request_id = 2;
+}
+
+message IsFlushTablesDoneRequestPB {
+  optional bytes flush_request_id = 1;
+}
+
+message IsFlushTablesDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // true if the flush tables operation is completed, false otherwise.
+  optional bool done = 2;
+
+  // true if the flush tables operation is successful.
+  optional bool success = 3;
+}
+
+message FlushSysCatalogRequestPB{
+}
+
+message FlushSysCatalogResponsePB{
+  optional MasterErrorPB error = 1;
+}
+
+message CompactSysCatalogRequestPB {
+}
+
+message CompactSysCatalogResponsePB{
+  optional MasterErrorPB error = 1;
+}
+
+message IsInitDbDoneRequestPB {
+}
+
+message IsInitDbDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // Someone started running initdb, as indicated by the existence of template1.pg_proc.
+  optional bool pg_proc_exists = 2;
+
+  // This is true if the master ran initdb and it finished, successfully or not.
+  optional bool done = 4;
+
+  // If this is set to a non-empty string, initdb has failed.
+  optional string initdb_error = 5;
+}
+
+message SplitTabletRequestPB {
+  required bytes tablet_id = 1;
+}
+
+message SplitTabletResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message CreateTransactionStatusTableRequestPB {
+  required string table_name = 1;
+}
+
+message CreateTransactionStatusTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteNotServingTabletRequestPB {
+  required bytes tablet_id = 1;
+}
+
+message DeleteNotServingTabletResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message DdlLogRequestPB {
+}
+
+message DdlLogResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated DdlLogEntryPB entries = 2;
+}
+
+service MasterAdmin {
+  option (yb.rpc.custom_service_name) = "yb.master.MasterService";
+
+  rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
+  rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);
+
+  rpc FlushSysCatalog(FlushSysCatalogRequestPB) returns (FlushSysCatalogResponsePB);
+  rpc CompactSysCatalog(CompactSysCatalogRequestPB) returns (CompactSysCatalogResponsePB);
+
+  rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
+
+  rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
+  rpc CreateTransactionStatusTable(CreateTransactionStatusTableRequestPB)
+      returns (CreateTransactionStatusTableResponsePB);
+  rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
+      returns (DeleteNotServingTabletResponsePB);
+
+  rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
+}

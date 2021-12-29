@@ -53,8 +53,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"

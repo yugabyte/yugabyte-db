@@ -20,6 +20,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"

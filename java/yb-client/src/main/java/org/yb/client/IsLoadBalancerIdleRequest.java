@@ -18,7 +18,7 @@ import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
 
 import java.util.ArrayList;
@@ -33,8 +33,8 @@ class IsLoadBalancerIdleRequest extends YRpc<IsLoadBalancerIdleResponse> {
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.IsLoadBalancerIdleRequestPB.Builder builder =
-      Master.IsLoadBalancerIdleRequestPB.newBuilder();
+    final MasterClusterOuterClass.IsLoadBalancerIdleRequestPB.Builder builder =
+      MasterClusterOuterClass.IsLoadBalancerIdleRequestPB.newBuilder();
     return toChannelBuffer(header, builder.build());
   }
 
@@ -48,8 +48,8 @@ class IsLoadBalancerIdleRequest extends YRpc<IsLoadBalancerIdleResponse> {
   Pair<IsLoadBalancerIdleResponse, Object> deserialize(
       CallResponse callResponse,
       String masterUUID) throws Exception {
-    final Master.IsLoadBalancerIdleResponsePB.Builder respBuilder =
-      Master.IsLoadBalancerIdleResponsePB.newBuilder();
+    final MasterClusterOuterClass.IsLoadBalancerIdleResponsePB.Builder respBuilder =
+      MasterClusterOuterClass.IsLoadBalancerIdleResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasErr = respBuilder.hasError();
     IsLoadBalancerIdleResponse response =

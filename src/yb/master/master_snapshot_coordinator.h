@@ -21,6 +21,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_types.pb.h"
 
 #include "yb/tablet/snapshot_coordinator.h"

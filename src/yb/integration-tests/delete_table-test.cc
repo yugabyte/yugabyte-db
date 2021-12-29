@@ -55,7 +55,7 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -301,7 +301,8 @@ Status DeleteTableTest::ListAllLiveTabletServersRegisteredWithMaster(const MonoD
     int leader_idx;
     RETURN_NOT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-    RETURN_NOT_OK(cluster_->master_proxy(leader_idx)->ListTabletServers(req, &resp, &rpc));
+    auto proxy = cluster_->GetMasterProxy<master::MasterClusterProxy>(leader_idx);
+    RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, &rpc));
 
     for (const auto& nodes : resp.servers()) {
       if (nodes.alive()) {
@@ -383,7 +384,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
     master::GetTabletLocationsResponsePB resp;
     rpc.set_timeout(MonoDelta::FromSeconds(10));
     req.add_tablet_ids()->assign(tablet_id);
-    ASSERT_OK(cluster_->master_proxy()->GetTabletLocations(req, &resp, &rpc));
+    ASSERT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>().GetTabletLocations(
+        req, &resp, &rpc));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(1, resp.errors_size());
     ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");
@@ -1197,7 +1199,8 @@ TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
     req.add_tablet_ids()->assign(tablet_id);
     int leader_idx;
     ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
-    ASSERT_OK(cluster_->master_proxy(leader_idx)->GetTabletLocations(req, &resp, &rpc));
+    ASSERT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>(leader_idx).GetTabletLocations(
+        req, &resp, &rpc));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(1, resp.errors_size());
     ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");

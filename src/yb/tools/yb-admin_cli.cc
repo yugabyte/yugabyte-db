@@ -40,7 +40,6 @@
 #include "yb/common/json_util.h"
 
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.pb.h"
 
 #include "yb/tools/yb-admin_client.h"
 

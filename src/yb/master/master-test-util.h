@@ -34,6 +34,7 @@
 #define YB_MASTER_MASTER_TEST_UTIL_H
 
 #include "yb/client/client_fwd.h"
+#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/util/status_fwd.h"
 

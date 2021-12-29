@@ -114,8 +114,9 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.Master;
-import org.yb.master.Master.GetTableLocationsResponsePB;
+import org.yb.master.MasterClientOuterClass;
+import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.AsyncUtil;
 import org.yb.util.NetUtil;
 import org.yb.util.Pair;
@@ -1231,12 +1232,13 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * This callback will be repeatedly used when opening a table until it is done being created.
    */
-  Callback<Deferred<YBTable>, Master.IsCreateTableDoneResponsePB> getOpenTableCB(
+  Callback<Deferred<YBTable>, MasterDdlOuterClass.IsCreateTableDoneResponsePB> getOpenTableCB(
       final YRpc<YBTable> rpc, final YBTable table) {
-    return new Callback<Deferred<YBTable>, Master.IsCreateTableDoneResponsePB>() {
+    return new Callback<Deferred<YBTable>, MasterDdlOuterClass.IsCreateTableDoneResponsePB>() {
       @Override
       public Deferred<YBTable> call(
-          Master.IsCreateTableDoneResponsePB isCreateTableDoneResponsePB) throws Exception {
+          MasterDdlOuterClass.IsCreateTableDoneResponsePB isCreateTableDoneResponsePB)
+          throws Exception {
         String tableName = table.getName();
         Deferred<YBTable> d = rpc.getDeferred();
         if (isCreateTableDoneResponsePB.getDone()) {
@@ -1319,12 +1321,12 @@ public class AsyncYBClient implements AutoCloseable {
     // we'll try to locate the tablet again.
     if (tablesNotServed.contains(tableId)) {
       return delayedIsCreateTableDone(request.getTable(), request,
-          new RetryRpcCB<R, Master.IsCreateTableDoneResponsePB>(request),
+          new RetryRpcCB<R, MasterDdlOuterClass.IsCreateTableDoneResponsePB>(request),
           getDelayedIsCreateTableDoneErrback(request));
     }
-    Callback<Deferred<R>, Master.GetTableLocationsResponsePB> cb = new RetryRpcCB<>(request);
+    Callback<Deferred<R>, GetTableLocationsResponsePB> cb = new RetryRpcCB<>(request);
     Callback<Deferred<R>, Exception> eb = new RetryRpcErrback<>(request);
-    Deferred<Master.GetTableLocationsResponsePB> returnedD =
+    Deferred<GetTableLocationsResponsePB> returnedD =
         locateTablet(request.getTable(), partitionKey);
     return AsyncUtil.addCallbacksDeferring(returnedD, cb, eb);
   }
@@ -1422,7 +1424,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   <R> Deferred<R> delayedIsCreateTableDone(final YBTable table, final YRpc<R> rpc,
                                            final Callback<Deferred<R>,
-                                               Master.IsCreateTableDoneResponsePB> retryCB,
+                                           MasterDdlOuterClass.IsCreateTableDoneResponsePB> retryCB,
                                            final Callback<Exception, Exception> errback) {
 
     final class RetryTimer implements TimerTask {
@@ -1444,11 +1446,12 @@ public class AsyncYBClient implements AutoCloseable {
         }
         IsCreateTableDoneRequest rpc = new IsCreateTableDoneRequest(masterTable, tableId);
         rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
-        final Deferred<Master.IsCreateTableDoneResponsePB> d =
+        final Deferred<MasterDdlOuterClass.IsCreateTableDoneResponsePB> d =
             sendRpcToTablet(rpc).addCallback(new IsCreateTableDoneCB(tableId));
         if (has_permit) {
           // The errback is needed here to release the lookup permit
-          d.addCallbacks(new ReleaseMasterLookupPermit<Master.IsCreateTableDoneResponsePB>(),
+          d.addCallbacks(new ReleaseMasterLookupPermit<
+              MasterDdlOuterClass.IsCreateTableDoneResponsePB>(),
               new ReleaseMasterLookupPermit<Exception>());
         }
         d.addCallbacks(retryCB, errback);
@@ -1474,13 +1477,15 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /** Callback executed when IsCreateTableDone completes.  */
-  private final class IsCreateTableDoneCB implements Callback<Master.IsCreateTableDoneResponsePB,
-      Master.IsCreateTableDoneResponsePB> {
+  private final class IsCreateTableDoneCB implements
+      Callback<MasterDdlOuterClass.IsCreateTableDoneResponsePB,
+      MasterDdlOuterClass.IsCreateTableDoneResponsePB> {
     final String tableName;
     IsCreateTableDoneCB(String tableName) {
       this.tableName = tableName;
     }
-    public Master.IsCreateTableDoneResponsePB call(final Master.IsCreateTableDoneResponsePB response) {
+    public MasterDdlOuterClass.IsCreateTableDoneResponsePB call(
+        final MasterDdlOuterClass.IsCreateTableDoneResponsePB response) {
       if (response.getDone()) {
         LOG.debug("Table {} was created", tableName);
         tablesNotServed.remove(tableName);
@@ -1605,7 +1610,8 @@ public class AsyncYBClient implements AutoCloseable {
    * @param partitionKey can be null, if not we'll find the exact tablet that contains it
    * @return Deferred to track the progress
    */
-  Deferred<Master.GetTableLocationsResponsePB> locateTablet(YBTable table, byte[] partitionKey) {
+  Deferred<GetTableLocationsResponsePB> locateTablet(
+      YBTable table, byte[] partitionKey) {
     final boolean has_permit = acquireMasterLookupPermit();
     String tableId = table.getTableId();
     if (!has_permit) {
@@ -1620,7 +1626,7 @@ public class AsyncYBClient implements AutoCloseable {
     GetTableLocationsRequest rpc =
         new GetTableLocationsRequest(masterTable, partitionKey, partitionKey, tableId);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
-    final Deferred<Master.GetTableLocationsResponsePB> d;
+    final Deferred<GetTableLocationsResponsePB> d;
 
     // If we know this is going to the master, check the master consensus configuration (as specified by
     // 'masterAddresses' field) to determine and cache the current leader.
@@ -1631,19 +1637,19 @@ public class AsyncYBClient implements AutoCloseable {
     }
     d.addCallback(new MasterLookupCB(table));
     if (has_permit) {
-      d.addBoth(new ReleaseMasterLookupPermit<Master.GetTableLocationsResponsePB>());
+      d.addBoth(new ReleaseMasterLookupPermit<GetTableLocationsResponsePB>());
     }
     return d;
   }
 
   /**
    * Update the master config: send RPCs to all config members, use the returned data to
-   * fill a {@link Master.GetTabletLocationsResponsePB} object.
+   * fill a {@link MasterClientOuterClass.GetTabletLocationsResponsePB} object.
    * @return An initialized Deferred object to hold the response.
    */
-  Deferred<Master.GetTableLocationsResponsePB> getMasterTableLocationsPB() {
-    final Deferred<Master.GetTableLocationsResponsePB> responseD =
-        new Deferred<Master.GetTableLocationsResponsePB>();
+  Deferred<GetTableLocationsResponsePB> getMasterTableLocationsPB() {
+    final Deferred<GetTableLocationsResponsePB> responseD =
+        new Deferred<GetTableLocationsResponsePB>();
     final GetMasterRegistrationReceived received =
         new GetMasterRegistrationReceived(masterAddresses, responseD);
     for (HostAndPort hostAndPort : masterAddresses) {
@@ -1695,9 +1701,9 @@ public class AsyncYBClient implements AutoCloseable {
     GetTableLocationsRequest rpc = new GetTableLocationsRequest(masterTable, startPartitionKey,
         endPartitionKey, tableId);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
-    final Deferred<Master.GetTableLocationsResponsePB> d = sendRpcToTablet(rpc);
+    final Deferred<GetTableLocationsResponsePB> d = sendRpcToTablet(rpc);
     return d.addCallbackDeferring(
-        new Callback<Deferred<List<LocatedTablet>>, Master.GetTableLocationsResponsePB>() {
+        new Callback<Deferred<List<LocatedTablet>>, GetTableLocationsResponsePB>() {
           @Override
           public Deferred<List<LocatedTablet>> call(GetTableLocationsResponsePB response) {
             // Table doesn't exist or is being created.
@@ -1705,7 +1711,8 @@ public class AsyncYBClient implements AutoCloseable {
               Deferred.fromResult(ret);
             }
             byte[] lastEndPartition = startPartitionKey;
-            for (Master.TabletLocationsPB tabletPb : response.getTabletLocationsList()) {
+            for (MasterClientOuterClass.TabletLocationsPB tabletPb :
+                     response.getTabletLocationsList()) {
               LocatedTablet locs = new LocatedTablet(tabletPb);
               ret.add(locs);
               Partition partition = locs.getPartition();
@@ -1809,13 +1816,12 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /** Callback executed when a master lookup completes.  */
-  private final class MasterLookupCB implements Callback<Object,
-      Master.GetTableLocationsResponsePB> {
+  private final class MasterLookupCB implements Callback<Object, GetTableLocationsResponsePB> {
     final YBTable table;
     MasterLookupCB(YBTable table) {
       this.table = table;
     }
-    public Object call(final Master.GetTableLocationsResponsePB arg) {
+    public Object call(final GetTableLocationsResponsePB arg) {
       try {
         discoverTablets(table, arg);
       } catch (NonRecoverableException e) {
@@ -1849,7 +1855,7 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   @VisibleForTesting
-  void discoverTablets(YBTable table, Master.GetTableLocationsResponsePB response)
+  void discoverTablets(YBTable table, GetTableLocationsResponsePB response)
       throws NonRecoverableException {
     String tableId = table.getTableId();
     String tableName = table.getName();
@@ -1873,7 +1879,7 @@ public class AsyncYBClient implements AutoCloseable {
       }
     }
 
-    for (Master.TabletLocationsPB tabletPb : response.getTabletLocationsList()) {
+    for (MasterClientOuterClass.TabletLocationsPB tabletPb : response.getTabletLocationsList()) {
       // Early creating the tablet so that it parses out the pb
       RemoteTablet rt = createTabletFromPb(tableId, tabletPb);
       Slice tabletId = rt.tabletId;
@@ -1902,7 +1908,8 @@ public class AsyncYBClient implements AutoCloseable {
     }
   }
 
-  RemoteTablet createTabletFromPb(String tableId, Master.TabletLocationsPB tabletPb) {
+  RemoteTablet createTabletFromPb(
+      String tableId, MasterClientOuterClass.TabletLocationsPB tabletPb) {
     Partition partition = ProtobufHelper.pbToPartition(tabletPb.getPartition());
     Slice tabletId = new Slice(tabletPb.getTabletId().toByteArray());
     return new RemoteTablet(tableId, tabletId, partition);
@@ -2553,15 +2560,15 @@ public class AsyncYBClient implements AutoCloseable {
       this.partition = partition;
     }
 
-    void refreshServers(Master.TabletLocationsPB tabletLocations) throws NonRecoverableException {
-
+    void refreshServers(MasterClientOuterClass.TabletLocationsPB tabletLocations)
+        throws NonRecoverableException {
       synchronized (tabletServers) { // TODO not a fat lock with IP resolving in it
         tabletServers.clear();
         leaderIndex = NO_LEADER_INDEX;
         List<UnknownHostException> lookupExceptions =
             new ArrayList<>(tabletLocations.getReplicasCount());
-        for (Master.TabletLocationsPB.ReplicaPB replica : tabletLocations.getReplicasList()) {
-
+        for (MasterClientOuterClass.TabletLocationsPB.ReplicaPB replica :
+                 tabletLocations.getReplicasList()) {
           List<CommonNet.HostPortPB> addresses = replica.getTsInfo().getBroadcastAddressesList();
           if (addresses.isEmpty()) {
             addresses = replica.getTsInfo().getPrivateRpcAddressesList();
@@ -2700,10 +2707,12 @@ public class AsyncYBClient implements AutoCloseable {
       return tabletId.toString(Charset.defaultCharset());
     }
 
-    List<CommonNet.HostPortPB> getAddressesFromPb(Master.TabletLocationsPB tabletLocations) {
-      List<CommonNet.HostPortPB> addresses = new ArrayList<CommonNet.HostPortPB>(tabletLocations
-          .getReplicasCount());
-      for (Master.TabletLocationsPB.ReplicaPB replica : tabletLocations.getReplicasList()) {
+    List<CommonNet.HostPortPB> getAddressesFromPb(
+        MasterClientOuterClass.TabletLocationsPB tabletLocations) {
+      List<CommonNet.HostPortPB> addresses = new ArrayList<CommonNet.HostPortPB>(
+          tabletLocations.getReplicasCount());
+      for (MasterClientOuterClass.TabletLocationsPB.ReplicaPB replica :
+               tabletLocations.getReplicasList()) {
         if (replica.getTsInfo().getBroadcastAddressesList().isEmpty()) {
           addresses.add(replica.getTsInfo().getPrivateRpcAddresses(0));
         } else {

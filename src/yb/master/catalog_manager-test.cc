@@ -31,6 +31,7 @@
 //
 
 #include "yb/master/catalog_manager-test_base.h"
+#include "yb/master/master_client.pb.h"
 
 namespace yb {
 namespace master {

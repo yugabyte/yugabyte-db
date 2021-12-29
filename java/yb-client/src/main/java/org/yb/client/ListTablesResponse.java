@@ -33,7 +33,7 @@ package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,11 +46,11 @@ import java.util.stream.Stream;
 @InterfaceStability.Evolving
 public class ListTablesResponse extends YRpcResponse {
 
-  private List<Master.ListTablesResponsePB.TableInfo> tablesList;
+  private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesList;
 
   ListTablesResponse(long ellapsedMillis,
                      String tsUUID,
-                     List<Master.ListTablesResponsePB.TableInfo> tablesList) {
+                     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesList) {
     super(ellapsedMillis, tsUUID);
     this.tablesList = tablesList;
   }
@@ -59,7 +59,7 @@ public class ListTablesResponse extends YRpcResponse {
    * Get the list of tables as specified in the request.
    * @return a list of table info
    */
-  public List<Master.ListTablesResponsePB.TableInfo> getTableInfoList() {
+  public List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList() {
     return tablesList;
   }
 
@@ -70,7 +70,7 @@ public class ListTablesResponse extends YRpcResponse {
   public List<String> getTablesList() {
     int serversCount = tablesList.size();
     List<String> tables = new ArrayList<String>(serversCount);
-    for (Master.ListTablesResponsePB.TableInfo info : tablesList) {
+    for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo info : tablesList) {
       tables.add(info.getName());
     }
     return tables;
@@ -82,7 +82,8 @@ public class ListTablesResponse extends YRpcResponse {
    */
   public ListTablesResponse mergeWith(ListTablesResponse inputResponse) {
     if (inputResponse == null) { return this; }
-    List<Master.ListTablesResponsePB.TableInfo> inputTablesList = inputResponse.getTableInfoList();
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> inputTablesList =
+        inputResponse.getTableInfoList();
     if (inputTablesList != null && !inputTablesList.isEmpty()) {
       // Protobuf returns an unmodifiable list, so we need a new ArrayList.
       inputTablesList = new ArrayList<>(inputTablesList);

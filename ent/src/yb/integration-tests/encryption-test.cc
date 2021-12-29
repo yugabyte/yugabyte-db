@@ -23,7 +23,6 @@
 #include "yb/integration-tests/cluster_verifier.h"
 
 #include "yb/master/encryption_manager.h"
-#include "yb/master/master.pb.h"
 
 #include "yb/tools/yb-admin_client.h"
 

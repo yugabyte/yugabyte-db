@@ -54,11 +54,11 @@ class ProxyBase {
     return std::shared_ptr<const OutboundMethodMetrics>(metrics_, &metrics_impl->value[index]);
   }
 
-  Proxy& proxy() { return *proxy_; }
+  Proxy& proxy() const { return *proxy_; }
 
  private:
-  const ProxyPtr proxy_;
-  const ProxyMetricsPtr metrics_;
+  ProxyPtr proxy_;
+  ProxyMetricsPtr metrics_;
 };
 
 }  // namespace rpc

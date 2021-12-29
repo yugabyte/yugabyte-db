@@ -17,7 +17,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"

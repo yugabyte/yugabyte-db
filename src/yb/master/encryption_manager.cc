@@ -18,7 +18,10 @@
 
 #include "yb/encryption/encryption.pb.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_encryption.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/universe_key_registry_service.h"
 
 #include "yb/util/env.h"

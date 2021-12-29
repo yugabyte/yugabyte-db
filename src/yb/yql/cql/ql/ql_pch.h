@@ -69,7 +69,6 @@
 #include <boost/asio/ip/address_v6.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/atomic.hpp>
-#include <boost/circular_buffer.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/container_hash/hash.hpp>
 #include <boost/core/demangle.hpp>
@@ -80,7 +79,6 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
-#include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
 #include <boost/optional.hpp>
@@ -115,18 +113,18 @@
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
+#include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
-#include <google/protobuf/extension_set.h>
 #include <google/protobuf/generated_message_table_driven.h>
 #include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map_entry.h>
+#include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
-#include <google/protobuf/message_lite.h>
 #include <google/protobuf/metadata.h>
 #include <google/protobuf/repeated_field.h>
-#include <google/protobuf/stubs/port.h>
-#include <google/protobuf/util/json_util.h>
-#include <google/protobuf/wire_format_lite.h>
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
@@ -175,7 +173,6 @@
 #include "yb/util/cast.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/compare_util.h"
-#include "yb/util/concurrent_pod.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/crypt.h"
