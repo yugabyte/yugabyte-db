@@ -46,7 +46,6 @@
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
 
-#include "yb/master/master.pb.h"
 
 using yb::client::CountTableRows;
 using yb::client::YBTable;

@@ -14,6 +14,8 @@
 #ifndef YB_MASTER_SCOPED_LEADER_SHARED_LOCK_INTERNAL_H
 #define YB_MASTER_SCOPED_LEADER_SHARED_LOCK_INTERNAL_H
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/master/master_types.pb.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 

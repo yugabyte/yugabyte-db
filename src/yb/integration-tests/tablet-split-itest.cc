@@ -42,9 +42,10 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -1300,7 +1301,7 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
     auto tserver = cluster_->mini_tablet_server(0);
     auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
       proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
-    tserver::SplitTabletRequestPB req;
+    tablet::SplitTabletRequestPB req;
     req.set_dest_uuid(tserver_uuid);
     req.set_tablet_id(source_tablet_id);
     req.set_new_tablet1_id(Format("$0$1", source_tablet_id, "1"));
@@ -1401,7 +1402,7 @@ TEST_F(TabletSplitExternalMiniClusterITest, FaultedSplitNodeRejectsRemoteBootstr
   consensus::StartRemoteBootstrapResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(kRpcTimeout);
-  auto s = cluster_->GetConsensusProxy(faulted_follower)->StartRemoteBootstrap(req, &resp, &rpc);
+  auto s = cluster_->GetConsensusProxy(faulted_follower).StartRemoteBootstrap(req, &resp, &rpc);
   EXPECT_OK(s);
   EXPECT_TRUE(resp.has_error());
   EXPECT_EQ(resp.error().code(), tserver::TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE);
@@ -1688,7 +1689,7 @@ TEST_F_EX(
         }
         master::TabletLocationsPB resp;
         const auto s = itest::GetTabletLocations(
-            cluster_->GetLeaderMasterProxy(), source_tablet_id, remaining_timeout, &resp);
+            cluster_.get(), source_tablet_id, remaining_timeout, &resp);
         if (!s.ok()) {
           return false;
         }

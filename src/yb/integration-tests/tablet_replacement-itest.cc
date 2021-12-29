@@ -189,8 +189,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
   // Remove the follower from the config and wait for the Master to notice the
   // config change.
   ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, follower_ts, boost::none, timeout));
-  ASSERT_OK(itest::WaitForNumVotersInConfigOnMaster(cluster_->master_proxy(), tablet_id, 2,
-                                                    timeout));
+  ASSERT_OK(itest::WaitForNumVotersInConfigOnMaster(cluster_.get(), tablet_id, 2, timeout));
 
   // Shut down the remaining tablet servers and restart the dead one.
   cluster_->tablet_server(0)->Shutdown();

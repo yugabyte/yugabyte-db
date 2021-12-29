@@ -37,7 +37,7 @@ import org.yb.CommonTypes.TableType;
 import com.google.common.collect.Lists;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 
 import java.util.List;
 
@@ -48,7 +48,8 @@ import java.util.List;
 @InterfaceStability.Evolving
 public class CreateTableOptions {
 
-  private Master.CreateTableRequestPB.Builder pb = Master.CreateTableRequestPB.newBuilder();
+  private MasterDdlOuterClass.CreateTableRequestPB.Builder pb =
+      MasterDdlOuterClass.CreateTableRequestPB.newBuilder();
 
   public CreateTableOptions() {
     pb.setTableType(TableType.YQL_TABLE_TYPE);
@@ -150,7 +151,7 @@ public class CreateTableOptions {
     return pb.getTableType();
   }
 
-  Master.CreateTableRequestPB.Builder getBuilder() {
+  MasterDdlOuterClass.CreateTableRequestPB.Builder getBuilder() {
     return pb;
   }
 }

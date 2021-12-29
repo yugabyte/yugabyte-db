@@ -23,7 +23,6 @@ import org.yb.consensus.Consensus;
 import org.yb.consensus.ConsensusTypes;
 import org.yb.consensus.Metadata;
 import org.yb.consensus.Metadata.RaftPeerPB;
-import org.yb.master.Master;
 import org.yb.util.Pair;
 
 import java.util.ArrayList;

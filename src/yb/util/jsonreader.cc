@@ -31,6 +31,8 @@
 //
 #include "yb/util/jsonreader.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 #include <rapidjson/error/en.h>
 
 #include "yb/util/status.h"

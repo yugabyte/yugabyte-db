@@ -39,7 +39,6 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log-test-base.h"
-#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"

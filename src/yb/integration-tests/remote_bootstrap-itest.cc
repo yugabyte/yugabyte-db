@@ -215,9 +215,7 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
-  ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
-                                         &cluster_->proxy_cache(),
-                                         &ts_map_));
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
   client_ = ASSERT_RESULT(cluster_->CreateClient());
 }
 

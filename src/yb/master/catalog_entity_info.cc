@@ -37,9 +37,9 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/util/atomic.h"

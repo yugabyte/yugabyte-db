@@ -15,7 +15,6 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/cdc_rpc_tasks.h"
-#include "yb/master/master.pb.h"
 
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"

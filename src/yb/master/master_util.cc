@@ -20,8 +20,8 @@
 
 #include "yb/consensus/metadata.pb.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 
@@ -35,17 +35,13 @@
 namespace yb {
 namespace master {
 
-using master::GetMasterRegistrationRequestPB;
-using master::GetMasterRegistrationResponsePB;
-using master::MasterServiceProxy;
-
 namespace {
 
 struct GetMasterRegistrationData {
   GetMasterRegistrationRequestPB req;
   GetMasterRegistrationResponsePB resp;
   rpc::RpcController controller;
-  MasterServiceProxy proxy;
+  MasterClusterProxy proxy;
 
   GetMasterRegistrationData(rpc::ProxyCache* proxy_cache, const HostPort& hp)
       : proxy(proxy_cache, hp) {}

@@ -53,8 +53,8 @@ class SnapshotTestUtil {
       cluster_ = cluster;
   }
 
-  Result<master::MasterBackupServiceProxy> MakeBackupServiceProxy() {
-    return master::MasterBackupServiceProxy(
+  Result<master::MasterBackupProxy> MakeBackupServiceProxy() {
+    return master::MasterBackupProxy(
         proxy_cache_, VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
   }
 

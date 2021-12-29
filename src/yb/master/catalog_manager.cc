@@ -117,9 +117,15 @@
 #include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_dcl.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
@@ -503,7 +509,6 @@ using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::HandleReplacingStaleTablet;
 using tserver::TabletServerErrorPB;
-using master::MasterServiceProxy;
 using yb::pgwrapper::PgWrapper;
 using yb::server::MasterAddressesToString;
 
@@ -2781,7 +2786,7 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
                 "Could not submit VerifyTransaction to thread pool");
   }
 
-  tserver::ChangeMetadataRequestPB change_req;
+  tablet::ChangeMetadataRequestPB change_req;
   change_req.set_tablet_id(kSysCatalogTabletId);
   auto& add_table = *change_req.mutable_add_table();
 
@@ -3161,7 +3166,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema));
     if (req.partitions_size() > 0) {
       if (req.partitions_size() != num_tablets) {
-        Status s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
+        Status  s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
         return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       }
       string last;
@@ -4642,7 +4647,7 @@ Status CatalogManager::DeleteTableInternal(
     for (auto& table_id : sys_table_ids) {
       // "sys_catalog_->DeleteYsqlSystemTable(table_id)" won't work here
       // as it only acts on the leader.
-      tserver::ChangeMetadataRequestPB change_req;
+      tablet::ChangeMetadataRequestPB change_req;
       change_req.set_tablet_id(kSysCatalogTabletId);
       change_req.set_remove_table_id(table_id);
       RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
@@ -9511,7 +9516,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
                                      const DumpMasterStateRequestPB* req,
                                      DumpMasterStateResponsePB* resp) {
-  std::unique_ptr<MasterServiceProxy> peer_proxy;
+  std::unique_ptr<MasterClusterProxy> peer_proxy;
   Endpoint sockaddr;
   MonoTime timeout = MonoTime::Now();
   DumpMasterStateRequestPB peer_req;
@@ -9525,7 +9530,7 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
 
   for (const RaftPeerPB& peer : peers) {
     HostPort hostport = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
-    peer_proxy.reset(new MasterServiceProxy(&master_->proxy_cache(), hostport));
+    peer_proxy = std::make_unique<MasterClusterProxy>(&master_->proxy_cache(), hostport);
 
     DumpMasterStateResponsePB peer_resp;
     rpc.Reset();

@@ -30,8 +30,6 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -1549,9 +1547,6 @@ INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestDurableMinReplicat
 
 TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
   constexpr int kNRows = 100;
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
-      &client_->proxy_cache(),
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
   std::string tablet_id;
   GetTablet(&tablet_id);

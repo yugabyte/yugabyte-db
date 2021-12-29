@@ -25,7 +25,6 @@ import org.junit.runner.RunWith;
 import org.yb.Schema;
 import org.yb.ColumnSchema;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.Master;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.YBTestRunnerNonTsanAsan;
 

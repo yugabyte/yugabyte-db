@@ -405,9 +405,7 @@ rpc::ThreadPool& Messenger::ThreadPool(ServicePriority priority) {
 Status Messenger::RegisterService(
     const std::string& service_name, const scoped_refptr<RpcService>& service) {
   DCHECK(service);
-  if (!rpc_services_.emplace(service_name, service).second) {
-    return STATUS_FORMAT(IllegalState, "Duplicate service: $0", service_name);
-  }
+  rpc_services_.emplace(service_name, service);
   return Status::OK();
 }
 

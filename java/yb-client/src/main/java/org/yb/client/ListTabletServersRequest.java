@@ -32,7 +32,8 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import static org.yb.master.Master.*;
+import static org.yb.master.MasterClusterOuterClass.*;
+import static org.yb.master.MasterTypes.*;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
