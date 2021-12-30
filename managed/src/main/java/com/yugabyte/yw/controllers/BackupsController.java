@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
+import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
@@ -115,6 +116,46 @@ public class BackupsController extends AuthenticatedController {
 
     List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
     return PlatformResults.withData(backups);
+  }
+
+  @ApiOperation(
+      value = "Restore from a backup",
+      response = YBPTask.class,
+      responseContainer = "Restore")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "backup",
+          value = "Parameters of the backup to be restored",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RestoreBackupParams",
+          required = true))
+  public Result restoreBackup(UUID customerUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    Form<RestoreBackupParams> formData =
+        formFactory.getFormDataOrBadRequest(RestoreBackupParams.class);
+    RestoreBackupParams taskParams = formData.get();
+    taskParams.customerUUID = customerUUID;
+
+    UUID universeUUID = taskParams.universeUUID;
+    Universe.getOrBadRequest(universeUUID);
+    if (taskParams.backupData == null
+        && (taskParams.backupStorageInfoList == null
+            || taskParams.backupStorageInfoList.isEmpty())) {
+      throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
+    }
+
+    UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Restore,
+        taskParams.toString());
+
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(
