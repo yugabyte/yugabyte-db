@@ -19,6 +19,7 @@
 #
 set -euo pipefail
 
+# shellcheck source=build-support/common-build-env.sh
 . "${0%/*}/common-build-env.sh"
 
 assert_equals() {
@@ -90,7 +91,7 @@ test_compiler_detection_by_jenkins_job_name() {
     unset YB_COMPILER_TYPE
     JOB_NAME="$jenkins_job_name"
     set_compiler_type_based_on_jenkins_job_name
-    assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE"
+    assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "compiler type"
   )
 }
 
@@ -138,53 +139,70 @@ test_set_cmake_build_type_and_compiler_type() {
     OSTYPE=$os_type
     yb_fatal_quiet=true
     set_cmake_build_type_and_compiler_type
-    assert_equals "$expected_cmake_build_type" "$cmake_build_type" "$test_case_details"
-    assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "$test_case_details"
+    assert_equals "$expected_cmake_build_type" "$cmake_build_type" "$test_case_details" \
+                  "Note: comparing CMake build type."
+    assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "$test_case_details" \
+                  "Note: comparing compiler type."
   )
   local exit_code=$?
   set -e
   assert_equals "$expected_exit_code" "$exit_code"
 }
 
+arch=$( uname -m )
+
 # Parameters:                               build_type OSTYPE    Compiler   Expected   Expected
 #                                                                type       build_type YB_COMPILER_
 #                                                                preference            TYPE
 
-test_set_cmake_build_type_and_compiler_type asan       darwin    auto       fastdebug  clang  0
-test_set_cmake_build_type_and_compiler_type asan       darwin    clang      fastdebug  clang  0
-test_set_cmake_build_type_and_compiler_type asan       darwin    gcc        N/A        N/A    1
-test_set_cmake_build_type_and_compiler_type asan       linux-gnu auto       fastdebug  clang7 0
-test_set_cmake_build_type_and_compiler_type asan       linux-gnu clang7     fastdebug  clang7 0
-test_set_cmake_build_type_and_compiler_type asan       linux-gnu gcc        N/A        N/A    1
-test_set_cmake_build_type_and_compiler_type asan       linux-gnu gcc8       fastdebug  gcc8   0
-test_set_cmake_build_type_and_compiler_type asan       linux-gnu gcc9       fastdebug  gcc9   0
-test_set_cmake_build_type_and_compiler_type tsan       linux-gnu auto       fastdebug  clang7 0
-test_set_cmake_build_type_and_compiler_type tsan       linux-gnu clang7     fastdebug  clang7 0
-test_set_cmake_build_type_and_compiler_type tsan       linux-gnu gcc        N/A        N/A    1
-test_set_cmake_build_type_and_compiler_type tsan       linux-gnu gcc8       fastdebug  gcc8   0
-test_set_cmake_build_type_and_compiler_type tsan       linux-gnu gcc9       fastdebug  gcc9   0
-test_set_cmake_build_type_and_compiler_type debug      darwin    auto       debug      clang  0
-test_set_cmake_build_type_and_compiler_type debug      darwin    clang      debug      clang  0
-test_set_cmake_build_type_and_compiler_type debug      darwin    gcc        N/A        N/A    1
-test_set_cmake_build_type_and_compiler_type debug      linux-gnu auto       debug      gcc    0
-test_set_cmake_build_type_and_compiler_type debug      linux-gnu clang      debug      clang  0
-test_set_cmake_build_type_and_compiler_type debug      linux-gnu gcc        debug      gcc    0
-test_set_cmake_build_type_and_compiler_type debug      linux-gnu gcc8       debug      gcc8   0
-test_set_cmake_build_type_and_compiler_type debug      linux-gnu gcc9       debug      gcc9   0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG  darwin    auto       fastdebug  clang  0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG  darwin    clang      fastdebug  clang  0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG  darwin    gcc        N/A        N/A    1
-test_set_cmake_build_type_and_compiler_type FaStDeBuG  linux-gnu auto       fastdebug  gcc    0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG  linux-gnu clang      fastdebug  clang  0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG  linux-gnu gcc        fastdebug  gcc    0
-test_set_cmake_build_type_and_compiler_type release    darwin    auto       release    clang  0
-test_set_cmake_build_type_and_compiler_type release    darwin    clang      release    clang  0
-test_set_cmake_build_type_and_compiler_type release    darwin    gcc        N/A        N/A    1
-test_set_cmake_build_type_and_compiler_type release    linux-gnu auto       release    gcc    0
-test_set_cmake_build_type_and_compiler_type release    linux-gnu clang      release    clang  0
-test_set_cmake_build_type_and_compiler_type release    linux-gnu gcc        release    gcc    0
-test_set_cmake_build_type_and_compiler_type release    linux-gnu gcc8       release    gcc8   0
-test_set_cmake_build_type_and_compiler_type release    linux-gnu gcc9       release    gcc9   0
+# The last parameter is expected exit code (0 or 1).
+
+test_set_cmake_build_type_and_compiler_type   asan       darwin    auto       fastdebug  clang   0
+test_set_cmake_build_type_and_compiler_type   asan       darwin    clang      fastdebug  clang   0
+test_set_cmake_build_type_and_compiler_type   asan       darwin    gcc        N/A        N/A     1
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu clang7     fastdebug  clang7  0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc        N/A        N/A     1
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc8       N/A        gcc8    1
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc9       N/A        gcc9    1
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang7  0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu clang7     fastdebug  clang7  0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc        N/A        N/A     1
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc8       N/A        gcc8    1
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc9       N/A        gcc9    1
+test_set_cmake_build_type_and_compiler_type   debug      darwin    auto       debug      clang   0
+test_set_cmake_build_type_and_compiler_type   debug      darwin    clang      debug      clang   0
+test_set_cmake_build_type_and_compiler_type   debug      darwin    gcc        N/A        N/A     1
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu clang      debug      clang   0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu gcc        debug      gcc     0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu gcc8       debug      gcc8    0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu gcc9       debug      gcc9    0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  darwin    auto       fastdebug  clang   0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  darwin    clang      fastdebug  clang   0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  darwin    gcc        N/A        N/A     1
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu clang      fastdebug  clang   0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu gcc        fastdebug  gcc     0
+test_set_cmake_build_type_and_compiler_type   release    darwin    auto       release    clang   0
+test_set_cmake_build_type_and_compiler_type   release    darwin    clang      release    clang   0
+test_set_cmake_build_type_and_compiler_type   release    darwin    gcc        N/A        N/A     1
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu clang      release    clang   0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        release    gcc     0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc8       release    gcc8    0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc9       release    gcc9    0
+
+# TODO: use Clang 12 uniformly for all achitectures, and get rid of conditional checks here.
+if [[ $arch == "x86_64" && $OSTYPE == linux* ]] && is_redhat_family; then
+  test_set_cmake_build_type_and_compiler_type asan       linux-gnu auto       fastdebug  clang12 0
+  test_set_cmake_build_type_and_compiler_type debug      linux-gnu auto       debug      clang12 0
+  test_set_cmake_build_type_and_compiler_type FaStDeBuG  linux-gnu auto       fastdebug  clang12 0
+  test_set_cmake_build_type_and_compiler_type release    linux-gnu auto       release    clang12 0
+fi
+
+if [[ $arch == "aarch64" && $OSTYPE == linux* ]]; then
+  test_set_cmake_build_type_and_compiler_type asan       linux-gnu auto       fastdebug  clang11 0
+  test_set_cmake_build_type_and_compiler_type debug      linux-gnu auto       debug      clang11 0
+  test_set_cmake_build_type_and_compiler_type FaStDeBuG  linux-gnu auto       fastdebug  clang11 0
+  test_set_cmake_build_type_and_compiler_type release    linux-gnu auto       release    clang11 0
+fi
 
 # -------------------------------------------------------------------------------------------------
 
