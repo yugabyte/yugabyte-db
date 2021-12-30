@@ -177,7 +177,7 @@ validate_test_descriptor() {
             "$test_descriptor"
     fi
     # Remove $TEST_DESCRIPTOR_SEPARATOR and all that follows and get a relative binary path.
-    validate_relative_test_binary_path "${test_descriptor%$TEST_DESCRIPTOR_SEPARATOR*}"
+    validate_relative_test_binary_path "${test_descriptor%"$TEST_DESCRIPTOR_SEPARATOR"*}"
   else
     validate_relative_test_binary_path "$test_descriptor"
   fi
@@ -454,8 +454,8 @@ prepare_for_running_cxx_test() {
   fi
 
   if [[ "$test_descriptor" =~ $TEST_DESCRIPTOR_SEPARATOR ]]; then
-    rel_test_binary=${test_descriptor%$TEST_DESCRIPTOR_SEPARATOR*}
-    test_name=${test_descriptor#*$TEST_DESCRIPTOR_SEPARATOR}
+    rel_test_binary=${test_descriptor%"${TEST_DESCRIPTOR_SEPARATOR}"*}
+    test_name=${test_descriptor#*"${TEST_DESCRIPTOR_SEPARATOR}"}
     run_at_once=false
     junit_test_case_id=$test_name
   else
@@ -1906,7 +1906,7 @@ resolve_and_run_java_test() {
                     "'$module_name' and '$current_module_name' are valid candidates."
             fi
             module_name=$current_module_name
-            rel_module_dir=${module_dir##$YB_SRC_ROOT/}
+            rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
           fi
         done
       fi
@@ -1942,7 +1942,7 @@ resolve_and_run_java_test() {
                       "'$module_name' and '$current_module_name' are valid candidates."
               fi
               module_name=$current_module_name
-              rel_module_dir=${module_dir##$YB_SRC_ROOT/}
+              rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
 
               if [[ ${#candidate_files[@]} -gt 1 ]]; then
                 fatal "Ambiguous source files for Java/Scala test '$java_test_name': " \

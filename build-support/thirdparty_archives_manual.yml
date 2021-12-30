@@ -7,3 +7,4 @@ archives:
     compiler_type: gcc9
     tag: v20210817191252-9a29e26965-centos8-aarch64-gcc9
     sha: 9a29e269659a6b46eb05747b4431afdc34e59695
+    is_linuxbrew: false

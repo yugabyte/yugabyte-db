@@ -37,7 +37,8 @@ function(check_parse_build_root_basename
          BUILD_ROOT_BASENAME
          EXPECTED_BUILD_TYPE
          EXPECTED_COMPILER_TYPE
-         EXPECTED_LINKING_TYPE)
+         EXPECTED_LINKING_TYPE
+         EXPECTED_USING_LINUXBREW)
   set(CMAKE_CURRENT_BINARY_DIR "/somedir/${BUILD_ROOT_BASENAME}")
   unset(ENV{YB_COMPILER_TYPE})
   parse_build_root_basename()
@@ -45,16 +46,29 @@ function(check_parse_build_root_basename
   assert_equals("${EXPECTED_COMPILER_TYPE}" "${YB_COMPILER_TYPE}" "(CMake var)")
   assert_equals("${EXPECTED_COMPILER_TYPE}" "$ENV{YB_COMPILER_TYPE}" "(env var)")
   assert_equals("${EXPECTED_LINKING_TYPE}" "${YB_LINKING_TYPE}")
+  assert_equals("${EXPECTED_USING_LINUXBREW}" "${YB_USING_LINUXBREW_FROM_BUILD_ROOT}")
 endfunction()
 
-
 function(test_parse_build_root_basename)
-  check_parse_build_root_basename("debug-clang-dynamic-ninja" "debug" "clang" "dynamic")
-  check_parse_build_root_basename("release-gcc8-static-ninja" "release" "gcc8" "static")
-  check_parse_build_root_basename("debug-clang-dynamic" "debug" "clang" "dynamic")
-  check_parse_build_root_basename("asan-gcc9-dynamic-ninja" "asan" "gcc9" "dynamic")
-  check_parse_build_root_basename("debug-clang-dynamic" "debug" "clang" "dynamic")
-  check_parse_build_root_basename("tsan-clang11-dynamic" "tsan" "clang11" "dynamic")
+  # BUILD_ROOT_BASENAME                 BUILD_TYPE  COMPILER_TYPE LINK_TYPE USING_LINUXBREW
+  check_parse_build_root_basename(
+    "debug-clang-dynamic-ninja"         "debug"     "clang"       "dynamic" OFF)
+  check_parse_build_root_basename(
+    "release-gcc8-static-ninja"         "release"   "gcc8"        "static"  OFF)
+  check_parse_build_root_basename(
+    "debug-clang-dynamic"               "debug"     "clang"       "dynamic" OFF)
+  check_parse_build_root_basename(
+    "asan-gcc9-dynamic-ninja"           "asan"      "gcc9"        "dynamic" OFF)
+  check_parse_build_root_basename(
+    "debug-clang-dynamic"               "debug"     "clang"       "dynamic" OFF)
+  check_parse_build_root_basename(
+    "tsan-clang11-dynamic"              "tsan"      "clang11"     "dynamic" OFF)
+  check_parse_build_root_basename(
+    "tsan-clang11-dynamic"              "tsan"      "clang11"     "dynamic" OFF)
+  check_parse_build_root_basename(
+    "release-clang12-linuxbrew-dynamic" "release"   "clang12"     "dynamic" ON)
+  check_parse_build_root_basename(
+    "release-gcc5-linuxbrew-dynamic"    "release"   "gcc5"        "dynamic" ON)
 endfunction()
 
 # -------------------------------------------------------------------------------------------------
@@ -64,6 +78,8 @@ endfunction()
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 
 include(YugabyteFunctions)
+
+yb_initialize_constants()
 
 test_parse_build_root_basename()
 

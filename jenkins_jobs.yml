@@ -4,35 +4,49 @@ jobs:
   - os: alma8
     compiler: clang12
     build_type: asan
+
   - os: centos7
     compiler: clang7
     build_type: tsan
+
   - os: centos7
     compiler: clang11
     build_type: debug
+
+  - os: alma8
+    compiler: clang12
+    build_type: release
+
   - os: centos8
     compiler: clang11
     build_type: release
     architecture: aarch64
+
   - os: centos8
     compiler: clang11
     build_type: debug
     architecture: aarch64
+
   - os: centos7
     compiler: gcc5
     build_type: debug
+
   - os: centos7
     compiler: gcc5
     build_type: release
+
   - os: alma8
     compiler: gcc9
-    build_type: debug    
+    build_type: debug
+
   - os: macos
     compiler: clang
     build_type: debug
+
   - os: macos
     compiler: clang
     build_type: release
+
   - os: ubuntu20.04
     compiler: gcc9
     build_type: debug

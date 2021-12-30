@@ -24,6 +24,7 @@ import subprocess
 import shlex
 import io
 import platform
+import argparse
 
 import typing
 from typing import (
@@ -70,7 +71,7 @@ def set_thirdparty_dir(thirdparty_dir: str) -> None:
 
 
 def sorted_grouped_by(
-        arr: List[_GroupElementType],
+        arr: Iterable[_GroupElementType],
         key_fn: Callable[[_GroupElementType], _GroupKeyType]
         ) -> List[Tuple[_GroupKeyType, List[_GroupElementType]]]:
     """
@@ -82,7 +83,7 @@ def sorted_grouped_by(
 
 
 def group_by(
-        arr: List[_GroupElementType],
+        arr: Iterable[_GroupElementType],
         key_fn: Callable[[_GroupElementType], _GroupKeyType]
         ) -> Dict[_GroupKeyType, List[_GroupElementType]]:
     """
@@ -227,6 +228,13 @@ def get_yb_src_root_from_build_root(
         if must_succeed:
             raise RuntimeError(error_msg)
 
+    return yb_src_root
+
+
+def ensure_yb_src_root_from_build_root(build_dir: str, verbose: bool = False) -> str:
+    yb_src_root = get_yb_src_root_from_build_root(
+        build_dir=build_dir, verbose=verbose, must_succeed=True)
+    assert yb_src_root is not None
     return yb_src_root
 
 
@@ -379,6 +387,15 @@ def write_yaml_file(content: Any, output_file_path: str) -> None:
         yaml.dump(content, output_file)
 
 
+def write_file(content: str, output_file_path: str) -> None:
+    with open(output_file_path, 'w') as output_file:
+        output_file.write(content)
+
+
+def make_parent_dir(path: str) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
+
 def to_yaml_str(content: Any) -> str:
     out = io.StringIO()
     yaml = get_ruamel_yaml_instance()
@@ -403,3 +420,15 @@ def check_arch() -> None:
 
 def is_macos_arm64() -> bool:
     return is_macos() and get_target_arch() == 'arm64'
+
+
+# From https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
+# To be used for boolean arguments.
+def arg_str_to_bool(v: Any) -> bool:
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    if v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    raise argparse.ArgumentTypeError('Boolean value expected, got: %s' % v)

@@ -713,7 +713,7 @@ if [[ $PWD == $BUILD_ROOT/postgres_build ||
       if [[ -d $include_dir ]]; then
         include_dir=$( cd "$include_dir" && pwd )
         if [[ $include_dir == $BUILD_ROOT/postgres_build/* ]]; then
-          rel_include_dir=${include_dir#$BUILD_ROOT/postgres_build/}
+          rel_include_dir=${include_dir#"${BUILD_ROOT}"/postgres_build/}
           updated_include_dir=$YB_SRC_ROOT/src/postgres/$rel_include_dir
           if [[ -d $updated_include_dir ]]; then
             new_cmd+=( -I"$updated_include_dir" )
@@ -723,7 +723,7 @@ if [[ $PWD == $BUILD_ROOT/postgres_build ||
       new_cmd+=( "$arg" )
     elif [[ -f $arg && $arg != "conftest.c" ]]; then
       file_path=$PWD/${arg#./}
-      rel_file_path=${file_path#$BUILD_ROOT/postgres_build/}
+      rel_file_path=${file_path#"${BUILD_ROOT}"/postgres_build/}
       updated_file_path=$YB_SRC_ROOT/src/postgres/$rel_file_path
       if [[ -f $updated_file_path ]] && cmp --quiet "$file_path" "$updated_file_path"; then
         new_cmd+=( "$updated_file_path" )
