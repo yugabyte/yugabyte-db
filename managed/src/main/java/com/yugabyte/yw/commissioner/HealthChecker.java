@@ -638,9 +638,7 @@ public class HealthChecker {
       // Setting this flag to identify correct cert location.
       info.rootAndClientRootCASame = details.rootAndClientRootCASame;
       // Pass in whether YSQL authentication is enabled for the given cluster.
-      info.enableYSQLAuth =
-          cluster.userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")
-              || cluster.userIntent.enableYSQLAuth;
+      info.enableYSQLAuth = cluster.userIntent.isYSQLAuthEnabled();
 
       Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
       if (provider == null) {
