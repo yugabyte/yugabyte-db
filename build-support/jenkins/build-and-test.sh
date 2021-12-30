@@ -161,6 +161,9 @@ log "Removing old JSON-based test report files"
   rm -f test_results.json test_failures.json
 )
 
+activate_virtualenv
+set_pythonpath
+
 # We change YB_RUN_JAVA_TEST_METHODS_SEPARATELY in a subshell in a few places and that is OK.
 # shellcheck disable=SC2031
 export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
@@ -171,8 +174,6 @@ if is_mac; then
   # This is needed to make sure we're using Homebrew-installed CMake on Mac OS X.
   export PATH=/usr/local/bin:$PATH
 fi
-
-MAX_NUM_PARALLEL_TESTS=3
 
 # gather core dumps
 ulimit -c unlimited
@@ -400,13 +401,7 @@ if [[ $BUILD_TYPE != "asan" ]]; then
   export YB_TEST_ULIMIT_CORE=unlimited
 fi
 
-# Cap the number of parallel tests to run at $MAX_NUM_PARALLEL_TESTS
 detect_num_cpus
-if [[ $YB_NUM_CPUS -gt $MAX_NUM_PARALLEL_TESTS ]]; then
-  NUM_PARALLEL_TESTS=$MAX_NUM_PARALLEL_TESTS
-else
-  NUM_PARALLEL_TESTS=$YB_NUM_CPUS
-fi
 
 declare -i EXIT_STATUS=0
 
