@@ -1680,7 +1680,8 @@ def main() -> None:
             # We only have this kind of fine-grained filtering for C++ test programs, and for Java
             # tests we either run all of them or none.
             test_conf['cpp_test_programs'] = test_basename_list
-            logging.info(
+            if len(all_test_basenames) > 0:
+                logging.info(
                     "{} C++ test programs should be run (out of {} possible, {}%)".format(
                         len(test_basename_list),
                         len(all_test_basenames),
