@@ -170,6 +170,8 @@ class PGConn {
   std::unique_ptr<CopyData> copy_data_;
 };
 
+bool HasTryAgain(const Status& status);
+
 } // namespace pgwrapper
 } // namespace yb
 
