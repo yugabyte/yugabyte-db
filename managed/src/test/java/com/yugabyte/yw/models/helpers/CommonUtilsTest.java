@@ -16,9 +16,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import java.util.Collections;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import play.libs.Json;
 
+@RunWith(JUnitParamsRunner.class)
 public class CommonUtilsTest {
 
   @Test
@@ -119,5 +123,18 @@ public class CommonUtilsTest {
     AlertChannelEmailParams unmaskedParams = CommonUtils.unmaskObject(params, maskedParams);
     assertThat(unmaskedParams, not(maskedParams));
     assertThat(unmaskedParams, equalTo(params));
+  }
+
+  @Test
+  @Parameters({
+    "1.2.3.4sdfdsf, 1.2.3.4wqerq, true",
+    "1.2.3.3sdfdsf, 1.2.3.4wqerq, true",
+    "1.2.3.5sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.2.6sdfdsf, 1.2.3.4wqerq, true",
+    "1.2.4.1sdfdsf, 1.2.3.4wqerq, false",
+  })
+  public void testReleaseEqualOrAfter(
+      String thresholdRelease, String actualRelease, boolean result) {
+    assertThat(CommonUtils.isReleaseEqualOrAfter(thresholdRelease, actualRelease), equalTo(result));
   }
 }
