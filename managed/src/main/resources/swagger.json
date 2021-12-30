@@ -3142,223 +3142,6 @@
       "required" : [ "metrics", "start" ],
       "type" : "object"
     },
-    "MultiTableBackupParams" : {
-      "description" : "Multi-table backup parameters",
-      "properties" : {
-        "actionType" : {
-          "description" : "Action type",
-          "enum" : [ "CREATE", "RESTORE", "RESTORE_KEYS", "DELETE" ],
-          "type" : "string"
-        },
-        "backupList" : {
-          "description" : "Backups",
-          "items" : {
-            "$ref" : "#/definitions/BackupTableParams"
-          },
-          "type" : "array"
-        },
-        "backupType" : {
-          "description" : "Backup type",
-          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
-          "type" : "string"
-        },
-        "backupUuid" : {
-          "description" : "Backup UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "cmkArn" : {
-          "description" : "Amazon Resource Name (ARN) of the CMK",
-          "type" : "string"
-        },
-        "communicationPorts" : {
-          "$ref" : "#/definitions/CommunicationPorts",
-          "description" : "Communication ports"
-        },
-        "cronExpression" : {
-          "description" : "Cron expression for a recurring backup",
-          "type" : "string"
-        },
-        "customerUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "customerUuid" : {
-          "description" : "Customer UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "deviceInfo" : {
-          "$ref" : "#/definitions/DeviceInfo",
-          "description" : "Device information"
-        },
-        "enableVerboseLogs" : {
-          "description" : "Is verbose logging enabled",
-          "type" : "boolean"
-        },
-        "encryptionAtRestConfig" : {
-          "$ref" : "#/definitions/EncryptionAtRestConfig",
-          "description" : "Encryption at rest configation"
-        },
-        "errorString" : {
-          "description" : "Error message",
-          "type" : "string"
-        },
-        "expectedUniverseVersion" : {
-          "description" : "Expected universe version",
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "extraDependencies" : {
-          "$ref" : "#/definitions/ExtraDependencies",
-          "description" : "Extra dependencies"
-        },
-        "firstTry" : {
-          "description" : "Whether this task has been tried before",
-          "type" : "boolean"
-        },
-        "ignoreErrors" : {
-          "description" : "Should table backup errors be ignored",
-          "type" : "boolean"
-        },
-        "keyspace" : {
-          "description" : "Key space",
-          "type" : "string"
-        },
-        "kmsConfigUUID" : {
-          "description" : "KMS configuration UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "minNumBackupsToRetain" : {
-          "description" : "Minimum number of backups to retain for a particular backup schedule",
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "newOwner" : {
-          "description" : "User name of the new tables owner",
-          "type" : "string"
-        },
-        "nodeDetailsSet" : {
-          "description" : "Node details",
-          "items" : {
-            "$ref" : "#/definitions/NodeDetails"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        },
-        "nodeExporterUser" : {
-          "description" : "Node exporter user",
-          "type" : "string"
-        },
-        "oldOwner" : {
-          "description" : "User name of the current tables owner",
-          "type" : "string"
-        },
-        "parallelism" : {
-          "description" : "Number of concurrent commands to run on nodes over SSH",
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "previousTaskUUID" : {
-          "description" : "Previous task UUID only if this task is a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "restoreTimeStamp" : {
-          "description" : "Restore TimeStamp",
-          "type" : "string"
-        },
-        "scheduleUUID" : {
-          "description" : "Schedule UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "schedulingFrequency" : {
-          "description" : "Frequency to run the backup, in milliseconds",
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "sourceXClusterConfigs" : {
-          "description" : "The source universe's xcluster replication relationships",
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "readOnly" : true,
-          "type" : "array"
-        },
-        "sse" : {
-          "description" : "Is SSE",
-          "type" : "boolean"
-        },
-        "storageConfigUUID" : {
-          "description" : "Storage configuration UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "storageLocation" : {
-          "description" : "Storage location",
-          "type" : "string"
-        },
-        "tableName" : {
-          "description" : "Table name",
-          "type" : "string"
-        },
-        "tableNameList" : {
-          "description" : "Tables",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "tableUUID" : {
-          "description" : "Table UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "tableUUIDList" : {
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "targetXClusterConfigs" : {
-          "description" : "The target universe's xcluster replication relationships",
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "readOnly" : true,
-          "type" : "array"
-        },
-        "timeBeforeDelete" : {
-          "description" : "Time before deleting the backup from storage, in milliseconds",
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "transactionalBackup" : {
-          "description" : "Is backup transactional across tables",
-          "type" : "boolean"
-        },
-        "universeUUID" : {
-          "description" : "Associated universe UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "useTablespaces" : {
-          "description" : "Is tablespaces information included",
-          "type" : "boolean"
-        },
-        "ybPrevSoftwareVersion" : {
-          "description" : "Previous software version",
-          "type" : "string"
-        }
-      },
-      "required" : [ "customerUUID", "storageConfigUUID", "tableUUIDList" ],
-      "type" : "object"
-    },
     "MultiTableBackupRequestParams" : {
       "description" : "Multi-table backup parameters",
       "properties" : {
@@ -4529,16 +4312,84 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "taskParams" : {
-          "$ref" : "#/definitions/MultiTableBackupParams",
-          "description" : "Schedule task parameters"
-        },
         "taskType" : {
-          "description" : "Type of task to be scheduled. This can be either a multi-table backup, or a full-universe backup.",
+          "description" : "Type of task to be scheduled.",
           "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "RestoreBackup", "MultiTableBackup", "CreateBackup", "EditUniverse", "EditKubernetesUniverse", "ExternalScript", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "SystemdUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "EditKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "CreateXClusterConfig", "EditXClusterConfig", "DeleteXClusterConfig", "SyncXClusterConfig", "CreateSupportBundle", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "AnsibleCreateServer", "PrecheckNode", "PrecheckNodeDetached", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "ChangeAdminPassword", "CreateTable", "DeleteNode", "DeleteBackup", "DeleteBackupYb", "DeleteCustomerConfig", "DeleteCustomerStorageConfig", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLeaderBlacklistCompletion", "WaitForFollowerLag", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "RunExternalScript", "XClusterConfigSetup", "XClusterConfigSetStatus", "XClusterConfigModifyTables", "XClusterConfigRename", "XClusterConfigDelete", "XClusterConfigSync", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupTableYb", "BackupUniverseKeys", "RestoreBackupYb", "RestoreUniverseKeys", "RestoreUniverseKeysYb", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "SetActiveUniverseKeys", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "ResetUniverseVersion", "DeleteCertificate", "SetNodeStatus", "CheckMasterLeader", "CheckMasters", "CheckTServers", "WaitForTServerHBs", "CreatePrometheusSwamperConfig", "PreflightNodeCheck", "RunYsqlUpgrade" ],
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "ScheduleApiFilter" : {
+      "properties" : {
+        "status" : {
+          "items" : {
+            "enum" : [ "Active", "Paused", "Stopped" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "taskTypes" : {
+          "items" : {
+            "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "RestoreBackup", "MultiTableBackup", "CreateBackup", "EditUniverse", "EditKubernetesUniverse", "ExternalScript", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "SystemdUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "EditKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "CreateXClusterConfig", "EditXClusterConfig", "DeleteXClusterConfig", "SyncXClusterConfig", "CreateSupportBundle", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "AnsibleCreateServer", "PrecheckNode", "PrecheckNodeDetached", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "ChangeAdminPassword", "CreateTable", "DeleteNode", "DeleteBackup", "DeleteBackupYb", "DeleteCustomerConfig", "DeleteCustomerStorageConfig", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLeaderBlacklistCompletion", "WaitForFollowerLag", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "RunExternalScript", "XClusterConfigSetup", "XClusterConfigSetStatus", "XClusterConfigModifyTables", "XClusterConfigRename", "XClusterConfigDelete", "XClusterConfigSync", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupTableYb", "BackupUniverseKeys", "RestoreBackupYb", "RestoreUniverseKeys", "RestoreUniverseKeysYb", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "SetActiveUniverseKeys", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "ResetUniverseVersion", "DeleteCertificate", "SetNodeStatus", "CheckMasterLeader", "CheckMasters", "CheckTServers", "WaitForTServerHBs", "CreatePrometheusSwamperConfig", "PreflightNodeCheck", "RunYsqlUpgrade" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "status", "taskTypes" ],
+      "type" : "object"
+    },
+    "SchedulePagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/ScheduleApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "taskType", "scheduleUUID" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "SchedulePagedResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/Schedule"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
     "ScopedConfig" : {
@@ -7595,6 +7446,40 @@
         "tags" : [ "Universe information" ]
       }
     },
+    "/api/v1/customers/{cUUID}/create_backup_schedule" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createbackupSchedule",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "Parameters of the backup to be restored",
+          "in" : "body",
+          "name" : "backup",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/BackupRequestParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Schedule"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create Backup Schedule",
+        "tags" : [ "Table management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/delete_backups" : {
       "delete" : {
         "description" : "",
@@ -9299,7 +9184,7 @@
     "/api/v1/customers/{cUUID}/schedules" : {
       "get" : {
         "description" : "",
-        "operationId" : "listBackupSchedules",
+        "operationId" : "listSchedules",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9321,14 +9206,47 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List backup schedules",
-        "tags" : [ "Backup schedule management" ]
+        "summary" : "List schedules",
+        "tags" : [ "Schedule management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/schedules/page" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "pageScheduleList",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PageScheduleRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SchedulePagedApiQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SchedulePagedResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List schedules",
+        "tags" : [ "Schedule management" ]
       }
     },
     "/api/v1/customers/{cUUID}/schedules/{sUUID}" : {
       "delete" : {
         "description" : "",
-        "operationId" : "deleteBackupSchedule",
+        "operationId" : "deleteSchedule",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9353,8 +9271,38 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete a backup schedule",
-        "tags" : [ "Backup schedule management" ]
+        "summary" : "Delete a schedule",
+        "tags" : [ "Schedule management" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getSchedule",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Schedule"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get Schedule",
+        "tags" : [ "Schedule management" ]
       },
       "put" : {
         "description" : "",
@@ -9391,7 +9339,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit a backup schedule",
-        "tags" : [ "Backup schedule management" ]
+        "tags" : [ "Schedule management" ]
       }
     },
     "/api/v1/customers/{cUUID}/schedules/{sUUID}/delete" : {
@@ -9423,7 +9371,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Delete a schedule V2",
-        "tags" : [ "Backup schedule management" ]
+        "tags" : [ "Schedule management" ]
       }
     },
     "/api/v1/customers/{cUUID}/tasks/{tUUID}" : {
@@ -12390,8 +12338,6 @@
   }, {
     "name" : "Availability Zones"
   }, {
-    "name" : "Backup schedule management"
-  }, {
     "name" : "Backups"
   }, {
     "name" : "Certificate Info"
@@ -12421,6 +12367,8 @@
     "name" : "Release management"
   }, {
     "name" : "Runtime configuration"
+  }, {
+    "name" : "Schedule management"
   }, {
     "name" : "ScheduleExternalScript"
   }, {

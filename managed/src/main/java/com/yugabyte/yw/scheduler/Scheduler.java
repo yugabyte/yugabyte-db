@@ -25,6 +25,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
+import com.yugabyte.yw.commissioner.tasks.CreateBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
@@ -192,6 +193,9 @@ public class Scheduler {
             if (taskType == TaskType.ExternalScript && !alreadyRunning) {
               this.runExternalScriptTask(schedule);
             }
+            if (taskType == TaskType.CreateBackup) {
+              this.runCreateBackupTask(schedule, alreadyRunning);
+            }
           }
         } catch (Exception e) {
           log.error("Error runnning schedule {} ", schedule.scheduleUUID, e);
@@ -271,6 +275,11 @@ public class Scheduler {
   private void runMultiTableBackupsTask(Schedule schedule, boolean alreadyRunning) {
     MultiTableBackup multiTableBackup = AbstractTaskBase.createTask(MultiTableBackup.class);
     multiTableBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
+  }
+
+  private void runCreateBackupTask(Schedule schedule, boolean alreadyRunning) {
+    CreateBackup createBackup = AbstractTaskBase.createTask(CreateBackup.class);
+    createBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
   }
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {

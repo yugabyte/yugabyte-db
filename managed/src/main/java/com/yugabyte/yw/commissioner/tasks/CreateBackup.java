@@ -399,7 +399,7 @@ public class CreateBackup extends UniverseTaskBase {
     UUID customerUUID = schedule.getCustomerUUID();
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
-    BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
+    BackupRequestParams taskParams = Json.fromJson(params, BackupRequestParams.class);
     taskParams.scheduleUUID = schedule.scheduleUUID;
     Universe universe;
     try {
@@ -426,7 +426,7 @@ public class CreateBackup extends UniverseTaskBase {
       }
 
       log.warn(
-          "Cannot run MultiTableBackup task since the universe {} is currently {}",
+          "Cannot run CreateBackup task since the universe {} is currently {}",
           taskParams.universeUUID.toString(),
           "in a locked/paused state or has backup running");
       return;

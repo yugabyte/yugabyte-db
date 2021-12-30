@@ -30,18 +30,6 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
-  // Specifies the frequency for running the backup in milliseconds.
-  @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
-  public long schedulingFrequency = 0L;
-
-  // Specifies the cron expression in case a recurring backup is expected.
-  @ApiModelProperty(value = "Cron expression for a recurring backup")
-  public String cronExpression = null;
-
-  // Specifies number of backups to retain in case of recurring backups.
-  @ApiModelProperty(value = "Minimum number of backups to retain for a particular backup schedule")
-  public int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN;
-
   // Specifies the time in millisecs before deleting the backup from the storage
   // bucket.
   @ApiModelProperty(value = "Time before deleting the backup from storage, in milliseconds")
@@ -61,15 +49,27 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
 
-  // The associated schedule UUID (if applicable)
-  @ApiModelProperty(value = "Schedule UUID")
-  public UUID scheduleUUID = null;
-
   @ApiModelProperty(value = "Customer UUID")
   public UUID customerUUID = null;
 
   @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;
+
+  // Specifies the frequency for running the backup in milliseconds.
+  @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
+  public long schedulingFrequency = 0L;
+
+  // Specifies the cron expression in case a recurring backup is expected.
+  @ApiModelProperty(value = "Cron expression for a recurring backup")
+  public String cronExpression = null;
+
+  // The associated schedule UUID (if applicable)
+  @ApiModelProperty(value = "Schedule UUID")
+  public UUID scheduleUUID = null;
+
+  // Specifies number of backups to retain in case of recurring backups.
+  @ApiModelProperty(value = "Minimum number of backups to retain for a particular backup schedule")
+  public int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN;
 
   @ApiModel(description = "Keyspace and table info for backup")
   public static class KeyspaceTable {
