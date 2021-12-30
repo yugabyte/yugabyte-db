@@ -557,6 +557,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
       return retTags;
     }
+
+    @JsonIgnore
+    public boolean isYSQLAuthEnabled() {
+      return tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")
+          || enableYSQLAuth;
+    }
   }
 
   @JsonIgnore

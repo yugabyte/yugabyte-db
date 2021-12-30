@@ -16,6 +16,7 @@ import java.util.UUID;
 
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
+  public static final int YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = 20;
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
 
   @Override
@@ -43,11 +44,18 @@ public class NodeUniverseManager extends DevopsBase {
 
   public synchronized ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand) {
+    return runYsqlCommand(node, universe, dbName, ysqlCommand, YSQL_COMMAND_DEFAULT_TIMEOUT_SEC);
+  }
+
+  public synchronized ShellResponse runYsqlCommand(
+      NodeDetails node, Universe universe, String dbName, String ysqlCommand, int timeoutSec) {
     List<String> command = new ArrayList<>();
+    command.add("timeout");
+    command.add(String.valueOf(timeoutSec));
     command.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     command.add("-h");
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-    if (cluster.userIntent.enableYSQLAuth) {
+    if (cluster.userIntent.isYSQLAuthEnabled()) {
       command.add("$(dirname \"$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
     } else {
       command.add(node.cloudInfo.private_ip);

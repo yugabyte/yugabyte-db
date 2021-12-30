@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.List;
@@ -42,6 +43,8 @@ import org.yb.client.YBClient;
 
 @Slf4j
 public class CreateUniverse extends UniverseDefinitionTaskBase {
+
+  private static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
 
   @Inject
   protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -193,7 +196,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      if (primaryCluster.userIntent.enableYSQL) {
+      if (primaryCluster.userIntent.enableYSQL
+          && CommonUtils.isReleaseEqualOrAfter(
+              MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
         // Create read-write test table
         List<NodeDetails> tserverLiveNodes =
             universe
