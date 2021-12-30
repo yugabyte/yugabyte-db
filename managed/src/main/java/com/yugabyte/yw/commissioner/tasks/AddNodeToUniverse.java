@@ -116,7 +116,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       if (preflightStatus != null) {
         Map<String, String> failedNodes =
             Collections.singletonMap(currentNode.nodeName, preflightStatus);
-        createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+        createFailedPrecheckTask(failedNodes, true)
+            .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
         errorString = "Preflight checks failed.";
       } else {
         // Update Node State to being added.

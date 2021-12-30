@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -52,8 +54,6 @@ import org.mockito.junit.MockitoRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -70,17 +70,12 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     super.setUp();
 
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
-    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
-        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
 
     // Change one of the nodes' state to removed.
     setDefaultNodeState(defaultUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
     setDefaultNodeState(onPremUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
 
     try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
     } catch (Exception e) {
@@ -278,7 +273,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
-  public void testAddNodeOnPermSuccess() throws Exception {
+  public void testAddNodeOnPremSuccess() throws Exception {
     mockWaits(mockClient, 3);
     TaskInfo taskInfo =
         submitTask(onPremUniverse.universeUUID, onPremProvider, DEFAULT_NODE_NAME, 3);
@@ -289,6 +284,25 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, false);
+  }
+
+  @Test
+  public void testAddNodeOnPrem_FailedPreflightCheck() throws Exception {
+    mockWaits(mockClient, 3);
+    preflightResponse.message = "{\"test\": false}";
+
+    TaskInfo taskInfo =
+        submitTask(onPremUniverse.universeUUID, onPremProvider, DEFAULT_NODE_NAME, 3);
+    assertEquals(Failure, taskInfo.getTaskState());
+
+    verify(mockNodeManager, times(1)).nodeCommand(any(), any());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(1, subTasks.size());
+    assertEquals(TaskType.PrecheckNode, subTasks.get(0).getTaskType());
+
+    NodeInstance instance = NodeInstance.getByName(DEFAULT_NODE_NAME);
+    assertNotNull(instance.getNodeName());
+    assertNotNull(instance.getDetails().nodeName);
   }
 
   @Test
