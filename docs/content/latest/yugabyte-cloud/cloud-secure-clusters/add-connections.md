@@ -73,5 +73,4 @@ The allow list takes up to 30 seconds to become active.
 ## Next steps
 
 - [Connect to your cluster](../../cloud-connect/)
-- [Create a database](../../cloud-connect/create-databases)
 - [Add database users](../../cloud-secure-clusters/add-users/)

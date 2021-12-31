@@ -4,7 +4,7 @@ headerTitle: Secure clusters in Yugabyte Cloud
 linkTitle: Secure clusters
 description: Secure clusters in Yugabyte Cloud.
 image: /images/section_icons/index/secure.png
-headcontent: Configure your clusters .
+headcontent: Configure the security features of your Yugabyte Cloud clusters.
 menu:
   latest:
     parent: yugabyte-cloud

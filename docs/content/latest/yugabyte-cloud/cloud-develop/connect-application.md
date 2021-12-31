@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: connect-application
     parent: cloud-develop
-    weight: 10
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---

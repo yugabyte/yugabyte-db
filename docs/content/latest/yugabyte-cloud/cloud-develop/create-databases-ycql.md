@@ -6,10 +6,10 @@ headcontent:
 image: /images/section_icons/quick_start/explore_ycql.png
 menu:
   latest:
-    parent: cloud-connect
+    parent: cloud-develop
     name: Create a database
     identifier: create-databases-2-ycql
-    weight: 70
+    weight: 600
 type: page
 isTocNested: false
 showAsideToc: true

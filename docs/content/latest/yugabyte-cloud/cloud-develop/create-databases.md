@@ -9,10 +9,10 @@ aliases:
   - /latest/yugabyte-cloud/create-databases/
 menu:
   latest:
-    parent: cloud-connect
+    parent: cloud-develop
     name: Create a database
     identifier: create-databases-1-ysql
-    weight: 70
+    weight: 600
 type: page
 isTocNested: true
 showAsideToc: true

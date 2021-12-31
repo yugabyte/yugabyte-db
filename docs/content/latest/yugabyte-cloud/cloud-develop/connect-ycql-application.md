@@ -7,7 +7,7 @@ menu:
   latest:
     parent: cloud-develop
     identifier: connect-ycql-application
-    weight: 550
+    weight: 200
 type: page
 isTocNested: true
 showAsideToc: true

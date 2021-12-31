@@ -53,8 +53,6 @@ When connecting via Yugabyte Client Shell, ensure you are running the latest ver
   </div>
 </div>
 
-You are now ready to [Create and explore a database](../create-databases/).
-
 ## SSL modes in YSQL
 
 Yugabyte Cloud requires SSL connections. The generated `ysqlsh` shell command and application connection string use the `verify-full` SSL mode by default to verify the cluster’s identity. This mode encrypts the data in transit to ensure a secure connection to your cluster, and prevents man in the middle (MITM) attacks, impersonation attacks, and eavesdropping. Connections using SSL mode `disable` will fail. You can use other SSL modes to connect to clusters as described in the following table.
