@@ -87,7 +87,7 @@ TIME_SEC_TO_START_RUNNING_TEST = 5 * 60
 
 # Defaults for maximum test failure threshold, after which the Spark job will be aborted
 DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
-DEFAULT_MAX_NUM_TEST_FAILURES = 50
+DEFAULT_MAX_NUM_TEST_FAILURES = 100
 
 
 def wait_for_path_to_exist(target_path: str) -> None:
