@@ -1,7 +1,8 @@
 import re
 import typing
 
-IGNORE_RE = re.compile(R'^(?:\s*//.*|using\s.*|\s*#\s*pragma\s+once|\s*#\s*ifndef\s+ROCKSDB_LITE)$')
+IGNORE_RE = re.compile(
+    R'^(?:\s*//.*|using\s.*|\s*#\s*pragma\s+once|\s*#\s*ifndef\s+ROCKSDB_LITE|\s*#\s*error.*)$')
 IF_OPEN_RE = re.compile(R'^\s*#\s*if.*$')
 IF_CLOSE_RE = re.compile(R'^\s*#\s*endif.*$')
 ML_COMMENT_OPEN_RE = re.compile(R'^\s*/\*.*$')
@@ -55,6 +56,23 @@ class ParsedFile:
         self.trivial = True
 
 
+class IncludeLine(typing.NamedTuple):
+    file: str
+    system: bool
+    tail: str
+
+
+def parse_include_line(line) -> typing.Union[None, IncludeLine]:
+    match = INCLUDE_RE.match(line)
+    system = False
+    if not match:
+        match = SYSTEM_INCLUDE_RE.match(line)
+        system = True
+    if not match:
+        return None
+    return IncludeLine(match[1], system, match[2])
+
+
 # Parse specified file.
 def parse(fname, lines) -> ParsedFile:
     header = not fname.endswith('.cc')
@@ -88,20 +106,16 @@ def parse(fname, lines) -> ParsedFile:
                 prev_lines[1] == "#ifndef" + line[7:]:
             if_nesting -= 1
             continue
-        match = INCLUDE_RE.match(line)
-        system = False
-        if not match:
-            match = SYSTEM_INCLUDE_RE.match(line)
-            system = True
-        if match:
-            name = match[1]
+        parsed_include = parse_include_line(line)
+        if parsed_include is not None:
             if result.trivial and last_unknown is not None:
                 result.trivial = False
                 print("{} non trivial because of {}".format(fname, last_unknown))
             if result.trivial and if_nesting != 0:
                 result.trivial = False
-            trivial = if_nesting == 0 and len(match[2]) == 0
-            result.includes.append(Include(name, line_no, system, trivial))
+            trivial = if_nesting == 0 and len(parsed_include.tail) == 0
+            result.includes.append(
+                Include(parsed_include.file, line_no, parsed_include.system, trivial))
         else:
             last_unknown = line
     return result

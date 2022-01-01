@@ -15,8 +15,11 @@
 #ifndef YB_YQL_PGGATE_PG_DDL_H_
 #define YB_YQL_PGGATE_PG_DDL_H_
 
-#include "yb/yql/pggate/pg_statement.h"
 #include "yb/common/transaction.h"
+
+#include "yb/tserver/pg_client.pb.h"
+
+#include "yb/yql/pggate/pg_statement.h"
 
 namespace yb {
 namespace pggate {

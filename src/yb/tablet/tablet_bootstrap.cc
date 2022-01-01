@@ -55,6 +55,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -74,6 +75,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_splitter.h"
@@ -154,8 +156,6 @@ using consensus::OpIdToString;
 using consensus::ReplicateMsg;
 using consensus::MakeOpIdPB;
 using strings::Substitute;
-using tserver::ChangeMetadataRequestPB;
-using tserver::TruncateRequestPB;
 using tserver::WriteRequestPB;
 using tserver::TabletSnapshotOpRequestPB;
 
@@ -443,10 +443,10 @@ ReplayDecision ShouldReplayOperation(
 }
 
 bool WriteOpHasTransaction(const ReplicateMsg& replicate) {
-  if (!replicate.has_write_request()) {
+  if (!replicate.has_write()) {
     return false;
   }
-  const auto& write_request = replicate.write_request();
+  const auto& write_request = replicate.write();
   if (!write_request.has_write_batch()) {
     return false;
   }
@@ -822,7 +822,7 @@ class TabletBootstrap {
   //     encountering an entry with an index lower than or equal to the index of an operation that
   //     is already present in pending_replicates.
   //   - Ignores entries that have already been flushed into regular and intents RocksDBs.
-  //   - Updates committed OpId based on the commmited OpId from the entry and calls
+  //   - Updates committed OpId based on the comsmited OpId from the entry and calls
   //     ApplyCommittedPendingReplicates.
   //   - Updates the "monotonic counter" used for assigning internal keys in YCQL arrays.
   CHECKED_STATUS HandleReplicateMessage(
@@ -955,7 +955,7 @@ class TabletBootstrap {
   }
 
   CHECKED_STATUS PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
-    tserver::SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
+    SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
     // We might be asked to replay SPLIT_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set.
     if (split_request->tablet_id() != tablet_->tablet_id()) {
@@ -984,7 +984,7 @@ class TabletBootstrap {
 
   void HandleRetryableRequest(
       const ReplicateMsg& replicate, RestartSafeCoarseTimePoint entry_time) {
-    if (!replicate.has_write_request())
+    if (!replicate.has_write())
       return;
 
     if (data_.retryable_requests) {
@@ -1367,12 +1367,11 @@ class TabletBootstrap {
     SCHECK(replicate_msg->has_hybrid_time(), IllegalState,
            "A write operation with no hybrid time");
 
-    WriteRequestPB* write = replicate_msg->mutable_write_request();
+    auto* write = replicate_msg->mutable_write();
 
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
-    WriteOperation operation(OpId::kUnknownTerm, CoarseTimePoint::max(), /* context */ nullptr);
-    *operation.AllocateRequest() = *write;
+    WriteOperation operation(tablet_.get(), write);
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
     operation.set_hybrid_time(hybrid_time);
@@ -1381,9 +1380,9 @@ class TabletBootstrap {
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
 
     if (test_hooks_ &&
-        replicate_msg->has_write_request() &&
-        replicate_msg->write_request().has_write_batch() &&
-        replicate_msg->write_request().write_batch().has_transaction() &&
+        replicate_msg->has_write() &&
+        replicate_msg->write().has_write_batch() &&
+        replicate_msg->write().write_batch().has_transaction() &&
         test_hooks_->ShouldSkipWritingIntents()) {
       // Used in unit tests to avoid instantiating the entire transactional subsystem.
       tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
@@ -1469,7 +1468,7 @@ class TabletBootstrap {
   }
 
   CHECKED_STATUS PlayTruncateRequest(ReplicateMsg* replicate_msg) {
-    TruncateRequestPB* req = replicate_msg->mutable_truncate_request();
+    auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_.get(), req);
 

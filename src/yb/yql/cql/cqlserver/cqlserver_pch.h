@@ -71,7 +71,6 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/atomic.hpp>
 #include <boost/bind.hpp>
-#include <boost/circular_buffer.hpp>
 #include <boost/compute/detail/lru_cache.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/container_hash/hash.hpp>
@@ -83,7 +82,6 @@
 #include <boost/functional/hash.hpp>
 #include <boost/functional/hash/hash.hpp>
 #include <boost/intrusive/list.hpp>
-#include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
 #include <boost/optional.hpp>
@@ -117,8 +115,18 @@
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
+#include <google/protobuf/arena.h>
+#include <google/protobuf/arenastring.h>
+#include <google/protobuf/generated_message_table_driven.h>
+#include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map_entry.h>
+#include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/metadata.h>
+#include <google/protobuf/repeated_field.h>
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/wire_format_lite.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
@@ -168,7 +176,6 @@
 #include "yb/util/cast.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/compare_util.h"
-#include "yb/util/concurrent_pod.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/cross_thread_mutex.h"

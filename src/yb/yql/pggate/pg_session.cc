@@ -40,9 +40,11 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/flag_tags.h"
@@ -85,9 +87,6 @@ using client::YBTableName;
 using client::YBTableType;
 
 using yb::master::GetNamespaceInfoResponsePB;
-using yb::master::IsInitDbDoneRequestPB;
-using yb::master::IsInitDbDoneResponsePB;
-using yb::master::MasterServiceProxy;
 
 using yb::tserver::TServerSharedObject;
 

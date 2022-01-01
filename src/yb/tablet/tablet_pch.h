@@ -74,7 +74,6 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/container_hash/hash.hpp>
 #include <boost/core/demangle.hpp>
-#include <boost/core/enable_if.hpp>
 #include <boost/function.hpp>
 #include <boost/function/function_fwd.hpp>
 #include <boost/functional/hash.hpp>
@@ -112,7 +111,6 @@
 #include <boost/system/error_code.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/tti/has_type.hpp>
-#include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/uuid/uuid.hpp>
@@ -122,10 +120,19 @@
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <gmock/gmock.h>
+#include <google/protobuf/any.pb.h>
+#include <google/protobuf/arena.h>
+#include <google/protobuf/arenastring.h>
+#include <google/protobuf/generated_message_table_driven.h>
+#include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map_entry.h>
+#include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/metadata.h>
 #include <google/protobuf/repeated_field.h>
-#include <google/protobuf/wire_format_lite.h>
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 
@@ -212,7 +219,6 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/memory.h"
-#include "yb/util/memory/memory_usage.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/metrics_fwd.h"
@@ -224,7 +230,6 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/object_pool.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"

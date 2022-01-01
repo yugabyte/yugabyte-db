@@ -51,6 +51,7 @@
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 
@@ -438,7 +439,8 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
 
   ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
   ts_flags.push_back("--ysql_beta_feature_tablegroup=true");
-  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas, 1 /* masters */,
+                                true /* enable_ysql (allows load balancing) */));
 
   ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
                                      "" /* ns_id */, "" /* src_ns_id */,

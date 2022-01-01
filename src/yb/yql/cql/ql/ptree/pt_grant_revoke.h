@@ -28,7 +28,6 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/common.pb.h"
 #include "yb/common/roles_permissions.h"
 
 #include "yb/gutil/integral_types.h"

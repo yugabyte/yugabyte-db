@@ -17,6 +17,8 @@
 
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 
+#include "yb/common/common.pb.h"
+
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"

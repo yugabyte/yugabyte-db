@@ -14,7 +14,8 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.master.Master;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplicationResponse> {
@@ -30,8 +31,9 @@ public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplica
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.DeleteUniverseReplicationRequestPB.Builder builder =
-      Master.DeleteUniverseReplicationRequestPB.newBuilder().setProducerId(replicationGroupName);
+    final MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.Builder builder =
+      MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.newBuilder().setProducerId(
+          replicationGroupName);
 
     return toChannelBuffer(header, builder.build());
   }
@@ -49,12 +51,12 @@ public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplica
   @Override
   Pair<DeleteUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.DeleteUniverseReplicationResponsePB.Builder builder =
-      Master.DeleteUniverseReplicationResponsePB.newBuilder();
+    final MasterReplicationOuterClass.DeleteUniverseReplicationResponsePB.Builder builder =
+      MasterReplicationOuterClass.DeleteUniverseReplicationResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     DeleteUniverseReplicationResponse response =
       new DeleteUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),

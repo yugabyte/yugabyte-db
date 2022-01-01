@@ -175,9 +175,6 @@ struct RaftGroupMetadataData {
   std::vector<SnapshotScheduleId> snapshot_schedules;
 };
 
-using RestorationCompleteTimeMap = std::unordered_map<
-    TxnSnapshotRestorationId, HybridTime, TxnSnapshotRestorationIdHash>;
-
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
 // Raft groups from this data.
@@ -443,6 +440,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   // Removes all complete or unknown restorations.
   bool CleanupRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
+
+  bool UsePartialRangeKeyIntents() const;
 
  private:
   typedef simple_spinlock MutexType;

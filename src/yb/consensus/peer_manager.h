@@ -73,7 +73,6 @@ class PeerManager {
               PeerProxyFactory* peer_proxy_factory,
               PeerMessageQueue* queue,
               ThreadPoolToken* raft_pool_token,
-              const log::LogPtr& log,
               MultiRaftManager* multi_raft_manager);
 
   virtual ~PeerManager();
@@ -101,7 +100,6 @@ class PeerManager {
   PeerProxyFactory* peer_proxy_factory_;
   PeerMessageQueue* queue_;
   ThreadPoolToken* raft_pool_token_;
-  log::LogPtr log_;
   MultiRaftManager* multi_raft_manager_;
   PeersMap peers_;
   Consensus* consensus_ = nullptr;

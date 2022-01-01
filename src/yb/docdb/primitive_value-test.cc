@@ -18,6 +18,7 @@
 
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/strings/substitute.h"
 

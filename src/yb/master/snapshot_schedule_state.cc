@@ -22,6 +22,7 @@
 #include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);

@@ -20,12 +20,14 @@
 #include "yb/client/table.h"
 
 #include "yb/common/jsonb.h"
+#include "yb/common/partition.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/util/decimal.h"

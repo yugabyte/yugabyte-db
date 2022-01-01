@@ -37,7 +37,6 @@ option java_package = "org.yb.log";
 
 import "yb/common/common.proto";
 import "yb/consensus/consensus.proto";
-import "yb/consensus/metadata.proto";
 import "yb/util/opid.proto";
 
 // ===========================================================================

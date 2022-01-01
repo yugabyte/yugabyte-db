@@ -38,6 +38,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/gutil/map-util.h"
 
@@ -63,7 +64,7 @@ bool IsRaftConfigMember(const std::string& uuid, const RaftConfigPB& config) {
 bool IsRaftConfigVoter(const std::string& uuid, const RaftConfigPB& config) {
   for (const RaftPeerPB& peer : config.peers()) {
     if (peer.permanent_uuid() == uuid) {
-      return peer.member_type() == RaftPeerPB::VOTER;
+      return peer.member_type() == PeerMemberType::VOTER;
     }
   }
   return false;
@@ -151,19 +152,19 @@ bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req
 }
 
 int CountVoters(const RaftConfigPB& config) {
-  return CountMemberType(config, RaftPeerPB::VOTER);
+  return CountMemberType(config, PeerMemberType::VOTER);
 }
 
 int CountVotersInTransition(const RaftConfigPB& config) {
-  return CountMemberType(config, RaftPeerPB::PRE_VOTER);
+  return CountMemberType(config, PeerMemberType::PRE_VOTER);
 }
 
 int CountServersInTransition(const RaftConfigPB& config, const string& ignore_uuid) {
-  return CountMemberType(config, RaftPeerPB::PRE_VOTER, ignore_uuid) +
-      CountMemberType(config, RaftPeerPB::PRE_OBSERVER, ignore_uuid);
+  return CountMemberType(config, PeerMemberType::PRE_VOTER, ignore_uuid) +
+         CountMemberType(config, PeerMemberType::PRE_OBSERVER, ignore_uuid);
 }
 
-int CountMemberType(const RaftConfigPB& config, const RaftPeerPB::MemberType member_type,
+int CountMemberType(const RaftConfigPB& config, const PeerMemberType member_type,
                     const string& ignore_uuid) {
   int count = 0;
   for (const RaftPeerPB& peer : config.peers()) {
@@ -179,18 +180,17 @@ int MajoritySize(int num_voters) {
   return (num_voters / 2) + 1;
 }
 
-RaftPeerPB::MemberType GetConsensusMemberType(const std::string& permanent_uuid,
-                                              const ConsensusStatePB& cstate) {
+PeerMemberType GetConsensusMemberType(const std::string& permanent_uuid,
+                                      const ConsensusStatePB& cstate) {
   for (const RaftPeerPB& peer : cstate.config().peers()) {
     if (peer.permanent_uuid() == permanent_uuid) {
       return peer.member_type();
     }
   }
-  return RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+  return PeerMemberType::UNKNOWN_MEMBER_TYPE;
 }
 
-PeerRole GetConsensusRole(const std::string& permanent_uuid,
-                                  const ConsensusStatePB& cstate) {
+PeerRole GetConsensusRole(const std::string& permanent_uuid, const ConsensusStatePB& cstate) {
   if (cstate.leader_uuid() == permanent_uuid) {
     if (IsRaftConfigVoter(permanent_uuid, cstate.config())) {
       return PeerRole::LEADER;
@@ -201,19 +201,19 @@ PeerRole GetConsensusRole(const std::string& permanent_uuid,
   for (const RaftPeerPB& peer : cstate.config().peers()) {
     if (peer.permanent_uuid() == permanent_uuid) {
       switch (peer.member_type()) {
-        case RaftPeerPB::VOTER:
+        case PeerMemberType::VOTER:
           return PeerRole::FOLLOWER;
 
         // PRE_VOTER, PRE_OBSERVER peers are considered LEARNERs.
-        case RaftPeerPB::PRE_VOTER:
-        case RaftPeerPB::PRE_OBSERVER:
+        case PeerMemberType::PRE_VOTER:
+        case PeerMemberType::PRE_OBSERVER:
           return PeerRole::LEARNER;
 
-        case RaftPeerPB::OBSERVER:
+        case PeerMemberType::OBSERVER:
           return PeerRole::READ_REPLICA;
 
-        case RaftPeerPB::UNKNOWN_MEMBER_TYPE:
-         return PeerRole::UNKNOWN_ROLE;
+        case PeerMemberType::UNKNOWN_MEMBER_TYPE:
+          return PeerRole::UNKNOWN_ROLE;
       }
     }
   }

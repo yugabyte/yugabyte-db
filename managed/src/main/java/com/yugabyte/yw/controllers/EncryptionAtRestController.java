@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -65,6 +66,14 @@ public class EncryptionAtRestController extends AuthenticatedController {
   public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
   public static final String AWS_KMS_ENDPOINT_FIELDNAME = "AWS_KMS_ENDPOINT";
 
+  public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
+  public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
+
+  public static final String HC_ADDR_FNAME = HashicorpEARServiceUtil.HC_VAULT_ADDRESS;
+  public static final String HC_TOKEN_FNAME = HashicorpEARServiceUtil.HC_VAULT_TOKEN;
+  public static final String HC_ENGINE_FNAME = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
+  public static final String HC_MPATH_FNAME = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
+
   @Inject EncryptionAtRestManager keyManager;
 
   @Inject Commissioner commissioner;
@@ -97,13 +106,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
           && !cloudAPI.isValidCreds(config, formData.get(AWS_REGION_FIELDNAME).textValue())) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
       }
-    }
-    if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
-      if (formData.get("base_url") == null
-          || !EncryptionAtRestController.API_URL.contains(formData.get("base_url").textValue())) {
+    } else if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
+      if (formData.get(SMARTKEY_BASE_URL_FIELDNAME) == null
+          || !EncryptionAtRestController.API_URL.contains(
+              formData.get(SMARTKEY_BASE_URL_FIELDNAME).textValue())) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid API URL.");
       }
-      if (formData.get("api_key") != null) {
+      if (formData.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
         try {
           Function<ObjectNode, String> token =
               new SmartKeyEARService()::retrieveSessionAuthorization;
@@ -112,28 +121,77 @@ public class EncryptionAtRestController extends AuthenticatedController {
           throw new PlatformServiceException(BAD_REQUEST, "Invalid API Key.");
         }
       }
+    } else if (keyProvider.toUpperCase().equals(KeyProvider.HASHICORP.toString())) {
+
+      if (formData.get(HC_ADDR_FNAME) == null || formData.get(HC_TOKEN_FNAME) == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
+      }
+      try {
+        if (HashicorpEARServiceUtil.getVaultSecretEngine(formData) == null)
+          throw new PlatformServiceException(BAD_REQUEST, "Invalid Vault parameters");
+      } catch (Exception e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.toString());
+      }
     }
   }
 
   private void checkEditableFields(ObjectNode formData, KeyProvider keyProvider, UUID configUUID) {
+
     KmsConfig config = KmsConfig.get(configUUID);
     ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
     if (formData.get("name") != null && !config.name.equals(formData.get("name").asText())) {
       throw new PlatformServiceException(BAD_REQUEST, "KmsConfig name cannot be changed.");
     }
+
     if (keyProvider.equals(KeyProvider.AWS)) {
       if (formData.get(AWS_REGION_FIELDNAME) != null
           && !authconfig.get(AWS_REGION_FIELDNAME).equals(formData.get(AWS_REGION_FIELDNAME))) {
         throw new PlatformServiceException(BAD_REQUEST, "KmsConfig region cannot be changed.");
+      }
+    } else if (keyProvider.equals(KeyProvider.SMARTKEY)) {
+      // NO checks required
+    } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
+
+      if (formData.get(HC_ENGINE_FNAME) != null
+          && !authconfig.get(HC_ENGINE_FNAME).equals(formData.get(HC_ENGINE_FNAME))) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "KmsConfig vault engine cannot be changed.");
+      }
+      if (formData.get(HC_MPATH_FNAME) != null
+          && !authconfig.get(HC_MPATH_FNAME).equals(formData.get(HC_MPATH_FNAME))) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "KmsConfig vault engine path cannot be changed.");
       }
     }
   }
 
   private ObjectNode addNonEditableFieldsData(
       ObjectNode formData, UUID configUUID, KeyProvider keyProvider) {
-    ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
     if (keyProvider.equals(KeyProvider.AWS)) {
-      formData.set(AWS_REGION_FIELDNAME, authconfig.get(AWS_REGION_FIELDNAME));
+      formData.set(AWS_REGION_FIELDNAME, authConfig.get(AWS_REGION_FIELDNAME));
+      if (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) == null
+          && authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
+        formData.set(AWS_ACCESS_KEY_ID_FIELDNAME, authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME));
+      }
+      if (formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) == null
+          && authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null) {
+        formData.set(
+            AWS_SECRET_ACCESS_KEY_FIELDNAME, authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME));
+      }
+    } else if (keyProvider.equals(KeyProvider.SMARTKEY)) {
+      if (formData.get(SMARTKEY_API_KEY_FIELDNAME) == null
+          && authConfig.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
+        formData.set(SMARTKEY_API_KEY_FIELDNAME, authConfig.get(SMARTKEY_API_KEY_FIELDNAME));
+      }
+    } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
+
+      formData.set(HC_ENGINE_FNAME, authConfig.get(HC_ENGINE_FNAME));
+      formData.set(HC_MPATH_FNAME, authConfig.get(HC_MPATH_FNAME));
+
+      if (formData.get(HC_TOKEN_FNAME) == null && authConfig.get(HC_TOKEN_FNAME) != null) {
+        formData.set(HC_TOKEN_FNAME, authConfig.get(HC_TOKEN_FNAME));
+      }
     }
     return formData;
   }

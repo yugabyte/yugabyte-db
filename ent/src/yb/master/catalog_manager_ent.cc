@@ -18,9 +18,11 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
@@ -40,6 +42,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_name.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 
@@ -50,8 +53,11 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-internal.h"
@@ -64,8 +70,9 @@
 
 #include "yb/rpc/messenger.h"
 
-#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/service_util.h"
@@ -480,6 +487,14 @@ Result<SysRowEntries> CatalogManager::CollectEntries(
   }
 
   return entries;
+}
+
+Result<SysRowEntries> CatalogManager::CollectEntriesForSnapshot(
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) {
+  return CollectEntries(
+      tables,
+      CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
+                   CollectFlag::kSucceedIfCreateInProgress});
 }
 
 server::Clock* CatalogManager::Clock() {
@@ -2261,12 +2276,12 @@ Status CatalogManager::HandlePlacementUsingReplicationInfo(
   GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
   RETURN_NOT_OK(super::HandlePlacementUsingPlacementInfo(replication_info.live_replicas(),
                                                       ts_descs,
-                                                      consensus::RaftPeerPB::VOTER, config));
+                                                      consensus::PeerMemberType::VOTER, config));
   for (int i = 0; i < replication_info.read_replicas_size(); i++) {
     GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
     RETURN_NOT_OK(super::HandlePlacementUsingPlacementInfo(replication_info.read_replicas(i),
                                                            ts_descs,
-                                                           consensus::RaftPeerPB::OBSERVER,
+                                                           consensus::PeerMemberType::OBSERVER,
                                                            config));
   }
   return Status::OK();

@@ -24,9 +24,11 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/pg_types.h"
+#include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_admin.proxy.h"
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
@@ -169,7 +171,7 @@ class PgClientServiceImpl::Impl {
       const PgIsInitDbDoneRequestPB& req, PgIsInitDbDoneResponsePB* resp,
       rpc::RpcContext* context) {
     HostPort master_leader_host_port = client().GetMasterLeaderAddress();
-    auto proxy = std::make_shared<master::MasterServiceProxy>(
+    auto proxy = std::make_shared<master::MasterAdminProxy>(
         &client().proxy_cache(), master_leader_host_port);
     rpc::RpcController rpc;
     master::IsInitDbDoneRequestPB master_req;

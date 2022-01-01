@@ -50,6 +50,13 @@ namespace consensus {
 
 using rpc::PeriodicTimer;
 
+struct MultiRaftHeartbeatBatcher::MultiRaftConsensusData {
+  MultiRaftConsensusRequestPB batch_req;
+  MultiRaftConsensusResponsePB batch_res;
+  rpc::RpcController controller;
+  std::vector<ResponseCallbackData> response_callback_data;
+};
+
 MultiRaftHeartbeatBatcher::MultiRaftHeartbeatBatcher(const yb::HostPort& hostport,
                                                      rpc::ProxyCache* proxy_cache,
                                                      rpc::Messenger* messenger):

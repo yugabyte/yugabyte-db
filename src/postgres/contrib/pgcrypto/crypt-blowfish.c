@@ -577,7 +577,7 @@ BF_set_key(const char *key, BF_key expanded, BF_key initial,
 }
 
 char *
-_crypt_blowfish_rn(const char *key, const char *setting,
+yb_crypt_blowfish_rn(const char *key, const char *setting,
 				   char *output, int size)
 {
 	struct

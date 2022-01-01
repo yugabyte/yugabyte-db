@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
@@ -55,6 +57,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistCompletion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
@@ -109,7 +112,7 @@ import org.apache.commons.collections.MapUtils;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.Common;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
 import play.api.Play;
@@ -214,7 +217,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        verifyUniverseVersion(expectedUniverseVersion, universe);
+        if (isFirstTryForTask(taskParams())) {
+          // Universe already has a reference to the last task UUID in case of retry.
+          // Check version only when it is a first try.
+          verifyUniverseVersion(expectedUniverseVersion, universe);
+        }
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         if (universeDetails.universePaused && !isResumeOrDelete) {
           String msg = "Universe " + taskParams().universeUUID + " is currently paused";
@@ -495,7 +502,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             if (universeDetails.updateSucceeded) {
               // Clear the task UUID only if the update succeeded.
               universeDetails.updatingTaskUUID = null;
-              universeDetails.firstTry = false;
+              // Do not save the transient state in the universe.
+              universeDetails.nodeDetailsSet.forEach(
+                  n -> {
+                    n.masterState = null;
+                  });
             }
             universe.setUniverseDetails(universeDetails);
           }
@@ -836,6 +847,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Create task to check if a specific process is caught up to other processes.
+   *
+   * @param node node for which the check needs to be executed.
+   * @param serverType server process type on the node to the check.
+   * @return SubTaskGroup
+   */
+  public SubTaskGroup createWaitForFollowerLagTask(NodeDetails node, ServerType serverType) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForLeaderBlacklistCompletion", executor);
+    WaitForFollowerLag.Params params = new WaitForFollowerLag.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.serverType = serverType;
+    params.node = node;
+    params.nodeName = node.nodeName;
+    WaitForFollowerLag task = createTask(WaitForFollowerLag.class);
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Create tasks to execute Cluster CTL command against specific process in parallel
    *
    * @param nodes set of nodes to issue control command in parallel.
@@ -950,7 +982,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param tableDetails table options and related details.
    */
   public SubTaskGroup createTableTask(
-      Common.TableType tableType, String tableName, TableDetails tableDetails) {
+      TableType tableType, String tableName, TableDetails tableDetails) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("CreateTable", executor);
     CreateTable task = createTask(CreateTable.class);
     CreateTable.Params params = new CreateTable.Params();
@@ -1126,6 +1158,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.opType =
         isAdd ? ChangeMasterConfig.OpType.AddMaster : ChangeMasterConfig.OpType.RemoveMaster;
     params.useHostPort = useHostPort;
+    // Check before the operation for idempotency if it is a retry.
+    // Existing first-try task remains intact.
+    params.checkBeforeChange = !UniverseTaskParams.isFirstTryForTask(taskParams());
     // Create the task.
     ChangeMasterConfig changeConfig = createTask(ChangeMasterConfig.class);
     changeConfig.initialize(params);
@@ -1315,6 +1350,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("BackupTable", executor, taskParams.ignoreErrors);
 
     BackupTable task = createTask(BackupTable.class);
+    task.initialize(taskParams);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createTableBackupTaskYb(BackupTableParams taskParams) {
+    SubTaskGroup subTaskGroup =
+        new SubTaskGroup("BackupTableYb", executor, taskParams.ignoreErrors);
+
+    BackupTableYb task = createTask(BackupTableYb.class);
     task.initialize(taskParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);

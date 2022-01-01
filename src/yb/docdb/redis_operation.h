@@ -41,8 +41,8 @@ class RedisWriteOperation :
     public DocOperationBase<DocOperationType::REDIS_WRITE_OPERATION, RedisWriteRequestPB> {
  public:
   // Construct a RedisWriteOperation. Content of request will be swapped out by the constructor.
-  explicit RedisWriteOperation(RedisWriteRequestPB* request) {
-    request_.Swap(request);
+  explicit RedisWriteOperation(std::reference_wrapper<const RedisWriteRequestPB> request)
+      : DocOperationBase(request) {
   }
 
   bool RequireReadSnapshot() const override { return false; }

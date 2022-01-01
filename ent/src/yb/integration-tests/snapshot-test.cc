@@ -16,6 +16,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 
@@ -26,8 +27,8 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.proxy.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
@@ -37,6 +38,7 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
@@ -71,8 +73,7 @@ using std::vector;
 using google::protobuf::RepeatedPtrField;
 
 using client::YBTableName;
-using master::MasterBackupServiceProxy;
-using master::MasterServiceProxy;
+using master::MasterBackupProxy;
 using master::SysRowEntry;
 using master::SysRowEntryType;
 using master::BackupRowEntryPB;
@@ -97,7 +98,6 @@ using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
-using master::MasterServiceProxy;
 using master::RestoreSnapshotRequestPB;
 using master::RestoreSnapshotResponsePB;
 using master::SnapshotInfoPB;
@@ -125,9 +125,9 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     messenger_ = ASSERT_RESULT(
         MessengerBuilder("test-msgr").set_num_reactors(1).Build());
     rpc::ProxyCache proxy_cache(messenger_.get());
-    proxy_.reset(new MasterServiceProxy(
+    proxy_ddl_.reset(new master::MasterDdlProxy(
         &proxy_cache, cluster_->mini_master()->bound_rpc_addr()));
-    proxy_backup_.reset(new MasterBackupServiceProxy(
+    proxy_backup_.reset(new MasterBackupProxy(
         &proxy_cache, cluster_->mini_master()->bound_rpc_addr()));
 
     // Connect to the cluster.
@@ -246,7 +246,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
           IsCreateTableDoneResponsePB resp;
           table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
-          RETURN_NOT_OK(proxy_->IsCreateTableDone(req, &resp, ResetAndGetController()));
+          RETURN_NOT_OK(proxy_ddl_->IsCreateTableDone(req, &resp, ResetAndGetController()));
           SCHECK(!resp.has_error(), IllegalState, "Expected response without error");
           SCHECK(resp.has_done(), IllegalState, "Response must have 'done'");
           return resp.done();
@@ -375,8 +375,8 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
  protected:
   std::unique_ptr<Messenger> messenger_;
-  unique_ptr<MasterServiceProxy> proxy_;
-  unique_ptr<MasterBackupServiceProxy> proxy_backup_;
+  unique_ptr<MasterBackupProxy> proxy_backup_;
+  unique_ptr<master::MasterDdlProxy> proxy_ddl_;
   RpcController controller_;
   std::unique_ptr<client::YBClient> client_;
 };

@@ -921,6 +921,8 @@ GucEnumAssignHook
 GucEnumCheckHook
 GucIntAssignHook
 GucIntCheckHook
+GucOidAssignHook
+GucOidCheckHook
 GucRealAssignHook
 GucRealCheckHook
 GucShowHook

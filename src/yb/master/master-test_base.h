@@ -48,12 +48,16 @@
 #include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/common_types.pb.h"
+
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master-test-util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy_base.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tablet_server.h"
@@ -229,7 +233,11 @@ class MasterTestBase : public YBTest {
   void UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config);
   std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<MiniMaster> mini_master_;
-  std::unique_ptr<MasterServiceProxy> proxy_;
+  std::unique_ptr<MasterClientProxy> proxy_client_;
+  std::unique_ptr<MasterClusterProxy> proxy_cluster_;
+  std::unique_ptr<MasterDdlProxy> proxy_ddl_;
+  std::unique_ptr<MasterHeartbeatProxy> proxy_heartbeat_;
+  std::unique_ptr<MasterReplicationProxy> proxy_replication_;
   shared_ptr<RpcController> controller_;
 };
 

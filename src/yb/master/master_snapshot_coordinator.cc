@@ -23,10 +23,12 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
 #include "yb/master/snapshot_coordinator_context.h"
@@ -41,6 +43,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_snapshots.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
@@ -76,15 +79,15 @@ void SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term,
     SnapshotCoordinatorContext* context,
     const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
-  auto operation = std::make_unique<tablet::WriteOperation>(
+  auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
       /* context */ nullptr, /* tablet= */ nullptr);
   if (synchronizer) {
-    operation->set_completion_callback(
+    query->set_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
   }
-  *operation->AllocateRequest()->mutable_write_batch() = std::move(write_batch);
-  context->Submit(std::move(operation), leader_term);
+  *query->operation().AllocateRequest()->mutable_write_batch() = std::move(write_batch);
+  context->Submit(query.release()->PrepareSubmit(), leader_term);
 }
 
 CHECKED_STATUS SynchronizedWrite(
@@ -884,17 +887,17 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
 
-    auto operation = std::make_unique<tablet::WriteOperation>(
+    auto query = std::make_unique<tablet::WriteQuery>(
         leader_term, CoarseMonoClock::Now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
         nullptr /* context */, nullptr /* tablet */);
 
-    auto* write_batch = operation->AllocateRequest()->mutable_write_batch();
+    auto* write_batch = query->operation().AllocateRequest()->mutable_write_batch();
     auto pair = write_batch->add_write_pairs();
     pair->set_key((*encoded_key).AsSlice().cdata(), (*encoded_key).size());
     char value = { docdb::ValueTypeAsChar::kTombstone };
     pair->set_value(&value, 1);
 
-    operation->set_completion_callback([this, id, &map](const Status& s) {
+    query->set_callback([this, id, &map](const Status& s) {
       if (s.ok()) {
         LOG(INFO) << "Finished cleanup of object " << id;
         return;
@@ -902,7 +905,7 @@ class MasterSnapshotCoordinator::Impl {
       CleanupObjectAborted(id, map);
     });
 
-    context_.Submit(std::move(operation), leader_term);
+    context_.Submit(query.release()->PrepareSubmit(), leader_term);
   }
 
   CHECKED_STATUS ExecuteScheduleOperation(

@@ -45,8 +45,9 @@
 
 #include "yb/common/entity_ids_types.h"
 
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -54,14 +55,15 @@
 
 #include "yb/integration-tests/mini_cluster_base.h"
 
-#include "yb/server/server_base.proxy.h"
+#include "yb/server/server_fwd.h"
 
-#include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -71,19 +73,15 @@ class ExternalTabletServer;
 class HostPort;
 class MetricPrototype;
 class MetricEntityPrototype;
+class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
-
-namespace master {
-class MasterServiceProxy;
-}  // namespace master
 
 namespace server {
 class ServerStatusPB;
 }  // namespace server
 
 using yb::consensus::ChangeConfigType;
-using yb::consensus::ConsensusServiceProxy;
 
 struct ExternalMiniClusterOptions {
 
@@ -285,7 +283,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // When use_hostport is true, the master is deemed as dead and its UUID is not used.
   CHECKED_STATUS ChangeConfig(ExternalMaster* master,
       ChangeConfigType type,
-      consensus::RaftPeerPB::MemberType member_type = consensus::RaftPeerPB::PRE_VOTER,
+      consensus::PeerMemberType member_type = consensus::PeerMemberType::PRE_VOTER,
       bool use_hostport = false);
 
   // Performs an RPC to the given master to get the number of masters it is tracking in-memory.
@@ -346,38 +344,35 @@ class ExternalMiniCluster : public MiniClusterBase {
   }
 
   // Get the master leader consensus proxy.
-  std::shared_ptr<consensus::ConsensusServiceProxy> GetLeaderConsensusProxy();
-
-  // Get the master leader master service proxy.
-  std::shared_ptr<master::MasterServiceProxy> GetLeaderMasterProxy();
+  consensus::ConsensusServiceProxy GetLeaderConsensusProxy();
 
   // Get the given master's consensus proxy.
-  std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(ExternalDaemon* daemon);
+  consensus::ConsensusServiceProxy GetConsensusProxy(ExternalDaemon* daemon);
 
   template <class T>
-  std::shared_ptr<T> GetProxy(ExternalDaemon* daemon);
+  T GetProxy(ExternalDaemon* daemon);
 
   template <class T>
-  std::shared_ptr<T> GetTServerProxy(int i) {
+  T GetTServerProxy(int i) {
     return GetProxy<T>(tablet_server(i));
   }
 
   template <class T>
-  std::shared_ptr<T> GetMasterProxy(int i) {
-    return GetProxy<T>(master(i));
+  T GetMasterProxy() {
+    CHECK_EQ(masters_.size(), 1);
+    return GetMasterProxy<T>(0);
   }
 
   template <class T>
-  std::shared_ptr<T> GetLeaderMasterProxy() {
-    return GetProxy<T>(GetLeaderMaster());
+  T GetMasterProxy(size_t idx) {
+    CHECK_LT(idx, masters_.size());
+    return GetProxy<T>(master(idx));
   }
 
-  // If the cluster is configured for a single non-distributed master, return a proxy to that
-  // master. Requires that the single master is running.
-  std::shared_ptr<master::MasterServiceProxy> master_proxy();
-
-  // Returns an RPC proxy to the master at 'idx'. Requires that the master at 'idx' is running.
-  std::shared_ptr<master::MasterServiceProxy> master_proxy(int idx);
+  template <class T>
+  T GetLeaderMasterProxy() {
+    return GetProxy<T>(GetLeaderMaster());
+  }
 
   // Returns an generic proxy to the master at 'idx'. Requires that the master at 'idx' is running.
   std::shared_ptr<server::GenericServiceProxy> master_generic_proxy(int idx) const;
@@ -399,7 +394,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Result<tserver::ListTabletsResponsePB> ListTablets(ExternalTabletServer* ts);
 
-  Result<std::vector<tserver::ListTabletsForTabletServerResponsePB::Entry>> GetTablets(
+  Result<std::vector<tserver::ListTabletsForTabletServerResponsePB_Entry>> GetTablets(
       ExternalTabletServer* ts);
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
@@ -497,7 +492,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // commit in the current term as leader).
   CHECKED_STATUS WaitForLeaderToAllowChangeConfig(
       const string& uuid,
-      ConsensusServiceProxy* leader_proxy);
+      consensus::ConsensusServiceProxy* leader_proxy);
 
   // Return master address for specified port.
   std::string MasterAddressForPort(uint16_t port) const;
@@ -837,8 +832,8 @@ struct MasterComparator {
 };
 
 template <class T>
-std::shared_ptr<T> ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
-  return std::make_shared<T>(proxy_cache_.get(), daemon->bound_rpc_addr());
+T ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
+  return T(proxy_cache_.get(), daemon->bound_rpc_addr());
 }
 
 CHECKED_STATUS RestartAllMasters(ExternalMiniCluster* cluster);

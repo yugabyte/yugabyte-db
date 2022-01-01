@@ -16,32 +16,43 @@ import sys
 import unittest
 import pipes
 import platform
+import time
 
 from datetime import datetime
+from enum import Enum
+from typing import Optional, List, Dict, TypeVar, Set, Any, Iterable, cast
+from pathlib import Path
 
-from typing import Optional, List, Dict
+from yb.common_util import (
+        group_by,
+        make_set,
+        get_build_type_from_build_root,
+        ensure_yb_src_root_from_build_root,
+        convert_to_non_ninja_build_root,
+        get_bool_env_var,
+        is_ninja_build_root,
+        shlex_join,
+        read_file,
+)
+from yb.command_util import mkdir_p
+from yugabyte_pycommon import WorkDirContext  # type: ignore
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from yb.common_util import \
-        group_by, make_set, get_build_type_from_build_root, get_yb_src_root_from_build_root, \
-        convert_to_non_ninja_build_root, get_bool_env_var, is_ninja_build_root  # nopep8
-from yb.command_util import mkdir_p  # nopep8
-from yugabyte_pycommon import WorkDirContext  # nopep8
+def make_extensions(exts_without_dot: List[str]) -> List[str]:
+    for ext in exts_without_dot:
+        assert not ext.startswith('.')
 
-
-def make_extensions(exts_without_dot):
     return ['.' + ext for ext in exts_without_dot]
 
 
-def ends_with_one_of(path, exts):
+def ends_with_any_of(path: str, exts: List[str]) -> bool:
     for ext in exts:
         if path.endswith(ext):
             return True
     return False
 
 
-def get_relative_path_or_none(abs_path, relative_to):
+def get_relative_path_or_none(abs_path: str, relative_to: str) -> Optional[str]:
     """
     If the given path starts with another directory path, return the relative path, or else None.
     """
@@ -49,6 +60,7 @@ def get_relative_path_or_none(abs_path, relative_to):
         relative_to += '/'
     if abs_path.startswith(relative_to):
         return abs_path[len(relative_to):]
+    return None
 
 
 SOURCE_FILE_EXTENSIONS = make_extensions(['c', 'cc', 'cpp', 'cxx', 'h', 'hpp', 'hxx', 'proto',
@@ -73,18 +85,17 @@ LIST_AFFECTED_CMD = 'affected'
 SELF_TEST_CMD = 'self-test'
 DEBUG_DUMP_CMD = 'debug-dump'
 
-COMMANDS = [LIST_DEPS_CMD,
-            LIST_REVERSE_DEPS_CMD,
-            LIST_AFFECTED_CMD,
-            SELF_TEST_CMD,
-            DEBUG_DUMP_CMD]
+COMMANDS = [
+    LIST_DEPS_CMD,
+    LIST_REVERSE_DEPS_CMD,
+    LIST_AFFECTED_CMD,
+    SELF_TEST_CMD,
+    DEBUG_DUMP_CMD,
+]
 
 COMMANDS_NOT_NEEDING_TARGET_SET = [SELF_TEST_CMD, DEBUG_DUMP_CMD]
 
 HOME_DIR = os.path.realpath(os.path.expanduser('~'))
-
-# This will match any node type (node types being sources/libraries/tests/etc.)
-NODE_TYPE_ANY = 'any'
 
 # As of August 2019, there is nothing in the "bin", "managed" and "www" directories that
 # is being used by tests.
@@ -113,68 +124,88 @@ CATEGORIES_NOT_CAUSING_RERUN_OF_ALL_TESTS = set(
 DYLIB_SUFFIX = '.dylib' if platform.system() == 'Darwin' else '.so'
 
 
-def is_object_file(path):
+class NodeType(Enum):
+    # A special value used to match any node type.
+    ANY = 'any'
+
+    SOURCE = 'source'
+    LIBRARY = 'library'
+    TEST = 'test'
+    OBJECT = 'object'
+    EXECUTABLE = 'executable'
+    OTHER = 'other'
+
+    def __str__(self) -> str:
+        return self.value
+
+
+def is_object_file(path: str) -> bool:
     return path.endswith('.o')
 
 
 def is_shared_library(path: str) -> bool:
     return (
-        ends_with_one_of(path, LIBRARY_FILE_EXTENSIONS) and
+        ends_with_any_of(path, LIBRARY_FILE_EXTENSIONS) and
         not os.path.basename(path) in LIBRARY_FILE_EXTENSIONS and
         not path.startswith('-'))
 
 
-def append_to_list_in_dict(dest, key, new_item):
+K = TypeVar('K')
+V = TypeVar('V')
+
+
+def append_to_list_in_dict(dest: Dict[K, List[V]], key: K, new_item: V) -> None:
     if key in dest:
         dest[key].append(new_item)
     else:
         dest[key] = [new_item]
 
 
-def get_node_type_by_path(path):
+def get_node_type_by_path(path: str) -> NodeType:
     """
-    >>> get_node_type_by_path('my_source_file.cc')
+    >>> get_node_type_by_path('my_source_file.cc').value
     'source'
-    >>> get_node_type_by_path('my_library.so')
+    >>> get_node_type_by_path('my_library.so').value
     'library'
-    >>> get_node_type_by_path('/bin/bash')
+    >>> get_node_type_by_path('/bin/bash').value
     'executable'
-    >>> get_node_type_by_path('my_object_file.o')
+    >>> get_node_type_by_path('my_object_file.o').value
     'object'
-    >>> get_node_type_by_path('tests-integration/some_file')
+    >>> get_node_type_by_path('tests-integration/some_file').value
     'test'
-    >>> get_node_type_by_path('tests-integration/some_file.txt')
+    >>> get_node_type_by_path('tests-integration/some_file.txt').value
     'other'
-    >>> get_node_type_by_path('something/my-test')
+    >>> get_node_type_by_path('something/my-test').value
     'test'
-    >>> get_node_type_by_path('something/my_test')
+    >>> get_node_type_by_path('something/my_test').value
     'test'
-    >>> get_node_type_by_path('something/my-itest')
+    >>> get_node_type_by_path('something/my-itest').value
     'test'
-    >>> get_node_type_by_path('something/my_itest')
+    >>> get_node_type_by_path('something/my_itest').value
     'test'
-    >>> get_node_type_by_path('some-dir/some_file')
+    >>> get_node_type_by_path('some-dir/some_file').value
     'other'
     """
-    if ends_with_one_of(path, SOURCE_FILE_EXTENSIONS):
-        return 'source'
+    if ends_with_any_of(path, SOURCE_FILE_EXTENSIONS):
+        return NodeType.SOURCE
 
-    if ends_with_one_of(path, LIBRARY_FILE_EXTENSIONS):
-        return 'library'
+    if (ends_with_any_of(path, LIBRARY_FILE_EXTENSIONS) or
+            any([ext + '.' in path for ext in LIBRARY_FILE_EXTENSIONS])):
+        return NodeType.LIBRARY
 
-    if (ends_with_one_of(path, TEST_FILE_SUFFIXES) or
+    if (ends_with_any_of(path, TEST_FILE_SUFFIXES) or
             (os.path.basename(os.path.dirname(path)).startswith('tests-') and
              '.' not in os.path.basename(path))):
-        return 'test'
+        return NodeType.TEST
 
     if is_object_file(path):
-        return 'object'
+        return NodeType.OBJECT
 
     if os.path.exists(path) and os.access(path, os.X_OK):
         # This will only work if the code has been fully built.
-        return 'executable'
+        return NodeType.EXECUTABLE
 
-    return 'other'
+    return NodeType.OTHER
 
 
 class Node:
@@ -182,7 +213,21 @@ class Node:
     A node in the dependency graph. Could be a source file, a header file, an object file, a
     dynamic library, or an executable.
     """
-    def __init__(self, path, dep_graph, source_str):
+
+    path: str
+    deps: Set['Node']
+    reverse_deps: Set['Node']
+    node_type: NodeType
+    dep_graph: 'DependencyGraph'
+    conf: 'Configuration'
+    source_str: Optional[str]
+    is_proto_lib: bool
+    link_cmd: Optional[List[str]]
+    _cached_proto_lib_deps: Optional[List['Node']]
+    _cached_containing_binaries: Optional[List['Node']]
+    _cached_cmake_target: Optional[str]
+
+    def __init__(self, path: str, dep_graph: 'DependencyGraph', source_str: Optional[str]) -> None:
         path = os.path.realpath(path)
         self.path = path
 
@@ -197,8 +242,8 @@ class Node:
         self.conf = dep_graph.conf
         self.source_str = source_str
 
-        self.is_proto_lib = (
-            self.node_type == 'library' and
+        self.is_proto_lib = bool(
+            self.node_type == NodeType.LIBRARY and
             PROTO_LIBRARY_FILE_NAME_RE.match(os.path.basename(self.path)))
 
         self._cached_proto_lib_deps = None
@@ -206,30 +251,32 @@ class Node:
         self._cached_cmake_target = None
         self._has_no_cmake_target = False
 
-    def add_dependency(self, dep):
+        self.link_cmd = None
+
+    def add_dependency(self, dep: 'Node') -> None:
         assert self is not dep
         self.deps.add(dep)
         dep.reverse_deps.add(self)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Node):
             return False
 
         return self.path == other.path
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.path)
 
-    def is_source(self):
-        return self.node_type == 'source'
+    def is_source(self) -> bool:
+        return self.node_type == NodeType.SOURCE
 
-    def validate_existence(self):
+    def validate_existence(self) -> None:
         if not os.path.exists(self.path) and not self.dep_graph.conf.incomplete_build:
             raise RuntimeError(
                     "Path does not exist: '{}'. This node was found in: {}".format(
                         self.path, self.source_str))
 
-    def get_pretty_path(self):
+    def get_pretty_path(self) -> str:
         for prefix, alias in [(self.conf.build_root, '$BUILD_ROOT'),
                               (self.conf.yb_src_root, '$YB_SRC_ROOT'),
                               (HOME_DIR, '~')]:
@@ -238,20 +285,20 @@ class Node:
 
         return self.path
 
-    def path_rel_to_build_root(self):
+    def path_rel_to_build_root(self) -> Optional[str]:
         return get_relative_path_or_none(self.path, self.conf.build_root)
 
-    def path_rel_to_src_root(self):
+    def path_rel_to_src_root(self) -> Optional[str]:
         return get_relative_path_or_none(self.path, self.conf.yb_src_root)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Node(\"{}\", type={}, {} deps, {} rev deps)".format(
                 self.get_pretty_path(), self.node_type, len(self.deps), len(self.reverse_deps))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def get_cmake_target(self):
+    def get_cmake_target(self) -> Optional[str]:
         """
         @return the CMake target based on the current node's path. E.g. this would be "master"
                 for the "libmaster.so" library, "yb-master" for the "yb-master" executable.
@@ -300,7 +347,7 @@ class Node:
         self._has_no_cmake_target = True
         return None
 
-    def get_containing_binaries(self):
+    def get_containing_binaries(self) -> List['Node']:
         """
         Returns nodes (usually one node) corresponding to executables or dynamic libraries that the
         given object file is compiled into.
@@ -314,14 +361,17 @@ class Node:
                     "%s. All set of reverse dependencies: %s" % (self, self.reverse_deps))
             return cc_o_rev_deps[0].get_containing_binaries()
 
-        if self.node_type != 'object':
-            return None
+        if self.node_type != NodeType.OBJECT:
+            raise ValueError(
+                "get_containing_binaries can only be called on nodes of type 'object'. Node: " +
+                str(self))
+
         if self._cached_containing_binaries:
             return self._cached_containing_binaries
 
         binaries = []
         for rev_dep in self.reverse_deps:
-            if rev_dep.node_type in ['library', 'test', 'executable']:
+            if rev_dep.node_type in [NodeType.LIBRARY, NodeType.TEST, NodeType.EXECUTABLE]:
                 binaries.append(rev_dep)
         if len(binaries) > 1:
             logging.warning(
@@ -331,46 +381,59 @@ class Node:
         self._cached_containing_binaries = binaries
         return binaries
 
-    def get_recursive_deps(self):
+    def get_recursive_deps(
+            self,
+            skip_node_types: Set[NodeType] = set()) -> Set['Node']:
         """
         Returns a set of all dependencies that this node depends on.
+        skip_node_types specifies the set of categories of nodes, except the initial node, to stop
+        the recursive search at.
         """
 
-        recursive_deps = set()
-        visited = set()
+        recursive_deps: Set[Node] = set()
+        visited: Set[Node] = set()
 
-        def walk(node, add_self=True):
-            if add_self:
+        def walk(node: Node, is_initial: bool) -> None:
+            if not is_initial:
+                # Only skip the given subset of node types for nodes other than the initial node.
+                if node.node_type in skip_node_types:
+                    return
+                # Also, never add the initial node to the result.
                 recursive_deps.add(node)
             for dep in node.deps:
                 if dep not in recursive_deps:
-                    walk(dep)
-        walk(self, add_self=False)
+                    walk(dep, is_initial=False)
+
+        walk(self, is_initial=True)
         return recursive_deps
 
-    def get_proto_lib_deps(self):
+    def get_proto_lib_deps(self) -> List['Node']:
         if self._cached_proto_lib_deps is None:
             self._cached_proto_lib_deps = [
                 dep for dep in self.get_recursive_deps() if dep.is_proto_lib
             ]
         return self._cached_proto_lib_deps
 
-    def get_containing_proto_lib(self):
+    def get_containing_proto_lib(self) -> Optional['Node']:
         """
         For a .pb.cc file node, return the node corresponding to the containing protobuf library.
         """
         if not self.path.endswith('.pb.cc.o'):
-            return
+            return None
 
-        proto_libs = [binary for binary in self.get_containing_binaries()]
+        containing_binaries: List[Node] = self.get_containing_binaries()
 
-        if len(proto_libs) != 1:
+        if len(containing_binaries) != 1:
             logging.info("Reverse deps:\n    %s" % ("\n    ".join(
                 [str(dep) for dep in self.reverse_deps])))
-            raise RuntimeError("Invalid number of proto libs for %s: %s" % (node, proto_libs))
-        return proto_libs[0]
+            raise RuntimeError(
+                "Invalid number of proto libs for %s. Expected 1 but found %d: %s" % (
+                    self,
+                    len(containing_binaries),
+                    containing_binaries))
+        return containing_binaries[0]
 
-    def get_proto_gen_cmake_target(self):
+    def get_proto_gen_cmake_target(self) -> Optional[str]:
         """
         For .pb.{h,cc} nodes this will return a CMake target of the form
         gen_..., e.g. gen_src_yb_common_wire_protocol.
@@ -389,25 +452,53 @@ class Node:
             [match.group(1), 'proto']
         )
 
+    def set_link_command(self, link_cmd: List[str]) -> None:
+        assert self.link_cmd is None
+        self.link_cmd = link_cmd
 
-def set_to_str(items):
-    return ",\n".join(sorted(items))
+    def as_json(self) -> Dict[str, Any]:
+        d: Dict[str, Any] = dict(
+            path=self.path
+        )
+        if self.link_cmd:
+            d['link_cmd'] = self.link_cmd
+        return d
+
+    def update_from_json(self, json_data: Dict[str, Any]) -> None:
+        if 'link_cmd' in json_data:
+            self.link_cmd = json_data['link_cmd']
 
 
-def is_abs_path(path):
+def set_to_str(items: Set[Any]) -> str:
+    return ",\n".join(sorted(list(items)))
+
+
+def is_abs_path(path: str) -> bool:
     return path.startswith('/')
 
 
 class Configuration:
+    args: argparse.Namespace
+    verbose: bool
+    build_root: str
+    is_ninja: bool
+    build_type: str
+    yb_src_root: str
+    src_dir_path: str
+    ent_src_dir_path: str
+    rel_path_base_dirs: Set[str]
+    incomplete_build: bool
+    file_regex: str
+    src_dir_paths: List[str]
 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.verbose = args.verbose
         self.build_root = os.path.realpath(args.build_root)
         self.is_ninja = is_ninja_build_root(self.build_root)
 
         self.build_type = get_build_type_from_build_root(self.build_root)
-        self.yb_src_root = get_yb_src_root_from_build_root(self.build_root, must_succeed=True)
+        self.yb_src_root = ensure_yb_src_root_from_build_root(self.build_root)
         self.src_dir_path = os.path.join(self.yb_src_root, 'src')
         self.ent_src_dir_path = os.path.join(self.yb_src_root, 'ent', 'src')
         self.rel_path_base_dirs = set([self.build_root, os.path.join(self.src_dir_path, 'yb')])
@@ -430,14 +521,18 @@ class CMakeDepGraph:
     yb_cmake_deps.txt file that we generate in our top-level CMakeLists.txt. This dependency graph
     does not have any nodes for source files and object files.
     """
-    def __init__(self, build_root):
+
+    build_root: str
+    cmake_targets: Set[str]
+    cmake_deps_path: str
+    cmake_deps: Dict[str, Set[str]]
+
+    def __init__(self, build_root: str) -> None:
         self.build_root = build_root
-        self.cmake_targets = None
         self.cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
-        self.cmake_deps = None
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         logging.info("Loading dependencies between CMake targets from '{}'".format(
             self.cmake_deps_path))
         self.cmake_deps = {}
@@ -468,7 +563,7 @@ class CMakeDepGraph:
         logging.info("Found {} CMake targets in '{}'".format(
             len(self.cmake_targets), self.cmake_deps_path))
 
-    def _get_cmake_dep_set_of(self, target):
+    def _get_cmake_dep_set_of(self, target: str) -> Set[str]:
         """
         Get CMake dependencies of the given target. What is returned is a mutable set. Modifying
         this set modifies this CMake dependency graph.
@@ -480,17 +575,17 @@ class CMakeDepGraph:
             self.cmake_targets.add(target)
         return deps
 
-    def add_dependency(self, from_target, to_target):
+    def add_dependency(self, from_target: str, to_target: str) -> None:
         if from_target in IGNORED_CMAKE_TARGETS or to_target in IGNORED_CMAKE_TARGETS:
             return
         self._get_cmake_dep_set_of(from_target).add(to_target)
         self.cmake_targets.add(to_target)
 
-    def get_recursive_cmake_deps(self, cmake_target):
-        result = set()
-        visited = set()
+    def get_recursive_cmake_deps(self, cmake_target: str) -> Set[str]:
+        result: Set[str] = set()
+        visited: Set[str] = set()
 
-        def walk(cur_target, add_this_target=True):
+        def walk(cur_target: str, add_this_target: bool = True) -> None:
             if cur_target in visited:
                 return
             visited.add(cur_target)
@@ -508,20 +603,27 @@ class DependencyGraphBuilder:
     Builds a dependency graph from the contents of the build directory. Each node of the graph is
     a file (an executable, a dynamic library, or a source file).
     """
-    def __init__(self, conf):
+    conf: Configuration
+    compile_dirs: Set[str]
+    compile_commands: Dict[str, Any]
+    useful_base_dirs: Set[str]
+    unresolvable_rel_paths: Set[str]
+    resolved_rel_paths: Dict[str, str]
+    dep_graph: 'DependencyGraph'
+    cmake_dep_graph: CMakeDepGraph
+
+    def __init__(self, conf: Configuration) -> None:
         self.conf = conf
         self.compile_dirs = set()
-        self.compile_commands = None
         self.useful_base_dirs = set()
         self.unresolvable_rel_paths = set()
         self.resolved_rel_paths = {}
         self.dep_graph = DependencyGraph(conf)
-        self.cmake_dep_graph = None
 
-    def load_cmake_deps(self):
+    def load_cmake_deps(self) -> None:
         self.cmake_dep_graph = CMakeDepGraph(self.conf.build_root)
 
-    def parse_link_and_depend_files_for_make(self):
+    def parse_link_and_depend_files_for_make(self) -> None:
         logging.info(
                 "Parsing link.txt and depend.make files from the build tree at '{}'".format(
                     self.conf.build_root))
@@ -546,7 +648,7 @@ class DependencyGraphBuilder:
         logging.info("Parsed link.txt and depend.make files in %.2f seconds" %
                      (datetime.now() - start_time).total_seconds())
 
-    def find_proto_files(self):
+    def find_proto_files(self) -> None:
         for src_subtree_root in self.conf.src_dir_paths:
             logging.info("Finding .proto files in the source tree at '{}'".format(src_subtree_root))
             source_str = 'proto files in {}'.format(src_subtree_root)
@@ -557,7 +659,7 @@ class DependencyGraphBuilder:
                                 os.path.join(root, file_name),
                                 source_str=source_str)
 
-    def find_flex_bison_files(self):
+    def find_flex_bison_files(self) -> None:
         """
         CMake commands generally include the C file compilation, but misses the case where flex
         or bison generates those files, somewhat similiar to .proto files.
@@ -578,9 +680,9 @@ class DependencyGraphBuilder:
                                              os.path.join(root, file_name),
                                              source_str)
 
-    def match_cmake_targets_with_files(self):
+    def match_cmake_targets_with_files(self) -> None:
         logging.info("Matching CMake targets with the files found")
-        self.cmake_target_to_nodes = {}
+        self.cmake_target_to_nodes: Dict[str, Set[Node]] = {}
         for node in self.dep_graph.get_nodes():
             node_cmake_target = node.get_cmake_target()
             if node_cmake_target:
@@ -590,7 +692,7 @@ class DependencyGraphBuilder:
                     self.cmake_target_to_nodes[node_cmake_target] = node_set
                 node_set.add(node)
 
-        self.cmake_target_to_node = {}
+        self.cmake_target_to_node: Dict[str, Node] = {}
         unmatched_cmake_targets = set()
         cmake_dep_graph = self.dep_graph.get_cmake_dep_graph()
         for cmake_target in cmake_dep_graph.cmake_targets:
@@ -620,7 +722,7 @@ class DependencyGraphBuilder:
                     continue
                 node.add_dependency(self.cmake_target_to_node[cmake_target_dep])
 
-    def resolve_rel_path(self, rel_path):
+    def resolve_rel_path(self, rel_path: str) -> Optional[str]:
         if is_abs_path(rel_path):
             return rel_path
 
@@ -649,7 +751,7 @@ class DependencyGraphBuilder:
         self.resolved_rel_paths[rel_path] = resolved
         return resolved
 
-    def resolve_dependent_rel_path(self, rel_path):
+    def resolve_dependent_rel_path(self, rel_path: str) -> str:
         if is_abs_path(rel_path):
             return rel_path
         if is_object_file(rel_path):
@@ -658,7 +760,7 @@ class DependencyGraphBuilder:
             "Don't know how to resolve relative path of a 'dependent': {}".format(
                 rel_path))
 
-    def parse_ninja_metadata(self):
+    def parse_ninja_metadata(self) -> None:
         with WorkDirContext(self.conf.build_root):
             ninja_path = os.environ.get('YB_NINJA_PATH', 'ninja')
             logging.info("Ninja executable path: %s", ninja_path)
@@ -666,26 +768,33 @@ class DependencyGraphBuilder:
             subprocess.check_call('{} -t commands >ninja_commands.txt'.format(
                 pipes.quote(ninja_path)), shell=True)
             logging.info("Parsing the output of 'ninja -t commands' for linker commands")
+            start_time_sec = time.time()
             self.parse_link_txt_file('ninja_commands.txt')
+            logging.info("Parsing linker commands took %.1f seconds", time.time() - start_time_sec)
 
             logging.info("Running 'ninja -t deps'")
             subprocess.check_call('{} -t deps >ninja_deps.txt'.format(
                 pipes.quote(ninja_path)), shell=True)
+            start_time = time.time()
             logging.info("Parsing the output of 'ninja -t deps' to infer dependencies")
+            logging.info("Parsing dependencies took %.1f seconds", time.time() - start_time_sec)
             self.parse_depend_file('ninja_deps.txt')
 
-    def register_dependency(self, dependent, dependency, dependency_came_from):
+    def register_dependency(self,
+                            dependent: str,
+                            dependency: str,
+                            dependency_came_from: str) -> None:
         dependent = self.resolve_dependent_rel_path(dependent.strip())
         dependency = dependency.strip()
-        dependency = self.resolve_rel_path(dependency)
-        if dependency:
+        dependency_resolved: Optional[str] = self.resolve_rel_path(dependency)
+        if dependency_resolved:
             dependent_node = self.dep_graph.find_or_create_node(
                     dependent, source_str=dependency_came_from)
             dependency_node = self.dep_graph.find_or_create_node(
-                    dependency, source_str=dependency_came_from)
+                    dependency_resolved, source_str=dependency_came_from)
             dependent_node.add_dependency(dependency_node)
 
-    def parse_depend_file(self, depend_make_path):
+    def parse_depend_file(self, depend_make_path: str) -> None:
         """
         Parse either a depend.make file from a CMake-generated Unix Makefile project (fully built)
         or the output of "ninja -t deps" in a Ninja project.
@@ -717,27 +826,14 @@ class DependencyGraphBuilder:
                     raise ValueError("Could not parse this line from %s:\n%s" %
                                      (depend_make_path, line_orig))
 
-    def find_node_by_rel_path(self, rel_path):
-        if is_abs_path(rel_path):
-            return self.find_node(rel_path, must_exist=True)
-        candidates = []
-        for path, node in self.node_by_path.items():
-            if path.endswith('/' + rel_path):
-                candidates.append(node)
-        if not candidates:
-            raise RuntimeError("Could not find node by relative path '{}'".format(rel_path))
-        if len(candidates) > 1:
-            raise RuntimeError("Ambiguous nodes for relative path '{}'".format(rel_path))
-        return candidates[0]
-
-    def parse_link_txt_file(self, link_txt_path):
+    def parse_link_txt_file(self, link_txt_path: str) -> None:
         with open(link_txt_path) as link_txt_file:
             for line in link_txt_file:
                 line = line.strip()
                 if line:
                     self.parse_link_command(line, link_txt_path)
 
-    def parse_link_command(self, link_command, link_txt_path):
+    def parse_link_command(self, link_command: str, link_txt_path: str) -> None:
         link_args = link_command.split()
         output_path = None
         inputs = []
@@ -795,8 +891,9 @@ class DependencyGraphBuilder:
                     ("Cannot add a dependency from a node to itself: %s. "
                      "Parsed from command: %s") % (output_node, link_command))
             output_node.add_dependency(dependency_node)
+        output_node.set_link_command(link_args)
 
-    def build(self):
+    def build(self) -> 'DependencyGraph':
         compile_commands_path = os.path.join(self.conf.build_root, 'compile_commands.json')
         cmake_deps_path = os.path.join(self.conf.build_root, 'yb_cmake_deps.txt')
         if not os.path.exists(compile_commands_path) or not os.path.exists(cmake_deps_path):
@@ -818,7 +915,7 @@ class DependencyGraphBuilder:
             self.compile_commands = json.load(commands_file)
 
         for entry in self.compile_commands:
-            self.compile_dirs.add(entry['directory'])
+            self.compile_dirs.add(cast(Dict[str, Any], entry)['directory'])
 
         if self.conf.is_ninja:
             self.parse_ninja_metadata()
@@ -837,9 +934,16 @@ class DependencyGraphBuilder:
 
 class DependencyGraph:
 
-    canonicalization_cache = {}
+    conf: Configuration
+    node_by_path: Dict[str, Node]
+    nodes_by_basename: Optional[Dict[str, Set[Node]]]
+    cmake_dep_graph: Optional[CMakeDepGraph]
 
-    def __init__(self, conf, json_data=None):
+    canonicalization_cache: Dict[str, str] = {}
+
+    def __init__(self,
+                 conf: Configuration,
+                 json_data: Optional[List[Dict[str, Any]]] = None) -> None:
         """
         @param json_data optional results of JSON parsing
         """
@@ -850,7 +954,7 @@ class DependencyGraph:
         self.nodes_by_basename = None
         self.cmake_dep_graph = None
 
-    def get_cmake_dep_graph(self):
+    def get_cmake_dep_graph(self) -> CMakeDepGraph:
         if self.cmake_dep_graph:
             return self.cmake_dep_graph
 
@@ -863,7 +967,10 @@ class DependencyGraph:
         self.cmake_dep_graph = cmake_dep_graph
         return cmake_dep_graph
 
-    def find_node(self, path, must_exist=True, source_str=None):
+    def find_node(self,
+                  path: str,
+                  must_exist: bool = True,
+                  source_str: Optional[str] = None) -> Node:
         assert source_str is None or not must_exist
         path = os.path.abspath(path)
         node = self.node_by_path.get(path)
@@ -877,7 +984,7 @@ class DependencyGraph:
         self.node_by_path[path] = node
         return node
 
-    def find_or_create_node(self, path, source_str=None):
+    def find_or_create_node(self, path: str, source_str: Optional[str] = None) -> Node:
         """
         Finds a node with the given path or creates it if it does not exist.
         @param source_str a string description of how we came up with this node's path
@@ -893,33 +1000,45 @@ class DependencyGraph:
 
         return self.find_node(canonical_path, must_exist=False, source_str=source_str)
 
-    def init_from_json(self, json_nodes):
+    def create_node_from_json(self, node_json_data: Dict[str, Any]) -> Node:
+        node = self.find_or_create_node(node_json_data['path'])
+        node.update_from_json(node_json_data)
+        return node
+
+    def init_from_json(self, json_nodes: List[Dict[str, Any]]) -> None:
         id_to_node = {}
         id_to_dep_ids = {}
         for node_json in json_nodes:
             node_id = node_json['id']
-            id_to_node[node_id] = self.find_or_create_node(node_json['path'])
-            id_to_dep_ids[node_id] = node_json['deps']
+            id_to_node[node_id] = self.create_node_from_json(node_json)
+            id_to_dep_ids[node_id] = node_json.get('deps') or []
         for node_id, dep_ids in id_to_dep_ids.items():
             node = id_to_node[node_id]
             for dep_id in dep_ids:
                 node.add_dependency(id_to_node[dep_id])
 
-    def find_nodes_by_regex(self, regex_str):
+    def find_nodes_by_regex(self, regex_str: str) -> List[Node]:
         filter_re = re.compile(regex_str)
         return [node for node in self.get_nodes() if filter_re.match(node.path)]
 
-    def find_nodes_by_basename(self, basename):
+    def find_nodes_by_basename(self, basename: str) -> Optional[Set[Node]]:
         if not self.nodes_by_basename:
             # We are lazily initializing the basename -> node map, and any changes to the graph
             # after this point will not get reflected in it. This is OK as we're only using this
             # function after the graph has been built.
-            self.nodes_by_basename = group_by(
+            self.nodes_by_basename = {
+                k: set(v)
+                for k, v in group_by(
                     self.get_nodes(),
-                    lambda node: os.path.basename(node.path))
+                    lambda node: os.path.basename(node.path)).items()
+            }
+        assert self.nodes_by_basename is not None
         return self.nodes_by_basename.get(basename)
 
-    def find_affected_nodes(self, start_nodes, requested_node_type=NODE_TYPE_ANY):
+    def find_affected_nodes(
+            self,
+            start_nodes: Set[Node],
+            requested_node_type: NodeType = NodeType.ANY) -> Set[Node]:
         if self.conf.verbose:
             logging.info("Starting with the following initial nodes:")
             for node in start_nodes:
@@ -928,9 +1047,9 @@ class DependencyGraph:
         results = set()
         visited = set()
 
-        def dfs(node):
-            if ((requested_node_type == NODE_TYPE_ANY or node.node_type == requested_node_type) and
-                    node not in start_nodes):
+        def dfs(node: Node) -> None:
+            if ((requested_node_type == NodeType.ANY or
+                 node.node_type == requested_node_type) and node not in start_nodes):
                 results.add(node)
             if node in visited:
                 return
@@ -943,7 +1062,8 @@ class DependencyGraph:
 
         return results
 
-    def affected_basenames_by_basename_for_test(self, basename, node_type=NODE_TYPE_ANY):
+    def affected_basenames_by_basename_for_test(
+            self, basename: str, node_type: NodeType = NodeType.ANY) -> Set[str]:
         nodes_for_basename = self.find_nodes_by_basename(basename)
         if not nodes_for_basename:
             self.dump_debug_info()
@@ -953,17 +1073,17 @@ class DependencyGraph:
         return set([os.path.basename(node.path)
                     for node in self.find_affected_nodes(nodes_for_basename, node_type)])
 
-    def save_as_json(self, output_path):
+    def save_as_json(self, output_path: str) -> None:
         """
         Converts the dependency graph into a JSON representation, where every node is given an id,
         so that dependencies are represented concisely.
         """
         with open(output_path, 'w') as output_file:
             next_node_id = [1]  # Use a mutable object so we can modify it from closure.
-            path_to_id = {}
+            path_to_id: Dict[str, int] = {}
             output_file.write("[")
 
-            def get_node_id(node):
+            def get_node_id(node: Node) -> int:
                 node_id = path_to_id.get(node.path)
                 if not node_id:
                     node_id = next_node_id[0]
@@ -973,11 +1093,11 @@ class DependencyGraph:
 
             is_first = True
             for node_path, node in self.node_by_path.items():
-                node_json = dict(
-                    id=get_node_id(node),
-                    path=node_path,
-                    deps=[get_node_id(dep) for dep in node.deps]
-                    )
+                node_json = node.as_json()
+                dep_ids = [get_node_id(dep) for dep in node.deps]
+                node_json.update(id=get_node_id(node))
+                if dep_ids:
+                    node_json.update(deps=dep_ids)
                 if not is_first:
                     output_file.write(",\n")
                 is_first = False
@@ -986,21 +1106,21 @@ class DependencyGraph:
 
         logging.info("Saved dependency graph to '{}'".format(output_path))
 
-    def validate_node_existence(self):
+    def validate_node_existence(self) -> None:
         logging.info("Validating existence of build artifacts")
         for node in self.get_nodes():
             node.validate_existence()
 
-    def get_nodes(self):
+    def get_nodes(self) -> Iterable[Node]:
         return self.node_by_path.values()
 
-    def dump_debug_info(self):
+    def dump_debug_info(self) -> None:
         logging.info("Dumping all graph nodes for debugging ({} nodes):".format(
             len(self.node_by_path)))
         for node in sorted(self.get_nodes(), key=lambda node: str(node)):
             logging.info(node)
 
-    def _add_proto_generation_deps(self):
+    def _add_proto_generation_deps(self) -> None:
         """
         Add dependencies of .pb.{h,cc} files on the corresponding .proto file. We do that by
         finding .proto and .pb.{h,cc} nodes in the graph independently and matching them
@@ -1011,10 +1131,11 @@ class DependencyGraph:
         generates these files (e.g. gen_src_yb_rocksdb_db_version_edit_proto). We add these
         inferred dependencies to the separate CMake dependency graph.
         """
-        proto_node_by_rel_path = {}
-        pb_h_cc_nodes_by_rel_path = {}
+        proto_node_by_rel_path: Dict[str, Node] = {}
+        pb_h_cc_nodes_by_rel_path: Dict[str, List[Node]] = {}
 
         cmake_dep_graph = self.get_cmake_dep_graph()
+        assert cmake_dep_graph is not None
 
         for node in self.get_nodes():
             basename = os.path.basename(node.path)
@@ -1050,8 +1171,10 @@ class DependencyGraph:
                             proto_gen_cmake_target = node.get_proto_gen_cmake_target()
                             for containing_binary in node.get_containing_binaries():
                                 containing_cmake_target = containing_binary.get_cmake_target()
+                                assert containing_cmake_target is not None
                                 proto_gen_cmake_target = node.get_proto_gen_cmake_target()
-                                self.cmake_dep_graph.add_dependency(
+                                assert proto_gen_cmake_target is not None
+                                cmake_dep_graph.add_dependency(
                                     containing_cmake_target,
                                     proto_gen_cmake_target
                                 )
@@ -1077,12 +1200,12 @@ class DependencyGraph:
             for pb_h_cc_node in pb_h_cc_nodes_by_rel_path[rel_path]:
                 pb_h_cc_node.add_dependency(proto_node)
 
-    def _check_for_circular_dependencies(self):
+    def _check_for_circular_dependencies(self) -> None:
         logging.info("Checking for circular dependencies")
         visited = set()
         stack = []
 
-        def walk(node):
+        def walk(node: Node) -> None:
             if node in visited:
                 return
             try:
@@ -1093,17 +1216,17 @@ class DependencyGraph:
                         if dep in stack:
                             raise RuntimeError("Circular dependency loop found: %s", stack)
                         return
-                    walk(dep)
+                    walk(dep)  # type: ignore
             finally:
                 stack.pop()
 
         for node in self.get_nodes():
-            walk(node)
+            walk(node)  # type: ignore
 
         logging.info("No circular dependencies found -- this is good (visited %d nodes)",
                      len(visited))
 
-    def validate_proto_deps(self):
+    def validate_proto_deps(self) -> None:
         """
         Make sure that code that depends on protobuf-generated files also depends on the
         corresponding protobuf library target.
@@ -1114,9 +1237,6 @@ class DependencyGraph:
         # TODO: only do this during graph generation.
         self._add_proto_generation_deps()
         self._check_for_circular_dependencies()
-
-        header_node_map = {}
-        lib_node_map = {}
 
         # For any .pb.h file, we want to find all .cc.o files that depend on it, meaning that they
         # directly or indirectly include that .pb.h file.
@@ -1145,8 +1265,11 @@ class DependencyGraph:
 
             for rev_dep in pb_h_node.reverse_deps:
                 if rev_dep.path.endswith('.cc.o'):
-                    for binary in rev_dep.get_containing_binaries():
-                        binary_cmake_target = binary.get_cmake_target()
+                    containing_binaries: Optional[List[Node]] = rev_dep.get_containing_binaries()
+                    assert containing_binaries is not None
+                    for binary in containing_binaries:
+                        binary_cmake_target: Optional[str] = binary.get_cmake_target()
+                        assert binary_cmake_target is not None
 
                         recursive_cmake_deps = self.get_cmake_dep_graph().get_recursive_cmake_deps(
                             binary_cmake_target)
@@ -1166,24 +1289,32 @@ class DependencyGraph:
 
 
 class DependencyGraphTest(unittest.TestCase):
-    dep_graph = None
+    dep_graph: Optional[DependencyGraph] = None
 
     # Basename -> basenames affected by it.
-    affected_basenames_cache = {}
+    affected_basenames_cache: Dict[str, Set[str]] = {}
 
-    def get_affected_basenames(self, initial_basename):
-        affected_basenames = self.affected_basenames_cache.get(initial_basename)
-        if not affected_basenames:
-            affected_basenames = self.dep_graph.affected_basenames_by_basename_for_test(
-                    initial_basename)
-            self.affected_basenames_cache[initial_basename] = affected_basenames
-            if self.dep_graph.conf.verbose:
-                # This is useful to get inspiration for new tests.
-                logging.info("Files affected by {}:\n    {}".format(
-                    initial_basename, "\n    ".join(sorted(affected_basenames))))
-        return affected_basenames
+    def get_affected_basenames(self, initial_basename: str) -> Set[str]:
+        affected_basenames_from_cache: Optional[Set[str]] = self.affected_basenames_cache.get(
+            initial_basename)
+        if affected_basenames_from_cache is not None:
+            return affected_basenames_from_cache
 
-    def assert_affected_by(self, expected_affected_basenames, initial_basename):
+        assert self.dep_graph
+        affected_basenames_for_test: Set[str] = \
+            self.dep_graph.affected_basenames_by_basename_for_test(initial_basename)
+        self.affected_basenames_cache[initial_basename] = affected_basenames_for_test
+        assert self.dep_graph is not None
+        if self.dep_graph.conf.verbose:
+            # This is useful to get inspiration for new tests.
+            logging.info("Files affected by {}:\n    {}".format(
+                initial_basename, "\n    ".join(sorted(affected_basenames_for_test))))
+        return affected_basenames_for_test
+
+    def assert_affected_by(
+            self,
+            expected_affected_basenames: List[str],
+            initial_basename: str) -> None:
         """
         Asserts that all given files are affected by the given file. Other files might also be
         affected and that's OK.
@@ -1196,12 +1327,15 @@ class DependencyGraphTest(unittest.TestCase):
                     sorted(remaining_basenames),
                     initial_basename))
 
-    def assert_unaffected_by(self, unaffected_basenames, initial_basename):
+    def assert_unaffected_by(
+            self,
+            unaffected_basenames: List[str],
+            initial_basename: str) -> None:
         """
         Asserts that the given files are unaffected by the given file.
         """
-        affected_basenames = self.get_affected_basenames(initial_basename)
-        incorrectly_affected = make_set(unaffected_basenames) & affected_basenames
+        affected_basenames: Set[str] = self.get_affected_basenames(initial_basename)
+        incorrectly_affected: Set[str] = make_set(unaffected_basenames) & affected_basenames
         if incorrectly_affected:
             self.assertFalse(
                     ("Expected files {} to be unaffected by {}, but they are. Other affected "
@@ -1210,20 +1344,23 @@ class DependencyGraphTest(unittest.TestCase):
                          initial_basename,
                          sorted(affected_basenames - incorrectly_affected)))
 
-    def assert_affected_exactly_by(self, expected_affected_basenames, initial_basename):
+    def assert_affected_exactly_by(
+            self,
+            expected_affected_basenames: List[str],
+            initial_basename: str) -> None:
         """
         Checks the exact set of files affected by the given file.
         """
         affected_basenames = self.get_affected_basenames(initial_basename)
-        self.assertEquals(make_set(expected_affected_basenames), affected_basenames)
+        self.assertEqual(make_set(expected_affected_basenames), affected_basenames)
 
-    def test_master_main(self):
+    def test_master_main(self) -> None:
         self.assert_affected_by([
                 'libintegration-tests' + DYLIB_SUFFIX,
                 'yb-master'
             ], 'master_main.cc')
 
-    def test_tablet_server_main(self):
+    def test_tablet_server_main(self) -> None:
         self.assert_affected_by([
                 'libintegration-tests' + DYLIB_SUFFIX,
                 'linked_list-test'
@@ -1231,14 +1368,14 @@ class DependencyGraphTest(unittest.TestCase):
 
         self.assert_unaffected_by(['yb-master'], 'tablet_server_main.cc')
 
-    def test_bulk_load_tool(self):
+    def test_bulk_load_tool(self) -> None:
         self.assert_affected_exactly_by([
                 'yb-bulk_load',
                 'yb-bulk_load-test',
                 'yb-bulk_load.cc.o'
             ], 'yb-bulk_load.cc')
 
-    def test_flex_bison(self):
+    def test_flex_bison(self) -> None:
         self.assert_affected_by([
                 'scanner_lex.l.cc'
             ], 'scanner_lex.l')
@@ -1246,11 +1383,12 @@ class DependencyGraphTest(unittest.TestCase):
                 'parser_gram.y.cc'
             ], 'parser_gram.y')
 
-    def test_proto_deps_validity(self):
+    def test_proto_deps_validity(self) -> None:
+        assert self.dep_graph is not None
         self.dep_graph.validate_proto_deps()
 
 
-def run_self_test(dep_graph):
+def run_self_test(dep_graph: DependencyGraph) -> None:
     logging.info("Running a self-test of the {} tool".format(os.path.basename(__file__)))
     DependencyGraphTest.dep_graph = dep_graph
     suite = unittest.TestLoader().loadTestsFromTestCase(DependencyGraphTest)
@@ -1261,7 +1399,7 @@ def run_self_test(dep_graph):
         sys.exit(1)
 
 
-def get_file_category(rel_path):
+def get_file_category(rel_path: str) -> str:
     """
     Categorize file changes so that we can decide what tests to run.
 
@@ -1302,7 +1440,7 @@ def get_file_category(rel_path):
     return 'other'
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description='A tool for working with the dependency graph')
     parser.add_argument('--verbose', action='store_true',
@@ -1312,8 +1450,9 @@ def main():
                         help='Rebuild the dependecy graph and save it to a file')
     parser.add_argument('--node-type',
                         help='Node type to look for',
-                        default='any',
-                        choices=['test', 'object', 'library', 'source', 'any'])
+                        type=NodeType,
+                        choices=list(NodeType),
+                        default=NodeType.ANY)
     parser.add_argument('--file-regex',
                         help='Regular expression for file names to select as initial nodes for '
                              'querying the dependency graph.')
@@ -1406,6 +1545,7 @@ def main():
 
     updated_categories = set()
     file_changes = []
+    initial_nodes: Iterable[Node]
     if args.git_diff:
         old_working_dir = os.getcwd()
         with WorkDirContext(conf.yb_src_root):
@@ -1450,9 +1590,9 @@ def main():
             logging.info("    %s", change)
     updated_categories = set(file_changes_by_category.keys())
 
-    results = set()
+    results: Set[Node] = set()
     if cmd == LIST_AFFECTED_CMD:
-        results = dep_graph.find_affected_nodes(initial_nodes, args.node_type)
+        results = dep_graph.find_affected_nodes(set(initial_nodes), args.node_type)
     elif cmd == LIST_DEPS_CMD:
         for node in initial_nodes:
             results.update(node.deps)
@@ -1460,7 +1600,7 @@ def main():
         for node in initial_nodes:
             results.update(node.reverse_deps)
     else:
-        raise RuntimeError("Unimplemented command '{}'".format(command))
+        raise ValueError("Unimplemented command '{}'".format(cmd))
 
     if args.output_test_config:
         test_basename_list = sorted(
@@ -1540,7 +1680,8 @@ def main():
             # We only have this kind of fine-grained filtering for C++ test programs, and for Java
             # tests we either run all of them or none.
             test_conf['cpp_test_programs'] = test_basename_list
-            logging.info(
+            if len(all_test_basenames) > 0:
+                logging.info(
                     "{} C++ test programs should be run (out of {} possible, {}%)".format(
                         len(test_basename_list),
                         len(all_test_basenames),

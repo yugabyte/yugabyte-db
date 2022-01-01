@@ -53,7 +53,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -70,8 +70,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     super.setUp();
 
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
 

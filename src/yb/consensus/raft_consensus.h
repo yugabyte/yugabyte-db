@@ -45,7 +45,6 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/multi_raft_batcher.h"
@@ -54,6 +53,7 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/opid.h"
 #include "yb/util/random.h"
 

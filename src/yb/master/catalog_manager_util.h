@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
 

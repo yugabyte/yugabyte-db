@@ -41,6 +41,8 @@ class QLWriteOperation;
 class RedisWriteOperation;
 class SharedLockManager;
 class SubDocKey;
+class YQLRowwiseIteratorIf;
+class YQLStorageIf;
 
 struct ApplyTransactionState;
 struct DocDB;
@@ -49,6 +51,8 @@ struct LockBatchEntry;
 
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
+
+enum class ValueType;
 
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 

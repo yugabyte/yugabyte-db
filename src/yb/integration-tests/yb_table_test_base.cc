@@ -21,6 +21,10 @@
 
 #include "yb/common/ql_value.h"
 
+#include "yb/master/master_client.proxy.h"
+
+#include "yb/tools/yb-admin_client.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -275,13 +279,6 @@ void YBTableTestBase::RestartCluster() {
   ASSERT_NO_FATALS(OpenTable());
 }
 
-Result<std::shared_ptr<master::MasterServiceProxy>> YBTableTestBase::GetMasterLeaderProxy() {
-  DCHECK(use_external_mini_cluster());
-  int idx;
-  RETURN_NOT_OK(external_mini_cluster_->GetLeaderMasterIndex(&idx));
-  return external_mini_cluster_->master_proxy(idx);
-}
-
 Result<std::vector<uint32_t>> YBTableTestBase::GetTserverLoads(const std::vector<int>& ts_idxs) {
   std::vector<uint32_t> tserver_loads;
   for (const auto& ts_idx : ts_idxs) {
@@ -292,7 +289,7 @@ Result<std::vector<uint32_t>> YBTableTestBase::GetTserverLoads(const std::vector
 }
 
 Result<uint32_t> YBTableTestBase::GetLoadOnTserver(ExternalTabletServer* server) {
-  auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
+  auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
   uint32_t count = 0;
   std::vector<string> replicas;
   // Need to get load from each table.
@@ -310,7 +307,7 @@ Result<uint32_t> YBTableTestBase::GetLoadOnTserver(ExternalTabletServer* server)
 
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(client_rpc_timeout_ms()));
-    RETURN_NOT_OK(proxy->GetTableLocations(req, &resp, &rpc));
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
 
     for (const auto& loc : resp.tablet_locations()) {
       for (const auto& replica : loc.replicas()) {

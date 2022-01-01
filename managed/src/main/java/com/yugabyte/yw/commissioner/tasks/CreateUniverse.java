@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.List;
@@ -37,11 +38,13 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.Common;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
 
 @Slf4j
 public class CreateUniverse extends UniverseDefinitionTaskBase {
+
+  private static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
 
   @Inject
   protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -147,14 +150,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
-      createProvisionNodeTasks(universe, taskParams().nodeDetailsSet, false /* isShell */, false);
+      createProvisionNodeTasks(
+          universe,
+          taskParams().nodeDetailsSet,
+          false /* isShell */,
+          false /* ignore node status check */);
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
-
-      // Override master flags (on primary cluster) and tserver flags as necessary.
-      createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
-
-      createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
 
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
@@ -190,11 +192,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       if (primaryCluster.userIntent.enableYEDIS) {
         // Create a simple redis table.
-        createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+        createTableTask(TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      if (primaryCluster.userIntent.enableYSQL) {
+      if (primaryCluster.userIntent.enableYSQL
+          && CommonUtils.isReleaseEqualOrAfter(
+              MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
         // Create read-write test table
         List<NodeDetails> tserverLiveNodes =
             universe

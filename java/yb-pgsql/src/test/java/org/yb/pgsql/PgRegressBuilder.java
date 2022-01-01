@@ -87,6 +87,9 @@ public class PgRegressBuilder {
     // TODO(dmitry): Workaround for #1721, remove after fix.
     try {
       for (File f : (new File(outputDir, "sql")).listFiles()) {
+        if (!f.setWritable(true)) {
+          throw new IOException("Couldn't set write permissions for " + f.getAbsolutePath());
+        }
         try (FileWriter fr = new FileWriter(f, true)) {
           fr.write("\n-- YB_DATA_END\nROLLBACK;DISCARD TEMP;");
         }

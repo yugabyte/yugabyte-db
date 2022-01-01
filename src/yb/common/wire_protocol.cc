@@ -34,8 +34,11 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.pb.h"
+
 #include "yb/gutil/port.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/fastmem.h"

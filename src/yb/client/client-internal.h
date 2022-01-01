@@ -39,12 +39,20 @@
 #include <vector>
 
 #include "yb/client/client.h"
+
+#include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_admin.fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
+
 #include "yb/server/server_base_options.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -55,18 +63,9 @@ namespace yb {
 
 class HostPort;
 
-namespace master {
-class AlterTableRequestPB;
-class CreateTableRequestPB;
-class MasterServiceProxy;
-} // namespace master
-
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(Retry);
-
-using SyncLeaderMasterFunc = std::function<void(
-    master::MasterServiceProxy*, rpc::RpcController*, const rpc::ResponseCallback& callback)>;
 
 class YBClient::Data {
  public:
@@ -345,7 +344,12 @@ class YBClient::Data {
                                       bool skip_resolution = false,
                                       bool wait_for_leader_election = true);
 
-  std::shared_ptr<master::MasterServiceProxy> master_proxy() const;
+  std::shared_ptr<master::MasterAdminProxy> master_admin_proxy() const;
+  std::shared_ptr<master::MasterClientProxy> master_client_proxy() const;
+  std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy() const;
+  std::shared_ptr<master::MasterDclProxy> master_dcl_proxy() const;
+  std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy() const;
+  std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy() const;
 
   HostPort leader_master_hostport() const;
 
@@ -372,10 +376,10 @@ class YBClient::Data {
   CHECKED_STATUS ValidateReplicationInfo(
         const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
 
-  template <class ReqClass, class RespClass>
-  using SyncLeaderMasterFunc = void (master::MasterServiceProxy::*)(
+  template <class ProxyClass, class ReqClass, class RespClass>
+  using SyncLeaderMasterFunc = void (ProxyClass::*)(
       const ReqClass &req, RespClass *response, rpc::RpcController *controller,
-      rpc::ResponseCallback callback);
+      rpc::ResponseCallback callback) const;
 
   // Retry 'func' until either:
   //
@@ -391,10 +395,10 @@ class YBClient::Data {
   // per operation deadline. If 'deadline' is not initialized, 'func' is
   // retried forever. If 'deadline' expires, 'func_name' is included in
   // the resulting Status.
-  template <class ReqClass, class RespClass>
+  template <class ProxyClass, class ReqClass, class RespClass>
   CHECKED_STATUS SyncLeaderMasterRpc(
       CoarseTimePoint deadline, const ReqClass& req, RespClass* resp, const char* func_name,
-      const SyncLeaderMasterFunc<ReqClass, RespClass>& func, int* attempts = nullptr);
+      const SyncLeaderMasterFunc<ProxyClass, ReqClass, RespClass>& func, int* attempts = nullptr);
 
   template <class T, class... Args>
   rpc::RpcCommandPtr StartRpc(Args&&... args);
@@ -446,7 +450,12 @@ class YBClient::Data {
   HostPort leader_master_hostport_;
 
   // Proxy to the leader master.
-  std::shared_ptr<master::MasterServiceProxy> master_proxy_;
+  std::shared_ptr<master::MasterAdminProxy> master_admin_proxy_;
+  std::shared_ptr<master::MasterClientProxy> master_client_proxy_;
+  std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy_;
+  std::shared_ptr<master::MasterDclProxy> master_dcl_proxy_;
+  std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy_;
+  std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy_;
 
   // Ref-counted RPC instance: since 'SetMasterServerProxyAsync' call
   // is asynchronous, we need to hold a reference in this class
@@ -500,8 +509,8 @@ class YBClient::Data {
 
  private:
   CHECKED_STATUS FlushTablesHelper(YBClient* client,
-                          const CoarseTimePoint deadline,
-                          const master::FlushTablesRequestPB req);
+                                   const CoarseTimePoint deadline,
+                                   const master::FlushTablesRequestPB& req);
 
   DISALLOW_COPY_AND_ASSIGN(Data);
 };

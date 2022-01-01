@@ -30,4 +30,4 @@ target_link_libraries(protoc-gen-yrpc
     protobuf
     gutil
     yb_util
-    lightweight_message_proto)
+    rpc_base_proto)

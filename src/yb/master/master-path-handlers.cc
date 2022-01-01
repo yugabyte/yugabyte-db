@@ -55,10 +55,11 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/server/webserver.h"
@@ -871,7 +872,7 @@ void MasterPathHandlers::HandleHealthCheck(
 
 string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_table) {
   TableId t_id = parent_table->id();;
-  if (master_->catalog_manager()->IsColocatedParentTable(*parent_table)) {
+  if (parent_table->IsColocatedParentTable()) {
     // No YSQL parent id for colocated database parent table
     return "";
   }
@@ -915,8 +916,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       table_cat = kUserIndex;
     } else if (master_->catalog_manager()->IsUserTable(*table)) {
       table_cat = kUserTable;
-    } else if (master_->catalog_manager()->IsTablegroupParentTable(*table) ||
-               master_->catalog_manager()->IsColocatedParentTable(*table)) {
+    } else if (table->IsTablegroupParentTable() ||
+               table->IsColocatedParentTable()) {
       table_cat = kColocatedParentTable;
     } else {
       table_cat = kSystemTable;
@@ -938,8 +939,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                           EscapeForHtmlToString(keyspace));
 
     if (table->GetTableType() == PGSQL_TABLE_TYPE &&
-        !master_->catalog_manager()->IsColocatedParentTable(*table) &&
-        !master_->catalog_manager()->IsTablegroupParentTable(*table)) {
+        !table->IsColocatedParentTable() &&
+        !table->IsTablegroupParentTable()) {
       const auto result = GetPgsqlTableOid(table_uuid);
       if (result.ok()) {
         ysql_table_oid = std::to_string(*result);
@@ -960,7 +961,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                       ysql_table_oid);
 
       if (has_tablegroups) {
-        if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
+        if (table->IsColocatedUserTable()) {
           const auto parent_table = table->GetColocatedTablet()->table();
           ysql_parent_oid = GetParentTableOid(parent_table);
           display_info += Substitute("<td>$0</td>", ysql_parent_oid);
@@ -968,8 +969,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
           display_info += Substitute("<td></td>");
         }
       }
-    } else if (master_->catalog_manager()->IsTablegroupParentTable(*table) ||
-               master_->catalog_manager()->IsColocatedParentTable(*table)) {
+    } else if (table->IsTablegroupParentTable() ||
+               table->IsColocatedParentTable()) {
       // Colocated parent table.
       ysql_table_oid = GetParentTableOid(table);
 
@@ -1737,7 +1738,7 @@ class JsonTabletDumper : public Visitor<PersistentTabletInfo>, public JsonDumper
       for (const RaftPeerPB& peer : cs.config().peers()) {
         jw_->StartObject();
         jw_->String("type");
-        jw_->String(RaftPeerPB::MemberType_Name(peer.member_type()));
+        jw_->String(PeerMemberType_Name(peer.member_type()));
 
         jw_->String("server_uuid");
         jw_->String(peer.permanent_uuid());
@@ -2201,7 +2202,7 @@ string MasterPathHandlers::RegistrationToHtml(
 void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
-    if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
+    if (table->IsColocatedUserTable()) {
       // will be taken care of by colocated parent table
       continue;
     }
@@ -2213,8 +2214,8 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       auto replication_locations = tablet->GetReplicaLocations();
 
       for (const auto& replica : *replication_locations) {
-        if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)
-                          || master_->catalog_manager()->IsTablegroupParentTable(*table)) {
+        if (is_user_table || table->IsColocatedParentTable()
+                          || table->IsTablegroupParentTable()) {
           if (replica.second.role == PeerRole::LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {
@@ -2238,7 +2239,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
   int count = 0;
   for (const auto& table : tables) {
     if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
-    master_->catalog_manager()->IsColocatedUserTable(*table)) {
+      table->IsColocatedUserTable()) {
       continue;
     }
 
@@ -2250,7 +2251,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
 
   for (const auto& table : tables) {
     if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
-    master_->catalog_manager()->IsColocatedUserTable(*table)) {
+        table->IsColocatedUserTable()) {
       // only display user created tables that are not colocated.
       continue;
     }

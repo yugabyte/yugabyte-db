@@ -40,7 +40,7 @@
 #include <gperftools/malloc_extension.h>
 #endif
 
-#include "yb/consensus/log.h"
+#include "yb/consensus/log_util.h"
 
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/encrypted_file_factory.h"

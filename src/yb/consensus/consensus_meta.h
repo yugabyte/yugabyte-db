@@ -37,6 +37,7 @@
 #include <atomic>
 #include <string>
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/metadata.pb.h"

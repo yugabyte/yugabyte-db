@@ -66,7 +66,8 @@ set(TABLET_SRCS
   tablet_metadata.cc
   tablet_retention_policy.cc
   preparer.cc
-  ${TABLET_SRCS_EXTENSIONS})
+  write_query.cc
+  )
 
 set(TABLET_DEPS pq_utils)
 
@@ -76,8 +77,12 @@ YRPC_GENERATE(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   NO_SERVICE_PROTO_FILES
     metadata.proto
-    tablet.proto)
+    operations.proto
+    tablet.proto
+    tablet_types.proto
+  )
 set(TABLET_PROTO_LIBS
+  docdb_proto
   protobuf
   fs_proto
   consensus_metadata_proto
@@ -115,6 +120,7 @@ target_link_libraries(tablet
 add_library(tablet_test_util
             local_tablet_writer.cc
             tablet-harness.cc
+            tablet-test-base.cc
             tablet-test-util.cc)
 target_link_libraries(tablet_test_util tablet yb_common yb_test_util yb_util)
 

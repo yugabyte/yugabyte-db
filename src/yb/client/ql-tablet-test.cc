@@ -45,6 +45,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_ddl.proxy.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/types.h"
@@ -55,6 +56,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
@@ -482,13 +484,12 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       req.mutable_table()->mutable_namespace_()->set_name(table_name.namespace_name());
       resp->Clear();
 
-      auto master_proxy = std::make_shared<master::MasterServiceProxy>(
-          &client_->proxy_cache(),
-          VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
+      master::MasterDdlProxy master_proxy(
+          &client_->proxy_cache(), VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
       rpc::RpcController rpc;
       rpc.set_timeout(MonoDelta::FromSeconds(30));
 
-      Status s = master_proxy->IsCreateTableDone(req, resp, &rpc);
+      Status s = master_proxy.IsCreateTableDone(req, resp, &rpc);
       return s.ok() && !resp->has_error();
     }, MonoDelta::FromSeconds(30), "Table Creation");
   }

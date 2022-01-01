@@ -24,11 +24,12 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/redis_constants_common.h"
 
 #include "yb/gutil/strings/join.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/messenger.h"

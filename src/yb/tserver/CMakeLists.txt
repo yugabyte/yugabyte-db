@@ -43,7 +43,7 @@ YRPC_GENERATE(
   TSERVER_PROTO_SRCS TSERVER_PROTO_HDRS TSERVER_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  NO_SERVICE_PROTO_FILES tserver.proto)
+  NO_SERVICE_PROTO_FILES tserver.proto tserver_types.proto)
 set(TSERVER_PROTO_LIBS
   yb_common_proto
   consensus_metadata_proto

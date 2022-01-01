@@ -41,11 +41,13 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "yb/common/common_net.pb.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
 
-#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/capabilities.h"
 #include "yb/util/locks.h"

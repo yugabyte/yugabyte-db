@@ -17,6 +17,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.forms.PlatformResults.withData;
 import static com.yugabyte.yw.models.Users.Role;
+import static com.yugabyte.yw.models.Users.UserType;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,17 +49,17 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import io.ebean.DuplicateKeyException;
+import io.ebean.annotation.Transactional;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -67,6 +68,14 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.apache.directory.api.ldap.model.cursor.EntryCursor;
+import org.apache.directory.api.ldap.model.entry.Attribute;
+import org.apache.directory.api.ldap.model.entry.Entry;
+import org.apache.directory.api.ldap.model.exception.LdapAuthenticationException;
+import org.apache.directory.api.ldap.model.exception.LdapException;
+import org.apache.directory.api.ldap.model.exception.LdapNoSuchObjectException;
+import org.apache.directory.api.ldap.model.message.SearchScope;
+import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
@@ -77,7 +86,6 @@ import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.data.Form;
-import play.db.ebean.Transactional;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
 import play.libs.ws.WSClient;
@@ -263,20 +271,169 @@ public class SessionController extends AbstractPlatformController {
     }
   }
 
+  private Users loginWithLdap(CustomerLoginFormData data) throws LdapException {
+    String ldapUrl =
+        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_url");
+    String getLdapPort =
+        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_port");
+    Integer ldapPort = Integer.parseInt(getLdapPort);
+    String ldapBaseDN =
+        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_basedn");
+    String ldapCustomerUUID =
+        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_customeruuid");
+
+    Users user =
+        authViaLDAP(
+            data.getEmail().toLowerCase(), data.getPassword(), ldapUrl, ldapPort, ldapBaseDN);
+    if (user == null) {
+      return user;
+    }
+
+    if (user.customerUUID == null) {
+      Customer cust = null;
+      if (!ldapCustomerUUID.equals("")) {
+        try {
+          UUID custUUID = UUID.fromString(ldapCustomerUUID);
+          cust = Customer.get(custUUID);
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Customer UUID Specified is invalid. " + e.getMessage());
+        }
+      }
+      if (cust == null) {
+        List<Customer> allCustomers = Customer.getAll();
+        if (allCustomers.size() != 1) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Please specify ldap_customeruuid in Multi-Tenant Setup.");
+        }
+        cust = allCustomers.get(0);
+      }
+      user.setCustomerUuid(cust.uuid);
+    }
+    try {
+      user.save();
+    } catch (DuplicateKeyException e) {
+      log.info("User already exists.");
+    }
+    return user;
+  }
+
+  private Users authViaLDAP(
+      String email, String password, String ldapUrl, Integer ldapPort, String ldapBaseDN)
+      throws LdapException {
+    Users users = new Users();
+    LdapNetworkConnection connection = null;
+    try {
+      connection = new LdapNetworkConnection(ldapUrl, ldapPort);
+      String distinguishedName = ldapBaseDN + "CN=" + email;
+      try {
+        connection.bind(distinguishedName, password);
+      } catch (LdapNoSuchObjectException e) {
+        Users.deleteUser(email);
+        String errorMessage = "LDAP user " + email + " does not exist on the LDAP server";
+        throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+      } catch (LdapAuthenticationException e) {
+        String errorMessage = "Failed with " + e.getMessage();
+        throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+      }
+      EntryCursor cursor =
+          connection.search(distinguishedName, "(objectclass=*)", SearchScope.SUBTREE, "*");
+      while (cursor.next()) {
+        Entry entry = cursor.get();
+        Attribute parseRole = entry.get("YugabytePlatformRole");
+        String role = parseRole.getString();
+        Role roleToAssign;
+        users.setLdapSpecifiedRole(true);
+        switch (role) {
+          case "Admin":
+            roleToAssign = Role.Admin;
+            break;
+          case "SuperAdmin":
+            roleToAssign = Role.SuperAdmin;
+            break;
+          case "BackupAdmin":
+            roleToAssign = Role.BackupAdmin;
+            break;
+          case "ReadOnly":
+            roleToAssign = Role.ReadOnly;
+            break;
+          default:
+            roleToAssign = Role.ReadOnly;
+            users.setLdapSpecifiedRole(false);
+        }
+        Users oldUser = Users.find.query().where().eq("email", email).findOne();
+        if (oldUser != null && (oldUser.getRole() == roleToAssign)) {
+          return oldUser;
+        } else if (oldUser != null && (oldUser.getRole() != roleToAssign)) {
+          oldUser.setRole(roleToAssign);
+          return oldUser;
+        } else {
+          users.email = email.toLowerCase();
+          byte[] passwordLdap = new byte[16];
+          new Random().nextBytes(passwordLdap);
+          String generatedPassword = new String(passwordLdap, Charset.forName("UTF-8"));
+          users.setPassword(generatedPassword); // Password is not used.
+          users.setUserType(UserType.ldap);
+          users.creationDate = new Date();
+          users.setIsPrimary(true);
+          users.setRole(roleToAssign);
+        }
+      }
+    } catch (LdapException e) {
+      LOG.error("LDAP error while attempting to auth email {}", email);
+      LOG.debug(e.getMessage());
+      String errorMessage = "LDAP parameters are not configured correctly. " + e.getMessage();
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    } catch (Exception e) {
+      LOG.error("Failed to authenticate with LDAP for email {}", email);
+      LOG.debug(e.getMessage());
+      String errorMessage = "Invalid LDAP credentials. " + e.getMessage();
+      throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+    } finally {
+      if (connection != null) {
+        connection.unBind();
+        connection.close();
+      }
+    }
+    return users;
+  }
+
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useLdap =
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getString("yb.security.ldap.use_ldap")
+            .equals("true");
     if (useOAuth) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Platform login not supported when using SSO.");
     }
-
     CustomerLoginFormData data =
         formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get();
-    Users user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
+
+    Users user = null;
+    Users existingUser =
+        Users.find.query().where().eq("email", data.getEmail().toLowerCase()).findOne();
+    if (existingUser != null) {
+      if (existingUser.userType == null || !existingUser.userType.equals(UserType.ldap)) {
+        user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
+        if (user == null) {
+          throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
+        }
+      }
+    }
+    if (useLdap && user == null) {
+      try {
+        user = loginWithLdap(data);
+      } catch (LdapException e) {
+        LOG.error("LDAP error {} authenticating user {}", e.getMessage(), data.getEmail());
+      }
+    }
 
     if (user == null) {
-      throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials");
+      throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
     }
     Customer cust = Customer.get(user.customerUUID);
 

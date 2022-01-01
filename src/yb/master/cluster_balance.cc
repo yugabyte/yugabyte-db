@@ -1447,7 +1447,7 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   // currently as well, load distribution wouldn't matter as eventually they would get deleted.
   auto l = table.LockForRead();
   return (catalog_manager_->IsSystemTable(table) ||
-          catalog_manager_->IsColocatedUserTable(table) ||
+          table.IsColocatedUserTable() ||
           l->started_deleting());
 }
 
@@ -1516,11 +1516,11 @@ Status ClusterLoadBalancer::SendReplicaChanges(
   return Status::OK();
 }
 
-consensus::RaftPeerPB::MemberType ClusterLoadBalancer::GetDefaultMemberType() {
+consensus::PeerMemberType ClusterLoadBalancer::GetDefaultMemberType() {
   if (state_->options_->type == LIVE) {
-    return consensus::RaftPeerPB::PRE_VOTER;
+    return consensus::PeerMemberType::PRE_VOTER;
   } else {
-    return consensus::RaftPeerPB::PRE_OBSERVER;
+    return consensus::PeerMemberType::PRE_OBSERVER;
   }
 }
 

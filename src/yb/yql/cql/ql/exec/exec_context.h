@@ -26,7 +26,6 @@
 
 #include "yb/client/session.h"
 
-#include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 
 #include "yb/util/status_fwd.h"

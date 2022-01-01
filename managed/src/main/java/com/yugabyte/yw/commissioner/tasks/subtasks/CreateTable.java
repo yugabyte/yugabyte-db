@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 

@@ -194,6 +194,8 @@ typedef struct TransactionStateData
 	struct TransactionStateData *parent;	/* back link to parent */
 	bool		ybDataSent; /* Whether some tuples have been transmitted to
 				             * frontend as part of this execution */
+  bool		ybDataSentForCurrQuery; /* Whether any data has been sent to frontend
+																	 * as part of current query's execution */
 	bool		isYBTxnWithPostgresRel; /* does the current transaction
 				                         * operate on a postgres table? */
 	List		*YBPostponedDdlOps; /* We postpone execution of non-revertable
@@ -231,6 +233,7 @@ static TransactionStateData TopTransactionStateData = {
 	0,							/* parallelModeLevel */
 	NULL,						/* link to parent state block */
 	false,						/* ybDataSent */
+	false,						/* ybDataSentForCurrQuery */
 	false,						/* isYBTxnWithPostgresRel */
 	NULL,						/* YBPostponedDdlOps */
 };
@@ -1007,6 +1010,7 @@ void YBMarkDataSent(void)
 {
 	TransactionState s = CurrentTransactionState;
 	s->ybDataSent = true;
+	s->ybDataSentForCurrQuery = true;
 }
 
 /*
@@ -1016,6 +1020,12 @@ void YBMarkDataNotSent(void)
 {
 	TransactionState s = CurrentTransactionState;
 	s->ybDataSent = false;
+}
+
+void YBMarkDataNotSentForCurrQuery(void)
+{
+	TransactionState s = CurrentTransactionState;
+	s->ybDataSentForCurrQuery = false;
 }
 
 /*
@@ -1028,6 +1038,15 @@ bool YBIsDataSent(void)
 	TransactionState s = CurrentTransactionState;
 	// Ignoring "idle" transaction state, a leftover from a previous transaction
 	return s->blockState != TBLOCK_DEFAULT && s->ybDataSent;
+}
+
+/*
+ * Whether some data has been transmitted to frontend as part of this query.
+ */
+bool YBIsDataSentForCurrQuery(void)
+{
+	TransactionState s = CurrentTransactionState;
+	return s->ybDataSentForCurrQuery;
 }
 
 /* ----------------------------------------------------------------
@@ -1871,6 +1890,7 @@ YBStartTransaction(TransactionState s)
 {
 	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
 	s->ybDataSent             = false;
+	s->ybDataSentForCurrQuery = false;
 	s->YBPostponedDdlOps      = NULL;
 
 	if (IsYugaByteEnabled())
@@ -2899,13 +2919,17 @@ StartTransactionCommand(void)
 			 * records with ht after the chosen read ht and is unsure if the records were committed before
 			 * the client issued read (as per real time), a kReadRestart will be received by postgres.
 			 *
-			 * Read restart retries are handled transparently for the first statement in the txn. In case
+			 * Read restart retries are handled transparently for every statement in the txn. In case
 			 * we reach here and see that the read point exists and was restarted recently as part of a
 			 * retry, we don't pick a new read point using current time.
-			 *
-			 * TODO: Such read restart errors need to be handled transparently for each statement.
 			 */
 			if (YBTransactionsEnabled() && IsYBReadCommitted()) {
+				/*
+				 * Reset field ybDataSentForCurrQuery (indicates whether any data was sent as part of the
+				 * current query). This helps track if automatic restart of a query is possible in
+				 * READ COMMITTED isolation level.
+				 */
+				s->ybDataSentForCurrQuery = false;
 				elog(DEBUG2, "Maybe resetting read point for statement in Read Committed txn");
 				YBMaybeResetTransactionReadPoint();
 			}
@@ -5362,12 +5386,14 @@ ShowTransactionStateRec(const char *str, TransactionState s)
 	/* use ereport to suppress computation if msg will not be printed */
 	ereport(DEBUG5,
 			(errmsg_internal("%s(%d) name: %s; blockState: %s; "
-							 "state: %s, ybDataSent: %s, xid/subid/cid: %u/%u/%u%s%s",
+							 "state: %s, ybDataSent: %s, ybDataSentForCurrQuery: %s, "
+							 "xid/subid/cid: %u/%u/%u%s%s",
 							 str, s->nestingLevel,
 							 PointerIsValid(s->name) ? s->name : "unnamed",
 							 BlockStateAsString(s->blockState),
 							 TransStateAsString(s->state),
 							 s->ybDataSent ? "Y" : "N",
+							 s->ybDataSentForCurrQuery ? "Y" : "N",
 							 (unsigned int) s->transactionId,
 							 (unsigned int) s->subTransactionId,
 							 (unsigned int) currentCommandId,

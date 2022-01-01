@@ -49,9 +49,12 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/countdown_latch.h"
 
 using yb::consensus::RaftPeerPB;
+using yb::consensus::PeerMemberType;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_READY;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
@@ -127,7 +130,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
     ASSERT_EQ(1, active_ts_map.erase(cluster_->tablet_server(i)->uuid()));
   }
   // This will time out, but should take effect.
-  Status s = itest::AddServer(leader_ts, tablet_id, follower_ts, RaftPeerPB::PRE_VOTER,
+  Status s = itest::AddServer(leader_ts, tablet_id, follower_ts, PeerMemberType::PRE_VOTER,
                               boost::none, MonoDelta::FromSeconds(5), NULL,
                               false /* retry */);
   ASSERT_TRUE(s.IsTimedOut());
@@ -186,8 +189,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
   // Remove the follower from the config and wait for the Master to notice the
   // config change.
   ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, follower_ts, boost::none, timeout));
-  ASSERT_OK(itest::WaitForNumVotersInConfigOnMaster(cluster_->master_proxy(), tablet_id, 2,
-                                                    timeout));
+  ASSERT_OK(itest::WaitForNumVotersInConfigOnMaster(cluster_.get(), tablet_id, 2, timeout));
 
   // Shut down the remaining tablet servers and restart the dead one.
   cluster_->tablet_server(0)->Shutdown();
@@ -330,7 +332,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, ts_to_remove, boost::none, timeout));
   ASSERT_OK(itest::DeleteTablet(ts_to_remove, tablet_id, TABLET_DATA_TOMBSTONED,
                                 boost::none, timeout));
-  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, ts_to_remove, RaftPeerPB::PRE_VOTER,
+  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, ts_to_remove, PeerMemberType::PRE_VOTER,
                              boost::none, timeout));
   ASSERT_OK(itest::WaitUntilTabletRunning(ts_to_remove, tablet_id, timeout));
 

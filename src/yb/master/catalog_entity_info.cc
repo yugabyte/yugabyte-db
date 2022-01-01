@@ -37,7 +37,10 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
@@ -63,7 +66,7 @@ string TabletReplica::ToString() const {
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
                 PeerRole_Name(role),
-                consensus::RaftPeerPB::MemberType_Name(member_type),
+                consensus::PeerMemberType_Name(member_type),
                 should_disable_lb_move, fs_data_dir,
                 drive_info.sst_files_size + drive_info.wal_files_size,
                 MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
@@ -765,8 +768,20 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !IsColocatedUserTable() &&
          l->namespace_id() != kPgSequencesDataNamespaceId;
+}
+
+bool TableInfo::IsTablegroupParentTable() const {
+  return id().find(master::kTablegroupParentTableIdSuffix) != std::string::npos;
+}
+
+bool TableInfo::IsColocatedParentTable() const {
+  return id().find(master::kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
+bool TableInfo::IsColocatedUserTable() const {
+  return colocated() && !IsColocatedParentTable() && !IsTablegroupParentTable();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {

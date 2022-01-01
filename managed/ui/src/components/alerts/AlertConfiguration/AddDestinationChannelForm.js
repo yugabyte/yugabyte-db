@@ -445,7 +445,7 @@ export const AddDestinationChannelForm = (props) => {
       visible={visible}
       onHide={onModalHide}
       initialValues={props.editValues || {}}
-      submitLabel={props.type === 'edit' ? 'Edit' : 'Create'}
+      submitLabel={props.type === 'edit' ? 'Save' : 'Create'}
       validationSchema={validationSchema}
       onFormSubmit={!isReadOnly ? (values, { setSubmitting }) => {
         const payload = {

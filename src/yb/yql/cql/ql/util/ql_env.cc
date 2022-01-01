@@ -268,7 +268,7 @@ Status QLEnv::HasResourcePermission(const string& canonical_name,
       "Permissions check is not allowed when use_cassandra_authentication flag is disabled"));
   return metadata_cache_->HasResourcePermission(canonical_name, object_type, CurrentRoleName(),
                                                 permission, keyspace, table,
-                                                client::internal::CacheCheckMode::RETRY);
+                                                client::CacheCheckMode::RETRY);
 }
 
 Result<std::string> QLEnv::RoleSaltedHash(const RoleName& role_name) {

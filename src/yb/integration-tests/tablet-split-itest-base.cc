@@ -15,15 +15,45 @@
 
 #include <signal.h>
 
+#include <boost/range/adaptor/transformed.hpp>
+
+#include "yb/client/client-test-util.h"
+#include "yb/client/session.h"
+#include "yb/client/snapshot_test_util.h"
+#include "yb/client/table_info.h"
+#include "yb/client/transaction.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/common/schema.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
+#include "yb/common/ql_expr.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_util.h"
+
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/test_workload.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_client.pb.h"
+
 #include "yb/rocksdb/db.h"
+
+#include "yb/rpc/messenger.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
@@ -33,6 +63,7 @@ DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_int32(replication_factor);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_do_not_start_election_test_only);
 DECLARE_bool(TEST_select_all_tablets_for_split);
@@ -287,6 +318,9 @@ template class TabletSplitITestBase<ExternalMiniCluster>;
 // TabletSplitITest
 //
 
+TabletSplitITest::TabletSplitITest() = default;
+TabletSplitITest::~TabletSplitITest() = default;
+
 void TabletSplitITest::SetUp() {
   FLAGS_cleanup_split_tablets_interval_sec = 1;
   FLAGS_enable_automatic_tablet_splitting = false;
@@ -307,6 +341,10 @@ void TabletSplitITest::SetUp() {
   snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
   snapshot_util_->SetProxy(&client_->proxy_cache());
   snapshot_util_->SetCluster(cluster_.get());
+}
+
+Result<master::TabletInfos> TabletSplitITest::GetTabletInfosForTable(const TableId& table_id) {
+  return VERIFY_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets();
 }
 
 Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(size_t num_rows) {
@@ -740,7 +778,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
 
-  RETURN_NOT_OK(cluster_->master_proxy()->SplitTablet(req, &resp, &rpc));
+  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }

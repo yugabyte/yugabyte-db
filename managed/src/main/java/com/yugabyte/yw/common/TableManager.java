@@ -27,7 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
@@ -100,8 +100,7 @@ public class TableManager extends DevopsBase {
         commandArgs.add(universe.getTserverHTTPAddresses());
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
-        if (userIntent.enableYSQLAuth
-            || userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
+        if (userIntent.isYSQLAuthEnabled()) {
           commandArgs.add("--ysql_enable_auth");
         }
         commandArgs.add("--ysql_port");

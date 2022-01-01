@@ -22,6 +22,12 @@ namespace yb {
 namespace tserver {
 
 class Heartbeater;
+class IsTabletServerReadyRequestPB;
+class IsTabletServerReadyResponsePB;
+class ListTabletsForTabletServerResponsePB;
+class ListTabletsForTabletServerResponsePB_Entry;
+class ListTabletsResponsePB;
+class ListTabletsResponsePB_StatusAndSchemaPB;
 class LocalTabletServer;
 class MetricsSnapshotter;
 class TSTabletManager;

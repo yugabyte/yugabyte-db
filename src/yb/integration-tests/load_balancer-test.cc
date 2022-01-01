@@ -21,6 +21,8 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/master/master_cluster.proxy.h"
+
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/monotime.h"
@@ -53,8 +55,8 @@ class LoadBalancerTest : public YBTableTestBase {
     master::AreLeadersOnPreferredOnlyResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
-    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
-    RETURN_NOT_OK(proxy->AreLeadersOnPreferredOnly(req, &resp, &rpc));
+    auto proxy = GetMasterLeaderProxy<master::MasterClusterProxy>();
+    RETURN_NOT_OK(proxy.AreLeadersOnPreferredOnly(req, &resp, &rpc));
     return !resp.has_error();
   }
 

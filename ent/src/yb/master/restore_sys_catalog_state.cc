@@ -28,7 +28,6 @@
 #include "yb/docdb/pgsql_operation.h"
 
 #include "yb/master/catalog_loaders.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
@@ -50,14 +49,15 @@ namespace master {
 namespace {
 
 CHECKED_STATUS ApplyWriteRequest(
-    const Schema& schema, QLWriteRequestPB* write_request,
+    const Schema& schema, const QLWriteRequestPB& write_request,
     docdb::DocWriteBatch* write_batch) {
   std::shared_ptr<const Schema> schema_ptr(&schema, [](const Schema* schema){});
   docdb::DocOperationApplyData apply_data{.doc_write_batch = write_batch};
   IndexMap index_map;
-  docdb::QLWriteOperation operation(schema_ptr, index_map, nullptr, TransactionOperationContext());
+  docdb::QLWriteOperation operation(
+      write_request, schema_ptr, index_map, nullptr, TransactionOperationContext());
   QLResponsePB response;
-  RETURN_NOT_OK(operation.Init(write_request, &response));
+  RETURN_NOT_OK(operation.Init(&response));
   return operation.Apply(apply_data);
 }
 
@@ -384,7 +384,7 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
     RETURN_NOT_OK(FillSysCatalogWriteRequest(
         entry.type(), entry.id(), entry.data(), QLWriteRequestPB::QL_STMT_INSERT, schema,
         &write_request));
-    RETURN_NOT_OK(ApplyWriteRequest(schema, &write_request, write_batch));
+    RETURN_NOT_OK(ApplyWriteRequest(schema, write_request, write_batch));
   }
 
   for (const auto& tablet_id_and_pb : restoration_.non_system_obsolete_tablets) {
@@ -417,7 +417,7 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntryType::TABLET, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
-  return ApplyWriteRequest(schema, &write_request, write_batch);
+  return ApplyWriteRequest(schema, write_request, write_batch);
 }
 
 Status RestoreSysCatalogState::PrepareTableCleanup(
@@ -431,7 +431,7 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntryType::TABLE, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
-  return ApplyWriteRequest(schema, &write_request, write_batch);
+  return ApplyWriteRequest(schema, write_request, write_batch);
 }
 
 Result<bool> RestoreSysCatalogState::TEST_MatchTable(

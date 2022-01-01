@@ -22,7 +22,7 @@ import {
   deleteUserResponse
 } from '../../actions/customers';
 import { toast } from 'react-toastify';
-import { createErrorMessage } from '../alerts/AlertConfiguration/AlertUtils';
+import { createErrorMessage } from '../../utils/ObjectUtils';
 import { timeFormatter } from '../../utils/TableFormatters';
 
 class UserList extends Component {

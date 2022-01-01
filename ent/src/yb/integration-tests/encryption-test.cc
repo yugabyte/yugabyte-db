@@ -24,12 +24,13 @@
 
 #include "yb/master/encryption_manager.h"
 
+#include "yb/tools/yb-admin_client.h"
+
 #include "yb/util/test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
-#include "yb/master/master.pb.h"
 
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(memstore_size_mb);

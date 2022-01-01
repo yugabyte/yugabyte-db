@@ -26,7 +26,6 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/master.fwd.h"
 #include "yb/master/master_backup.fwd.h"
 
 #include "yb/util/enums.h"
@@ -51,13 +50,22 @@ class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
 class CDCConsumerSplitDriverIf;
+class CDCRpcTasks;
 class ClusterConfigInfo;
 class ClusterLoadBalancer;
 class FlushManager;
 class Master;
+class MasterBackupProxy;
 class MasterOptions;
 class MasterPathHandlers;
-class MasterServiceProxy;
+class MasterAdminProxy;
+class MasterClientProxy;
+class MasterClusterProxy;
+class MasterDclProxy;
+class MasterDdlProxy;
+class MasterEncryptionProxy;
+class MasterHeartbeatProxy;
+class MasterReplicationProxy;
 class NamespaceInfo;
 class PermissionsManager;
 class RetryingTSRpcTask;
@@ -66,6 +74,7 @@ class SnapshotState;
 class SysCatalogTable;
 class SysConfigInfo;
 class SysRowEntries;
+class TSDescriptor;
 class TSManager;
 class TabletSplitCompleteHandlerIf;
 class UDTypeInfo;
@@ -74,6 +83,7 @@ class YQLVirtualTable;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
+struct CDCConsumerStreamInfo;
 struct SplitTabletIds;
 struct TableDescription;
 struct TabletReplica;
@@ -110,6 +120,7 @@ using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
 using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
+using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 
 namespace enterprise {
 

@@ -31,14 +31,15 @@
 #
 
 set(YB_PCH_PREFIX common)
-set(YB_PCH_DEP_LIBS gmock gutil yb_test_util yb_util)
+set(YB_PCH_DEP_LIBS gmock gutil opid_proto yb_test_util yb_util)
 
 YRPC_GENERATE(
   COMMON_PROTO_SRCS COMMON_PROTO_HDRS COMMON_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  NO_SERVICE_PROTO_FILES common.proto wire_protocol.proto redis_protocol.proto ql_protocol.proto
-                         pgsql_protocol.proto)
+  NO_SERVICE_PROTO_FILES
+      common.proto common_net.proto common_types.proto transaction.proto value.proto
+      wire_protocol.proto redis_protocol.proto ql_protocol.proto pgsql_protocol.proto)
 ADD_YB_LIBRARY(yb_common_proto
   SRCS ${COMMON_PROTO_SRCS}
   DEPS protobuf
@@ -81,7 +82,6 @@ set(COMMON_SRCS
   ql_protocol_util.cc
   ql_resultset.cc
   ql_rowblock.cc
-  ql_rowwise_iterator_interface.cc
   ql_scanspec.cc
   ql_type.cc
   ql_value.cc
