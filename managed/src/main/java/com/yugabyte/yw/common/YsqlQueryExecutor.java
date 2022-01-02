@@ -210,6 +210,10 @@ public class YsqlQueryExecutor {
                   "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username));
       LOG.info("Grant admin role to user {}, result: {}", data.username, ysqlResponse.toString());
     }
+
+    // Reset pg_stat_statements table to remove queries containing credentials.
+    runQueryUtil(universe, data, "SELECT pg_stat_statements_reset()");
+    LOG.info("Resetting pg_stat_statements");
   }
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
@@ -239,6 +243,14 @@ public class YsqlQueryExecutor {
     JsonNode ysqlResponse =
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlCurrAdminPassword);
     LOG.info("Updating YSQL user, result: " + ysqlResponse.toString());
+    if (ysqlResponse.has("error")) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+    }
+    ysqlQuery.query = "SELECT pg_stat_statements_reset()";
+    ysqlResponse =
+        executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
+    LOG.info("Resetting pg_stat_statements");
     if (ysqlResponse.has("error")) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
