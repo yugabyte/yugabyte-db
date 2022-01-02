@@ -1112,31 +1112,6 @@ bool OnlyWhitespace(const GStringPiece& s) {
   return true;
 }
 
-string PrefixSuccessor(const GStringPiece& prefix) {
-  // We can increment the last character in the string and be done
-  // unless that character is 255, in which case we have to erase the
-  // last character and increment the previous character, unless that
-  // is 255, etc. If the string is empty or consists entirely of
-  // 255's, we just return the empty string.
-  bool done = false;
-  string limit(prefix.data(), prefix.size());
-  int index = limit.length() - 1;
-  while (!done && index >= 0) {
-    if (limit[index] == 255) {
-      limit.erase(index);
-      index--;
-    } else {
-      limit[index]++;
-      done = true;
-    }
-  }
-  if (!done) {
-    return "";
-  } else {
-    return limit;
-  }
-}
-
 string ImmediateSuccessor(const GStringPiece& s) {
   // Return the input string, with an additional NUL byte appended.
   string out;
@@ -1144,46 +1119,6 @@ string ImmediateSuccessor(const GStringPiece& s) {
   out.append(s.data(), s.size());
   out.push_back('\0');
   return out;
-}
-
-void FindShortestSeparator(const GStringPiece& start,
-                           const GStringPiece& limit,
-                           string* separator) {
-  // Find length of common prefix
-  size_t min_length = min(start.size(), limit.size());
-  size_t diff_index = 0;
-  while ((diff_index < min_length) &&
-         (start[diff_index] == limit[diff_index])) {
-    diff_index++;
-  }
-
-  if (diff_index >= min_length) {
-    // Handle the case where either string is a prefix of the other
-    // string, or both strings are identical.
-    start.CopyToString(separator);
-    return;
-  }
-
-  if (diff_index+1 == start.size()) {
-    // If the first difference is in the last character, do not bother
-    // incrementing that character since the separator will be no
-    // shorter than "start".
-    start.CopyToString(separator);
-    return;
-  }
-
-  if (start[diff_index] == 0xff) {
-    // Avoid overflow when incrementing start[diff_index]
-    start.CopyToString(separator);
-    return;
-  }
-
-  separator->assign(start.data(), diff_index);
-  separator->push_back(start[diff_index] + 1);
-  if (*separator >= limit) {
-    // Never pick a separator that causes confusion with "limit"
-    start.CopyToString(separator);
-  }
 }
 
 int SafeSnprintf(char *str, size_t size, const char *format, ...) {
