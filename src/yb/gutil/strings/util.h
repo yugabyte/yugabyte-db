@@ -305,16 +305,6 @@ inline bool IsAscii(const GStringPiece& str) {
   return IsAscii(str.data(), str.size());
 }
 
-// Returns the smallest lexicographically larger string of equal or smaller
-// length. Returns an empty string if there is no such successor (if the input
-// is empty or consists entirely of 0xff bytes).
-// Useful for calculating the smallest lexicographically larger string
-// that will not be prefixed by the input string.
-//
-// Examples:
-// "a" -> "b", "aaa" -> "aab", "aa\xff" -> "ab", "\xff" -> "", "" -> ""
-string PrefixSuccessor(const GStringPiece& prefix);
-
 // Returns the immediate lexicographically-following string. This is useful to
 // turn an inclusive range into something that can be used with Bigtable's
 // SetLimitRow():
@@ -333,16 +323,6 @@ string PrefixSuccessor(const GStringPiece& prefix);
 // WARNING: Transforms "" -> "\0"; this doesn't account for Bigtable's special
 // treatment of "" as infinity.
 string ImmediateSuccessor(const GStringPiece& s);
-
-// Fills in *separator with a short string less than limit but greater than or
-// equal to start. If limit is greater than start, *separator is the common
-// prefix of start and limit, followed by the successor to the next character in
-// start. Examples:
-// FindShortestSeparator("foobar", "foxhunt", &sep) => sep == "fop"
-// FindShortestSeparator("abracadabra", "bacradabra", &sep) => sep == "b"
-// If limit is less than or equal to start, fills in *separator with start.
-void FindShortestSeparator(const GStringPiece& start, const GStringPiece& limit,
-                           string* separator);
 
 // Copies at most n-1 bytes from src to dest, and returns dest. If n >=1, null
 // terminates dest; otherwise, returns dest unchanged. Unlike strncpy(), only

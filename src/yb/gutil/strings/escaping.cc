@@ -531,7 +531,8 @@ int CEscapeInternal(const char* src, int src_len, char* dest,
       return -1;
 
     bool is_hex_escape = false;
-    switch (*src) {
+    unsigned char cur = *src;
+    switch (cur) {
       case '\n': dest[used++] = '\\'; dest[used++] = 'n';  break;
       case '\r': dest[used++] = '\\'; dest[used++] = 'r';  break;
       case '\t': dest[used++] = '\\'; dest[used++] = 't';  break;
@@ -542,16 +543,16 @@ int CEscapeInternal(const char* src, int src_len, char* dest,
         // Note that if we emit \xNN and the src character after that is a hex
         // digit then that digit must be escaped too to prevent it being
         // interpreted as part of the character code by C.
-        if ((!utf8_safe || *src < 0x80) &&
-            (!ascii_isprint(*src) ||
-             (last_hex_escape && ascii_isxdigit(*src)))) {
+        if ((!utf8_safe || cur < 0x80) &&
+            (!ascii_isprint(cur) ||
+             (last_hex_escape && ascii_isxdigit(cur)))) {
           if (dest_len - used < 4)  // need space for 4 letter escape
             return -1;
-          snprintf(dest + used, dest_len - used, (use_hex ? "\\x%02x" : "\\%03o"), *src);
+          snprintf(dest + used, dest_len - used, (use_hex ? "\\x%02x" : "\\%03o"), cur);
           is_hex_escape = use_hex;
           used += 4;
         } else {
-          dest[used++] = *src;
+          dest[used++] = cur;
           break;
         }
     }
@@ -861,10 +862,11 @@ int CalculateBase64EscapedLen(int input_len) {
 // filename-safe.
 // ----------------------------------------------------------------------
 
-int Base64UnescapeInternal(const char *src, int szsrc,
+int Base64UnescapeInternal(const char *signed_src, int szsrc,
                            char *dest, int szdest,
                            const signed char* unbase64) {
   static const char kPad64 = '=';
+  auto* src = static_cast<const unsigned char*>(static_cast<const void*>(signed_src));
 
   int decode = 0;
   int destidx = 0;
@@ -1580,7 +1582,9 @@ void EightBase32DigitsToTenHexDigits(const char *in, char *out) {
   b2a_hex(bytes, out, 5);
 }
 
-void EightBase32DigitsToFiveBytes(const char *in, unsigned char *bytes_out) {
+void EightBase32DigitsToFiveBytes(const char *signed_in, unsigned char *bytes_out) {
+  auto* in = static_cast<const unsigned char*>(static_cast<const void*>(signed_in));
+
   static const char Base32InverseAlphabet[] = {
     99,      99,      99,      99,      99,      99,      99,      99,
     99,      99,      99,      99,      99,      99,      99,      99,
