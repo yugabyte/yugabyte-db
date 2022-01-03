@@ -254,8 +254,8 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 // Utility macros to perform the appropriate check. If the check fails, returns the specified
 // (error) Status, with the given message.
 #define SCHECK(expr, status_type, msg) do { \
-    if (PREDICT_FALSE(!(expr))) return STATUS(status_type, (msg)); \
-  } while (0)
+      if (PREDICT_FALSE(!(expr))) return STATUS(status_type, (msg)); \
+    } while (0)
 
 #define SCHECK_NOTNULL(expr) do { \
       if ((expr) == nullptr) { \
