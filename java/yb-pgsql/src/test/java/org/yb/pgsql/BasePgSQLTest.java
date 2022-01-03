@@ -110,10 +110,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   public void runPgRegressTest(File inputDir, String schedule, long maxRuntimeMillis)
         throws Exception {
     final int tserverIndex = 0;
-    String label = String.format("using schedule %s at %s", schedule, inputDir);
-    PgRegressRunner pgRegress = new PgRegressRunner(inputDir, label, maxRuntimeMillis);
+    PgRegressRunner pgRegress = new PgRegressRunner(inputDir, schedule, maxRuntimeMillis);
     ProcessBuilder procBuilder = new PgRegressBuilder()
-        .setDirs(inputDir, PgRegressRunner.OUTPUT_DIR)
+        .setDirs(inputDir, pgRegress.outputDir())
         .setSchedule(schedule)
         .setHost(getPgHost(tserverIndex))
         .setPort(getPgPort(tserverIndex))
