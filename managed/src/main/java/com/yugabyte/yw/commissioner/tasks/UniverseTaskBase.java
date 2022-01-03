@@ -1937,12 +1937,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void preTaskActions() {
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    preTaskActions(universe);
+  }
+
+  // Use this if it is already in transaction or the field changes are not yet written to the DB.
+  protected void preTaskActions(Universe universe) {
     HealthChecker healthChecker = Play.current().injector().instanceOf(HealthChecker.class);
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     if ((details != null) && details.updateInProgress) {
-      log.debug("Cancelling any active health-checks for universe {}", u.universeUUID);
-      healthChecker.cancelHealthCheck(u.universeUUID);
+      log.debug("Cancelling any active health-checks for universe {}", universe.universeUUID);
+      healthChecker.cancelHealthCheck(universe.universeUUID);
     }
   }
 }
