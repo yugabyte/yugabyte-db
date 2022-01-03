@@ -68,6 +68,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           lockUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
+                // The universe parameter in this callback has local changes which may be needed by
+                // the methods inside e.g updateInProgress field.
                 if (isFirstTryForTask(taskParams())) {
                   // TODO Transaction is required mainly because validations are done here.
                   // Set all the node names.
@@ -77,7 +79,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                   // Update on-prem node UUIDs.
                   updateOnPremNodeUuidsOnTaskParams();
                   // Perform pre-task actions.
-                  preTaskActions();
+                  preTaskActions(u);
                   // Run preflight checks on onprem nodes to be added.
                   if (!performUniversePreflightChecks(taskParams().clusters)) {
                     throw new RuntimeException("Preflight checks failed.");
