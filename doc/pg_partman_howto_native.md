@@ -160,7 +160,7 @@ Partitions: partman_test.id_taptest_table_p0 FOR VALUES FROM ('0') TO ('10'),
             partman_test.id_taptest_table_default DEFAULT
 ```
 
-You can see the name of the template table by looking in the pg_partman configration for that parent table
+You can see the name of the template table by looking in the pg_partman configuration for that parent table
 
 ```
 select template_table from partman.part_config where parent_table = 'partman_test.id_taptest_table';
@@ -255,7 +255,7 @@ Partitioning an existing table with native partitioning is not as straight forwa
 
 This method is being labelled "offline" because, during points in this process, the data is not accessible to both the new and old table from a single object. The data is moved from the original table to a brand new table. The advantage of this method is that you can move your data in much smaller batches than even the target partition size, which can be a huge efficiency advantage for very large partition sets (you can commit in batches of several thousand vs several million). There are also less object renaming steps as we'll see in the online partitioning method next.
 
-*IMPORTANT NOTE REGUARDING FOREIGN KEYS*
+*IMPORTANT NOTE REGARDING FOREIGN KEYS*
 
 Taking the partitioned table offline is the only method that realistically works when you have foreign keys TO the table being partitioned. Since a brand new table must be created no matter what, the foreign key must also be recreated, so an outage involving all tables that are part of the FK relationship must be taken. A shorter outage may be possible with the online method below, but if you have to take an outage, this offline method is easier.
 
@@ -405,7 +405,7 @@ Now you should be able to start using your table the same as you were before!
 
 Sometimes it is not possible to take the table offline for an extended period of time to migrate it to a partitioned table. Below is one method to allow this to be done online. It's not as flexible as the offline method, but should allow a very minimal downtime and be mostly transparent to the end users of the table.
 
-As mentioned above, these methods do not account for there being foreign keys TO the original table. You can create foreign keys FROM the original table on the new patitioned table and things should work as expected. However, if you have foreign keys coming in to the table, I'm not aware of any migration method that does not require an outage to drop the original foreign keys and recreate them against the new partitioned table.
+As mentioned above, these methods do not account for there being foreign keys TO the original table. You can create foreign keys FROM the original table on the new partitioned table and things should work as expected. However, if you have foreign keys coming in to the table, I'm not aware of any migration method that does not require an outage to drop the original foreign keys and recreate them against the new partitioned table.
 
 This will be a daily, time-based partition set with an IDENTITY sequence as the primary key
 ```

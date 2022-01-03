@@ -163,7 +163,7 @@ This next step takes advantage of anonymous code blocks. It's basically writing 
                 , v_row.child_table
                 , substring(v_row.child_table from 1 for 4)||'_p'||to_char(v_min_val, 'IYYY"w"IW'));
 
-        -- I just have it outputing the ALTER statement for review. If you'd like this code to actually run it, uncomment the EXECUTE below.
+        -- I just have it outputting the ALTER statement for review. If you'd like this code to actually run it, uncomment the EXECUTE below.
         RAISE NOTICE '%', v_sql;
         -- EXECUTE v_sql;
     END LOOP;
@@ -216,7 +216,7 @@ We'll be partitioning by 1000 again and you can see none of the minimum values a
                 , v_row.child_table
                 , substring(v_row.child_table from 1 for 4)||'_p'||v_min_val::text);
 
-        -- I just have it outputing the ALTER statement for review. If you'd like this code to actually run it, uncomment the EXECUTE below.
+        -- I just have it outputting the ALTER statement for review. If you'd like this code to actually run it, uncomment the EXECUTE below.
         RAISE NOTICE '%', v_sql;
         -- EXECUTE v_sql;
     END LOOP;
@@ -251,7 +251,7 @@ Setup pg_partman to manage your partition set.
     SELECT partman.create_parent('tracking.hits', 'start', 'partman', 'weekly');
     COMMIT;
 
-This single function call will add your old partition set into pg_partman's configuration, create a new trigger and possibly create some new child tables as well. pg_partman always keeps a minumum number of future partitions premade (based on the *premake* value in the config table or as a parameter to the create_parent() function), so if you don't have those yet, this step will take care of that as well. Adjust the parameters as needed and see the documentation for addtional options that are available. This call matches the time partition used in the example so far.
+This single function call will add your old partition set into pg_partman's configuration, create a new trigger and possibly create some new child tables as well. pg_partman always keeps a minimum number of future partitions premade (based on the *premake* value in the config table or as a parameter to the create_parent() function), so if you don't have those yet, this step will take care of that as well. Adjust the parameters as needed and see the documentation for additional options that are available. This call matches the time partition used in the example so far.
 
     \d+ tracking.hits
                                       Table "tracking.hits"
