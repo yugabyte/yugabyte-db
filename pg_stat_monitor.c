@@ -1501,7 +1501,7 @@ pgss_store(uint64 queryid,
 #if PG_VERSION_NUM < 140000
     key.toplevel = 1;
 #else
-    key.toplevel = (nested_level == 0);
+    key.toplevel = ((exec_nested_level + plan_nested_level) == 0);
 #endif
 	pgss_hash = pgsm_get_hash();
 

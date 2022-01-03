@@ -119,12 +119,13 @@ LANGUAGE SQL PARALLEL SAFE;
 
 CREATE FUNCTION pg_stat_monitor_settings(
     OUT name  text,
-    OUT value INTEGER,
-    OUT default_value INTEGER,
+    OUT value text,
+    OUT default_value text,
     OUT description  text,
     OUT minimum INTEGER,
     OUT maximum INTEGER,
-    OUT restart INTEGER
+    OUT options text,
+    OUT restart text
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor_settings'
@@ -137,6 +138,7 @@ CREATE VIEW pg_stat_monitor_settings AS SELECT
     description,
     minimum,
     maximum,
+    options,
     restart
 FROM pg_stat_monitor_settings();
 
