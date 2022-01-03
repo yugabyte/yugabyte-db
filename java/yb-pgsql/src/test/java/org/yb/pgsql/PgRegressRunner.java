@@ -38,9 +38,9 @@ import java.util.stream.Collectors;
 public class PgRegressRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(PgRegressRunner.class);
-  public static final File OUTPUT_DIR = new File(TestUtils.getBaseTmpDir(), "pgregress_output");
 
   private File pgRegressInputDir;
+  private File pgRegressOutputDir;
   private Process pgRegressProc;
   private LogPrinter stdoutLogPrinter, stderrLogPrinter;
   private String label;
@@ -54,13 +54,15 @@ public class PgRegressRunner {
   private long maxRuntimeMillis;
   private long startTimeMillis;
 
-  public PgRegressRunner(File pgRegressInputDir, String label, long maxRuntimeMillis) {
+  public PgRegressRunner(File pgRegressInputDir, String schedule, long maxRuntimeMillis) {
     this.pgRegressInputDir = pgRegressInputDir;
 
-    this.label = label;
+    this.label = String.format("using schedule %s at %s", schedule, pgRegressInputDir);
     this.maxRuntimeMillis = maxRuntimeMillis;
 
-    regressionDiffsPath = new File(OUTPUT_DIR, "regression.diffs");
+    File testDir = new File(TestUtils.getBaseTmpDir(), "pgregress_output");
+    pgRegressOutputDir = new File(testDir, schedule);
+    regressionDiffsPath = new File(pgRegressOutputDir, "regression.diffs");
   }
 
   private Pattern FAILED_TEST_LINE_RE =
@@ -77,6 +79,10 @@ public class PgRegressRunner {
         }
       }
     };
+  }
+
+  public File outputDir() {
+    return pgRegressOutputDir;
   }
 
   public void start(ProcessBuilder procBuilder)
@@ -123,8 +129,8 @@ public class PgRegressRunner {
     if (!sortedFailedTests.isEmpty()) {
       LOG.info("Failed tests: " + sortedFailedTests);
       for (String testName : sortedFailedTests) {
-        File expectedFile = new File(new File(OUTPUT_DIR, "expected"), testName + ".out");
-        File resultFile = new File(new File(OUTPUT_DIR, "results"), testName + ".out");
+        File expectedFile = new File(new File(pgRegressOutputDir, "expected"), testName + ".out");
+        File resultFile = new File(new File(pgRegressOutputDir, "results"), testName + ".out");
         if (!expectedFile.exists()) {
           LOG.warn("Expected test output file " + expectedFile + " not found.");
           continue;
@@ -139,7 +145,7 @@ public class PgRegressRunner {
     }
 
     if (!ConfForTesting.isCI()) {
-      final Path pgRegressOutputPath = Paths.get(OUTPUT_DIR.toString());
+      final Path pgRegressOutputPath = Paths.get(pgRegressOutputDir.toString());
 
       LOG.info("Copying test result files and generated SQL and expected output " +
                pgRegressOutputPath + " back to " + pgRegressInputDir);
