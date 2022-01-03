@@ -193,11 +193,14 @@ public class CustomerTask extends Model {
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
 
+    @EnumValue("EditXClusterConfig")
+    EditXClusterConfig,
+
     @EnumValue("DeleteXClusterConfig")
     DeleteXClusterConfig,
 
-    @EnumValue("EditXClusterConfig")
-    EditXClusterConfig,
+    @EnumValue("SyncXClusterConfig")
+    SyncXClusterConfig,
 
     @EnumValue("PrecheckNode")
     PrecheckNode;
