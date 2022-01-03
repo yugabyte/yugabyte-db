@@ -138,6 +138,14 @@ class NodeType(Enum):
     def __str__(self) -> str:
         return self.value
 
+    def __lt__(self, other: Any) -> bool:
+        assert other.isinstance(NodeType)
+        return self.value < other.value
+
+    def __eq__(self, other: Any) -> bool:
+        assert isinstance(other, NodeType)
+        return self.value == other.value
+
 
 def is_object_file(path: str) -> bool:
     return path.endswith('.o')
@@ -1408,6 +1416,8 @@ def get_file_category(rel_path: str) -> str:
     >>> get_file_category('src/postgres/src/backend/executor/execScan.c')
     'postgres'
     """
+    if os.path.isabs(rel_path):
+        raise IOError("Relative path expected, got an absolute path: %s" % rel_path)
     basename = os.path.basename(rel_path)
 
     if rel_path.split(os.sep)[0] in DIRECTORIES_THAT_DO_NOT_AFFECT_TESTS:
@@ -1424,6 +1434,7 @@ def get_file_category(rel_path: str) -> str:
     if rel_path.startswith('src/postgres'):
         return 'postgres'
 
+    logging.info('rel_path=%s', rel_path)
     if rel_path.startswith('src/') or rel_path.startswith('ent/src/'):
         return 'c++'
 
@@ -1583,6 +1594,11 @@ def main() -> None:
     else:
         raise RuntimeError("Could not figure out how to generate the initial set of files")
 
+    file_changes = [
+        (os.path.relpath(file_path, conf.yb_src_root) if os.path.isabs(file_path) else file_path)
+        for file_path in file_changes
+    ]
+
     file_changes_by_category = group_by(file_changes, get_file_category)
     for category, changes in file_changes_by_category.items():
         logging.info("File changes in category '%s':", category)
@@ -1593,6 +1609,7 @@ def main() -> None:
     results: Set[Node] = set()
     if cmd == LIST_AFFECTED_CMD:
         results = dep_graph.find_affected_nodes(set(initial_nodes), args.node_type)
+
     elif cmd == LIST_DEPS_CMD:
         for node in initial_nodes:
             results.update(node.deps)
@@ -1604,12 +1621,14 @@ def main() -> None:
 
     if args.output_test_config:
         test_basename_list = sorted(
-                [os.path.basename(node.path) for node in results if node.node_type == 'test'])
+                [os.path.basename(node.path) for node in results
+                 if node.node_type == NodeType.TEST])
         affected_basenames = set([os.path.basename(node.path) for node in results])
 
         # These are ALL tests, not just tests affected by the changes in question, used mostly
         # for logging.
-        all_test_programs = [node for node in dep_graph.get_nodes() if node.node_type == 'test']
+        all_test_programs = [
+            node for node in dep_graph.get_nodes() if node.node_type == NodeType.TEST]
         all_test_basenames = set([os.path.basename(node.path) for node in all_test_programs])
 
         # A very conservative way to decide whether to run all tests. If there are changes in any
