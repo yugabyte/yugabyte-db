@@ -24,6 +24,9 @@ Database authorization
 Authentication
 : Yugabyte Cloud uses encryption-in-transit for client-server and intra-node connectivity.
 
+Auditing
+: Yugabyte Cloud provides detailed tracking of activity on your cloud, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, and billing.
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -74,4 +77,15 @@ Authentication
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-activity/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Audit cloud activity</div>
+      </div>
+      <div class="body">
+        Audit cloud activity, including changes to clusters, billing, allow lists, and more.
+      </div>
+    </a>
+  </div>
 </div>

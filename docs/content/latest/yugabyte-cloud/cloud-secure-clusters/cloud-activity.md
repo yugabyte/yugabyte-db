@@ -1,25 +1,27 @@
 ---
-title: Monitor cloud activity
-linkTitle: Monitor cloud activity
+title: Audit cloud activity
+linkTitle: Audit cloud activity
 description: Monitor activity on your Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
   latest:
     identifier: cloud-activity
-    parent: cloud-admin
+    parent: cloud-secure-clusters
     weight: 300
 isTocNested: true
 showAsideToc: true
 ---
 
-Audit your cloud activity using the **Activity** tab, which lists the source, activity, user, and time of the activity.
+Audit your cloud activity using the **Activity** tab on the **Admin** page, which lists the source, activity, user, and time of the activity.
 
 ![Cloud Activity tab](/images/yb-cloud/cloud-admin-activity.png)
 
 To view activity details and associated messages, click the right arrow in the list to display the **Activity Details** sheet.
 
 To filter the activity list, enter a search term. You can also filter the list by Source, Activity, and date range.
+
+## Logged activity
 
 The following table lists the cloud activity that is logged.
 
