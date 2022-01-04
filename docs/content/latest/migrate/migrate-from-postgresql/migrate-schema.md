@@ -12,11 +12,11 @@ isTocNested: false
 showAsideToc: true
 ---
 
-To convert the PostgreSQL schema to YugabyteDB schema, the following changes need to be made. 
+To convert the PostgreSQL schema to YugabyteDB schema, the following changes need to be made.
 
 {{< tip title="Tip" >}}
 
-Using `ysql_dump` tool can simplify some steps of your schema migration, [read more here](#using-ysql-dump).
+Using `ysql_dump` tool can simplify some steps of your schema migration, [read more here](#use-ysql-dump).
 
 {{< /tip >}}
 
@@ -104,7 +104,7 @@ CREATE TABLE test1 (
 
 ## Optimize sequences (SERIAL)
 
-All sequences in your schema currently use a default `CACHE` value of 1. In a distributed DB, this will result in each `INSERT` performing extra RPC calls to generate new row ids, dramatically reducing write performance. 
+All sequences in your schema currently use a default `CACHE` value of 1. In a distributed DB, this will result in each `INSERT` performing extra RPC calls to generate new row ids, dramatically reducing write performance.
 
 Consider the following table as an example.
 
@@ -142,7 +142,7 @@ yugabyte=# SELECT pg_get_serial_sequence('contacts', 'contact_id');
 
 ### Option 2. Use `UUID`s instead of `SERIAL`
 
-The recommended option is to use UUIDs instead of the SERIAL data type. UUIDs are globally unique identifiers that can be generated on any node without requiring any global inter-node coordination. 
+The recommended option is to use UUIDs instead of the SERIAL data type. UUIDs are globally unique identifiers that can be generated on any node without requiring any global inter-node coordination.
 
 Some systems refer to this data type as a globally unique identifier, or GUID, instead.
 
