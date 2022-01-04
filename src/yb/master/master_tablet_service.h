@@ -18,7 +18,6 @@
 #include "yb/master/master_tserver.h"
 
 #include "yb/tserver/tablet_service.h"
-#include "yb/tserver/tserver.pb.h"
 
 namespace yb {
 namespace master {

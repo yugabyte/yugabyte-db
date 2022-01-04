@@ -57,6 +57,8 @@ class RpcController;
 class Rpcs;
 class Poller;
 class Protocol;
+class Proxy;
+class ProxySource;
 class RefinedStream;
 class Scheduler;
 class SecureContext;
@@ -106,8 +108,6 @@ typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
 
 class ServiceIf;
 typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
-
-class ErrorStatusPB;
 
 typedef std::function<int(const std::string&, const std::string&)> Publisher;
 

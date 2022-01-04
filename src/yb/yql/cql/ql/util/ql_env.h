@@ -23,7 +23,8 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/transaction.pb.h"
 
 #include "yb/server/hybrid_clock.h"
 

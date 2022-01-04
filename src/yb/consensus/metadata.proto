@@ -36,68 +36,41 @@ package yb.consensus;
 
 option java_package = "org.yb.consensus";
 
-import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 
 // ===========================================================================
 //  Consensus Metadata
 // ===========================================================================
 
+enum PeerMemberType {
+  UNKNOWN_MEMBER_TYPE = 999;
+
+  // Any server added into a running consensus with the intention of becoming a VOTER, should be
+  // added as a PRE_VOTER. Such a server stays as a PRE_VOTER (for a specific tablet) till it is
+  // remote bootstrapped, after which it is promoted to VOTER. While in this mode, a server will
+  // not vote nor try to become a leader.
+  PRE_VOTER = 0;
+  VOTER = 1;
+
+  // Any server added into a running consensus with the intention of becoming an async replica
+  // (OBSERVER), Such a server stays as a PRE_OBSERVER (for a specific tablet) till it is
+  // remote bootstrapped, after which it is promoted to OBSERVER. While in this mode, a server
+  // will not vote nor try to become a leader.
+  PRE_OBSERVER = 2;
+
+  // Async replication mode. An OBSERVER doesn't participate in any decisions regarding the
+  // consensus configuration. It only accepts update requests and allows read requests.
+  OBSERVER = 3;
+};
+
 // A peer in a configuration.
 message RaftPeerPB {
-  // The possible roles for peers.
-  enum Role {
-    // Indicates this node is a follower in the configuration, i.e. that it participates
-    // in majorities and accepts Consensus::Update() calls.
-    FOLLOWER = 0;
-
-    // Indicates this node is the current leader of the configuration, i.e. that it
-    // participates in majorities and accepts Consensus::Append() calls.
-    LEADER = 1;
-
-    // New peers joining a quorum will be in this role for both PRE_VOTER and PRE_OBSERVER
-    // while the tablet data is being remote bootstrapped. The peer does not participate
-    // in starting elections or majorities.
-    LEARNER = 2;
-
-    // Indicates that this node is not a participant of the configuration, i.e. does
-    // not accept Consensus::Update() or Consensus::Update() and cannot
-    // participate in elections or majorities. This is usually the role of a node
-    // that leaves the configuration.
-    NON_PARTICIPANT = 3;
-
-    // This peer is a read (async) replica and gets informed of the quorum write
-    // activity and provides time-line consistent reads.
-    READ_REPLICA = 4;
-
-    UNKNOWN_ROLE = 7;
-  };
-
-  enum MemberType {
-    UNKNOWN_MEMBER_TYPE = 999;
-
-    // Any server added into a running consensus with the intention of becoming a VOTER, should be
-    // added as a PRE_VOTER. Such a server stays as a PRE_VOTER (for a specific tablet) till it is
-    // remote bootstrapped, after which it is promoted to VOTER. While in this mode, a server will
-    // not vote nor try to become a leader.
-    PRE_VOTER = 0;
-    VOTER = 1;
-
-    // Any server added into a running consensus with the intention of becoming an async replica
-    // (OBSERVER), Such a server stays as a PRE_OBSERVER (for a specific tablet) till it is
-    // remote bootstrapped, after which it is promoted to OBSERVER. While in this mode, a server
-    // will not vote nor try to become a leader.
-    PRE_OBSERVER = 2;
-
-    // Async replication mode. An OBSERVER doesn't participate in any decisions regarding the
-    // consensus configuration. It only accepts update requests and allows read requests.
-    OBSERVER = 3;
-  };
   // Permanent uuid is optional: RaftPeerPB/RaftConfigPB instances may
   // be created before the permanent uuid is known (e.g., when
   // manually specifying a configuration for Master/CatalogManager);
   // permament uuid can be retrieved at a later time through RPC.
   optional bytes permanent_uuid = 1;
-  optional MemberType member_type = 2;
+  optional PeerMemberType member_type = 2;
   repeated HostPortPB last_known_private_addr = 3;
   repeated HostPortPB last_known_broadcast_addr = 4;
   optional CloudInfoPB cloud_info = 5;

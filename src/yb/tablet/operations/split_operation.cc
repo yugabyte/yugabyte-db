@@ -17,6 +17,7 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
 
@@ -32,13 +33,13 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<tserver::SplitTabletRequestPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, tserver::SplitTabletRequestPB* request) {
+void RequestTraits<tablet::SplitTabletRequestPB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, SplitTabletRequestPB* request) {
   replicate->set_allocated_split_request(request);
 }
 
 template <>
-tserver::SplitTabletRequestPB* RequestTraits<tserver::SplitTabletRequestPB>::MutableRequest(
+SplitTabletRequestPB* RequestTraits<SplitTabletRequestPB>::MutableRequest(
     consensus::ReplicateMsg* replicate) {
   return replicate->mutable_split_request();
 }

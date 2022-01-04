@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/messenger.h"
@@ -249,7 +250,7 @@ Status YQLPartitionsVTable::InsertTabletIntoRowUnlocked(
     const auto addr = dns_results.find(host);
     if (addr != dns_results.end()) {
       QLValue::set_inetaddress_value(addr->second, map_value->add_keys());
-      map_value->add_values()->set_string_value(consensus::RaftPeerPB::Role_Name(replica.role()));
+      map_value->add_values()->set_string_value(PeerRole_Name(replica.role()));
     }
   }
   RETURN_NOT_OK(SetColumnValue(kReplicaAddresses, replica_addresses, row));

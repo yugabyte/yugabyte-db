@@ -13,6 +13,8 @@
 
 #include "yb/gen_yrpc/model.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
 
@@ -24,6 +26,12 @@ using google::protobuf::internal::WireFormatLite;
 
 namespace yb {
 namespace gen_yrpc {
+
+namespace {
+
+const std::string kProtoExtension = ".proto";
+
+}
 
 WireFormatLite::FieldType FieldType(const google::protobuf::FieldDescriptor* field) {
   return static_cast<WireFormatLite::FieldType>(field->type());
@@ -215,6 +223,33 @@ bool IsPbAny(const google::protobuf::Descriptor* message) {
 
 bool IsLwAny(const google::protobuf::Descriptor* message) {
   return message->full_name() == "yb.rpc.Any";
+}
+
+std::string RemoveProtoExtension(const std::string& fname) {
+  if (boost::ends_with(fname, kProtoExtension)) {
+    return fname.substr(0, fname.length() - kProtoExtension.length());
+  } else {
+    return fname;
+  }
+}
+
+std::vector<std::string> ListDependencies(const google::protobuf::FileDescriptor* file) {
+  std::vector<std::string> result;
+  for (int i = 0; i != file->dependency_count(); ++i) {
+    std::string dependency_path = RemoveProtoExtension(file->dependency(i)->name());
+    if (dependency_path == "google/protobuf/any") {
+      result.push_back("yb/rpc/any");
+      continue;
+    }
+    if (dependency_path == "yb/rpc/rpc_header" ||
+        dependency_path == "yb/rpc/lightweight_message" ||
+        dependency_path == "yb/rpc/service" ||
+        boost::starts_with(dependency_path, "google/protobuf/")) {
+      continue;
+    }
+    result.push_back(std::move(dependency_path));
+  }
+  return result;
 }
 
 } // namespace gen_yrpc

@@ -15,10 +15,11 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/ql_value.h"
 #include "yb/common/transaction.h"
 
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/util/status_log.h"

@@ -32,10 +32,11 @@ class TaskDetail extends Component {
 
   retryTaskClicked = (currentTaskUUID) => {
     this.props.retryCurrentTask(currentTaskUUID).then((response) => {
-      const taskResponse = response?.payload?.response;
-      if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
+      const status = response?.payload?.response?.status || response?.payload?.status;
+      if (status === 200 || status === 201) {
         browserHistory.push('/tasks');
       } else {
+        const taskResponse = response?.payload?.response;
         const toastMessage = taskResponse?.data?.error
           ? taskResponse?.data?.error
           : taskResponse?.statusText;
@@ -108,8 +109,10 @@ class TaskDetail extends Component {
             {displayIcon}
             {displayMessage}
           </div>
+          {/* TODO use API response to check retryable. */}
           {allowRetry && isNonEmptyString(currentTaskData.title) &&
-            currentTaskData.title.includes('Created Universe') && (
+          (currentTaskData.title.includes('Created Universe') ||
+            currentTaskData.title.includes('Updated Universe')) && (
               <div
                 className="btn btn-orange text-center pull-right task-detail-button"
                 onClick={() => self.retryTaskClicked(taskUUID)}
@@ -137,7 +140,7 @@ class TaskDetail extends Component {
       taskFailureDetails = failedTasks.data.failedSubTasks.map((subTask) => {
         let errorString = <span />;
         // Show retry only for the last failed task.
-        if (subTask.subTaskState === 'Failure') {
+        if (subTask.subTaskState === 'Failure' || subTask.subTaskState === 'Aborted') {
           if (subTask.errorString === 'null') {
             subTask.errorString = "Task failed";
           }

@@ -14,6 +14,8 @@
 #include <shared_mutex>
 #include <chrono>
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"

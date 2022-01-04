@@ -40,6 +40,7 @@
 #include <vector>
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/quorum_util.h"
 
@@ -79,7 +80,7 @@ struct TabletPeerInfo {
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
   bool has_on_disk_size;
-  yb::consensus::RaftPeerPB::Role raft_role;
+  yb::PeerRole raft_role;
 };
 
 // An identifier for a table, according to the `/tables` page.
@@ -95,7 +96,7 @@ struct TableInfo {
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
   bool has_complete_on_disk_size;
-  std::map<yb::consensus::RaftPeerPB::Role, size_t> raft_role_counts;
+  std::map<yb::PeerRole, size_t> raft_role_counts;
 
   explicit TableInfo(TabletPeerInfo info)
       : namespace_name(info.namespace_name),
@@ -540,11 +541,11 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     }
 
     auto consensus = peer->shared_consensus();
-    auto raft_role = RaftPeerPB::UNKNOWN_ROLE;
+    auto raft_role = PeerRole::UNKNOWN_ROLE;
     if (consensus) {
       raft_role = consensus->role();
     } else if (status.tablet_data_state() == TabletDataState::TABLET_DATA_COPYING) {
-      raft_role = RaftPeerPB::LEARNER;
+      raft_role = PeerRole::LEARNER;
     }
 
     auto identifer = TableIdentifier {
@@ -604,7 +605,7 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     std::stringstream role_counts_html;
     role_counts_html << "<ul>";
     for (const auto& rc_iter : info.raft_role_counts) {
-      role_counts_html << "<li>" << RaftPeerPB::Role_Name(rc_iter.first)
+      role_counts_html << "<li>" << PeerRole_Name(rc_iter.first)
                        << ": " << rc_iter.second << "</li>";
     }
     role_counts_html << "</ul>";
@@ -708,7 +709,7 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
         ? peer.last_known_private_addr()[0].host()
         : peer.permanent_uuid();
     peer_addr_or_uuid = EscapeForHtmlToString(peer_addr_or_uuid);
-    string role_name = RaftPeerPB::Role_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
+    string role_name = PeerRole_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
     string formatted = Substitute("$0: $1", role_name, peer_addr_or_uuid);
     // Make the local peer bold.
     if (peer.permanent_uuid() == tserver_->instance_pb().permanent_uuid()) {

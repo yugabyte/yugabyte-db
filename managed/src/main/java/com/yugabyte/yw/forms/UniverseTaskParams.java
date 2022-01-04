@@ -4,7 +4,7 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;

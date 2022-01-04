@@ -14,6 +14,7 @@
 
 #include <rapidjson/error/en.h>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_value.h"
 #include "yb/util/kv_util.h"

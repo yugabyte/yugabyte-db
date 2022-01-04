@@ -50,6 +50,7 @@
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
@@ -60,8 +61,6 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/clock.h"
-
-#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -364,7 +363,6 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       rpc_factory.get(),
       queue.get(),
       raft_pool_token.get(),
-      log,
       multi_raft_manager);
 
   return std::make_shared<RaftConsensus>(
@@ -573,18 +571,18 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
       return Status::OK();
     }
 
-    RaftPeerPB::Role active_role = state_->GetActiveRoleUnlocked();
-    if (active_role == RaftPeerPB::LEADER) {
+    PeerRole active_role = state_->GetActiveRoleUnlocked();
+    if (active_role == PeerRole::LEADER) {
       LOG_WITH_PREFIX(INFO) << "Not starting " << election_name << " -- already leader";
       return Status::OK();
     }
-    if (active_role == RaftPeerPB::LEARNER || active_role == RaftPeerPB::READ_REPLICA) {
+    if (active_role == PeerRole::LEARNER || active_role == PeerRole::READ_REPLICA) {
       LOG_WITH_PREFIX(INFO) << "Not starting " << election_name << " -- role is " << active_role
                             << ", pending = " << state_->IsConfigChangePendingUnlocked()
                             << ", active_role=" << active_role;
       return Status::OK();
     }
-    if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
+    if (PREDICT_FALSE(active_role == PeerRole::NON_PARTICIPANT)) {
       VLOG_WITH_PREFIX(1) << "Not starting " << election_name << " -- non participant";
       // Avoid excessive election noise while in this state.
       SnoozeFailureDetector(DO_NOT_LOG);
@@ -799,7 +797,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     return Status::OK();
   }
 
-  if (state_->GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+  if (state_->GetActiveRoleUnlocked() != PeerRole::LEADER) {
     resp->mutable_error()->set_code(TabletServerErrorPB::NOT_THE_LEADER);
     StatusToPB(STATUS(IllegalState, "Not currently leader"),
                resp->mutable_error()->mutable_status());
@@ -879,7 +877,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
 
   if (!new_leader_uuid.empty()) {
     const auto* peer = FindPeer(state_->GetActiveConfigUnlocked(), new_leader_uuid);
-    if (peer && peer->member_type() == RaftPeerPB::VOTER) {
+    if (peer && peer->member_type() == PeerMemberType::VOTER) {
       auto timeout_ms = FLAGS_protege_synchronization_timeout_ms;
       if (timeout_ms != 0 &&
           queue_->PeerLastReceivedOpId(new_leader_uuid) < GetLatestOpIdFromLog()) {
@@ -1100,7 +1098,7 @@ Status RaftConsensus::BecomeReplicaUnlocked(
       << "Becoming Follower/Learner. State: " << state_->ToStringUnlocked()
       << ", new leader: " << new_leader_uuid << ", initial_fd_wait: " << initial_fd_wait;
 
-  if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
+  if (state_->GetActiveRoleUnlocked() == PeerRole::LEADER) {
     WithholdElectionAfterStepDown(new_leader_uuid);
   }
 
@@ -1242,9 +1240,9 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   SCHECK(!rounds.empty(), InvalidArgument, "Attempted to add zero rounds to the queue");
 
   auto role = state_->GetActiveRoleUnlocked();
-  if (role != RaftPeerPB::LEADER) {
+  if (role != PeerRole::LEADER) {
     return STATUS_FORMAT(IllegalState, "Appending new rounds while not the leader but $0",
-                         RaftPeerPB::Role_Name(role));
+                         PeerRole_Name(role));
   }
 
   std::vector<ReplicateMsgPtr> replicate_msgs;
@@ -1380,7 +1378,7 @@ void RaftConsensus::UpdateMajorityReplicated(
   }
 
   if (committed_index_changed &&
-      state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
+      state_->GetActiveRoleUnlocked() == PeerRole::LEADER) {
     // If all operations were just committed, and we don't have pending operations, then
     // we write an empty batch that contains committed index.
     // This affects only our local log, because followers have different logic in this scenario.
@@ -2483,12 +2481,12 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                         Substitute("Server must have member_type specified. Request: $0",
                                    req.ShortDebugString()));
         }
-        if (server.member_type() != RaftPeerPB::PRE_VOTER &&
-            server.member_type() != RaftPeerPB::PRE_OBSERVER) {
+        if (server.member_type() != PeerMemberType::PRE_VOTER &&
+            server.member_type() != PeerMemberType::PRE_OBSERVER) {
           return STATUS(InvalidArgument,
               Substitute("Server with UUID $0 must be of member_type PRE_VOTER or PRE_OBSERVER. "
                          "member_type received: $1", server_uuid,
-                         RaftPeerPB::MemberType_Name(server.member_type())));
+                         PeerMemberType_Name(server.member_type())));
         }
         if (server.last_known_private_addr().empty()) {
           return STATUS(InvalidArgument, "server must have last_known_addr specified",
@@ -2546,16 +2544,16 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
             Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
                        server_uuid, new_config.ShortDebugString()));
         }
-        if (new_peer->member_type() != RaftPeerPB::PRE_OBSERVER &&
-            new_peer->member_type() != RaftPeerPB::PRE_VOTER) {
+        if (new_peer->member_type() != PeerMemberType::PRE_OBSERVER &&
+            new_peer->member_type() != PeerMemberType::PRE_VOTER) {
           return STATUS(IllegalState, Substitute("Cannot change role of server with UUID $0 "
                                                  "because its member type is $1",
                                                  server_uuid, new_peer->member_type()));
         }
-        if (new_peer->member_type() == RaftPeerPB::PRE_OBSERVER) {
-          new_peer->set_member_type(RaftPeerPB::OBSERVER);
+        if (new_peer->member_type() == PeerMemberType::PRE_OBSERVER) {
+          new_peer->set_member_type(PeerMemberType::OBSERVER);
         } else {
-          new_peer->set_member_type(RaftPeerPB::VOTER);
+          new_peer->set_member_type(PeerMemberType::VOTER);
         }
 
         VLOG(3) << "config after CHANGE_ROLE: " << new_config.DebugString();
@@ -2642,7 +2640,7 @@ void RaftConsensus::Shutdown() {
   shutdown_.Store(true, kMemOrderRelease);
 }
 
-RaftPeerPB::Role RaftConsensus::GetActiveRole() const {
+PeerRole RaftConsensus::GetActiveRole() const {
   auto lock = state_->LockForRead();
   return state_->GetActiveRoleUnlocked();
 }
@@ -2697,7 +2695,7 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
       if (state != ReplicaState::kRunning) {
         return STATUS_FORMAT(IllegalState, "Consensus is not running: $0", state);
       }
-      if (state_->GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+      if (state_->GetActiveRoleUnlocked() != PeerRole::LEADER) {
         return STATUS_FORMAT(IllegalState, "Not the leader: $0", state_->GetActiveRoleUnlocked());
       }
       leader_lease_status = state_->GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
@@ -2865,12 +2863,12 @@ Status RaftConsensus::RequestVoteRespondVoteGranted(const VoteRequestPB* request
   return Status::OK();
 }
 
-RaftPeerPB::Role RaftConsensus::GetRoleUnlocked() const {
+PeerRole RaftConsensus::GetRoleUnlocked() const {
   DCHECK(state_->IsLocked());
   return state_->GetActiveRoleUnlocked();
 }
 
-RaftPeerPB::Role RaftConsensus::role() const {
+PeerRole RaftConsensus::role() const {
   auto lock = state_->LockForRead();
   return GetRoleUnlocked();
 }
@@ -2923,7 +2921,7 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
 }
 
 void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
-  DCHECK_EQ(RaftPeerPB::LEADER, state_->GetActiveRoleUnlocked());
+  DCHECK_EQ(PeerRole::LEADER, state_->GetActiveRoleUnlocked());
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
 
   // Change the peers so that we're able to replicate messages remotely and
@@ -2965,7 +2963,7 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
     LeaderLeaseStatus* leader_lease_status) const {
   CHECK(state_->IsLocked());
   if (leader_lease_status) {
-    if (GetRoleUnlocked() == RaftPeerPB_Role_LEADER) {
+    if (GetRoleUnlocked() == PeerRole::LEADER) {
       *leader_lease_status = state_->GetLeaderLeaseStatusUnlocked();
     } else {
       // We'll still return a valid value if we're not a leader.
@@ -2987,12 +2985,12 @@ void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
   out << "<pre>" << EscapeForHtmlToString(queue_->ToString()) << "</pre>" << std::endl;
 
   // Dump the queues on a leader.
-  RaftPeerPB::Role role;
+  PeerRole role;
   {
     auto lock = state_->LockForRead();
     role = state_->GetActiveRoleUnlocked();
   }
-  if (role == RaftPeerPB::LEADER) {
+  if (role == PeerRole::LEADER) {
     out << "<h2>Queue overview</h2>" << std::endl;
     out << "<pre>" << EscapeForHtmlToString(queue_->ToString()) << "</pre>" << std::endl;
     out << "<hr/>" << std::endl;
@@ -3135,7 +3133,7 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
     return;
   }
 
-  if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
+  if (state_->GetActiveRoleUnlocked() == PeerRole::LEADER) {
     LOG_WITH_PREFIX(DFATAL)
         << "Leader " << election_name << " callback while already leader! Result: Term "
         << result.election_term << ": "
@@ -3289,7 +3287,7 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
                                            new_term, state_->GetCurrentTermUnlocked()));
   }
 
-  if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
+  if (state_->GetActiveRoleUnlocked() == PeerRole::LEADER) {
     LOG_WITH_PREFIX(INFO) << "Stepping down as leader of term "
                           << state_->GetCurrentTermUnlocked()
                           << " since new term is " << new_term;

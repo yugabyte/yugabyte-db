@@ -30,19 +30,19 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/util/format.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
@@ -1547,9 +1547,6 @@ INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestDurableMinReplicat
 
 TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
   constexpr int kNRows = 100;
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
-      &client_->proxy_cache(),
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
   std::string tablet_id;
   GetTablet(&tablet_id);

@@ -26,13 +26,14 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_controller.h"

@@ -8,6 +8,7 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import io.ebean.annotation.Transactional;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,8 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
-import play.db.ebean.Transactional;
+import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
 public class XClusterConfigSync extends XClusterConfigTaskBase {
@@ -45,7 +45,8 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
 
     try {
-      Master.SysClusterConfigEntryPB config = client.getMasterClusterConfig().getConfig();
+      CatalogEntityInfo.SysClusterConfigEntryPB config =
+          client.getMasterClusterConfig().getConfig();
 
       syncXClusterConfigs(config, targetUniverse.universeUUID);
 
@@ -60,7 +61,8 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
   }
 
   @Transactional
-  private void syncXClusterConfigs(Master.SysClusterConfigEntryPB config, UUID targetUniverseUUID) {
+  private void syncXClusterConfigs(
+      CatalogEntityInfo.SysClusterConfigEntryPB config, UUID targetUniverseUUID) {
 
     Set<Pair<UUID, String>> foundXClusterConfigs = new HashSet<>();
 

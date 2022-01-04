@@ -61,7 +61,9 @@ public class AuditService {
           // SmartKey API key
           "$..api_key",
           // SMTP password
-          "$..smtpPassword");
+          "$..smtpPassword",
+          // Hashicorp token
+          "$..HC_VAULT_TOKEN");
 
   public static final List<JsonPath> SECRET_JSON_PATHS =
       SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());

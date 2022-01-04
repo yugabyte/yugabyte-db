@@ -26,6 +26,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/master_backup.fwd.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
@@ -44,107 +46,36 @@ typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
 class EncryptionManager;
 
-class AddUniverseKeysRequestPB;
-class AddUniverseKeysResponsePB;
-class AlterNamespaceRequestPB;
-class AlterNamespaceResponsePB;
-class AlterTableRequestPB;
-class BlacklistPB;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
 class CDCConsumerSplitDriverIf;
-class ChangeEncryptionInfoRequestPB;
-class ChangeEncryptionInfoResponsePB;
-class ChangeMasterClusterConfigRequestPB;
-class ChangeMasterClusterConfigResponsePB;
+class CDCRpcTasks;
 class ClusterConfigInfo;
 class ClusterLoadBalancer;
-class CreateCDCStreamRequestPB;
-class CreateNamespaceRequestPB;
-class CreateNamespaceResponsePB;
-class CreateSnapshotScheduleRequestPB;
-class CreateTableRequestPB;
-class CreateTableResponsePB;
-class DdlLogEntryPB;
-class DeleteCDCStreamResponsePB;
-class EncryptionInfoPB;
 class FlushManager;
-class FlushTablesRequestPB;
-class FlushTablesResponsePB;
-class GetCDCStreamResponsePB;
-class GetMasterClusterConfigRequestPB;
-class GetMasterClusterConfigResponsePB;
-class GetNamespaceInfoResponsePB;
-class GetPermissionsResponsePB;
-class GetTableLocationsRequestPB;
-class GetTableLocationsResponsePB;
-class GetTableSchemaRequestPB;
-class GetTableSchemaResponsePB;
-class GetUniverseKeyRegistryRequestPB;
-class GetUniverseKeyRegistryResponsePB;
-class GetUniverseReplicationResponsePB;
-class HasUniverseKeyInMemoryRequestPB;
-class HasUniverseKeyInMemoryResponsePB;
-class IsCreateTableDoneRequestPB;
-class IsCreateTableDoneResponsePB;
-class IsDeleteNamespaceDoneRequestPB;
-class IsEncryptionEnabledRequestPB;
-class IsEncryptionEnabledResponsePB;
-class IsFlushTablesDoneRequestPB;
-class IsFlushTablesDoneResponsePB;
-class IsInitDbDoneRequestPB;
-class IsInitDbDoneResponsePB;
-class IsLoadBalancedRequestPB;
-class IsLoadBalancedResponsePB;
-class ListCDCStreamsRequestPB;
-class ListCDCStreamsResponsePB;
-class ListNamespacesResponsePB;
-class ListSnapshotRestorationsResponsePB;
-class ListSnapshotSchedulesResponsePB;
-class ListSnapshotsResponsePB;
-class ListTablegroupsRequestPB;
-class ListTablegroupsResponsePB;
-class ListTablesRequestPB;
-class ListTablesResponsePB;
 class Master;
-class MasterErrorPB;
+class MasterBackupProxy;
 class MasterOptions;
 class MasterPathHandlers;
-class MasterServiceProxy;
-class NamespaceIdentifierPB;
+class MasterAdminProxy;
+class MasterClientProxy;
+class MasterClusterProxy;
+class MasterDclProxy;
+class MasterDdlProxy;
+class MasterEncryptionProxy;
+class MasterHeartbeatProxy;
+class MasterReplicationProxy;
 class NamespaceInfo;
 class PermissionsManager;
-class PlacementInfoPB;
-class ReplicationInfoPB;
-class ReportedTabletPB;
 class RetryingTSRpcTask;
-class RolePermissionInfoPB;
 class SnapshotCoordinatorContext;
-class SnapshotScheduleFilterPB;
 class SnapshotState;
-class SysCDCStreamEntryPB;
 class SysCatalogTable;
-class SysClusterConfigEntryPB;
 class SysConfigInfo;
-class SysNamespaceEntryPB;
 class SysRowEntries;
-class SysSnapshotEntryPB;
-class SysTablesEntryPB;
-class SysTabletsEntryPB;
-class TSHeartbeatRequestPB;
-class TSHeartbeatResponsePB;
-class TSInfoPB;
-class TSInformationPB;
+class TSDescriptor;
 class TSManager;
-class TSRegistrationPB;
-class TSSnapshotSchedulesInfoPB;
-class TSSnapshotsInfoPB;
-class TableIdentifierPB;
-class TablegroupIdentifierPB;
-class TabletLocationsPB;
-class TabletReportPB;
-class TabletReportUpdatesPB;
 class TabletSplitCompleteHandlerIf;
 class UDTypeInfo;
 class YQLPartitionsVTable;
@@ -152,6 +83,7 @@ class YQLVirtualTable;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
+struct CDCConsumerStreamInfo;
 struct SplitTabletIds;
 struct TableDescription;
 struct TabletReplica;
@@ -188,6 +120,7 @@ using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
 using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
+using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 
 namespace enterprise {
 

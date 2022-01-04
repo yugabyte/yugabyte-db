@@ -22,7 +22,6 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_path.h"
@@ -35,6 +34,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
+#include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/result.h"
@@ -220,9 +220,8 @@ class DocKeyColumnPathBuilder {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* response) {
+Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
-  request_.Swap(request);
   response_ = response;
 
   doc_key_ = VERIFY_RESULT(FetchDocKey(schema_, request_));

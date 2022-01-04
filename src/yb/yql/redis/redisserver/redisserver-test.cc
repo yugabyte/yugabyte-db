@@ -20,12 +20,15 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/client/yb_table_name.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
 #include "yb/master/flush_manager.h"
+#include "yb/master/master_admin.pb.h"
 
 #include "yb/rpc/io_thread_pool.h"
 

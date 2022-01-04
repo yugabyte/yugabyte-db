@@ -36,11 +36,11 @@ set(YB_PCH_PREFIX consensus)
 # consensus_metadata_proto
 #########################################
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   METADATA_PROTO_SRCS METADATA_PROTO_HDRS METADATA_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES
+  NO_SERVICE_PROTO_FILES
     metadata.proto)
 set(METADATA_PROTO_LIBS
   yb_common_proto
@@ -59,6 +59,7 @@ YRPC_GENERATE(
   CONSENSUS_YRPC_SRCS CONSENSUS_YRPC_HDRS CONSENSUS_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  NO_SERVICE_PROTO_FILES consensus_types.proto
   PROTO_FILES consensus.proto)
 list(APPEND CONSENSUS_YRPC_SRCS opid_util.cc)
 set(CONSENSUS_YRPC_LIBS
@@ -69,8 +70,7 @@ set(CONSENSUS_YRPC_LIBS
   rpc_header_proto
   protobuf
   tablet_proto
-  tserver_admin_proto
-  wire_protocol_proto)
+  tserver_admin_proto)
 
 ADD_YB_LIBRARY(consensus_proto
   SRCS ${CONSENSUS_YRPC_SRCS}

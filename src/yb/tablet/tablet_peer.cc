@@ -42,12 +42,14 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/consensus_frontier.h"
 
@@ -77,6 +79,7 @@
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
@@ -215,14 +218,22 @@ Status TabletPeer::InitTabletPeer(
     messenger_ = messenger;
 
     tablet->SetMemTableFlushFilterFactory([log] {
-      auto index = log->GetLatestEntryOpId().index;
-      return [index] (const rocksdb::MemTable& memtable) -> Result<bool> {
+      auto largest_log_op_index = log->GetLatestEntryOpId().index;
+      return [largest_log_op_index] (const rocksdb::MemTable& memtable) -> Result<bool> {
         auto frontiers = memtable.Frontiers();
         if (frontiers) {
-          const auto& largest = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
+          const auto largest_memtable_op_index =
+              down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
           // We can only flush this memtable if all operations written to it have also been written
           // to the log (maybe not synced, if durable_wal_write is disabled, but that's OK).
-          return largest.op_id().index <= index;
+          auto should_flush = largest_memtable_op_index <= largest_log_op_index;
+          if (!should_flush) {
+            LOG(WARNING)
+              << "Skipping flush on memtable with ops ahead of log. "
+              << "Memtable index: " << largest_memtable_op_index
+              << " - log index: " << largest_log_op_index;
+          }
+          return should_flush;
         }
 
         // It is correct to not have frontiers when memtable is empty
@@ -624,16 +635,16 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-void TabletPeer::WriteAsync(std::unique_ptr<WriteOperation> operation) {
+void TabletPeer::WriteAsync(std::unique_ptr<WriteQuery> query) {
   ScopedOperation preparing_token(&preparing_operations_counter_);
   auto status = CheckRunning();
   if (!status.ok()) {
-    operation->CompleteWithStatus(status);
+    query->Cancel(status);
     return;
   }
 
-  operation->set_preparing_token(std::move(preparing_token));
-  tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
+  query->operation().set_preparing_token(std::move(preparing_token));
+  tablet_->AcquireLocksAndPerformDocOperations(std::move(query));
 }
 
 Result<HybridTime> TabletPeer::ReportReadRestart() {
@@ -684,7 +695,7 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
 }
 
 std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
-    tserver::TransactionStatePB* request) {
+    TransactionStatePB* request) {
   auto result = std::make_unique<UpdateTxnOperation>(tablet());
   result->TakeRequest(request);
   return result;
@@ -926,13 +937,6 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
-Status TabletPeer::GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const {
-  RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
-  log_->GetMaxIndexesToSegmentSizeMap(min_op_idx, idx_size_map);
-  return Status::OK();
-}
-
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
@@ -985,11 +989,10 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
   switch (replicate_msg->op_type()) {
     case consensus::WRITE_OP:
-      DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
+      DCHECK(replicate_msg->has_write()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
       // We use separate preparing token only on leader, so here it could be empty.
-      return std::make_unique<WriteOperation>(
-          OpId::kUnknownTerm, CoarseTimePoint::max(), this, tablet());
+      return std::make_unique<WriteOperation>(tablet());
 
     case consensus::CHANGE_METADATA_OP:
       DCHECK(replicate_msg->has_change_metadata_request()) << "CHANGE_METADATA_OP replica"
@@ -1002,7 +1005,7 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       return std::make_unique<UpdateTxnOperation>(tablet());
 
     case consensus::TRUNCATE_OP:
-      DCHECK(replicate_msg->has_truncate_request()) << "TRUNCATE_OP replica"
+      DCHECK(replicate_msg->has_truncate()) << "TRUNCATE_OP replica"
           " operation must receive an TruncateRequestPB";
       return std::make_unique<TruncateOperation>(tablet());
 

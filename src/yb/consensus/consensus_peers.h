@@ -186,7 +186,12 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // requires IO or may block.
   void ProcessResponse();
 
-  void ProcessResponseWithStatus(const Status& status);
+  // Signals that a heartbeat response was received from the peer.
+  void ProcessHeartbeatResponse(const Status& status);
+
+  // Returns true if there are more pending ops to process, false otherwise.
+  bool ProcessResponseWithStatus(const Status& status,
+                                 ConsensusResponsePB* response);
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
   // goes to ProcessRemoteBootstrapResponse().
@@ -205,12 +210,17 @@ class Peer : public std::enable_shared_from_this<Peer> {
   std::unique_lock<simple_spinlock> StartProcessingUnlocked();
 
   template <class LockType>
-  std::unique_lock<AtomicTryMutex> LockPerforming(LockType type) {
-    return std::unique_lock<AtomicTryMutex>(performing_mutex_, type);
+  std::unique_lock<AtomicTryMutex> LockPerformingUpdate(LockType type) {
+    return std::unique_lock<AtomicTryMutex>(performing_update_mutex_, type);
   }
 
-  // Simple wrapper to cleanup ops from the request_.
-  void CleanRequestOps();
+  template <class LockType>
+  std::unique_lock<AtomicTryMutex> LockPerformingHeartbeat(LockType type) {
+    return std::unique_lock<AtomicTryMutex>(performing_heartbeat_mutex_, type);
+  }
+
+  // Simple wrapper to cleanup ops from the request.
+  void CleanRequestOps(ConsensusRequestPB* request);
 
   std::string LogPrefix() const;
 
@@ -227,8 +237,21 @@ class Peer : public std::enable_shared_from_this<Peer> {
   uint64_t failed_attempts_ = 0;
 
   // The latest consensus update request and response.
-  ConsensusRequestPB request_;
-  ConsensusResponsePB response_;
+  ConsensusRequestPB update_request_;
+  ConsensusResponsePB update_response_;
+
+  // Latest heartbeat request and response
+  ConsensusRequestPB heartbeat_request_;
+  ConsensusResponsePB heartbeat_response_;
+
+  // Each time a heartbeat request is sent this value is incremented.
+  int64_t cur_heartbeat_id_ = 0;
+  // Indiciates the last valid heartbeat id that was sent.
+  // Each time an operation (non-heartbeat) is sent this value is updated.
+  // Upon receving the response for an outstanding heartbeat if
+  // cur_heartbeat_id_ < minimum_viable_heartbeat_ then the heartbeat is invalid
+  // since a more recent op was sent so we won't process it's response.
+  int64_t minimum_viable_heartbeat_ = 0;
 
   // The latest remote bootstrap request and response.
   StartRemoteBootstrapRequestPB rb_request_;
@@ -238,7 +261,12 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   // Held if there is an outstanding request.  This is used in order to ensure that we only have a
   // single request outstanding at a time, and to wait for the outstanding requests at Close().
-  AtomicTryMutex performing_mutex_;
+  AtomicTryMutex performing_update_mutex_;
+
+  // Held if there is an outstanding heartbeat request.
+  // This is used in order to ensure that we only have a
+  // single heartbeat request outstanding at a time.
+  AtomicTryMutex performing_heartbeat_mutex_;
 
   // Heartbeater for remote peer implementations.  This will send status only requests to the remote
   // peers whenever we go more than 'FLAGS_raft_heartbeat_interval_ms' without sending actual data.

@@ -41,6 +41,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.WaitForFollowerLag,
           TaskType.SetNodeState);
 
   @Override
@@ -106,7 +107,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
     position = assertSequence(subTasksByPosition, TSERVER, position);
     assertCommonTasks(subTasksByPosition, position);
-    assertEquals(43, position);
+    assertEquals(49, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

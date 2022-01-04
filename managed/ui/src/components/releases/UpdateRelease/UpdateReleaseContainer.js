@@ -10,7 +10,7 @@ import {
   updateYugaByteRelease,
   updateYugaByteReleaseResponse
 } from '../../../actions/customers';
-import { createErrorMessage } from '../../alerts/AlertConfiguration/AlertUtils';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {

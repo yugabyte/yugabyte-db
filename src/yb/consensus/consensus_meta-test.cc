@@ -71,7 +71,7 @@ class ConsensusMetadataTest : public YBTest {
     config_.set_opid_index(kInvalidOpIdIndex);
     RaftPeerPB* peer = config_.add_peers();
     peer->set_permanent_uuid(fs_manager_.uuid());
-    peer->set_member_type(RaftPeerPB::VOTER);
+    peer->set_member_type(PeerMemberType::VOTER);
     HostPortToPB(HostPort("fake-host", 0), peer->mutable_last_known_private_addr()->Add());
   }
 
@@ -153,7 +153,7 @@ RaftConfigPB BuildConfig(const vector<string>& uuids) {
   for (const string& uuid : uuids) {
     RaftPeerPB* peer = config.add_peers();
     peer->set_permanent_uuid(uuid);
-    peer->set_member_type(RaftPeerPB::VOTER);
+    peer->set_member_type(PeerMemberType::VOTER);
     HostPortToPB(HostPort("255.255.255.255", 0), peer->mutable_last_known_private_addr()->Add());
   }
   return config;
@@ -171,36 +171,36 @@ TEST_F(ConsensusMetadataTest, TestActiveRole) {
                                       config1, kInitialTerm, &cmeta));
 
   // Not a participant.
-  ASSERT_EQ(RaftPeerPB::NON_PARTICIPANT, cmeta->active_role());
+  ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
 
   // Follower.
   uuids.push_back(peer_uuid);
   RaftConfigPB config2 = BuildConfig(uuids); // But we are a member of this one.
   config2.set_opid_index(1);
   cmeta->set_committed_config(config2);
-  ASSERT_EQ(RaftPeerPB::FOLLOWER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::FOLLOWER, cmeta->active_role());
 
   // Pending should mask committed.
   cmeta->set_pending_config(config1);
-  ASSERT_EQ(RaftPeerPB::NON_PARTICIPANT, cmeta->active_role());
+  ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
   cmeta->clear_pending_config();
-  ASSERT_EQ(RaftPeerPB::FOLLOWER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::FOLLOWER, cmeta->active_role());
 
   // Leader.
   cmeta->set_leader_uuid(peer_uuid);
-  ASSERT_EQ(RaftPeerPB::LEADER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::LEADER, cmeta->active_role());
 
   // Again, pending should mask committed.
   cmeta->set_pending_config(config1);
-  ASSERT_EQ(RaftPeerPB::NON_PARTICIPANT, cmeta->active_role());
+  ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
   cmeta->set_pending_config(config2); // pending == committed.
-  ASSERT_EQ(RaftPeerPB::LEADER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::LEADER, cmeta->active_role());
   cmeta->set_committed_config(config1); // committed now excludes this node, but is masked...
-  ASSERT_EQ(RaftPeerPB::LEADER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::LEADER, cmeta->active_role());
 
   // ... until we clear pending, then we find committed now excludes us.
   cmeta->clear_pending_config();
-  ASSERT_EQ(RaftPeerPB::NON_PARTICIPANT, cmeta->active_role());
+  ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
 }
 
 // Ensure that invocations of ToConsensusStatePB() return the expected state

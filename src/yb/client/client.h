@@ -47,19 +47,20 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/common_fwd.h"
 
 #include "yb/common/clock.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/retryable_request.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-#include "yb/common/partition.h"
-#include "yb/common/retryable_request.h"
-#include "yb/common/roles_permissions.h"
-
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -813,6 +814,8 @@ class YBClient {
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };
+
+Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb

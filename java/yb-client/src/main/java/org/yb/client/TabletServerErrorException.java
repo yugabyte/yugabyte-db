@@ -35,7 +35,7 @@ import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.rpc.RpcHeader;
-import org.yb.tserver.Tserver;
+import org.yb.tserver.TserverTypes;
 
 /**
  * This exception is thrown by Tablet Servers when something goes wrong processing a request.
@@ -44,9 +44,9 @@ import org.yb.tserver.Tserver;
 @InterfaceStability.Evolving
 @SuppressWarnings("serial")
 public class TabletServerErrorException extends YBServerException {
-  private Tserver.TabletServerErrorPB tserverError = null;
+  private TserverTypes.TabletServerErrorPB tserverError = null;
 
-  TabletServerErrorException(String serverUuid, Tserver.TabletServerErrorPB error) {
+  TabletServerErrorException(String serverUuid, TserverTypes.TabletServerErrorPB error) {
     super(serverUuid, error.getStatus());
     this.tserverError = error;
   }
@@ -55,5 +55,5 @@ public class TabletServerErrorException extends YBServerException {
     super(serverUuid, errorStatus);
   }
 
-  public Tserver.TabletServerErrorPB getTServerError() { return tserverError; }
+  public TserverTypes.TabletServerErrorPB getTServerError() { return tserverError; }
 }

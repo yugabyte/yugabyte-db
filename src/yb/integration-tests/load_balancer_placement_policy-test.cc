@@ -24,6 +24,8 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/master/master_client.proxy.h"
+
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/monotime.h"
@@ -72,7 +74,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
   }
 
   Result<uint32_t> GetLoadOnTserver(ExternalTabletServer* server, const string tablename) {
-    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
+    auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
     master::GetTableLocationsRequestPB req;
     req.mutable_table()->set_table_name(tablename);
     req.mutable_table()->mutable_namespace_()->set_name(table_name().namespace_name());
@@ -80,7 +82,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
 
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
-    RETURN_NOT_OK(proxy->GetTableLocations(req, &resp, &rpc));
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
 
     uint32_t count = 0;
     std::vector<string> replicas;
@@ -95,12 +97,6 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     LOG(INFO) << Format("For ts $0, table name $1 tablet count $2",
                         server->instance_id().permanent_uuid(), tablename, count);
     return count;
-  }
-
-  Result<std::shared_ptr<master::MasterServiceProxy>> GetMasterLeaderProxy() {
-    int idx;
-    RETURN_NOT_OK(external_mini_cluster()->GetLeaderMasterIndex(&idx));
-    return external_mini_cluster()->master_proxy(idx);
   }
 
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {

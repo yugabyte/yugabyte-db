@@ -25,7 +25,8 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(multi_raft_heartbeat_interval_ms, 100,
+// NOTE: For tests set this value to ~10ms
+DEFINE_int32(multi_raft_heartbeat_interval_ms, 10,
              "The heartbeat interval for batch Raft replication.");
 TAG_FLAG(multi_raft_heartbeat_interval_ms, experimental);
 TAG_FLAG(multi_raft_heartbeat_interval_ms, hidden);
@@ -36,7 +37,8 @@ DEFINE_bool(enable_multi_raft_heartbeat_batcher, false,
 TAG_FLAG(enable_multi_raft_heartbeat_batcher, experimental);
 TAG_FLAG(enable_multi_raft_heartbeat_batcher, hidden);
 
-DEFINE_int32(multi_raft_batch_size, 30,
+// NOTE: For tests set this value to 1
+DEFINE_int32(multi_raft_batch_size, 1,
             "Maximum batch size for a multi-raft consensus payload.");
 TAG_FLAG(multi_raft_batch_size, experimental);
 TAG_FLAG(multi_raft_batch_size, hidden);
@@ -47,6 +49,13 @@ namespace yb {
 namespace consensus {
 
 using rpc::PeriodicTimer;
+
+struct MultiRaftHeartbeatBatcher::MultiRaftConsensusData {
+  MultiRaftConsensusRequestPB batch_req;
+  MultiRaftConsensusResponsePB batch_res;
+  rpc::RpcController controller;
+  std::vector<ResponseCallbackData> response_callback_data;
+};
 
 MultiRaftHeartbeatBatcher::MultiRaftHeartbeatBatcher(const yb::HostPort& hostport,
                                                      rpc::ProxyCache* proxy_cache,

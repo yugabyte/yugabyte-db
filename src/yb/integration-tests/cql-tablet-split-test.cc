@@ -29,6 +29,7 @@
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_metadata.h"
@@ -92,7 +93,7 @@ Result<size_t> GetNumActiveTablets(
     const RequireTabletsRunning require_tablets_running) {
   master::GetTableLocationsResponsePB resp;
   RETURN_NOT_OK(itest::GetTableLocations(
-      cluster->GetLeaderMasterProxy(), table_name, timeout, require_tablets_running, &resp));
+      cluster, table_name, timeout, require_tablets_running, &resp));
   return resp.tablet_locations_size();
 }
 
@@ -365,7 +366,8 @@ void CqlTabletSplitTest::CompleteSecondaryIndexTest(const int num_splits, const 
   LOG(INFO) << "Workload complete, num_writes: " << writer_->num_writes()
             << ", num_write_errors: " << writer_->num_write_errors()
             << ", num_reads: " << reader_->num_reads()
-            << ", num_read_errors:" << reader_->num_read_errors();
+            << ", num_read_errors: " << reader_->num_read_errors()
+            << ", splits done: " << num_active_tablets - start_num_active_tablets_;
   ASSERT_EQ(reader_->read_status_stopped(), load_generator::ReadStatus::kOk)
       << " reader stopped due to: " << AsString(reader_->read_status_stopped());
   ASSERT_LE(writer_->num_write_errors(), max_write_errors_);

@@ -142,7 +142,7 @@ void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_m
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
-        if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+        if (replica.second.role == PeerRole::LEADER) {
           (*txn_map)[replica.first]++;
         }
       }
@@ -189,13 +189,13 @@ Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfo
 Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
     const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer) {
   switch (peer.member_type()) {
-    case consensus::RaftPeerPB::PRE_VOTER:
-    case consensus::RaftPeerPB::VOTER: {
+    case consensus::PeerMemberType::PRE_VOTER:
+    case consensus::PeerMemberType::VOTER: {
       // This peer is a live replica.
       return replication_info.live_replicas().placement_uuid();
     }
-    case consensus::RaftPeerPB::PRE_OBSERVER:
-    case consensus::RaftPeerPB::OBSERVER: {
+    case consensus::PeerMemberType::PRE_OBSERVER:
+    case consensus::PeerMemberType::OBSERVER: {
       // This peer is a read replica.
       std::vector<std::string> placement_uuid_matches;
       for (const auto& placement_info : replication_info.read_replicas()) {
@@ -213,7 +213,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
 
       return placement_uuid_matches.front();
     }
-    case consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE: {
+    case consensus::PeerMemberType::UNKNOWN_MEMBER_TYPE: {
       return STATUS(IllegalState, Format("Member type unknown for peer $0",
                                          peer.ShortDebugString()));
     }

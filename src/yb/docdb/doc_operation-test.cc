@@ -169,15 +169,16 @@ class DocOperationTest : public DocDBTestBase {
     }
   }
 
-  void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
+  void WriteQL(const QLWriteRequestPB& ql_writereq_pb, const Schema& schema,
                QLResponsePB* ql_writeresp_pb,
                const HybridTime& hybrid_time = HybridTime::kMax,
                const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
     IndexMap index_map;
-    QLWriteOperation ql_write_op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+    QLWriteOperation ql_write_op(ql_writereq_pb,
+                                 std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
                                  index_map, nullptr /* unique_index_key_schema */, txn_op_context);
-    ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
+    ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
     ASSERT_OK(ql_write_op.Apply(
@@ -239,7 +240,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     }
 
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb);
 
     if (ttl == -1) {
       AssertWithoutTTL(stmt_type);
@@ -279,7 +280,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     ql_writereq_pb.set_ttl(ttl);
     yb::QLResponsePB ql_writeresp_pb;
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
   }
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
@@ -290,7 +291,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
         stmt_type, schema, column_values, hybrid_time, txn_op_content);
     yb::QLResponsePB ql_writeresp_pb;
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
   }
 
   QLRowBlock ReadQLRow(const Schema& schema, int32_t primary_key, const HybridTime& read_time) {
@@ -349,7 +350,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   redis_write_operation_pb.mutable_key_value()->set_type(REDIS_TYPE_STRING);
   redis_write_operation_pb.mutable_key_value()->set_hash_code(123);
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
-  RedisWriteOperation redis_write_operation(&redis_write_operation_pb);
+  RedisWriteOperation redis_write_operation(redis_write_operation_pb);
   auto doc_write_batch = MakeDocWriteBatch();
   ASSERT_OK(redis_write_operation.Apply(
       {&doc_write_batch, CoarseTimePoint::max() /* deadline */, ReadHybridTime()}));
@@ -407,7 +408,7 @@ TEST_F(DocOperationTest, TestQLWriteNulls) {
   }
 
   // Write to docdb.
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb);
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb);
 
   // Null columns are converted to tombstones.
   AssertDocDbDebugDumpStrEq(R"#(
@@ -488,7 +489,7 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
   QLAddInt32Condition(where_clause_and, 1, QL_OP_LESS_THAN_EQUAL, kDeleteRangeHigh);
   ql_writereq_pb.set_hash_code(0);
 
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb,
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb,
           HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(2000, 0),
           kNonTransactionalOperationContext);
 
@@ -1057,7 +1058,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 
   ql_writereq_pb.set_ttl(2000);
 
   // Write to docdb at the same physical time and a bumped-up logical time.
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, t0prime);
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, t0prime);
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> \

@@ -3361,6 +3361,7 @@ BeginCopyFrom(ParseState *pstate,
 		if (whereToSendOutput == DestRemote)
 		{
 			bool isDataSent = YBIsDataSent();
+			bool isDataSentForCurrQuery = YBIsDataSentForCurrQuery();
 			ReceiveCopyBegin(cstate);
 			/*
 			 * ReceiveCopyBegin sends a message back to the client
@@ -3370,6 +3371,7 @@ BeginCopyFrom(ParseState *pstate,
 			 * So we can safely roll back YBIsDataSent to its previous value.
 			 */
 			if (!isDataSent) YBMarkDataNotSent();
+			if (!isDataSentForCurrQuery) YBMarkDataNotSentForCurrQuery();
 		}
 		else {
 			cstate->copy_file = stdin;

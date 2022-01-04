@@ -14,7 +14,6 @@
 #include "yb/gen_yrpc/substitutions.h"
 
 #include <boost/algorithm/string/case_conv.hpp>
-#include <boost/algorithm/string/predicate.hpp>
 
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
@@ -24,12 +23,15 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/rpc/service.pb.h"
+
+#include "yb/util/format.h"
+
 namespace yb {
 namespace gen_yrpc {
 
 namespace {
 
-const std::string kProtoExtension = ".proto";
 const std::string kWireFormat = "::google::protobuf::internal::WireFormatLite";
 
 // Extract the last filename component.
@@ -55,14 +57,6 @@ std::string GenerateCloseNamespace(const string &str) {
 }
 
 } // namespace
-
-std::string RemoveProtoExtension(const std::string& fname) {
-  if (boost::ends_with(fname, kProtoExtension)) {
-    return fname.substr(0, fname.length() - kProtoExtension.length());
-  } else {
-    return fname;
-  }
-}
 
 FileSubstitutions::FileSubstitutions(const google::protobuf::FileDescriptor* file)
     : file_(file), path_no_extension_(RemoveProtoExtension(file->name())) {
@@ -182,7 +176,13 @@ Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field
 Substitutions CreateSubstitutions(const google::protobuf::ServiceDescriptor* service) {
   Substitutions result;
   result.emplace_back("service_name", service->name());
-  result.emplace_back("full_service_name", service->full_name());
+  std::string full_service_name = service->full_name();
+  result.emplace_back("original_full_service_name", full_service_name);
+  auto custom_service_name = service->options().GetExtension(rpc::custom_service_name);
+  if (!custom_service_name.empty()) {
+    full_service_name = custom_service_name;
+  }
+  result.emplace_back("full_service_name", full_service_name);
   result.emplace_back("service_method_count", std::to_string(service->method_count()));
   result.emplace_back("service_method_enum", service->name() + "RpcMethodIndexes");
 

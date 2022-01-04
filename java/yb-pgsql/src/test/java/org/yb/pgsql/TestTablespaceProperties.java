@@ -37,7 +37,7 @@ import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.LocatedTablet;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.YBTestRunnerNonTsanOnly;
@@ -104,9 +104,18 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     String customTable = prefixName + "_custom_table";
     String defaultIndex = prefixName + "_default_index";
     String customIndex = prefixName + "_custom_index";
+    String defaultTablegroup = prefixName + "_default_tablegroup";
+    String customTablegroup = prefixName + "_custom_tablegroup";
+    String tableInDefaultTablegroup = prefixName + "_table_in_default_tablegroup";
+    String tableInCustomTablegroup = prefixName + "_table_in_custom_tablegroup";
     String defaultIndexCustomTable = prefixName + "_default_idx_on_custom_table";
     String customIndexCustomTable = prefixName + "_custom_idx_on_custom_table";
     try (Statement setupStatement = connection.createStatement()) {
+      // Create tablegroups in default and custom tablegroups
+      setupStatement.execute("CREATE TABLEGROUP " +  customTablegroup +
+          " TABLESPACE testTablespace");
+      setupStatement.execute("CREATE TABLEGROUP " +  defaultTablegroup);
+
       // Create tables in default and custom tablespaces.
       setupStatement.execute(
           "CREATE TABLE " +  customTable + "(a SERIAL) TABLESPACE testTablespace");
@@ -124,11 +133,18 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
       setupStatement.execute("CREATE INDEX " + defaultIndex + " on " +
           defaultTable + "(a)");
+
+      // Create tables in tablegroups (in default and custom tablespaces)
+      setupStatement.execute(
+        "CREATE TABLE " +  tableInDefaultTablegroup + "(a SERIAL) TABLEGROUP " + defaultTablegroup);
+
+      setupStatement.execute(
+        "CREATE TABLE " +  tableInCustomTablegroup + "(a SERIAL) TABLEGROUP " + customTablegroup);
     }
     tablesWithDefaultPlacement.addAll(Arrays.asList(defaultTable, defaultIndex,
-          defaultIndexCustomTable));
+          defaultIndexCustomTable, tableInDefaultTablegroup));
     tablesWithCustomPlacement.addAll(Arrays.asList(customTable, customIndex,
-          customIndexCustomTable));
+          customIndexCustomTable, tableInCustomTablegroup));
   }
 
   private void addTserversAndWaitForLB() throws Exception {
@@ -160,6 +176,19 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     testLBTablespacePlacement();
   }
 
+  public void executeAndAssertErrorThrown(String statement, String err_msg) throws Exception{
+    boolean error_thrown = false;
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(statement);
+    } catch (PSQLException e) {
+      assertTrue(e.getMessage().contains(err_msg));
+      error_thrown = true;
+    }
+
+    // Verify that error was indeed thrown.
+    assertTrue(error_thrown);
+  }
+
   public void negativeTest() throws Exception {
     // Create tablespaces with invalid placement.
     try (Statement setupStatement = connection.createStatement()) {
@@ -186,47 +215,26 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       setupStatement.execute("CREATE TABLE negativeTestTable (a int)");
     }
 
+    final String not_enough_tservers_in_zone_msg = "Not enough tablet servers in " +
+                                                   "cloud3:region1:zone1";
+    final String not_enough_tservers_for_rf_msg = "Not enough live tablet servers to create " +
+                                                  "table with replication factor 5. 3 tablet " +
+                                                  "servers are alive";
+
     // Test creation of table in invalid tablespace.
-    final String expected_error_msg = "Not enough tablet servers in cloud3:region1:zone1";
-    boolean error_thrown = false;
-    try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute(
-          "CREATE TABLE invalidPlacementTable (a int) TABLESPACE invalid_tblspc");
-    } catch (PSQLException e) {
-      assertTrue(e.getMessage().contains(expected_error_msg));
-      error_thrown = true;
-    }
-
-    // Verify that error was indeed thrown.
-    assertTrue(error_thrown);
-
-    // Reset error_thrown and perform same test for indexes.
-    error_thrown = false;
+    executeAndAssertErrorThrown(
+      "CREATE TABLE invalidPlacementTable (a int) TABLESPACE invalid_tblspc",
+      not_enough_tservers_in_zone_msg);
 
     // Test creation of index in invalid tablespace.
-    try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute(
-          "CREATE INDEX invalidPlacementIdx ON negativeTestTable(a) TABLESPACE invalid_tblspc");
-    } catch (PSQLException e) {
-      assertTrue(e.getMessage().contains(expected_error_msg));
-      error_thrown = true;
-    }
+    executeAndAssertErrorThrown(
+      "CREATE INDEX invalidPlacementIdx ON negativeTestTable(a) TABLESPACE invalid_tblspc",
+      not_enough_tservers_in_zone_msg);
 
-    assertTrue(error_thrown);
-
-    // Reset error_thrown and test whether error is thrown when the replication factor
-    // cannot be satisfied.
-    error_thrown = false;
-    try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute(
-          "CREATE TABLE insufficent_rf (a int)  TABLESPACE insufficient_rf_tblspc");
-    } catch (PSQLException e) {
-      assertTrue(e.getMessage().contains("Not enough live tablet servers to create table " +
-                                         "with replication factor 5. 3 tablet servers are alive"));
-      error_thrown = true;
-    }
-
-    assertTrue(error_thrown);
+    // Test creation of table when the replication factor cannot be satisfied.
+    executeAndAssertErrorThrown(
+      "CREATE TABLE insufficent_rf_tbl (a int) TABLESPACE insufficient_rf_tblspc",
+      not_enough_tservers_for_rf_msg);
   }
 
   public void sanityTest() throws Exception {
@@ -453,17 +461,18 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   }
 
   void verifyCustomPlacement(final String table) throws Exception {
-    List<LocatedTablet> tabletLocations = fetchTablets(table);
+    final YBClient client = miniCluster.getClient();
+    client.waitForReplicaCount(getTableFromName(table), 2, 30_000);
+
+    List<LocatedTablet> tabletLocations = getTableFromName(table).getTabletsLocations(30_000);
 
     // Get tablets for table.
     for (LocatedTablet tablet : tabletLocations) {
       List<LocatedTablet.Replica> replicas = tablet.getReplicas();
-      // Replication factor should be 2.
-      assertEquals("Mismatch of replication factor for table:" + table, replicas.size(), 2);
 
       // Verify that both tablets either belong to zone1 or zone2.
       for (LocatedTablet.Replica replica : replicas) {
-        org.yb.Common.CloudInfoPB cloudInfo = replica.getCloudInfo();
+        org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
         if (cloudInfo.getPlacementCloud().equals("cloud1")) {
           assertTrue(cloudInfo.getPlacementRegion().equals("region1"));
           assertTrue(cloudInfo.getPlacementZone().equals("zone1"));
@@ -477,17 +486,16 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   }
 
   void verifyDefaultPlacement(final String table) throws Exception {
-    List<LocatedTablet> tabletLocations = fetchTablets(table);
+    final YBClient client = miniCluster.getClient();
+    client.waitForReplicaCount(getTableFromName(table), 3, 30_000);
 
+    List<LocatedTablet> tabletLocations = getTableFromName(table).getTabletsLocations(30_000);
     // Get tablets for table.
     for (LocatedTablet tablet : tabletLocations) {
       List<LocatedTablet.Replica> replicas = tablet.getReplicas();
-      // Replication factor should be 3.
-      assertEquals("Mismatch of replication factor for table:" + table, 3, replicas.size());
-
       // Verify that tablets can be present in any zone.
       for (LocatedTablet.Replica replica : replicas) {
-        org.yb.Common.CloudInfoPB cloudInfo = replica.getCloudInfo();
+        org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
         if (cloudInfo.getPlacementCloud().equals("cloud1")) {
           assertTrue(cloudInfo.getPlacementRegion().equals("region1"));
           assertTrue(cloudInfo.getPlacementZone().equals("zone1"));
@@ -504,13 +512,12 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     }
   }
 
-  List<LocatedTablet> fetchTablets(final String table) throws Exception {
+  YBTable getTableFromName(final String table) throws Exception {
     final YBClient client = miniCluster.getClient();
-    List<Master.ListTablesResponsePB.TableInfo> tables =
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables =
       client.getTablesList(table).getTableInfoList();
     assertEquals("More than one table found with name " + table, 1, tables.size());
-    final YBTable ybtable = client.openTableByUUID(
+    return client.openTableByUUID(
       tables.get(0).getId().toStringUtf8());
-    return ybtable.getTabletsLocations(30000);
   }
 }

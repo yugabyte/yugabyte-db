@@ -44,6 +44,8 @@
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/transaction_status_resolver.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
@@ -80,7 +82,7 @@ DEFINE_uint64(max_transactions_in_status_request, 128,
               "Request status for at most specified number of transactions at once. "
                   "0 disables load time transaction status resolution.");
 
-DEFINE_uint64(transactions_cleanup_cache_size, 64, "Transactions cleanup cache size.");
+DEFINE_uint64(transactions_cleanup_cache_size, 256, "Transactions cleanup cache size.");
 
 DEFINE_uint64(transactions_status_poll_interval_ms, 500 * yb::kTimeMultiplier,
               "Transactions poll interval.");
@@ -606,6 +608,8 @@ class TransactionParticipant::Impl
   }
 
   CHECKED_STATUS ProcessCleanup(const TransactionApplyData& data, CleanupType cleanup_type) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(data) << ", " << AsString(cleanup_type);
+
     loader_.WaitLoaded(data.transaction_id);
 
     MinRunningNotifier min_running_notifier(&applier_);
@@ -614,12 +618,9 @@ class TransactionParticipant::Impl
     if (it == transactions_.end()) {
       if (cleanup_type == CleanupType::kImmediate) {
         cleanup_cache_.Insert(data.transaction_id);
+        return Status::OK();
       }
-
-      return Status::OK();
-    }
-
-    if ((**it).ProcessingApply()) {
+    } else if ((**it).ProcessingApply()) {
       VLOG_WITH_PREFIX(2) << "Don't cleanup transaction because it is applying intents: "
                           << data.transaction_id;
       return Status::OK();
@@ -1047,7 +1048,7 @@ class TransactionParticipant::Impl
       const TransactionId& id, RemoveReason reason,
       MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) override {
     auto now = participant_context_.Now();
-    VLOG_WITH_PREFIX(4) << "EnqueueRemoveUnlocked: " << id << " at " << now;
+    VLOG_WITH_PREFIX_AND_FUNC(4) << id << " at " << now << ", reason: " << AsString(reason);
     remove_queue_.emplace_back(RemoveQueueEntry{
       .id = id,
       .time = now,
@@ -1404,6 +1405,7 @@ class TransactionParticipant::Impl
       if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
         CheckForAbortedTransactions();
       }
+      CleanTransactionsQueue(&graceful_cleanup_queue_, &min_running_notifier);
     }
     CleanupStatusResolvers();
   }

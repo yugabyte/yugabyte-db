@@ -15,16 +15,17 @@ package org.yb.client;
 import com.google.protobuf.Message;
 import java.util.Set;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.Common;
-import org.yb.Common.HostPortPB;
-import org.yb.master.Master;
+import org.yb.CommonNet;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicationResponse> {
 
   private final String replicationGroupName;
   private final Set<String> sourceTableIDs;
-  private final Set<Common.HostPortPB> sourceMasterAddresses;
+  private final Set<CommonNet.HostPortPB> sourceMasterAddresses;
 
   SetupUniverseReplicationRequest(
     YBTable table,
@@ -41,8 +42,8 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.SetupUniverseReplicationRequestPB.Builder builder =
-      Master.SetupUniverseReplicationRequestPB.newBuilder()
+    final MasterReplicationOuterClass.SetupUniverseReplicationRequestPB.Builder builder =
+      MasterReplicationOuterClass.SetupUniverseReplicationRequestPB.newBuilder()
         .setProducerId(replicationGroupName)
         .addAllProducerTableIds(sourceTableIDs)
         .addAllProducerMasterAddresses(sourceMasterAddresses);
@@ -63,12 +64,12 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
   @Override
   Pair<SetupUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.SetupUniverseReplicationResponsePB.Builder builder =
-      Master.SetupUniverseReplicationResponsePB.newBuilder();
+    final MasterReplicationOuterClass.SetupUniverseReplicationResponsePB.Builder builder =
+      MasterReplicationOuterClass.SetupUniverseReplicationResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     SetupUniverseReplicationResponse response =
       new SetupUniverseReplicationResponse(deadlineTracker.getElapsedMillis(), tsUUID, error);

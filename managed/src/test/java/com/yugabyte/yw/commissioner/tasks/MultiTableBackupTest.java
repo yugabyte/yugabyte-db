@@ -31,12 +31,12 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
-import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class MultiTableBackupTest extends CommissionerBaseTest {
@@ -60,28 +60,28 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     TableInfo ti1 =
         TableInfo.newBuilder()
             .setName("Table1")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default0"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default0"))
             .setId(ByteString.copyFromUtf8(TABLE_1_UUID.toString()))
             .setTableType(TableType.REDIS_TABLE_TYPE)
             .build();
     TableInfo ti2 =
         TableInfo.newBuilder()
             .setName("Table2")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default1"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default1"))
             .setId(ByteString.copyFromUtf8(TABLE_2_UUID.toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .build();
     TableInfo ti3 =
         TableInfo.newBuilder()
             .setName("Table3")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default2"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default2"))
             .setId(ByteString.copyFromUtf8(TABLE_3_UUID.toString()))
             .setTableType(TableType.PGSQL_TABLE_TYPE)
             .build();
     TableInfo ti4 =
         TableInfo.newBuilder()
             .setName("Table4")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default2"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default2"))
             .setId(ByteString.copyFromUtf8(TABLE_4_UUID.toString()))
             .setTableType(TableType.PGSQL_TABLE_TYPE)
             .build();

@@ -228,14 +228,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // Computes the amount of bytes that would have been GC'd if Log::GC had been called.
   CHECKED_STATUS GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const;
 
-  // Returns a map of log index -> segment size, of all the segments that currently cannot be GCed
-  // because in-memory structures have anchors in them.
-  //
-  // 'min_op_idx' is the minimum operation index to start looking from, meaning that we skip the
-  // segment that contains it and then start recording segments.
-  void GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx,
-                                     std::map<int64_t, int64_t>* max_idx_to_segment_size) const;
-
   // Returns the file system location of the currently active WAL segment.
   const WritableLogSegment* ActiveSegmentForTests() const {
     return active_segment_.get();

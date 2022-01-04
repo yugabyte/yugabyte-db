@@ -21,6 +21,8 @@
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master_replication.fwd.h"
+
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 

@@ -388,6 +388,7 @@ class UniverseDetail extends Component {
                 width={width}
                 nodePrefixes={nodePrefixes}
                 isKubernetesUniverse={isItKubernetesUniverse}
+                visibleModal={visibleModal}
               />
             </div>
           </Tab.Pane>
@@ -439,6 +440,10 @@ class UniverseDetail extends Component {
               isCommunityEdition={!!customer.INSECURE_apiToken}
               fetchCustomerTasks={this.props.fetchCustomerTasks}
               refreshUniverseData={this.getUniverseInfo}
+              abortCurrentTask={this.props.abortCurrentTask}
+              hideTaskAbortModal={this.props.hideTaskAbortModal}
+              showTaskAbortModal={this.props.showTaskAbortModal}
+              visibleModal={visibleModal}
             />
           </Tab.Pane>
         )

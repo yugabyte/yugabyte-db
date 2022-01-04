@@ -18,6 +18,7 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/rocksdb/db/compaction.h"
 

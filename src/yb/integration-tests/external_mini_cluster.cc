@@ -50,6 +50,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/algorithm.h"
@@ -63,8 +65,8 @@
 
 #include "yb/integration-tests/cluster_itest_util.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/master/sys_catalog.h"
 
@@ -73,6 +75,10 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/server_base.pb.h"
+#include "yb/server/server_base.proxy.h"
+
+#include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"
@@ -111,7 +117,6 @@ using rapidjson::Value;
 using strings::Substitute;
 
 using yb::master::GetLeaderMasterRpc;
-using yb::master::MasterServiceProxy;
 using yb::master::IsInitDbDoneRequestPB;
 using yb::master::IsInitDbDoneResponsePB;
 using yb::server::ServerStatusPB;
@@ -577,18 +582,11 @@ Status ExternalMiniCluster::RemoveMaster(ExternalMaster* master) {
   return Status::OK();
 }
 
-std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetLeaderConsensusProxy() {
+ConsensusServiceProxy ExternalMiniCluster::GetLeaderConsensusProxy() {
   return GetConsensusProxy(GetLeaderMaster());
 }
 
-std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::GetLeaderMasterProxy() {
-  auto leader_master_sock = GetLeaderMaster()->bound_rpc_addr();
-
-  return std::make_shared<MasterServiceProxy>(proxy_cache_.get(), leader_master_sock);
-}
-
-std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetConsensusProxy(
-    ExternalDaemon* external_deamon) {
+ConsensusServiceProxy ExternalMiniCluster::GetConsensusProxy(ExternalDaemon* external_deamon) {
   return GetProxy<ConsensusServiceProxy>(external_deamon);
 }
 
@@ -643,7 +641,7 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
 
 Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
                                          ChangeConfigType type,
-                                         RaftPeerPB::MemberType member_type,
+                                         consensus::PeerMemberType member_type,
                                          bool use_hostport) {
   if (type != consensus::ADD_SERVER && type != consensus::REMOVE_SERVER) {
     return STATUS(InvalidArgument, Substitute("Invalid Change Config type $0", type));
@@ -762,10 +760,10 @@ Status ExternalMiniCluster::AddTServerToBlacklist(
         master->bound_rpc_hostport().ToString(), masters_.size()));
   }
 
-  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  auto proxy = GetMasterProxy<master::MasterClusterProxy>(index);
   rpc::RpcController rpc;
   rpc.set_timeout(opts_.timeout);
-  RETURN_NOT_OK(proxy->GetMasterClusterConfig(config_req, &config_resp, &rpc));
+  RETURN_NOT_OK(proxy.GetMasterClusterConfig(config_req, &config_resp, &rpc));
   if (config_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "GetMasterClusterConfig RPC response hit error: $0",
@@ -779,7 +777,7 @@ Status ExternalMiniCluster::AddTServerToBlacklist(
   *change_req.mutable_cluster_config() = config;
   ChangeMasterClusterConfigResponsePB change_resp;
   rpc.Reset();
-  RETURN_NOT_OK(proxy->ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
+  RETURN_NOT_OK(proxy.ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
   if (change_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "ChangeMasterClusterConfig RPC response hit error: $0",
@@ -806,10 +804,10 @@ Status ExternalMiniCluster::GetMinReplicaCountForPlacementBlock(
         master->bound_rpc_hostport().ToString(), masters_.size()));
   }
 
-  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  auto proxy = GetMasterProxy<master::MasterClusterProxy>(index);
   rpc::RpcController rpc;
   rpc.set_timeout(opts_.timeout);
-  RETURN_NOT_OK(proxy->GetMasterClusterConfig(config_req, &config_resp, &rpc));
+  RETURN_NOT_OK(proxy.GetMasterClusterConfig(config_req, &config_resp, &rpc));
   if (config_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "GetMasterClusterConfig RPC response hit error: $0",
@@ -882,10 +880,10 @@ Status ExternalMiniCluster::AddTServerToLeaderBlacklist(
         master->bound_rpc_hostport().ToString(), masters_.size()));
   }
 
-  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  auto proxy = GetMasterProxy<master::MasterClusterProxy>(index);
   rpc::RpcController rpc;
   rpc.set_timeout(opts_.timeout);
-  RETURN_NOT_OK(proxy->GetMasterClusterConfig(config_req, &config_resp, &rpc));
+  RETURN_NOT_OK(proxy.GetMasterClusterConfig(config_req, &config_resp, &rpc));
   if (config_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "GetMasterClusterConfig RPC response hit error: $0",
@@ -899,7 +897,7 @@ Status ExternalMiniCluster::AddTServerToLeaderBlacklist(
   *change_req.mutable_cluster_config() = config;
   ChangeMasterClusterConfigResponsePB change_resp;
   rpc.Reset();
-  RETURN_NOT_OK(proxy->ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
+  RETURN_NOT_OK(proxy.ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
   if (change_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "ChangeMasterClusterConfig RPC response hit error: $0",
@@ -924,10 +922,10 @@ Status ExternalMiniCluster::ClearBlacklist(
         master->bound_rpc_hostport().ToString(), masters_.size()));
   }
 
-  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  auto proxy = GetMasterProxy<master::MasterClusterProxy>(index);
   rpc::RpcController rpc;
   rpc.set_timeout(opts_.timeout);
-  RETURN_NOT_OK(proxy->GetMasterClusterConfig(config_req, &config_resp, &rpc));
+  RETURN_NOT_OK(proxy.GetMasterClusterConfig(config_req, &config_resp, &rpc));
   if (config_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "GetMasterClusterConfig RPC response hit error: $0",
@@ -942,7 +940,7 @@ Status ExternalMiniCluster::ClearBlacklist(
   *change_req.mutable_cluster_config() = config;
   ChangeMasterClusterConfigResponsePB change_resp;
   rpc.Reset();
-  RETURN_NOT_OK(proxy->ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
+  RETURN_NOT_OK(proxy.ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
   if (change_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "ChangeMasterClusterConfig RPC response hit error: $0",
@@ -965,10 +963,10 @@ Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* n
         master->bound_rpc_hostport().ToString(), masters_.size()));
   }
 
-  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  auto proxy = GetMasterProxy<master::MasterClusterProxy>(index);
   rpc::RpcController rpc;
   rpc.set_timeout(opts_.timeout);
-  RETURN_NOT_OK(proxy->ListMasters(list_req, &list_resp, &rpc));
+  RETURN_NOT_OK(proxy.ListMasters(list_req, &list_resp, &rpc));
   if (list_resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "List Masters RPC response hit error: $0", list_resp.error().ShortDebugString()));
@@ -1026,7 +1024,7 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
     opid_req.set_dest_uuid(master->uuid());
     opid_req.set_opid_type(opid_type);
     RETURN_NOT_OK_PREPEND(
-        GetConsensusProxy(master.get())->GetLastOpId(opid_req, &opid_resp, &controller),
+        GetConsensusProxy(master.get()).GetLastOpId(opid_req, &opid_resp, &controller),
         Substitute("Failed to fetch last op id from $0", master->bound_rpc_hostport().port()));
     op_ids->push_back(opid_resp.opid());
     controller.Reset();
@@ -1084,10 +1082,10 @@ Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master
         master->bound_rpc_hostport().ToString(), masters_.size()));
   }
 
-  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  auto proxy = GetMasterProxy<master::MasterClusterProxy>(index);
   rpc::RpcController rpc;
   rpc.set_timeout(opts_.timeout);
-  RETURN_NOT_OK(proxy->IsMasterLeaderServiceReady(req, &resp, &rpc));
+  RETURN_NOT_OK(proxy.IsMasterLeaderServiceReady(req, &resp, &rpc));
   if (resp.has_error()) {
     return STATUS(RuntimeError, Substitute(
         "Is master ready RPC response hit error: $0", resp.error().ShortDebugString()));
@@ -1222,12 +1220,12 @@ Status ExternalMiniCluster::WaitForInitDb() {
             "Timed out while waiting for initdb to complete: elapsed time is $0, timeout is $1",
             elapsed_time, kTimeout);
       }
-      std::shared_ptr<MasterServiceProxy> proxy = master_proxy(i);
+      auto proxy = GetMasterProxy<master::MasterAdminProxy>(i);
       rpc::RpcController rpc;
       rpc.set_timeout(opts_.timeout);
       IsInitDbDoneRequestPB req;
       IsInitDbDoneResponsePB resp;
-      Status status = proxy->IsInitDbDone(req, &resp, &rpc);
+      Status status = proxy.IsInitDbDone(req, &resp, &rpc);
       if (status.IsTimedOut()) {
         num_timeouts++;
         LOG(WARNING) << status << " (seen " << num_timeouts << " timeouts so far)";
@@ -1258,13 +1256,13 @@ Status ExternalMiniCluster::WaitForInitDb() {
 }
 
 Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx) {
-  std::shared_ptr<master::MasterServiceProxy> proxy = master_proxy();
+  auto proxy = GetMasterProxy<master::MasterClusterProxy>();
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
   controller->Reset();
 
-  RETURN_NOT_OK(proxy->ListTabletServers(req, &resp, controller.get()));
+  RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, controller.get()));
 
   bool is_stale = false, is_ts_found = false;
   for (int i = 0; i < resp.servers_size(); i++) {
@@ -1409,7 +1407,8 @@ Status ExternalMiniCluster::WaitForTabletServerCount(int count, const MonoDelta&
       master::ListTabletServersResponsePB resp;
       rpc::RpcController rpc;
       rpc.set_timeout(remaining);
-      auto status = master_proxy(i)->ListTabletServers(req, &resp, &rpc);
+      auto status = GetMasterProxy<master::MasterClusterProxy>(i).ListTabletServers(
+          req, &resp, &rpc);
       LOG_IF(WARNING, !status.ok()) << "ListTabletServers failed: " << status;
       if (!status.ok() || resp.has_error()) {
         continue;
@@ -1735,18 +1734,6 @@ HostPort ExternalMiniCluster::pgsql_hostport(int node_index) const {
 
 rpc::Messenger* ExternalMiniCluster::messenger() {
   return messenger_;
-}
-
-std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy() {
-  CHECK_EQ(masters_.size(), 1);
-  return master_proxy(0);
-}
-
-std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy(int idx) {
-  CHECK_GE(idx, 0);
-  CHECK_LT(idx, masters_.size());
-  return std::make_shared<MasterServiceProxy>(
-      proxy_cache_.get(), CHECK_NOTNULL(master(idx))->bound_rpc_addr());
 }
 
 std::shared_ptr<server::GenericServiceProxy> ExternalMiniCluster::master_generic_proxy(

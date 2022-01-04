@@ -41,6 +41,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/strcat.h"
@@ -65,7 +67,6 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/concurrent_value.h"
-#include "yb/util/encryption_util.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
@@ -317,6 +318,10 @@ void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
   VersionInfo::GetVersionInfoPB(status->mutable_version_info());
 }
 
+CloudInfoPB RpcServerBase::MakeCloudInfoPB() const {
+  return options_.MakeCloudInfoPB();
+}
+
 Status RpcServerBase::DumpServerInfo(const string& path,
                                      const string& format) const {
   ServerStatusPB status;
@@ -473,7 +478,7 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
-  yb::InitOpenSSL();
+  encryption::InitOpenSSL();
 
   Status s = fs_manager_->Open();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {

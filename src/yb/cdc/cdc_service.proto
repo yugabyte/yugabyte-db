@@ -36,9 +36,10 @@ package yb.cdc;
 option java_package = "org.yb.cdc";
 
 import "yb/common/common.proto";
+import "yb/common/common_net.proto";
+import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
-import "yb/master/master.proto";
-import "yb/tserver/tserver.proto";
+import "yb/tablet/operations.proto";
 import "yb/util/opid.proto";
 
 service CDCService {
@@ -178,7 +179,7 @@ message CDCRecordPB {
   repeated KeyValuePairPB before = 5;  // NOT CURRENTLY USED
   repeated KeyValuePairPB after = 6;   // NOT CURRENTLY USED
 
-  optional tserver.TransactionStatePB transaction_state = 7;
+  optional tablet.TransactionStatePB transaction_state = 7;
 
   // If transaction_state.status is APPLYING, then partitions will contain the partition for the
   // tablet being polled.

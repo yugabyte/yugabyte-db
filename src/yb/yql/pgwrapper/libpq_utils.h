@@ -19,7 +19,7 @@
 
 #include "libpq-fe.h" // NOLINT
 
-#include "yb/common/common.pb.h"
+#include "yb/common/transaction.pb.h"
 
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
@@ -169,6 +169,8 @@ class PGConn {
   bool simple_query_protocol_;
   std::unique_ptr<CopyData> copy_data_;
 };
+
+bool HasTryAgain(const Status& status);
 
 } // namespace pgwrapper
 } // namespace yb

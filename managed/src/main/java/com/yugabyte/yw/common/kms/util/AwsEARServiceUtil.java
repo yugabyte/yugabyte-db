@@ -55,13 +55,6 @@ public class AwsEARServiceUtil {
 
   private static final Logger LOG = LoggerFactory.getLogger(AwsEARServiceUtil.class);
 
-  public enum KeyType {
-    @EnumValue("CMK")
-    CMK,
-    @EnumValue("DATA_KEY")
-    DATA_KEY;
-  }
-
   private enum CredentialType {
     @EnumValue("KMS_CONFIG")
     KMS_CONFIG,

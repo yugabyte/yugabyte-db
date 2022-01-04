@@ -98,7 +98,6 @@ using std::string;
 using std::vector;
 using std::cout;
 using std::endl;
-using tserver::WriteRequestPB;
 
 enum PrintEntryType {
   DONT_PRINT,
@@ -147,14 +146,7 @@ void PrintIdOnly(const LogEntryPB& entry) {
 
 Status PrintDecodedWriteRequestPB(const string& indent,
                                   const Schema& tablet_schema,
-                                  const WriteRequestPB& write) {
-  Arena arena(32 * 1024, 1024 * 1024);
-
-  cout << indent << "Tablet: " << write.tablet_id() << endl;
-  if (write.has_propagated_hybrid_time()) {
-    cout << indent << "Propagated TS: " << write.propagated_hybrid_time() << endl;
-  }
-
+                                  const tablet::WritePB& write) {
   return Status::OK();
 }
 
@@ -167,7 +159,7 @@ Status PrintDecoded(const LogEntryPB& entry, const Schema& tablet_schema) {
 
     const ReplicateMsg& replicate = entry.replicate();
     if (replicate.op_type() == consensus::WRITE_OP) {
-      RETURN_NOT_OK(PrintDecodedWriteRequestPB(indent, tablet_schema, replicate.write_request()));
+      RETURN_NOT_OK(PrintDecodedWriteRequestPB(indent, tablet_schema, replicate.write()));
     } else {
       cout << indent << replicate.ShortDebugString() << endl;
     }

@@ -45,21 +45,22 @@
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_types.h"
-#include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/operations/operation_tracker.h"
-#include "yb/tablet/operations/write_operation_context.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_options.h"
-#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/write_query_context.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/semaphore.h"
 
 using yb::consensus::StateChangeContext;
@@ -128,7 +129,7 @@ struct TabletOnDiskSizeInfo {
 class TabletPeer : public consensus::ConsensusContext,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext,
-                   public WriteOperationContext {
+                   public WriteQueryContext {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
@@ -196,14 +197,14 @@ class TabletPeer : public consensus::ConsensusContext,
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
   // The operation_state is deallocated after use by this function.
-  void WriteAsync(std::unique_ptr<WriteOperation> operation);
+  void WriteAsync(std::unique_ptr<WriteQuery> query);
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
 
   void UpdateClock(HybridTime hybrid_time) override;
 
   std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      tserver::TransactionStatePB* request) override;
+      TransactionStatePB* request) override;
 
   void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;
@@ -294,12 +295,6 @@ class TabletPeer : public consensus::ConsensusContext,
   // If details is specified then this function appends explanation of how index was calculated
   // to it.
   Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
-
-  // Returns a map of log index -> segment size, of all the segments that currently cannot be GCed
-  // because in-memory structures have anchors in them.
-  //
-  // Returns a non-ok status if the tablet isn't running.
-  CHECKED_STATUS GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const;
 
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
@@ -405,7 +400,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // After bootstrap is complete and consensus is setup this initiates the transactions
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
-  CHECKED_STATUS StartPendingOperations(consensus::RaftPeerPB::Role my_role,
+  CHECKED_STATUS StartPendingOperations(PeerRole my_role,
                                         const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<OperationDriver> CreateOperationDriver();

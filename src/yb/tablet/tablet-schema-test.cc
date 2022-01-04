@@ -41,8 +41,9 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/schema.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
@@ -50,6 +51,7 @@
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/env.h"
 #include "yb/util/status_log.h"

@@ -23,7 +23,12 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/server_base.proxy.h"
 
 #include "yb/util/opid.h"
 #include "yb/util/status_log.h"
@@ -100,9 +105,7 @@ void TabletServerIntegrationTestBase::CreateCluster(
 // in 'tablet_servers_'.
 void TabletServerIntegrationTestBase::CreateTSProxies() {
   CHECK(tablet_servers_.empty());
-  CHECK_OK(itest::CreateTabletServerMap(cluster_->GetLeaderMasterProxy().get(),
-                                        proxy_cache_.get(),
-                                        &tablet_servers_));
+  tablet_servers_ = CHECK_RESULT(itest::CreateTabletServerMap(cluster_.get()));
 }
 
 // Waits that all replicas for a all tablets of 'kTableName' table are online
@@ -118,7 +121,8 @@ void TabletServerIntegrationTestBase::WaitForReplicasAndUpdateLocations() {
     rpc::RpcController controller;
     kTableName.SetIntoTableIdentifierPB(req.mutable_table());
     controller.set_timeout(MonoDelta::FromSeconds(1));
-    CHECK_OK(cluster_->GetLeaderMasterProxy()->GetTableLocations(req, &resp, &controller));
+    CHECK_OK(cluster_->GetLeaderMasterProxy<master::MasterClientProxy>().GetTableLocations(
+        req, &resp, &controller));
     CHECK_OK(controller.status());
     CHECK(!resp.has_error()) << "Response had an error: " << resp.error().ShortDebugString();
 
@@ -208,11 +212,12 @@ Status TabletServerIntegrationTestBase::GetTabletLeaderUUIDFromMaster(const std:
   controller.set_timeout(MonoDelta::FromMilliseconds(100));
   kTableName.SetIntoTableIdentifierPB(req.mutable_table());
 
-  RETURN_NOT_OK(cluster_->master_proxy()->GetTableLocations(req, &resp, &controller));
+  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>().GetTableLocations(
+      req, &resp, &controller));
   for (const master::TabletLocationsPB& loc : resp.tablet_locations()) {
     if (loc.tablet_id() == tablet_id) {
       for (const master::TabletLocationsPB::ReplicaPB& replica : loc.replicas()) {
-        if (replica.role() == consensus::RaftPeerPB::LEADER) {
+        if (replica.role() == PeerRole::LEADER) {
           *leader_uuid = replica.ts_info().permanent_uuid();
           return Status::OK();
         }

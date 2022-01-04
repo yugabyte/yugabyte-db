@@ -58,16 +58,20 @@ import {
 import { getClusterByType } from '../../../utils/UniverseUtils';
 import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
 import { toast } from 'react-toastify';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     submitConfigureUniverse: (values, universeUUID = null) => {
       dispatch(configureUniverseTemplateLoading());
       return dispatch(configureUniverseTemplate(values)).then((response) => {
-        if (response.error && universeUUID) {
-          dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
-            dispatch(fetchUniverseInfoResponse(response.payload));
-          });
+        if (response.error) {
+          toast.error(createErrorMessage(response.payload));
+          if (universeUUID) {
+            dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+              dispatch(fetchUniverseInfoResponse(response.payload));
+            });
+          }
         }
         return dispatch(configureUniverseTemplateResponse(response.payload));
       });
@@ -85,8 +89,7 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(getTlsCertificatesResponse(response.payload));
         });
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
         }
         return dispatch(createUniverseResponse(response.payload));
       });

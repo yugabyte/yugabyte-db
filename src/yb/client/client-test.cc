@@ -61,6 +61,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -75,6 +76,8 @@
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
 
@@ -84,11 +87,13 @@
 #include "yb/rpc/rpc_test_util.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
@@ -2217,7 +2222,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
 
   vector<master::TSInfoPB> followers;
   for (const auto& replica : resp.tablet_locations(0).replicas()) {
-    if (replica.role() == consensus::RaftPeerPB_Role_FOLLOWER) {
+    if (replica.role() == PeerRole::FOLLOWER) {
       followers.push_back(replica.ts_info());
     }
   }

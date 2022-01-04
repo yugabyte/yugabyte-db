@@ -37,6 +37,8 @@ public enum TaskType {
 
   MultiTableBackup("MultiTableBackup"),
 
+  CreateBackup("CreateBackup"),
+
   EditUniverse("EditUniverse"),
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
@@ -185,6 +187,8 @@ public enum TaskType {
 
   WaitForLeaderBlacklistCompletion("subtasks.WaitForLeaderBlacklistCompletion"),
 
+  WaitForFollowerLag("subtasks.WaitForFollowerLag"),
+
   WaitForLoadBalance("subtasks.WaitForLoadBalance"),
 
   WaitForMasterLeader("subtasks.WaitForMasterLeader"),
@@ -230,6 +234,8 @@ public enum TaskType {
   CloudSetup("subtasks.cloud.CloudSetup"),
 
   BackupTable("subtasks.BackupTable"),
+
+  BackupTableYb("subtasks.BackupTableYb"),
 
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 

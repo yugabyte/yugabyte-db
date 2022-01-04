@@ -120,10 +120,19 @@
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
+#include <google/protobuf/any.pb.h>
+#include <google/protobuf/arena.h>
+#include <google/protobuf/arenastring.h>
+#include <google/protobuf/generated_message_table_driven.h>
+#include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map_entry.h>
+#include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/metadata.h>
 #include <google/protobuf/repeated_field.h>
-#include <google/protobuf/wire_format_lite.h>
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 
@@ -176,8 +185,6 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/cast.h"
-#include "yb/util/cipher_stream.h"
-#include "yb/util/cipher_stream_fwd.h"
 #include "yb/util/clone_ptr.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/compare_util.h"
@@ -190,10 +197,6 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_impl.h"
-#include "yb/util/encrypted_file.h"
-#include "yb/util/encrypted_file_factory.h"
-#include "yb/util/encryption.pb.h"
-#include "yb/util/encryption_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -206,8 +209,6 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/header_manager.h"
-#include "yb/util/header_manager_impl.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/lockfree.h"
@@ -234,8 +235,8 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/ntp_clock.h"
-#include "yb/util/object_pool.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
@@ -282,7 +283,6 @@
 #include "yb/util/type_traits.h"
 #include "yb/util/uint_set.h"
 #include "yb/util/ulimit.h"
-#include "yb/util/universe_key_manager.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"

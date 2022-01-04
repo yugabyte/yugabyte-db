@@ -19,8 +19,6 @@
 #include <memory>
 #include <type_traits>
 
-#include "yb/common/common.pb.h"
-
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/transaction_participant.h"

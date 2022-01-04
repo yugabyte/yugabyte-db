@@ -14,6 +14,7 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -53,8 +54,7 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
                                           const bool include_static_columns,
                                           const Schema& static_projection,
                                           std::unique_ptr<QLScanSpec>* spec,
-                                          std::unique_ptr<QLScanSpec>*
-                                          static_row_spec) const {
+                                          std::unique_ptr<QLScanSpec>* static_row_spec) const {
   // Populate dockey from QL key columns.
   auto hash_code = request.has_hash_code() ?
       boost::make_optional<int32_t>(request.hash_code()) : boost::none;

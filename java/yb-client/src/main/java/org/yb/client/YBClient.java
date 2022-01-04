@@ -50,16 +50,17 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
-import org.yb.Common;
-import org.yb.Common.TableType;
-import org.yb.Common.YQLDatabase;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
+import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
-import org.yb.master.Master;
-import org.yb.tserver.Tserver;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
 /**
@@ -311,7 +312,7 @@ public class YBClient implements AutoCloseable {
    * @return the configuration
    */
   public ChangeMasterClusterConfigResponse changeMasterClusterConfig(
-      Master.SysClusterConfigEntryPB config) throws Exception {
+      CatalogEntityInfo.SysClusterConfigEntryPB config) throws Exception {
     Deferred<ChangeMasterClusterConfigResponse> d = asyncClient.changeMasterClusterConfig(config);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
@@ -458,7 +459,7 @@ public class YBClient implements AutoCloseable {
         d = asyncClient.getMasterRegistration(clientForHostAndPort);
         try {
           GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+          if (resp.getRole() == CommonTypes.PeerRole.LEADER) {
             return resp.getInstanceId().getPermanentUuid().toStringUtf8();
           }
         } catch (Exception e) {
@@ -496,7 +497,7 @@ public class YBClient implements AutoCloseable {
           .addCallback(new Callback<Object, GetMasterRegistrationResponse>() {
             @Override
             public Object call(GetMasterRegistrationResponse response) throws Exception {
-              if (response.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+              if (response.getRole() == CommonTypes.PeerRole.LEADER) {
                 boolean wasNullResult = result.compareAndSet(null, entry.getKey());
                 if (!wasNullResult) {
                   LOG.warn(
@@ -679,7 +680,7 @@ public class YBClient implements AutoCloseable {
         LOG.info("Hit tserver error {}, leader is {}.",
                  tsee.getTServerError().toString(), leaderUuid);
         if (tsee.getTServerError().getCode() ==
-            Tserver.TabletServerErrorPB.Code.LEADER_NEEDS_STEP_DOWN) {
+            TserverTypes.TabletServerErrorPB.Code.LEADER_NEEDS_STEP_DOWN) {
           stepDownMasterLeaderAndWaitForNewLeader(leaderUuid);
           changeConfigDone = false;
           LOG.info("Retrying changeConfig because it received LEADER_NEEDS_STEP_DOWN error code.");
@@ -863,6 +864,24 @@ public class YBClient implements AutoCloseable {
 
   public interface Condition {
     boolean get() throws Exception;
+  }
+
+  private class ReplicaCountCondition implements Condition {
+    private int numReplicas;
+    private YBTable table;
+    public ReplicaCountCondition(YBTable table, int numReplicas) {
+      this.numReplicas = numReplicas;
+      this.table = table;
+    }
+    @Override
+    public boolean get() throws Exception {
+      for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
+        if (tablet.getReplicas().size() != numReplicas) {
+          return false;
+        }
+      }
+      return true;
+    }
   }
 
   private class TableDoesNotExistCondition implements Condition {
@@ -1049,6 +1068,19 @@ public class YBClient implements AutoCloseable {
     LOG.error("Returning failure after {} iterations, num errors = {}.", numIters, numErrors);
 
     return false;
+  }
+
+  /**
+  * Wait for the table to have a specific number of replicas.
+  * @param table the table to check the condition on
+  * @param numReplicas the number of replicas we expect the table to have
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the table the expected number of replicas, false otherwise
+  */
+  public boolean waitForReplicaCount(final YBTable table, final int numReplicas,
+                                     final long timeoutMs) {
+    Condition replicaCountCondition = new ReplicaCountCondition(table, numReplicas);
+    return waitForCondition(replicaCountCondition, timeoutMs);
   }
 
   /**
@@ -1300,7 +1332,7 @@ public class YBClient implements AutoCloseable {
   public SetupUniverseReplicationResponse setupUniverseReplication(
     String replicationGroupName,
     Set<String> sourceTableIDs,
-    Set<Common.HostPortPB> sourceMasterAddresses) throws Exception {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
     Deferred<SetupUniverseReplicationResponse> d =
       asyncClient.setupUniverseReplication(
         replicationGroupName,
@@ -1343,7 +1375,7 @@ public class YBClient implements AutoCloseable {
 
   public AlterUniverseReplicationResponse alterUniverseReplicationSourceMasterAddresses(
     String replicationGroupName,
-    Set<Common.HostPortPB> sourceMasterAddresses) throws Exception {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
     Deferred<AlterUniverseReplicationResponse> d =
       asyncClient.alterUniverseReplicationSourceMasterAddresses(
         replicationGroupName, sourceMasterAddresses);

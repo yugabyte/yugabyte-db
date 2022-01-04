@@ -14,10 +14,15 @@
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/master/master_cluster.proxy.h"
+
 #include "yb/tools/yb-admin_client.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 
@@ -57,11 +62,11 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
     master::ListMastersResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
-    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
-    RETURN_NOT_OK(proxy->ListMasters(req, &resp, &rpc));
+    auto proxy = GetMasterLeaderProxy<master::MasterClusterProxy>();
+    RETURN_NOT_OK(proxy.ListMasters(req, &resp, &rpc));
 
     for (const ServerEntryPB& master : resp.masters()) {
-      if (master.role() == yb::consensus::RaftPeerPB::LEADER) {
+      if (master.role() == yb::PeerRole::LEADER) {
         auto cloud_info = master.registration().cloud_info();
         return (cloud_info.placement_cloud() == placement_cloud &&
                 cloud_info.placement_region() == placement_region &&
@@ -77,8 +82,8 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
     master::GetMasterRegistrationResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
-    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
-    RETURN_NOT_OK(proxy->GetMasterRegistration(req, &resp, &rpc));
+    auto proxy = GetMasterLeaderProxy<master::MasterClusterProxy>();
+    RETURN_NOT_OK(proxy.GetMasterRegistration(req, &resp, &rpc));
     return resp.registration().cloud_info().placement_zone();
   }
 

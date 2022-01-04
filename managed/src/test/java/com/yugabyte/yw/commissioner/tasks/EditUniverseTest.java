@@ -26,12 +26,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -40,20 +38,21 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.AnsibleSetupServer,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
-          TaskType.SetNodeState,
+          TaskType.SetNodeStatus,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ModifyBlackList,
@@ -73,6 +72,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
+          TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -93,8 +93,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   public void setUp() {
     super.setUp();
 
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =

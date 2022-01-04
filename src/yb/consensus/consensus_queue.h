@@ -44,7 +44,7 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/opid_util.h"
 
@@ -112,7 +112,7 @@ class PeerMessageQueue {
   struct TrackedPeer {
     explicit TrackedPeer(std::string uuid)
         : uuid(std::move(uuid)),
-          last_known_committed_idx(MinimumOpId().index()),
+          last_known_committed_idx(OpId::Min().index),
           last_successful_communication_time(MonoTime::Now()) {}
 
     // Check that the terms seen from a given peer only increase monotonically.
@@ -174,7 +174,7 @@ class PeerMessageQueue {
     bool needs_remote_bootstrap = false;
 
     // Member type of this peer in the config.
-    RaftPeerPB::MemberType member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+    PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
 
     uint64_t num_sst_files = 0;
 
@@ -269,7 +269,7 @@ class PeerMessageQueue {
       ConsensusRequestPB* request,
       ReplicateMsgsHolder* msgs_holder,
       bool* needs_remote_bootstrap,
-      RaftPeerPB::MemberType* member_type = nullptr,
+      PeerMemberType* member_type = nullptr,
       bool* last_exchange_successful = nullptr);
 
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely
@@ -435,7 +435,7 @@ class PeerMessageQueue {
     // term is less than the term observed from another peer the queue owner must step down.
     // TODO: it is likely to be cleaner to get this from the ConsensusMetadata rather than by
     // snooping on what operations are appended to the queue.
-    int64_t current_term = MinimumOpId().term();
+    int64_t current_term = OpId::Min().term;
 
     // The size of the majority for the queue.
     int majority_size_ = kUninitializedMajoritySize;

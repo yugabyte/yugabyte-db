@@ -102,7 +102,6 @@ if [[ ! -d $yb_devops_home/roles ]]; then
 fi
 
 if [ -L /opt/yugabyte/devops ]; then
- echo "Found devops symlink"
  export yb_devops_home_link="/opt/yugabyte/devops"
 fi
 

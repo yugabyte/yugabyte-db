@@ -31,6 +31,7 @@ static const uint32_t kPgNamespaceTableOid = 2615; // Hardcoded for pg_namespace
 static const uint32_t kPgClassTableOid = 1259;  // Hardcoded for pg_class. (in pg_class.h)
 static const uint32_t kPgDatabaseTableOid = 1262;  // Hardcoded for pg_database. (in pg_database.h)
 static const uint32_t kPgFirstNormalObjectId = 16384; // Hardcoded in transam.h
+static const uint32_t kPgYbTablegroupTableOid = 8036; // Hardcoded in pg_yb_tablegroup.h
 
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;

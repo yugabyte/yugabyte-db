@@ -102,7 +102,18 @@
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <google/protobuf/any.pb.h>
+#include <google/protobuf/arena.h>
+#include <google/protobuf/arenastring.h>
+#include <google/protobuf/generated_message_table_driven.h>
+#include <google/protobuf/generated_message_util.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map_entry.h>
+#include <google/protobuf/map_field_inl.h>
+#include <google/protobuf/message.h>
+#include <google/protobuf/metadata.h>
 #include <google/protobuf/repeated_field.h>
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
@@ -182,6 +193,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"

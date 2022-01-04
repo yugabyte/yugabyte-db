@@ -28,7 +28,6 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/trace.h"
 

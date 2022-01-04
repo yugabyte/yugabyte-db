@@ -124,6 +124,7 @@ libraryDependencies ++= Seq(
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
+  "org.mockito" % "mockito-inline" % "3.8.0" % Test,
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.postgresql" % "postgresql" % "42.2.23",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
@@ -137,12 +138,12 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "1.29",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.3.10.RELEASE",
-  "com.amazonaws" % "aws-java-sdk-ec2" % "1.11.907",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
-  "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.931",
-  "com.cronutils" % "cron-utils" % "9.1.5",
+  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
+  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.129",
+  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
+  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
+  "com.cronutils" % "cron-utils" % "9.1.6",
   "com.azure" % "azure-storage-blob" % "12.7.0",
   "com.azure" % "azure-core" % "1.1.0",
   "io.prometheus" % "simpleclient" % "0.11.0",
@@ -163,17 +164,19 @@ libraryDependencies ++= Seq(
   "org.apache.velocity" % "velocity" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
-  "com.jayway.jsonpath" % "json-path" % "2.4.0",
+  "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
-  "com.google.cloud" % "google-cloud-storage" % "1.115.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.2.1",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.1",
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
   "io.kamon" %% "kamon-bundle" % "2.2.2",
   "io.kamon" %% "kamon-prometheus" % "2.2.2",
   "org.unix4j" % "unix4j-command" % "0.6",
-  "com.github.dikhan" % "pagerduty-client" % "3.1.2"
+  "com.github.dikhan" % "pagerduty-client" % "3.1.2",
+  "com.bettercloud" % "vault-java-driver" % "5.1.0",
+  "org.apache.directory.api" % "api-all" % "2.1.0"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -359,25 +362,21 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.12-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.15-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
   //  "org.webjars" % "swagger-ui" % "3.43.0",
   "io.swagger" %% "swagger-play2" % "1.6.1",
   "io.swagger" %% "swagger-scala-module" % "1.0.5",
-  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10",
   // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth
-  "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8",
-  "io.netty" % "netty-handler" % "4.1.66.Final",
-  "io.netty" % "netty-codec-http" % "4.1.66.Final",
+  "io.netty" % "netty-handler" % "4.1.71.Final",
+  "io.netty" % "netty-codec-http" % "4.1.71.Final",
   "io.netty" % "netty" % "3.10.6.Final",
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
-  "com.cronutils" % "cron-utils" % "9.1.5",
   "com.nimbusds" % "nimbus-jose-jwt" % "9.11.3",
-  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
-  "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
+  "org.slf4j" % "slf4j-ext" % "1.7.26"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"

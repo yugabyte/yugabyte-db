@@ -41,6 +41,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/log_util.h"
+
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tablet/tablet_peer.h"

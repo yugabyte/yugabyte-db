@@ -40,11 +40,12 @@
 
 #include <boost/function.hpp>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/master/master_cluster.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"

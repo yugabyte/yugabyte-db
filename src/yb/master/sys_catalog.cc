@@ -58,6 +58,7 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
@@ -69,19 +70,22 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -395,16 +399,16 @@ void SysCatalogTable::SysCatalogStateChanged(
   LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Locked=" << context->is_config_locked_
                         << ". Reason: " << context->ToString()
                         << ". Latest consensus state: " << cstate.ShortDebugString();
-  RaftPeerPB::Role role = GetConsensusRole(tablet_peer()->permanent_uuid(), cstate);
+  PeerRole role = GetConsensusRole(tablet_peer()->permanent_uuid(), cstate);
   LOG_WITH_PREFIX(INFO) << "This master's current role is: "
-                        << RaftPeerPB::Role_Name(role);
+                        << PeerRole_Name(role);
 
   // For LEADER election case only, load the sysCatalog into memory via the callback.
   // Note that for a *single* master case, the TABLET_PEER_START is being overloaded to imply a
   // leader creation step, as there is no election done per-se.
   // For the change config case, LEADER is the one which started the operation, so new role is same
   // as its old role of LEADER and hence it need not reload the sysCatalog via the callback.
-  if (role == RaftPeerPB::LEADER &&
+  if (role == PeerRole::LEADER &&
       (context->reason == StateChangeReason::NEW_LEADER_ELECTED ||
        (cstate.config().peers_size() == 1 &&
         context->reason == StateChangeReason::TABLET_PEER_STARTED))) {
@@ -670,14 +674,13 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   }
 
   auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation = std::make_unique<tablet::WriteOperation>(
+  auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
       tablet_peer()->tablet(), resp.get());
-  *operation->AllocateRequest() = writer->req();
-  operation->set_completion_callback(
-      tablet::MakeLatchOperationCompletionCallback(latch, resp));
+  query->set_client_request(writer->req());
+  query->set_callback(tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
-  tablet_peer()->WriteAsync(std::move(operation));
+  tablet_peer()->WriteAsync(std::move(query));
   peer_write_count->Increment();
 
   {
@@ -921,6 +924,72 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
   return tablespace_map;
 }
 
+Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
+    const uint32_t database_oid,
+    TableToTablespaceIdMap *table_tablespace_map) {
+  TRACE_EVENT0("master", "ReadTablespaceInfoFromPgYbTablegroup");
+
+  if (!table_tablespace_map)
+    return STATUS(InternalError, "tablegroup_tablespace_map not initialized");
+
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+
+  const auto &pg_yb_tablegroup_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+  const auto& pg_tablegroup_info =
+    VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_yb_tablegroup_id));
+
+  Schema projection;
+  RETURN_NOT_OK(pg_tablegroup_info->schema->CreateProjectionByNames({"oid", "grptablespace"},
+                &projection,
+                pg_tablegroup_info->schema->num_key_columns()));
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
+                                                   {} /* read_hybrid_time */,
+                                                   pg_yb_tablegroup_id));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("grptablespace")).rep();
+
+  QLTableRow source_row;
+
+  // Loop through the pg_yb_tablegroup catalog table. Each row in this table represents
+  // a tablegroup. Populate 'table_tablespace_map' with the tablegroup id and corresponding
+  // tablespace id for each tablegroup
+
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&source_row));
+    // Fetch the tablegroup oid.
+    const auto tablegroup_oid_col = source_row.GetValue(oid_col_id);
+    if (!tablegroup_oid_col) {
+      return STATUS(Corruption, "Could not read oid column from pg_yb_tablegroup");
+    }
+    const uint32_t tablegroup_oid = tablegroup_oid_col->uint32_value();
+
+    // Fetch the tablespace oid.
+    const auto& tablespace_oid_col = source_row.GetValue(tablespace_col_id);
+    if (!tablespace_oid_col) {
+      return STATUS(Corruption, "Could not read grptablespace column from pg_yb_tablegroup");
+    }
+    const uint32_t tablespace_oid = tablespace_oid_col->uint32_value();
+
+    const TablegroupId tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
+    const TableId parent_table_id = tablegroup_id + kTablegroupParentTableIdSuffix;
+    boost::optional<TablespaceId> tablespace_id = boost::none;
+
+    // If no valid tablespace found, then this tablegroup has no placement info
+    // associated with it. Tables associated with this tablegroup will not
+    // have any custom placement policy.
+    if (tablespace_oid != kInvalidOid) {
+      tablespace_id = GetPgsqlTablespaceId(tablespace_oid);
+    }
+    VLOG(2) << "Tablegroup oid: " << tablegroup_oid << " Tablespace oid: " << tablespace_oid;
+
+    const auto& ret = table_tablespace_map->emplace(parent_table_id, tablespace_id);
+    // This map should not have already had an element associated with this
+    // tablegroup.
+    DCHECK(ret.second);
+  }
+  return Status::OK();
+}
+
 Status SysCatalogTable::ReadPgClassInfo(
     const uint32_t database_oid,
     TableToTablespaceIdMap* table_to_tablespace_map) {
@@ -1152,7 +1221,7 @@ Status SysCatalogTable::CopyPgsqlTables(
     const std::shared_ptr<tablet::TableInfo> target_table_info =
         VERIFY_RESULT(meta->GetTableInfo(target_table_id));
     const Schema source_projection = source_table_info->schema->CopyWithoutColumnIds();
-    std::unique_ptr<YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
+    std::unique_ptr<docdb::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
         tablet->NewRowIterator(source_projection, {}, source_table_id));
     QLTableRow source_row;
 

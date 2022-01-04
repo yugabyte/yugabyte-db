@@ -42,6 +42,8 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/common_net.pb.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"

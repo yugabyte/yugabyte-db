@@ -43,6 +43,10 @@ class FileSubstitutions {
     return path_no_extension_ + ".messages";
   }
 
+  std::string forward() const {
+    return path_no_extension_ + ".fwd";
+  }
+
  private:
   const google::protobuf::FileDescriptor* file_;
   std::string path_no_extension_;
@@ -53,8 +57,6 @@ Substitutions CreateSubstitutions(
     const google::protobuf::MethodDescriptor* method, rpc::RpcSides side);
 Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field);
 Substitutions CreateSubstitutions(const google::protobuf::ServiceDescriptor* service);
-
-std::string RemoveProtoExtension(const std::string& fname);
 
 } // namespace gen_yrpc
 } // namespace yb

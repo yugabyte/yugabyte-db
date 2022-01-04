@@ -22,8 +22,8 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet_fwd.h"

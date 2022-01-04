@@ -68,7 +68,7 @@ class RaftConsensusStateTest : public YBTest {
     config_.set_opid_index(kInvalidOpIdIndex);
     RaftPeerPB* peer = config_.add_peers();
     peer->set_permanent_uuid(fs_manager_.uuid());
-    peer->set_member_type(RaftPeerPB::VOTER);
+    peer->set_member_type(PeerMemberType::VOTER);
 
     std::unique_ptr<ConsensusMetadata> cmeta;
     ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),

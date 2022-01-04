@@ -120,8 +120,18 @@
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <google/protobuf/any.pb.h>
+#include <google/protobuf/arena.h>
+#include <google/protobuf/arenastring.h>
+#include <google/protobuf/descriptor.pb.h>
+#include <google/protobuf/generated_message_table_driven.h>
+#include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map_entry.h>
+#include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/metadata.h>
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/wire_format_lite.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
@@ -164,8 +174,6 @@
 #include "yb/util/blocking_queue.h"
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/cast.h"
-#include "yb/util/cipher_stream.h"
-#include "yb/util/cipher_stream_fwd.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/concurrent_pod.h"
 #include "yb/util/condition_variable.h"
@@ -175,7 +183,6 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_impl.h"
-#include "yb/util/encryption_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
@@ -184,7 +191,6 @@
 #include "yb/util/file_system.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
-#include "yb/util/header_manager.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/locks.h"

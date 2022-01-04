@@ -17,10 +17,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/cluster_balance_mocked.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/status_log.h"
@@ -79,7 +79,7 @@ void CreateTable(const vector<string> split_keys, const int num_replicas, bool s
   ASSERT_EQ(tablets->size(), split_keys.size() + 1);
 }
 
-void SetupRaftPeer(consensus::RaftPeerPB::MemberType member_type, std::string az,
+void SetupRaftPeer(consensus::PeerMemberType member_type, std::string az,
                    consensus::RaftPeerPB* raft_peer) {
   raft_peer->Clear();
   raft_peer->set_member_type(member_type);
@@ -124,8 +124,7 @@ void SetupClusterConfigWithReadReplicas(vector<string> live_azs,
 }
 
 void NewReplica(
-    TSDescriptor* ts_desc, tablet::RaftGroupStatePB state, consensus::RaftPeerPB::Role role,
-    TabletReplica* replica) {
+    TSDescriptor* ts_desc, tablet::RaftGroupStatePB state, PeerRole role, TabletReplica* replica) {
   replica->ts_desc = ts_desc;
   replica->state = state;
   replica->role = role;
@@ -975,10 +974,8 @@ class TestLoadBalancerBase {
         TabletReplica replica;
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;
-        consensus::RaftPeerPB::Role role = is_leader ?
-            consensus::RaftPeerPB::LEADER :
-            consensus::RaftPeerPB::FOLLOWER;
-        NewReplica(ts_desc.get(), state, role , &replica);
+        PeerRole role = is_leader ? PeerRole::LEADER : PeerRole::FOLLOWER;
+        NewReplica(ts_desc.get(), state, role, &replica);
         InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
       }
       // Set the replica locations directly into the tablet map.
@@ -1053,8 +1050,7 @@ class TestLoadBalancerBase {
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING,
-               consensus::RaftPeerPB::FOLLOWER, &replica);
+    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
@@ -1073,9 +1069,9 @@ class TestLoadBalancerBase {
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
     for (auto& replica : *replicas) {
       if (replica.second.ts_desc->permanent_uuid() == ts_desc->permanent_uuid()) {
-        replica.second.role = consensus::RaftPeerPB::LEADER;
+        replica.second.role = PeerRole::LEADER;
       } else {
-        replica.second.role = consensus::RaftPeerPB::FOLLOWER;
+        replica.second.role = PeerRole::FOLLOWER;
       }
     }
     tablet->SetReplicaLocations(replicas);

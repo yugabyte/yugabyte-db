@@ -74,7 +74,7 @@ metrics=""
 
 get_oom_kills_last_10_minutes()
 {
-  local oom_kills=$(journalctl -k --since "10min ago" | grep -c 'invoked oom-killer' | \
+  local oom_kills=$(sudo -n journalctl -k --since "10min ago" | grep -c 'invoked oom-killer' | \
     sed 's/^ *//')
   echo "$oom_kills"
   return $?

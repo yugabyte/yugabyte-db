@@ -15,6 +15,7 @@ set(YB_PCH_PREFIX gen_yrpc)
 
 ### RPC generator tool
 add_executable(protoc-gen-yrpc
+    forward_generator.cc
     messages_generator.cc
     metric_descriptor.cc
     model.cc
@@ -29,4 +30,4 @@ target_link_libraries(protoc-gen-yrpc
     protobuf
     gutil
     yb_util
-    lightweight_message_proto)
+    rpc_base_proto)

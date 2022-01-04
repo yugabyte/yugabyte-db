@@ -43,12 +43,10 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_types.h"
 #include "yb/consensus/retryable_requests.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/leader_lease.h"
 
 #include "yb/gutil/port.h"
@@ -192,7 +190,7 @@ class ReplicaState {
   ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const;
 
   // Returns the currently active Raft role.
-  RaftPeerPB::Role GetActiveRoleUnlocked() const;
+  PeerRole GetActiveRoleUnlocked() const;
 
   // Returns true if there is a configuration change currently in-flight but not yet
   // committed.

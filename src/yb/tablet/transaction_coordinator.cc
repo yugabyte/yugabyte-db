@@ -28,6 +28,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_util.h"
@@ -42,7 +43,6 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
@@ -478,7 +478,7 @@ class TransactionState {
     }
   }
 
-  CHECKED_STATUS AppliedInOneOfInvolvedTablets(const tserver::TransactionStatePB& state) {
+  CHECKED_STATUS AppliedInOneOfInvolvedTablets(const TransactionStatePB& state) {
     if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
       // We could ignore this request, because it will be re-send if required.
       LOG_WITH_PREFIX(DFATAL)
@@ -629,7 +629,7 @@ class TransactionState {
   void SubmitUpdateStatus(TransactionStatus status) {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
 
-    tserver::TransactionStatePB state;
+    TransactionStatePB state;
     state.set_transaction_id(id_.data(), id_.size());
     state.set_status(status);
 
@@ -1347,7 +1347,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
                     } else {
                       // Tablet has been deleted (not split), so we should mark it as applied to
                       // be able to cleanup the transaction.
-                      tserver::TransactionStatePB transaction_state;
+                      TransactionStatePB transaction_state;
                       transaction_state.add_tablets(action.tablet);
                       WARN_NOT_OK(
                           state.AppliedInOneOfInvolvedTablets(transaction_state),

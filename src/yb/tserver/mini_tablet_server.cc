@@ -40,9 +40,14 @@
 #include <glog/logging.h>
 
 #include "yb/common/index.h"
+#include "yb/common/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.pb.h"
+
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
@@ -52,19 +57,17 @@
 
 #include "yb/tablet/tablet-harness.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/encrypted_file_factory.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/header_manager_impl.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/universe_key_manager.h"
 
 using std::pair;
 
@@ -93,10 +96,10 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
   : started_(false),
     opts_(extra_opts),
     index_(index + 1),
-    universe_key_manager_(new UniverseKeyManager()),
-    encrypted_env_(NewEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()))),
+    universe_key_manager_(new encryption::UniverseKeyManager()),
+    encrypted_env_(NewEncryptedEnv(encryption::DefaultHeaderManager(universe_key_manager_.get()))),
     rocksdb_encrypted_env_(
-      NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()))) {
+      NewRocksDBEncryptedEnv(encryption::DefaultHeaderManager(universe_key_manager_.get()))) {
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
@@ -276,7 +279,7 @@ RaftConfigPB MiniTabletServer::CreateLocalConfig() const {
   RaftConfigPB config;
   RaftPeerPB* peer = config.add_peers();
   peer->set_permanent_uuid(server_->instance_pb().permanent_uuid());
-  peer->set_member_type(RaftPeerPB::VOTER);
+  peer->set_member_type(consensus::PeerMemberType::VOTER);
   auto host_port = peer->mutable_last_known_private_addr()->Add();
   host_port->set_host(bound_rpc_addr().address().to_string());
   host_port->set_port(bound_rpc_addr().port());

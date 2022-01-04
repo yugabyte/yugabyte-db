@@ -55,7 +55,6 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet_error.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -132,7 +131,7 @@ Peer::Peer(
       messenger_(messenger) {}
 
 void Peer::SetTermForTest(int term) {
-  response_.set_responder_term(term);
+  update_response_.set_responder_term(term);
 }
 
 Status Peer::Init() {
@@ -157,8 +156,8 @@ Status Peer::Init() {
 Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
   // If the peer is currently sending, return Status::OK().
   // If there are new requests in the queue we'll get them on ProcessResponse().
-  auto performing_lock = LockPerforming(std::try_to_lock);
-  if (!performing_lock.owns_lock()) {
+  auto performing_update_lock = LockPerformingUpdate(std::try_to_lock);
+  if (!performing_update_lock.owns_lock()) {
     return Status::OK();
   }
 
@@ -194,42 +193,42 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
       std::bind(&Peer::SendNextRequest, shared_from_this(), trigger_mode));
   using_thread_pool_.fetch_sub(1, std::memory_order_acq_rel);
   if (status.ok()) {
-    performing_lock.release();
+    performing_update_lock.release();
   }
   return status;
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   auto retain_self = shared_from_this();
-  DCHECK(performing_mutex_.is_locked()) << "Cannot send request";
+  DCHECK(performing_update_mutex_.is_locked()) << "Cannot send request";
 
-  auto performing_lock = LockPerforming(std::adopt_lock);
+  auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
   if (!processing_lock.owns_lock()) {
     return;
   }
   // Since there's a couple of return paths from this function, setup a cleanup, in case we fill in
-  // ops inside request_, but do not get to use them.
+  // ops inside update_request_, but do not get to use them.
   bool needs_cleanup = true;
   ScopeExit([&needs_cleanup, this](){
     if (needs_cleanup) {
-      // Since we will not be using request_, we should cleanup the reserved ops.
-      CleanRequestOps();
+      // Since we will not be using update_request_, we should cleanup the reserved ops.
+      CleanRequestOps(&update_request_);
     }
   });
 
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
   bool last_exchange_successful = false;
-  RaftPeerPB::MemberType member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
-  int64_t commit_index_before = request_.has_committed_op_id() ?
-      request_.committed_op_id().index() : kMinimumOpIdIndex;
+  PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
+  int64_t commit_index_before = update_request_.has_committed_op_id() ?
+      update_request_.committed_op_id().index() : kMinimumOpIdIndex;
   ReplicateMsgsHolder msgs_holder;
   Status s = queue_->RequestForPeer(
-      peer_pb_.permanent_uuid(), &request_, &msgs_holder, &needs_remote_bootstrap,
+      peer_pb_.permanent_uuid(), &update_request_, &msgs_holder, &needs_remote_bootstrap,
       &member_type, &last_exchange_successful);
-  int64_t commit_index_after = request_.has_committed_op_id() ?
-      request_.committed_op_id().index() : kMinimumOpIdIndex;
+  int64_t commit_index_after = update_request_.has_committed_op_id() ?
+      update_request_.committed_op_id().index() : kMinimumOpIdIndex;
 
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(INFO) << "Could not obtain request from queue for peer: " << s;
@@ -257,7 +256,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     s = SendRemoteBootstrapRequest();
     using_thread_pool_.fetch_sub(1, std::memory_order_acq_rel);
     if (s.ok()) {
-      performing_lock.release();
+      performing_update_lock.release();
     }
     return;
   }
@@ -265,14 +264,14 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // If the peer doesn't need remote bootstrap, but it is a PRE_VOTER or PRE_OBSERVER in the config,
   // we need to promote it.
   if (last_exchange_successful &&
-      (member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER)) {
+      (member_type == PeerMemberType::PRE_VOTER || member_type == PeerMemberType::PRE_OBSERVER)) {
     if (PREDICT_TRUE(consensus_)) {
       auto uuid = peer_pb_.permanent_uuid();
       // Remove these here, before we drop the locks.
       needs_cleanup = false;
-      CleanRequestOps();
+      CleanRequestOps(&update_request_);
       processing_lock.unlock();
-      performing_lock.unlock();
+      performing_update_lock.unlock();
       consensus::ChangeConfigRequestPB req;
       consensus::ChangeConfigResponsePB resp;
 
@@ -301,46 +300,68 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     }
   }
 
-  if (request_.tablet_id().empty()) {
-    request_.set_tablet_id(tablet_id_);
-    request_.set_caller_uuid(leader_uuid_);
-    request_.set_dest_uuid(peer_pb_.permanent_uuid());
+  if (update_request_.tablet_id().empty()) {
+    update_request_.set_tablet_id(tablet_id_);
+    update_request_.set_caller_uuid(leader_uuid_);
+    update_request_.set_dest_uuid(peer_pb_.permanent_uuid());
   }
 
-  const bool req_has_ops = (request_.ops_size() > 0) || (commit_index_after > commit_index_before);
+  const bool req_is_heartbeat = update_request_.ops_size() == 0 &&
+                                commit_index_after <= commit_index_before;
 
   // If the queue is empty, check if we were told to send a status-only message (which is what
   // happens during heartbeats). If not, just return.
-  if (PREDICT_FALSE(!req_has_ops && trigger_mode == RequestTriggerMode::kNonEmptyOnly)) {
+  if (PREDICT_FALSE(req_is_heartbeat && trigger_mode == RequestTriggerMode::kNonEmptyOnly)) {
     queue_->RequestWasNotSent(peer_pb_.permanent_uuid());
     return;
   }
 
   // If we're actually sending ops there's no need to heartbeat for a while, reset the heartbeater.
-  if (req_has_ops) {
+  if (!req_is_heartbeat) {
     heartbeater_->Snooze();
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_leader_request_fraction);
-
-  processing_lock.unlock();
-  performing_lock.release();
 
   // We will cleanup ops from request in ProcessResponse, because otherwise there could be race
   // condition. When rest of this function is running in parallel to ProcessResponse.
   needs_cleanup = false;
   msgs_holder.ReleaseOps();
 
-  if (request_.ops_size() == 0 && multi_raft_batcher_
+  // Heartbeat batching allows for network layer savings by reducing CPU cycles
+  // spent on computing state, context switching (sending/receiving RPC's)
+  // and serializing/deserializing protobufs.
+  if (req_is_heartbeat && multi_raft_batcher_
       && FLAGS_enable_multi_raft_heartbeat_batcher) {
-    multi_raft_batcher_->AddRequestToBatch(&request_, &response_,
-                                           std::bind(&Peer::ProcessResponseWithStatus,
-                                                     shared_from_this(), _1));
+    auto performing_heartbeat_lock = LockPerformingHeartbeat(std::try_to_lock);
+    if (!performing_heartbeat_lock.owns_lock()) {
+      // Outstanding heartbeat already in flight so don't schedule another.
+      return;
+    }
+    heartbeat_request_.Swap(&update_request_);
+    heartbeat_response_.Swap(&update_response_);
+    cur_heartbeat_id_++;
+    processing_lock.unlock();
+    performing_update_lock.unlock();
+    performing_heartbeat_lock.release();
+    multi_raft_batcher_->AddRequestToBatch(&heartbeat_request_, &heartbeat_response_,
+                                           std::bind(&Peer::ProcessHeartbeatResponse,
+                                                     retain_self, _1));
     return;
   }
 
+  // The minimum_viable_heartbeat_ represents the
+  // heartbeat that is sent immediately following this op.
+  // Any heartbeats which are outstanding are considered no longer viable.
+  // It's simpler for us to drop the responses for these heartbeats
+  // rather than attempt to ensure we process the responses of the outstanding heartbeat
+  // and this new request in the same order they were received by the remote peer.
+  // TODO: Remove batched but unsent heartbeats (in the respective MultiRaftBatcher) in this case
+  minimum_viable_heartbeat_ = cur_heartbeat_id_ + 1;
+  processing_lock.unlock();
+  performing_update_lock.release();
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
-  proxy_->UpdateAsync(&request_, trigger_mode, &response_, &controller_,
+  proxy_->UpdateAsync(&update_request_, trigger_mode, &update_response_, &controller_,
                       std::bind(&Peer::ProcessResponse, retain_self));
 }
 
@@ -354,18 +375,8 @@ std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
   return lock;
 }
 
-void Peer::ProcessResponseWithStatus(const Status& status) {
-  DCHECK(performing_mutex_.is_locked()) << "Got a response when nothing was pending";
-  CleanRequestOps();
-  controller_.Reset();
-
-  auto performing_lock = LockPerforming(std::adopt_lock);
-
-  auto processing_lock = StartProcessingUnlocked();
-  if (!processing_lock.owns_lock()) {
-    return;
-  }
-
+bool Peer::ProcessResponseWithStatus(const Status& status,
+                                     ConsensusResponsePB* response) {
   if (!status.ok()) {
     if (status.IsRemoteError()) {
       // Most controller errors are caused by network issues or corner cases like shutdown and
@@ -376,26 +387,26 @@ void Peer::ProcessResponseWithStatus(const Status& status) {
       queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
     }
     ProcessResponseError(status);
-    return;
+    return false;
   }
 
-  if (response_.has_propagated_hybrid_time()) {
-    queue_->clock()->Update(HybridTime(response_.propagated_hybrid_time()));
+  if (response->has_propagated_hybrid_time()) {
+    queue_->clock()->Update(HybridTime(response->propagated_hybrid_time()));
   }
 
   // We should try to evict a follower which returns a WRONG UUID error.
-  if (response_.has_error() &&
-      response_.error().code() == tserver::TabletServerErrorPB::WRONG_SERVER_UUID) {
+  if (response->has_error() &&
+      response->error().code() == tserver::TabletServerErrorPB::WRONG_SERVER_UUID) {
     queue_->NotifyObserversOfFailedFollower(
         peer_pb_.permanent_uuid(),
         Substitute("Leader communication with peer $0 received error $1, will try to "
                    "evict peer", peer_pb_.permanent_uuid(),
-                   response_.error().ShortDebugString()));
-    ProcessResponseError(StatusFromPB(response_.error().status()));
-    return;
+                   response->error().ShortDebugString()));
+    ProcessResponseError(StatusFromPB(response->error().status()));
+    return false;
   }
 
-  auto s = ResponseStatus(response_);
+  auto s = ResponseStatus(*response);
   if (!s.ok() &&
       tserver::TabletServerError(s) == tserver::TabletServerErrorPB::TABLET_NOT_RUNNING &&
       tablet::RaftGroupStateError(s) == tablet::RaftGroupStatePB::FAILED) {
@@ -408,42 +419,82 @@ void Peer::ProcessResponseWithStatus(const Status& status) {
         peer_pb_.permanent_uuid(),
         Format("Tablet in peer $0 is in FAILED state, will try to evict peer",
                peer_pb_.permanent_uuid()));
-    ProcessResponseError(StatusFromPB(response_.error().status()));
+    ProcessResponseError(StatusFromPB(response->error().status()));
   }
 
   // Response should be either error or status.
-  LOG_IF(DFATAL, response_.has_error() == response_.has_status())
-    << "Invalid response: " << response_.ShortDebugString();
+  LOG_IF(DFATAL, response->has_error() == response->has_status())
+    << "Invalid response: " << response->ShortDebugString();
 
   // Pass through errors we can respond to, like not found, since in that case
   // we will need to remotely bootstrap. TODO: Handle DELETED response once implemented.
-  if ((response_.has_error() &&
-      response_.error().code() != tserver::TabletServerErrorPB::TABLET_NOT_FOUND) ||
-      (response_.status().has_error() &&
-          response_.status().error().code() == consensus::ConsensusErrorPB::CANNOT_PREPARE)) {
+  if ((response->has_error() &&
+      response->error().code() != tserver::TabletServerErrorPB::TABLET_NOT_FOUND) ||
+      (response->status().has_error() &&
+          response->status().error().code() == consensus::ConsensusErrorPB::CANNOT_PREPARE)) {
     // Again, let the queue know that the remote is still responsive, since we will not be sending
     // this error response through to the queue.
     queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
-    ProcessResponseError(StatusFromPB(response_.error().status()));
-    return;
+    ProcessResponseError(StatusFromPB(response->error().status()));
+    return false;
   }
 
   failed_attempts_ = 0;
-  bool more_pending = queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), response_);
-
-  if (more_pending) {
-    processing_lock.unlock();
-    performing_lock.release();
-    SendNextRequest(RequestTriggerMode::kAlwaysSend);
-  }
+  return queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), *response);
 }
 
 void Peer::ProcessResponse() {
+  DCHECK(performing_update_mutex_.is_locked()) << "Got a response when nothing was pending.";
   auto status = controller_.status();
   if (status.ok()) {
     status = controller_.thread_pool_failure();
   }
-  ProcessResponseWithStatus(status);
+  controller_.Reset();
+  CleanRequestOps(&update_request_);
+
+  auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
+  auto processing_lock = StartProcessingUnlocked();
+  if (!processing_lock.owns_lock()) {
+    return;
+  }
+  bool more_pending = ProcessResponseWithStatus(status, &update_response_);
+
+  if (more_pending) {
+    processing_lock.unlock();
+    performing_update_lock.release();
+    SendNextRequest(RequestTriggerMode::kAlwaysSend);
+  }
+}
+
+void Peer::ProcessHeartbeatResponse(const Status& status) {
+  DCHECK(performing_heartbeat_mutex_.is_locked()) << "Got a heartbeat when nothing was pending.";
+  DCHECK(heartbeat_request_.ops_size() == 0) << "Got a heartbeat with a non-zero number of ops.";
+
+  auto performing_heartbeat_lock = LockPerformingHeartbeat(std::adopt_lock);
+  auto processing_lock = StartProcessingUnlocked();
+  if (!processing_lock.owns_lock()) {
+    return;
+  }
+
+  if (cur_heartbeat_id_ < minimum_viable_heartbeat_) {
+    // If we receive a response from a heartbeat that was sent before a valid op
+    // then we should discard it as the op is more recent and the heartbeat should not
+    // be modifying any state.
+    // TODO: Add a metric to track the frequency of this
+    return;
+  }
+  bool more_pending = ProcessResponseWithStatus(status, &heartbeat_response_);
+
+  if (more_pending) {
+    auto performing_update_lock = LockPerformingUpdate(std::try_to_lock);
+    if (!performing_update_lock.owns_lock()) {
+      return;
+    }
+    performing_heartbeat_lock.unlock();
+    processing_lock.unlock();
+    performing_update_lock.release();
+    SendNextRequest(RequestTriggerMode::kAlwaysSend);
+  }
 }
 
 Status Peer::SendRemoteBootstrapRequest() {
@@ -460,7 +511,7 @@ void Peer::ProcessRemoteBootstrapResponse() {
   Status status = controller_.status();
   controller_.Reset();
 
-  auto performing_lock = LockPerforming(std::adopt_lock);
+  auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
   if (!processing_lock.owns_lock()) {
     return;
@@ -487,7 +538,7 @@ void Peer::ProcessRemoteBootstrapResponse() {
 }
 
 void Peer::ProcessResponseError(const Status& status) {
-  DCHECK(performing_mutex_.is_locked());
+  DCHECK(performing_update_mutex_.is_locked() || performing_heartbeat_mutex_.is_locked());
   failed_attempts_++;
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 5) << "Couldn't send request. "
       << " Status: " << status.ToString() << ". Retrying in the next heartbeat period."
@@ -539,8 +590,8 @@ Peer::~Peer() {
   CHECK_EQ(state_, kPeerClosed) << "Peer cannot be implicitly closed";
 }
 
-void Peer::CleanRequestOps() {
-  request_.mutable_ops()->ExtractSubrange(0, request_.ops().size(), nullptr /* elements */);
+void Peer::CleanRequestOps(ConsensusRequestPB* request) {
+  request->mutable_ops()->ExtractSubrange(0, request->ops().size(), nullptr /* elements */);
 }
 
 RpcPeerProxy::RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy)
@@ -653,7 +704,7 @@ Status SetPermanentUuidForRemotePeer(
       auto status = request.controller.status();
       if (status.ok()) {
         remote_peer->set_permanent_uuid(request.resp.node_instance().permanent_uuid());
-        remote_peer->set_member_type(RaftPeerPB::VOTER);
+        remote_peer->set_member_type(PeerMemberType::VOTER);
         if (request.resp.has_registration()) {
           CopyRegistration(request.resp.registration(), remote_peer);
         } else {

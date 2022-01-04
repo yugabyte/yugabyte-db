@@ -37,7 +37,10 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
@@ -62,8 +65,8 @@ string TabletReplica::ToString() const {
                 "total_space_used: $6, time since update: $7ms }",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
-                consensus::RaftPeerPB_Role_Name(role),
-                consensus::RaftPeerPB::MemberType_Name(member_type),
+                PeerRole_Name(role),
+                consensus::PeerMemberType_Name(member_type),
                 should_disable_lb_move, fs_data_dir,
                 drive_info.sst_files_size + drive_info.wal_files_size,
                 MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
@@ -168,7 +171,7 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
   std::lock_guard<simple_spinlock> l(lock_);
 
   for (const auto& pair : *replica_locations_) {
-    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+    if (pair.second.role == PeerRole::LEADER) {
       return pair.second.drive_info;
     }
   }
@@ -177,7 +180,7 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
 
 TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
   for (const auto& pair : *replica_locations_) {
-    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+    if (pair.second.role == PeerRole::LEADER) {
       return pair.second.ts_desc;
     }
   }
@@ -765,8 +768,20 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !IsColocatedUserTable() &&
          l->namespace_id() != kPgSequencesDataNamespaceId;
+}
+
+bool TableInfo::IsTablegroupParentTable() const {
+  return id().find(master::kTablegroupParentTableIdSuffix) != std::string::npos;
+}
+
+bool TableInfo::IsColocatedParentTable() const {
+  return id().find(master::kColocatedParentTableIdSuffix) != std::string::npos;
+}
+
+bool TableInfo::IsColocatedUserTable() const {
+  return colocated() && !IsColocatedParentTable() && !IsTablegroupParentTable();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {

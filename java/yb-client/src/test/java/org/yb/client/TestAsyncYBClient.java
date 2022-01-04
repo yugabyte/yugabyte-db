@@ -38,8 +38,10 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.Common;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
 import org.yb.consensus.Metadata;
-import org.yb.master.Master;
+import org.yb.master.MasterClientOuterClass;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -73,11 +75,12 @@ public class TestAsyncYBClient extends BaseYBClientTest {
       assertTrue(ex.getMessage().contains(badHostname));
     }
 
-    Master.GetTableLocationsResponsePB.Builder builder =
-        Master.GetTableLocationsResponsePB.newBuilder();
+    MasterClientOuterClass.GetTableLocationsResponsePB.Builder builder =
+        MasterClientOuterClass.GetTableLocationsResponsePB.newBuilder();
 
     // Builder three bad locations.
-    Master.TabletLocationsPB.Builder tabletPb = Master.TabletLocationsPB.newBuilder();
+    MasterClientOuterClass.TabletLocationsPB.Builder tabletPb =
+        MasterClientOuterClass.TabletLocationsPB.newBuilder();
     for (int i = 0; i < 3; i++) {
       Common.PartitionPB.Builder partition = Common.PartitionPB.newBuilder();
       partition.setPartitionKeyStart(ByteString.copyFrom("a" + i, Charsets.UTF_8.name()));
@@ -85,16 +88,17 @@ public class TestAsyncYBClient extends BaseYBClientTest {
       tabletPb.setPartition(partition);
       tabletPb.setStale(false);
       tabletPb.setTabletId(ByteString.copyFromUtf8("some id " + i));
-      Master.TSInfoPB.Builder tsInfoBuilder = Master.TSInfoPB.newBuilder();
-      Common.HostPortPB.Builder hostBuilder = Common.HostPortPB.newBuilder();
+      MasterClientOuterClass.TSInfoPB.Builder tsInfoBuilder =
+          MasterClientOuterClass.TSInfoPB.newBuilder();
+      CommonNet.HostPortPB.Builder hostBuilder = CommonNet.HostPortPB.newBuilder();
       hostBuilder.setHost(badHostname + i);
       hostBuilder.setPort(i);
       tsInfoBuilder.addPrivateRpcAddresses(hostBuilder);
       tsInfoBuilder.setPermanentUuid(ByteString.copyFromUtf8("some uuid"));
-      Master.TabletLocationsPB.ReplicaPB.Builder replicaBuilder =
-          Master.TabletLocationsPB.ReplicaPB.newBuilder();
+      MasterClientOuterClass.TabletLocationsPB.ReplicaPB.Builder replicaBuilder =
+          MasterClientOuterClass.TabletLocationsPB.ReplicaPB.newBuilder();
       replicaBuilder.setTsInfo(tsInfoBuilder);
-      replicaBuilder.setRole(Metadata.RaftPeerPB.Role.FOLLOWER);
+      replicaBuilder.setRole(CommonTypes.PeerRole.FOLLOWER);
       tabletPb.addReplicas(replicaBuilder);
       builder.addTabletLocations(tabletPb);
     }

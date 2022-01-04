@@ -35,6 +35,10 @@
 #include <string>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+
+#include "yb/encryption/encryption_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -44,7 +48,6 @@
 namespace yb {
 
 class FsManager;
-class UniverseKeyManager;
 
 namespace consensus {
 class RaftConfigPB;
@@ -144,7 +147,7 @@ class MiniTabletServer {
   TabletServerOptions opts_;
   int index_;
 
-  std::unique_ptr<UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<yb::Env> encrypted_env_;
   std::unique_ptr<rocksdb::Env> rocksdb_encrypted_env_;
   std::unique_ptr<TabletServer> server_;
