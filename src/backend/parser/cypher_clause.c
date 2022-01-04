@@ -2469,8 +2469,13 @@ static transform_entity *transform_VLE_edge_entity(cypher_parsestate *cpstate,
     /* get the function */
     func = (FuncCall*)rel->varlen;
 
-    /* it better be one of our functions */
-    Assert(list_length(func->funcname) == 1);
+    /* only our functions are supported here */
+    if (list_length(func->funcname) != 1)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("only AGE functions are supported here")));
+    }
 
     /* set the pstate */
     pstate = &cpstate->pstate;
@@ -3936,11 +3941,19 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
      */
     if (list_length(pstate->p_rtable) > 1)
     {
-        List *namespace;
-        int rtindex;
+        List *namespace = NULL;
+        int rtindex = 0;
 
+        /* get the index of the last entry */
         rtindex = list_length(pstate->p_rtable);
-        Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
+
+        /* the rte at the end should be the rte just added */
+        if (rte != rt_fetch(rtindex, pstate->p_rtable))
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("rte must be last entry in p_rtable")));
+        }
 
         namespace = list_make1(makeNamespaceItem(rte, true, true, false, true));
 

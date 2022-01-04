@@ -114,66 +114,59 @@ SELECT * FROM cypher('cypher_vle', $$MATCH p=()-[*]->(v) RETURN count(*) $$) AS 
 SELECT * FROM cypher('cypher_vle', $$MATCH p=(u:begin)-[*3..3]->(v:end) RETURN p $$) AS (e agtype);
 -- Should find 12
 SELECT * FROM cypher('cypher_vle', $$MATCH p=(u:begin)-[*3..3]-(v:end) RETURN p $$) AS (e agtype);
--- Should find 2
+-- Each should find 2
 SELECT * FROM cypher('cypher_vle', $$MATCH p=(u:begin)<-[*]-(v:end) RETURN p $$) AS (e agtype);
 SELECT * FROM cypher('cypher_vle', $$MATCH p=(u:begin)<-[e*]-(v:end) RETURN p $$) AS (e agtype);
 SELECT * FROM cypher('cypher_vle', $$MATCH p=(u:begin)<-[e*]-(v:end) RETURN e $$) AS (e agtype);
 SELECT * FROM cypher('cypher_vle', $$MATCH p=(:begin)<-[*]-()<-[]-(:end) RETURN p $$) AS (e agtype);
 -- Each should return 31
 SELECT count(*) FROM cypher('cypher_vle', $$ MATCH ()-[e1]->(v)-[e2]->() RETURN e1,e2 $$) AS (e1 agtype, e2 agtype);
-
 SELECT count(*) FROM cypher('cypher_vle', $$
 	MATCH ()-[e1*1..1]->(v)-[e2*1..1]->()
 	RETURN e1, e2
 $$) AS (e1 agtype, e2 agtype);
-
 SELECT count(*) FROM cypher('cypher_vle', $$
 	MATCH (v)-[e1*1..1]->()-[e2*1..1]->()
 	RETURN e1, e2
 $$) AS (e1 agtype, e2 agtype);
-
-
 SELECT count(*) FROM cypher('cypher_vle', $$
 	MATCH ()-[e1]->(v)-[e2*1..1]->()
 	RETURN e1, e2
 $$) AS (e1 agtype, e2 agtype);
-
 SELECT count(*) FROM cypher('cypher_vle', $$
     MATCH ()-[e1]->()-[e2*1..1]->()
     RETURN e1, e2
 $$) AS (e1 agtype, e2 agtype);
-
 SELECT count(*) FROM cypher('cypher_vle', $$
 	MATCH ()-[e1*1..1]->(v)-[e2]->()
 	RETURN e1, e2
 $$) AS (e1 agtype, e2 agtype);
-
 SELECT count(*) FROM cypher('cypher_vle', $$
     MATCH ()-[e1*1..1]->()-[e2]->()
     RETURN e1, e2
 $$) AS (e1 agtype, e2 agtype);
-
 SELECT count(*) FROM cypher('cypher_vle', $$
     MATCH (a)-[e1]->(a)-[e2*1..1]->()
     RETURN e1, e2
 $$) AS (e1 agtype, e2 agtype);
-
 SELECT count(*) FROM cypher('cypher_vle', $$
         MATCH (a) MATCH (a)-[e1*1..1]->(v)
         RETURN e1
 $$) AS (e1 agtype);
-
-
 SELECT count(*) FROM cypher('cypher_vle', $$
         MATCH (a) MATCH ()-[e1*1..1]->(a)
         RETURN e1
 $$) AS (e1 agtype);
-
-
--- should return 1 path
+-- Should return 1 path
 SELECT * FROM cypher('cypher_vle', $$ MATCH p=()<-[e1*]-(:end)-[e2*]->(:begin) RETURN p $$) AS (result agtype);
+-- Each should return 3
+SELECT * FROM cypher('cypher_vle', $$MATCH (u:begin)-[e*0..1]->(v) RETURN id(u), e, id(v) $$) AS (u agtype, e agtype, v agtype);
+SELECT * FROM cypher('cypher_vle', $$MATCH p=(u:begin)-[e*0..1]->(v) RETURN p $$) AS (p agtype);
+-- Each should return 5
+SELECT * FROM cypher('cypher_vle', $$MATCH (u)-[e*0..0]->(v) RETURN id(u), e, id(v) $$) AS (u agtype, e agtype, v agtype);
+SELECT * FROM cypher('cypher_vle', $$MATCH p=(u)-[e*0..0]->(v) RETURN id(u), p, id(v) $$) AS (u agtype, p agtype, v agtype);
 
-
+--
 -- Clean up
 --
 
