@@ -10,36 +10,27 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.amazonaws.SDKGlobalConfiguration;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.common.AWSUtil;
-import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.AZUtil;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TableManager;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.CustomerConfig;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 
 @Slf4j
 public class DeleteCustomerConfig extends UniverseTaskBase {
@@ -72,6 +63,11 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   @Override
   public void run() {
     try {
+      // Disable cert checking while connecting with s3
+      // Enabling it can potentially fail when s3 compatible storages like
+      // Dell ECS are provided and custom certs are needed to connect
+      // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       List<Schedule> scheduleList = Schedule.findAllScheduleWithCustomerConfig(params().configUUID);
       for (Schedule schedule : scheduleList) {
@@ -166,6 +162,8 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
       CustomerConfig customerConfig =
           CustomerConfig.get(params().customerUUID, params().configUUID);
       customerConfig.delete();
+      // Re-enable cert checking as it applies globally
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
     }
     log.info("Finished {} task.", getName());
   }

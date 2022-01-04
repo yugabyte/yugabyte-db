@@ -6,6 +6,7 @@ import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
 import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
 import static play.mvc.Http.Status.CONFLICT;
 
+import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -38,8 +39,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.UrlValidator;
 import org.apache.commons.validator.routines.DomainValidator;
+import org.apache.commons.validator.routines.UrlValidator;
 
 @Singleton
 public class CustomerConfigValidator {
@@ -149,6 +150,12 @@ public class CustomerConfigValidator {
               .throwError();
         } else {
           try {
+            // Disable cert checking while connecting with s3
+            // Enabling it can potentially fail when s3 compatible storages like
+            // Dell ECS are provided and custom certs are needed to connect
+            // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
+            System.setProperty(
+                SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
             s3UriPath = s3UriPath.substring(5);
             String[] bucketSplit = s3UriPath.split("/", 2);
             String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
@@ -185,6 +192,10 @@ public class CustomerConfigValidator {
             beanValidator.error().forField(fieldFullName(fieldName), errMessage).throwError();
           } catch (SdkClientException e) {
             beanValidator.error().forField(fieldFullName(fieldName), e.getMessage()).throwError();
+          } finally {
+            // Re-enable cert checking as it applies globally
+            System.setProperty(
+                SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
           }
         }
       }
