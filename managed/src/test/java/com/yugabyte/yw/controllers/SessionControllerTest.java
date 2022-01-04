@@ -12,9 +12,11 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.models.Users.Role;
+import static com.yugabyte.yw.models.Users.UserType;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -22,7 +24,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
@@ -38,10 +42,12 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -57,6 +63,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import kamon.instrumentation.play.GuiceModule;
+import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.junit.After;
 import org.junit.Test;
 import org.pac4j.play.CallbackController;
@@ -76,6 +83,10 @@ public class SessionControllerTest {
 
   private Application app;
 
+  private SettableRuntimeConfigFactory settableRuntimeConfigFactory;
+
+  private LdapUtil ldapUtil;
+
   private void startApp(boolean isMultiTenant) {
     HealthChecker mockHealthChecker = mock(HealthChecker.class);
     Scheduler mockScheduler = mock(Scheduler.class);
@@ -84,6 +95,7 @@ public class SessionControllerTest {
     PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
     QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
     AlertConfigurationWriter mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
+    ldapUtil = mock(LdapUtil.class);
     app =
         new GuiceApplicationBuilder()
             .disable(SwaggerModule.class)
@@ -98,10 +110,12 @@ public class SessionControllerTest {
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
             .overrides(
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
+            .overrides(bind(LdapUtil.class).toInstance(ldapUtil))
             .build();
     Helpers.start(app);
 
     alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
+    settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
   }
 
   @After
@@ -160,6 +174,94 @@ public class SessionControllerTest {
         json.get("error").toString(),
         allOf(notNullValue(), containsString("{\"password\":[\"This field is required\"]}")));
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testValidLoginWithLdap() throws LdapException {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    user.setUserType(UserType.ldap);
+    user.save();
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "test@customer.com");
+    loginJson.put("password", "password");
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
+    when(ldapUtil.loginWithLdap(any())).thenReturn(user);
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("authToken"));
+    assertAuditEntry(0, customer.uuid);
+
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
+  }
+
+  @Test
+  public void testInvalidLoginWithLdap() throws LdapException {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    user.setUserType(UserType.ldap);
+    user.save();
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "test@customer.com");
+    loginJson.put("password", "password1");
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
+    when(ldapUtil.loginWithLdap(any())).thenReturn(null);
+    Result result =
+        assertPlatformException(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(UNAUTHORIZED, result.status());
+    assertThat(
+        json.get("error").toString(),
+        allOf(notNullValue(), containsString("Invalid User Credentials")));
+    assertAuditEntry(0, customer.uuid);
+
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
+  }
+
+  @Test
+  public void testLdapUserWithoutLdapConfig() throws LdapException {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    user.setUserType(UserType.ldap);
+    user.save();
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "test@customer.com");
+    loginJson.put("password", "password");
+    Result result =
+        assertPlatformException(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(UNAUTHORIZED, result.status());
+    assertThat(
+        json.get("error").toString(),
+        allOf(notNullValue(), containsString("Invalid User Credentials")));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testLocalUserWithLdapConfigured() throws LdapException {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "test@customer.com");
+    loginJson.put("password", "password");
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "true");
+    when(ldapUtil.loginWithLdap(any())).thenReturn(null);
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("authToken"));
+    assertAuditEntry(0, customer.uuid);
+
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.security.ldap.use_ldap", "false");
   }
 
   @Test
