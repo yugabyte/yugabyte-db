@@ -1119,7 +1119,9 @@ class YBBackup:
             for line in output.splitlines():
                 if not snapshot_done:
                     if line.find(snapshot_id) == 0:
-                        (found_snapshot_id, state) = line.split()
+                        snapshot_data = line.split()
+                        found_snapshot_id = snapshot_data[0]
+                        state = snapshot_data[1]
                         if found_snapshot_id == snapshot_id:
                             if state == complete_state:
                                 snapshot_done = True
