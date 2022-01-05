@@ -554,8 +554,6 @@ CREATE TABLE transactions_brazil
     FOR VALUES IN ('Brazil') TABLESPACE sa_east_1_tablespace;
 ```
 
-The addresses should be replaced with the addresses of your YB-Master servers.
-
 And with that, the new region is ready to store transactions of the residents of Brazil.
 
 ```sql
