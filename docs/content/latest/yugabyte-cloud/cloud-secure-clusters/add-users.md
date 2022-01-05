@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: add-users
     parent: cloud-secure-clusters
-    weight: 60
+    weight: 350
 isTocNested: true
 showAsideToc: true
 ---

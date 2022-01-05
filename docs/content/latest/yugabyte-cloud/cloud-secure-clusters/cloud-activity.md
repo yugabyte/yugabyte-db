@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-activity
     parent: cloud-secure-clusters
-    weight: 300
+    weight: 500
 isTocNested: true
 showAsideToc: true
 ---

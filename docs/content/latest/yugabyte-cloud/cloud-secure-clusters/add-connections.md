@@ -1,6 +1,6 @@
 ---
-title: Assign IP allow lists
-linkTitle: Assign IP allow lists
+title: IP allow lists
+linkTitle: IP allow lists
 description: Authorize access to a cluster using IP allow lists.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
@@ -12,7 +12,7 @@ menu:
   latest:
     identifier: add-connections
     parent: cloud-secure-clusters
-    weight: 20
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---
