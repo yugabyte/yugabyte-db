@@ -8,7 +8,8 @@ import 'ace-builds/src-min-noconflict/snippets/json';
 
 const editorStyle = {
   height: '700px',
-  width: '100%'
+  width: '100%',
+  marginBottom: '20px'
 };
 
 const EditorGFlag = ({ formProps, gFlagProps }) => {
