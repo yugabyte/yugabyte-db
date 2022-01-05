@@ -15,9 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-<a name="v2.11.1.0">
-
-## v2.11.1.0 - December 15, 2021
+## v2.11.1.0 - December 15, 2021 {#v2.11.1.0}
 
 **Build:** `2.11.1.0-b305`
 
@@ -228,9 +226,7 @@ docker pull yugabytedb/yugabyte:2.11.1.0-b305
 
 N/A
 
-<a name="v2.11.0.1">
-
-## v2.11.0.1 - December 3, 2021
+## v2.11.0.1 - December 3, 2021 {#v2.11.0.1}
 
 This is a bug-fix-only release.
 
@@ -274,9 +270,7 @@ docker pull yugabytedb/yugabyte:2.11.0.1-b1
 
 N/A
 
-<a name="v2.11.0.0">
-
-## v2.11.0.0 - November 22, 2021
+## v2.11.0.0 - November 22, 2021 {#v2.11.0.0}
 
 **Build:** `2.11.0.0-b7`
 
