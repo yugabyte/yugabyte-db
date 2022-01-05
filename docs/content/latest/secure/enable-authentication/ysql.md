@@ -37,19 +37,19 @@ showAsideToc: true
   </li>
 </ul>
 
-YSQL authentication, the process of identifying that YSQL users are who they say they are, is based on roles. Users, groups, and roles within YugabyteDB are created using roles. Typically, a role that has login privileges is known as a *user*, while a *group* is a role that can have multiple users as members. 
+YSQL authentication, the process of identifying that YSQL users are who they say they are, is based on roles. Users, groups, and roles within YugabyteDB are created using roles. Typically, a role that has login privileges is known as a *user*, while a *group* is a role that can have multiple users as members.
 
-Users, roles, and groups allow administrators to verify whether a particular user or role is authorized to create, access, change, or remove databases or manage users and roles. Authentication verifies the identity of a user while authorization determines the verified user’s database access privileges. 
+Users, roles, and groups allow administrators to verify whether a particular user or role is authorized to create, access, change, or remove databases or manage users and roles. Authentication verifies the identity of a user while authorization determines the verified user’s database access privileges.
 
-[Authorization](../../authorization/) is the process of managing access control based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Privileges are managed using [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/), [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/). 
+[Authorization](../../authorization/) is the process of managing access control based on roles. For YSQL, enabling authentication automatically enables authorization and the [role-based access control (RBAC) model](../../authorization/rbac-model/), to determine the access privileges. Privileges are managed using [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/), [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/), [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/), [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/), and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/).
 
 Users and roles can be created with superuser, non-superuser, and login privileges, and the roles that users have are used to determine what access privileges are available. Administrators can create users and roles using the [`CREATE ROLE`](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement (or its alias, [`CREATE USER`](../../../api/ysql/the-sql-language/statements/dcl_create_user/)). After users and roles have been created, [`ALTER ROLE`](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) and [`DROP ROLE`](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statements are used to change or remove users and roles.
 
 ## Default user and password
 
-When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are launched using the default user, named `yugabyte`, and then this user is connected to the default database, also named `yugabyte`. 
+When you start a YugabyteDB cluster, the YB-Master and YB-TServer services are launched using the default user, named `yugabyte`, and then this user is connected to the default database, also named `yugabyte`.
 
-Once YSQL authentication is enabled, all users (including `yugabyte`) require a password to log in to a YugabyteDB database. The default `yugabyte` user has a default password of `yugabyte` that lets this user sign into YugabyteDB when YSQL authentication is enabled. 
+Once YSQL authentication is enabled, all users (including `yugabyte`) require a password to log in to a YugabyteDB database. The default `yugabyte` user has a default password of `yugabyte` that lets this user sign into YugabyteDB when YSQL authentication is enabled.
 
 {{< note title="Note" >}}
 Versions of YugabyteDB prior to 2.0.1 do not have a default password. In this case, before you start YugabyteDB with YSQL authentication enabled, you need to make sure that the `yugabyte` user has a password.
@@ -153,7 +153,7 @@ yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles;
 You should see the following output.
 
 ```output
-          rolname          | rolsuper | rolcanlogin 
+          rolname          | rolsuper | rolcanlogin
 ---------------------------+----------+-------------
  postgres                  | t        | t
  pg_monitor                | f        | f
@@ -164,6 +164,8 @@ You should see the following output.
  pg_read_server_files      | f        | f
  pg_write_server_files     | f        | f
  pg_execute_server_program | f        | f
+ yb_extension              | f        | f
+ yb_fdw                    | f        | f
  yugabyte                  | t        | t
  john                      | f        | t
 (11 rows)
@@ -190,7 +192,7 @@ yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles;
 You should see a table output similar to the following:
 
 ```output
-          rolname          | rolsuper | rolcanlogin 
+          rolname          | rolsuper | rolcanlogin
 ---------------------------+----------+-------------
  postgres                  | t        | t
  ...
@@ -212,7 +214,7 @@ yugabyte=# \du
 
 ```output
                                    List of roles
- Role name |                         Attributes                         | Member of 
+ Role name |                         Attributes                         | Member of
 -----------+------------------------------------------------------------+-----------
  admin     | Superuser                                                  | {}
  john      |                                                            | {}
@@ -279,7 +281,7 @@ yugabyte=# \du
 
 ```output
                                    List of roles
- Role name |                         Attributes                         | Member of 
+ Role name |                         Attributes                         | Member of
 -----------+------------------------------------------------------------+-----------
  admin     | Superuser                                                  | {}
  john      | Superuser                                                  | {}
@@ -327,7 +329,7 @@ yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
 ```
 
 ```output
- rolname | rolcanlogin 
+ rolname | rolcanlogin
 ---------+-------------
  john    | f
 (1 row)
@@ -370,7 +372,7 @@ yugabyte=# \du
 
 ```output
                                    List of roles
- Role name |                         Attributes                         | Member of 
+ Role name |                         Attributes                         | Member of
 -----------+------------------------------------------------------------+-----------
  admin     | Superuser                                                  | {}
  postgres  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
