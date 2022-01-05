@@ -18,21 +18,134 @@ Included here are the release notes for all releases in the v2.8 stable release 
 
 For an RSS feed of the release notes for the latest and stable releases, point your feed reader to [https://docs.yugabyte.com/latest/releases/whats-new/index.xml](../index.xml).
 
+## v2.8.1.0 - January 4, 2021
+
+**Build:** `2.8.1.0-b37`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.0/yugabyte-2.8.1.0-b37-darwin-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.0/yugabyte-2.8.1.0-b37-linux-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux x86</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.0/yugabyte-2.8.1.0-b37-el8-aarch64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux ARM</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.8.1.0-b37
+```
+
+### New features
+
+#### Yugabyte Platform
+
+* [PLAT-2295] [PLAT-2296] Timezone Selector on user profile
+* [PLAT-2306] Add UI support for GCP user tags
+
+#### Database
+
+* [[7809](https://github.com/yugabyte/yugabyte-db/issues/7809)] [YSQL] Add session flag to enable non-transactional writes on COPY
+* [[10094](https://github.com/yugabyte/yugabyte-db/issues/10094)] [DocDB] Implemented advanced delta encoding/decoding optimized for DocDB-specific rocksdb keys
+* [[10204](https://github.com/yugabyte/yugabyte-db/issues/10204)] [YSQL] Add functionality for the yb_fdw role
+* [[10473](https://github.com/yugabyte/yugabyte-db/issues/10473)] Implement YSQL Follower reads.
+* [[10563](https://github.com/yugabyte/yugabyte-db/issues/10563)] [xCluster] Create Rename Replication Command
+
+### Improvements
+
+#### Yugabyte Platform
+
+* [PLAT-506] Allow custom port in AWS host base
+* [PLAT-2103] [UI] [Encr at rest] AWS credentials enabled when IAM is checked in
+* [PLAT-2298] Allow outOfOrder migrations and ignoreMissingMigrations
+* [PLAT-2420] ".local" as a TLD in AWS host base
+* [PLAT-2522] Backport Migrations for LDAP support
+* Add leader blacklisting to UpgradeTaskBase, Stop Processes, upgradeKubernetes, and handling rf1 universes
+* Update certs to use certLabel as CN
+
+#### Database
+
+* [[10428](https://github.com/yugabyte/yugabyte-db/issues/10428)] [DocDB] Improve logging for SST file expiration
+* [[10482](https://github.com/yugabyte/yugabyte-db/issues/10482)] [DST] Rate-limit Create/Delete Snapshot requests
+* [[10503](https://github.com/yugabyte/yugabyte-db/issues/10503)] [DocDB] Add GFlag to trust value-level TTL metadata during file expiration.
+* [[10543](https://github.com/yugabyte/yugabyte-db/issues/10543)] [YCQL] Allow NULL in filtering clauses WHERE/IF inside IN/NOT IN operators in SELECT statement.
+* [[10579](https://github.com/yugabyte/yugabyte-db/issues/10579)] [YSQL] Import libpq: reject extraneous data after SSL or GSS encryption handshake.
+* [[10655](https://github.com/yugabyte/yugabyte-db/issues/10655)] [YSQL] Add --postmaster_cgroup gflag to tserver
+* [[10883](https://github.com/yugabyte/yugabyte-db/issues/10883)] [YSQL] Rename the GUC for disabling transactional writes
+
+### Bug fixes
+
+#### Yugabyte Platform
+
+* [[10907](https://github.com/yugabyte/yugabyte-db/issues/10907)] [Backup] Prevent double config file uploading.
+* [PLAT-1990] Ensure universe size doesn't change dramatically during a full move
+* [PLAT-2080] Set Universe keys before starting tserver on encrption at rest enabled universes.
+* [PLAT-2101] Save button doesn't throw field errors when all the fields are empty
+* [PLAT-2102] Stop creation of KMS configs with duplicate name
+* [PLAT-2298] Disable third-party flyway plugin in yugabundle
+* [PLAT-2121] [UI] [KMS UI] displaying Successfully added even when it fails to add KMS config
+* [PLAT-2177] Avoid adding duplicate delete backup tasks to tasks queue
+* [PLAT-2246] Fix Timezone UI Bugs
+* [PLAT-2311] API Should return region active status
+* [PLAT-2314] [PLAT-2321] Fix backup util behavior on error for onprem providers
+* [PLAT-2339] [UI] Disable toggle TLS / cert rotation dialogs in UI for k8s universes
+* [PLAT-2351] Disable upgrade to systemd for manually provisioned universes
+* [PLAT-2373] Get rid of repeated migrations
+* [PLAT-2400] Universe scaling out by adding nodes keeps new nodes in blacklisted state.
+* [PLAT-2427] [UI] No way to remove region from provider
+* [PLAT-2498] Fix for Wrong timestamps in Health Check and Users Tab
+* [PLAT-2517] Fix typo (missing backslash) in the priority-regex for prometheus in `replicated.yaml`
+
+#### Database
+
+* [[10256](https://github.com/yugabyte/yugabyte-db/issues/10256)] [PITR] Fix Incorrect Restore logic for System Catalog tables
+* [[10591](https://github.com/yugabyte/yugabyte-db/issues/10591)] [YSQL] COPY for partitioned table writes to parent instead of child nodes
+* [[10646](https://github.com/yugabyte/yugabyte-db/issues/10646)] [YSQL] fix client backfill timeout
+
+### Known issues
+
+#### Yugabyte Platform
+
+* N/A
+
+#### Database
+
+* N/A
+
 ## v2.8.0.0 - November 16, 2021
 
 **Build:** `2.8.0.0-b37`
 
 ### Downloads
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.8.0.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.0.0/yugabyte-2.8.0.0-b37-darwin-x86_64.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.8.0.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.0.0/yugabyte-2.8.0.0-b37-linux-x86_64.tar.gz">
   <button>
-    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+    <i class="fab fa-linux"></i><span class="download-text">Linux x86</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.0.0/yugabyte-2.8.0.0-b37-el8-aarch64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux ARM</span>
   </button>
 </a>
 <br />
