@@ -85,37 +85,38 @@ First, we create tablespaces and transaction tables for each geographic region w
     );
     ```
 
-1. Create transaction tables for use within each region.
+1. Create transaction tables for use within each region. (Replace the IP addresses with those of your YB-Master servers.)
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
         create_transaction_table transactions_eu_central_1
     ```
+
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
         create_transaction_table transactions_us_west_2
     ```
+
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
         create_transaction_table transactions_ap_south_1
     ```
 
-The addresses should be replaced with the addresses of your YB-Master servers.
-
-1. Assign placement for each transaction table.
+1. Assign placement for each transaction table. (Replace the IP addresses with those of your YB-Master servers.)
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
         transactions_eu_central_1 \
         aws.eu-central-1.eu-central-1a,aws.eu-central-1.eu-central-1b,aws.eu-central-1.eu-central-1c 3
     ```
+
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+        -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
         modify_table_placement_info system transactions_us_west_2 \
         aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c 3
     ```
@@ -125,8 +126,6 @@ The addresses should be replaced with the addresses of your YB-Master servers.
         modify_table_placement_info system transactions_ap_south_1 \
         aws.ap-south-1.ap-south-1a,aws.ap-south-1.ap-south-1b,aws.ap-south-1.ap-south-1c 3
     ```
-
-The addresses should be replaced with the addresses of your YB-Master servers.
 
 ## Step 2. Create table with partitions
 
@@ -395,10 +394,10 @@ created_at    | 2020-11-07 21:28:11.056236
 
 ## Step 5. Running transactions
 
-So far, we have only been running `SELECT` and [single-row
-transactions](../../architecture/transactions/transactions-overview/#single-row-transactions). With geo-partitioning, there is a new complication introduced for general distributed transactions as shown below.
+So far, we have only been running `SELECT` and [single-row transactions](../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
 
 Let's say we want to run the following transaction:
+
 ```sql
 BEGIN;
 INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
@@ -406,50 +405,45 @@ INSERT INTO transactions VALUES (100, 10003, 'EU', 'checking', 400.00, 'credit')
 COMMIT;
 ```
 
-If we attempt to run this while connected to a node in us-west-2:
+If we attempt to run this while connected to a node in us-west-2, we get an error:
+
 ```sql
 BEGIN;
-```
-```
-BEGIN
-```
-```sql
 INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
 ```
-```
+
+```output
 ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
 ```
 
-we get an error similar to the above. This is because, since we have created a transaction table for us-west-2, by default, YugabyteDB assumes that we want to run a transaction local to the region (using the transaction status table `system.transactions_us_west_2` which we created in Step 1), but such a transaction cannot modify data outside of us-west-2.
+Because we've created a transaction table for us-west-2, YugabyteDB assumes by default that we want to run a transaction local to that region (using the transaction status table `system.transactions_us_west_2` we created in Step 1), but such a transaction cannot modify data outside of us-west-2.
 
-However, if we instead connect to a node in eu-central-1 and run the exact same transaction:
+However, if we instead connect to a node in eu-central-1 and run the exact same transaction, we are now able to finish and commit the transaction without error:
 
 ```sql
 BEGIN;
-```
-```
-BEGIN
-```
-```sql
 INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.0, 'debit');
 ```
-```
+
+```output
 INSERT 1 0
 ```
+
 ```sql
 INSERT INTO transactions VALUES (100, 10003, 'EU', 'checking', 400.0, 'credit');
 ```
-```
+
+```output
 INSERT 1 0
 ```
+
 ```sql
 COMMIT;
 ```
-```
+
+```output
 COMMIT
 ```
-
-we are now able to finish and commit the transaction without error.
 
 Sometimes though, we might want to run a transaction that writes data to multiple regions, for example:
 
@@ -460,68 +454,66 @@ INSERT INTO transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit')
 COMMIT;
 ```
 
-Running this transaction will fail whether we run it from us-west-2 or eu-central-1. The solution is to mark the transaction as a global transaction as follows:
+Running this transaction will fail whether we run it from us-west-2 or eu-central-1. The solution is to mark the transaction as a global transaction:
+
 ```sql
 SET force_global_transaction = TRUE;
-```
-```
-SET
-```
-```sql
 BEGIN;
-```
-```
-BEGIN
-```
-```sql
 INSERT INTO transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
 ```
-```
+
+```output
 INSERT 1 0
 ```
+
 ```sql
 INSERT INTO transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
 ```
-```
+
+```output
 INSERT 1 0
 ```
+
 ```sql
 COMMIT;
 ```
-```
+
+```output
 COMMIT
 ```
 
 Setting `force_global_transaction = TRUE` tells YugabyteDB to use the `system.transactions` transaction table instead, which is presumed to be globally replicated, and lets us run distributed transactions that span multiple regions.
 
-{{< note title="Note" >}}
-While all distributed transactions can run without problems under `force_global_transaction = TRUE`, such transactions may incur significantly higher latencies when committing the transaction, since YugabyteDB must perform consensus across multiple regions to write to `system.transactions`. This should only be used when necessary, and `force_global_transaction = FALSE` (the default setting) should be used whenever possible.
+{{< note title="Global transaction latency" >}}
+Only force global transactions when necessary. All distributed transactions _can_ run without problems under `force_global_transaction = TRUE`, but you may have significantly higher latency when committing the transaction, because YugabyteDB must achieve consensus across multiple regions to write to `system.transactions`. Whenever possible, use the default setting of `force_global_transaction = FALSE`.
 {{< /note >}}
 
-Finally, let's say we want to delete the very last row we just inserted. If we run the following query connected to eu-central-1 as a local transaction:
+Finally, let's say we want to delete the row we just inserted. If we run the following query connected to eu-central-1 as a local transaction, the query once again errors out:
 
 ```sql
 SET force_global_transaction = FALSE;
-```
-```sql
 DELETE FROM transactions WHERE user_id = 200 AND account_id = 10005;
 ```
-```
+
+```output
 ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
 ```
 
-the query will once again error out. This is because we are deleting from the main table (`transactions` rather than `transactions_eu_west_1`) and not specifying the partition column (there's no `geo_partition = 'EU'` clause), which means that YugabyteDB is unable to tell that the row being deleted is in fact located in eu-central-1. To fix this, we could instead run:
+We are attempting to delete from the main table (`transactions` rather than `transactions_eu_west_1`) and not specifying the partition column (there's no `geo_partition = 'EU'` clause). This means that YugabyteDB is unable to tell that the row being deleted is in fact located in eu-central-1. To fix this, we could instead run:
 
 ```sql
 DELETE FROM transactions_eu_west_1 WHERE user_id = 200 AND account_id = 10005;
 ```
-```
+
+```output
 DELETE 1
 ```
 
 ## Step 6. Adding a new geographic location
 
 Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can simply add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
+
+First, create the tablespace:
 
 ```sql
 CREATE TABLESPACE sa_east_1_tablespace WITH (
@@ -531,15 +523,18 @@ CREATE TABLESPACE sa_east_1_tablespace WITH (
       {"cloud":"aws","region":"sa-east-1","zone":"sa-east-1c","min_num_replicas":1}]}'
     );
 ```
+
+Next, create the transaction table and adjust the placement. (Replace the IP addresses with those of your YB-Master servers.)
+
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
+    -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
     create_transaction_table transactions_sa_east_1
 ```
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.07:7100 \
-    transactions_sa_east_1 \
+    -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
+    modify_table_placement_info system transactions_sa_east_1 \
     aws.sa-east-1.sa-east-1a,aws.sa-east-1.sa-east-1b,aws.sa-east-1.sa-east-1c 3
 ```
 
