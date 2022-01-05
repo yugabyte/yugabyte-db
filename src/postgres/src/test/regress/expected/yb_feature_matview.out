@@ -368,7 +368,7 @@ INSERT INTO mvtest_foo SELECT * FROM mvtest_foo;
 REFRESH MATERIALIZED VIEW mvtest_mv;
 ERROR:  duplicate key value violates unique constraint "mvtest_mv_a_idx"
 REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_mv;
-ERROR:  new data for materialized view "mvtest_mv" contains duplicate rows without any null columns, or contains rows with all null values
+ERROR:  new data for materialized view "mvtest_mv" contains duplicate rows without any null columns
 DETAIL:  Row: (1,10)
 DROP TABLE mvtest_foo CASCADE;
 NOTICE:  drop cascades to materialized view mvtest_mv
@@ -548,8 +548,8 @@ INSERT INTO test_yb VALUES (null);
 CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
 CREATE UNIQUE INDEX ON mtest_yb(col);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- should fail
-ERROR:  new data for materialized view "mtest_yb" contains duplicate rows without any null columns, or contains rows with all null values
-DETAIL:  Row: ()
+ERROR:  new data for materialized view "mtest_yb" contains rows with all null values
+DETAIL:  Row: (null)
 CREATE TABLE pg_temp_foo (col int);
 INSERT INTO pg_temp_foo values (1);
 SELECT * FROM pg_temp_foo;
