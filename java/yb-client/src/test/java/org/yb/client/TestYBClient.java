@@ -54,6 +54,7 @@ import org.yb.YBTestRunner;
 import org.yb.tserver.TserverTypes.TabletServerErrorPB;
 import org.yb.util.Pair;
 import org.yb.util.Timeouts;
+import org.yb.minicluster.MiniYBClusterParameters;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNotEquals;

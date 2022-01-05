@@ -722,7 +722,8 @@ public class YBClient implements AutoCloseable {
     String leaderUuid = waitAndGetLeaderMasterUUID(timeoutMs);
 
     if (leaderUuid == null) {
-      throw new RuntimeException("Timed out waiting for Master Leader.");
+      throw new RuntimeException(
+          "Timed out waiting for Master Leader after " + timeoutMs + " ms");
     }
   }
 

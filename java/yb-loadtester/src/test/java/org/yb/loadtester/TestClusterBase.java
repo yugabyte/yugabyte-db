@@ -74,7 +74,7 @@ public class TestClusterBase extends BaseCQLTest {
   protected static final int WEBSERVER_TIMEOUT_MS = 10000; // 10 seconds.
 
   // Timeout to wait for a master leader.
-  protected static final int MASTER_LEADER_TIMEOUT_MS = 10000; // 10 seconds.
+  protected static final int MASTER_LEADER_TIMEOUT_MS = 90000;
 
   // Timeout to wait expected number of tservers to be alive.
   protected static final int EXPECTED_TSERVERS_TIMEOUT_MS = 30000; // 30 seconds.

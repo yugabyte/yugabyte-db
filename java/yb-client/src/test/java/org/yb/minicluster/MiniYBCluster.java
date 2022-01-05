@@ -190,7 +190,7 @@ public class MiniYBCluster implements AutoCloseable {
 
   public void startSyncClient(boolean waitForMasterLeader) throws Exception {
     syncClient = new YBClient.YBClientBuilder(getMasterAddresses())
-        .defaultAdminOperationTimeoutMs(clusterParameters.defaultTimeoutMs)
+        .defaultAdminOperationTimeoutMs(clusterParameters.defaultAdminOperationTimeoutMs)
         .defaultOperationTimeoutMs(clusterParameters.defaultTimeoutMs)
         .sslCertFile(certFile)
         .sslClientCertFiles(clientCertFile, clientKeyFile)
@@ -198,7 +198,7 @@ public class MiniYBCluster implements AutoCloseable {
         .build();
 
     if (waitForMasterLeader) {
-      syncClient.waitForMasterLeader(clusterParameters.defaultTimeoutMs);
+      syncClient.waitForMasterLeader(clusterParameters.defaultAdminOperationTimeoutMs);
     }
   }
 
