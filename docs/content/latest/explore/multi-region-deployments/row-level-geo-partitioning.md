@@ -110,7 +110,7 @@ First, we create tablespaces and transaction tables for each geographic region w
     ```sh
     ./bin/yb-admin \
         -master_addresses 127.0.0.1:7100,127.0.0.4:7100,127.0.0.7:7100 \
-        transactions_eu_central_1 \
+        modify_table_placement_info system transactions_eu_central_1 \
         aws.eu-central-1.eu-central-1a,aws.eu-central-1.eu-central-1b,aws.eu-central-1.eu-central-1c 3
     ```
 
