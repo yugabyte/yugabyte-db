@@ -18,7 +18,7 @@ Included here are the release notes for all releases in the v2.8 stable release 
 
 For an RSS feed of the release notes for the latest and stable releases, point your feed reader to [https://docs.yugabyte.com/latest/releases/whats-new/index.xml](../index.xml).
 
-## v2.8.1.0 - January 4, 2021
+## v2.8.1.0 - January 4, 2021 {#v2.8.1.0}
 
 **Build:** `2.8.1.0-b37`
 
@@ -125,7 +125,7 @@ docker pull yugabytedb/yugabyte:2.8.1.0-b37
 
 * N/A
 
-## v2.8.0.0 - November 16, 2021
+## v2.8.0.0 - November 16, 2021 {#v2.8.0.0}
 
 **Build:** `2.8.0.0-b37`
 
