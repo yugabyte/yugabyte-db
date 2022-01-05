@@ -1,4 +1,4 @@
----
+<!---
 title: Create and explore a database
 linkTitle: Create a database
 description: Use distributed CQL to explore core features of YugabyteDB.
@@ -13,7 +13,7 @@ menu:
 type: page
 isTocNested: false
 showAsideToc: true
----
+--->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 

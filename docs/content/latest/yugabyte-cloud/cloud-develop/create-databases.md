@@ -1,4 +1,4 @@
----
+<!---
 title: Create and explore a database
 linkTitle: Create a database
 description: Create and explore a database using YSQL.
@@ -16,7 +16,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
----
+--->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
