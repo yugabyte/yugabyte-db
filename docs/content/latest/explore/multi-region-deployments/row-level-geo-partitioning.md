@@ -542,6 +542,9 @@ CREATE TABLESPACE sa_east_1_tablespace WITH (
     transactions_sa_east_1 \
     aws.sa-east-1.sa-east-1a,aws.sa-east-1.sa-east-1b,aws.sa-east-1.sa-east-1c 3
 ```
+
+Finally, create the partition for Brazil:
+
 ```sql
 CREATE TABLE transactions_brazil
     PARTITION OF transactions
