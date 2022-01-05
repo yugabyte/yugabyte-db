@@ -33,32 +33,35 @@ To test that you can receive email from the Yugabyte server, click **Send Test E
 
 The following table lists the alerts that are available for clusters.
 
-| Cluster activity | Criteria | Severity |
+| Cluster activity | Criteria | Solution |
 | --- | --- | --- |
-| Memory use | Exceeds 75% for at least 10 minutes | Warning |
-| Memory use | Exceeds 90% for at least 10 minutes | Severe |
-| CPU use | Exceeds 70% for at least 30 minutes | Warning |
-| CPU use | Exceeds 90% for at least 30 minutes | Severe |
-| Storage | Below 40% | Warning |
-| Storage | Below 25% | Severe |
+| Memory use | Exceeds 75% for at least 10 minutes (Warning)<br>Exceeds 90% for at least 10 minutes (Severe) | Add vCPUs. |
+| CPU use | Exceeds 70% for at least 30 minutes (Warning)<br> Exceeds 90% for at least 30 minutes (Severe) | Add vCPUs. |
+| Storage | Below 40% (Warning)<br>Below 25% (Severe) | Increase disk size per vCPU or add vCPUs. |
+
+Once you have 16 vCPUs per node, consider adding nodes. For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+Monitor these metrics on the cluster [Overview](../overview/#overview-metrics) or [Performance metrics](../overview/#performance-metrics) tab.
 
 ### Database alerts
 
 The following table lists the alerts that are available for databases.
 
-| Database activity | Criteria | Severity |
+| Database activity | Criteria | Solution |
 | --- | --- | --- |
-| Overload | | Severe |
-| High number of YSQL connections | | Severe |
+| Overload | | |
+| High number of YSQL connections | | |
 
 ### Billing alerts
 
 The following table lists the alerts that are available for billing issues.
 
-| Alert | Notes | Severity |
+| Alert | Notes | Solution |
 | --- | --- | --- |
-| Credit card expiring | Triggered one month before the card expiry date | Severe |
-| Payment failed | | Severe |
-| Credit usage exceeds the 50% limit | | Warning |
-| Credit usage exceeds the 75% limit | | Warning |
-| Credit usage exceeds the 90% limit | | Severe |
+| Credit card expiring | Triggered one month before the card expiry date | Add a new credit card. |
+| Payment failed | | Add a new credit card or contact Support. |
+| Credit usage exceeds the 50% limit | | Add a new credit card or contact Support. |
+| Credit usage exceeds the 75% limit | | Add a new credit card or contact Support. |
+| Credit usage exceeds the 90% limit | | Add a new credit card or contact Support. |
+
+For information on adding credit cards and managing your billing profile, refer to [Manage credit cards](../../cloud-admin/cloud-billing-profile/#manage-credit-cards).
