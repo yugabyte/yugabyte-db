@@ -21,7 +21,7 @@ Clusters have SSL (encryption in-transit) enabled so make sure your driver detai
 
 {{< note title="Note" >}}
 
-Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, you must add the public IP addresses to the [cluster IP access list](../../cloud-basics/add-connections/). If you are using [VPC peering](../../cloud-vpcs/) you must add the public IP addresses of the application VPC to the cluster IP allow list.
+Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, you must add the public IP addresses to the [cluster IP access list](../../cloud-secure-clusters/add-connections). If you are using [VPC peering](../../cloud-secure-clusters/cloud-vpcs/) you must add the public IP addresses of the application VPC to the cluster IP allow list.
 
 {{< /note >}}
 
@@ -106,5 +106,5 @@ To run the sample application:
 
 ## Next steps
 
-- [Add database users](../add-users/)
+- [Add database users](../../cloud-secure-clusters/add-users/)
 - [Develop applications](../../../develop/)
