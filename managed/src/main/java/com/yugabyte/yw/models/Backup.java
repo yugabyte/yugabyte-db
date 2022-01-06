@@ -204,6 +204,15 @@ public class Backup extends Model {
         .collect(Collectors.toList());
   }
 
+  public static List<Backup> fetchBackupToDeleteByUniverseUUID(
+      UUID customerUUID, UUID universeUUID) {
+    return fetchByUniverseUUID(customerUUID, universeUUID)
+        .stream()
+        .filter(b -> b.getBackupInfo().actionType == BackupTableParams.ActionType.CREATE)
+        .collect(Collectors.toList());
+  }
+
+  @Deprecated
   public static Backup get(UUID customerUUID, UUID backupUUID) {
     return find.query().where().idEq(backupUUID).eq("customer_uuid", customerUUID).findOne();
   }

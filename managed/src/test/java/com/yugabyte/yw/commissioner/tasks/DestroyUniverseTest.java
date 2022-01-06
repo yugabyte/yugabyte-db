@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.ModelFactory.createBackup;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -156,5 +157,28 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
       assertNull(e.getMessage());
     }
     return null;
+  }
+
+  @Test
+  public void testDestroyUniverseRestoredFromAnotherUniverseBackup() {
+    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    Backup b =
+        ModelFactory.restoreBackup(
+            defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
+    b.transitionState(Backup.BackupState.Completed);
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.customerUUID = defaultCustomer.uuid;
+    taskParams.isForceDelete = Boolean.FALSE;
+    taskParams.isDeleteBackups = Boolean.TRUE;
+    TaskInfo taskInfo = submitTask(taskParams, 4);
+    assertEquals(Success, taskInfo.getTaskState());
+    b.setTaskUUID(taskInfo.getTaskUUID());
+
+    Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    verify(mockTableManager, times(0)).deleteBackup(any());
+    // Backup should be in COMPLETED state.
+    assertEquals(Backup.BackupState.Completed, backup.state);
+    assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
   }
 }
