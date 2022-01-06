@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.aws.AWSCloudModule;
+import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.common.GFlagsValidation;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
@@ -116,6 +117,7 @@ public class Module extends AbstractModule {
       bind(Scheduler.class).asEagerSingleton();
       bind(HealthChecker.class).asEagerSingleton();
       bind(TaskGarbageCollector.class).asEagerSingleton();
+      bind(BackupGarbageCollector.class).asEagerSingleton();
       bind(EncryptionAtRestManager.class).asEagerSingleton();
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
       bind(SetUniverseKey.class).asEagerSingleton();
