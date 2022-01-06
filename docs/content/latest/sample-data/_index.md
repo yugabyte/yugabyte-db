@@ -16,7 +16,7 @@ YugabyteDB and YugabyteDB client shell installations include sample datasets you
 You can install and use the sample datasets using either a local installation of YugabyteDB, or by connecting to a cluster in Yugabyte Cloud (including your free cluster).
 
 Local install
-: The ysqlsh shell is included with the YugabyteDB installation. For information on installing YugabyteDB, refer to [Quick Start](../quick-start/).
+: The ysqlsh shell is included with the YugabyteDB installation. For information on installing YugabyteDB, refer to [Quick start](../quick-start/).
 
 Yugabyte Cloud
 : For information on connecting to your Yugabyte Cloud cluster using `ysqlsh` in cloud shell, refer to [Connect using cloud shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/).
