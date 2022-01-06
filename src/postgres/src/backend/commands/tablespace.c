@@ -1597,7 +1597,7 @@ get_tablespace_name(Oid spc_oid)
  * yb_get_tablespace_options - given a tablespace OID, look up the
  * tablespace options
  *
- * Returns a palloc'd string, or NULL if no such tablespace.
+ * Returns a palloc'd string if options are found, NULL otherwise.
  */
 void
 yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
@@ -1621,6 +1621,14 @@ yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
 			ArrayType  *array = DatumGetArrayTypeP(datum);
 			deconstruct_array(array, TEXTOID, -1, false, 'i',
 							  options, NULL, num_options);
+		}
+		else
+		{
+			/*
+			 * No custom options for this tablespace.
+			 */
+			*num_options = 0;
+			*options = NULL;
 		}
 	}
 

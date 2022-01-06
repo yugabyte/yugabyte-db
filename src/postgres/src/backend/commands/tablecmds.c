@@ -13045,8 +13045,8 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		int num_options;
 		yb_get_tablespace_options(&options, &num_options, newTableSpace);
 		/*
-		 * Validation should only happen on tablespaces that have a defined replica
-		 * placement
+		 * Validation should only happen on tablespaces that have a defined
+		 * replica placement
 		 */
 		for (int i = 0; i < num_options; i++) {
 			char *option = VARDATA(options[i]);
