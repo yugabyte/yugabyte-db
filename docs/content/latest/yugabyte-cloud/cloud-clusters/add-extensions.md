@@ -7,8 +7,8 @@ image: /images/section_icons/deploy/enterprise.png
 menu:
   latest:
     identifier: add-extensions
-    parent: cloud-basics
-    weight: 50
+    parent: cloud-clusters
+    weight: 300
 isTocNested: true
 showAsideToc: true
 ---

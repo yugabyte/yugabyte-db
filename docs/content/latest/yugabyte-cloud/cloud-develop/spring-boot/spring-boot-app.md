@@ -30,7 +30,7 @@ In this walkthrough, you will:
 - Java 8 or newer (full JDK)
 - Git
 - Docker
-- Yugabyte Cloud cluster, with your computer IP address [whitelisted in an IP allow list](../add-connections/)
+- Yugabyte Cloud cluster, with your computer IP address [whitelisted in an IP allow list](../cloud-secure-clusters/add-connections/)
 
 ## Download and connect the PetClinic application
 

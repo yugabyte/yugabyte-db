@@ -74,6 +74,5 @@ Cloud shell is updated regularly. Check the [known issues list](../../release-no
 
 ## Next steps
 
-- [Create a database](../create-databases/)
-- [Add database users](../add-users/)
+- [Add database users](../../cloud-secure-clusters/add-users/)
 - [Connect an application](../connect-applications/)

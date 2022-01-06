@@ -83,18 +83,6 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-activity/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Monitor cloud activity</div>
-      </div>
-      <div class="body">
-        Audit cloud activity, including changes to clusters, billing, allow lists, and more.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-billing-costs/">
       <div class="head">
         <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>

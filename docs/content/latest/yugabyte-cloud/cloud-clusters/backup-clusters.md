@@ -1,23 +1,23 @@
 ---
-title: Back up clusters
-linkTitle: Back up clusters
-description: Back Up clusters in Yugabyte Cloud.
+title: Backup and restore clusters
+linkTitle: Backup and restore
+description: Back up and restore clusters in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/manage/backup.png
 menu:
   latest:
     identifier: backup-clusters
     parent: cloud-clusters
-    weight: 500
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---
 
-Back up and restore your clusters, configure the automatic backup policy, and review previous backups and restores using the cluster **Backups** tab.
-
 Yugabyte Cloud performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 By default, clusters are backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered after 24 hours of creating a table, and is scheduled every 24 hours thereafter.
+
+You back up and restore your clusters, configure the automatic backup policy, and review previous backups and restores using the cluster **Backups** tab.
 
 To change the backup schedule, [create your own schedule](#schedule-backups). To enable or disable scheduled backups, click the **Scheduled backup** option.
 

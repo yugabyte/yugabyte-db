@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: hasura-application
     parent: cloud-develop
-    weight: 910
+    weight: 450
 isTocNested: true
 showAsideToc: true
 ---

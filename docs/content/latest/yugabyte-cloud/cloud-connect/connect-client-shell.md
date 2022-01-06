@@ -17,11 +17,11 @@ Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqls
 
 You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
 
-Before you can connect using a shell, you need to add your computer to an IP allow list for the cluster. Refer to [Assign IP Allow Lists](../../cloud-basics/add-connections/).
+Before you can connect using a shell, you need to add your computer to an IP allow list for the cluster. Refer to [Assign IP Allow Lists](../../cloud-secure-clusters/add-connections/).
 
 {{< note title="Note" >}}
 
-You must add your computer to the cluster [IP allow list](../../cloud-basics/add-connections/) before you can connect from a remote shell.
+You must add your computer to the cluster [IP allow list](../../cloud-secure-clusters/add-connections/) before you can connect from a remote shell.
 
 When connecting via Yugabyte Client Shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../cloud-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
 
@@ -52,8 +52,6 @@ When connecting via Yugabyte Client Shell, ensure you are running the latest ver
     {{% includeMarkdown "connect/ycql.md" /%}}
   </div>
 </div>
-
-You are now ready to [Create and explore a database](../create-databases/).
 
 ## SSL modes in YSQL
 
@@ -112,5 +110,5 @@ For detailed steps for configuring popular third party tools, see [Third party t
 
 ## Next steps
 
-- [Add database users](../add-users/)
+- [Add database users](../../cloud-secure-clusters/add-users/)
 - [Connect an application](../connect-applications/)

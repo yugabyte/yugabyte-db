@@ -1,4 +1,4 @@
----
+<!---
 title: Create and explore a database
 linkTitle: Create a database
 description: Create and explore a database using YSQL.
@@ -9,14 +9,14 @@ aliases:
   - /latest/yugabyte-cloud/create-databases/
 menu:
   latest:
-    parent: cloud-connect
+    parent: cloud-develop
     name: Create a database
     identifier: create-databases-1-ysql
-    weight: 70
+    weight: 600
 type: page
 isTocNested: true
 showAsideToc: true
----
+--->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -145,5 +145,5 @@ For information on YSQL and the ysqlsh shell:
 
 ## Next steps
 
-- [Add database users](../add-users/)
+- [Add database users](../../cloud-secure-clusters/add-users/)
 - [Connect an application](../connect-applications/)

@@ -8,14 +8,14 @@ menu:
   latest:
     identifier: configure-clusters
     parent: cloud-clusters
-    weight: 700
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---
 
 Yugabyte Cloud suppports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
 
-The **Infrastructure** section on the cluster **Settings** tab summarizes the cluster setup, including the region, number of nodes and vCPUs, the disk size, and fault tolerance. 
+The **Infrastructure** section on the cluster **Settings** tab summarizes the cluster setup, including the region, number of nodes and vCPUs, the disk size, and fault tolerance.
 
 You scale clusters using the **Edit Infrastructure** option, which is located on the **Settings** tab and in the **Quick Links** menu.
 

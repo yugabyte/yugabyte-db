@@ -224,6 +224,6 @@ yb_demo=# SELECT source,
 
 - [Develop an application](../../cloud-develop/)
 - [Deploy production clusters](../../cloud-basics/create-clusters/)
-- [Authorize access to your cluster](../../cloud-basics/add-connections/)
+- [Authorize access to your cluster](../../cloud-secure-clusters/add-connections/)
 - [Connect to clusters](../../cloud-connect/)
-- [Add database users](../../cloud-connect/add-users/)
+- [Add database users](../../cloud-secure-clusters/add-users/)
