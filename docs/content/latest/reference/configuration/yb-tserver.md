@@ -395,6 +395,12 @@ Default: `""`
 
 If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE` (see [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/#step-5-running-transactions)).
 
+{{< note title="Global transaction latency" >}}
+
+Avoid setting this flag when possible. All distributed transactions _can_ run without issue as global transactions, but you may have significantly higher latency when committing transactions, because YugabyteDB must achieve consensus across multiple regions to write to `system.transactions`. When necessary, it is preferable to selectively set the session variable `force_global_transaction = TRUE` rather than setting this flag.
+
+{{< /note >}}
+
 Default: `false`
 
 ---
