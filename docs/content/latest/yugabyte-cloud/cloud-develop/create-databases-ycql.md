@@ -1,4 +1,4 @@
----
+<!---
 title: Create and explore a database
 linkTitle: Create a database
 description: Use distributed CQL to explore core features of YugabyteDB.
@@ -6,14 +6,14 @@ headcontent:
 image: /images/section_icons/quick_start/explore_ycql.png
 menu:
   latest:
-    parent: cloud-connect
+    parent: cloud-develop
     name: Create a database
     identifier: create-databases-2-ycql
-    weight: 70
+    weight: 600
 type: page
 isTocNested: false
 showAsideToc: true
----
+--->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -111,5 +111,5 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
 ## Next steps
 
-- [Add database users](../add-users/)
+- [Add database users](../../cloud-secure-clusters/add-users/)
 - [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/)
