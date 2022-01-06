@@ -64,7 +64,7 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
-            Backup.fetchByUniverseUUID(params().customerUUID, universe.universeUUID);
+            Backup.fetchBackupToDeleteByUniverseUUID(params().customerUUID, universe.universeUUID);
         createDeleteBackupTasks(backupList, params().customerUUID)
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
