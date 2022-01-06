@@ -75,6 +75,10 @@ DEFINE_int32(rocksdb_nothing_in_memtable_to_flush_sleep_ms, 10,
 DEFINE_test_flag(bool, rocksdb_crash_on_flush, false,
                  "When set, memtable flush in rocksdb crashes.");
 
+DEFINE_bool(rocksdb_release_mutex_during_wait_for_memtables_to_flush, true,
+            "When a flush is scheduled, but there isn't a memtable eligible yet, release "
+            "the mutex before going to sleep and reacquire it post sleep.");
+
 namespace rocksdb {
 
 FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
@@ -151,9 +155,22 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
     // See https://github.com/yugabyte/yugabyte-db/issues/437 for more details.
     YB_LOG_EVERY_N_SECS(INFO, 1)
         << db_options_.log_prefix
-        << "[" << cfd_->GetName() << "] Nothing in memtable to flush.";
-    std::this_thread::sleep_for(std::chrono::milliseconds(
+        << "[" << cfd_->GetName() << "] No eligible memtables to flush.";
+
+    bool release_mutex = FLAGS_rocksdb_release_mutex_during_wait_for_memtables_to_flush;
+
+    if (release_mutex) {
+      // Release the mutex before the sleep, so as to unblock writers.
+      db_mutex_->Unlock();
+    }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(
         FLAGS_rocksdb_nothing_in_memtable_to_flush_sleep_ms));
+
+    if (release_mutex) {
+      db_mutex_->Lock();
+    }
+
     return FileNumbersHolder();
   }
 
