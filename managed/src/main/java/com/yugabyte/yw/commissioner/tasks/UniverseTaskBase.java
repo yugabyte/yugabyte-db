@@ -1909,7 +1909,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           newVersion);
     } catch (Exception e) {
       log.error(
-          "Error occurred incrementing cluster config version for universe {}", universeUUID, e);
+          "Error occurred incrementing cluster config version for universe " + universeUUID, e);
       throw new RuntimeException("Error incrementing cluster config version", e);
     } finally {
       ybService.closeClient(client, hostPorts);
