@@ -370,6 +370,12 @@ static relopt_int intRelOpts[] =
 		},
 		-1, 0, 1024
 	},
+	/* list terminator */
+	{{NULL}}
+};
+
+static relopt_oid oidRelOpts[] =
+{
 	{
 		{
 			"tablegroup",
@@ -377,7 +383,9 @@ static relopt_int intRelOpts[] =
 			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
 			AccessExclusiveLock
 		},
-		InvalidOid, FirstNormalObjectId, INT_MAX
+		InvalidOid,
+		FirstNormalObjectId,
+		OID_MAX
 	},
 	{
 		{
@@ -388,7 +396,7 @@ static relopt_int intRelOpts[] =
 		},
 		InvalidOid,
 		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
-		INT_MAX
+		OID_MAX
 	},
 	{
 		{
@@ -399,7 +407,7 @@ static relopt_int intRelOpts[] =
 		},
 		InvalidOid,
 		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
-		INT_MAX
+		OID_MAX
 	},
 	/* list terminator */
 	{{NULL}}
@@ -552,6 +560,12 @@ initialize_reloptions(void)
 								   intRelOpts[i].gen.lockmode));
 		j++;
 	}
+	for (i = 0; oidRelOpts[i].gen.name; i++)
+	{
+		Assert(DoLockModesConflict(oidRelOpts[i].gen.lockmode,
+								   oidRelOpts[i].gen.lockmode));
+		j++;
+	}
 	for (i = 0; realRelOpts[i].gen.name; i++)
 	{
 		Assert(DoLockModesConflict(realRelOpts[i].gen.lockmode,
@@ -584,6 +598,14 @@ initialize_reloptions(void)
 	{
 		relOpts[j] = &intRelOpts[i].gen;
 		relOpts[j]->type = RELOPT_TYPE_INT;
+		relOpts[j]->namelen = strlen(relOpts[j]->name);
+		j++;
+	}
+
+	for (i = 0; oidRelOpts[i].gen.name; i++)
+	{
+		relOpts[j] = &oidRelOpts[i].gen;
+		relOpts[j]->type = RELOPT_TYPE_OID;
 		relOpts[j]->namelen = strlen(relOpts[j]->name);
 		j++;
 	}
@@ -690,6 +712,9 @@ allocate_reloption(bits32 kinds, int type, const char *name, const char *desc)
 		case RELOPT_TYPE_INT:
 			size = sizeof(relopt_int);
 			break;
+		case RELOPT_TYPE_OID:
+			size = sizeof(relopt_oid);
+			break;
 		case RELOPT_TYPE_REAL:
 			size = sizeof(relopt_real);
 			break;
@@ -751,6 +776,26 @@ add_int_reloption(bits32 kinds, const char *name, const char *desc, int default_
 
 	add_reloption((relopt_gen *) newoption);
 }
+
+/*
+ * add_oid_reloption
+ *		Add a new OID reloption
+ */
+void
+add_oid_reloption(bits32 kinds, const char *name, const char *desc, Oid default_val,
+				  Oid min_val, Oid max_val)
+{
+	relopt_oid *newoption;
+
+	newoption = (relopt_oid *) allocate_reloption(kinds, RELOPT_TYPE_OID,
+												  name, desc);
+	newoption->default_val = default_val;
+	newoption->min = min_val;
+	newoption->max = max_val;
+
+	add_reloption((relopt_gen *) newoption);
+}
+
 
 /*
  * add_real_reloption
@@ -844,7 +889,7 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 
 /*
  * See above for transformRelOptions description.
- * 
+ *
  * If ybIgnoreYsqlUpgradeOptions is specified, ignore "table_oid"
  * and "row_type_oid" options. This is needed in YSQL upgrade mode, where we
  * use them to simulate initdb-like behaviour for creating relations but don't
@@ -1282,6 +1327,26 @@ parse_one_reloption(relopt_value *option, char *text_str, int text_len,
 									   optint->min, optint->max)));
 			}
 			break;
+		case RELOPT_TYPE_OID:
+			{
+				relopt_oid *optoid = (relopt_oid *) option->gen;
+
+				parsed = parse_oid(value, &option->values.oid_val, NULL);
+				if (validate && !parsed)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for OID option \"%s\": %s",
+									option->gen->name, value)));
+				if (validate && (option->values.oid_val < optoid->min ||
+								 option->values.oid_val > optoid->max))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("value %s out of bounds for option \"%s\"",
+									value, option->gen->name),
+							 errdetail("Valid values are between \"%u\" and \"%u\".",
+									   optoid->min, optoid->max)));
+			}
+			break;
 		case RELOPT_TYPE_REAL:
 			{
 				relopt_real *optreal = (relopt_real *) option->gen;
@@ -1390,6 +1455,11 @@ fillRelOptions(void *rdopts, Size basesize,
 							options[i].values.int_val :
 							((relopt_int *) options[i].gen)->default_val;
 						break;
+					case RELOPT_TYPE_OID:
+						*(Oid *) itempos = options[i].isset ?
+							options[i].values.oid_val :
+							((relopt_oid *) options[i].gen)->default_val;
+						break;
 					case RELOPT_TYPE_REAL:
 						*(double *) itempos = options[i].isset ?
 							options[i].values.real_val :
@@ -1479,9 +1549,9 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, vacuum_cleanup_index_scale_factor)},
 		{"colocated", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, colocated)},
-		{"tablegroup", RELOPT_TYPE_INT, offsetof(StdRdOptions, tablegroup_oid)},
-		{"table_oid", RELOPT_TYPE_INT, offsetof(StdRdOptions, table_oid)},
-		{"row_type_oid", RELOPT_TYPE_INT, offsetof(StdRdOptions, row_type_oid)},
+		{"tablegroup", RELOPT_TYPE_OID, offsetof(StdRdOptions, tablegroup_oid)},
+		{"table_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, table_oid)},
+		{"row_type_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, row_type_oid)},
 	};
 
 	options = parseRelOptions(reloptions, validate, kind, &numoptions);

@@ -11,13 +11,15 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX docdb)
+
 # docdb_proto
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
         DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        PROTO_FILES docdb.proto)
+        NO_SERVICE_PROTO_FILES docdb.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
@@ -82,6 +84,7 @@ set(DOCDB_SRCS
         lock_batch.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
+        ql_rowwise_iterator_interface.cc
         redis_operation.cc
         shared_lock_manager.cc
         subdocument.cc
@@ -115,7 +118,7 @@ ADD_YB_LIBRARY(yb_docdb
 # Ensure protobuf headers we depend on are generated prior to building DocDB.
 add_dependencies(
         yb_docdb_encoding
-        gen_src_yb_master_master_proto
+        gen_src_yb_master_master_types_proto
         gen_src_yb_rpc_rpc_header_proto
         gen_src_yb_tablet_metadata_proto
         gen_src_yb_tablet_tablet_proto

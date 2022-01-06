@@ -14,10 +14,8 @@
 #define ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
 
 #include "../../../../src/yb/master/catalog_manager.h"
-#include "yb/master/cdc_rpc_tasks.h"
-#include "yb/master/master_backup.pb.h"
-#include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/snapshot_coordinator_context.h"
 
 namespace yb {
 
@@ -93,11 +91,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) override;
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
-
-  CHECKED_STATUS CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
-                                           const TSDescriptorVector& all_ts_descs,
-                                           const vector<Partition>& partitions,
-                                           CreateTableResponsePB* resp) override;
 
   CHECKED_STATUS HandlePlacementUsingReplicationInfo(const ReplicationInfoPB& replication_info,
                                                      const TSDescriptorVector& all_ts_descs,
@@ -192,6 +185,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     return snapshot_coordinator_;
   }
 
+  size_t GetNumLiveTServersForActiveCluster() override;
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;
@@ -277,12 +272,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       CollectFlags flags);
 
   Result<SysRowEntries> CollectEntriesForSnapshot(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override {
-    return CollectEntries(
-        tables,
-        CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
-                     CollectFlag::kSucceedIfCreateInProgress});
-  }
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override;
 
   server::Clock* Clock() override;
 

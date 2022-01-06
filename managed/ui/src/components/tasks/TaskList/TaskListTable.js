@@ -4,8 +4,10 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
+import { toast } from 'react-toastify';
 import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
+import { YBConfirmModal } from '../../modals';
 
 import './TasksList.scss';
 
@@ -20,7 +22,15 @@ export default class TaskListTable extends Component {
   };
 
   render() {
-    const { taskList, title, overrideContent, isCommunityEdition } = this.props;
+    const {
+      taskList,
+      title,
+      overrideContent,
+      isCommunityEdition,
+      visibleModal,
+      hideTaskAbortModal,
+      showTaskAbortModal
+    } = this.props;
 
     function nameFormatter(cell, row) {
       return <span>{row.title.replace(/.*:\s*/, '')}</span>;
@@ -34,8 +44,21 @@ export default class TaskListTable extends Component {
       );
     }
 
+    const abortTaskClicked = (taskUUID) => {
+      this.props.abortCurrentTask(taskUUID).then((response) => {
+        const taskResponse = response?.payload?.response;
+        if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
+        } else {
+          const toastMessage = taskResponse?.data?.error
+            ? taskResponse?.data?.error
+            : taskResponse?.statusText;
+          toast.error(toastMessage);
+        }
+      });
+    };
+
     const taskDetailLinkFormatter = function (cell, row) {
-      if (row.status === 'Failure') {
+      if (row.status === 'Failure' || row.status === 'Aborted') {
         return <Link to={`/tasks/${row.id}`}>See Details</Link>;
       } else if (row.type === 'UpgradeSoftware' && row.details != null) {
         return (
@@ -44,6 +67,27 @@ export default class TaskListTable extends Component {
             {' => '}
             <code>{row.details.ybSoftwareVersion}</code>
           </span>
+        );
+      } else if (row.status === 'Running') {
+        return (
+          <>
+            <YBConfirmModal
+              name="confirmAbortTask"
+              title="Confirm Abort"
+              hideConfirmModal={hideTaskAbortModal}
+              currentModal={'confirmAbortTask'}
+              visibleModal={visibleModal}
+              onConfirm={() => abortTaskClicked(row.id)}
+              confirmLabel="Abort"
+              cancelLabel="Cancel"
+            >
+              Are you sure you want to abort the task?
+            </YBConfirmModal>
+            <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
+              <i className="fa fa-chevron-right"></i>
+              Abort Task
+            </div>
+          </>
         );
       } else {
         return <span />;

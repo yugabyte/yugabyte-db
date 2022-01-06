@@ -16,6 +16,8 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.Before;
@@ -43,6 +45,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Before
   public void initYBBackupUtil() {
+    YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.setMasterAddresses(masterAddresses);
     YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
   }
@@ -359,7 +362,7 @@ public class TestYbBackup extends BasePgSQLTest {
     miniCluster.startTServer(getTServerFlags());
     // Wait for node list refresh.
     Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
-
+    YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
@@ -431,6 +434,96 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  private void verifyCollationIndexData(Statement stmt, int test_step) throws Exception {
+    Row expectedLowerCaseRow = new Row("a", "b", "c", "d", "e");
+    Row expectedUpperCaseRow = new Row("A", "B", "C", "D", "E");
+    List<Row> expectedRows = test_step == 2 ? Arrays.asList(new Row("a", "b", "c", "d", "e"),
+                                                            new Row("A", "B", "C", "D", "E"),
+                                                            new Row("f", "g", "h", "i", "j"))
+                                            : Arrays.asList(new Row("a", "b", "c", "d", "e"),
+                                                            new Row("A", "B", "C", "D", "E"));
+    assertRowList(stmt, "SELECT * FROM test_tbl ORDER BY h", expectedRows);
+    assertRowList(stmt, "SELECT * FROM test_tbl ORDER BY c1", expectedRows);
+    assertRowList(stmt, "SELECT * FROM test_tbl ORDER BY c2", expectedRows);
+    assertRowList(stmt, "SELECT * FROM test_tbl ORDER BY c3", expectedRows);
+    assertRowList(stmt, "SELECT * FROM test_tbl ORDER BY c4", expectedRows);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE h='a'", expectedLowerCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c1='b'", expectedLowerCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2='c'", expectedLowerCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c3='d'", expectedLowerCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4='e'", expectedLowerCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE h='A'", expectedUpperCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c1='B'", expectedUpperCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2='C'", expectedUpperCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c3='D'", expectedUpperCaseRow);
+    assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4='E'", expectedUpperCaseRow);
+    if (test_step == 2) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h='f'", new Row("f", "g", "h", "i", "j"));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c1='g'", new Row("f", "g", "h", "i", "j"));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c2='h'", new Row("f", "g", "h", "i", "j"));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c3='i'", new Row("f", "g", "h", "i", "j"));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE c4='j'", new Row("f", "g", "h", "i", "j"));
+    } else {
+      assertNoRows(stmt, "SELECT * FROM test_tbl WHERE h='f'");
+      assertNoRows(stmt, "SELECT * FROM test_tbl WHERE c1='g'");
+      assertNoRows(stmt, "SELECT * FROM test_tbl WHERE c2='h'");
+      assertNoRows(stmt, "SELECT * FROM test_tbl WHERE c3='i'");
+      assertNoRows(stmt, "SELECT * FROM test_tbl WHERE c4='j'");
+    }
+  }
+
+  private void testCollationIndexTypesHelper(String collName) throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_tbl");
+      stmt.execute("CREATE TABLE test_tbl (h TEXT PRIMARY KEY COLLATE \"" + collName + "\", " +
+                   "c1 TEXT COLLATE \"" + collName + "\", " +
+                   "c2 TEXT COLLATE \"" + collName + "\", " +
+                   "c3 TEXT COLLATE \"" + collName + "\", " +
+                   "c4 TEXT COLLATE \"" + collName + "\")");
+      stmt.execute("CREATE INDEX test_idx1 ON test_tbl (c1)");
+      stmt.execute("CREATE INDEX test_idx2 ON test_tbl (c2 HASH)");
+      stmt.execute("CREATE INDEX test_idx3 ON test_tbl (c3 ASC)");
+      stmt.execute("CREATE INDEX test_idx4 ON test_tbl (c4 DESC)");
+
+      stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES ('a', 'b', 'c', 'd', 'e')");
+      stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES ('A', 'B', 'C', 'D', 'E')");
+
+      verifyCollationIndexData(stmt, 1);
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+
+      stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES ('f', 'g', 'h', 'i', 'j')");
+
+      verifyCollationIndexData(stmt, 2);
+    }
+
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      verifyCollationIndexData(stmt, 3);
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testCollationIndexTypesEn() throws Exception {
+    testCollationIndexTypesHelper("en-US-x-icu");
+  }
+
+  @Test
+  public void testCollationIndexTypesSv() throws Exception {
+    testCollationIndexTypesHelper("sv-x-icu");
+  }
+
+  @Test
+  public void testCollationIndexTypesTr() throws Exception {
+    testCollationIndexTypesHelper("tr-x-icu");
+  }
 
   private void verifyPartialIndexData(Statement stmt) throws Exception {
     assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 11, 22));
@@ -507,6 +600,35 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=2000", new Row(2000, 2100, 2002.14));
       assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999");  // Should not exist.
+    }
+  }
+
+  @Test
+  public void testSedRegExpForYSQLDump() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE ROLE  admin");
+      // Default DB & table owner is ROLE 'yugabyte'.
+      stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT)");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+
+      // Restore with the table owner renaming on fly.
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2",
+          "--edit_ysql_dump_sed_reg_exp", "s|OWNER TO yugabyte_test|OWNER TO admin|");
+
+      // In this DB the table owner was not changed.
+      assertEquals("yugabyte_test", getOwnerForTable(stmt, "test_tbl"));
+    }
+
+    // Verify the changed table owner for the restored table.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertEquals("admin", getOwnerForTable(stmt, "test_tbl"));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
     }
   }
 }

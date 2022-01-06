@@ -16,34 +16,30 @@
 
 #include <memory>
 
+#include "yb/common/common.fwd.h"
+#include "yb/common/pgsql_protocol.fwd.h"
+#include "yb/common/ql_protocol.fwd.h"
+#include "yb/common/redis_protocol.fwd.h"
+#include "yb/common/wire_protocol.fwd.h"
+
 namespace yb {
 
 class ClockBase;
-class CloudInfoPB;
 class ColumnId;
 class ColumnSchema;
 class DocHybridTime;
-class HostPortPB;
 class HybridTime;
 class IndexInfo;
 class IndexMap;
-class NodeInstancePB;
 class Partition;
 class PartitionSchema;
 class PgsqlScanSpec;
-class PgsqlResponsePB;
-class PgsqlRSColDescPB;
 class QLRow;
 class QLRowBlock;
 class QLScanSpec;
-class ServerEntryPB;
-class ServerRegistrationPB;
 class TableProperties;
-class TransactionMetadataPB;
 class TransactionStatusManager;
 class TypeInfo;
-class YQLRowwiseIteratorIf;
-class YQLStorageIf;
 
 class Schema;
 typedef std::shared_ptr<Schema> SchemaPtr;
@@ -51,31 +47,15 @@ typedef std::shared_ptr<Schema> SchemaPtr;
 typedef std::string PartitionKey;
 typedef std::shared_ptr<const PartitionKey> PartitionKeyPtr;
 
-class PgsqlBCallPB;
-class PgsqlConditionPB;
-class PgsqlExpressionPB;
-class PgsqlReadRequestPB;
-class PgsqlRSRowDescPB;
-class PgsqlWriteRequestPB;
-
 class QLExprExecutor;
 typedef std::shared_ptr<QLExprExecutor> QLExprExecutorPtr;
 
-class QLJsonColumnOperationsPB;
-class QLJsonOperationPB;
-class QLPagingStatePB;
-class QLReadRequestPB;
-class QLRSColDescPB;
-class QLRSRowDescPB;
 class QLTableRow;
 class QLType;
 class QLValue;
-class QLValuePB;
-
-class RedisReadRequestPB;
-class RedisResponsePB;
 
 struct DeletedColumn;
+struct IndexColumn;
 struct OpId;
 struct QLTableColumn;
 struct ReadHybridTime;
@@ -88,6 +68,7 @@ using QLTypePtr = std::shared_ptr<QLType>;
 
 enum class PgSystemAttrNum : int;
 enum class QLNameOption : int8_t;
+enum class YBHashSchema;
 
 enum SortingType : uint8_t {
   kNotSpecified = 0,

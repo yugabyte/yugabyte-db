@@ -43,136 +43,9 @@ package yb;
 
 option java_package = "org.yb";
 
-// Client type.
-enum QLClient {
-  YQL_CLIENT_CQL = 1;
-  YQL_CLIENT_PGSQL = 2;
-  YQL_CLIENT_REDIS = 3;
-}
-
-// Client type.
-enum YQLDatabase {
-  YQL_DATABASE_UNKNOWN = 1;
-  YQL_DATABASE_CQL = 2;
-  YQL_DATABASE_PGSQL = 3; // Pgsql database
-  YQL_DATABASE_REDIS = 4;
-}
-
-// To ensure compatibility between release versions, the numeric values of these datatypes cannot
-// be changed once the types are implemented and released.
-//
-// Make sure this is in sync with YBCPgDataType in ybc_pg_typedefs.h.
-enum DataType {
-  UNKNOWN_DATA = 999;
-  NULL_VALUE_TYPE = 0;
-  INT8 = 1;
-  INT16 = 2;
-  INT32 = 3;
-  INT64 = 4;
-  STRING = 5;
-  BOOL = 6;
-  FLOAT = 7;
-  DOUBLE = 8;
-  BINARY = 9;
-  TIMESTAMP = 10;
-  DECIMAL = 11;
-  VARINT = 12;
-  INET = 13;
-  LIST = 14;
-  MAP = 15;
-  SET = 16;
-  UUID = 17;
-  TIMEUUID = 18;
-  TUPLE = 19;  // TUPLE is not yet fully implemented, but it is a CQL type.
-  TYPEARGS = 20;
-  USER_DEFINED_TYPE = 21;
-  FROZEN = 22;
-  DATE = 23;
-  TIME = 24;
-  JSONB = 25;
-
-  // All unsigned datatypes will be removed from QL because databases do not have these types.
-  UINT8 = 100;
-  UINT16 = 101;
-  UINT32 = 102;
-  UINT64 = 103;
-
-  GIN_NULL = 104;
-}
-
-// This must exactly match YBTableType in client.h.
-// We have static_assert's in tablet-test.cc to verify this.
-enum TableType {
-  option allow_alias = true;
-
-  YQL_TABLE_TYPE = 2;
-  REDIS_TABLE_TYPE = 3;
-  PGSQL_TABLE_TYPE = 4;
-  TRANSACTION_STATUS_TABLE_TYPE = 5;
-
-  DEFAULT_TABLE_TYPE = 2;
-}
-
-enum YBConsistencyLevel {
-  // This consistency level provides Linearizability guarantees and is the default for our system.
-  STRONG = 1;
-
-  // Consistent-prefix consistency means that we always see consistent snapshot of the database in
-  // a well-defined order. If operations A, B and C take place, we will either see A, AB, or ABC.
-  // Note that reads might still go back in time since we might see ABC on one replica and AB on
-  // another.
-  CONSISTENT_PREFIX = 2;
-
-  // For cross-shard transactions only: user-enforced consistency level means it is the user's
-  // responsibility to enforce consistency across shards or tables/indexes.
-  USER_ENFORCED = 3;
-}
-
-// Used for Cassandra Roles and Permissions
-enum ResourceType {
-  ALL_KEYSPACES = 1;
-  KEYSPACE = 2;
-  TABLE = 3;
-  ALL_ROLES = 4;
-  ROLE = 5;
-}
-
-// Suffixed with PERMISSION, because Google does not allow same enum name CREATE
-enum PermissionType {
-  ALTER_PERMISSION = 0;
-  CREATE_PERMISSION = 1;
-  DROP_PERMISSION = 2;
-  SELECT_PERMISSION = 3;
-  MODIFY_PERMISSION = 4;
-  AUTHORIZE_PERMISSION = 5;
-  DESCRIBE_PERMISSION = 6;
-  ALL_PERMISSION = 999999999;
-}
-
-// Indexes when created or deleted go through a series of steps to add
-// a) delete, b) write and c) read permissions one by one. Backfill is done
-// before the READ_WRITE_AND_DELETE state. If the backfill succeeds, the read
-// permission is granted. If not, the given permissions are removed one by one,
-// and the index will be deleted when it is unused.
-// If the backfill is successfully complete, the index will be in
-// READ_WRITE_AND_DELETE state, and remain so until the user deletes it. If an
-// Index is dropped, it will move from READ_WRITE_AND_DELETE state throu the
-// WRITE_AND_DELETE_WHILE_REMOVING and DELETE_ONLY_WHILE_REMOVING states to
-// INDEX_UNUSED.
-enum IndexPermissions {
-  INDEX_PERM_DELETE_ONLY = 0;
-  INDEX_PERM_WRITE_AND_DELETE = 2;
-  INDEX_PERM_DO_BACKFILL = 4;
-  // This is the "success" state, where the index is completely usable.
-  INDEX_PERM_READ_WRITE_AND_DELETE = 6;
-  // Used while removing an index -- either due to backfill failure, or
-  // due to a client requested "drop index".
-  INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING = 8;
-  INDEX_PERM_DELETE_ONLY_WHILE_REMOVING = 10;
-  INDEX_PERM_INDEX_UNUSED = 12;
-  // Used as a sentinel value.
-  INDEX_PERM_NOT_USED = 14;
-}
+import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
+import "yb/common/value.proto";
 
 // The type used in column schemas, which may have type parameters (i.e. for collections)
 // If types have parameters, they are stored in the params field. Otherwise params is empty.
@@ -346,11 +219,6 @@ message IndexInfoPB {
   optional WherePredicateSpecPB where_predicate_spec = 33;
 }
 
-message HostPortPB {
-  required string host = 1;
-  required uint32 port = 2;
-}
-
 // The possible order modes for clients.
 // Clients specify these in new scan requests.
 // Ordered scans are fault-tolerant, and can be retried elsewhere in the case
@@ -449,39 +317,6 @@ message PartitionPB {
   optional bytes partition_key_end = 3;
 }
 
-enum IsolationLevel {
-  NON_TRANSACTIONAL = 0;
-  SNAPSHOT_ISOLATION = 1;
-  SERIALIZABLE_ISOLATION = 2;
-}
-
-// This enum matches enum RowMarkType defined in src/include/nodes/plannodes.h.
-// The exception is ROW_MARK_ABSENT, which signifies the absence of a row mark.
-enum RowMarkType
-{
-  // Obtain exclusive tuple lock.
-  ROW_MARK_EXCLUSIVE = 0;
-
-  // Obtain no-key exclusive tuple lock.
-  ROW_MARK_NOKEYEXCLUSIVE = 1;
-
-  // Obtain shared tuple lock.
-  ROW_MARK_SHARE = 2;
-
-  // Obtain keyshare tuple lock.
-  ROW_MARK_KEYSHARE = 3;
-
-  // Not supported. Used for postgres compatibility.
-  ROW_MARK_REFERENCE = 4;
-
-  // Not supported. Used for postgres compatibility.
-  ROW_MARK_COPY = 5;
-
-  // Obtain no tuple lock (this should never sent be on the wire).  The value
-  // should be high for convenient comparisons with the other row lock types.
-  ROW_MARK_ABSENT = 15;
-}
-
 // This enum matches enum LockWaitPolicy defined in src/include/nodes/lockoptions.h.
 // The "Lock" prefix is removed to keep this generic for any intent in conflict_resolution.cc (not
 // just those written for Pg's explicit row locks).
@@ -499,29 +334,6 @@ enum WaitPolicy
   WAIT_ERROR = 2;
 }
 
-enum TransactionStatus {
-  CREATED = 1;
-  PENDING = 2;
-
-  COMMITTED = 4;
-  SEALED = 5;
-  APPLIED_IN_ALL_INVOLVED_TABLETS = 7;
-
-  ABORTED = 8;
-
-  // All following entries are not used in RAFT, but as events between status tablet and involved
-  // tablets:
-  APPLYING = 20;
-  APPLIED_IN_ONE_OF_INVOLVED_TABLETS = 21;
-  IMMEDIATE_CLEANUP = 22;
-  GRACEFUL_CLEANUP = 23;
-}
-
-enum TransactionLocality {
-  GLOBAL = 1;
-  LOCAL = 2;
-}
-
 message TransactionMetadataPB {
   optional bytes transaction_id = 1; // 16 byte uuid
   optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
@@ -537,16 +349,6 @@ message TransactionMetadataPB {
   // Stores whether the transaction is local or global; treated as global if not present
   // for backwards compatability.
   optional TransactionLocality locality = 7;
-}
-
-message AbortedSubTransactionSetPB {
-  repeated uint32 set = 1;
-}
-
-message SubTransactionMetadataPB {
-  optional uint32 subtransaction_id = 1;
-
-  optional AbortedSubTransactionSetPB aborted = 2;
 }
 
 // See ReadHybridTime for explation of this message.
@@ -599,68 +401,6 @@ message DeletedColumnPB {
   optional fixed64 deleted_hybrid_time = 2;
 }
 
-message CloudInfoPB {
-  optional string placement_cloud = 1;
-  optional string placement_region = 2;
-  optional string placement_zone = 3;
-}
-
-//--------------------------------------------------------------------------------------------------
-// YQL support.
-// The following section is common for all query language.
-//--------------------------------------------------------------------------------------------------
-// Represent system internal values.
-enum QLVirtualValuePB {
-  LIMIT_MAX = 1;
-  LIMIT_MIN = 2;
-}
-
-// A QL value
-message QLValuePB {
-  // Note: an absent value means NULL
-  oneof value {
-    int32 int8_value = 1;  // Note: min int size in protobuf is int32
-    int32 int16_value = 2;
-    int32 int32_value = 3;
-    int64 int64_value = 4;
-    float float_value = 5;
-    double double_value = 6;
-    // Sometimes YB sends non-UTF8 string in string field. For example, this can happen
-    // with a collated string: under "en_US.utf8" collation, string 'abc' is encoded
-    // as string_value: "\000\201\014\r\016\001\t\t\t\001\t\t\t\000abc" which is not
-    // a valid UTF8 string. That is why 'bytes' is used for string_value field.
-    bytes string_value = 7;
-    bool bool_value = 8;
-    int64 timestamp_value = 9;
-    bytes binary_value = 10;
-    // raw bytes for inet address in network byte order.
-    bytes inetaddress_value = 11;
-    QLMapValuePB map_value = 12;
-    QLSeqValuePB set_value = 13;
-    QLSeqValuePB list_value = 14;
-    bytes decimal_value = 15;
-    bytes varint_value = 16;
-    QLSeqValuePB frozen_value = 17;
-    // raw bytes for uuid value.
-    bytes uuid_value = 18;
-    // raw bytes for timeuuid value.
-    bytes timeuuid_value = 19;
-    bytes jsonb_value = 20;
-    // Number of days where 2^31 corresponds to 1970-01-01
-    // (see DateTime::DateFromString)
-    uint32 date_value = 21;
-    // Number of nano-seconds, from 0 to (24 * 60 * 60 * 1,000,000,000 - 1)
-    // (see DateTime::kMaxTime)
-    int64 time_value = 22;
-    uint32 uint32_value = 23;
-    uint64 uint64_value = 24;
-    // Represent various system values.
-    QLVirtualValuePB virtual_value = 25;
-    // Null category for GIN indexes.
-    uint32 gin_null_value = 26;
-  }
-}
-
 //--------------------------------------------------------------------------------------------------
 // CQL support.
 // This is an internal protocol for communicating QL operations from a YB client to a tserver.
@@ -669,16 +409,6 @@ message QLValuePB {
 // Cassandra SQL doc - https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cqlCommandsTOC.html
 // Usage notes - https://docs.google.com/document/d/1q9i7a9X5rDdTC0q8hNAqo9i9NyDh0n_Fhm5vdzmtBEw
 //--------------------------------------------------------------------------------------------------
-
-// Sequence of values used to represent Lists and Sets (and later Tuples)
-message QLSeqValuePB {
-  repeated QLValuePB elems = 1;
-}
-
-message QLMapValuePB {
-  repeated QLValuePB keys = 1;
-  repeated QLValuePB values = 2;
-}
 
 // Reference to a subcolumn, e.g. m['x'] or l[2]['x']
 message QLSubscriptedColPB {
@@ -692,14 +422,9 @@ message QLJsonColumnOperationsPB {
   repeated QLJsonOperationPB json_operations = 2;
 }
 
-enum JsonOperatorPB {
-    JSON_OBJECT = 0; // The -> operator applied to a column.
-    JSON_TEXT = 1; // The ->> operator applied to a column.
-}
-
 message QLJsonOperationPB {
-    required JsonOperatorPB json_operator = 1;
-    required QLExpressionPB operand = 2;
+  required JsonOperatorPB json_operator = 1;
+  required QLExpressionPB operand = 2;
 }
 
 // An expression in a WHERE condition
@@ -715,45 +440,6 @@ message QLExpressionPB {
     QLBCallPB bocall = 8;                   // Builtin operator calls.
     QLJsonColumnOperationsPB json_column = 9; // Json column operators.
   }
-}
-
-// Expression operators.
-enum QLOperator {
-  QL_OP_NOOP = 0;
-
-  // Logic operators that take one operand.
-  QL_OP_NOT = 1;
-  QL_OP_IS_TRUE = 2;
-  QL_OP_IS_FALSE = 3;
-
-  // Logic operators that take two or more operands.
-  QL_OP_AND = 4;
-  QL_OP_OR = 5;
-
-  // Relation operators that take one operand.
-  QL_OP_IS_NULL = 6;
-  QL_OP_IS_NOT_NULL = 7;
-
-  // Relation operators that take two operands.
-  QL_OP_EQUAL = 8;
-  QL_OP_LESS_THAN = 9;
-  QL_OP_LESS_THAN_EQUAL = 10;
-  QL_OP_GREATER_THAN = 11;
-  QL_OP_GREATER_THAN_EQUAL = 12;
-  QL_OP_NOT_EQUAL = 13;
-
-  QL_OP_LIKE = 14;
-  QL_OP_NOT_LIKE = 15;
-  QL_OP_IN = 16;
-  QL_OP_NOT_IN = 17;
-
-  // Relation operators that take three operands.
-  QL_OP_BETWEEN = 18;
-  QL_OP_NOT_BETWEEN = 19;
-
-  // Operators that take no operand. For use in "if" clause only currently.
-  QL_OP_EXISTS = 20;     // IF EXISTS
-  QL_OP_NOT_EXISTS = 21; // IF NOT EXISTS
 }
 
 // A logical condition that evaluates to true/false. Used in the WHERE clause.

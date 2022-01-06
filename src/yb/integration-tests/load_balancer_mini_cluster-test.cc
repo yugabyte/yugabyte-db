@@ -25,7 +25,6 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/cluster_balance.h"
-#include "yb/master/master.proxy.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -138,7 +137,7 @@ CHECKED_STATUS GetTabletsDriveStats(DriveStats* stats,
         ts = stats->insert({replica.first,
                            std::make_pair(std::unordered_map<std::string, int>(), 0)}).first;
       }
-      if (replica.second.role == consensus::RaftPeerPB::LEADER) {
+      if (replica.second.role == PeerRole::LEADER) {
         ++ts->second.second;
       }
       if (!replica.second.fs_data_dir.empty()) {

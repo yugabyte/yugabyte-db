@@ -240,6 +240,17 @@ SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
 EXPLAIN SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
 SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
 
+-- test index scans where the filter trivially rejects everything and
+-- no request should be sent to DocDB
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE col3 = ANY('{}');
+SELECT * FROM test WHERE col3 = ANY('{}');
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE col3 = ANY('{NULL}');
+SELECT * FROM test WHERE col3 = ANY('{NULL}');
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT col3 FROM test WHERE col3 = ANY('{NULL}');
+SELECT col3 FROM test WHERE col3 = ANY('{NULL}');
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE col3 = ANY('{NULL, NULL}');
+SELECT * FROM test WHERE col3 = ANY('{NULL, NULL}');
+
 -- testing update on primary key
 update test set pk=17 where pk=1;
 update test set pk=25, col4=777 where pk=2;

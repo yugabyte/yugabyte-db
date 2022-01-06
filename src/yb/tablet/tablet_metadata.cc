@@ -1166,5 +1166,9 @@ std::vector<ColumnId> RaftGroupMetadata::index_key_column_ids(const TableId& tab
   return index_info ? index_info->index_key_column_ids() : std::vector<ColumnId>();
 }
 
+bool RaftGroupMetadata::UsePartialRangeKeyIntents() const {
+  return table_type() == TableType::PGSQL_TABLE_TYPE;
+}
+
 } // namespace tablet
 } // namespace yb

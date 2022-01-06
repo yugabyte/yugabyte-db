@@ -30,28 +30,29 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX tserver)
+set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+
 YB_INCLUDE_EXTENSIONS()
 
 #########################################
-# remote_bootstrap_proto
+# tserver_proto
 #########################################
 
 YRPC_GENERATE(
-  REMOTE_BOOTSTRAP_YRPC_SRCS REMOTE_BOOTSTRAP_YRPC_HDRS REMOTE_BOOTSTRAP_YRPC_TGTS
+  TSERVER_PROTO_SRCS TSERVER_PROTO_HDRS TSERVER_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES remote_bootstrap.proto)
-set(REMOTE_BOOTSTRAP_YRPC_LIBS
-  consensus_proto
-  yrpc
-  protobuf
-  rpc_header_proto
+  NO_SERVICE_PROTO_FILES tserver.proto tserver_types.proto)
+set(TSERVER_PROTO_LIBS
+  yb_common_proto
+  consensus_metadata_proto
   tablet_proto
-  wire_protocol_proto)
-ADD_YB_LIBRARY(remote_bootstrap_proto
-  SRCS ${REMOTE_BOOTSTRAP_YRPC_SRCS}
-  DEPS ${REMOTE_BOOTSTRAP_YRPC_LIBS}
-  NONLINK_DEPS ${REMOTE_BOOTSTRAP_YRPC_TGTS})
+  docdb_proto)
+ADD_YB_LIBRARY(tserver_proto
+  SRCS ${TSERVER_PROTO_SRCS}
+  DEPS ${TSERVER_PROTO_LIBS}
+  NONLINK_DEPS ${TSERVER_PROTO_TGTS})
 
 #########################################
 # backup_proto
@@ -71,6 +72,26 @@ ADD_YB_LIBRARY(backup_proto
   NONLINK_DEPS ${BACKUP_YRPC_TGTS})
 
 #########################################
+# remote_bootstrap_proto
+#########################################
+
+YRPC_GENERATE(
+  REMOTE_BOOTSTRAP_YRPC_SRCS REMOTE_BOOTSTRAP_YRPC_HDRS REMOTE_BOOTSTRAP_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES remote_bootstrap.proto)
+set(REMOTE_BOOTSTRAP_YRPC_LIBS
+  consensus_proto
+  yrpc
+  protobuf
+  rpc_header_proto
+  tablet_proto)
+ADD_YB_LIBRARY(remote_bootstrap_proto
+  SRCS ${REMOTE_BOOTSTRAP_YRPC_SRCS}
+  DEPS ${REMOTE_BOOTSTRAP_YRPC_LIBS}
+  NONLINK_DEPS ${REMOTE_BOOTSTRAP_YRPC_TGTS})
+
+#########################################
 # pg_client_proto
 #########################################
 
@@ -81,35 +102,11 @@ YRPC_GENERATE(
   PROTO_FILES pg_client.proto)
 set(PG_CLIENT_YRPC_LIBS
   master_proto
-  pgsql_protocol_proto
-  wire_protocol_proto
   yrpc)
 ADD_YB_LIBRARY(pg_client_proto
   SRCS ${PG_CLIENT_YRPC_SRCS}
   DEPS ${PG_CLIENT_YRPC_LIBS}
   NONLINK_DEPS ${PG_CLIENT_YRPC_TGTS})
-
-#########################################
-# tserver_proto
-#########################################
-
-PROTOBUF_GENERATE_CPP(
-  TSERVER_PROTO_SRCS TSERVER_PROTO_HDRS TSERVER_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES tserver.proto)
-set(TSERVER_PROTO_LIBS
-  yb_common_proto
-  consensus_metadata_proto
-  tablet_proto
-  wire_protocol_proto
-  redis_protocol_proto
-  ql_protocol_proto
-  docdb_proto)
-ADD_YB_LIBRARY(tserver_proto
-  SRCS ${TSERVER_PROTO_SRCS}
-  DEPS ${TSERVER_PROTO_LIBS}
-  NONLINK_DEPS ${TSERVER_PROTO_TGTS})
 
 #########################################
 # tserver_admin_proto
@@ -124,8 +121,7 @@ set(TSERVER_ADMIN_YRPC_LIBS
   yrpc
   protobuf
   rpc_header_proto
-  tserver_proto
-  wire_protocol_proto)
+  tserver_proto)
 ADD_YB_LIBRARY(tserver_admin_proto
   SRCS ${TSERVER_ADMIN_YRPC_SRCS}
   DEPS ${TSERVER_ADMIN_YRPC_LIBS}
@@ -146,8 +142,7 @@ set(TSERVER_YRPC_LIBS
   protobuf
   remote_bootstrap_proto
   rpc_header_proto
-  tserver_proto
-  wire_protocol_proto)
+  tserver_proto)
 ADD_YB_LIBRARY(tserver_service_proto
   SRCS ${TSERVER_YRPC_SRCS}
   DEPS ${TSERVER_YRPC_LIBS}
@@ -168,8 +163,7 @@ set(TSERVER_FORWARD_RPC_LIBS
   protobuf
   remote_bootstrap_proto
   rpc_header_proto
-  tserver_proto
-  wire_protocol_proto)
+  tserver_proto)
 ADD_YB_LIBRARY(tserver_forward_service_proto
   SRCS ${TSERVER_FORWARD_RPC_SRCS}
   DEPS ${TSERVER_FORWARD_RPC_LIBS}

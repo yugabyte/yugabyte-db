@@ -149,7 +149,7 @@ void GenericCalculatorService::GenericCalculatorService::DoAdd(InboundCall* inco
 
   AddResponsePB resp;
   resp.set_result(req.x() + req.y());
-  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
 void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
@@ -167,7 +167,7 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
     resp.add_sidecars(down_cast<YBInboundCall*>(incoming)->AddRpcSidecar(sidecar.as_slice()));
   }
 
-  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
 void GenericCalculatorService::DoSleep(InboundCall* incoming) {
@@ -183,7 +183,7 @@ void GenericCalculatorService::DoSleep(InboundCall* incoming) {
   LOG(INFO) << "got call: " << req.ShortDebugString();
   SleepFor(MonoDelta::FromMicroseconds(req.sleep_micros()));
   SleepResponsePB resp;
-  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
 void GenericCalculatorService::DoEcho(InboundCall* incoming) {
@@ -198,7 +198,7 @@ void GenericCalculatorService::DoEcho(InboundCall* incoming) {
 
   EchoResponsePB resp;
   resp.set_data(std::move(*req.mutable_data()));
-  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }
 
 namespace {
@@ -308,6 +308,77 @@ class CalculatorService: public CalculatorServiceIf {
     }
   }
 
+  void Lightweight(
+      const rpc_test::LWLightweightRequestPB* const_req, rpc_test::LWLightweightResponsePB* resp,
+      RpcContext context) override {
+    auto* req = const_cast<rpc_test::LWLightweightRequestPB*>(const_req);
+
+    resp->set_i32(-req->i32());
+    resp->set_i64(-req->i64());
+    resp->set_f32(req->u32());
+    resp->set_f64(req->u64());
+    resp->set_u32(req->f32());
+    resp->set_u64(req->f64());
+    resp->set_r32(-req->r32());
+    resp->set_r64(-req->r64());
+    resp->ref_str(req->bytes());
+    resp->ref_bytes(req->str());
+    resp->set_en(static_cast<rpc_test::LightweightEnum>(req->en() + 1));
+    resp->set_sf32(req->si32());
+    resp->set_sf64(req->si64());
+    resp->set_si32(req->sf32());
+    resp->set_si64(req->sf64());
+    *resp->mutable_ru32() = req->rf32();
+    *resp->mutable_rf32() = req->ru32();
+
+    resp->mutable_rstr()->assign(req->rstr().rbegin(), req->rstr().rend());
+
+    auto& resp_msg = *resp->mutable_message();
+    const auto& req_msg = req->message();
+    resp_msg.set_sf32(-req_msg.sf32());
+
+    resp_msg.mutable_rsi32()->assign(req_msg.rsi32().rbegin(), req_msg.rsi32().rend());
+
+    resp_msg.dup_str(">" + req_msg.str().ToBuffer() + "<");
+
+    resp_msg.mutable_rbytes()->assign(req_msg.rbytes().rbegin(), req_msg.rbytes().rend());
+
+    for (auto it = req->mutable_repeated_messages()->rbegin();
+         it != req->mutable_repeated_messages()->rend(); ++it) {
+      resp->mutable_repeated_messages()->push_back_ref(&*it);
+    }
+    for (const auto& msg : req->repeated_messages()) {
+      auto temp = CopySharedMessage<rpc_test::LWLightweightSubMessagePB>(msg.ToGoogleProtobuf());
+      resp->mutable_repeated_messages_copy()->emplace_back(*temp);
+    }
+
+    resp->mutable_packed_u64()->assign(req->packed_u64().rbegin(), req->packed_u64().rend());
+
+    resp->mutable_packed_f32()->assign(req->packed_f32().rbegin(), req->packed_f32().rend());
+
+    for (const auto& p : req->pairs()) {
+      auto& pair = *resp->add_pairs();
+      *pair.mutable_s1() = p.s2();
+      *pair.mutable_s2() = p.s1();
+    }
+
+    resp->ref_ptr_message(req->mutable_ptr_message());
+
+    // Should check it before filling map, because map does not preserve order.
+    ASSERT_STR_EQ(AsString(resp->ToGoogleProtobuf()), AsString(*resp));
+
+    for (const auto& p : req->map()) {
+      auto& pair = *resp->add_map();
+      pair.ref_key(p.key());
+      pair.set_value(p.value());
+    }
+
+    req->mutable_map()->clear();
+    resp->dup_short_debug_string(req->ShortDebugString());
+
+    context.RespondSuccess();
+  }
+
  private:
   void DoSleep(const SleepRequestPB* req, RpcContext context) {
     SleepFor(MonoDelta::FromMicroseconds(req->sleep_micros()));
@@ -318,46 +389,65 @@ class CalculatorService: public CalculatorServiceIf {
   Messenger* messenger_ = nullptr;
 };
 
-} // namespace
-
-std::unique_ptr<ServiceIf> CreateCalculatorService(
-    const scoped_refptr<MetricEntity>& metric_entity, std::string name) {
-  return std::unique_ptr<ServiceIf>(new CalculatorService(metric_entity, std::move(name)));
+std::unique_ptr<CalculatorService> CreateCalculatorService(
+    const scoped_refptr<MetricEntity>& metric_entity, std::string name = std::string()) {
+  return std::make_unique<CalculatorService>(metric_entity, std::move(name));
 }
 
-TestServer::TestServer(std::unique_ptr<ServiceIf> service,
-                       std::unique_ptr<Messenger>&& messenger,
-                       const TestServerOptions& options)
-    : service_name_(service->service_name()),
-      messenger_(std::move(messenger)),
-      thread_pool_("rpc-test", kQueueLength, options.n_worker_threads) {
+class AbacusService: public rpc_test::AbacusServiceIf {
+ public:
+  explicit AbacusService(const scoped_refptr<MetricEntity>& entity) : AbacusServiceIf(entity) {}
 
-  // If it is CalculatorService then we should set messenger for it.
-  CalculatorService* calculator_service = dynamic_cast<CalculatorService*>(service.get());
-  if (calculator_service) {
-    calculator_service->SetMessenger(messenger_.get());
+  void Concat(
+      const rpc_test::ConcatRequestPB *req,
+      rpc_test::ConcatResponsePB *resp,
+      RpcContext context) {
+    resp->set_result(req->lhs() + req->rhs());
+    context.RespondSuccess();
   }
+};
 
-  service_pool_.reset(new ServicePool(kQueueLength,
-                                      &thread_pool_,
-                                      &messenger_->scheduler(),
-                                      std::move(service),
-                                      messenger_->metric_entity()));
+} // namespace
+
+TestServer::TestServer(std::unique_ptr<Messenger>&& messenger,
+                       const TestServerOptions& options)
+    : messenger_(std::move(messenger)),
+      thread_pool_(std::make_unique<ThreadPool>(
+          "rpc-test", kQueueLength, options.n_worker_threads)) {
 
   EXPECT_OK(messenger_->ListenAddress(
       rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(),
       options.endpoint, &bound_endpoint_));
-  EXPECT_OK(messenger_->RegisterService(service_name_, service_pool_));
-  EXPECT_OK(messenger_->StartAcceptor());
+}
+
+CHECKED_STATUS TestServer::Start() {
+  return messenger_->StartAcceptor();
+}
+
+CHECKED_STATUS TestServer::RegisterService(std::unique_ptr<ServiceIf> service) {
+  const std::string& service_name = service->service_name();
+
+  auto service_pool = make_scoped_refptr<ServicePool>(kQueueLength,
+                                                      thread_pool_.get(),
+                                                      &messenger_->scheduler(),
+                                                      std::move(service),
+                                                      messenger_->metric_entity());
+  if (!service_pool_) {
+    service_pool_ = service_pool;
+  }
+
+  return messenger_->RegisterService(service_name, std::move(service_pool));
 }
 
 TestServer::~TestServer() {
-  thread_pool_.Shutdown();
+  thread_pool_ = nullptr;
   if (service_pool_) {
     messenger_->UnregisterAllServices();
     service_pool_->Shutdown();
   }
-  messenger_->Shutdown();
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
 }
 
 void TestServer::Shutdown() {
@@ -450,9 +540,10 @@ void RpcTestBase::DoTestExpectTimeout(Proxy* proxy, const MonoDelta& timeout) {
 }
 
 void RpcTestBase::StartTestServer(Endpoint* server_endpoint, const TestServerOptions& options) {
-  std::unique_ptr<ServiceIf> service(new GenericCalculatorService(metric_entity_));
-  server_.reset(new TestServer(
-      std::move(service), CreateMessenger("TestServer", options.messenger_options), options));
+  server_ = std::make_unique<TestServer>(
+      CreateMessenger("TestServer", options.messenger_options), options);
+  EXPECT_OK(server_->RegisterService(std::make_unique<GenericCalculatorService>(metric_entity_)));
+  EXPECT_OK(server_->Start());
   *server_endpoint = server_->bound_endpoint();
 }
 
@@ -462,26 +553,31 @@ void RpcTestBase::StartTestServer(HostPort* server_hostport, const TestServerOpt
   *server_hostport = HostPort::FromBoundEndpoint(endpoint);
 }
 
-TestServer RpcTestBase::StartTestServer(const std::string& name, const IpAddress& address) {
-  std::unique_ptr<ServiceIf> service(CreateCalculatorService(metric_entity(), name));
-  TestServerOptions options;
-  options.endpoint = Endpoint(address, 0);
-  return TestServer(std::move(service), CreateMessenger("TestServer"), options);
+TestServer RpcTestBase::StartTestServer(
+    const TestServerOptions& options, const std::string& name,
+    std::unique_ptr<Messenger> messenger) {
+  if (!messenger) {
+    messenger = CreateMessenger("TestServer", options.messenger_options);
+  }
+  TestServer result(std::move(messenger), options);
+  auto service = CreateCalculatorService(metric_entity(), name);
+  service->SetMessenger(result.messenger());
+  EXPECT_OK(result.RegisterService(std::move(service)));
+  EXPECT_OK(result.RegisterService(std::make_unique<AbacusService>(metric_entity())));
+  EXPECT_OK(result.Start());
+  return result;
 }
 
 void RpcTestBase::StartTestServerWithGeneratedCode(HostPort* server_hostport,
                                                    const TestServerOptions& options) {
-  server_.reset(new TestServer(
-      CreateCalculatorService(metric_entity_),
-      CreateMessenger("TestServer", options.messenger_options), options));
-  *server_hostport = HostPort::FromBoundEndpoint(server_->bound_endpoint());
+  StartTestServerWithGeneratedCode(nullptr, server_hostport, options);
 }
 
 void RpcTestBase::StartTestServerWithGeneratedCode(std::unique_ptr<Messenger>&& messenger,
                                                    HostPort* server_hostport,
                                                    const TestServerOptions& options) {
-  server_.reset(new TestServer(
-      CreateCalculatorService(metric_entity_), std::move(messenger), options));
+  server_ = std::make_unique<TestServer>(StartTestServer(
+      options, std::string(), std::move(messenger)));
   *server_hostport = HostPort::FromBoundEndpoint(server_->bound_endpoint());
 }
 

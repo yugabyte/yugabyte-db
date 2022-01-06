@@ -16,10 +16,9 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/common/ql_rowwise_iterator_interface.h"
-#include "yb/common/ql_storage_interface.h"
-
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/docdb/ql_storage_interface.h"
 
 namespace yb {
 namespace docdb {

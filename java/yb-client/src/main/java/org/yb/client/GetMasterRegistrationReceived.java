@@ -37,8 +37,9 @@ import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.Common;
+import org.yb.CommonTypes;
 import org.yb.consensus.Metadata;
-import org.yb.master.Master;
+import org.yb.master.MasterClientOuterClass;
 import org.yb.util.NetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,7 +60,7 @@ final class GetMasterRegistrationReceived {
   private static final Logger LOG = LoggerFactory.getLogger(GetMasterRegistrationReceived.class);
 
   private final List<HostAndPort> masterAddrs;
-  private final Deferred<Master.GetTableLocationsResponsePB> responseD;
+  private final Deferred<MasterClientOuterClass.GetTableLocationsResponsePB> responseD;
   private final int numMasters;
 
   // Used to avoid calling 'responseD' twice.
@@ -82,8 +83,9 @@ final class GetMasterRegistrationReceived {
    * @param responseD Deferred object that will hold the GetTableLocationsResponsePB object for
    *                  the master table.
    */
-  public GetMasterRegistrationReceived(List<HostAndPort> masterAddrs,
-                                       Deferred<Master.GetTableLocationsResponsePB> responseD) {
+  public GetMasterRegistrationReceived(
+      List<HostAndPort> masterAddrs,
+      Deferred<MasterClientOuterClass.GetTableLocationsResponsePB> responseD) {
     this.masterAddrs = masterAddrs;
     this.responseD = responseD;
     this.numMasters = masterAddrs.size();
@@ -171,16 +173,18 @@ final class GetMasterRegistrationReceived {
 
     @Override
     public Void call(GetMasterRegistrationResponse r) throws Exception {
-      Master.TabletLocationsPB.ReplicaPB.Builder replicaBuilder =
-          Master.TabletLocationsPB.ReplicaPB.newBuilder();
+      MasterClientOuterClass.TabletLocationsPB.ReplicaPB.Builder replicaBuilder =
+          MasterClientOuterClass.TabletLocationsPB.ReplicaPB.newBuilder();
 
-      Master.TSInfoPB.Builder tsInfoBuilder = Master.TSInfoPB.newBuilder();
+      MasterClientOuterClass.TSInfoPB.Builder tsInfoBuilder =
+          MasterClientOuterClass.TSInfoPB.newBuilder();
       tsInfoBuilder.addPrivateRpcAddresses(ProtobufHelper.hostAndPortToPB(hostAndPort));
       tsInfoBuilder.setPermanentUuid(r.getInstanceId().getPermanentUuid());
       replicaBuilder.setTsInfo(tsInfoBuilder);
-      if (r.getRole().equals(Metadata.RaftPeerPB.Role.LEADER)) {
+      if (r.getRole().equals(CommonTypes.PeerRole.LEADER)) {
         replicaBuilder.setRole(r.getRole());
-        Master.TabletLocationsPB.Builder locationBuilder = Master.TabletLocationsPB.newBuilder();
+        MasterClientOuterClass.TabletLocationsPB.Builder locationBuilder =
+            MasterClientOuterClass.TabletLocationsPB.newBuilder();
         locationBuilder.setPartition(
             Common.PartitionPB.newBuilder().setPartitionKeyStart(ByteString.EMPTY)
                                            .setPartitionKeyEnd(ByteString.EMPTY));
@@ -191,7 +195,7 @@ final class GetMasterRegistrationReceived {
         // No one else has called this before us.
         if (responseDCalled.compareAndSet(false, true)) {
           responseD.callback(
-              Master.GetTableLocationsResponsePB.newBuilder().addTabletLocations(
+              MasterClientOuterClass.GetTableLocationsResponsePB.newBuilder().addTabletLocations(
                   locationBuilder.build()).build()
           );
         } else {

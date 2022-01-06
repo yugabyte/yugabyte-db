@@ -28,6 +28,7 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
@@ -38,8 +39,9 @@
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
-#include "commands/ybccmds.h"
 #include "commands/tablegroup.h"
+#include "commands/tablecmds.h"
+#include "commands/ybccmds.h"
 
 #include "access/htup_details.h"
 #include "utils/builtins.h"
@@ -148,7 +150,6 @@ YBCDropTablegroup(Oid grpoid)
 
 /* ------------------------------------------------------------------------- */
 /*  Table Functions. */
-
 static void CreateTableAddColumn(YBCPgStatement handle,
 								 Form_pg_attribute att,
 								 bool is_hash,
@@ -452,7 +453,8 @@ void
 YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 							 Oid relationId, Oid namespaceId, Oid tablegroupId, Oid tablespaceId)
 {
-	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE)
+	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
+		relkind != RELKIND_MATVIEW)
 	{
 		return;
 	}
@@ -489,6 +491,71 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		{
 			primary_key = constraint;
 		}
+	}
+
+	/*
+	 * If this is a partition table, check whether it needs to inherit the same
+	 * primary key as the parent partitioned table.
+	 */
+	if (primary_key == NULL && stmt->partbound)
+	{
+		/*
+		 * This relation is not created yet and not visible to other
+		 * backends. It doesn't really matter what lock we take here.
+		 */
+		Relation rel = relation_open(relationId, AccessShareLock);
+
+		/* Find the parent partitioned table */
+		RangeVar   *rv = (RangeVar *) lfirst(list_head(stmt->inhRelations));
+		Oid	parentOid = RangeVarGetRelid(rv, NoLock, false);
+
+		Relation parentRel = heap_open(parentOid, NoLock);
+		List *idxlist = RelationGetIndexList(parentRel);
+		ListCell *cell;
+		foreach(cell, idxlist)
+		{
+			Relation    idxRel = index_open(lfirst_oid(cell), AccessShareLock);
+			/* Fetch pg_index tuple for source index from relcache entry */
+			if (!((Form_pg_index) GETSTRUCT(idxRel->rd_indextuple))->indisprimary)
+			{
+				/*
+				 * This is not a primary key index so this doesn't matter.
+				 */
+				relation_close(idxRel, AccessShareLock);
+				continue;
+			}
+			AttrNumber *attmap;
+			IndexStmt  *idxstmt;
+			Oid         constraintOid;
+
+			attmap = convert_tuples_by_name_map(RelationGetDescr(rel),
+								RelationGetDescr(parentRel),
+								gettext_noop("could not convert row type"));
+			idxstmt =
+				generateClonedIndexStmt(NULL, RelationGetRelid(rel), idxRel,
+						attmap, RelationGetDescr(rel)->natts,
+						&constraintOid);
+
+			primary_key = makeNode(Constraint);
+			primary_key->contype      = CONSTR_PRIMARY;
+			primary_key->conname      = idxstmt->idxname;
+			primary_key->options      = idxstmt->options;
+			primary_key->indexspace   = idxstmt->tableSpace;
+
+			ListCell *idxcell;
+			foreach(idxcell, idxstmt->indexParams)
+			{
+				IndexElem* ielem = lfirst(idxcell);
+				primary_key->keys =
+					lappend(primary_key->keys, makeString(ielem->name));
+				primary_key->yb_index_params =
+					lappend(primary_key->yb_index_params, ielem);
+			}
+
+			relation_close(idxRel, AccessShareLock);
+		}
+		heap_close(parentRel, NoLock);
+		heap_close(rel, AccessShareLock);
 	}
 
 	/* By default, inherit the colocated option from the database */
@@ -597,11 +664,13 @@ YBCDropTable(Oid relationId)
 	/* Drop the table */
 	{
 		bool not_found = false;
+		Relation relation = relation_open(relationId, AccessExclusiveLock);
 		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(databaseId,
-													   relationId,
+													   YbGetStorageRelid(relation),
 													   false, /* if_exists */
 													   &handle),
-									 &not_found);
+													   &not_found);
+		relation_close(relation, AccessExclusiveLock);
 		const bool valid_handle = !not_found;
 		if (valid_handle)
 		{
@@ -766,7 +835,7 @@ YBCCreateIndex(const char *indexName,
 									   indexName,
 									   YBCGetDatabaseOid(rel),
 									   indexId,
-									   RelationGetRelid(rel),
+									   YbGetStorageRelid(rel),
 									   rel->rd_rel->relisshared,
 									   indexInfo->ii_Unique,
 									   skip_index_backfill,
@@ -1250,4 +1319,57 @@ TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt) {
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
 					   result_type, -1, 0);
 	return tupdesc;
+}
+
+void
+YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel, AttrNumber *new_to_old_attmap) {
+	Relation index_rel = index_open(index_oid, AccessExclusiveLock);
+
+	/* Construct the new CREATE INDEX stmt */
+
+	IndexStmt* index_stmt = generateClonedIndexStmt(NULL /* heapRel, we provide an oid instead */,
+					new_rel_id,
+					index_rel,
+					new_to_old_attmap,
+					RelationGetDescr(old_rel)->natts,
+					NULL /* parent constraint OID pointer */);
+
+	const char* index_name = RelationGetRelationName(index_rel);
+	const char* index_namespace_name = get_namespace_name(index_rel->rd_rel->relnamespace);
+	index_stmt->idxname = pstrdup(index_name);
+
+	index_close(index_rel,  AccessExclusiveLock);
+
+	/* Drop old index */
+
+	DropStmt *stmt = makeNode(DropStmt);
+	stmt->removeType = OBJECT_INDEX;
+	stmt->missing_ok = false;
+	stmt->objects = list_make1(list_make2(makeString(pstrdup(index_namespace_name)),
+								makeString(pstrdup(index_name))));
+	stmt->behavior = DROP_CASCADE;
+	stmt->concurrent = false;
+
+	RemoveRelations(stmt);
+
+	/* Create the new index */
+
+	DefineIndex(new_rel_id,
+				index_stmt,
+				InvalidOid, /* no predefined OID */
+				InvalidOid, /* no parent index */
+				InvalidOid, /* no parent constraint */
+				false, /* is_alter_table */
+				false, /* check_rights */
+				false, /* check_not_in_use */
+				false, /* skip_build */
+				true /* quiet */);
+}
+
+/* ------------------------------------------------------------------------- */
+/*  System validation. */
+void
+YBCValidatePlacement(const char *placement_info)
+{
+	HandleYBStatus(YBCPgValidatePlacement(placement_info));
 }

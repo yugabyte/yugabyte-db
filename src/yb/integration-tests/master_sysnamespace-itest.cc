@@ -15,7 +15,10 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/common/value.pb.h"
+
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -44,8 +47,9 @@ class MasterSysNamespaceTest : public YBTest {
     rpc::MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new MasterServiceProxy(
-        &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr()));
+    auto host_port = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr();
+    proxy_ddl_ = std::make_unique<MasterDdlProxy>(&proxy_cache, host_port);
+    proxy_client_ = std::make_unique<MasterClientProxy>(&proxy_cache, host_port);
   }
 
   void TearDown() override {
@@ -55,7 +59,6 @@ class MasterSysNamespaceTest : public YBTest {
       cluster_.reset();
     }
 
-    proxy_.reset();
     YBTest::TearDown();
   }
 
@@ -63,7 +66,7 @@ class MasterSysNamespaceTest : public YBTest {
     ASSERT_FALSE(locs_pb.stale());
     ASSERT_EQ(3, locs_pb.replicas_size());
     for (const TabletLocationsPB::ReplicaPB& replica : locs_pb.replicas()) {
-      if (replica.role() == consensus::RaftPeerPB::LEADER) {
+      if (replica.role() == PeerRole::LEADER) {
         auto* leader_mini_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
         ASSERT_EQ(
             leader_mini_master->bound_rpc_addr().host(),
@@ -81,7 +84,7 @@ class MasterSysNamespaceTest : public YBTest {
                       replica.ts_info().private_rpc_addresses(0).host());
             ASSERT_EQ(cluster_->mini_master(i)->bound_rpc_addr().port(),
                       replica.ts_info().private_rpc_addresses(0).port());
-            ASSERT_EQ(consensus::RaftPeerPB::FOLLOWER, replica.role());
+            ASSERT_EQ(PeerRole::FOLLOWER, replica.role());
             break;
           }
         }
@@ -97,7 +100,8 @@ class MasterSysNamespaceTest : public YBTest {
   }
 
   std::unique_ptr<MiniCluster> cluster_;
-  std::unique_ptr<MasterServiceProxy> proxy_;
+  std::unique_ptr<MasterClientProxy> proxy_client_;
+  std::unique_ptr<MasterDdlProxy> proxy_ddl_;
   std::unique_ptr<rpc::Messenger> client_messenger_;
 };
 
@@ -111,7 +115,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   namespace_identifier->set_name(master::kSystemNamespaceName);
   namespace_identifier->set_id(master::kSystemNamespaceId);
   std::unique_ptr<rpc::RpcController> controller(new rpc::RpcController());
-  ASSERT_OK(proxy_->GetTableLocations(req, &resp, controller.get()));
+  ASSERT_OK(proxy_client_->GetTableLocations(req, &resp, controller.get()));
 
   ASSERT_FALSE(resp.has_error());
   ASSERT_EQ(TableType::YQL_TABLE_TYPE, resp.table_type());
@@ -123,7 +127,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   GetTabletLocationsResponsePB tablet_resp;
   tablet_req.add_tablet_ids(resp.tablet_locations(0).tablet_id());
   controller->Reset();
-  ASSERT_OK(proxy_->GetTabletLocations(tablet_req, &tablet_resp, controller.get()));
+  ASSERT_OK(proxy_client_->GetTabletLocations(tablet_req, &tablet_resp, controller.get()));
   ASSERT_FALSE(tablet_resp.has_error());
   ASSERT_EQ(1, tablet_resp.tablet_locations_size());
   VerifyTabletLocations(tablet_resp.tablet_locations(0));
@@ -133,7 +137,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   GetTableSchemaResponsePB schema_resp;
   controller->Reset();
   *schema_req.mutable_table() = *table_identifier;
-  ASSERT_OK(proxy_->GetTableSchema(schema_req, &schema_resp, controller.get()));
+  ASSERT_OK(proxy_ddl_->GetTableSchema(schema_req, &schema_resp, controller.get()));
   ASSERT_FALSE(schema_resp.has_error());
   ASSERT_TRUE(schema_resp.create_table_done());
 

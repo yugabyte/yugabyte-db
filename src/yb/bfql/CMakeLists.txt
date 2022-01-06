@@ -11,12 +11,13 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX bfql)
+
 # Build the code generator.
 add_executable(bfql_codegen
                directory.cc
                codegen.cc)
 target_link_libraries(bfql_codegen yb_util yb_common_proto consensus_metadata_proto)
-add_dependencies(bfql_codegen pgsql_protocol_proto)
 # Use ${CMAKE_BINARY_DIR}/bin/bfql_codegen to generate builtin function files.
 SET(BF_GENERATED_FILES
     ${CMAKE_CURRENT_BINARY_DIR}/gen_opcode_table.cc

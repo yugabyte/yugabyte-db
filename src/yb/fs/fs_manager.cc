@@ -54,6 +54,7 @@
 
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
@@ -90,7 +91,6 @@ using std::unordered_set;
 using strings::Substitute;
 
 namespace yb {
-
 // ==========================================================================
 //  FS Paths
 // ==========================================================================
@@ -98,15 +98,26 @@ const char *FsManager::kWalDirName = "wals";
 const char *FsManager::kWalFileNamePrefix = "wal";
 const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
-const char *FsManager::kRaftGroupMetadataDirName = "tablet-meta";
 const char *FsManager::kDataDirName = "data";
-const char *FsManager::kCorruptedSuffix = ".corrupted";
-const char *FsManager::kInstanceMetadataFileName = "instance";
-const char *FsManager::kFsLockFileName = "fs-lock";
-const char *FsManager::kConsensusMetadataDirName = "consensus-meta";
-const char *FsManager::kLogsDirName = "logs";
 
-static const char* const kTmpInfix = ".tmp";
+namespace {
+
+static const char kRaftGroupMetadataDirName[] = "tablet-meta";
+static const char kInstanceMetadataFileName[] = "instance";
+static const char kFsLockFileName[] = "fs-lock";
+static const char kConsensusMetadataDirName[] = "consensus-meta";
+static const char kLogsDirName[] = "logs";
+static const char kTmpInfix[] = ".tmp";
+
+std::string DataDir(const std::string& root, const std::string& server_type) {
+  return JoinPathSegments(GetServerTypeDataPath(root, server_type), FsManager::kDataDirName);
+}
+
+std::string WalDir(const std::string& root, const std::string& server_type) {
+  return JoinPathSegments(GetServerTypeDataPath(root, server_type), FsManager::kWalDirName);
+}
+
+} // namespace
 
 FsManagerOpts::FsManagerOpts()
     : read_only(false) {
@@ -238,9 +249,15 @@ Status FsManager::Open() {
     return STATUS(Corruption, "Lock file is present, filesystem may be in inconsistent state");
   }
 
+  bool create_roots = false;
   for (const string& root : canonicalized_all_fs_roots_) {
     auto pb = std::make_unique<InstanceMetadataPB>();
-    RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(env_, GetInstanceMetadataPath(root), pb.get()));
+    auto read_result = pb_util::ReadPBContainerFromPath(env_, GetInstanceMetadataPath(root),
+                                                        pb.get());
+    if (read_result.IsNotFound()) {
+      create_roots = true;
+      continue;
+    }
     if (!metadata_) {
       metadata_.reset(pb.release());
     } else if (pb->uuid() != metadata_->uuid()) {
@@ -248,6 +265,14 @@ Status FsManager::Open() {
           "Mismatched UUIDs across filesystem roots: $0 vs. $1",
           metadata_->uuid(), pb->uuid()));
     }
+  }
+  if (!metadata_) {
+    return STATUS(NotFound, "Metadata wasn't found");
+  }
+  if (create_roots) {
+    RETURN_NOT_OK(CreateFileSystemRoots(canonicalized_all_fs_roots_,
+                                        GetAncillaryDirs(/* add_metadata_dirs = */ false),
+                                        *metadata_.get()));
   }
 
   LOG(INFO) << "Opened local filesystem: " << JoinStrings(canonicalized_all_fs_roots_, ",")
@@ -350,47 +375,62 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
   // All roots are either empty or non-existent. Create missing roots and all
   // subdirectories.
   //
+
+  InstanceMetadataPB metadata;
+  CreateInstanceMetadata(&metadata);
+  RETURN_NOT_OK(CreateFileSystemRoots(canonicalized_all_fs_roots_,
+                                      GetAncillaryDirs(/* add_metadata_dirs = */ true),
+                                      metadata,
+                                      /* create_lock = */ fs_cleaned));
+
+  if (FLAGS_TEST_simulate_fs_create_failure) {
+    return STATUS(IOError, "Simulated fs creation error");
+  }
+  RETURN_NOT_OK(DeleteLockFiles());
+  return Status::OK();
+}
+
+Status FsManager::CreateFileSystemRoots(const std::set<std::string>& roots,
+                                        const std::set<std::string>& ancillary_dirs,
+                                        const InstanceMetadataPB& metadata,
+                                        bool create_lock) {
   // In the event of failure, delete everything we created.
-  std::deque<std::unique_ptr<ScopedFileDeleter>> delete_on_failure;
+  std::deque<ScopedFileDeleter> delete_on_failure;
   unordered_set<string> to_sync;
 
-  for (const string& root : canonicalized_all_fs_roots_) {
+  // All roots are either empty or non-existent. Create missing roots and all
+  // subdirectories.
+  for (const auto& root : roots) {
     bool created;
     std::string out_dir;
     RETURN_NOT_OK(SetupRootDir(env_, root, server_type_, &out_dir, &created));
     if (created) {
-      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, out_dir));
+      delete_on_failure.emplace_front(env_, out_dir);
       to_sync.insert(DirName(out_dir));
     }
+
     const string lock_file_path = GetFsLockFilePath(root);
-    if (fs_cleaned || !Exists(lock_file_path)) {
+    if (create_lock && !Exists(lock_file_path)) {
       std::unique_ptr<WritableFile> file;
       RETURN_NOT_OK_PREPEND(env_->NewWritableFile(lock_file_path, &file),
                             "Unable to create lock file.");
       // Do not delete lock file on error. It is used to detect failed initial create.
     }
-  }
-
-  InstanceMetadataPB metadata;
-  CreateInstanceMetadata(&metadata);
-  for (const string& root : canonicalized_all_fs_roots_) {
     const string instance_metadata_path = GetInstanceMetadataPath(root);
+    if (env_->FileExists(instance_metadata_path)) {
+      continue;
+    }
     RETURN_NOT_OK_PREPEND(WriteInstanceMetadata(metadata, instance_metadata_path),
-                          "Unable to write instance metadata");
-    delete_on_failure.emplace_front(new ScopedFileDeleter(env_, instance_metadata_path));
+                            "Unable to write instance metadata");
+    delete_on_failure.emplace_front(env_, instance_metadata_path);
   }
 
-  // Initialize ancillary directories.
-  auto ancillary_dirs = GetWalRootDirs();
-  ancillary_dirs.push_back(GetRaftGroupMetadataDir());
-  ancillary_dirs.push_back(GetConsensusMetadataDir());
-
-  for (const string& dir : ancillary_dirs) {
+  for (const auto& dir : ancillary_dirs) {
     bool created;
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
                           Substitute("Unable to create directory $0", dir));
     if (created) {
-      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, dir));
+      delete_on_failure.emplace_front(env_, dir);
       to_sync.insert(DirName(dir));
     }
   }
@@ -403,38 +443,29 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
     }
   }
 
-  // Create the RocksDB directory under each data directory.
-  for (const string& data_root : GetDataRootDirs()) {
-    bool created = false;
-    RETURN_NOT_OK_PREPEND(CreateDirIfMissing(data_root, &created),
-                          Substitute("Unable to create directory $0", data_root));
-    if (created) {
-      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, data_root));
-      to_sync.insert(DirName(data_root));
-    }
-
-    const string dir = JoinPathSegments(data_root, kRocksDBDirName);
-    created = false;
-    RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
-                          Substitute("Unable to create directory $0", dir));
-    if (created) {
-      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, dir));
-      to_sync.insert(DirName(dir));
-    }
-  }
-
-  if (FLAGS_TEST_simulate_fs_create_failure) {
-    return STATUS(IOError, "Simulated fs creation error");
-  }
-
   // Success: don't delete any files.
-  for (const auto& deleter : delete_on_failure) {
-    deleter->Cancel();
+  for (auto& deleter : delete_on_failure) {
+    deleter.Cancel();
   }
-
-  RETURN_NOT_OK(DeleteLockFiles());
 
   return Status::OK();
+}
+
+std::set<std::string> FsManager::GetAncillaryDirs(bool add_metadata_dirs) const {
+  std::set<std::string> ancillary_dirs;
+  if (add_metadata_dirs) {
+    ancillary_dirs.emplace(GetRaftGroupMetadataDir());
+    ancillary_dirs.emplace(GetConsensusMetadataDir());
+  }
+  for (const auto& wal_fs_root : canonicalized_wal_fs_roots_) {
+    ancillary_dirs.emplace(WalDir(wal_fs_root, server_type_));
+  }
+  for (const string& data_fs_root : canonicalized_data_fs_roots_) {
+    const string data_dir = DataDir(data_fs_root, server_type_);
+    ancillary_dirs.emplace(data_dir);
+    ancillary_dirs.emplace(JoinPathSegments(data_dir, kRocksDBDirName));
+  }
+  return ancillary_dirs;
 }
 
 void FsManager::CreateInstanceMetadata(InstanceMetadataPB* metadata) {
@@ -507,8 +538,7 @@ vector<string> FsManager::GetDataRootDirs() const {
   // Add the data subdirectory to each data root.
   vector<string> data_paths;
   for (const string& data_fs_root : canonicalized_data_fs_roots_) {
-    data_paths.push_back(
-        JoinPathSegments(GetServerTypeDataPath(data_fs_root, server_type_), kDataDirName));
+    data_paths.push_back(DataDir(data_fs_root, server_type_));
   }
   return data_paths;
 }
@@ -517,8 +547,7 @@ vector<string> FsManager::GetWalRootDirs() const {
   DCHECK(initted_);
   vector<string> wal_dirs;
   for (const auto& canonicalized_wal_fs_root : canonicalized_wal_fs_roots_) {
-    wal_dirs.push_back(JoinPathSegments(
-          GetServerTypeDataPath(canonicalized_wal_fs_root, server_type_), kWalDirName));
+    wal_dirs.push_back(WalDir(canonicalized_wal_fs_root, server_type_));
   }
   return wal_dirs;
 }

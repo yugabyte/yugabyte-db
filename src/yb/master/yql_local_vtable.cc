@@ -13,11 +13,12 @@
 
 #include "yb/master/yql_local_vtable.h"
 
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"

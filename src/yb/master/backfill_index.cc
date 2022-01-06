@@ -53,8 +53,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
@@ -1268,6 +1267,10 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
     "Could not UpdateSafeTime");
 }
 
+TabletServerId GetSafeTimeForTablet::permanent_uuid() {
+  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
+}
+
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
                              const std::string& start_key)
     : RetryingTSRpcTask(backfill_tablet->master(),
@@ -1442,6 +1445,10 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
   } else {
     backfill_tablet_->Done(status, boost::none, resp_.number_rows_processed(), failed_indexes);
   }
+}
+
+TabletServerId BackfillChunk::permanent_uuid() {
+  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
 }  // namespace master

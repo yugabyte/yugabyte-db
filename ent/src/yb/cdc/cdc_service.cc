@@ -28,6 +28,7 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.h"
@@ -45,12 +46,16 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/service_util.h"
@@ -280,7 +285,7 @@ void CDCServiceImpl::ListTablets(const ListTabletsRequestPB* req,
     // Filter local tablets if needed.
     if (req->local_only()) {
       bool is_local = false;
-      for (const auto& replica :  tablet.replicas()) {
+      for (const auto& replica : tablet.replicas()) {
         if (replica.ts_info().permanent_uuid() == tablet_manager_->server()->permanent_uuid()) {
           is_local = true;
           break;

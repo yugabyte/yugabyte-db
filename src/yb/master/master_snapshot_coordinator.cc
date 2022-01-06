@@ -17,15 +17,18 @@
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/asio/io_context.hpp>
 
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
 #include "yb/master/snapshot_coordinator_context.h"
@@ -34,11 +37,13 @@
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/rpc/poller.h"
+#include "yb/rpc/scheduler.h"
 
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_snapshots.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
@@ -57,6 +62,11 @@ DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
 
+DEFINE_bool(schedule_snapshot_rpcs_out_of_band, false,
+            "Should tablet snapshot RPCs be scheduled out of band from the periodic"
+            " background thread.");
+TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
+
 namespace yb {
 namespace master {
 
@@ -69,15 +79,15 @@ void SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term,
     SnapshotCoordinatorContext* context,
     const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
-  auto operation = std::make_unique<tablet::WriteOperation>(
+  auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
       /* context */ nullptr, /* tablet= */ nullptr);
   if (synchronizer) {
-    operation->set_completion_callback(
+    query->set_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
   }
-  *operation->AllocateRequest()->mutable_write_batch() = std::move(write_batch);
-  context->Submit(std::move(operation), leader_term);
+  *query->operation().AllocateRequest()->mutable_write_batch() = std::move(write_batch);
+  context->Submit(query.release()->PrepareSubmit(), leader_term);
 }
 
 CHECKED_STATUS SynchronizedWrite(
@@ -176,12 +186,16 @@ class MasterSnapshotCoordinator::Impl {
 
     VLOG(1) << __func__ << "(" << id << ", " << operation.ToString() << ")";
 
-    auto snapshot = std::make_unique<SnapshotState>(&context_, id, *operation.request());
+    auto snapshot = std::make_unique<SnapshotState>(
+        &context_, id, *operation.request(),
+        GetRpcLimit(FLAGS_max_concurrent_snapshot_rpcs,
+                    FLAGS_max_concurrent_snapshot_rpcs_per_tserver, leader_term));
 
     TabletSnapshotOperations operations;
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(snapshot->StoreToWriteBatch(&write_batch));
     boost::optional<tablet::CreateSnapshotData> sys_catalog_snapshot_data;
+    bool snapshot_empty = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto emplace_result = snapshots_.emplace(std::move(snapshot));
@@ -198,6 +212,7 @@ class MasterSnapshotCoordinator::Impl {
       } else if (!temp.status().IsUninitialized()) {
         return temp.status();
       }
+      snapshot_empty = (**emplace_result.first).Empty();
     }
 
     RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));
@@ -207,7 +222,7 @@ class MasterSnapshotCoordinator::Impl {
 
     ExecuteOperations(operations, leader_term);
 
-    if (leader_term >= 0) {
+    if (leader_term >= 0 && snapshot_empty) {
       // There could be snapshot for 0 tables, so they should be marked as complete right after
       // creation.
       UpdateSnapshotIfPresent(id, leader_term);
@@ -254,7 +269,7 @@ class MasterSnapshotCoordinator::Impl {
 
     auto first_key = sub_doc_key.doc_key().range_group().front();
     if (first_key.value_type() != docdb::ValueType::kInt32) {
-      LOG(DFATAL) << "Unexpected value type for the first range component of sys catalgo entry "
+      LOG(DFATAL) << "Unexpected value type for the first range component of sys catalog entry "
                   << "(kInt32 expected): "
                   << AsString(sub_doc_key.doc_key().range_group());;
     }
@@ -672,6 +687,7 @@ class MasterSnapshotCoordinator::Impl {
     VLOG(4) << __func__ << "(" << AsString(operations) << ")";
 
     size_t num_operations = operations.size();
+    LOG(INFO) << "Number of snapshot operations to be executed " << num_operations;
     std::vector<TabletId> tablet_ids;
     tablet_ids.reserve(num_operations);
     for (const auto& operation : operations) {
@@ -738,6 +754,10 @@ class MasterSnapshotCoordinator::Impl {
           }
           cleanup_snapshots.push_back(p->id());
         } else {
+          // Refresh the throttle limit.
+          p->Throttler().RefreshLimit(
+              GetRpcLimit(FLAGS_max_concurrent_snapshot_rpcs,
+                          FLAGS_max_concurrent_snapshot_rpcs_per_tserver, leader_term));
           p->PrepareOperations(&operations);
         }
       }
@@ -867,17 +887,17 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
 
-    auto operation = std::make_unique<tablet::WriteOperation>(
+    auto query = std::make_unique<tablet::WriteQuery>(
         leader_term, CoarseMonoClock::Now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
         nullptr /* context */, nullptr /* tablet */);
 
-    auto* write_batch = operation->AllocateRequest()->mutable_write_batch();
+    auto* write_batch = query->operation().AllocateRequest()->mutable_write_batch();
     auto pair = write_batch->add_write_pairs();
     pair->set_key((*encoded_key).AsSlice().cdata(), (*encoded_key).size());
     char value = { docdb::ValueTypeAsChar::kTombstone };
     pair->set_value(&value, 1);
 
-    operation->set_completion_callback([this, id, &map](const Status& s) {
+    query->set_callback([this, id, &map](const Status& s) {
       if (s.ok()) {
         LOG(INFO) << "Finished cleanup of object " << id;
         return;
@@ -885,7 +905,7 @@ class MasterSnapshotCoordinator::Impl {
       CleanupObjectAborted(id, map);
     });
 
-    context_.Submit(std::move(operation), leader_term);
+    context_.Submit(query.release()->PrepareSubmit(), leader_term);
   }
 
   CHECKED_STATUS ExecuteScheduleOperation(
@@ -1021,7 +1041,21 @@ class MasterSnapshotCoordinator::Impl {
   void UpdateSnapshot(
       SnapshotState* snapshot, int64_t leader_term, std::unique_lock<std::mutex>* lock)
       REQUIRES(mutex_) {
+    bool batch_done = false;
+    bool is_empty = snapshot->Empty();
+
+    if (!is_empty) {
+      batch_done = snapshot->Throttler().RemoveOutstandingTask();
+    }
     if (!snapshot->AllTabletsDone()) {
+      if (FLAGS_schedule_snapshot_rpcs_out_of_band && batch_done && !is_empty) {
+        // Send another batch. This prevents having to wait for the regular cycle
+        // of master snapshot coordinator which can be too slow.
+        context_.Scheduler().io_service().post([this]() {
+          LOG(INFO) << "Rescheduling Snapshot RPCs out of band.";
+          Poll();
+        });
+      }
       return;
     }
 
@@ -1171,6 +1205,24 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     return Status::OK();
+  }
+
+  // Computes the maximum outstanding Snapshot Create/Delete/Restore RPC
+  // that is permitted. If total limit is specified then it is used otherwise
+  // the value is computed by multiplying tserver count with the per tserver limit.
+  uint64_t GetRpcLimit(int64_t total_limit, int64_t per_tserver_limit, int64_t leader_term) {
+    // NO OP for followers.
+    if (leader_term < 0) {
+      return std::numeric_limits<int>::max();
+    }
+    // Should execute only for leaders.
+    if (total_limit == 0) {
+      return std::numeric_limits<int>::max();
+    }
+    if (total_limit > 0) {
+      return total_limit;
+    }
+    return context_.GetNumLiveTServersForActiveCluster() * per_tserver_limit;
   }
 
   SnapshotCoordinatorContext& context_;

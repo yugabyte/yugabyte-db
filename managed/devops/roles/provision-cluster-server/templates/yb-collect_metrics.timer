@@ -3,8 +3,8 @@ Description=Yugabyte collect metrics
 Requires=yb-collect_metrics.service
 
 [Timer]
-User={{ssh_user}}
-Group={{ssh_user}}
+User=yugabyte
+Group=yugabyte
 Unit=yb-collect_metrics.service
 # Run every 1 minute
 OnCalendar=*:0/1:0

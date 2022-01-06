@@ -47,19 +47,20 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/common_fwd.h"
 
 #include "yb/common/clock.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/retryable_request.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-#include "yb/common/partition.h"
-#include "yb/common/retryable_request.h"
-#include "yb/common/roles_permissions.h"
-
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -640,11 +641,11 @@ class YBClient {
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
-  //
+  // Version with table_id is preferable due to parallel run of RPCs.
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
-  CHECKED_STATUS OpenTable(const YBTableName& table_name, std::shared_ptr<YBTable>* table);
-  CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table,
+  CHECKED_STATUS OpenTable(const YBTableName& table_name, YBTablePtr* table);
+  CHECKED_STATUS OpenTable(const TableId& table_id, YBTablePtr* table,
                            master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
@@ -718,6 +719,9 @@ class YBClient {
   CHECKED_STATUS GetMasterUUID(const std::string& host, int16_t port, std::string* uuid);
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
+
+  // Check if placement information is satisfiable.
+  CHECKED_STATUS ValidateReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,
@@ -797,8 +801,6 @@ class YBClient {
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
   FRIEND_TEST(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued);
 
-  Result<YBTablePtr> CompleteTable(const YBTableInfo& info);
-
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
       YBClient* client, const YBTablePtr& table);
 
@@ -812,6 +814,8 @@ class YBClient {
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };
+
+Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb

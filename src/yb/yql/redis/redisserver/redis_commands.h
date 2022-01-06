@@ -17,6 +17,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 #include "yb/client/client_fwd.h"
 

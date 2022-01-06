@@ -15,6 +15,8 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
+#include "yb/consensus/consensus.pb.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
@@ -27,13 +29,13 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<tserver::TransactionStatePB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, tserver::TransactionStatePB* request) {
+void RequestTraits<TransactionStatePB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, TransactionStatePB* request) {
   replicate->set_allocated_transaction_state(request);
 }
 
 template <>
-tserver::TransactionStatePB* RequestTraits<tserver::TransactionStatePB>::MutableRequest(
+TransactionStatePB* RequestTraits<TransactionStatePB>::MutableRequest(
     consensus::ReplicateMsg* replicate) {
   return replicate->mutable_transaction_state();
 }

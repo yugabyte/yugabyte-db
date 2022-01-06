@@ -969,6 +969,9 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 												 numNotReportedClient),
 						 numNotReportedClient);
 
+	if (IsYugaByteEnabled() && clientdetail.data != NULL)
+		clientdetail.data = YBDetailSorted(clientdetail.data);
+
 	if (!ok)
 	{
 		if (origObject)

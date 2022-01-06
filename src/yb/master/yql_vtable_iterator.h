@@ -15,13 +15,13 @@
 #define YB_MASTER_YQL_VTABLE_ITERATOR_H
 
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 namespace yb {
 namespace master {
 
 // An iterator over a YQLVirtualTable.
-class YQLVTableIterator : public YQLRowwiseIteratorIf {
+class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
  public:
   // hashed_column_values - is used to filter rows, i.e. if hashed_column_values is not empty
   // only rows starting with specified hashed columns will be iterated.

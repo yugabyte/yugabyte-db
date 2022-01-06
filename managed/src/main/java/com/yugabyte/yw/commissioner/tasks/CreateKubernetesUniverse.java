@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.Common;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
 
 @Slf4j
@@ -123,7 +123,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       // Create a simple redis table.
       if (taskParams().getPrimaryCluster().userIntent.enableYEDIS) {
-        createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+        createTableTask(TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

@@ -20,7 +20,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_balancer_test_util.h"
 
-#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -255,7 +255,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         tserver::ListTabletsResponsePB resp;
         rpc::RpcController controller;
         controller.set_deadline(deadline);
-        RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+        RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
         for (const auto& tablet : resp.status_and_schema()) {
           if (tablet.tablet_status().table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
             LOG(INFO) << "Not yet deleted tablet: " << tablet.ShortDebugString();
@@ -400,11 +400,11 @@ TEST_F(YbAdminSnapshotScheduleTest, Delete) {
       tserver::FlushTabletsResponsePB resp;
       rpc::RpcController controller;
       controller.set_timeout(30s);
-      RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
+      RETURN_NOT_OK(proxy.FlushTablets(req, &resp, &controller));
 
       req.set_operation(tserver::FlushTabletsRequestPB::COMPACT);
       controller.Reset();
-      RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
+      RETURN_NOT_OK(proxy.FlushTablets(req, &resp, &controller));
     }
 
     for (auto* tserver : cluster_->tserver_daemons()) {
@@ -415,7 +415,7 @@ TEST_F(YbAdminSnapshotScheduleTest, Delete) {
       rpc::RpcController controller;
       controller.set_timeout(30s);
 
-      RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+      RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
 
       for (const auto& tablet : resp.status_and_schema()) {
         if (tablet.tablet_status().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
@@ -514,13 +514,13 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
 
   // Wait table marked as deleted.
   ASSERT_OK(Wait([this, deadline]() -> Result<bool> {
-    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterServiceProxy>();
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
     master::ListTablesRequestPB req;
     master::ListTablesResponsePB resp;
     rpc::RpcController controller;
     controller.set_deadline(deadline);
     req.set_include_not_running(true);
-    RETURN_NOT_OK(proxy->ListTables(req, &resp, &controller));
+    RETURN_NOT_OK(proxy.ListTables(req, &resp, &controller));
     for (const auto& table : resp.tables()) {
       if (table.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE
           && table.relation_type() != master::RelationType::SYSTEM_TABLE_RELATION
@@ -576,7 +576,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateTable)
       tserver::ListTabletsResponsePB resp;
       rpc::RpcController controller;
       controller.set_timeout(30s);
-      RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+      RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
       for (const auto& tablet : resp.status_and_schema()) {
         if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
           LOG(INFO) << "Tablet " << tablet.tablet_status().tablet_id() << " of table "
@@ -1318,7 +1318,7 @@ class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {
         tserver::ListTabletsResponsePB resp;
         rpc::RpcController controller;
         controller.set_timeout(timeout);
-        RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+        RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
         int tablet_count = 0;
         for (const auto& tablet : resp.status_and_schema()) {
           if (tablet.tablet_status().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {

@@ -340,9 +340,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    consensus::RaftPeerPB::Role role = is_live ?
-        consensus::RaftPeerPB::FOLLOWER :
-        consensus::RaftPeerPB::LEARNER;
+    PeerRole role = is_live ? PeerRole::FOLLOWER : PeerRole::LEARNER;
     NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, role, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);

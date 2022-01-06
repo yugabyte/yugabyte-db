@@ -45,22 +45,22 @@
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/cdc_consumer_split_driver.h"
+#include "yb/master/master_dcl.fwd.h"
+#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -168,7 +168,7 @@ class CatalogManager :
   // Create Postgres sys catalog table.
   CHECKED_STATUS CreateYsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
 
-  CHECKED_STATUS ReplicatePgMetadataChange(const tserver::ChangeMetadataRequestPB* req);
+  CHECKED_STATUS ReplicatePgMetadataChange(const tablet::ChangeMetadataRequestPB* req);
 
   // Reserve Postgres oids for a Postgres database.
   CHECKED_STATUS ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
@@ -537,15 +537,6 @@ class CatalogManager :
   // Is the table id from a table created for colocated database?
   bool IsColocatedParentTableId(const TableId& table_id) const;
 
-  // Is the table a table created for colocated database?
-  bool IsColocatedParentTable(const TableInfo& table) const override;
-
-  // Is the table a table created for a tablegroup?
-  bool IsTablegroupParentTable(const TableInfo& table) const override;
-
-  // Is the table a table created in a colocated database?
-  bool IsColocatedUserTable(const TableInfo& table) const override;
-
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
   bool IsUserCreatedTable(const TableInfo& table) const override;
@@ -585,19 +576,10 @@ class CatalogManager :
   virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req)
       override;
 
-  int GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info);
-
-  // Loops through the table's placement infos to make sure the overall replication info is valid.
-  virtual CHECKED_STATUS CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
-                                                   const TSDescriptorVector& all_ts_descs,
-                                                   const vector<Partition>& partitions,
-                                                   CreateTableResponsePB* resp);
-
-  // Makes sure the available ts_descs in a placement can accomodate the placement config.
+  // Checks that placement info can be accommodated by available ts_descs.
   CHECKED_STATUS CheckValidPlacementInfo(const PlacementInfoPB& placement_info,
                                          const TSDescriptorVector& ts_descs,
-                                         const vector<Partition>& partitions,
-                                         CreateTableResponsePB* resp);
+                                         ValidateReplicationInfoResponsePB* resp);
 
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
@@ -609,7 +591,7 @@ class CatalogManager :
   // Handles the config creation for a given placement.
   CHECKED_STATUS HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
                                                    const TSDescriptorVector& ts_descs,
-                                                   consensus::RaftPeerPB::MemberType member_type,
+                                                   consensus::PeerMemberType member_type,
                                                    consensus::RaftConfigPB* config);
 
     // Set the current committed config.
@@ -623,7 +605,7 @@ class CatalogManager :
 
   // Returns this CatalogManager's role in a consensus configuration. CatalogManager
   // must be initialized before calling this method.
-  consensus::RaftPeerPB::Role Role() const;
+  PeerRole Role() const;
 
   CHECKED_STATUS PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft,
                                const DumpMasterStateRequestPB* req,
@@ -648,6 +630,11 @@ class CatalogManager :
   CHECKED_STATUS SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req,
       ChangeMasterClusterConfigResponsePB* resp) override;
+
+
+  // Validator for placement information with respect to cluster configuration
+  CHECKED_STATUS ValidateReplicationInfo(
+      const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp);
 
   CHECKED_STATUS SetPreferredZones(
       const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp);
@@ -764,6 +751,14 @@ class CatalogManager :
   client::UniverseKeyClient& universe_key_client() {
     return *universe_key_client_;
   }
+
+  CHECKED_STATUS FlushSysCatalog(const FlushSysCatalogRequestPB* req,
+                                 FlushSysCatalogResponsePB* resp,
+                                 rpc::RpcContext* rpc);
+
+  CHECKED_STATUS CompactSysCatalog(const CompactSysCatalogRequestPB* req,
+                                   CompactSysCatalogResponsePB* resp,
+                                   rpc::RpcContext* rpc);
 
   CHECKED_STATUS SplitTablet(const TabletId& tablet_id) override;
 
@@ -1086,7 +1081,7 @@ class CatalogManager :
       const TSDescriptorVector& ts_descs,
       int nreplicas, consensus::RaftConfigPB* config,
       std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts,
-      consensus::RaftPeerPB::MemberType member_type);
+      consensus::PeerMemberType member_type);
 
   void HandleAssignPreparingTablet(TabletInfo* tablet,
                                    DeferredAssignmentActions* deferred);
@@ -1211,7 +1206,7 @@ class CatalogManager :
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
   void SendAddServerRequest(
-      const scoped_refptr<TabletInfo>& tablet, consensus::RaftPeerPB::MemberType member_type,
+      const scoped_refptr<TabletInfo>& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid);
 
   void GetPendingServerTasksUnlocked(const TableId &table_uuid,
@@ -1507,6 +1502,12 @@ class CatalogManager :
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
  private:
+  // Performs the provided action with the sys catalog shared tablet instance, or sets up an error
+  // if the tablet is not found.
+  template <class Req, class Resp, class F>
+  CHECKED_STATUS PerformOnSysCatalogTablet(
+      const Req& req, Resp* resp, const F& f);
+
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(mutex_);
 
   CHECKED_STATUS CollectTable(
@@ -1586,6 +1587,8 @@ class CatalogManager :
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
+  const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -1601,7 +1604,7 @@ class CatalogManager :
   // manager instance, populates it with the information read from the catalog tables and updates
   // this shared_ptr. The maps themselves are thus never updated (no inserts/deletes/updates)
   // once populated and are garbage collected once all references to them go out of scope.
-  // No clients are expected to update the managaer, they take a lock merely to copy the
+  // No clients are expected to update the manager, they take a lock merely to copy the
   // shared_ptr and read from it.
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_mutex_);
 

@@ -22,6 +22,7 @@
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 
@@ -84,7 +85,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   }
 
   // Remove regular keys which are not related to this RocksDB anymore (due to split of the tablet).
-  if (key_bounds_ && !key_bounds_->IsWithinBounds(key)) {
+  if (!IsWithinBounds(key_bounds_, key)) {
     // Given the addition of logic in the compaction iterator which looks at DropKeysLessThan()
     // and DropKeysGreaterOrEqual(), we expect the compaction iterator to never pass this component
     // a key in that range. If this invariant is violated, we LOG(DFATAL)

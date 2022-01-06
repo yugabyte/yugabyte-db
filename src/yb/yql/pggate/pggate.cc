@@ -21,11 +21,13 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/tablet_server.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -1488,6 +1490,10 @@ void PgApiImpl::SetTimeout(const int timeout_ms) {
 
 Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
   return pg_session_->ListTabletServers();
+}
+
+Status PgApiImpl::ValidatePlacement(const char *placement_info) {
+  return pg_session_->ValidatePlacement(placement_info);
 }
 
 } // namespace pggate

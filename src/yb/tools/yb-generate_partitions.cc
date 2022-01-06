@@ -20,10 +20,11 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/status.h"

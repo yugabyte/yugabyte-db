@@ -17,7 +17,6 @@
 #include "yb/common/ql_expr.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/sys_catalog_writer.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/util/pb_util.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -81,7 +80,7 @@ CHECKED_STATUS SysCatalogTable::Mutate(
 }
 
 std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter(int64_t leader_term) {
-  return std::make_unique<SysCatalogWriter>(kSysCatalogTabletId, *schema_, leader_term);
+  return std::make_unique<SysCatalogWriter>(*schema_, leader_term);
 }
 
 } // namespace master

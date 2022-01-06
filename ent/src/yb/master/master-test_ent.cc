@@ -16,8 +16,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_defaults.h"
 
 #include "../../src/yb/master/master-test_base.h"
@@ -57,7 +57,7 @@ Status MasterTestEnt::CreateCDCStream(const TableId& table_id, CDCStreamId* stre
   CreateCDCStreamResponsePB resp;
 
   req.set_table_id(table_id);
-  RETURN_NOT_OK(proxy_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -69,7 +69,7 @@ Status MasterTestEnt::CreateCDCStream(const TableId& table_id, CDCStreamId* stre
     is_create_req.mutable_table()->set_table_name(master::kCdcStateTableName);
     is_create_req.mutable_table()->mutable_namespace_()->set_name(master::kSystemNamespaceName);
 
-    auto s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
+    auto s = proxy_ddl_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
     if (!s.ok()) {
       return false;
     }
@@ -84,7 +84,7 @@ Status MasterTestEnt::GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamRes
   GetCDCStreamRequestPB req;
   req.set_stream_id(stream_id);
 
-  RETURN_NOT_OK(proxy_->GetCDCStream(req, resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->GetCDCStream(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
@@ -96,7 +96,7 @@ Status MasterTestEnt::DeleteCDCStream(const CDCStreamId& stream_id) {
   DeleteCDCStreamResponsePB resp;
   req.add_stream_id(stream_id);
 
-  RETURN_NOT_OK(proxy_->DeleteCDCStream(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->DeleteCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -106,7 +106,7 @@ Status MasterTestEnt::DeleteCDCStream(const CDCStreamId& stream_id) {
 Status MasterTestEnt::ListCDCStreams(ListCDCStreamsResponsePB* resp) {
   ListCDCStreamsRequestPB req;
 
-  RETURN_NOT_OK(proxy_->ListCDCStreams(req, resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->ListCDCStreams(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
@@ -134,7 +134,7 @@ Status MasterTestEnt::SetupUniverseReplication(
     req.add_producer_table_ids(table);
   }
 
-  RETURN_NOT_OK(proxy_->SetupUniverseReplication(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->SetupUniverseReplication(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -146,7 +146,7 @@ Status MasterTestEnt::GetUniverseReplication(
   GetUniverseReplicationRequestPB req;
   req.set_producer_id(producer_id);
 
-  RETURN_NOT_OK(proxy_->GetUniverseReplication(req, resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->GetUniverseReplication(req, resp, ResetAndGetController()));
   if (resp->has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp->error().status()));
   }
@@ -158,7 +158,7 @@ Status MasterTestEnt::DeleteUniverseReplication(const std::string& producer_id) 
   DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
 
-  RETURN_NOT_OK(proxy_->DeleteUniverseReplication(req, &resp, ResetAndGetController()));
+  RETURN_NOT_OK(proxy_replication_->DeleteUniverseReplication(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -170,7 +170,7 @@ TEST_F(MasterTestEnt, TestCreateCDCStreamInvalidTable) {
   CreateCDCStreamResponsePB resp;
 
   req.set_table_id("invalidid");
-  ASSERT_OK(proxy_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());

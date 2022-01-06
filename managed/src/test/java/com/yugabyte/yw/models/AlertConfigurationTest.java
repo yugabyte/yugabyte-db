@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -22,6 +23,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.alerts.MaintenanceService;
+import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
@@ -33,6 +36,8 @@ import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.CallableSql;
+import io.ebean.Ebean;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -45,7 +50,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.persistence.PersistenceException;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
@@ -64,13 +71,18 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
   private Customer customer;
   private Universe universe;
+  private Universe otherUniverse;
   private AlertDestination alertDestination;
+
+  private MaintenanceService maintenanceService;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("Customer");
     universe = ModelFactory.createUniverse();
-    ModelFactory.createUniverse("some other");
+    otherUniverse = ModelFactory.createUniverse("some other");
+
+    maintenanceService = app.injector().instanceOf(MaintenanceService.class);
 
     alertDestination =
         ModelFactory.createAlertDestination(
@@ -106,6 +118,72 @@ public class AlertConfigurationTest extends FakeDBApplication {
             AlertDefinitionFilter.builder().configurationUuid(queriedDefinition.getUuid()).build());
 
     assertThat(definitions, hasSize(2));
+  }
+
+  @Test
+  public void testConfigurationUnderMaintenanceWindow() {
+    AlertConfigurationApiFilter alertConfigurationApiFilter = new AlertConfigurationApiFilter();
+    alertConfigurationApiFilter.setTarget(
+        new AlertConfigurationTarget()
+            .setAll(false)
+            .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
+    AlertConfigurationApiFilter alertConfigurationApiFilter2 = new AlertConfigurationApiFilter();
+    alertConfigurationApiFilter2.setTarget(
+        new AlertConfigurationTarget()
+            .setAll(false)
+            .setUuids(ImmutableSet.of(otherUniverse.getUniverseUUID())));
+    MaintenanceWindow maintenanceWindow =
+        ModelFactory.createMaintenanceWindow(
+            customer.getUuid(),
+            window ->
+                window
+                    .setUuid(replaceFirstChar(window.getUuid(), 'a'))
+                    .setAlertConfigurationFilter(alertConfigurationApiFilter));
+    MaintenanceWindow maintenanceWindow2 =
+        ModelFactory.createMaintenanceWindow(
+            customer.getUuid(),
+            window ->
+                window
+                    .setUuid(replaceFirstChar(window.getUuid(), 'b'))
+                    .setAlertConfigurationFilter(alertConfigurationApiFilter2));
+
+    AlertConfiguration configuration = createTestConfiguration();
+    configuration.addMaintenanceWindowUuid(maintenanceWindow2.getUuid());
+    configuration.addMaintenanceWindowUuid(maintenanceWindow.getUuid());
+    alertConfigurationService.save(configuration);
+
+    AlertConfiguration queriedConfiguration =
+        alertConfigurationService.get(configuration.getUuid());
+
+    assertThat(
+        queriedConfiguration.getMaintenanceWindowUuidsSet(),
+        contains(maintenanceWindow.getUuid(), maintenanceWindow2.getUuid()));
+
+    List<AlertDefinition> definitions =
+        alertDefinitionService.list(
+            AlertDefinitionFilter.builder()
+                .configurationUuid(queriedConfiguration.getUuid())
+                .build());
+
+    assertThat(definitions, hasSize(2));
+    Map<UUID, AlertDefinition> definitionMap =
+        definitions
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    definition ->
+                        UUID.fromString(definition.getLabelValue(KnownAlertLabels.SOURCE_UUID)),
+                    Function.identity()));
+    assertThat(
+        definitionMap
+            .get(universe.getUniverseUUID())
+            .getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS),
+        equalTo(maintenanceWindow.getUuid().toString()));
+    assertThat(
+        definitionMap
+            .get(otherUniverse.getUniverseUUID())
+            .getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS),
+        equalTo(maintenanceWindow2.getUuid().toString()));
   }
 
   @Test
@@ -199,12 +277,23 @@ public class AlertConfigurationTest extends FakeDBApplication {
     // Target filter
     filter =
         AlertConfigurationFilter.builder()
+            .targetType(TargetType.UNIVERSE)
             .target(
                 new AlertConfigurationTarget()
                     .setAll(false)
-                    .setUuids(ImmutableSet.of(configuration2.getUuid())))
+                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
             .build();
-    assertFind(filter, configuration2);
+    assertFind(filter, configuration, configuration2);
+
+    filter =
+        AlertConfigurationFilter.builder()
+            .targetType(TargetType.UNIVERSE)
+            .target(
+                new AlertConfigurationTarget()
+                    .setAll(false)
+                    .setUuids(ImmutableSet.of(UUID.randomUUID())))
+            .build();
+    assertFind(filter, configuration);
 
     filter =
         AlertConfigurationFilter.builder()
@@ -579,6 +668,23 @@ public class AlertConfigurationTest extends FakeDBApplication {
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),
         "errorJson: {\"customerUUID\":[\"can't change for configuration 'Memory Consumption'\"]}");
+  }
+
+  @Test
+  public void testTransactions() {
+    AlertConfiguration configuration = createTestConfiguration();
+    CallableSql dropTable = Ebean.createCallableSql("drop table maintenance_window");
+    Ebean.execute(dropTable);
+
+    configuration.setMaintenanceWindowUuids(ImmutableSet.of(UUID.randomUUID()));
+
+    assertThat(
+        () -> alertConfigurationService.save(configuration),
+        thrown(
+            PersistenceException.class, containsString("Table \"MAINTENANCE_WINDOW\" not found")));
+
+    AlertConfiguration updated = alertConfigurationService.get(configuration.getUuid());
+    assertThat(updated.getMaintenanceWindowUuids(), nullValue());
   }
 
   private void testValidationCreate(Consumer<AlertConfiguration> modifier, String expectedMessage) {

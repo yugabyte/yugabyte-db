@@ -15,6 +15,8 @@
 # redisserver_service_proto
 #########################################
 
+set(YB_PCH_PREFIX redisserver)
+
 YRPC_GENERATE(
   REDISSERVER_YRPC_SRCS REDISSERVER_YRPC_HDRS REDISSERVER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../..
@@ -25,9 +27,7 @@ set(REDISSERVER_YRPC_LIBS
   yb_common_proto
   protobuf
   remote_bootstrap_proto
-  rpc_header_proto
-  redis_protocol_proto
-  wire_protocol_proto)
+  rpc_header_proto)
 ADD_YB_LIBRARY(redis_service_proto
   SRCS ${REDISSERVER_YRPC_SRCS}
   DEPS ${REDISSERVER_YRPC_LIBS}

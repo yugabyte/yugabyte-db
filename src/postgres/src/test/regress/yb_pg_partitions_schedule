@@ -10,3 +10,4 @@ test: yb_pg_partition_aggregate
 test: yb_pg_partition_update
 
 test: yb_partition_fk
+test: yb_partition_pk

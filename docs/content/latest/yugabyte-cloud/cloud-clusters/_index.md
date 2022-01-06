@@ -47,4 +47,17 @@ To _manage_ a cluster, select the cluster in the list to display the cluster [Ov
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="add-extensions/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
+        <div class="title">Create extensions</div>
+      </div>
+      <div class="body">
+        Create PostgreSQL extensions in Yugabyte Cloud clusters.
+      </div>
+    </a>
+  </div>
+
 </div>

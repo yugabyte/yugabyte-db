@@ -943,6 +943,13 @@ YBCStatus YBCPgRollbackSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->RollbackSubTransaction(id));
 }
 
+//------------------------------------------------------------------------------------------------
+// System validation.
+//------------------------------------------------------------------------------------------------
+YBCStatus YBCPgValidatePlacement(const char *placement_info) {
+  return ToYBCStatus(pgapi->ValidatePlacement(placement_info));
+}
+
 // Referential Integrity Caching
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor *source) {
   return ProcessYbctid(*source, [](auto table_id, const auto& ybctid){

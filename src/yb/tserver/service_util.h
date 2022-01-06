@@ -18,6 +18,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_error.h"
 
 #include "yb/rpc/rpc_context.h"
@@ -31,6 +32,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 
 namespace yb {
@@ -47,21 +49,22 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
                           const Status& s,
                           rpc::RpcContext* context);
 
+void SetupError(TabletServerErrorPB* error, const Status& s);
+
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer);
 
 // Template helpers.
 
-template<class ReqClass, class RespClass>
-bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
-                             const char* method_name,
-                             const ReqClass* req,
-                             RespClass* resp,
-                             rpc::RpcContext* context) {
+template<class ReqClass>
+Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
+                            const char* method_name,
+                            const ReqClass* req,
+                            const std::string& requestor_string) {
   const string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
   if (req->dest_uuid().empty()) {
     // Maintain compat in release mode, but complain.
     string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
-        method_name, context->requestor_string(), req->ShortDebugString());
+        method_name, requestor_string, req->ShortDebugString());
 #ifdef NDEBUG
     YB_LOG_EVERY_N(ERROR, 100) << msg;
 #else
@@ -73,13 +76,26 @@ bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
     const Status s = STATUS_SUBSTITUTE(InvalidArgument,
         "$0: Wrong destination UUID requested. Local UUID: $1. Requested UUID: $2",
         method_name, local_uuid, req->dest_uuid());
-    LOG(WARNING) << s.ToString() << ": from " << context->requestor_string()
+    LOG(WARNING) << s.ToString() << ": from " << requestor_string
                  << ": " << req->ShortDebugString();
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::WRONG_SERVER_UUID, context);
-    return false;
+    return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::WRONG_SERVER_UUID));
   }
   return true;
+}
+
+template<class ReqClass, class RespClass>
+bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
+                             const char* method_name,
+                             const ReqClass* req,
+                             RespClass* resp,
+                             rpc::RpcContext* context) {
+  Result<bool> result = CheckUuidMatch(tablet_manager, method_name,
+                                       req, context->requestor_string());
+  if (!result.ok()) {
+     SetupErrorAndRespond(resp->mutable_error(), result.status(), context);
+     return false;
+  }
+  return result.get();
 }
 
 template <class RespType>
@@ -117,20 +133,16 @@ struct TabletPeerTablet {
 // resp->mutable_error() to indicate the failure reason.
 //
 // Returns true if successful.
-template<class RespClass>
-Result<TabletPeerTablet> LookupTabletPeerOrRespond(
+inline Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
-    const string& tablet_id,
-    RespClass* resp,
-    rpc::RpcContext* context) {
+    const string& tablet_id) {
   TabletPeerTablet result;
   Status status = tablet_manager->GetTabletPeer(tablet_id, &result.tablet_peer);
   if (PREDICT_FALSE(!status.ok())) {
     TabletServerErrorPB::Code code = status.IsServiceUnavailable() ?
                                      TabletServerErrorPB::UNKNOWN_ERROR :
                                      TabletServerErrorPB::TABLET_NOT_FOUND;
-    SetupErrorAndRespond(resp->mutable_error(), status, code, context);
-    return status;
+    return status.CloneAndAddErrorCode(TabletServerError(code));
   }
 
   // Check RUNNING state.
@@ -138,7 +150,6 @@ Result<TabletPeerTablet> LookupTabletPeerOrRespond(
   if (PREDICT_FALSE(state != tablet::RUNNING)) {
     Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::RaftGroupStateError(state))
         .CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
-    SetupErrorAndRespond(resp->mutable_error(), s, context);
     return s;
   }
 
@@ -147,10 +158,23 @@ Result<TabletPeerTablet> LookupTabletPeerOrRespond(
     Status s = STATUS(IllegalState,
                       "Tablet not running",
                       TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
-    SetupErrorAndRespond(resp->mutable_error(), s, context);
     return s;
   }
   return result;
+}
+
+template<class RespClass>
+Result<TabletPeerTablet> LookupTabletPeerOrRespond(
+    TabletPeerLookupIf* tablet_manager,
+    const string& tablet_id,
+    RespClass* resp,
+    rpc::RpcContext* context) {
+  Result<TabletPeerTablet> result = LookupTabletPeer(tablet_manager, tablet_id);
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), context);
+    return result.status();
+  }
+  return result.get();
 }
 
 template <class Response>

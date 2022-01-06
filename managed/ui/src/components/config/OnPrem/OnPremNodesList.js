@@ -20,7 +20,15 @@ import { DropdownButton, MenuItem } from 'react-bootstrap';
 
 const TIMEOUT_BEFORE_REFRESH = 2500;
 
-const PRECHECK_STATUS_ORDER = ['None', 'Initializing', 'Created', 'Running', 'Success', 'Failure'];
+const PRECHECK_STATUS_ORDER = [
+  'None',
+  'Initializing',
+  'Created',
+  'Running',
+  'Success',
+  'Failure',
+  'Aborted'
+];
 
 class OnPremNodesList extends Component {
   constructor(props) {
@@ -81,9 +89,10 @@ class OnPremNodesList extends Component {
 
   findProvider = () => {
     const {
-      cloud: { providers }
+      cloud: { providers },
+      selectedProviderUUID
     } = this.props;
-    return providers.data.find((provider) => provider.code === 'onprem');
+    return providers.data.find((provider) => provider.uuid === selectedProviderUUID);
   };
 
   submitAddNodesForm = (vals, dispatch, reduxProps) => {
@@ -207,20 +216,6 @@ class OnPremNodesList extends Component {
     return result;
   };
 
-  UNSAFE_componentWillMount() {
-    const { universeList } = this.props;
-    if (!getPromiseState(universeList).isSuccess()) {
-      this.props.fetchUniverseList();
-    }
-    // Get OnPrem provider if provider list is already loaded during component load
-    const onPremProvider = this.props.cloud.providers.data.find(
-      (provider) => provider.code === 'onprem'
-    );
-    this.props.getRegionListItems(onPremProvider.uuid);
-    this.props.getInstanceTypeListItems(onPremProvider.uuid);
-    this.props.fetchCustomerTasks();
-  }
-
   scheduleTasksPolling = () => {
     if (!this.state.tasksPolling) {
       this.timeout = setInterval(() => this.props.fetchCustomerTasks(), TASK_SHORT_TIMEOUT);
@@ -314,7 +309,7 @@ class OnPremNodesList extends Component {
         return <i className="fa fa-check-circle yb-success-color" />;
       } else if (status === 'Running') {
         return <YBLoadingCircleIcon size="inline" />;
-      } else if (status === 'Failure') {
+      } else if (status === 'Failure' || status === 'Aborted') {
         return errorIcon;
       }
       return errorIcon;
@@ -382,7 +377,7 @@ class OnPremNodesList extends Component {
     }
 
     const currentCloudRegions = supportedRegionList.data.filter(
-      (region) => region.provider.code === 'onprem'
+      (region) => region.provider.uuid === this.props.selectedProviderUUID
     );
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions)
       ? currentCloudRegions
@@ -424,11 +419,11 @@ class OnPremNodesList extends Component {
                     zoneOptions={zoneOptions}
                     machineTypeOptions={machineTypeOptions}
                     formType={'modal'}
-                />
+                  />
+                </div>
               </div>
-            </div>
-          );
-        })
+            );
+          })
       : null;
     const deleteConfirmationText = `Are you sure you want to delete node${
       isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName

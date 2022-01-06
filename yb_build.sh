@@ -207,6 +207,10 @@ Options:
   --arch <architecture>
     Build for the given architecture. Currently only relevant for Apple Silicon where we can build
     for x86_64 and arm64 (no cross-compilation support yet).
+  --linuxbrew, --no-linuxbrew
+    Specify in order to do a Linuxbrew based build, or specifically prohibit doing so. This
+    influences the choice of prebuilt third-party archive. This can also be specified using the
+    YB_USE_LINUXBREW environment variable.
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -776,10 +780,12 @@ while [[ $# -gt 0 ]]; do
     ;;
     --target)
       make_targets+=( "$2" )
+      build_java=false
       shift
     ;;
     --targets)
       make_targets+=( "$2" )
+      build_java=false
       shift
     ;;
     --no-tcmalloc)
@@ -1085,8 +1091,13 @@ while [[ $# -gt 0 ]]; do
       export YB_TARGET_ARCH=$2
       shift
     ;;
+    --linuxbrew)
+      export YB_USE_LINUXBREW=1
+    ;;
+    --no-linuxbrew)
+      export YB_USE_LINUXBREW=0
+    ;;
     *)
-
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
         env_var_name=${BASH_REMATCH[1]}
         # Use "the ultimate fix" from http://bit.ly/setenvvar to set a variable with the name stored

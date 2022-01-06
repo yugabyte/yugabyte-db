@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.YBTestRunner;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
@@ -377,7 +377,7 @@ public class TestSystemTables extends BaseCQLTest {
       "'my_keyspace' and table_name = 'my_table'").all();
     assertEquals(1, results.size());
     byte[] table_uuid = null;
-    for (Master.ListTablesResponsePB.TableInfo tableInfo :
+    for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo :
       miniCluster.getClient().getTablesList("my_table").getTableInfoList()) {
       if (tableInfo.getNamespace().getName().equals("my_keyspace") &&
         tableInfo.getName().equals("my_table")) {

@@ -172,6 +172,21 @@ public class AlertDefinition extends Model {
     return this;
   }
 
+  public AlertDefinition removeLabel(KnownAlertLabels labelName) {
+    AlertDefinitionLabel toRemove =
+        labels
+            .stream()
+            .filter(label -> label.getName().equals(labelName.labelName()))
+            .findFirst()
+            .orElse(null);
+    if (toRemove == null) {
+      return this;
+    }
+
+    this.labels.remove(toRemove);
+    return this;
+  }
+
   public List<AlertDefinitionLabel> getLabels() {
     return labels
         .stream()

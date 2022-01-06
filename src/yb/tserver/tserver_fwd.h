@@ -14,22 +14,22 @@
 #ifndef YB_TSERVER_TSERVER_FWD_H
 #define YB_TSERVER_TSERVER_FWD_H
 
+#include "yb/tserver/backup.fwd.h"
+#include "yb/tserver/tserver.fwd.h"
+#include "yb/tserver/tserver_service.fwd.h"
+
 namespace yb {
 namespace tserver {
 
-class AbortTransactionRequestPB;
-class AbortTransactionResponsePB;
-class GetTabletStatusRequestPB;
-class GetTabletStatusResponsePB;
-class GetTransactionStatusAtParticipantRequestPB;
-class GetTransactionStatusAtParticipantResponsePB;
-class GetTransactionStatusRequestPB;
-class GetTransactionStatusResponsePB;
 class Heartbeater;
+class IsTabletServerReadyRequestPB;
+class IsTabletServerReadyResponsePB;
+class ListTabletsForTabletServerResponsePB;
+class ListTabletsForTabletServerResponsePB_Entry;
+class ListTabletsResponsePB;
+class ListTabletsResponsePB_StatusAndSchemaPB;
 class LocalTabletServer;
 class MetricsSnapshotter;
-class PgCreateColumnPB;
-class PgCreateTableRequestPB;
 class TSTabletManager;
 class TabletPeerLookupIf;
 class TabletServer;
@@ -41,11 +41,6 @@ class TabletServerServiceProxy;
 class TabletServerForwardServiceProxy;
 class TabletServiceImpl;
 class TabletServerPathHandlers;
-class TabletSnapshotOpRequestPB;
-class TabletSnapshotOpResponsePB;
-class TransactionStatePB;
-class UpdateTransactionRequestPB;
-class UpdateTransactionResponsePB;
 
 enum class TabletServerServiceRpcMethodIndexes;
 

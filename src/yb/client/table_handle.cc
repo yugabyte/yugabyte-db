@@ -21,8 +21,11 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+
+#include "yb/master/master_client.pb.h"
 
 #include "yb/util/format.h"
 #include "yb/util/result.h"

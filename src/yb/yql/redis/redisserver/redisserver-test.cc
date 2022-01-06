@@ -20,12 +20,15 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/client/yb_table_name.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
 #include "yb/master/flush_manager.h"
+#include "yb/master/master_admin.pb.h"
 
 #include "yb/rpc/io_thread_pool.h"
 
@@ -222,7 +225,7 @@ class TestRedisService : public RedisTableTestBase {
           ASSERT_EQ(expected.size(), replies.size())
               << "Originator: " << __FILE__ << ":" << line << std::endl
               << "Expected: " << yb::ToString(expected) << std::endl
-              << " Replies: " << reply.ToString();
+              << " Replies: " << Max500CharsPrinter(reply.ToString());
           for (size_t i = 0; i < expected.size(); i++) {
             DVLOG(3) << "Checking " << replies[i].ToString();
             if (expected[i].get_type() == RedisReplyType::kString &&
@@ -946,7 +949,8 @@ void TestRedisService::DoRedisTest(int line,
             << reply.as_string() << ", of type: " << to_underlying(reply.get_type());
     num_callbacks_called_++;
     ASSERT_EQ(reply_type, reply.get_type())
-        << "Originator: " << __FILE__ << ":" << line << ", reply: " << reply.ToString();
+        << "Originator: " << __FILE__ << ":" << line << ", reply: "
+        << Max500CharsPrinter(reply.ToString());
     callback(reply);
   });
 }

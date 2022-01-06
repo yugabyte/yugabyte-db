@@ -36,11 +36,9 @@ dependencies:
       name: "azcopy"
 
   - role: install_backup_util
-    when: ansible_architecture != "aarch64"
     util:
       name: "gsutil"
 
   - role: install_backup_util
-    when: ansible_architecture != "aarch64"
     util:
       name: "s3cmd"

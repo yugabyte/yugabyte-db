@@ -41,6 +41,7 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/types.h"
+#undef TEST_SYNC_POINT
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -56,6 +57,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"

@@ -172,7 +172,7 @@ class ClusterLoadBalancer {
       const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid = "");
 
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
-  consensus::RaftPeerPB::MemberType GetDefaultMemberType();
+  consensus::PeerMemberType GetDefaultMemberType();
 
   //
   // Higher level methods and members.
@@ -248,8 +248,10 @@ class ClusterLoadBalancer {
   // If it can find a way to move leader load from a non-affinitized to affinitized node,
   // returns true, if not returns false, if error is found, returns Status.
   // This is called before normal leader load balancing.
-  Result<bool> HandleLeaderLoadIfNonAffinitized(
-      TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
+  Result<bool> HandleLeaderLoadIfNonAffinitized(TabletId* moving_tablet_id,
+                                                TabletServerId* from_ts,
+                                                TabletServerId* to_ts,
+                                                std::string* to_ts_path);
 
   // Processes any tablet leaders that are on a highly loaded tablet server and need to be moved.
   //
@@ -278,8 +280,10 @@ class ClusterLoadBalancer {
   //
   // Returns true if we could find a leader to rebalance and sets the three output parameters.
   // Returns false otherwise.
-  Result<bool> GetLeaderToMove(
-      TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
+  Result<bool> GetLeaderToMove(TabletId* moving_tablet_id,
+                               TabletServerId* from_ts,
+                               TabletServerId* to_ts,
+                               std::string* to_ts_path);
 
   // Issue the change config and modify the in-memory state for moving a replica from one tablet
   // server to another.
@@ -300,8 +304,10 @@ class ClusterLoadBalancer {
 
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
   // specified tablet server to the other specified tablet server.
-  CHECKED_STATUS MoveLeader(
-      const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts)
+  CHECKED_STATUS MoveLeader(const TabletId& tablet_id,
+                            const TabletServerId& from_ts,
+                            const TabletServerId& to_ts,
+                            const std::string& to_ts_path)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
@@ -311,11 +317,6 @@ class ClusterLoadBalancer {
 
   // Get access to all the tablets for the given table.
   Result<TabletInfos> GetTabletsForTable(const TableId& table_uuid) const
-      REQUIRES_SHARED(catalog_manager_->mutex_);
-
-  // Returns true when not choosing a leader as victim during normal load balance move operation.
-  // Currently skips leader for RF=1 case only.
-  Result<bool> ShouldSkipLeaderAsVictim(const TabletId& tablet_id) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Populates pb with the placement info in tablet's config at cluster placement_uuid_.

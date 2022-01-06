@@ -12,6 +12,10 @@
 
 # Various CMake functions. This should eventually be organized and refactored.
 
+macro(yb_initialize_constants)
+  set(BUILD_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build-support")
+endmacro()
+
 function(CHECK_YB_COMPILER_PATH COMPILER_PATH)
   if(NOT "${COMPILER_PATH}" MATCHES "/compiler-wrappers/(cc|c[+][+])$" AND
      NOT "${CMAKE_COMMAND}" MATCHES "/[.]?(CLion|clion)")
@@ -93,20 +97,13 @@ function(DETECT_BREW)
   # TODO: consolidate Linuxbrew detection logic between here and detect_brew in common-build-env.sh.
   # As of 10/2020 we only check the compiler version here but not in detect_brew.
   set(USING_LINUXBREW FALSE)
-  if(NOT APPLE AND
-     # In practice, we only use Linuxbrew with Clang 7.x.
-     (NOT IS_CLANG OR "${COMPILER_VERSION}" VERSION_LESS "8.0.0") AND
-     # In practice, we only use Linuxbrew with GCC 5.x.
-     (NOT IS_GCC OR "${COMPILER_VERSION}" VERSION_LESS "6.0.0") AND
-     # Only a few compiler types could be used with Linuxbrew. The "clang7" compiler type is
-     # explicitly NOT included.
-     ("${YB_COMPILE_TYPE}" MATCHES "^(gcc|gcc5|clang)$"))
+  if(NOT APPLE)
+    set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
     message("Trying to detect whether we should use Linuxbrew. "
             "IS_CLANG=${IS_CLANG}, "
             "IS_GCC=${IS_GCC}, "
             "COMPILER_VERSION=${COMPILER_VERSION}, "
             "LINUXBREW_DIR=${LINUXBREW_DIR}")
-    set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
     if("${LINUXBREW_DIR}" STREQUAL "")
       if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
         file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt" LINUXBREW_DIR)
@@ -157,7 +154,6 @@ function(INIT_COMPILER_TYPE_FROM_BUILD_ROOT)
     endif()
   endif()
 
-  message("YB_COMPILER_TYPE env var: $ENV{YB_COMPILER_TYPE}")
   # Make sure we can use $ENV{YB_COMPILER_TYPE} and ${YB_COMPILER_TYPE} interchangeably.
   SET(YB_COMPILER_TYPE "$ENV{YB_COMPILER_TYPE}" PARENT_SCOPE)
 endfunction()
@@ -176,14 +172,14 @@ function(VALIDATE_COMPILER_TYPE)
   endif()
 
   if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "zapcc")
-    if (NOT "${COMPILER_FAMILY}" STREQUAL "clang")
+    if (NOT IS_CLANG)
       message(FATAL_ERROR
               "Compiler type is zapcc but the compiler family is '${COMPILER_FAMILY}' "
               "(expected to be clang)")
     endif()
   endif()
 
-  if("${YB_COMPILER_TYPE}" MATCHES "^gcc.*$" AND NOT "${COMPILER_FAMILY}" STREQUAL "gcc")
+  if("${YB_COMPILER_TYPE}" MATCHES "^gcc.*$" AND NOT IS_GCC)
     message(FATAL_ERROR
             "Compiler type '${YB_COMPILER_TYPE}' does not match the compiler family "
             "'${COMPILER_FAMILY}'.")
@@ -196,19 +192,9 @@ function(VALIDATE_COMPILER_TYPE)
             "'${YB_COMPILER_TYPE}'.")
   endif()
 
-  if (NOT "${COMPILER_FAMILY}" STREQUAL "gcc" AND
-      NOT "${COMPILER_FAMILY}" STREQUAL "clang")
+  if (NOT IS_GCC AND
+      NOT IS_CLANG)
     message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY} (expected 'gcc' or 'clang').")
-  endif()
-
-  set(IS_CLANG FALSE PARENT_SCOPE)
-  if ("${COMPILER_FAMILY}" STREQUAL "clang")
-    set(IS_CLANG TRUE PARENT_SCOPE)
-  endif()
-
-  set(IS_GCC FALSE PARENT_SCOPE)
-  if ("${COMPILER_FAMILY}" STREQUAL "gcc")
-    set(IS_GCC TRUE PARENT_SCOPE)
   endif()
 endfunction()
 
@@ -366,6 +352,13 @@ function(add_executable name)
   if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
     add_dependencies(${name} latest_symlink)
   endif()
+
+  yb_process_pch(${name})
+endfunction()
+
+function(add_library name)
+  _add_library("${name}" ${ARGN})
+  yb_process_pch(${name})
 endfunction()
 
 macro(YB_SETUP_CLANG)
@@ -390,7 +383,33 @@ macro(YB_SETUP_CLANG)
   # the Linuxbrew include directory too.
   include_directories(SYSTEM "${LIBCXX_INCLUDE_DIR}")
 
+  if(NOT APPLE)
+    execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
+                    OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
+
+    if ("${CLANG_PRINT_SEARCH_DIRS_OUTPUT}" MATCHES ".*libraries: =([^:]+)(:.*|$)" )
+      # We get a directory like this:
+      # .../yb-llvm-v12.0.1-yb-1-1639783720-bdb147e6-almalinux8-x86_64/lib/clang/12.0.1
+      set(CLANG_LIB_DIR "${CMAKE_MATCH_1}")
+      set(CLANG_RUNTIME_LIB_DIR "${CMAKE_MATCH_1}/lib/linux")
+    else()
+      message(FATAL_ERROR
+              "Could not parse the output of 'clang -print-search-dirs': "
+              "${CLANG_PRINT_SEARCH_DIRS_OUTPUT}")
+    endif()
+    if(USING_LINUXBREW)
+      set(CLANG_INCLUDE_DIR "${CLANG_LIB_DIR}/include")
+      if(NOT EXISTS "${CLANG_INCLUDE_DIR}")
+        message(FATAL_ERROR "Clang include directory '${CLANG_INCLUDE_DIR}' does not exist")
+      endif()
+      ADD_CXX_FLAGS("-isystem ${CLANG_INCLUDE_DIR}")
+    endif()
+  endif()
+
   ADD_CXX_FLAGS("-nostdinc++")
+  if(USING_LINUXBREW)
+    ADD_CXX_FLAGS("-nostdinc")
+  endif()
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
   if(NOT EXISTS "${LIBCXX_DIR}/lib")
     message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
@@ -411,7 +430,7 @@ macro(YB_SETUP_SANITIZER)
       "Build type: ${YB_BUILD_TYPE}.")
   endif()
 
-  if("${COMPILER_FAMILY}" STREQUAL "clang")
+  if(IS_CLANG)
     message("Using instrumented libc++ (build type: ${YB_BUILD_TYPE})")
     YB_SETUP_CLANG("${YB_BUILD_TYPE}")
   else()
@@ -420,7 +439,7 @@ macro(YB_SETUP_SANITIZER)
   endif()
 
   if("${YB_BUILD_TYPE}" STREQUAL "asan")
-    if("${COMPILER_FAMILY}" STREQUAL "clang" AND
+    if(IS_CLANG AND
        "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0" AND
        NOT APPLE)
       # TODO: see if we can use static libasan instead (requires third-party changes).
@@ -432,20 +451,13 @@ macro(YB_SETUP_SANITIZER)
       # dependency on libc++ so it gets resolved using our rpath.
       ADD_LINKER_FLAGS("-lc++")
 
-      execute_process(
-        COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
-        OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
-      if ("${CLANG_PRINT_SEARCH_DIRS_OUTPUT}" MATCHES ".*libraries: =([^:]+)(:.*|$)" )
-        set(CLANG_RUNTIME_LIB_DIR "${CMAKE_MATCH_1}/lib/linux")
-        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
-          message(FATAL_ERROR "Clang runtime directory does not exist: ${CLANG_RUNTIME_LIB_DIR}")
-        endif()
-        ADD_GLOBAL_RPATH_ENTRY("${CLANG_RUNTIME_LIB_DIR}")
-      else()
-        message(FATAL_ERROR
-                "Could not parse the output of 'clang -print-search-dirs': "
-                "${CLANG_PRINT_SEARCH_DIRS_OUTPUT}")
+      if("${CLANG_RUNTIME_LIB_DIR}" STREQUAL "")
+        message(FATAL_ERROR "CLANG_RUNTIME_LIB_DIR is not set")
       endif()
+      if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+        message(FATAL_ERROR "Clang runtime directory does not exist: ${CLANG_RUNTIME_LIB_DIR}")
+      endif()
+      ADD_GLOBAL_RPATH_ENTRY("${CLANG_RUNTIME_LIB_DIR}")
     endif()
 
     ADD_CXX_FLAGS("-fsanitize=address")
@@ -453,7 +465,7 @@ macro(YB_SETUP_SANITIZER)
 
     # Compile and link against the thirdparty ASAN instrumented libstdcxx.
     ADD_EXE_LINKER_FLAGS("-fsanitize=address")
-    if("${COMPILER_FAMILY}" STREQUAL "gcc")
+    if(IS_GCC)
       ADD_EXE_LINKER_FLAGS("-lubsan -ldl")
       ADD_CXX_FLAGS("-Wno-error=maybe-uninitialized")
     endif()
@@ -468,7 +480,7 @@ macro(YB_SETUP_SANITIZER)
 
     # Compile and link against the thirdparty TSAN instrumented libstdcxx.
     ADD_EXE_LINKER_FLAGS("-fsanitize=thread")
-    if("${COMPILER_FAMILY}" STREQUAL "clang" AND
+    if(IS_CLANG AND
        "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
       # To avoid issues with missing libunwind symbols:
       # https://gist.githubusercontent.com/mbautin/5bc53ed2d342eab300aec7120eb42996/raw
@@ -495,6 +507,46 @@ function(SHOW_FOUND_BOOST_DETAILS BOOST_LIBRARY_TYPE)
   message("    Boost_MINOR_VERSION: ${Boost_MINOR_VERSION}")
   message("    Boost_SUBMINOR_VERSION: ${Boost_SUBMINOR_VERSION}")
   message("    Boost_LIB_DIAGNOSTIC_DEFINITIONS: ${Boost_LIB_DIAGNOSTIC_DEFINITIONS}")
+endfunction()
+
+# Setup target to use precompiled headers.
+function(yb_process_pch target)
+  if("${YB_PCH_PREFIX}" STREQUAL "" OR NOT ${YB_PCH_ON})
+    return()
+  endif()
+
+  set(TARGET_PROPERTY "PCH_FIRST_TARGET_FOR_${YB_PCH_PREFIX}")
+
+  get_property(EXISTING_TARGET GLOBAL PROPERTY "${TARGET_PROPERTY}")
+
+  if (NOT "${EXISTING_TARGET}" STREQUAL "")
+    target_precompile_headers(${target} REUSE_FROM "${EXISTING_TARGET}")
+    if (${YB_PCH_CODEGEN})
+      target_link_libraries(${target} "${YB_PCH_PREFIX}_pch_obj")
+    endif()
+    return()
+  endif()
+
+  message("Use PCH for ${target}: ${YB_PCH_PREFIX}")
+  set_property(GLOBAL PROPERTY "${TARGET_PROPERTY}" ${target})
+  set(PCH_FILE ${CMAKE_CURRENT_SOURCE_DIR}/${YB_PCH_PATH}${YB_PCH_PREFIX}_pch.h)
+  target_precompile_headers(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${PCH_FILE}>")
+
+  if (${YB_PCH_CODEGEN})
+    _add_library("${YB_PCH_PREFIX}_pch_obj" OBJECT IMPORTED GLOBAL)
+    set(PCH_OBJ_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${target}.dir")
+    set(PCH_OBJ_FILE "${PCH_OBJ_DIR}/cmake_pch.hxx.pch.o")
+    if(NOT EXISTS "${PCH_OBJ_FILE}")
+      file(MAKE_DIRECTORY "${PCH_OBJ_DIR}")
+      file(TOUCH "${PCH_OBJ_FILE}")
+    endif()
+    set_target_properties(${YB_PCH_PREFIX}_pch_obj PROPERTIES IMPORTED_OBJECTS "${PCH_OBJ_FILE}")
+    if (NOT "${YB_PCH_DEP_LIBS}" STREQUAL "")
+      target_link_libraries(${YB_PCH_PREFIX}_pch_obj INTERFACE "${YB_PCH_DEP_LIBS}")
+    endif()
+    target_link_libraries(${YB_PCH_PREFIX}_pch_obj INTERFACE "${YB_BASE_LIBS}")
+    target_link_libraries(${target} "${YB_PCH_PREFIX}_pch_obj")
+  endif()
 endfunction()
 
 # A wrapper around add_library() for YugabyteDB libraries.
@@ -551,19 +603,31 @@ function(ADD_POSTGRES_SHARED_LIBRARY LIB_NAME SHARED_LIB_PATH)
 endfunction()
 
 function(parse_build_root_basename)
-  get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
-  string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
-  list(LENGTH YB_BUILD_ROOT_BASENAME_COMPONENTS YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH)
-  if(YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH LESS 3 OR
-     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 5)
-    message(
-        FATAL_ERROR
-        "Wrong number of components of the build root basename: "
-        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3, 4, or 5 components. "
-        "Basename: ${YB_BUILD_ROOT_BASENAME}")
+  if ("${BUILD_SUPPORT_DIR}" STREQUAL "")
+    message(FATAL_ERROR "BUILD_SUPPORT_DIR is not set in parse_build_root_basename")
   endif()
-  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
-  set(YB_BUILD_TYPE "${YB_BUILD_TYPE}" PARENT_SCOPE)
+  get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
+
+  EXEC_PROGRAM("${BUILD_SUPPORT_DIR}/show_build_root_name_regex.sh"
+               OUTPUT_VARIABLE BUILD_ROOT_BASENAME_RE)
+  string(REGEX MATCH "${BUILD_ROOT_BASENAME_RE}" RE_MATCH_RESULT "${YB_BUILD_ROOT_BASENAME}")
+  if("$ENV{YB_DEBUG_BUILD_ROOT_BASENAME_PARSING}" STREQUAL "1")
+    message("Parsing build root basename: ${YB_BUILD_ROOT_BASENAME}")
+    message("Regular expression: ${BUILD_ROOT_BASENAME_RE}")
+    message("Capture groups (note that some components are repeated with and without a leading "
+            "dash):")
+    foreach(MATCH_INDEX RANGE 1 9)
+      message("    CMAKE_MATCH_${MATCH_INDEX}=${CMAKE_MATCH_${MATCH_INDEX}}")
+    endforeach()
+  endif()
+
+  set(YB_BUILD_TYPE "${CMAKE_MATCH_1}" PARENT_SCOPE)
+
+  # -----------------------------------------------------------------------------------------------
+  # YB_COMPILER_TYPE
+  # -----------------------------------------------------------------------------------------------
+
+  set(YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME "${CMAKE_MATCH_2}")
   if(NOT "${YB_COMPILER_TYPE}" STREQUAL "" AND
      NOT "${YB_COMPILER_TYPE}" STREQUAL "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
     message(
@@ -573,7 +637,6 @@ function(parse_build_root_basename)
         "different: '${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}'.")
   endif()
 
-  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 1 YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME)
   if(NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
      NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
     message(
@@ -582,10 +645,32 @@ function(parse_build_root_basename)
         "the value auto-detected from the build root basename '${YB_BUILD_ROOT_BASENAME}' is "
         "different: '${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}'.")
   endif()
+
   set(YB_COMPILER_TYPE "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}" PARENT_SCOPE)
   set(ENV{YB_COMPILER_TYPE} "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
 
-  list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 2 YB_LINKING_TYPE)
+  # -----------------------------------------------------------------------------------------------
+  # YB_USING_LINUXBREW_FROM_BUILD_ROOT
+  # -----------------------------------------------------------------------------------------------
+
+  if (NOT "${CMAKE_MATCH_3}" STREQUAL "-linuxbrew" AND
+      NOT "${CMAKE_MATCH_3}" STREQUAL "")
+    message(FATAL_ERROR
+            "Invalid value of the 3rd capture group for build root basename"
+            "'${YB_BUILD_ROOT_BASENAME}': either '-linuxbrew' or an empty string.")
+  endif()
+
+  if ("${CMAKE_MATCH_3}" STREQUAL "-linuxbrew")
+    set(YB_USING_LINUXBREW_FROM_BUILD_ROOT ON PARENT_SCOPE)
+  else()
+    set(YB_USING_LINUXBREW_FROM_BUILD_ROOT OFF PARENT_SCOPE)
+  endif()
+
+  # -----------------------------------------------------------------------------------------------
+  # YB_LINKING_TYPE
+  # -----------------------------------------------------------------------------------------------
+
+  set(YB_LINKING_TYPE "${CMAKE_MATCH_5}")
   if(NOT "${YB_LINKING_TYPE}" MATCHES "^(static|dynamic)$")
     message(
         FATAL_ERROR
@@ -594,15 +679,20 @@ function(parse_build_root_basename)
   endif()
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
 
-  if (YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 3)
-    list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 3 YB_TARGET_ARCH_FROM_BUILD_ROOT)
-    if(NOT "${YB_TARGET_ARCH_FROM_BUILD_ROOT}" STREQUAL "ninja")
-      if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${YB_TARGET_ARCH_FROM_BUILD_ROOT}")
-        message(
-            FATAL_ERROR
-            "Target architecture inferred from build root is '${YB_TARGET_ARCH_FROM_BUILD_ROOT}', "
-            "but CMAKE_SYSTEM_PROCESSOR is ${CMAKE_SYSTEM_PROCESSOR}")
-      endif()
-    endif()
+  set(OPTIONAL_DASH_NINJA "${CMAKE_MATCH_8}")
+  if(NOT "${OPTIONAL_DASH_NINJA}" STREQUAL "" AND
+     NOT "${OPTIONAL_DASH_NINJA}" STREQUAL "-ninja")
+    message(FATAL_ERROR
+            "Invalid value of the 8th capture group for build root basename"
+            "'${YB_BUILD_ROOT_BASENAME}': either '-ninja' or an empty string.")
+  endif()
+
+  set(YB_TARGET_ARCH_FROM_BUILD_ROOT "${CMAKE_MATCH_7}")
+  if (NOT "${YB_TARGET_ARCH_FROM_BUILD_ROOT}" STREQUAL "" AND
+      NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${YB_TARGET_ARCH_FROM_BUILD_ROOT}")
+    message(
+        FATAL_ERROR
+        "Target architecture inferred from build root is '${YB_TARGET_ARCH_FROM_BUILD_ROOT}', "
+        "but CMAKE_SYSTEM_PROCESSOR is ${CMAKE_SYSTEM_PROCESSOR}")
   endif()
 endfunction()

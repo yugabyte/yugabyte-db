@@ -54,6 +54,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
@@ -61,13 +62,14 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_splitter.h"
 
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_peer_lookup.h"
-#include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
@@ -573,6 +575,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;
+
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 
   boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
 

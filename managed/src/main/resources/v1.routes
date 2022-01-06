@@ -100,6 +100,7 @@ GET     /customers/:cUUID/kms_configs/:configUUID                              c
 GET     /customers/:cUUID/kms_configs                                          com.yugabyte.yw.controllers.EncryptionAtRestController.listKMSConfigs(cUUID: java.util.UUID)
 POST    /customers/:cUUID/kms_configs/:kmsProvider                             com.yugabyte.yw.controllers.EncryptionAtRestController.createKMSConfig(cUUID: java.util.UUID, kmsProvider: String)
 DELETE  /customers/:cUUID/kms_configs/:configUUID                              com.yugabyte.yw.controllers.EncryptionAtRestController.deleteKMSConfig(cUUID: java.util.UUID, configUUID: java.util.UUID)
+POST    /customers/:cUUID/kms_configs/:configUUID/edit                         com.yugabyte.yw.controllers.EncryptionAtRestController.editKMSConfig(cUUID: java.util.UUID, configUUID: java.util.UUID)
 
 # KMS History API
 GET     /customers/:cUUID/universes/:uniUUID/kms                               com.yugabyte.yw.controllers.EncryptionAtRestController.getKeyRefHistory(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -163,6 +164,14 @@ GET     /customers/:cUUID/alert_destinations                                   c
 GET     /customers/:cUUID/alert_destinations/:adUUID                           com.yugabyte.yw.controllers.AlertController.getAlertDestination(cUUID: java.util.UUID, adUUID: java.util.UUID)
 PUT     /customers/:cUUID/alert_destinations/:adUUID                           com.yugabyte.yw.controllers.AlertController.updateAlertDestination(cUUID: java.util.UUID, adUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_destinations/:adUUID                           com.yugabyte.yw.controllers.AlertController.deleteAlertDestination(cUUID: java.util.UUID, adUUID: java.util.UUID)
+
+# Maintenance Window API
+GET     /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.get(cUUID: java.util.UUID, windowUUID: java.util.UUID)
+POST    /customers/:cUUID/maintenance_windows/page                             com.yugabyte.yw.controllers.MaintenanceController.page(cUUID: java.util.UUID)
+POST    /customers/:cUUID/maintenance_windows/list                             com.yugabyte.yw.controllers.MaintenanceController.list(cUUID: java.util.UUID)
+POST    /customers/:cUUID/maintenance_windows                                  com.yugabyte.yw.controllers.MaintenanceController.create(cUUID: java.util.UUID)
+PUT     /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.update(cUUID: java.util.UUID, windowUUID: java.util.UUID)
+DELETE  /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.delete(cUUID: java.util.UUID, windowUUID: java.util.UUID)
 
 # Access Key API
 GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
@@ -251,6 +260,7 @@ POST    /customers/:cUUID/xcluster_configs                                     c
 GET     /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.get(cUUID: java.util.UUID, xccUUID: java.util.UUID)
 PUT     /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.edit(cUUID: java.util.UUID, xccUUID: java.util.UUID)
 DELETE  /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.delete(cUUID: java.util.UUID, xccUUID: java.util.UUID)
+POST    /customers/:cUUID/xcluster_configs/sync                                com.yugabyte.yw.controllers.XClusterConfigController.sync(cUUID: java.util.UUID, targetUniverseUUID: java.util.UUID ?= null)
 
 # Universe upgrade API
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -270,6 +280,7 @@ DELETE  /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 c
 PUT     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID/bulk_import     com.yugabyte.yw.controllers.TablesController.bulkImport(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID/create_backup   com.yugabyte.yw.controllers.TablesController.createBackup(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/multi_table_backup                com.yugabyte.yw.controllers.TablesController.createMultiTableBackup(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/backups                                              com.yugabyte.yw.controllers.TablesController.createBackupYb(cUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/backups                           com.yugabyte.yw.controllers.BackupsController.list(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/backups/tasks/:tUUID              com.yugabyte.yw.controllers.BackupsController.fetchBackupsByTaskUUID(cUUID: java.util.UUID, uniUUID: java.util.UUID, tUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/backups/restore                   com.yugabyte.yw.controllers.BackupsController.restore(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -282,6 +293,7 @@ GET    /customers/:cUUID/tasks_list                                            c
 GET    /customers/:cUUID/tasks/:tUUID                                          com.yugabyte.yw.controllers.CustomerTaskController.taskStatus(cUUID: java.util.UUID, tUUID: java.util.UUID)
 POST   /customers/:cUUID/tasks/:tUUID                                          com.yugabyte.yw.controllers.CustomerTaskController.retryTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
 POST   /customers/:cUUID/tasks/:tUUID/retry                                    com.yugabyte.yw.controllers.CustomerTaskController.retryTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
+POST   /customers/:cUUID/tasks/:tUUID/abort                                    com.yugabyte.yw.controllers.CustomerTaskController.abortTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/universes/:uniUUID/tasks                              com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/failed                                   com.yugabyte.yw.controllers.CustomerTaskController.failedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
 

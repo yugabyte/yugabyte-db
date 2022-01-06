@@ -39,6 +39,8 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/partition.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/metadata.pb.h"
@@ -51,8 +53,8 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -89,7 +91,6 @@ using client::YBTableName;
 using consensus::GetConsensusRole;
 using consensus::RaftPeerPB;
 using itest::SimpleIntKeyYBSchema;
-using master::MasterServiceProxy;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
 using rpc::Messenger;
@@ -168,10 +169,9 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   rpc::ProxyCache proxy_cache(client_messenger_.get());
 
   // Build a TServerDetails map so we can check for convergence.
-  MasterServiceProxy master_proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
+  master::MasterClusterProxy master_proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
 
-  itest::TabletServerMap ts_map;
-  ASSERT_OK(CreateTabletServerMap(&master_proxy, &proxy_cache, &ts_map));
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &proxy_cache));
 
   // Collect the tablet peers so we get direct access to consensus.
   vector<std::shared_ptr<TabletPeer> > tablet_peers;
@@ -222,12 +222,12 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
       ASSERT_TRUE(reported_tablet.has_committed_consensus_state());
 
       string uuid = tablet_peers[replica]->permanent_uuid();
-      RaftPeerPB::Role role = GetConsensusRole(uuid, reported_tablet.committed_consensus_state());
+      PeerRole role = GetConsensusRole(uuid, reported_tablet.committed_consensus_state());
       if (replica == new_leader_idx) {
-        ASSERT_EQ(RaftPeerPB::LEADER, role)
+        ASSERT_EQ(PeerRole::LEADER, role)
             << "Tablet report: " << report.ShortDebugString();
       } else {
-        ASSERT_EQ(RaftPeerPB::FOLLOWER, role)
+        ASSERT_EQ(PeerRole::FOLLOWER, role)
             << "Tablet report: " << report.ShortDebugString();
       }
     }

@@ -45,6 +45,7 @@
 
 #include "yb/client/client.h"
 
+#include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 

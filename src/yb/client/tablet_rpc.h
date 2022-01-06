@@ -21,6 +21,7 @@
 #include <unordered_set>
 
 #include <gflags/gflags_declare.h>
+#include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
 
@@ -31,7 +32,8 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"

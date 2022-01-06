@@ -162,9 +162,9 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
   for (const RaftPeerPB& peer : config.peers()) {
     if (request.candidate_uuid() == peer.permanent_uuid()) continue;
     // Only peers with member_type == VOTER are allowed to vote.
-    if (peer.member_type() != RaftPeerPB::VOTER) {
+    if (peer.member_type() != PeerMemberType::VOTER) {
       LOG(INFO) << "Ignoring peer " << peer.permanent_uuid() << " vote because its member type is "
-                << RaftPeerPB::MemberType_Name(peer.member_type());
+                << PeerMemberType_Name(peer.member_type());
       continue;
     }
 

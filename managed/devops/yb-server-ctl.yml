@@ -97,7 +97,7 @@
       - name: Remove cron job that collects metrics
         cron:
           name: "metric collection every minute"
-          user: "{{ ssh_user }}"
+          user: "yugabyte"
           state: absent
         become: yes
         become_method: sudo

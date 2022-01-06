@@ -260,12 +260,16 @@ void CheckForward(CalculatorServiceProxy* proxy,
 // Test making successful RPC calls.
 TEST_F(RpcStubTest, TestIncoherence) {
   static const std::string kServer1Name = "Server1";
+  TestServerOptions server1options;
+  server1options.endpoint = Endpoint(IpAddress::from_string("127.0.0.11"), 0);
   static const std::string kServer2Name = "Server2";
+  TestServerOptions server2options;
+  server2options.endpoint = Endpoint(IpAddress::from_string("127.0.0.12"), 0);
 
-  auto server1 = StartTestServer(kServer1Name, IpAddress::from_string("127.0.0.11"));
+  auto server1 = StartTestServer(server1options, kServer1Name);
   auto proxy1holder = CreateCalculatorProxyHolder(server1.bound_endpoint());
   auto& proxy1 = *proxy1holder.proxy;
-  auto server2 = StartTestServer(kServer2Name, IpAddress::from_string("127.0.0.12"));
+  auto server2 = StartTestServer(server2options, kServer2Name);
   auto proxy2holder = CreateCalculatorProxyHolder(server2.bound_endpoint());
   auto& proxy2 = *proxy2holder.proxy;
 
@@ -787,7 +791,9 @@ TEST_F(RpcStubTest, IPv6) {
   }
 
   ASSERT_FALSE(server_address.is_unspecified());
-  auto server = StartTestServer("Server", server_address);
+  TestServerOptions options;
+  options.endpoint = Endpoint(server_address, 0);
+  auto server = StartTestServer(options, "Server");
   ASSERT_TRUE(server.bound_endpoint().address().is_v6());
   auto proxy_holder = CreateCalculatorProxyHolder(server.bound_endpoint());
   auto& proxy = *proxy_holder.proxy;
@@ -874,6 +880,162 @@ TEST_F(RpcStubTest, TrafficMetrics) {
   ASSERT_LT(proxy_request_bytes->value(), kUpperBytesLimit);
   ASSERT_GE(proxy_request_bytes->value(), kStringLen);
   ASSERT_LT(proxy_request_bytes->value(), kUpperBytesLimit);
+}
+
+template <class T>
+std::string ReversedAsString(T t) {
+  std::reverse(t.begin(), t.end());
+  return AsString(t);
+}
+
+void Generate(rpc_test::LightweightSubMessagePB* sub_message) {
+  auto& msg = *sub_message;
+  for (int i = 0; i != 13; ++i) {
+    msg.mutable_rsi32()->Add(RandomUniformInt<int32_t>());
+  }
+  msg.set_sf32(RandomUniformInt<int32_t>());
+  msg.set_str(RandomHumanReadableString(32));
+  for (int i = 0; i != 11; ++i) {
+    msg.mutable_rbytes()->Add(RandomHumanReadableString(32));
+  }
+  if (RandomUniformBool()) {
+    Generate(msg.mutable_cycle());
+  }
+}
+
+TEST_F(RpcStubTest, Lightweight) {
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  rpc_test::LightweightRequestPB req;
+  req.set_i32(RandomUniformInt<int32_t>());
+  req.set_i64(RandomUniformInt<int64_t>());
+  req.set_f32(RandomUniformInt<uint32_t>());
+  req.set_f64(RandomUniformInt<uint64_t>());
+  req.set_u32(RandomUniformInt<uint32_t>());
+  req.set_u64(RandomUniformInt<uint64_t>());
+  req.set_r32(RandomUniformReal<float>());
+  req.set_r64(RandomUniformReal<double>());
+
+  req.set_str(RandomHumanReadableString(32));
+  req.set_bytes(RandomHumanReadableString(32));
+  req.set_en(rpc_test::LightweightEnum::TWO);
+
+  req.set_sf32(RandomUniformInt<int32_t>());
+  req.set_sf64(RandomUniformInt<int64_t>());
+  req.set_si32(RandomUniformInt<int32_t>());
+  req.set_si64(RandomUniformInt<int64_t>());
+
+  for (int i = 0; i != 10; ++i) {
+    req.mutable_ru32()->Add(RandomUniformInt<uint32_t>());
+  }
+
+  for (int i = 0; i != 20; ++i) {
+    req.mutable_rf32()->Add(RandomUniformInt<uint32_t>());
+  }
+
+  for (int i = 0; i != 7; ++i) {
+    req.mutable_rstr()->Add(RandomHumanReadableString(32));
+  }
+
+  Generate(req.mutable_message());
+  for (int i = 0; i != 5; ++i) {
+    Generate(req.mutable_repeated_messages()->Add());
+  }
+
+  for (int i = 0; i != 127; ++i) {
+    req.mutable_packed_u64()->Add(RandomUniformInt<uint64_t>());
+  }
+
+  for (int i = 0; i != 37; ++i) {
+    req.mutable_packed_f32()->Add(RandomUniformInt<uint32_t>());
+  }
+
+  for (int i = 0; i != 13; ++i) {
+    auto& pair = *req.mutable_pairs()->Add();
+    pair.set_s1(RandomHumanReadableString(16));
+    pair.set_s2(RandomHumanReadableString(48));
+  }
+
+  for (int i = 0; i != 11; ++i) {
+    (*req.mutable_map())[RandomHumanReadableString(8)] = RandomUniformInt<int64_t>();
+  }
+
+  Generate(req.mutable_ptr_message());
+
+  rpc_test::LightweightResponsePB resp;
+  ASSERT_OK(proxy.Lightweight(req, &resp, &controller));
+
+  ASSERT_EQ(resp.i32(), -req.i32());
+  ASSERT_EQ(resp.i64(), -req.i64());
+
+  ASSERT_EQ(resp.f32(), req.u32());
+  ASSERT_EQ(resp.u32(), req.f32());
+  ASSERT_EQ(resp.f64(), req.u64());
+  ASSERT_EQ(resp.u64(), req.f64());
+
+  ASSERT_EQ(resp.r32(), -req.r32());
+  ASSERT_EQ(resp.r64(), -req.r64());
+
+  ASSERT_EQ(resp.bytes(), req.str());
+  ASSERT_EQ(resp.str(), req.bytes());
+
+  ASSERT_EQ(resp.en(), (req.en() + 1));
+
+  ASSERT_EQ(resp.sf32(), req.si32());
+  ASSERT_EQ(resp.si32(), req.sf32());
+  ASSERT_EQ(resp.sf64(), req.si64());
+  ASSERT_EQ(resp.si64(), req.sf64());
+
+  ASSERT_EQ(AsString(resp.ru32()), AsString(req.rf32()));
+  ASSERT_EQ(AsString(resp.rf32()), AsString(req.ru32()));
+  ASSERT_EQ(AsString(resp.rstr()), ReversedAsString(req.rstr()));
+
+  ASSERT_EQ(resp.message().sf32(), -req.message().sf32());
+  ASSERT_EQ(AsString(resp.message().rsi32()), ReversedAsString(req.message().rsi32()));
+  ASSERT_EQ(resp.message().str(), ">" + req.message().str() + "<");
+  ASSERT_STR_EQ(AsString(resp.message().rbytes()), ReversedAsString(req.message().rbytes()));
+  ASSERT_STR_EQ(AsString(resp.repeated_messages()), ReversedAsString(req.repeated_messages()));
+  ASSERT_STR_EQ(AsString(resp.repeated_messages_copy()), AsString(req.repeated_messages()));
+
+  ASSERT_STR_EQ(AsString(resp.packed_u64()), ReversedAsString(req.packed_u64()));
+  ASSERT_STR_EQ(AsString(resp.packed_f32()), ReversedAsString(req.packed_f32()));
+
+  ASSERT_EQ(resp.pairs().size(), req.pairs().size());
+  for (int i = 0; i != req.pairs().size(); ++i) {
+    ASSERT_EQ(resp.pairs()[i].s1(), req.pairs()[i].s2());
+    ASSERT_EQ(resp.pairs()[i].s2(), req.pairs()[i].s1());
+  }
+
+  ASSERT_STR_EQ(AsString(resp.ptr_message()), AsString(req.ptr_message()));
+
+  for (const auto& entry : resp.map()) {
+    ASSERT_EQ(entry.second, req.map().at(entry.first));
+  }
+
+  req.mutable_map()->clear();
+  std::string req_str = req.ShortDebugString();
+
+  auto lw_req = CopySharedMessage<rpc_test::LWLightweightRequestPB>(req);
+  req.Clear();
+  ASSERT_STR_EQ(AsString(*lw_req), req_str);
+  ASSERT_STR_EQ(AsString(resp.short_debug_string()), req_str);
+}
+
+TEST_F(RpcStubTest, CustomServiceName) {
+  SendSimpleCall();
+
+  rpc_test::ConcatRequestPB req;
+  req.set_lhs("yuga");
+  req.set_rhs("byte");
+  rpc_test::ConcatResponsePB resp;
+
+  RpcController controller;
+  controller.set_timeout(30s);
+
+  rpc_test::AbacusServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+  ASSERT_OK(proxy.Concat(req, &resp, &controller));
+  ASSERT_EQ(resp.result(), "yugabyte");
 }
 
 } // namespace rpc

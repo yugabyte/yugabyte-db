@@ -23,11 +23,13 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
@@ -693,12 +695,9 @@ class RocksDBPatcherHelper {
   }
 
   template <class F>
-  void IterateFiles(const F& f) {
-    for (int level = 0; level < Levels(); ++level) {
-      for (const auto* file : LevelFiles(level)) {
-        f(level, *file);
-      }
-    }
+  auto IterateFiles(const F& f) {
+    // Auto routing based on f return type.
+    return IterateFilesHelper(f, static_cast<decltype(f(0, *LevelFiles(0).front()))*>(nullptr));
   }
 
   void ModifyFile(int level, const rocksdb::FileMetaData& fmd) {
@@ -731,6 +730,25 @@ class RocksDBPatcherHelper {
   }
 
  private:
+  template <class F>
+  void IterateFilesHelper(const F& f, void*) {
+    for (int level = 0; level < Levels(); ++level) {
+      for (const auto* file : LevelFiles(level)) {
+        f(level, *file);
+      }
+    }
+  }
+
+  template <class F>
+  CHECKED_STATUS IterateFilesHelper(const F& f, Status*) {
+    for (int level = 0; level < Levels(); ++level) {
+      for (const auto* file : LevelFiles(level)) {
+        RETURN_NOT_OK(f(level, *file));
+      }
+    }
+    return Status::OK();
+  }
+
   class TrackedEdit {
    public:
     explicit TrackedEdit(rocksdb::ColumnFamilyData* cfd) {
@@ -811,13 +829,19 @@ class RocksDBPatcher::Impl {
 
     auto* existing_frontier = down_cast<docdb::ConsensusFrontier*>(version_set_.FlushedFrontier());
     if (existing_frontier) {
-      final_frontier.set_history_cutoff(existing_frontier->history_cutoff());
+      if (!frontier.history_cutoff()) {
+        final_frontier.set_history_cutoff(existing_frontier->history_cutoff());
+      }
+      if (!frontier.op_id()) {
+        // Update op id only if it was specified in frontier.
+        final_frontier.set_op_id(existing_frontier->op_id());
+      }
     }
 
     helper.Edit().ModifyFlushedFrontier(
         final_frontier.Clone(), rocksdb::FrontierModificationMode::kForce);
 
-    helper.IterateFiles([&helper](int level, rocksdb::FileMetaData fmd) {
+    helper.IterateFiles([&helper, &frontier](int level, rocksdb::FileMetaData fmd) {
       bool modified = false;
       for (auto* user_frontier : {&fmd.smallest.user_frontier, &fmd.largest.user_frontier}) {
         if (!*user_frontier) {
@@ -828,11 +852,39 @@ class RocksDBPatcher::Impl {
           consensus_frontier.set_op_id(OpId());
           modified = true;
         }
+        if (frontier.history_cutoff()) {
+          consensus_frontier.set_history_cutoff(frontier.history_cutoff());
+          modified = true;
+        }
       }
       if (modified) {
         helper.ModifyFile(level, fmd);
       }
     });
+
+    return helper.Apply(options_, imm_cf_options_);
+  }
+
+  CHECKED_STATUS UpdateFileSizes() {
+    RocksDBPatcherHelper helper(&version_set_);
+
+    RETURN_NOT_OK(helper.IterateFiles(
+        [&helper, this](int level, const rocksdb::FileMetaData& file) -> Status {
+      auto base_path = rocksdb::MakeTableFileName(
+          options_.db_paths[file.fd.GetPathId()].path, file.fd.GetNumber());
+      auto data_path = rocksdb::TableBaseToDataFileName(base_path);
+      auto base_size = VERIFY_RESULT(options_.env->GetFileSize(base_path));
+      auto data_size = VERIFY_RESULT(options_.env->GetFileSize(data_path));
+      auto total_size = base_size + data_size;
+      if (file.fd.base_file_size == base_size && file.fd.total_file_size == total_size) {
+        return Status::OK();
+      }
+      rocksdb::FileMetaData fmd = file;
+      fmd.fd.base_file_size = base_size;
+      fmd.fd.total_file_size = total_size;
+      helper.ModifyFile(level, fmd);
+      return Status::OK();
+    }));
 
     return helper.Apply(options_, imm_cf_options_);
   }
@@ -866,6 +918,10 @@ Status RocksDBPatcher::SetHybridTimeFilter(HybridTime value) {
 
 Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
   return impl_->ModifyFlushedFrontier(frontier);
+}
+
+Status RocksDBPatcher::UpdateFileSizes() {
+  return impl_->UpdateFileSizes();
 }
 
 Status ForceRocksDBCompact(rocksdb::DB* db) {

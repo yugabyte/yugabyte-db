@@ -173,23 +173,23 @@ class UniverseDetail extends Component {
   };
 
   handleSubmitManageKey = (res) => {
-      if (res.payload.isAxiosError) {
-        this.setState({
-          showAlert: true,
-          alertType: 'danger',
-          alertMessage: res.payload.message
-        });
-      } else {
-        this.setState({
-          showAlert: true,
-          alertType: 'success',
-          alertMessage:
-            JSON.parse(res.payload.config.data).key_op === 'ENABLE'
-              ? 'Encryption key has been set!'
-              : 'Encryption-at-Rest has been disabled!'
-        });
-      }
-      setTimeout(() => this.setState({ showAlert: false }), 3000);
+    if (res.payload.isAxiosError) {
+      this.setState({
+        showAlert: true,
+        alertType: 'danger',
+        alertMessage: res.payload.message
+      });
+    } else {
+      this.setState({
+        showAlert: true,
+        alertType: 'success',
+        alertMessage:
+          JSON.parse(res.payload.config.data).key_op === 'ENABLE'
+            ? 'Encryption key has been set!'
+            : 'Encryption-at-Rest has been disabled!'
+      });
+    }
+    setTimeout(() => this.setState({ showAlert: false }), 3000);
 
     this.props.closeModal();
   };
@@ -221,7 +221,7 @@ class UniverseDetail extends Component {
       updateBackupState,
       closeModal,
       customer,
-      customer: { currentCustomer },
+      customer: { currentCustomer, currentUser },
       params: { tab },
       featureFlags,
       providers,
@@ -388,6 +388,7 @@ class UniverseDetail extends Component {
                 width={width}
                 nodePrefixes={nodePrefixes}
                 isKubernetesUniverse={isItKubernetesUniverse}
+                visibleModal={visibleModal}
               />
             </div>
           </Tab.Pane>
@@ -416,13 +417,11 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
-            {
-              featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-                <Replication currentUniverseUUID={currentUniverse.data.universeUUID}/>
-              ): (
-                <ReplicationContainer />
-              )
-            }
+            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+              <Replication currentUniverseUUID={currentUniverse.data.universeUUID} />
+            ) : (
+              <ReplicationContainer />
+            )}
           </Tab.Pane>
         ),
 
@@ -441,6 +440,10 @@ class UniverseDetail extends Component {
               isCommunityEdition={!!customer.INSECURE_apiToken}
               fetchCustomerTasks={this.props.fetchCustomerTasks}
               refreshUniverseData={this.getUniverseInfo}
+              abortCurrentTask={this.props.abortCurrentTask}
+              hideTaskAbortModal={this.props.hideTaskAbortModal}
+              showTaskAbortModal={this.props.showTaskAbortModal}
+              visibleModal={visibleModal}
             />
           </Tab.Pane>
         )
@@ -471,7 +474,11 @@ class UniverseDetail extends Component {
                 unmountOnExit={true}
                 disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
               >
-                <UniverseHealthCheckList universe={universe} currentCustomer={currentCustomer} />
+                <UniverseHealthCheckList
+                  universe={universe}
+                  currentCustomer={currentCustomer}
+                  currentUser={currentUser}
+                />
               </Tab.Pane>
             )
           ])

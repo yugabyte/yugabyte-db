@@ -40,6 +40,8 @@ public class NodeDetailsTest {
   public void testIsActive() {
     Set<NodeDetails.NodeState> activeStates = new HashSet<>();
     activeStates.add(NodeDetails.NodeState.ToBeAdded);
+    activeStates.add(NodeDetails.NodeState.InstanceCreated);
+    activeStates.add(NodeDetails.NodeState.ServerSetup);
     activeStates.add(NodeDetails.NodeState.ToJoinCluster);
     activeStates.add(NodeDetails.NodeState.Provisioned);
     activeStates.add(NodeDetails.NodeState.SoftwareInstalled);

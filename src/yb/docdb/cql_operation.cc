@@ -23,12 +23,12 @@
 #include "yb/bfpg/tserver_opcodes.h"
 
 #include "yb/common/index.h"
+#include "yb/common/index_column.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_path.h"
@@ -39,6 +39,7 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/primitive_value_util.h"
+#include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
@@ -250,11 +251,13 @@ CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timest
 
 } // namespace
 
-QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
+QLWriteOperation::QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                                   std::shared_ptr<const Schema> schema,
                                    std::reference_wrapper<const IndexMap> index_map,
                                    const Schema* unique_index_key_schema,
                                    const TransactionOperationContext& txn_op_context)
-    : schema_(std::move(schema)),
+    : DocOperationBase(request),
+      schema_(std::move(schema)),
       index_map_(index_map),
       unique_index_key_schema_(unique_index_key_schema),
       txn_op_context_(txn_op_context)
@@ -262,8 +265,7 @@ QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
 
 QLWriteOperation::~QLWriteOperation() = default;
 
-Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response) {
-  request_.Swap(request);
+Status QLWriteOperation::Init(QLResponsePB* response) {
   response_ = response;
   insert_into_unique_index_ = request_.type() == QLWriteRequestPB::QL_STMT_INSERT &&
                               unique_index_key_schema_ != nullptr;
@@ -275,7 +277,7 @@ Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response)
   bool write_static_columns = false;
   bool write_non_static_columns = false;
   // TODO(Amit): Remove the DVLOGS after backfill features stabilize.
-  DVLOG(4) << "Processing request " << yb::ToString(*request);
+  DVLOG(4) << "Processing request " << yb::ToString(request_);
   for (const auto& column : request_.column_values()) {
     DVLOG(4) << "Looking at column : " << yb::ToString(column);
     auto schema_column = schema_->column_by_id(ColumnId(column.column_id()));
@@ -1227,7 +1229,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         " since predicate was satisfied earlier AND (isn't satisfied now (OR) the key has changed)";
 
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
-        const IndexInfo::IndexColumn& index_column = index->column(idx);
+        const auto& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
 
         // For old message expr_case() == NOT SET.
@@ -1266,7 +1268,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
 
   // Prepare the new index key.
   for (size_t idx = 0; idx < index->key_column_count(); idx++) {
-    const IndexInfo::IndexColumn& index_column = index->column(idx);
+    const auto& index_column = index->column(idx);
     bool column_changed = true;
 
     // Column_id should be used without executing "colexpr" for the following cases (we want
@@ -1331,7 +1333,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
 
   // Prepare the covering columns.
   for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
-    const IndexInfo::IndexColumn& index_column = index->column(idx);
+    const auto& index_column = index->column(idx);
     auto result = new_row.GetValue(index_column.indexed_column_id);
     bool column_changed = true;
 
@@ -1404,7 +1406,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
       auto it = values.find(idx);
       if (it != values.end()) {
-        const IndexInfo::IndexColumn& index_column = index->column(idx);
+        const auto& index_column = index->column(idx);
         QLColumnValuePB* const covering_column = index_request->add_column_values();
         covering_column->set_column_id(index_column.column_id);
         *covering_column->mutable_expr()->mutable_value() = std::move(it->second);

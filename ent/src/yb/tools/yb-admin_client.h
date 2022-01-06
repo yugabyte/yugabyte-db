@@ -16,7 +16,6 @@
 #include "../../../../src/yb/tools/yb-admin_client.h"
 
 #include "yb/common/snapshot.h"
-#include "yb/master/master_backup.proxy.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
 #include "yb/util/env_util.h"

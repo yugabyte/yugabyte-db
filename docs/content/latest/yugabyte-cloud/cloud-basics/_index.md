@@ -36,17 +36,6 @@ You deploy clusters in Yugabyte Cloud using the **Create Cluster** wizard. Befor
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="add-connections/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">IP allow lists</div>
-      </div>
-      <div class="body">
-        Whitelist IP addresses to control who can connect to your clusters.
-      </div>
-    </a>
-  </div>
 <!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="vpc-peers/">

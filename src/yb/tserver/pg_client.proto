@@ -18,8 +18,10 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
-import "yb/master/master.proto";
+import "yb/master/master_ddl.proto";
+import "yb/master/master_types.proto";
 
 service PgClientService {
   rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB);
@@ -45,6 +47,8 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
+  rpc ValidatePlacement(PgValidatePlacementRequestPB)
+      returns (PgValidatePlacementResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -298,5 +302,22 @@ message PgTruncateTableRequestPB {
 }
 
 message PgTruncateTableResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgPlacementInfoPB {
+  string cloud = 1;
+  string region = 2;
+  string zone = 3;
+  int32 min_num_replicas = 4;
+}
+
+message PgValidatePlacementRequestPB {
+  uint64 session_id = 1;
+  int32 num_replicas = 2;
+  repeated PgPlacementInfoPB placement_infos = 3;
+}
+
+message PgValidatePlacementResponsePB {
   AppStatusPB status = 1;
 }

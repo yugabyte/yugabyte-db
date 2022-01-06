@@ -22,12 +22,24 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/json_util.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/encryption/encryption_util.h"
+
 #include "yb/gutil/strings/util.h"
+
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_encryption.proxy.h"
+#include "yb/master/master_replication.proxy.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_util.h"
@@ -43,7 +55,6 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/timestamp.h"
-#include "yb/util/encryption_util.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
@@ -262,7 +273,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     req.set_exclude_system_tables(true);
     req.add_relation_type_filter(master::USER_TABLE_RELATION);
     req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
-    return master_proxy_->ListTables(req, &resp, rpc);
+    return master_ddl_proxy_->ListTables(req, &resp, rpc);
   }));
 
   if (resp.tables_size() == 0) {
@@ -850,7 +861,7 @@ Status ClusterAdminClient::ListReplicaTypeCounts(const YBTableName& table_name) 
     for (const auto& tablet_id : tablet_ids) {
       req.add_tablet_ids(tablet_id);
     }
-    return master_proxy_->GetTabletLocations(req, &resp, rpc);
+    return master_client_proxy_->GetTabletLocations(req, &resp, rpc);
   }));
 
   struct ReplicaCounts {
@@ -870,8 +881,8 @@ Status ClusterAdminClient::ListReplicaTypeCounts(const YBTableName& table_name) 
       const string& placement_uuid =
           replica.ts_info().has_placement_uuid() ? replica.ts_info().placement_uuid() : "";
       bool is_replica_read_only =
-          replica.member_type() == consensus::RaftPeerPB::PRE_OBSERVER ||
-          replica.member_type() == consensus::RaftPeerPB::OBSERVER;
+          replica.member_type() == consensus::PeerMemberType::PRE_OBSERVER ||
+          replica.member_type() == consensus::PeerMemberType::OBSERVER;
       int live_count = is_replica_read_only ? 0 : 1;
       int read_only_count = 1 - live_count;
       if (replica_map.count(ts_uuid) == 0) {
@@ -926,7 +937,7 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
     zones.emplace(zone);
   }
 
-  RETURN_NOT_OK(master_proxy_->SetPreferredZones(req, &resp, &rpc));
+  RETURN_NOT_OK(master_cluster_proxy_->SetPreferredZones(req, &resp, &rpc));
 
   if (resp.has_error()) {
     return STATUS(ServiceUnavailable, resp.error().status().message());
@@ -956,7 +967,7 @@ Status ClusterAdminClient::SendEncryptionRequest(
   if (key_path != "") {
     encryption_info_req.set_key_path(key_path);
   }
-  RETURN_NOT_OK_PREPEND(master_proxy_->
+  RETURN_NOT_OK_PREPEND(master_encryption_proxy_->
       ChangeEncryptionInfo(encryption_info_req, &encryption_info_resp, &rpc),
                         "MasterServiceImpl::ChangeEncryptionInfo call fails.")
 
@@ -973,7 +984,7 @@ Status ClusterAdminClient::IsEncryptionEnabled() {
 
   master::IsEncryptionEnabledRequestPB req;
   master::IsEncryptionEnabledResponsePB resp;
-  RETURN_NOT_OK_PREPEND(master_proxy_->
+  RETURN_NOT_OK_PREPEND(master_encryption_proxy_->
       IsEncryptionEnabled(req, &resp, &rpc),
       "MasterServiceImpl::IsEncryptionEnabled call fails.");
   if (resp.has_error()) {
@@ -988,8 +999,8 @@ Status ClusterAdminClient::IsEncryptionEnabled() {
 Status ClusterAdminClient::AddUniverseKeyToAllMasters(
     const std::string& key_id, const std::string& universe_key) {
 
-  RETURN_NOT_OK(EncryptionParams::IsValidKeySize(
-      universe_key.size() - EncryptionParams::kBlockSize));
+  RETURN_NOT_OK(encryption::EncryptionParams::IsValidKeySize(
+      universe_key.size() - encryption::EncryptionParams::kBlockSize));
 
   master::AddUniverseKeysRequestPB req;
   master::AddUniverseKeysResponsePB resp;
@@ -999,7 +1010,7 @@ Status ClusterAdminClient::AddUniverseKeyToAllMasters(
   for (auto hp : VERIFY_RESULT(HostPort::ParseStrings(master_addr_list_, 7100))) {
     rpc::RpcController rpc;
     rpc.set_timeout(timeout_);
-    master::MasterServiceProxy proxy(proxy_cache_.get(), hp);
+    master::MasterEncryptionProxy proxy(proxy_cache_.get(), hp);
     RETURN_NOT_OK_PREPEND(proxy.AddUniverseKeys(req, &resp, &rpc),
                           Format("MasterServiceImpl::AddUniverseKeys call fails on host $0.",
                                  hp.ToString()));
@@ -1020,7 +1031,7 @@ Status ClusterAdminClient::AllMastersHaveUniverseKeyInMemory(const std::string& 
   for (auto hp : VERIFY_RESULT(HostPort::ParseStrings(master_addr_list_, 7100))) {
     rpc::RpcController rpc;
     rpc.set_timeout(timeout_);
-    master::MasterServiceProxy proxy(proxy_cache_.get(), hp);
+    master::MasterEncryptionProxy proxy(proxy_cache_.get(), hp);
     RETURN_NOT_OK_PREPEND(proxy.HasUniverseKeyInMemory(req, &resp, &rpc),
                           "MasterServiceImpl::ChangeEncryptionInfo call fails.");
 
@@ -1047,7 +1058,7 @@ Status ClusterAdminClient::RotateUniverseKeyInMemory(const std::string& key_id) 
   req.set_encryption_enabled(true);
   req.set_in_memory(true);
   req.set_version_id(key_id);
-  RETURN_NOT_OK_PREPEND(master_proxy_->ChangeEncryptionInfo(req, &resp, &rpc),
+  RETURN_NOT_OK_PREPEND(master_encryption_proxy_->ChangeEncryptionInfo(req, &resp, &rpc),
                         "MasterServiceImpl::ChangeEncryptionInfo call fails.");
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -1065,7 +1076,7 @@ Status ClusterAdminClient::DisableEncryptionInMemory() {
   master::ChangeEncryptionInfoRequestPB req;
   master::ChangeEncryptionInfoResponsePB resp;
   req.set_encryption_enabled(false);
-  RETURN_NOT_OK_PREPEND(master_proxy_->ChangeEncryptionInfo(req, &resp, &rpc),
+  RETURN_NOT_OK_PREPEND(master_encryption_proxy_->ChangeEncryptionInfo(req, &resp, &rpc),
                         "MasterServiceImpl::ChangeEncryptionInfo call fails.");
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -1083,7 +1094,7 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 
   master::GetUniverseKeyRegistryRequestPB req;
   master::GetUniverseKeyRegistryResponsePB resp;
-  RETURN_NOT_OK_PREPEND(master_proxy_->GetUniverseKeyRegistry(req, &resp, &rpc),
+  RETURN_NOT_OK_PREPEND(master_encryption_proxy_->GetUniverseKeyRegistry(req, &resp, &rpc),
                         "MasterServiceImpl::ChangeEncryptionInfo call fails.");
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -1117,7 +1128,7 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->CreateCDCStream(req, &resp, &rpc));
+  RETURN_NOT_OK(master_replication_proxy_->CreateCDCStream(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error creating stream: " << resp.error().status().message() << endl;
@@ -1135,7 +1146,7 @@ Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id) {
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->DeleteCDCStream(req, &resp, &rpc));
+  RETURN_NOT_OK(master_replication_proxy_->DeleteCDCStream(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error deleting stream: " << resp.error().status().message() << endl;
@@ -1155,7 +1166,7 @@ Status ClusterAdminClient::ListCDCStreams(const TableId& table_id) {
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->ListCDCStreams(req, &resp, &rpc));
+  RETURN_NOT_OK(master_replication_proxy_->ListCDCStreams(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error getting CDC stream list: " << resp.error().status().message() << endl;
@@ -1173,7 +1184,7 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string&
     master::IsSetupUniverseReplicationDoneResponsePB resp;
     RpcController rpc;
     rpc.set_timeout(timeout_);
-    Status s = master_proxy_->IsSetupUniverseReplicationDone(req, &resp, &rpc);
+    Status s = master_replication_proxy_->IsSetupUniverseReplicationDone(req, &resp, &rpc);
 
     if (!s.ok() || resp.has_error()) {
         LOG(WARNING) << "Encountered error while waiting for setup_universe_replication to complete"
@@ -1213,7 +1224,7 @@ Status ClusterAdminClient::SetupUniverseReplication(
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  Status setup_result_status = master_proxy_->SetupUniverseReplication(req, &resp, &rpc);
+  auto setup_result_status = master_replication_proxy_->SetupUniverseReplication(req, &resp, &rpc);
 
   // Clean up config files if setup fails.
   if (!setup_result_status.ok()) {
@@ -1269,7 +1280,7 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->DeleteUniverseReplication(req, &resp, &rpc));
+  RETURN_NOT_OK(master_replication_proxy_->DeleteUniverseReplication(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error deleting universe replication: " << resp.error().status().message() << endl;
@@ -1340,7 +1351,7 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->AlterUniverseReplication(req, &resp, &rpc));
+  RETURN_NOT_OK(master_replication_proxy_->AlterUniverseReplication(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error altering universe replication: " << resp.error().status().message() << endl;
@@ -1367,7 +1378,7 @@ CHECKED_STATUS ClusterAdminClient::SetUniverseReplicationEnabled(const std::stri
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->SetUniverseReplicationEnabled(req, &resp, &rpc));
+  RETURN_NOT_OK(master_replication_proxy_->SetUniverseReplicationEnabled(req, &resp, &rpc));
 
   if (resp.has_error()) {
     cout << "Error " << toggle << "ing "

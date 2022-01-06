@@ -25,13 +25,14 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rocksdb/db.h"
@@ -319,9 +320,9 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   docdb::QLWriteOperation op(
-      std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+      req, std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
       index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
-  RETURN_NOT_OK(op.Init(&req, &resp));
+  RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply({
       doc_write_batch,
       CoarseTimePoint::max() /* deadline */,

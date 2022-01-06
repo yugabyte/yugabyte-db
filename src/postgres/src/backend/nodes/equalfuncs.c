@@ -1791,6 +1791,8 @@ static bool
 _equalCreateTableGroupStmt(const CreateTableGroupStmt *a, const CreateTableGroupStmt *b)
 {
 	COMPARE_STRING_FIELD(tablegroupname);
+	COMPARE_STRING_FIELD(tablespacename);
+	COMPARE_NODE_FIELD(owner);
 	COMPARE_NODE_FIELD(options);
 	return true;
 }

@@ -33,7 +33,7 @@
 
 #include "yb/master/mini_master.h"
 
-#include "yb/tools/yb-admin_client.h"
+#include "yb/tools/tools_fwd.h"
 
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
@@ -83,7 +83,12 @@ class YBTableTestBase : public YBTest {
       yb::MonoDelta timeout = MonoDelta::FromMilliseconds(kDefaultLoadBalanceTimeoutMs));
 
   // These utility functions only work with external_mini_cluster_.
-  Result<std::shared_ptr<master::MasterServiceProxy>> GetMasterLeaderProxy();
+  template <class T>
+  T GetMasterLeaderProxy() {
+    DCHECK(use_external_mini_cluster());
+    return external_mini_cluster_->GetLeaderMasterProxy<T>();
+  }
+
   // Calls GetLoadOnTserver to get loads for the provided tservers.
   Result<std::vector<uint32_t>> GetTserverLoads(const std::vector<int>& ts_idxs);
   Result<uint32_t> GetLoadOnTserver(ExternalTabletServer* server);

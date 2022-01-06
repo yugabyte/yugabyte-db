@@ -142,3 +142,5 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [leeleeian](https://github.com/leeleeian)
 * [vjr](https://github.com/vjr)
 * [rthallamko3](https://github.com/rthallamko3)
+* [SteveSong](https://github.com/SteveXiSong)
+* [lnguyen](https://github.com/lnguyen-yugabyte)

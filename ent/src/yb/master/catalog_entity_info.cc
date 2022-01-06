@@ -10,9 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/common/wire_protocol.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/common/wire_protocol.h"
+
+#include "yb/master/cdc_rpc_tasks.h"
+
+#include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/trace.h"
 
 using std::set;

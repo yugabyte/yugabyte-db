@@ -39,8 +39,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_metrics.h"
-#include "yb/consensus/log_util.h"
+#include "yb/consensus/log_fwd.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
@@ -49,6 +50,9 @@
 #include "yb/util/monotime.h"
 
 namespace yb {
+
+class Env;
+struct OpId;
 
 namespace cdc {
 class CDCServiceTestMaxRentionTime_TestLogRetentionByOpId_MaxRentionTime_Test;
@@ -70,9 +74,8 @@ class LogReader {
   // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
   static CHECKED_STATUS Open(Env *env,
                              const scoped_refptr<LogIndex>& index,
-                             const std::string& tablet_id,
+                             std::string log_prefix,
                              const std::string& tablet_wal_path,
-                             const std::string& peer_uuid,
                              const scoped_refptr<MetricEntity>& table_metric_entity,
                              const scoped_refptr<MetricEntity>& tablet_metric_entity,
                              std::unique_ptr<LogReader> *reader);
@@ -87,22 +90,6 @@ class LogReader {
   // Return the minimum replicate index that is retained in the currently available
   // logs. May return -1 if no replicates have been logged.
   int64_t GetMinReplicateIndex() const;
-
-  // Returns a map of maximum log index in segment -> segment size representing all the segments
-  // that start after 'min_op_idx', up to 'segments_count'.
-  //
-  // 'min_op_idx' is the minimum operation index to start looking from, we don't record
-  // the segments before the one that contain that id.
-  //
-  // 'segments_count' is the number of segments we'll add to the map. It _must_ be sized so that
-  // we don't add the last segment. If we find logs that can be GCed, we'll decrease the number of
-  // elements we'll add to the map by 1 since they.
-  //
-  // 'max_close_time_us' is the timestamp in microseconds from which we don't want to evict,
-  // meaning that log segments that we closed after that time must not be added to the map.
-  void GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx, int32_t segments_count,
-                                     int64_t max_close_time_us,
-                                     std::map<int64_t, int64_t>* max_idx_to_segment_size) const;
 
   // Return a readable segment with the given sequence number, or nullptr if it
   // cannot be found (e.g. if it has already been GCed).
@@ -124,7 +111,7 @@ class LogReader {
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
-      ReplicateMsgs* replicates,
+      consensus::ReplicateMsgs* replicates,
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
   static const int64_t kNoSizeLimit;
 
@@ -196,12 +183,12 @@ class LogReader {
                                           LogEntryBatchPB* batch) const;
 
   LogReader(Env* env, const scoped_refptr<LogIndex>& index,
-            std::string tablet_name, std::string peer_uuid,
+            std::string log_prefix,
             const scoped_refptr<MetricEntity>& table_metric_entity,
             const scoped_refptr<MetricEntity>& tablet_metric_entity);
 
   // Reads the headers of all segments in 'path_'.
-  CHECKED_STATUS Init(const std::string& path_);
+  CHECKED_STATUS Init(const std::string& path);
 
   // Initializes an 'empty' reader for tests, i.e. does not scan a path looking for segments.
   CHECKED_STATUS InitEmptyReaderForTests();
@@ -218,7 +205,6 @@ class LogReader {
   Env *env_;
 
   const scoped_refptr<LogIndex> log_index_;
-  const std::string tablet_id_;
   const std::string log_prefix_;
 
   // Metrics

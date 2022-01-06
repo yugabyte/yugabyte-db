@@ -23,9 +23,8 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
-
-#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
@@ -244,7 +243,6 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UriMd5), PgLibPqTestAuthMd5) {
 // The described prodecure is repeated multiple times to increase probability of catching bug,
 // w/o running test multiple times.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
-  static const std::string kTryAgain = "Try again.";
   constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
   constexpr auto kColors = 2;
   constexpr auto kIterations = 20;
@@ -262,7 +260,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
     auto s = conn.Execute("DELETE FROM t");
     if (!s.ok()) {
-      ASSERT_STR_CONTAINS(s.ToString(), kTryAgain);
+      ASSERT_TRUE(HasTryAgain(s)) << s;
       continue;
     }
     for (int k = 0; k != kKeys; ++k) {
@@ -282,8 +280,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
         auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
-          auto msg = res.status().message().ToBuffer();
-          ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
+          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
           return;
         }
         auto columns = PQnfields(res->get());
@@ -302,7 +299,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
             // Missing metadata means that transaction was aborted and cleaned.
-            ASSERT_TRUE(msg.find("Try again") != std::string::npos ||
+            ASSERT_TRUE(HasTryAgain(status) ||
                         msg.find("Missing metadata") != std::string::npos) << status;
             break;
           }
@@ -1054,6 +1051,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
 }
 
 namespace {
+
 Result<master::TabletLocationsPB> GetColocatedTabletLocations(
     client::YBClient* client,
     std::string database_name,
@@ -2295,7 +2293,7 @@ class CoordinatedRunner {
 
 bool RetryableError(const Status& status) {
   const auto msg = status.message().ToBuffer();
-  const std::string expected_errors[] = {"Try Again",
+  const std::string expected_errors[] = {"Try again",
                                          "Catalog Version Mismatch",
                                          "Restart read required at",
                                          "schema version mismatch for table"};

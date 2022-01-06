@@ -24,6 +24,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/index.h"
+#include "yb/common/index_column.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -410,7 +411,7 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
       pk_only_indexes_.insert(index_table);
     } else {
       non_pk_only_indexes_.insert(index_id);
-      for (const IndexInfo::IndexColumn& column : index.columns()) {
+      for (const auto& column : index.columns()) {
         const ColumnId indexed_column_id = column.indexed_column_id;
         if (!indexed_schema.is_key_column(indexed_column_id)) {
           column_refs_.insert(indexed_column_id);
@@ -578,7 +579,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
         }
 
         if (!preserve_col_op) {
-          const IndexInfo::IndexColumn& idx_col = idx_info.column(col_desc->index());
+          const auto& idx_col = idx_info.column(col_desc->index());
           // Change to id in indexed table because we are have those ids in the index predicate
           // as well.
           ColumnDesc translated_col_desc(*col_desc);

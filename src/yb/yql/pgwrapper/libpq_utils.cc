@@ -529,5 +529,9 @@ std::string PqEscapeIdentifier(const std::string& input) {
   return output;
 }
 
+bool HasTryAgain(const Status& status) {
+  return status.ToString().find("Try again:") != std::string::npos;
+}
+
 } // namespace pgwrapper
 } // namespace yb
