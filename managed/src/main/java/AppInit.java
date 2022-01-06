@@ -6,6 +6,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -52,6 +53,7 @@ public class AppInit {
       ExtraMigrationManager extraMigrationManager,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
+      BackupGarbageCollector backupGC,
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
       QueryAlerts queryAlerts,
@@ -143,11 +145,12 @@ public class AppInit {
 
       setUniverseKey.start();
 
-      queryAlerts.start();
+      // Schedule garbage collection of backups
+      backupGC.start();
+
       platformMetricsProcessor.start();
       alertConfigurationWriter.start();
 
-      // Startup platform HA.
       replicationManager.init();
 
       scheduler.start();
