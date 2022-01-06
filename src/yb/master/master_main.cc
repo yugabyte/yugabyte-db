@@ -92,8 +92,18 @@ static int MasterMain(int argc, char** argv) {
   }
 
   FLAGS_default_memory_limit_to_ram_ratio = 0.10;
-  // For masters we always want to fsync the WAL files.
-  FLAGS_durable_wal_write = true;
+
+  const char* use_durable_wal_write_by_default_env_var =
+      getenv("YB_MASTER_DURABLE_WAL_WRITE_BY_DEFAULT");
+  if (use_durable_wal_write_by_default_env_var &&
+      strcmp(use_durable_wal_write_by_default_env_var, "0") == 0) {
+    // Allow setting this flag to false by default by specifying
+    // the environment variable YB_MASTER_DURABLE_WAL_WRITE_BY_DEFAULT=0 (for use in tests).
+    FLAGS_durable_wal_write = false;
+  } else {
+    // For masters we always want to fsync the WAL files.
+    FLAGS_durable_wal_write = true;
+  }
 
   // A multi-node Master leader should not evict failed Master followers
   // because there is no-one to assign replacement servers in order to maintain
