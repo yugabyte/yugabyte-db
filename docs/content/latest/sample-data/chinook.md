@@ -17,7 +17,7 @@ The Chinook sample database for a digital media store can be used to explore and
 You can install and use the Chinook sample database using:
 
 - A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
-- Using cloud shell or a client shell to connect to a cluster in Yugabyte Cloud. Refer to [Connect to clusters in Yugabyte Cloud](../../yugabyte-cloud/cloud-connect/). To get started with Yugabyte Cloud, refer to [Quick Start](../../yugabyte-cloud/cloud-quickstart/).
+- Using cloud shell or a client shell to connect to a cluster in Yugabyte Cloud. Refer to [Connect to clusters in Yugabyte Cloud](../../yugabyte-cloud/cloud-connect/). To get started with Yugabyte Cloud, refer to [Quick start](../../yugabyte-cloud/cloud-quickstart/).
 
 In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
 
