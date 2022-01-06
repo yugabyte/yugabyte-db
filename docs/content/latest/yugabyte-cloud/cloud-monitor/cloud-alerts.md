@@ -36,7 +36,7 @@ The following table lists the alerts that are available for clusters.
 | Cluster activity | Criteria | Solution |
 | --- | --- | --- |
 | Memory use | Exceeds 75% for at least 10 minutes (Warning)<br>Exceeds 90% for at least 10 minutes (Severe) | Add vCPUs. |
-| CPU use | Exceeds 70% for at least 30 minutes (Warning)<br> Exceeds 90% for at least 30 minutes (Severe) | Add vCPUs. |
+| CPU use | Exceeds 70% for at least 30 minutes (Warning)<br>Exceeds 90% for at least 30 minutes (Severe) | Add vCPUs. |
 | Storage | Below 40% (Warning)<br>Below 25% (Severe) | Increase disk size per vCPU or add vCPUs. |
 
 Once you have 16 vCPUs per node, consider adding nodes. For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
@@ -49,8 +49,8 @@ The following table lists the alerts that are available for databases.
 
 | Database activity | Criteria | Solution |
 | --- | --- | --- |
-| Overload | | |
-| High number of YSQL connections | | |
+| Overload | The remote procedure calls (RPC) queue overflowed and/or there was a compaction overload | Add vCPUs. |
+| High number of YSQL connections | A high number of YSQL operations per second. | Could indicate a DDoS or security incident. |
 
 ### Billing alerts
 
