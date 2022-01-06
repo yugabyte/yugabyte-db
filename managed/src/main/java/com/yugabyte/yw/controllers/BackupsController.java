@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.DeleteBackupParams;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -246,6 +249,53 @@ public class BackupsController extends AuthenticatedController {
           CustomerTask.create(
               customer,
               backup.getBackupInfo().universeUUID,
+              taskUUID,
+              CustomerTask.TargetType.Backup,
+              CustomerTask.TaskType.Delete,
+              "Backup");
+          taskList.add(new YBPTask(taskUUID, taskParams.backupUUID));
+          auditService().createAuditEntry(ctx(), request(), taskUUID);
+        }
+      }
+    }
+    return new YBPTasks(taskList).asResult();
+  }
+
+  @ApiOperation(
+      value = "Delete backups V2",
+      response = YBPTasks.class,
+      nickname = "deleteBackupsv2")
+  public Result deleteYb(UUID customerUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DeleteBackupParams deleteBackupParams = parseJsonAndValidate(DeleteBackupParams.class);
+    List<YBPTask> taskList = new ArrayList<>();
+    for (DeleteBackupInfo deleteBackupInfo : deleteBackupParams.deleteBackupInfos) {
+      UUID backupUUID = deleteBackupInfo.backupUUID;
+      Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+      if (backup == null) {
+        LOG.info("Can not delete {} backup as it is not present in the database.", backupUUID);
+      } else {
+        if (backup.state == BackupState.InProgress) {
+          LOG.info("Can not delete {} backup as it is still in progress", backupUUID);
+        } else if (backup.state == BackupState.DeleteInProgress
+            || backup.state == BackupState.QueuedForDeletion) {
+          LOG.info("Backup {} is already in queue for deletion", backupUUID);
+        } else {
+          UUID storageConfigUUID = deleteBackupInfo.storageConfigUUID;
+          if (storageConfigUUID == null) {
+            storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
+          }
+          BackupTableParams params = backup.getBackupInfo();
+          params.storageConfigUUID = storageConfigUUID;
+          backup.updateBackupInfo(params);
+          DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
+          taskParams.customerUUID = customerUUID;
+          taskParams.backupUUID = backupUUID;
+          UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
+          LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backupUUID);
+          CustomerTask.create(
+              customer,
+              backup.backupUUID,
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,

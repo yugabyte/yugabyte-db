@@ -155,6 +155,8 @@ public enum TaskType {
 
   DeleteBackup("subtasks.DeleteBackup"),
 
+  DeleteBackupYb("subtasks.DeleteBackupYb"),
+
   DeleteCustomerConfig("DeleteCustomerConfig"),
 
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),

@@ -285,6 +285,7 @@ GET     /customers/:cUUID/universes/:uniUUID/backups                           c
 GET     /customers/:cUUID/universes/:uniUUID/backups/tasks/:tUUID              com.yugabyte.yw.controllers.BackupsController.fetchBackupsByTaskUUID(cUUID: java.util.UUID, uniUUID: java.util.UUID, tUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/backups/restore                   com.yugabyte.yw.controllers.BackupsController.restore(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 DELETE  /customers/:cUUID/backups                                              com.yugabyte.yw.controllers.BackupsController.delete(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/delete_backups                                       com.yugabyte.yw.controllers.BackupsController.deleteYb(cUUID: java.util.UUID)
 POST    /customers/:cUUID/backups/:backupUUID/stop                             com.yugabyte.yw.controllers.BackupsController.stop(cUUID: java.util.UUID, backupUUID: java.util.UUID)
 
 # Task History API
