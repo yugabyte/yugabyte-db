@@ -1,7 +1,21 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 from . import gen
-from .gen.ageLexer import ageLexer
-from .gen.ageParser import ageParser
-from .gen.ageVisitor import ageVisitor
+from .gen.AgtypeLexer import AgtypeLexer
+from .gen.AgtypeParser import AgtypeParser
+from .gen.AgtypeVisitor import AgtypeVisitor
 from .models import *
 from .exceptions import *
 from antlr4 import *
@@ -16,32 +30,6 @@ def newResultHandler(query=""):
     resultHandler = Antlr4ResultHandler(None, query)
     return resultHandler
 
-# def buildGraph(cursor, resultHandler:ResultHandler=None):
-#     graph = Graph(cursor.query)
-
-#     if resultHandler == None:
-#         resultHandler = Antlr4ResultHandler(graph.getVertices(), cursor.query)
-   
-#     for record in cursor:
-#         parsed = resultHandler.parse(record[0])
-#         graph.append(parsed)
-
-#     return graph
-
-# def getRows(cursor):
-#     vertexCache = dict()
-#     resultHandler = Antlr4ResultHandler(vertexCache, cursor.query)
-    
-#     for record in cursor:
-#         yield resultHandler.parse(record[0])
-    
-#     vertexCache.clear()
-
-
-# def getSingle(cursor):
-#     resultHandler = Antlr4ResultHandler(None, cursor.query)
-#     return resultHandler.parse(cursor.fetchone()[0])
-
 def parseAgeValue(value, cursor=None):
     if value is None:
         return None
@@ -52,17 +40,22 @@ def parseAgeValue(value, cursor=None):
     except Exception as ex:
         raise AGTypeError(value)
 
+
 class Antlr4ResultHandler(ResultHandler):
     def __init__(self, vertexCache, query=None):
-        self.lexer = ageLexer()
-        self.parser = ageParser(None)
+        self.lexer = AgtypeLexer()
+        self.parser = AgtypeParser(None)
         self.visitor = ResultVisitor(vertexCache)
 
     def parse(self, ageData):
+        if not ageData:
+            return None
+        # print("Parse::", ageData)
+
         self.lexer.inputStream = InputStream(ageData)
         self.parser.setTokenStream(CommonTokenStream(self.lexer))
         self.parser.reset()
-        tree = self.parser.ageout()
+        tree = self.parser.agType()
         parsed = tree.accept(self.visitor)
         return parsed
 
@@ -72,8 +65,8 @@ class DummyResultHandler(ResultHandler):
     def parse(self, ageData):
         print(ageData)
 
-# default ageout visitor
-class ResultVisitor(ageVisitor):
+# default agType visitor
+class ResultVisitor(AgtypeVisitor):
     vertexCache = None
 
     def __init__(self, cache) -> None:
@@ -81,93 +74,91 @@ class ResultVisitor(ageVisitor):
         self.vertexCache = cache
 
     
-    def visitAgeout(self, ctx:ageParser.AgeoutContext):
-        return self.visitChildren(ctx)
+    def visitAgType(self, ctx:AgtypeParser.AgTypeContext):
+        agVal = ctx.agValue()
+        if agVal != None:
+            obj = ctx.agValue().accept(self)
+            return obj
 
+        return None
 
-    # Visit a parse tree produced by ageParser#vertex.
-    def visitVertex(self, ctx:ageParser.VertexContext):
-        proCtx = ctx.getTypedRuleContext(ageParser.PropertiesContext,0)
-        dict = proCtx.accept(self)
-        
-        vid = dict["id"]
+    def visitAgValue(self, ctx:AgtypeParser.AgValueContext):
+        annoCtx = ctx.typeAnnotation()
+        valueCtx = ctx.value()
 
-        vertex = None
-        if self.vertexCache != None and vid in self.vertexCache :
-            vertex = self.vertexCache[vid]
+        if annoCtx is not None:
+            annoCtx.accept(self)
+            anno = annoCtx.IDENT().getText()
+            return self.handleAnnotatedValue(anno, valueCtx)
         else:
-            vertex = Vertex()
-            vertex.id = dict["id"]
-            vertex.label = dict["label"]
-            vertex.properties = dict["properties"]
-        
-        if self.vertexCache != None:
-            self.vertexCache[vid] = vertex
-
-        return vertex
+            return valueCtx.accept(self)
 
 
-    # Visit a parse tree produced by ageParser#edge.
-    def visitEdge(self, ctx:ageParser.EdgeContext):
-        edge = Edge()
-        proCtx = ctx.getTypedRuleContext(ageParser.PropertiesContext,0)
-
-        dict = proCtx.accept(self)
-        edge.id = dict["id"]
-        edge.label = dict["label"]
-        edge.end_id = dict["end_id"]
-        edge.start_id = dict["start_id"]
-        edge.properties = dict["properties"]
-        
-        return edge
+    # Visit a parse tree produced by AgtypeParser#StringValue.
+    def visitStringValue(self, ctx:AgtypeParser.StringValueContext):
+        return ctx.STRING().getText().strip('"')
 
 
-    # Visit a parse tree produced by ageParser#path.
-    def visitPath(self, ctx:ageParser.PathContext):
+    # Visit a parse tree produced by AgtypeParser#IntegerValue.
+    def visitIntegerValue(self, ctx:AgtypeParser.IntegerValueContext):
+        return int(ctx.INTEGER().getText())
 
-        children = []
-        
-        for child in ctx.children :
-            if isinstance(child, ageParser.VertexContext):
-                children.append(child.accept(self))
-            if isinstance(child, ageParser.EdgeContext):
-                children.append(child.accept(self))
-
-        path = Path(children)
-        
-        return path
-
-    # Visit a parse tree produced by ageParser#value.
-    def visitValue(self, ctx:ageParser.ValueContext):
+    # Visit a parse tree produced by AgtypeParser#floatLiteral.
+    def visitFloatLiteral(self, ctx:AgtypeParser.FloatLiteralContext):
         c = ctx.getChild(0)
-        if isinstance(c, ageParser.PropertiesContext) or isinstance(c,ageParser.ArrContext):
-            val = c.accept(self)
-            return val
-        elif isinstance(c, TerminalNodeImpl):
-            return getScalar(c.symbol.type, c.getText())
+        tp = c.symbol.type
+        text = ctx.getText()
+        if tp == AgtypeParser.RegularFloat:
+            return float(text)
+        elif tp == AgtypeParser.ExponentFloat:
+            return float(text)
         else:
-            return None
+            if text == 'NaN':
+                return float('nan')
+            elif text == '-Infinity':
+                return float('-inf')
+            elif text == 'Infinity':
+                return float('inf')
+            else:
+                return Exception("Unknown float expression:"+text)
+        
 
-    # Visit a parse tree produced by ageParser#properties.
-    def visitProperties(self, ctx:ageParser.PropertiesContext):
-        props = dict()
+    # Visit a parse tree produced by AgtypeParser#TrueBoolean.
+    def visitTrueBoolean(self, ctx:AgtypeParser.TrueBooleanContext):
+        return True
+
+
+    # Visit a parse tree produced by AgtypeParser#FalseBoolean.
+    def visitFalseBoolean(self, ctx:AgtypeParser.FalseBooleanContext):
+        return False
+
+
+    # Visit a parse tree produced by AgtypeParser#NullValue.
+    def visitNullValue(self, ctx:AgtypeParser.NullValueContext):
+        return None
+
+
+    # Visit a parse tree produced by AgtypeParser#obj.
+    def visitObj(self, ctx:AgtypeParser.ObjContext):
+        obj = dict()
         for c in ctx.getChildren():
-            if isinstance(c, ageParser.PairContext):
+            if isinstance(c, AgtypeParser.PairContext):
                 namVal = self.visitPair(c)
                 name = namVal[0]
                 valCtx = namVal[1]
                 val = valCtx.accept(self) 
-                props[name] = val
-        return props
+                obj[name] = val
+        return obj
 
-    # Visit a parse tree produced by ageParser#pair.
-    def visitPair(self, ctx:ageParser.PairContext):
+
+    # Visit a parse tree produced by AgtypeParser#pair.
+    def visitPair(self, ctx:AgtypeParser.PairContext):
         self.visitChildren(ctx)
-        return (ctx.STRING().getText().strip('"') , ctx.value())
+        return (ctx.STRING().getText().strip('"') , ctx.agValue())
 
 
-    # Visit a parse tree produced by ageParser#arr.
-    def visitArr(self, ctx:ageParser.ArrContext):
+    # Visit a parse tree produced by AgtypeParser#array.
+    def visitArray(self, ctx:AgtypeParser.ArrayContext):
         li = list()
         for c in ctx.getChildren():
             if not isinstance(c, TerminalNode):
@@ -175,28 +166,41 @@ class ResultVisitor(ageVisitor):
                 li.append(val)
         return li
 
+    def handleAnnotatedValue(self, anno:str, ctx:ParserRuleContext):
+        if anno == "numeric":
+            return Decimal(ctx.getText())
+        elif anno == "vertex":
+            dict = ctx.accept(self)
+            vid = dict["id"]
+            vertex = None
+            if self.vertexCache != None and vid in self.vertexCache :
+                vertex = self.vertexCache[vid]
+            else:
+                vertex = Vertex()
+                vertex.id = dict["id"]
+                vertex.label = dict["label"]
+                vertex.properties = dict["properties"]
+            
+            if self.vertexCache != None:
+                self.vertexCache[vid] = vertex
 
-def getScalar(agType, text):
-    if agType == ageParser.STRING:
-        return text.strip('"')
-    elif agType == ageParser.INTEGER:
-        return int(text)
-    elif agType == ageParser.FLOAT:
-        return float(text)
-    elif agType == ageParser.FLOAT_EXPR:
-        if text == 'NaN':
-            return float('nan')
-        elif text == '-Infinity':
-            return float('-inf')
-        elif text == 'Infinity':
-            return float('inf')
-        else:
-            return Exception("Unknown float expression:"+text)
-    elif agType == ageParser.BOOL:
-        return text == "true" or text=="True"
-    elif agType == ageParser.NUMERIC:
-        return Decimal(text[:len(text)-9])
-    elif agType == ageParser.NULL:
-        return None
-    else :
-        raise Exception("Unknown type:"+str(agType))
+            return vertex
+        
+        elif anno == "edge":
+            edge = Edge()
+            dict = ctx.accept(self)
+            edge.id = dict["id"]
+            edge.label = dict["label"]
+            edge.end_id = dict["end_id"]
+            edge.start_id = dict["start_id"]
+            edge.properties = dict["properties"]
+            
+            return edge
+
+        elif anno == "path":
+            arr = ctx.accept(self)
+            path = Path(arr)
+            
+            return path
+
+        return ctx.accept(self)

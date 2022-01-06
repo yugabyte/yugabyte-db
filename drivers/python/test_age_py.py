@@ -1,3 +1,18 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 from age.models import Vertex
 import unittest
 import decimal
@@ -218,6 +233,52 @@ class TestAgeBasic(unittest.TestCase):
                 indent += " >"
 
         self.assertEqual(5,count)
+
+    def testCollect(self):
+        ag = self.ag
+        
+        with ag.connection.cursor() as cursor:
+            try :
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Joe',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Jack',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Andy',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Smith',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Tom',))
+
+                # You must commit explicitly
+                ag.commit()
+            except Exception as ex:
+                print(ex)
+                ag.rollback()
+
+        with ag.connection.cursor() as cursor:
+            try :# Create Edges
+                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE a.name = 'Joe' AND b.name = 'Smith' CREATE (a)-[r:workWith {weight: 3}]->(b)")
+                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE  a.name = 'Joe' AND b.name = 'Tom' CREATE (a)-[r:workWith {weight: 1}]->(b)")
+                ag.cypher(cursor,"MATCH (a:Person {name: 'Joe'}), (b:Person {name: 'Andy'}) CREATE (a)-[r:workWith {weight: 5}]->(b)")
+
+                # You must commit explicitly
+                ag.commit()
+            except Exception as ex:
+                print(ex)
+                ag.rollback()
+
+        print(" - COLLECT 1 --------")
+        with ag.connection.cursor() as cursor:
+            ag.cypher(cursor, "MATCH (a)-[:workWith]->(c) WITH a as V, COLLECT(c) as CV RETURN V.name, CV", cols=["V","CV"])
+            for row in cursor:
+                nm = row[0]
+                collected = row[1]
+                print(nm, "workWith", [i["name"] for i in collected])
+                self.assertEqual(3,len(collected))
+
+   
+        print(" - COLLECT 2 --------")
+        for row in ag.execCypher("MATCH (a)-[:workWith]->(c) WITH a as V, COLLECT(c) as CV RETURN V.name, CV", cols=["V1","CV"]):
+            nm = row[0]
+            collected = row[1]
+            print(nm, "workWith", [i["name"] for i in collected])
+            self.assertEqual(3,len(collected))
 
 if __name__ == '__main__':
     unittest.main()
