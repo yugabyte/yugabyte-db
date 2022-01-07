@@ -12,9 +12,13 @@ Depends:
  postgresql-PGVERSION,
  ${misc:Depends},
  ${shlibs:Depends},
-Description: The pg_stat_monitor is statistics collector tool
- based on PostgreSQL's contrib module "pg_stat_statements".
+Description: enhancement query planning and execution statistics collector
+ The pg_stat_monitor is a Query Performance Monitoring tool for PostgreSQL.
+ It attempts to provide a more holistic picture by providing much-needed query
+ performance insights in a single view.
  .
- pg_stat_monitor is developed on the basis of pg_stat_statments
- as more advanced replacement for pg_stat_statment.
- It provides all the features of pg_stat_statment plus its own feature set.
+ pg_stat_monitor provides improved insights that allow database users to
+ understand query origins, execution, planning statistics and details, query
+ information, and metadata. This significantly improves observability, enabling
+ users to debug and tune query performance. pg_stat_monitor is developed on the
+ basis of pg_stat_statements as its more advanced replacement.
