@@ -1,26 +1,37 @@
 ---
-title: PostgreSQL JDBC Driver
-linkTitle: PostgreSQL JDBC Driver
-description: Postgres JDBC Driver for YSQL
-headcontent: Postgres JDBC Driver for YSQL
+title: JDBC Drivers
+linkTitle: JDBC Drivers
+description: JDBC Drivers for YSQL
+headcontent: JDBC Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   latest:
+    name: JDBC Drivers
     identifier: postgres-jdbc-driver
     parent: java-drivers
-    weight: 570
+    weight: 500
 isTocNested: true
 showAsideToc: true
 ---
+For Java Applications, JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform. YugabyteDB supports `YugabyteDB Smart JDBC Driver` which supports cluster-awareness and topology-awareness. Along with this, YugabyteDB has full support for [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/).
 
-<!-- <ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li >
-    <a href="postgres-jdbc-fundamentals" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      Postgres JDBC Driver - Fundamentals
+    <a href="/latest/drivers-orms/java/yugabyte-jdbc/" class="nav-link">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      YugabyteDB JDBC Driver
     </a>
   </li>
-</ul> -->
+
+  <li >
+    <a href="/latest/drivers-orms/java/postgres-jdbc/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL JDBC Driver
+    </a>
+  </li>
+
+</ul>
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL which can used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatiblity with PostgreSQL JDBC Driver, allows Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
 

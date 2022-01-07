@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: java-compatibility
     parent: java-drivers
-    weight: 400
+    weight: 800
 isTocNested: true
 showAsideToc: true
 ---

@@ -70,7 +70,7 @@ menu:
     <a class="section-link icon-offset" href="../reference/drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
-        <div class="title">Drivers</div>
+        <div class="title">Drivers and ORMs</div>
       </div>
       <div class="body">
         Drivers for powering applications with YugabyteDB.

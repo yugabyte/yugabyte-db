@@ -22,7 +22,7 @@ Recommended projects for implementing Java Applications for YugabyteDB YSQL API.
 | [Hibernate](hibernate) | ORM |  Full |
 | [Spring Data YugabyteDB](/latest/integrations/spring-framework/sdyb/) | Framework |  Full |
 
-## Quick Start
+## Build a Hello World App
 
 Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
