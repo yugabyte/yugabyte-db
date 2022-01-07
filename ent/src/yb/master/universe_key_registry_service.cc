@@ -12,9 +12,12 @@
 //
 
 #include "yb/master/universe_key_registry_service.h"
-#include "yb/util/encryption_util.h"
-#include "yb/util/encryption.pb.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/encryption/encryption_util.h"
+#include "yb/encryption/encryption.pb.h"
+
+#include "yb/master/catalog_entity_info.pb.h"
+
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
 
@@ -27,9 +30,9 @@ namespace enterprise {
 Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& universe_key) {
   string output;
   output.resize(s.size());
-  auto encryption_params = VERIFY_RESULT(yb::EncryptionParams::FromSlice(universe_key));
+  auto encryption_params = VERIFY_RESULT(encryption::EncryptionParams::FromSlice(universe_key));
   auto stream = VERIFY_RESULT(
-      yb::BlockAccessCipherStream::FromEncryptionParams(std::move(encryption_params)));
+      encryption::BlockAccessCipherStream::FromEncryptionParams(std::move(encryption_params)));
   RETURN_NOT_OK(stream->Decrypt(0, s, &output[0]));
   return output;
 }
@@ -40,7 +43,7 @@ Result<std::string> EncryptUniverseKeyRegistry(const Slice& s, const Slice& univ
 
 CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
                                  const Slice& new_universe_key,
-                                 const yb::UniverseKeyId& new_key_version_id,
+                                 const encryption::UniverseKeyId& new_key_version_id,
                                  bool enable,
                                  EncryptionInfoPB* encryption_info) {
   bool prev_enabled = encryption_info->encryption_enabled();
@@ -65,7 +68,7 @@ CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
 
   // Decode the registry.
   auto universe_key_registry =
-      VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(registry_decrypted));
+      VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(registry_decrypted));
   universe_key_registry.set_encryption_enabled(enable);
   faststring encoded;
   Slice registry_for_flush;
@@ -75,8 +78,8 @@ CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
     registry_for_flush = Slice(encoded);
   } else {
     LOG_IF(DFATAL, new_universe_key.empty());
-    auto params = VERIFY_RESULT(yb::EncryptionParams::FromSlice(new_universe_key));
-    EncryptionParamsPB params_pb;
+    auto params = VERIFY_RESULT(encryption::EncryptionParams::FromSlice(new_universe_key));
+    encryption::EncryptionParamsPB params_pb;
     params->ToEncryptionParamsPB(&params_pb);
     (*universe_key_registry.mutable_universe_keys())[new_key_version_id] = params_pb;
     universe_key_registry.set_latest_version_id(new_key_version_id);

@@ -197,14 +197,20 @@ public class CustomerTask extends Model {
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
 
-    @EnumValue("DeleteXClusterConfig")
-    DeleteXClusterConfig,
-
     @EnumValue("EditXClusterConfig")
     EditXClusterConfig,
 
+    @EnumValue("DeleteXClusterConfig")
+    DeleteXClusterConfig,
+
+    @EnumValue("SyncXClusterConfig")
+    SyncXClusterConfig,
+
     @EnumValue("PrecheckNode")
-    PrecheckNode;
+    PrecheckNode,
+
+    @EnumValue("Abort")
+    Abort;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -287,8 +293,12 @@ public class CustomerTask extends Model {
           return completed ? "Deleted xcluster config " : "Deleting xcluster config ";
         case EditXClusterConfig:
           return completed ? "Edited xcluster config " : "Editing xcluster config ";
+        case SyncXClusterConfig:
+          return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
+        case Abort:
+          return completed ? "Task aborted " : "Aborting task ";
         default:
           return null;
       }

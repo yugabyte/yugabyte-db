@@ -14,43 +14,39 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import java.util.Set;
-import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.Common;
-import org.yb.Common.HostPortPB;
-import org.yb.master.Master;
+import org.yb.CommonNet;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicationResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
   private final Set<String> sourceTableIDs;
-  private final Set<Common.HostPortPB> sourceMasterAddresses;
-  private final Set<String> sourceBootstrapIDs;
+  private final Set<CommonNet.HostPortPB> sourceMasterAddresses;
 
   SetupUniverseReplicationRequest(
     YBTable table,
-    UUID sourceUniverseUUID,
+    String replicationGroupName,
     Set<String> sourceTableIDs,
-    Set<HostPortPB> sourceMasterAddresses,
-    Set<String> sourceBootstrapIDs) {
+    Set<HostPortPB> sourceMasterAddresses) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
     this.sourceTableIDs = sourceTableIDs;
     this.sourceMasterAddresses = sourceMasterAddresses;
-    this.sourceBootstrapIDs = sourceBootstrapIDs;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.SetupUniverseReplicationRequestPB.Builder builder =
-      Master.SetupUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString())
+    final MasterReplicationOuterClass.SetupUniverseReplicationRequestPB.Builder builder =
+      MasterReplicationOuterClass.SetupUniverseReplicationRequestPB.newBuilder()
+        .setProducerId(replicationGroupName)
         .addAllProducerTableIds(sourceTableIDs)
-        .addAllProducerMasterAddresses(sourceMasterAddresses)
-        .addAllProducerBootstrapIds(sourceBootstrapIDs);
+        .addAllProducerMasterAddresses(sourceMasterAddresses);
 
     return toChannelBuffer(header, builder.build());
   }
@@ -68,12 +64,12 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
   @Override
   Pair<SetupUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.SetupUniverseReplicationResponsePB.Builder builder =
-      Master.SetupUniverseReplicationResponsePB.newBuilder();
+    final MasterReplicationOuterClass.SetupUniverseReplicationResponsePB.Builder builder =
+      MasterReplicationOuterClass.SetupUniverseReplicationResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     SetupUniverseReplicationResponse response =
       new SetupUniverseReplicationResponse(deadlineTracker.getElapsedMillis(), tsUUID, error);

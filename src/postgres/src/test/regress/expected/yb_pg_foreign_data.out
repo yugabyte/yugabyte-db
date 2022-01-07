@@ -2241,8 +2241,8 @@ DROP ROLE regress_test_role2;
 DROP FOREIGN DATA WRAPPER postgresql CASCADE;
 DROP FOREIGN DATA WRAPPER dummy CASCADE;
 NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to server s0
-drop cascades to foreign table ft2
+DETAIL:  drop cascades to foreign table ft2
+drop cascades to server s0
 -- ^^^ 2 lines added by YugabyteDB
 \c
 DROP ROLE regress_foreign_data_user;

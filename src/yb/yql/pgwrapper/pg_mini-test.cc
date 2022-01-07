@@ -20,6 +20,8 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/docdb/value_type.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -55,7 +57,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_double(TEST_respond_write_failed_probability);
-DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(txn_max_apply_batch_records);
@@ -1709,7 +1711,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest)
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
-  SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability_in_tests);
+  SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
   FLAGS_TEST_force_master_leader_resolution = true;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -2476,8 +2478,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
   }, 10s, "Wait leader change"));
 
   ASSERT_OK(tools::RunBackupCommand(
-      pg_host_port(), cluster_->GetMasterAddresses(), *tmp_dir,
-      {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
+      pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
+      *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
        "create"}));
 }
 

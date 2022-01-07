@@ -24,10 +24,13 @@
 
 #include "yb/common/pg_types.h"
 
+#include "yb/master/master_fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
-#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client.fwd.h"
 
 #include "yb/util/monotime.h"
 
@@ -70,6 +73,8 @@ class PgClient {
   Result<int32> TabletServerCount(bool primary_only);
 
   Result<client::TabletServersInfo> ListLiveTabletServers(bool primary_only);
+
+  CHECKED_STATUS ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   CHECKED_STATUS method(                             \

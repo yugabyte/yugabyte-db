@@ -14,43 +14,50 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import java.util.Set;
-import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.Common;
-import org.yb.Common.HostPortPB;
-import org.yb.master.Master;
+import org.yb.CommonNet;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 
 public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicationResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
   private final Set<String> sourceTableIDsToAdd;
   private final Set<String> sourceTableIDsToRemove;
   private final Set<HostPortPB> sourceMasterAddresses;
+  private final String newReplicationGroupName;
 
   AlterUniverseReplicationRequest(
     YBTable table,
-    UUID sourceUniverseUUID,
+    String replicationGroupName,
     Set<String> sourceTableIDsToAdd,
     Set<String> sourceTableIDsToRemove,
-    Set<Common.HostPortPB> sourceMasterAddresses) {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
+    String newReplicationGroupName) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
     this.sourceTableIDsToAdd = sourceTableIDsToAdd;
     this.sourceTableIDsToRemove = sourceTableIDsToRemove;
     this.sourceMasterAddresses = sourceMasterAddresses;
+    this.newReplicationGroupName = newReplicationGroupName;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.AlterUniverseReplicationRequestPB.Builder builder =
-      Master.AlterUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString())
+    final MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.Builder builder =
+      MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.newBuilder()
+        .setProducerId(replicationGroupName)
         .addAllProducerTableIdsToAdd(sourceTableIDsToAdd)
         .addAllProducerTableIdsToRemove(sourceTableIDsToRemove)
         .addAllProducerMasterAddresses(sourceMasterAddresses);
+
+    if (newReplicationGroupName != null) {
+      builder.setNewProducerUniverseId(newReplicationGroupName);
+    }
 
     return toChannelBuffer(header, builder.build());
   }
@@ -68,12 +75,12 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
   @Override
   Pair<AlterUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.AlterUniverseReplicationResponsePB.Builder builder =
-      Master.AlterUniverseReplicationResponsePB.newBuilder();
+    final MasterReplicationOuterClass.AlterUniverseReplicationResponsePB.Builder builder =
+      MasterReplicationOuterClass.AlterUniverseReplicationResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     AlterUniverseReplicationResponse response =
       new AlterUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),

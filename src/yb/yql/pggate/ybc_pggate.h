@@ -445,6 +445,10 @@ void YBCPgClearSeparateDdlTxnMode();
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackSubTransaction(uint32_t id);
 
+// System validation -------------------------------------------------------------------------------
+// Validate placement information
+YBCStatus YBCPgValidatePlacement(const char *placement_info);
+
 //--------------------------------------------------------------------------------------------------
 // Expressions.
 

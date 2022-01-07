@@ -42,6 +42,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/partition.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/gutil/stl_util.h"
@@ -53,11 +55,13 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_client.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.pb.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/curl_util.h"
@@ -73,6 +77,7 @@ using yb::client::YBTableName;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadataPB;
 using yb::consensus::ConsensusStatePB;
+using yb::consensus::PeerMemberType;
 using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_COPYING;
@@ -296,7 +301,8 @@ Status DeleteTableTest::ListAllLiveTabletServersRegisteredWithMaster(const MonoD
     int leader_idx;
     RETURN_NOT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-    RETURN_NOT_OK(cluster_->master_proxy(leader_idx)->ListTabletServers(req, &resp, &rpc));
+    auto proxy = cluster_->GetMasterProxy<master::MasterClusterProxy>(leader_idx);
+    RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, &rpc));
 
     for (const auto& nodes : resp.servers()) {
       if (nodes.alive()) {
@@ -378,7 +384,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
     master::GetTabletLocationsResponsePB resp;
     rpc.set_timeout(MonoDelta::FromSeconds(10));
     req.add_tablet_ids()->assign(tablet_id);
-    ASSERT_OK(cluster_->master_proxy()->GetTabletLocations(req, &resp, &rpc));
+    ASSERT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>().GetTabletLocations(
+        req, &resp, &rpc));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(1, resp.errors_size());
     ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");
@@ -601,7 +608,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   string leader_uuid = GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id);
   TServerDetails* leader = DCHECK_NOTNULL(ts_map_[leader_uuid].get());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
-  ASSERT_OK(itest::AddServer(leader, tablet_id, ts, RaftPeerPB::PRE_VOTER, boost::none, timeout));
+  ASSERT_OK(itest::AddServer(
+      leader, tablet_id, ts, PeerMemberType::PRE_VOTER, boost::none, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // The superblock should be in TABLET_DATA_COPYING state on disk.
@@ -680,7 +688,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
   TServerDetails* leader = ts_map_[leader_uuid].get();
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
-  ASSERT_OK(itest::AddServer(leader, tablet_id, ts, RaftPeerPB::PRE_VOTER, boost::none, timeout));
+  ASSERT_OK(itest::AddServer(
+      leader, tablet_id, ts, PeerMemberType::PRE_VOTER, boost::none, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(leader_index));
 
   // The tablet server will detect that the leader failed, and automatically
@@ -1190,7 +1199,8 @@ TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
     req.add_tablet_ids()->assign(tablet_id);
     int leader_idx;
     ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
-    ASSERT_OK(cluster_->master_proxy(leader_idx)->GetTabletLocations(req, &resp, &rpc));
+    ASSERT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>(leader_idx).GetTabletLocations(
+        req, &resp, &rpc));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(1, resp.errors_size());
     ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");

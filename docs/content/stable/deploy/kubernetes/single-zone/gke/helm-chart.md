@@ -125,8 +125,8 @@ $ helm search repo yugabytedb/yugabyte
 **Output:**
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.8.0           2.8.0.0-b37    YugabyteDB is the high-performance distributed ...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+yugabytedb/yugabyte     2.8.1           2.8.1.0-b37    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB

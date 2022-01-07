@@ -58,6 +58,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
@@ -147,7 +148,7 @@ void InvokeCallbackTask::Done(const Status& status) {
 OutboundCall::OutboundCall(const RemoteMethod* remote_method,
                            const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                            std::shared_ptr<const OutboundMethodMetrics> method_metrics,
-                           google::protobuf::Message* response_storage,
+                           AnyMessagePtr response_storage,
                            RpcController* controller,
                            RpcMetrics* rpc_metrics,
                            ResponseCallback callback,
@@ -214,21 +215,9 @@ void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* 
   buffer_consumption_ = ScopedTrackedConsumption();
 }
 
-Status OutboundCall::SetRequestParam(
-    const Message& message, const MemTrackerPtr& mem_tracker) {
-  using serialization::SerializeHeader;
-  using serialization::SerializeMessage;
-
-  size_t message_size = 0;
-  auto status = SerializeMessage(message,
-                                 /* param_buf */ nullptr,
-                                 /* additional_size */ 0,
-                                 /* use_cached_size */ false,
-                                 /* offset */ 0,
-                                 &message_size);
-  if (!status.ok()) {
-    return status;
-  }
+Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
+  auto req_size = req.SerializedSize();
+  size_t message_size = SerializedMessageSize(req_size, 0);
 
   using Output = google::protobuf::io::CodedOutputStream;
   auto timeout_ms = VERIFY_RESULT(TimeoutMs());
@@ -265,9 +254,7 @@ Status OutboundCall::SetRequestParam(
   if (mem_tracker) {
     buffer_consumption_ = ScopedTrackedConsumption(mem_tracker, buffer_.size());
   }
-
-  RETURN_NOT_OK(SerializeMessage(
-      message, &buffer_, /* additional_size */ 0, /* use_cached_size */ true, header_size));
+  RETURN_NOT_OK(SerializeMessage(req, req_size, buffer_, 0, header_size));
   if (method_metrics_) {
     IncrementCounterBy(method_metrics_->request_bytes, buffer_.size());
   }
@@ -283,7 +270,6 @@ const ErrorStatusPB* OutboundCall::error_pb() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return error_pb_.get();
 }
-
 
 string OutboundCall::StateName(State state) {
   return RpcCallState_Name(state);
@@ -410,9 +396,9 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
     // TODO: here we're deserializing the call response within the reactor thread,
     // which isn't great, since it would block processing of other RPCs in parallel.
     // Should look into a way to avoid this.
-    if (!pb_util::ParseFromArray(response_, r.data(), r.size()).IsOk()) {
-      SetFailed(STATUS(IOError, "Invalid response, missing fields",
-                                response_->InitializationErrorString()));
+    auto status = response_.ParseFromSlice(r);
+    if (!status.ok()) {
+      SetFailed(status);
       return;
     }
     if (SetState(FINISHED_SUCCESS)) {
@@ -620,7 +606,7 @@ Status CallResponse::ParseFrom(CallData* call_data) {
 
   response_data_ = std::move(*call_data);
   Slice source(response_data_.data(), response_data_.size());
-  RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &entire_message));
+  RETURN_NOT_OK(ParseYBMessage(source, &header_, &entire_message));
 
   // Use information from header to extract the payload slices.
   const size_t sidecars = header_.sidecar_offsets_size();

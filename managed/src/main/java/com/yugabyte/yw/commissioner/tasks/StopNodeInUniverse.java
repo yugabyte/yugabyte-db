@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -47,10 +48,6 @@ public class StopNodeInUniverse extends UniverseTaskBase {
   public void run() {
     NodeDetails currentNode = null;
     boolean hitException = false;
-    isBlacklistLeaders =
-        runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
-    leaderBacklistWaitTimeMs =
-        runtimeConfigFactory.forUniverse(getUniverse()).getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
 
     try {
       checkUniverseVersion();
@@ -65,6 +62,11 @@ public class StopNodeInUniverse extends UniverseTaskBase {
           taskParams().universeUUID,
           universe.name);
 
+      isBlacklistLeaders =
+          runtimeConfigFactory.forUniverse(universe).getBoolean(Util.BLACKLIST_LEADERS);
+      leaderBacklistWaitTimeMs =
+          runtimeConfigFactory.forUniverse(universe).getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
+
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
@@ -73,7 +75,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       }
 
       preTaskActions();
-
+      isBlacklistLeaders = isBlacklistLeaders && isLeaderBlacklistValidRF(currentNode.nodeName);
       if (isBlacklistLeaders) {
         List<NodeDetails> tServerNodes = universe.getTServers();
         createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)

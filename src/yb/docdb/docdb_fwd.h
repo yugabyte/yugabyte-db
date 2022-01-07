@@ -14,6 +14,8 @@
 #ifndef YB_DOCDB_DOCDB_FWD_H
 #define YB_DOCDB_DOCDB_FWD_H
 
+#include "yb/docdb/docdb.fwd.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -32,7 +34,6 @@ class DocWriteBatch;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class KeyBytes;
-class KeyValueWriteBatchPB;
 class ManualHistoryRetentionPolicy;
 class PgsqlWriteOperation;
 class PrimitiveValue;
@@ -40,6 +41,8 @@ class QLWriteOperation;
 class RedisWriteOperation;
 class SharedLockManager;
 class SubDocKey;
+class YQLRowwiseIteratorIf;
+class YQLStorageIf;
 
 struct ApplyTransactionState;
 struct DocDB;
@@ -48,6 +51,8 @@ struct LockBatchEntry;
 
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
+
+enum class ValueType;
 
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 

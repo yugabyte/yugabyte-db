@@ -40,6 +40,7 @@
 #include <vector>
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/quorum_util.h"
 
@@ -50,6 +51,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/util/options_parser.h"
 
 #include "yb/server/webui_util.h"
 
@@ -78,7 +80,7 @@ struct TabletPeerInfo {
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
   bool has_on_disk_size;
-  yb::consensus::RaftPeerPB::Role raft_role;
+  yb::PeerRole raft_role;
 };
 
 // An identifier for a table, according to the `/tables` page.
@@ -94,7 +96,7 @@ struct TableInfo {
   uint64_t num_sst_files;
   yb::tablet::TabletOnDiskSizeInfo disk_size_info;
   bool has_complete_on_disk_size;
-  std::map<yb::consensus::RaftPeerPB::Role, size_t> raft_role_counts;
+  std::map<yb::PeerRole, size_t> raft_role_counts;
 
   explicit TableInfo(TabletPeerInfo info)
       : namespace_name(info.namespace_name),
@@ -300,9 +302,39 @@ void HandleTransactionsPage(
   *output << "Tablet is non transactional";
 }
 
-void DumpRocksDB(const char* title, rocksdb::DB* db, std::ostream* out) {
+void DumpRocksDBOptions(rocksdb::DB* db, std::stringstream* out) {
+    std::vector<std::string> cf_names;
+    std::vector<rocksdb::ColumnFamilyOptions> cf_options;
+    db->GetColumnFamiliesOptions(&cf_names, &cf_options);
+
+    auto env = rocksdb::NewMemEnv(db->GetEnv());
+    const std::string tag_id = Uuid::Generate().ToHexString();
+    *out << "<input type=\"checkbox\" id=\"" << tag_id << "\" class=\"yb-collapsible-cb\"/>"
+         << "<label for=\"" << tag_id << "\"><h3>Options</h3></label>" << std::endl
+         << "<pre>" << std::endl;
+
+    std::string content;
+    auto status = rocksdb::PersistRocksDBOptions(db->GetDBOptions(),
+                                                 cf_names, cf_options, "opts", env,
+                                                 rocksdb::IncludeHeader::kFalse,
+                                                 rocksdb::IncludeFileVersion::kFalse);
+    if (PREDICT_TRUE(status.ok())) {
+      status = rocksdb::ReadFileToString(env, "opts", &content);
+    }
+    if (PREDICT_TRUE(status.ok())) {
+      EscapeForHtml(content, out);
+    } else {
+      *out << "Failed to get options: " << status << std::endl;
+    }
+    *out << "</pre>" << std::endl;
+    delete env;
+}
+
+void DumpRocksDB(const char* title, rocksdb::DB* db, std::stringstream* out) {
   if (db) {
     *out << "<h2>" << title << "</h2>" << std::endl;
+    DumpRocksDBOptions(db, out);
+
     *out << "<h3>Files</h3>" << std::endl;
     auto files = db->GetLiveFilesMetaData();
     *out << "<pre>" << std::endl;
@@ -310,6 +342,7 @@ void DumpRocksDB(const char* title, rocksdb::DB* db, std::ostream* out) {
       *out << file.ToString() << std::endl;
     }
     *out << "</pre>" << std::endl;
+
     rocksdb::TablePropertiesCollection properties;
     auto status = db->GetPropertiesOfAllTables(&properties);
     if (status.ok()) {
@@ -508,11 +541,11 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     }
 
     auto consensus = peer->shared_consensus();
-    auto raft_role = RaftPeerPB::UNKNOWN_ROLE;
+    auto raft_role = PeerRole::UNKNOWN_ROLE;
     if (consensus) {
       raft_role = consensus->role();
     } else if (status.tablet_data_state() == TabletDataState::TABLET_DATA_COPYING) {
-      raft_role = RaftPeerPB::LEARNER;
+      raft_role = PeerRole::LEARNER;
     }
 
     auto identifer = TableIdentifier {
@@ -572,7 +605,7 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     std::stringstream role_counts_html;
     role_counts_html << "<ul>";
     for (const auto& rc_iter : info.raft_role_counts) {
-      role_counts_html << "<li>" << RaftPeerPB::Role_Name(rc_iter.first)
+      role_counts_html << "<li>" << PeerRole_Name(rc_iter.first)
                        << ": " << rc_iter.second << "</li>";
     }
     role_counts_html << "</ul>";
@@ -676,7 +709,7 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
         ? peer.last_known_private_addr()[0].host()
         : peer.permanent_uuid();
     peer_addr_or_uuid = EscapeForHtmlToString(peer_addr_or_uuid);
-    string role_name = RaftPeerPB::Role_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
+    string role_name = PeerRole_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
     string formatted = Substitute("$0: $1", role_name, peer_addr_or_uuid);
     // Make the local peer bold.
     if (peer.permanent_uuid() == tserver_->instance_pb().permanent_uuid()) {

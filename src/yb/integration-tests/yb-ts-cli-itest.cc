@@ -22,6 +22,8 @@
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
@@ -52,19 +54,12 @@ class YBTsCliITest : public YBTableTestBase {
   }
 
   int num_drives() override {
-    return 3;
+    return 2;
   }
 
   bool enable_ysql() override {
     // Do not create the transaction status table.
     return false;
-  }
-
-  void BeforeCreateTable() override {
-    ExternalTabletServer* ts = external_mini_cluster()->tablet_server(kServerIndex);
-    ts->Shutdown();
-    ASSERT_OK(ts->SetNumDrives(2));
-    ASSERT_OK(ts->Restart());
   }
 
   void WaitForTablet(const string& tablet_id) {

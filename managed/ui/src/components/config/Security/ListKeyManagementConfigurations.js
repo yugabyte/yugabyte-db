@@ -5,23 +5,38 @@ import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
+import { ConfigDetails } from './ConfigDetails';
 import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 
 export class ListKeyManagementConfigurations extends Component {
   state = {
     associatedUniverses: [],
-    isVisibleModal: false
+    isVisibleModal: false,
+    configDetail: null
   };
 
   actionList = (item, row) => {
     const { configUUID, in_use, universeDetails } = row.metadata;
+    const { isAdmin, onDelete, onEdit } = this.props;
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+        <MenuItem
+          onClick={() => {
+            this.setState({ configDetail: row });
+          }}
+        >
+          <i className="fa fa-info-circle"></i> Details
+        </MenuItem>
+        {isAdmin && (
+          <MenuItem onClick={() => onEdit(row)}>
+            <i className="fa fa-pencil"></i> Edit Configuration
+          </MenuItem>
+        )}
         <MenuItem
           title={'Delete provider'}
           disabled={in_use}
           onClick={() => {
-            !in_use && this.props.onDelete(configUUID);
+            !in_use && onDelete(configUUID);
           }}
         >
           <i className="fa fa-trash"></i> Delete Configuration
@@ -44,37 +59,28 @@ export class ListKeyManagementConfigurations extends Component {
     this.setState({ isVisibleModal: false });
   };
 
-  render() {
-    const {
-      configs,
-      onCreate,
-    } = this.props;
+  hideConfigDetail = () => {
+    this.setState({ configDetail: null });
+  };
 
-    const { associatedUniverses, isVisibleModal } = this.state;
+  render() {
+    const { configs, onCreate } = this.props;
+
+    const { associatedUniverses, isVisibleModal, configDetail } = this.state;
 
     const showConfigProperties = (item, row) => {
-      const displayed = [];
-      const credentials = row.credentials;
-      Object.keys(credentials).forEach((key) => {
-        if (key !== 'provider') {
-          displayed.push(`${key}: ${credentials[key]}`);
-        }
-      });
       return (
         <div>
           <a
+            className="show_details"
             onClick={(e) => {
-              e.target.classList.add('yb-hidden');
-              e.target.parentNode.lastChild.classList.remove('yb-hidden');
+              this.setState({ configDetail: row });
               e.preventDefault();
             }}
             href="/"
           >
             Show details
           </a>
-          <span title={displayed.join(', ')} className="yb-hidden">
-            {displayed.join(', ')}
-          </span>
         </div>
       );
     };
@@ -149,6 +155,13 @@ export class ListKeyManagementConfigurations extends Component {
           }
           noBackground
         />
+        {configDetail && (
+          <ConfigDetails
+            visible={!!configDetail}
+            onHide={this.hideConfigDetail}
+            data={configDetail}
+          />
+        )}
       </div>
     );
   }

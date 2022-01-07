@@ -61,6 +61,18 @@ To begin using Yugabyte Cloud, go to [Quick start](cloud-quickstart).
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-secure-clusters/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
+        <div class="title">Secure</div>
+      </div>
+      <div class="body">
+        Set up security features for your cloud.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-connect/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
@@ -91,7 +103,7 @@ To begin using Yugabyte Cloud, go to [Quick start](cloud-quickstart).
               <div class="title">Manage</div>
           </div>
           <div class="body">
-              Scale and back up the clusters in your cloud.
+              Scale, back up, and restore the clusters in your cloud.
           </div>
       </a>
   </div>
@@ -115,23 +127,12 @@ To begin using Yugabyte Cloud, go to [Quick start](cloud-quickstart).
       </a>
   </div>
 -->
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="cloud-network/">
-          <div class="head">
-              <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
-              <div class="title">Network access</div>
-          </div>
-          <div class="body">
-              Set up network security for your cluster.
-          </div>
-      </a>
-  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-security/">
           <div class="head">
               <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
-              <div class="title">Security</div>
+              <div class="title">Security architecture</div>
           </div>
           <div class="body">
               Learn about how your cloud and clusters are secured.

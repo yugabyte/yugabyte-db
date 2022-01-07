@@ -31,6 +31,7 @@ CREATE TABLE tbl12 (a INT, b INT, c INT, d INT, PRIMARY KEY(a ASC, d DESC, c DES
 
 CREATE TABLE tbl13 (a INT, b INT, c INT, d INT, PRIMARY KEY((b,c) HASH));
 
+CREATE USER tablegroup_test_user SUPERUSER;
 CREATE USER rls_user NOLOGIN;
 
 CREATE TABLE rls_public(k INT PRIMARY KEY, v TEXT);
@@ -47,7 +48,7 @@ CREATE POLICY p1 ON rls_public FOR ALL TO PUBLIC USING (k % 2 = 0);
 CREATE POLICY p2 ON rls_private FOR INSERT WITH CHECK (k % 2 = 1);
 CREATE POLICY p3 ON rls_private FOR UPDATE USING (k % 2 = 1);
 
-CREATE TABLE chat_user("chatID" text NOT NULL, PRIMARY KEY("chatID")); 
+CREATE TABLE chat_user("chatID" text NOT NULL, PRIMARY KEY("chatID"));
 
 DROP USER IF EXISTS regress_rls_alice;
 CREATE USER regress_rls_alice NOLOGIN;
@@ -56,3 +57,23 @@ CREATE TABLE uaccount (pguser      name, seclv       int, PRIMARY KEY(pguser ASC
 ALTER TABLE uaccount ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY account_policies ON uaccount USING (pguser = current_user);
+
+SET SESSION AUTHORIZATION tablegroup_test_user;
+
+CREATE TABLEGROUP grp1;
+CREATE TABLEGROUP grp2;
+
+CREATE TABLE tgroup_no_options_and_tgroup (a INT) TABLEGROUP grp1;
+CREATE TABLE tgroup_one_option (a INT) WITH (autovacuum_enabled = true);
+CREATE TABLE tgroup_one_option_and_tgroup (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp2;
+CREATE TABLE tgroup_options (a INT) WITH (autovacuum_enabled=true, parallel_workers=2);
+CREATE TABLE tgroup_options_and_tgroup (a INT) WITH (autovacuum_enabled=true, parallel_workers=2) TABLEGROUP grp2;
+CREATE TABLE tgroup_after_options (a INT) TABLEGROUP grp1;
+CREATE TABLE tgroup_in_between_options (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp1;
+CREATE TABLE tgroup_empty_options (a INT);
+BEGIN;
+    SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
+    UPDATE pg_class SET reloptions = ARRAY[]::TEXT[] WHERE relname = 'tgroup_empty_options';
+    UPDATE pg_class SET reloptions = array_prepend('a=b', reloptions) WHERE relname = 'tgroup_after_options';
+    UPDATE pg_class SET reloptions = array_prepend('a=b', reloptions) WHERE relname = 'tgroup_in_between_options';
+COMMIT;

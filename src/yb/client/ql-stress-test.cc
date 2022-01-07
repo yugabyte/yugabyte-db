@@ -22,6 +22,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
@@ -44,6 +45,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 

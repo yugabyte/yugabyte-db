@@ -229,6 +229,25 @@ is_configure_mode_invocation() {
   return 1  # "false" return value in bash
 }
 
+check_compiler_exit_code() {
+  if [[ $compiler_exit_code -ne 0 ]]; then
+    if grep -Eq 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
+         "$stderr_path" || \
+       grep -Eq 'error: ld returned' "$stderr_path"; then
+      determine_compiler_cmdline
+      generate_build_debug_script rerun_failed_link_step "$determine_compiler_cmdline_rv -v"
+    fi
+
+    if grep -E ': undefined reference to ' "$stderr_path" >/dev/null; then
+      for library_path in "${input_files[@]}"; do
+        nm -gC "$library_path" | grep ParseGet
+      done
+    fi
+
+    exit "$compiler_exit_code"
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Common setup for remote and local build.
 # We parse command-line arguments in both cases.
@@ -259,6 +278,7 @@ output_file=""
 input_files=()
 library_files=()
 compiling_pch=false
+pch_codegen=false
 
 rpath_found=false
 num_output_files_found=0
@@ -298,6 +318,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     c++-header)
       compiling_pch=true
+    ;;
+    -fpch-codegen)
+      pch_codegen=true
     ;;
     -DYB_COMPILER_TYPE=*)
       compiler_type_from_cmd_line=${1#-DYB_COMPILER_TYPE=}
@@ -581,7 +604,8 @@ if [[ ! -x $compiler_executable ]]; then
 fi
 
 # We use ccache if it is available and YB_NO_CCACHE is not set.
-if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; then
+if [[ -z ${YB_NO_CCACHE:-} && ${YB_USE_PCH:-} != "1" && "${compiling_pch}" != "true" ]] &&
+   command -v ccache >/dev/null; then
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="file_macro,pch_defines,time_macros"
   export CCACHE_BASEDIR=$YB_SRC_ROOT
@@ -689,7 +713,7 @@ if [[ $PWD == $BUILD_ROOT/postgres_build ||
       if [[ -d $include_dir ]]; then
         include_dir=$( cd "$include_dir" && pwd )
         if [[ $include_dir == $BUILD_ROOT/postgres_build/* ]]; then
-          rel_include_dir=${include_dir#$BUILD_ROOT/postgres_build/}
+          rel_include_dir=${include_dir#"${BUILD_ROOT}"/postgres_build/}
           updated_include_dir=$YB_SRC_ROOT/src/postgres/$rel_include_dir
           if [[ -d $updated_include_dir ]]; then
             new_cmd+=( -I"$updated_include_dir" )
@@ -699,7 +723,7 @@ if [[ $PWD == $BUILD_ROOT/postgres_build ||
       new_cmd+=( "$arg" )
     elif [[ -f $arg && $arg != "conftest.c" ]]; then
       file_path=$PWD/${arg#./}
-      rel_file_path=${file_path#$BUILD_ROOT/postgres_build/}
+      rel_file_path=${file_path#"${BUILD_ROOT}"/postgres_build/}
       updated_file_path=$YB_SRC_ROOT/src/postgres/$rel_file_path
       if [[ -f $updated_file_path ]] && cmp --quiet "$file_path" "$updated_file_path"; then
         new_cmd+=( "$updated_file_path" )
@@ -718,7 +742,7 @@ trap local_build_exit_handler EXIT
 
 if [[ ${YB_GENERATE_COMPILATION_CMD_FILES:-0} == "1" &&
       -n $output_file &&
-      $output_file == *.o ]]; then
+      ($output_file == *.o || $output_file == *.pch) ]]; then
   IFS=$'\n'
   echo "
 directory: $PWD
@@ -739,22 +763,7 @@ if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]] &&
   show_compiler_command_line "$CYAN_COLOR"
 fi
 
-if [[ $compiler_exit_code -ne 0 ]]; then
-  if grep -Eq 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
-       "$stderr_path" || \
-     grep -Eq 'error: ld returned' "$stderr_path"; then
-    determine_compiler_cmdline
-    generate_build_debug_script rerun_failed_link_step "$determine_compiler_cmdline_rv -v"
-  fi
-
-  if grep -E ': undefined reference to ' "$stderr_path" >/dev/null; then
-    for library_path in "${input_files[@]}"; do
-      nm -gC "$library_path" | grep ParseGet
-    done
-  fi
-
-  exit "$compiler_exit_code"
-fi
+check_compiler_exit_code
 
 if grep -Eq 'ld: warning: directory not found for option' "$stderr_path"; then
   log "Linker failed to find a directory (probably a library directory) that should exist."
@@ -796,4 +805,48 @@ if is_clang &&
 
   compiler_exit_code=$?
   set -e
+fi
+
+# When -fpch-codegen is used to generate .pch file.
+# We also should execute compiler for output.
+# To generate .o file, that contains all generated code.
+if "$pch_codegen"; then
+  new_cmd=( "$compiler_executable" )
+  skip_next=false
+  # Replace original args with args required for compilation.
+  for arg in "${compiler_args[@]}"
+  do
+    if "$skip_next"; then
+      skip_next=false
+      continue
+    fi
+    case "$arg" in
+      -emit-pch)
+        new_cmd+=("-include-pch" "-Xclang" "$output_file")
+      ;;
+      -fpch-*|-x|c++-header)
+      ;;
+      -MT)
+        new_cmd+=("$arg" "$output_file.o")
+        skip_next=true
+      ;;
+      -MF)
+        new_cmd+=("$arg" "$output_file.o.d")
+        skip_next=true
+      ;;
+      -o)
+        new_cmd+=("$arg" "$output_file.o")
+        skip_next=true
+      ;;
+      -c)
+        new_cmd+=("$arg" "$output_file")
+        skip_next=true
+      ;;
+      *)
+        new_cmd+=("$arg")
+      ;;
+    esac
+  done
+  run_compiler_and_save_stderr "${new_cmd[@]}"
+  check_compiler_exit_code
 fi

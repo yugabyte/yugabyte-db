@@ -19,6 +19,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/cdc_consumer_split_driver.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/status_log.h"

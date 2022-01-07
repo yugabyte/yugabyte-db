@@ -15,7 +15,6 @@
 #define YB_DOCDB_VALUE_H_
 
 #include "yb/common/typedefs.h"
-#include "yb/docdb/value_type.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/util/monotime.h"
 

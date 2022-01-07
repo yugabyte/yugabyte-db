@@ -12,7 +12,7 @@ menu:
   latest:
     identifier: cloud-connect
     parent: yugabyte-cloud
-    weight: 30
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
@@ -54,23 +54,11 @@ Once you have connected to the database, you can add database users for other te
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="connect-applications/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
         <div class="title">Applications</div>
       </div>
       <div class="body">
         Connect applications to your Yugabyte Cloud clusters.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="add-users/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Add database users</div>
-      </div>
-      <div class="body">
-        Add additional users to your databases.
       </div>
     </a>
   </div>

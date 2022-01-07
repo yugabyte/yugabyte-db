@@ -11,6 +11,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX pggate)
+set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+
 # We need access to the generated pg_type_d.h header from this directory.
 include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
@@ -63,6 +66,10 @@ set(PGGATE_LIBS
 ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}
                DEPS ${PGGATE_LIBS})
+
+if(${YB_PCH_ON})
+  target_precompile_headers(yb_pggate REUSE_FROM yb_pggate_util)
+endif()
 
 # Test
 add_subdirectory(test)

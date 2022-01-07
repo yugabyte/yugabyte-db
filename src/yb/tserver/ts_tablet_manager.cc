@@ -49,6 +49,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -57,6 +58,7 @@
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 
@@ -67,7 +69,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
@@ -86,6 +88,7 @@
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -440,6 +443,10 @@ Status TSTabletManager::Init() {
 
   InitLocalRaftPeerPB();
 
+  multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(server_->messenger(),
+                                                                      &server_->proxy_cache(),
+                                                                      local_peer_pb_.cloud_info());
+
   deque<RaftGroupMetadataPtr> metas;
 
   // First, load all of the tablet metadata. We do this before we start
@@ -680,7 +687,7 @@ namespace {
 
 // Creates SplitTabletsCreationMetaData for two new tablets for `tablet` splitting based on request.
 SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
-    const SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
+    const tablet::SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
   SplitTabletsCreationMetaData metas;
 
   const auto& split_partition_key = request.split_partition_key();
@@ -1393,7 +1400,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
         tablet_prepare_pool(),
-        &retryable_requests);
+        &retryable_requests,
+        multi_raft_manager_.get());
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -2322,7 +2330,7 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
 
 Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info) {
   bool restorations_updated;
-  tablet::RestorationCompleteTimeMap restoration_complete_time;
+  RestorationCompleteTimeMap restoration_complete_time;
   {
     std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
     ++snapshot_schedules_version_;

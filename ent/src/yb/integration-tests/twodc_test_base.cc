@@ -16,13 +16,16 @@
 #include <string>
 
 #include "yb/cdc/cdc_service.h"
+
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tserver/cdc_consumer.h"
@@ -81,7 +84,7 @@ Status TwoDCTestBase::SetupUniverseReplication(
     req.add_producer_table_ids(table->id());
   }
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client->proxy_cache(),
       VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -102,7 +105,7 @@ Status TwoDCTestBase::VerifyUniverseReplication(
     req.set_producer_id(universe_id);
     resp->Clear();
 
-    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client->proxy_cache(),
         VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
     rpc::RpcController rpc;
@@ -123,7 +126,7 @@ Status TwoDCTestBase::ToggleUniverseReplication(
   req.set_producer_id(universe_id);
   req.set_is_enabled(is_enabled);
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client->proxy_cache(),
       VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -143,7 +146,7 @@ Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_clu
     master::GetUniverseReplicationResponsePB resp;
     req.set_producer_id(universe_id);
 
-    auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
         &consumer_client->proxy_cache(),
         VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
     rpc::RpcController rpc;
@@ -193,7 +196,7 @@ Status TwoDCTestBase::DeleteUniverseReplication(
 
   req.set_producer_id(universe_id);
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &client->proxy_cache(),
       VERIFY_RESULT(cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 

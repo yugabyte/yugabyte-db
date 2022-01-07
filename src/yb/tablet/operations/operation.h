@@ -41,8 +41,8 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -106,7 +106,13 @@ class Operation {
 
   std::string LogPrefix() const;
 
-  virtual void SubmittedToPreparer() {}
+  void set_preparing_token(ScopedOperation&& preparing_token) {
+    preparing_token_ = std::move(preparing_token);
+  }
+
+  void SubmittedToPreparer() {
+    preparing_token_ = ScopedOperation();
+  }
 
   // Returns the request PB associated with this transaction. May be NULL if the transaction's state
   // has been reset.
@@ -136,7 +142,7 @@ class Operation {
 
   virtual void Release();
 
-  virtual void SetTablet(Tablet* tablet) {
+  void SetTablet(Tablet* tablet) {
     tablet_ = tablet;
   }
 
@@ -237,6 +243,8 @@ class Operation {
   OpId op_id_ GUARDED_BY(mutex_);
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_;
+
+  ScopedOperation preparing_token_;
 };
 
 template <class Request>
@@ -247,6 +255,7 @@ struct RequestTraits {
   static Request* MutableRequest(consensus::ReplicateMsg* replicate);
 };
 
+consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type);
 
 template <OperationType op_type, class Request, class Base = Operation>
 class OperationBase : public Base {
@@ -279,8 +288,7 @@ class OperationBase : public Base {
   }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override {
-    auto result = std::make_shared<consensus::ReplicateMsg>();
-    result->set_op_type(static_cast<consensus::OperationType>(op_type));
+    auto result = CreateReplicateMsg(op_type);
     auto* request = request_holder_.release();
     if (request) {
       RequestTraits<Request>::SetAllocatedRequest(result.get(), request);

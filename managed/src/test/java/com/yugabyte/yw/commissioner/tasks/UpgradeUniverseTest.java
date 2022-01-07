@@ -89,7 +89,7 @@ import org.mockito.junit.MockitoRule;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -219,8 +219,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       when(mockClient.getMasterClusterConfig())
           .thenAnswer(
               i -> {
-                Master.SysClusterConfigEntryPB.Builder configBuilder =
-                    Master.SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.version);
+                SysClusterConfigEntryPB.Builder configBuilder =
+                    SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.version);
                 return new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
               });
     } catch (Exception ignored) {
@@ -356,9 +356,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.ReplaceRootVolume,
           TaskType.AnsibleSetupServer,
           TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
@@ -411,6 +413,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.ChangeMasterConfig,
           TaskType.ChangeInstanceType,
           TaskType.UpdateNodeDetails,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
@@ -1117,12 +1120,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResizeNodeUpgradeRF3() {
-    testResizeNodeUpgrade(3, 26);
+    testResizeNodeUpgrade(3, 29);
   }
 
   @Test
   public void testResizeNodeUpgradeRF1() {
-    testResizeNodeUpgrade(1, 14);
+    testResizeNodeUpgrade(1, 15);
   }
 
   @Test
@@ -1545,8 +1548,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testGFlagsUpgradeWithSameMasterFlags() {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+    SysClusterConfigEntryPB.Builder configBuilder =
+        SysClusterConfigEntryPB.newBuilder().setVersion(3);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     try {
@@ -1594,8 +1597,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testGFlagsUpgradeWithSameTserverFlags() {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+    SysClusterConfigEntryPB.Builder configBuilder =
+        SysClusterConfigEntryPB.newBuilder().setVersion(3);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     try {
@@ -1644,8 +1647,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   public void testRemoveFlags() {
     for (ServerType serverType : ImmutableList.of(MASTER, TSERVER)) {
       if (serverType.equals(MASTER)) {
-        Master.SysClusterConfigEntryPB.Builder configBuilder =
-            Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+        SysClusterConfigEntryPB.Builder configBuilder =
+            SysClusterConfigEntryPB.newBuilder().setVersion(3);
         GetMasterClusterConfigResponse mockConfigResponse =
             new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
         try {
@@ -1654,8 +1657,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         }
         when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
       } else if (serverType.equals(TSERVER)) {
-        Master.SysClusterConfigEntryPB.Builder configBuilder =
-            Master.SysClusterConfigEntryPB.newBuilder().setVersion(4);
+        SysClusterConfigEntryPB.Builder configBuilder =
+            SysClusterConfigEntryPB.newBuilder().setVersion(4);
         GetMasterClusterConfigResponse mockConfigResponse =
             new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
         try {

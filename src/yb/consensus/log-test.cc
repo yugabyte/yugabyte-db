@@ -127,8 +127,8 @@ class LogTest : public LogTestBase {
     header.set_sequence_number(sequence_number);
     header.set_major_version(0);
     header.set_minor_version(0);
-    header.set_tablet_id(kTestTablet);
-    SchemaToPB(GetSimpleTestSchema(), header.mutable_schema());
+    header.set_unused_tablet_id(kTestTablet);
+    SchemaToPB(GetSimpleTestSchema(), header.mutable_unused_schema());
 
     LogSegmentFooterPB footer;
     footer.set_num_entries(10);
@@ -407,8 +407,8 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   // because it has a cached header.
   std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_->env(),
-                            make_scoped_refptr(new LogIndex(log_->wal_dir_)), kTestTablet,
-                            tablet_wal_path_, fs_manager_->uuid(), nullptr, nullptr, &reader));
+                            make_scoped_refptr(new LogIndex(log_->wal_dir_)), "Log reader: ",
+                            tablet_wal_path_, nullptr, nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -499,8 +499,7 @@ TEST_F(LogTest, TestSegmentRollover) {
 
   std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(
-      fs_manager_->env(), nullptr, kTestTablet, tablet_wal_path_, fs_manager_->uuid(), nullptr,
-      nullptr, &reader));
+      fs_manager_->env(), nullptr, "Log reader: ", tablet_wal_path_, nullptr, nullptr, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_TRUE(segments.back()->HasFooter());
@@ -833,8 +832,9 @@ TEST_F(LogTest, TestWriteManyBatches) {
     uint32_t num_entries = 0;
 
     std::unique_ptr<LogReader> reader;
-    ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, kTestTablet, tablet_wal_path_,
-                              fs_manager_->uuid(), nullptr, nullptr, &reader));
+    ASSERT_OK(LogReader::Open(
+        fs_manager_->env(), /* index= */ nullptr, "Log reader: ", tablet_wal_path_,
+        /* table_metric_entity= */ nullptr, /* tablet_metric_entity= */ nullptr, &reader));
 
     std::vector<scoped_refptr<ReadableLogSegment> > segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
@@ -858,8 +858,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
 TEST_F(LogTest, TestLogReader) {
   LogReader reader(fs_manager_->env(),
                    scoped_refptr<LogIndex>(),
-                   kTestTablet,
-                   fs_manager_->uuid(),
+                   "Log reader: ",
                    nullptr,
                    nullptr);
   ASSERT_OK(reader.InitEmptyReaderForTests());
@@ -1115,59 +1114,6 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
   }
 }
 
-// Test various situations where we expect different segments depending on what the
-// min log index is.
-TEST_F(LogTest, TestGetMaxIndexesToSegmentSizeMap) {
-  FLAGS_log_min_segments_to_retain = 2;
-  BuildLog();
-
-  const int kNumTotalSegments = 5;
-  const int kNumOpsPerSegment = 5;
-  OpIdPB op_id = MakeOpId(1, 10);
-  // Create 5 segments, starting from log index 10, with 5 ops per segment.
-  ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
-                                              &op_id, nullptr));
-
-  std::map<int64_t, int64_t> max_idx_to_segment_size;
-
-  // Check getting all the segments we can get rid of (5 - 2).
-  log_->GetMaxIndexesToSegmentSizeMap(10, &max_idx_to_segment_size);
-  ASSERT_EQ(3, max_idx_to_segment_size.size());
-  max_idx_to_segment_size.clear();
-
-  // Check that even when the min index is the last index from the oldest segment,
-  // we still return 3.
-  log_->GetMaxIndexesToSegmentSizeMap(14, &max_idx_to_segment_size);
-  ASSERT_EQ(3, max_idx_to_segment_size.size());
-  max_idx_to_segment_size.clear();
-
-  // Check that if the first segment is GCable, we get 2 back.
-  log_->GetMaxIndexesToSegmentSizeMap(15, &max_idx_to_segment_size);
-  ASSERT_EQ(2, max_idx_to_segment_size.size());
-  max_idx_to_segment_size.clear();
-
-  // Check that if the min index is at the very end of the only segment we can get rid of that we
-  // get 1 back.
-  log_->GetMaxIndexesToSegmentSizeMap(24, &max_idx_to_segment_size);
-  ASSERT_EQ(1, max_idx_to_segment_size.size());
-  max_idx_to_segment_size.clear();
-
-  // Check that we don't get anything back when there's nothing we want to get rid of.
-  log_->GetMaxIndexesToSegmentSizeMap(25, &max_idx_to_segment_size);
-  ASSERT_EQ(0, max_idx_to_segment_size.size());
-
-  // Sanity check that even if the min log index is the newest op that nothing breaks and that
-  // we get 0 segments back.
-  log_->GetMaxIndexesToSegmentSizeMap(35, &max_idx_to_segment_size);
-  ASSERT_EQ(0, max_idx_to_segment_size.size());
-
-  // Check that logs that would normally count for log retention won't be returned since they are
-  // too young.
-  FLAGS_log_min_seconds_to_retain = 500;
-  log_->GetMaxIndexesToSegmentSizeMap(10, &max_idx_to_segment_size);
-  ASSERT_EQ(0, max_idx_to_segment_size.size());
-}
-
 // Ensure that we can read replicate messages from the LogReader with a very
 // high (> 32 bit) log index and term. Regression test for KUDU-1933.
 TEST_F(LogTest, TestReadReplicatesHighIndex) {
@@ -1246,8 +1192,8 @@ Result<SegmentSequence> LogTest::GetSegmentsFromLogCopyAndCheckLastOpIndex(
   const auto log_copy_dir = GetLogCopyPath(copy_idx);
   std::unique_ptr<LogReader> copied_log_reader;
   RETURN_NOT_OK(LogReader::Open(
-      fs_manager_->env(), make_scoped_refptr(new LogIndex(log_copy_dir)), kTestTablet,
-      log_copy_dir, fs_manager_->uuid(), /* table_metric_entity = */ nullptr,
+      fs_manager_->env(), make_scoped_refptr<LogIndex>(log_copy_dir), "Log reader: ",
+      log_copy_dir, /* table_metric_entity = */ nullptr,
       /* tablet_metric_entity = */ nullptr, &copied_log_reader));
 
   SegmentSequence copied_segments;

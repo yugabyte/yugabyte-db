@@ -37,7 +37,7 @@ import com.google.common.primitives.Shorts;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 
-import static org.yb.Common.DataType;
+import static org.yb.Value.DataType;
 
 /**
  * Describes all the types available to build table schemas.

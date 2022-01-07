@@ -40,6 +40,8 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest_prod.h>
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/log.pb.h"
@@ -127,7 +129,6 @@ struct LogEntryMetadata {
 };
 
 // A sequence of segments, ordered by increasing sequence number.
-typedef std::vector<ReadableLogSegmentPtr> SegmentSequence;
 typedef std::vector<std::unique_ptr<LogEntryPB>> LogEntries;
 
 struct ReadEntriesResult {

@@ -14,32 +14,32 @@
 #ifndef YB_CLIENT_META_DATA_CACHE_H
 #define YB_CLIENT_META_DATA_CACHE_H
 
+#include <mutex>
 #include <unordered_map>
 
 #include <boost/container_hash/hash.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/permissions.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
 namespace yb {
 namespace client {
 
+enum class CacheCheckMode {
+  NO_RETRY,
+  RETRY,
+};
+
 class YBMetaDataCache {
  public:
   YBMetaDataCache(client::YBClient* client,
-                  bool create_roles_permissions_cache = false) : client_(client)  {
-    if (create_roles_permissions_cache) {
-      permissions_cache_ = std::make_shared<client::internal::PermissionsCache>(client);
-    } else {
-      LOG(INFO) << "Creating a metadata cache without a permissions cache";
-    }
-  }
+                  bool create_roles_permissions_cache = false);
+  ~YBMetaDataCache();
 
   // Opens the table with the given name or id. If the table has been opened before, returns the
   // previously opened table from cached_tables_. If the table has not been opened before
@@ -79,7 +79,7 @@ class YBMetaDataCache {
                                        const PermissionType &permission,
                                        const NamespaceName &keyspace,
                                        const TableName &table,
-                                       const client::internal::CacheCheckMode check_mode);
+                                       const CacheCheckMode check_mode);
 
   CHECKED_STATUS WaitForPermissionCache();
   Result<bool> RoleCanLogin(const RoleName& role_name);
@@ -93,7 +93,7 @@ class YBMetaDataCache {
       const TableName &table_name,
       const RoleName &role_name,
       const PermissionType permission,
-      const internal::CacheCheckMode check_mode =  internal::CacheCheckMode::RETRY);
+      const CacheCheckMode check_mode =  CacheCheckMode::RETRY);
 
  private:
   client::YBClient* const client_;

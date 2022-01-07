@@ -36,6 +36,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
@@ -56,11 +57,11 @@ using strings::Substitute;
 namespace {
 
 const int kBitsPerPackedRole = 3;
-static_assert(0 <= RaftPeerPB_Role_Role_MIN, "RaftPeerPB_Role_Role_MIN must be non-negative.");
-static_assert(RaftPeerPB_Role_Role_MAX < (1 << kBitsPerPackedRole),
+static_assert(0 <= PeerRole_MIN, "RaftPeerPB_Role_Role_MIN must be non-negative.");
+static_assert(PeerRole_MAX < (1 << kBitsPerPackedRole),
               "RaftPeerPB_Role_Role_MAX must fit in kBitsPerPackedRole bits.");
 
-ConsensusMetadata::PackedRoleAndTerm PackRoleAndTerm(RaftPeerPB::Role role, int64_t term) {
+ConsensusMetadata::PackedRoleAndTerm PackRoleAndTerm(PeerRole role, int64_t term) {
   // Ensure we've had no more than 2305843009213693952 terms in this tablet.
   CHECK_LT(term, 1ull << (8 * sizeof(ConsensusMetadata::PackedRoleAndTerm) - kBitsPerPackedRole));
   return to_underlying(role) | (term << kBitsPerPackedRole);
@@ -70,8 +71,8 @@ int64_t UnpackTerm(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
   return role_and_term >> kBitsPerPackedRole;
 }
 
-RaftPeerPB::Role UnpackRole(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
-  return static_cast<RaftPeerPB::Role>(role_and_term & ((1 << kBitsPerPackedRole) - 1));
+PeerRole UnpackRole(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
+  return static_cast<PeerRole>(role_and_term & ((1 << kBitsPerPackedRole) - 1));
 }
 
 } // anonymous namespace
@@ -213,7 +214,7 @@ void ConsensusMetadata::clear_leader_uuid() {
   set_leader_uuid("");
 }
 
-RaftPeerPB::Role ConsensusMetadata::active_role() const {
+PeerRole ConsensusMetadata::active_role() const {
   return active_role_;
 }
 
@@ -284,7 +285,7 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
       tablet_id_(std::move(tablet_id)),
       peer_uuid_(std::move(peer_uuid)),
       has_pending_config_(false),
-      active_role_(RaftPeerPB::UNKNOWN_ROLE),
+      active_role_(PeerRole::UNKNOWN_ROLE),
       on_disk_size_(0) {
   UpdateRoleAndTermCache();
 }
@@ -295,11 +296,11 @@ std::string ConsensusMetadata::LogPrefix() const {
 
 void ConsensusMetadata::UpdateActiveRole() {
   ConsensusStatePB cstate = ToConsensusStatePB(CONSENSUS_CONFIG_ACTIVE);
-  RaftPeerPB::Role old_role = active_role_;
+  PeerRole old_role = active_role_;
   active_role_ = GetConsensusRole(peer_uuid_, cstate);
   UpdateRoleAndTermCache();
-  LOG_WITH_PREFIX(INFO) << "Updating active role from " << RaftPeerPB::Role_Name(old_role)
-                        << " to " << RaftPeerPB::Role_Name(active_role_)
+  LOG_WITH_PREFIX(INFO) << "Updating active role from " << PeerRole_Name(old_role)
+                        << " to " << PeerRole_Name(active_role_)
                         << ". Consensus state: " << cstate.ShortDebugString()
                         << ", has_pending_config = " << has_pending_config_;
 }
@@ -315,7 +316,7 @@ void ConsensusMetadata::UpdateRoleAndTermCache() {
   role_and_term_cache_.store(new_value, std::memory_order_release);
 }
 
-std::pair<RaftPeerPB::Role, int64_t> ConsensusMetadata::GetRoleAndTerm() const {
+std::pair<PeerRole, int64_t> ConsensusMetadata::GetRoleAndTerm() const {
   const auto packed_role_and_term = role_and_term_cache_.load(std::memory_order_acquire);
   return std::make_pair(UnpackRole(packed_role_and_term), UnpackTerm(packed_role_and_term));
 }

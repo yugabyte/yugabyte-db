@@ -26,7 +26,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.*;
 import org.apache.log4j.Logger;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.ServerInfo;
 
 class LogConnector {
@@ -64,7 +64,8 @@ class LogConnector {
 
     String tableId = null;
     ListTablesResponse tablesResp = syncClient.getTablesList();
-    for (Master.ListTablesResponsePB.TableInfo tableInfo : tablesResp.getTableInfoList()) {
+    for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo :
+            tablesResp.getTableInfoList()) {
       if (tableInfo.getName().equals(opts.tableName) &&
           tableInfo.getNamespace().getName().equals(opts.namespaceName)) {
         tableId =  tableInfo.getId().toStringUtf8();

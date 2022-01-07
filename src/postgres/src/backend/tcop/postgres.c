@@ -1,4 +1,4 @@
-/*-------------------------------------------------------------------------
+ /*-------------------------------------------------------------------------
  *
  * postgres.c
  *	  POSTGRES C Backend Interface
@@ -4057,7 +4057,12 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	if (YBIsDataSent())
+	// We can perform kReadRestart retries in READ COMMITTED isolation level even if data has been
+	// sent as part of the txn, but not as part of the current query. This is because we just have to
+	// retry the query and not the whole transaction.
+	if ((XactIsoLevel != XACT_READ_COMMITTED && YBIsDataSent()) ||
+			(XactIsoLevel == XACT_READ_COMMITTED && is_conflict_error && YBIsDataSent()) ||
+			(XactIsoLevel == XACT_READ_COMMITTED && is_read_restart_error && YBIsDataSentForCurrQuery()))
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, data was already sent. Txn error code=%d",
@@ -4080,6 +4085,7 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
+	// TODO(Piyush): Restart even in sub-transactions if in READ COMMITTED isolation.
 	if (IsSubTransaction()) {
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, savepoints have been used");

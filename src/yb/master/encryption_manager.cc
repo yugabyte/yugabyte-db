@@ -16,10 +16,14 @@
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
-#include "yb/master/master.pb.h"
+#include "yb/encryption/encryption.pb.h"
+
+#include "yb/master/master_encryption.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/universe_key_registry_service.h"
 
-#include "yb/util/encryption.pb.h"
 #include "yb/util/env.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
@@ -31,7 +35,7 @@ namespace yb {
 namespace master {
 
 EncryptionManager::EncryptionManager()
-    : universe_keys_(std::make_unique<UniverseKeysPB>()) {}
+    : universe_keys_(std::make_unique<encryption::UniverseKeysPB>()) {}
 
 Status EncryptionManager::AddUniverseKeys(
     const AddUniverseKeysRequestPB* req, AddUniverseKeysResponsePB* resp) {
@@ -112,7 +116,7 @@ Status EncryptionManager::IsEncryptionEnabled(const EncryptionInfoPB& encryption
       VERIFY_RESULT(enterprise::DecryptUniverseKeyRegistry(
           encryption_info.universe_key_registry_encoded(), Slice(universe_key)));
   auto universe_key_registry =
-      VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
+      VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(decrypted_registry));
 
   resp->set_key_id(universe_key_registry.latest_version_id());
   LOG(INFO) << Format("Cluster encrypted with key $0", resp->key_id());
@@ -134,12 +138,14 @@ CHECKED_STATUS EncryptionManager::FillHeartbeatResponseEncryption(
     decrypted_registry = Slice(decrypted);
   }
 
-  auto registry = VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
+  auto registry = VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(
+      decrypted_registry));
   resp->mutable_universe_key_registry()->CopyFrom(registry);
   return Status::OK();
 }
 
-void EncryptionManager::PopulateUniverseKeys(const UniverseKeysPB& universe_key_registry) {
+void EncryptionManager::PopulateUniverseKeys(
+      const encryption::UniverseKeysPB& universe_key_registry) {
   std::lock_guard<simple_spinlock> l(universe_key_mutex_);
   for (const auto& entry : universe_key_registry.map()) {
     (*universe_keys_->mutable_map())[entry.first] = entry.second;

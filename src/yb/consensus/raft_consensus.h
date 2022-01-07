@@ -45,14 +45,15 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/multi_raft_batcher.h"
 
 #include "yb/gutil/callback.h"
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/opid.h"
 #include "yb/util/random.h"
 
@@ -76,6 +77,7 @@ class Clock;
 namespace rpc {
 class PeriodicTimer;
 }
+
 namespace consensus {
 
 class ConsensusMetadata;
@@ -119,7 +121,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests);
+    RetryableRequests* retryable_requests,
+    MultiRaftManager* multi_raft_manager);
 
   // Creates RaftConsensus.
   RaftConsensus(
@@ -175,9 +178,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
                               override;
 
-  RaftPeerPB::Role GetRoleUnlocked() const;
+  PeerRole GetRoleUnlocked() const;
 
-  RaftPeerPB::Role role() const override;
+  PeerRole role() const override;
 
   LeaderState GetLeaderState(bool allow_stale = false) const override;
 
@@ -202,7 +205,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void Shutdown() override;
 
   // Return the active (as opposed to committed) role.
-  RaftPeerPB::Role GetActiveRole() const;
+  PeerRole GetActiveRole() const;
 
   // Returns the replica state for tests. This should never be used outside of
   // tests, in particular calling the LockFor* methods on the returned object

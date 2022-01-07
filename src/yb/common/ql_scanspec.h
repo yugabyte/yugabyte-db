@@ -23,7 +23,8 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.pb.h"
 
 namespace yb {
 

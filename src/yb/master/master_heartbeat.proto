@@ -1,0 +1,241 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/cdc/cdc_consumer.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/consensus/metadata.proto";
+import "yb/encryption/encryption.proto";
+import "yb/master/master_types.proto";
+import "yb/tablet/tablet_types.proto";
+import "yb/rpc/service.proto";
+
+// Common information sent with every request from the tablet server
+// to the master.
+message TSToMasterCommonPB {
+  // The instance of the tablet server sending the heartbeat.
+  required NodeInstancePB ts_instance = 1;
+}
+
+message ReportedTabletPB {
+  required bytes tablet_id = 1;
+  optional tablet.RaftGroupStatePB state = 2 [ default = UNKNOWN ];
+  optional tablet.TabletDataState tablet_data_state = 6 [ default = TABLET_DATA_UNKNOWN ];
+
+  // The latest _committed_ consensus state.
+  // This will be missing if the tablet is not in a RUNNING state
+  // (i.e. if it is BOOTSTRAPPING).
+  optional consensus.ConsensusStatePB committed_consensus_state = 3;
+
+  optional AppStatusPB error = 4;
+  optional uint32 schema_version = 5;
+
+  // Replica is reporting that load balancer moves should be disabled
+  optional bool should_disable_lb_move = 7;
+
+  optional bytes fs_data_dir = 8;
+
+  // Is the tablet hidden.
+  optional bool is_hidden = 9;
+}
+
+// Sent by the tablet server to report the set of tablets hosted by that TS.
+message TabletReportPB {
+  // If false, then this is a full report, and any prior information about
+  // tablets hosted by this server should be dropped.
+  required bool is_incremental = 1;
+
+  // Tablets for which to update information. If 'is_incremental' is false,
+  // then this is the full set of tablets on the server, and any tablets
+  // which the master is aware of but not listed in this protobuf should
+  // be assumed to have been removed from this server.
+  repeated ReportedTabletPB updated_tablets = 2;
+
+  // Tablet IDs which the tablet server has removed and should no longer be
+  // considered hosted here. This will always be empty in a non-incremental
+  // report.
+  repeated bytes removed_tablet_ids = 3;
+
+  // Every time the TS generates a tablet report, it creates a sequence
+  // number. This can be useful in debugging, and also determining which
+  // changes have not yet been reported to the master.
+  // The first tablet report (non-incremental) is sequence number 0.
+  required int32 sequence_number = 4;
+
+  // Number of tablets that could not be included in this heartbeat.
+  // If 0, then all tablets have been reported to the master.
+  optional int32 remaining_tablet_count = 5;
+}
+
+message TabletForSplitPB {
+  required bytes tablet_id = 1;
+  optional bytes OBSOLETE_split_partition_key = 2;
+  optional bytes OBSOLETE_split_encoded_key = 3;
+}
+
+message TabletDriveStorageMetadataPB {
+  required bytes tablet_id = 1;
+  optional uint64 sst_file_size = 2;
+  optional uint64 wal_file_size = 3;
+  optional uint64 uncompressed_sst_file_size = 4;
+  optional bool may_have_orphaned_post_split_data = 5 [default = true];
+}
+
+message ReportedTabletUpdatesPB {
+  required bytes tablet_id = 1;
+  optional string state_msg = 2;
+}
+
+// Sent by the Master in response to the TS tablet report (part of the heartbeats)
+message TabletReportUpdatesPB {
+  repeated ReportedTabletUpdatesPB tablets = 1;
+  // Returns true if the tablet report had to be truncated because master ran out of time.
+  optional bool processing_truncated = 2 [ default = false ];
+}
+
+message TSInformationPB {
+  required TSRegistrationPB registration = 1;
+  required NodeInstancePB tserver_instance = 2;
+}
+
+message TSSnapshotScheduleInfoPB {
+  optional bytes id = 1;
+  optional fixed64 last_snapshot_hybrid_time = 2;
+}
+
+message TSSnapshotRestorationInfoPB {
+  // 16 bytes for UUID.
+  optional bytes id = 1;
+  optional fixed64 complete_time_ht = 2;
+}
+
+message TSSnapshotsInfoPB {
+  repeated TSSnapshotScheduleInfoPB schedules = 1;
+  // Last restorations update hybrid time.
+  optional fixed64 last_restorations_update_ht = 2;
+  // Restorations info.
+  repeated TSSnapshotRestorationInfoPB restorations = 3;
+}
+
+// Heartbeat sent from the tablet-server to the master
+// to establish liveness and report back any status changes.
+message TSHeartbeatRequestPB {
+  required TSToMasterCommonPB common = 1;
+
+  // Sent upon start-up of the TS, or in response to 'needs_reregister' on a heartbeat
+  // response.
+  optional TSRegistrationPB registration = 2;
+
+  // Sent when the tablet information has changed, or in response to
+  // 'needs_full_tablet_report'.
+  optional TabletReportPB tablet_report = 3;
+
+  // TODO; add a heartbeat sequence number?
+
+  // TODO: perhaps add some very basic metrics reporting here, like
+  // free space, reqs/sec, etc?
+
+  // The number of tablets that are BOOTSTRAPPING or RUNNING.
+  // Used by the master to determine load when creating new tablet replicas.
+  optional int32 num_live_tablets = 4;
+
+  optional int32 config_index = 5;
+
+  optional TServerMetricsPB metrics = 6;
+
+  // Number of tablets for which this ts is a leader.
+  optional int32 leader_count = 7;
+
+  optional int32 cluster_config_version = 8;
+
+  // List of candidate tablets for split based on tablet splitting strategy and settings.
+  repeated TabletForSplitPB DEPRECATED_tablets_for_split = 9;
+
+  // Physical time on tablet server
+  optional fixed64 ts_physical_time = 10;
+
+  // Hybrid time on tablet server
+  optional fixed64 ts_hybrid_time = 11;
+
+  // Roundtrip time for previous heartbeat in microseconds.
+  optional int64 rtt_us = 12;
+
+  reserved 13;
+
+  repeated TabletDriveStorageMetadataPB storage_metadata = 14;
+}
+
+message TSHeartbeatResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // As with most other master RPC responses (e.g.,
+  // ListTablesResponsePB), all fields below are optional as they may
+  // not be set if there is an error.
+
+  optional NodeInstancePB master_instance = 2;
+
+  // Indicates that the server which heartbeated needs to re-register
+  // with the master -- i.e send a heartbeat with the 'registration'
+  // filled in.
+  optional bool needs_reregister = 3 [ default = false ];
+
+  optional bool needs_full_tablet_report = 4 [ default = false ];
+
+  // Sent when the master receives a TabletReport
+  optional TabletReportUpdatesPB tablet_report = 5;
+
+  // Specify whether or not the node is the leader master.
+  optional bool leader_master = 6;
+
+  // Piggyback the current config as known to the master leader.
+  optional consensus.RaftConfigPB master_config = 7;
+
+  // List of all live nodes that the master knows about.
+  repeated TSInformationPB tservers = 8;
+
+  // Cluster UUID. Sent by the master only after registration.
+  optional string cluster_uuid = 9;
+
+  // Current YSQL catalog schema version.
+  // Used by tservers and postgres backends to decide if a cache refresh is needed.
+  optional uint64 ysql_catalog_version = 10;
+
+  optional uint64 ysql_last_breaking_catalog_version = 15;
+
+  optional encryption.UniverseKeyRegistryPB universe_key_registry = 11;
+
+  optional cdc.ConsumerRegistryPB consumer_registry = 12;
+
+  optional int32 cluster_config_version = 13;
+
+  optional int32 tablet_report_limit = 16;
+
+  optional TSSnapshotsInfoPB snapshots_info = 17;
+
+  optional int64 DEPRECATED_tablet_split_size_threshold_bytes = 14;
+
+  // Hash of transaction status table ids and versions, so that the TS knows when
+  // to update the cached list of status tablet ids in the transaction manager.
+  optional uint64 txn_table_versions_hash = 18;
+}
+
+service MasterHeartbeat {
+  option (yb.rpc.custom_service_name) = "yb.master.MasterService";
+
+  // TS->Master RPCs
+  rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
+}

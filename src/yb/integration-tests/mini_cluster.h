@@ -46,9 +46,11 @@
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_client.fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
 
 #include "yb/util/env.h"
@@ -56,28 +58,16 @@
 
 namespace yb {
 
-namespace client {
-class YBClient;
-class YBClientBuilder;
-}
-
 namespace master {
 class MiniMaster;
-class TSDescriptor;
-class TabletLocationsPB;
 }
 
 namespace server {
 class SkewedClockDeltaChanger;
 }
 
-namespace tablet {
-class TabletPeer;
-}
-
 namespace tserver {
 class MiniTabletServer;
-class TSTabletManager;
 }
 
 struct MiniClusterOptions {
@@ -199,6 +189,9 @@ class MiniCluster : public MiniClusterBase {
   // The comma separated string of the master adresses host/ports from current list of masters.
   std::string GetMasterAddresses() const;
 
+    // The comma separated string of the tserver adresses host/ports from current list of tservers.
+  std::string GetTserverHTTPAddresses() const;
+
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
 
   tserver::TSTabletManager* GetTabletManager(int idx);
@@ -261,6 +254,9 @@ class MiniCluster : public MiniClusterBase {
 
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
+
+MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> JumpClocks(
+    MiniCluster* cluster, std::chrono::milliseconds delta);
 
 void StepDownAllTablets(MiniCluster* cluster);
 void StepDownRandomTablet(MiniCluster* cluster);
@@ -353,6 +349,9 @@ Result<int> ServerWithLeaders(MiniCluster* cluster);
 // Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
+
+CHECKED_STATUS WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseTimePoint deadline);
 
 }  // namespace yb
 

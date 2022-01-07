@@ -16,13 +16,17 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +35,7 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
+import play.api.Play;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -204,7 +209,12 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
 
     public TestUniverseTaskBase() {
       super(baseTaskDependencies);
-      subTaskGroupQueue = new SubTaskGroupQueue(UUID.randomUUID());
+      // Create a real task with fake parameters to make validations succeed.
+      TaskExecutor taskExecutor = Play.current().injector().instanceOf(TaskExecutor.class);
+      RunnableTask runnable =
+          taskExecutor.createRunnableTask(
+              TaskType.CreateUniverse, new UniverseDefinitionTaskParams());
+      subTaskGroupQueue = new SubTaskGroupQueue(runnable);
       taskParams = new UniverseTaskParams();
     }
 

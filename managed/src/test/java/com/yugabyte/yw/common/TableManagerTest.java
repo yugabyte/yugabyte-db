@@ -218,6 +218,8 @@ public class TableManagerTest extends FakeDBApplication {
     cmd.add("--masters");
     cmd.add(testUniverse.getMasterAddresses());
     // TODO(bogdan): we do not have nodes to test this?
+    cmd.add("--ts_web_hosts_ports");
+    cmd.add(testUniverse.getTserverHTTPAddresses());
 
     if (!isDelete) {
       cmd.add("--parallelism");

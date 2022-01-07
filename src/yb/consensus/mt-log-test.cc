@@ -122,9 +122,9 @@ class MultiThreadedLogTest : public LogTestBase {
           replicate->set_op_type(WRITE_OP);
           replicate->set_hybrid_time(clock_->Now().ToUint64());
 
-          tserver::WriteRequestPB* request = replicate->mutable_write_request();
-          AddTestRowInsert(index, 0, "this is a test insert", request);
-          request->set_tablet_id(kTestTablet);
+          tserver::WriteRequestPB request;
+          AddTestRowInsert(index, 0, "this is a test insert", &request);
+          request.set_tablet_id(kTestTablet);
           batch_replicates.push_back(replicate);
         }
 
@@ -174,9 +174,8 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, kTestTablet,
+  ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, "Log reader: ",
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
-                            fs_manager_->uuid(),
                             nullptr, nullptr, &reader));
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));

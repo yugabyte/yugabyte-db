@@ -10,7 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")
@@ -34,8 +34,7 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Storage location")
   public String storageLocation;
 
-  @Constraints.Required
-  @ApiModelProperty(value = "Action type", required = true)
+  @ApiModelProperty(value = "Action type")
   public ActionType actionType;
 
   @ApiModelProperty(value = "Backup type")
@@ -90,6 +89,9 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Backup UUID")
   public UUID backupUuid = null;
+
+  @ApiModelProperty(value = "Controller type")
+  public String controller = null;
 
   @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;

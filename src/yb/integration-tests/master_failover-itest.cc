@@ -57,7 +57,7 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -522,12 +522,12 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
   int idx = -1;
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&idx));
 
-  std::shared_ptr<master::MasterServiceProxy> proxy = cluster_->master_proxy(idx);
+  auto proxy = cluster_->GetMasterProxy<master::MasterClusterProxy>(idx);
 
   rpc::RpcController rpc;
   master::GetLoadMovePercentRequestPB req;
   master::GetLoadMovePercentResponsePB resp;
-  ASSERT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+  ASSERT_OK(proxy.GetLoadMoveCompletion(req, &resp, &rpc));
 
   int initial_total_load = resp.total();
 
@@ -542,8 +542,8 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
 
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&idx));
 
-  proxy = cluster_->master_proxy(idx);
-  ASSERT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+  proxy = cluster_->GetMasterProxy<master::MasterClusterProxy>(idx);
+  ASSERT_OK(proxy.GetLoadMoveCompletion(req, &resp, &rpc));
   LOG(INFO) << "Initial loads. Before master leader failover: " <<  initial_total_load
             << " v/s after master leader failover: " << resp.total();
 
@@ -567,7 +567,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
       req.Clear();
       resp.Clear();
       rpc.Reset();
-      RETURN_NOT_OK(proxy->GetLoadMoveCompletion(req, &resp, &rpc));
+      RETURN_NOT_OK(proxy.GetLoadMoveCompletion(req, &resp, &rpc));
       return resp.percent() >= 100;
     },
     MonoDelta::FromSeconds(300),

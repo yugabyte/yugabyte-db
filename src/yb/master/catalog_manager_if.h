@@ -15,12 +15,17 @@
 #define YB_MASTER_CATALOG_MANAGER_IF_H
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
 
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/master_admin.fwd.h"
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_cluster.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_replication.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -109,17 +114,11 @@ class CatalogManagerIf {
 
   virtual bool IsUserTable(const TableInfo& table) const = 0;
 
-  virtual bool IsColocatedParentTable(const TableInfo& table) const = 0;
-
   virtual bool HasTablegroups() = 0;
 
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
 
   virtual bool IsUserIndex(const TableInfo& table) const = 0;
-
-  virtual bool IsTablegroupParentTable(const TableInfo& table) const = 0;
-
-  virtual bool IsColocatedUserTable(const TableInfo& table) const = 0;
 
   virtual TableInfoPtr GetTableInfo(const TableId& table_id) = 0;
 

@@ -42,6 +42,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -76,14 +77,9 @@ namespace yb {
 namespace tablet {
 
 using namespace std::placeholders;
-using std::shared_ptr;
 
 using consensus::Consensus;
 using consensus::ConsensusRound;
-using consensus::ReplicateMsg;
-using consensus::DriverType;
-using log::Log;
-using server::Clock;
 
 ////////////////////////////////////////////////////////////
 // OperationDriver
@@ -91,12 +87,10 @@ using server::Clock;
 
 OperationDriver::OperationDriver(OperationTracker *operation_tracker,
                                  Consensus* consensus,
-                                 Log* log,
                                  Preparer* preparer,
                                  TableType table_type)
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
-      log_(log),
       preparer_(preparer),
       trace_(new Trace()),
       start_time_(MonoTime::Now()),

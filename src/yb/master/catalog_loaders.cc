@@ -231,13 +231,13 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   }
 
   // Add the tablet to colocated_tablet_ids_map_ if the tablet is colocated.
-  if (catalog_manager_->IsColocatedParentTable(*first_table)) {
+  if (first_table->IsColocatedParentTable()) {
     catalog_manager_->colocated_tablet_ids_map_[first_table->namespace_id()] =
         catalog_manager_->tablet_map_->find(tablet_id)->second;
   }
 
   // Add the tablet to tablegroup_tablet_ids_map_ if the tablet is a tablegroup parent.
-  if (catalog_manager_->IsTablegroupParentTable(*first_table)) {
+  if (first_table->IsTablegroupParentTable()) {
     catalog_manager_->tablegroup_tablet_ids_map_[first_table->namespace_id()]
         [first_table->id().substr(0, 32)] = catalog_manager_->tablet_map_->find(tablet_id)->second;
 

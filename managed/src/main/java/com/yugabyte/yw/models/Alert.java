@@ -24,9 +24,11 @@ import io.ebean.PersistenceContextScope;
 import io.ebean.annotation.Formula;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
@@ -52,18 +54,29 @@ import org.apache.commons.lang3.StringUtils;
 public class Alert extends Model implements AlertLabelsProvider {
 
   public enum State {
-    ACTIVE("firing"),
-    ACKNOWLEDGED("acknowledged"),
-    RESOLVED("resolved");
+    ACTIVE("firing", true),
+    ACKNOWLEDGED("acknowledged", true),
+    SUSPENDED("suspended", true),
+    RESOLVED("resolved", false);
 
     private final String action;
+    private final boolean firing;
 
-    State(String action) {
+    State(String action, boolean firing) {
       this.action = action;
+      this.firing = firing;
     }
 
     public String getAction() {
       return action;
+    }
+
+    public boolean isFiring() {
+      return firing;
+    }
+
+    public static Set<State> getFiringStates() {
+      return Arrays.stream(values()).filter(State::isFiring).collect(Collectors.toSet());
     }
   }
 

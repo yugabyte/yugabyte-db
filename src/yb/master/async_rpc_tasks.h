@@ -35,6 +35,7 @@
 
 #include "yb/server/monitored_task.h"
 
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
@@ -42,10 +43,9 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics_fwd.h"
 
-
 namespace yb {
-struct TransactionMetadata;
 
+struct TransactionMetadata;
 class ThreadPool;
 
 namespace consensus {
@@ -217,6 +217,7 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   TSDescriptor* target_ts_desc_ = nullptr;
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
+  std::shared_ptr<tserver::TabletServerBackupServiceProxy> ts_backup_proxy_;
   std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
 
   std::atomic<rpc::ScheduledTaskId> reactor_task_id_{rpc::kInvalidTaskId};
@@ -261,8 +262,6 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   // Use state() and MarkX() accessors.
   std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
 };
-
-using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 
 // RetryingTSRpcTask subclass which always retries the same tablet server,
 // identified by its UUID.
@@ -555,7 +554,7 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
  public:
   AsyncAddServerTask(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      consensus::RaftPeerPB::MemberType member_type, const consensus::ConsensusStatePB& cstate,
+      consensus::PeerMemberType member_type, const consensus::ConsensusStatePB& cstate,
       const std::string& change_config_ts_uuid)
       : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
         member_type_(member_type) {}
@@ -571,7 +570,7 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
 
  private:
   // PRE_VOTER or PRE_OBSERVER (for async replicas).
-  consensus::RaftPeerPB::MemberType member_type_;
+  consensus::PeerMemberType member_type_;
 };
 
 // Task to remove a tablet server peer from an overly-replicated tablet config.
@@ -730,7 +729,7 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   bool SendRequest(int attempt) override;
   void Finished(const Status& status) override;
 
-  tserver::SplitTabletRequestPB req_;
+  tablet::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
   TabletSplitCompleteHandlerIf* tablet_split_complete_handler_;
 };

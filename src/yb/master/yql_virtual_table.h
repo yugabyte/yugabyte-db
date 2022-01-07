@@ -15,16 +15,19 @@
 #define YB_MASTER_YQL_VIRTUAL_TABLE_H
 
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_storage_interface.h"
+
+#include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
+
+#include "yb/util/metrics_fwd.h"
 
 namespace yb {
 namespace master {
 
 // A YQL virtual table which is based on in memory data.
-class YQLVirtualTable : public YQLStorageIf {
+class YQLVirtualTable : public docdb::YQLStorageIf {
  public:
   explicit YQLVirtualTable(const TableName& table_name,
                            const NamespaceName &namespace_name,
@@ -53,7 +56,7 @@ class YQLVirtualTable : public YQLStorageIf {
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const QLScanSpec& spec,
-                             std::unique_ptr<YQLRowwiseIteratorIf>* iter) const override;
+                             std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
 
   CHECKED_STATUS BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -73,12 +76,12 @@ class YQLVirtualTable : public YQLStorageIf {
                                 const TransactionOperationContext& txn_op_context,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
-                                YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                                std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* iter,
+  CHECKED_STATUS InitIterator(docdb::YQLRowwiseIteratorIf* iter,
                               const PgsqlReadRequestPB& request,
                               const Schema& schema,
                               const QLValuePB& ybctid) const override {
@@ -93,7 +96,7 @@ class YQLVirtualTable : public YQLStorageIf {
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const docdb::DocKey& start_doc_key,
-                             YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                             docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -105,7 +108,7 @@ class YQLVirtualTable : public YQLStorageIf {
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const QLValuePB& ybctid,
-                             YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                             docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }

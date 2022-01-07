@@ -38,6 +38,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
@@ -46,9 +47,12 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -413,6 +417,17 @@ string MiniCluster::GetMasterAddresses() const {
   return peer_addrs;
 }
 
+string MiniCluster::GetTserverHTTPAddresses() const {
+  string peer_addrs = "";
+  for (const auto& tserver : mini_tablet_servers_) {
+    if (!peer_addrs.empty()) {
+      peer_addrs += ",";
+    }
+    peer_addrs += tserver->bound_http_addr_str();
+  }
+  return peer_addrs;
+}
+
 int MiniCluster::LeaderMasterIdx() {
   Stopwatch sw;
   sw.start();
@@ -662,15 +677,33 @@ void MiniCluster::EnsurePortsAllocated(int new_num_masters, int new_num_tservers
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);
 }
 
+server::SkewedClockDeltaChanger JumpClock(
+    server::RpcServerBase* server, std::chrono::milliseconds delta) {
+  auto* hybrid_clock = down_cast<server::HybridClock*>(server->clock());
+  return server::SkewedClockDeltaChanger(
+      delta, std::static_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock()));
+}
+
 std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew) {
   std::vector<server::SkewedClockDeltaChanger> delta_changers;
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    auto* tserver = cluster->mini_tablet_server(i)->server();
-    auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
-    delta_changers.emplace_back(
-        i * clock_skew, std::static_pointer_cast<server::SkewedClock>(
-            hybrid_clock->physical_clock()));
+    delta_changers.push_back(JumpClock(cluster->mini_tablet_server(i)->server(), i * clock_skew));
+  }
+  return delta_changers;
+}
+
+std::vector<server::SkewedClockDeltaChanger> JumpClocks(
+    MiniCluster* cluster, std::chrono::milliseconds delta) {
+  std::vector<server::SkewedClockDeltaChanger> delta_changers;
+  auto num_masters = cluster->num_masters();
+  auto num_tservers = cluster->num_tablet_servers();
+  delta_changers.reserve(num_masters + num_tservers);
+  for (int i = 0; i != num_masters; ++i) {
+    delta_changers.push_back(JumpClock(cluster->mini_master(i)->master(), delta));
+  }
+  for (int i = 0; i != num_tservers; ++i) {
+    delta_changers.push_back(JumpClock(cluster->mini_tablet_server(i)->server(), delta));
   }
   return delta_changers;
 }
@@ -1113,6 +1146,30 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t byte
       }
     }
   }
+}
+
+CHECKED_STATUS WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseTimePoint deadline) {
+  auto leaders = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
+  std::unordered_map<TabletId, int64_t> last_committed_idx;
+  for (const auto& peer : leaders) {
+    auto idx = peer->consensus()->GetLastCommittedOpId().index;
+    last_committed_idx.emplace(peer->tablet_id(), idx);
+    LOG(INFO) << "Committed op id for " << peer->tablet_id() << ": " << idx;
+  }
+  auto non_leaders = ListTabletPeers(cluster, ListPeersFilter::kNonLeaders);
+  for (const auto& peer : non_leaders) {
+    auto it = last_committed_idx.find(peer->tablet_id());
+    if (it == last_committed_idx.end()) {
+      return STATUS_FORMAT(IllegalState, "Unknown committed op id for $0", peer->tablet_id());
+    }
+    RETURN_NOT_OK(Wait([idx = it->second, peer]() {
+      return peer->consensus()->GetLastCommittedOpId().index >= idx;
+    },
+    deadline, Format("Wait T $0 P $1 commit $2",
+                     peer->tablet_id(), peer->permanent_uuid(), it->second)));
+  }
+  return Status::OK();
 }
 
 }  // namespace yb

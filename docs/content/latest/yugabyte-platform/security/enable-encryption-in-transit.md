@@ -64,7 +64,7 @@ You can also modify TLS settings for an existing universe, as follows:
     
       ![TLS Configuration Expanded](/images/yp/encryption-in-transit/tls-config2.png)
     
-     <br><br>
+     <br>
 
     - If encryption in transit is currently enabled for the universe, you can either disable or modify it, as follows: 
 
@@ -103,7 +103,7 @@ When you create a universe, you can enable TLS using your own certificates, as f
 12. Select an existing certificate from the **Root Certificate** list and then select the certificate that you have uploaded.
 13. Create the universe.
 
-You can also modify TLS settings for an existing universe by navigating to **Universes**, opening a specific universe, clicking **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog, and then following the procedure described in [How to Use Platform-Generate Certificates to Enable TLS](#how-to-use-platform-generated-certificates-to-enable-tls) for an existing universe. 
+You can also modify TLS settings for an existing universe by navigating to **Universes**, opening a specific universe, clicking **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog, and then following the procedure described in [How to Use Platform-Generated Certificates to Enable TLS](#how-to-use-platform-generated-certificates-to-enable-tls) for an existing universe. 
 
 ## Custom CA-Signed Self-Provided Certificates
 
@@ -119,7 +119,7 @@ The following procedure describes how to install certificates on the database no
 
 **Step 1:** Obtain the keys and the custom CA-signed certificates for each of the on-premise nodes for which you are configuring node-to-node TLS. In addition, obtain the keys and the custom signed certificates for client access for configuring client-to-node TLS.
 
-**Step 2**: For _each on-premise node_, copy the custom CA root certificate, node certificate, and node key to that node's file system. 
+**Step 2**: For each on-premise node, copy the custom CA root certificate, node certificate, and node key to that node's file system. 
 
 If you are enabling client-to-node TLS, make sure to copy the client certificate and client key to each of the nodes.
 
@@ -134,9 +134,9 @@ In addition, ensure the following:
 
 2. Click **Add Certificate** to open the **Add Certificate** dialog.
 
-3. Select **CA Signed**, as per the following illustration:
+3. Select **CA Signed**, as per the following illustration:<br><br>
 
-   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
+   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)<br><br>
 
 4. Upload the custom CA root certificate as the root certificate. If you do not have the root certificate, contact your CA.
 
@@ -176,9 +176,9 @@ You rotate the existing custom certificates and replace them with new database n
 
 - Navigate to the universe for which you are rotating the keys.
 
-- Select **Actions > Edit Security**, as shown in the following illustration. <br>
+- Select **Actions > Edit Security**, as shown in the following illustration:<br><br>
 
-  ![edit-security](/images/yp/encryption-in-transit/edit-security.png)   
+  ![edit-security](/images/yp/encryption-in-transit/edit-security.png)<br>   
 
 - Select **Encryption in-Transit** to open the **TLS Configuration** dialog. 
 
@@ -189,7 +189,7 @@ You rotate the existing custom certificates and replace them with new database n
 
   - Click **OK**.<br> 
 
-    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.
+    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.<br><br>
 
   ![Configure TLS](/images/yp/encryption-in-transit/edit-tls-new.png)
 
@@ -211,9 +211,9 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 - Navigate to the **Certificates** page and then to your universe’s certificate. 
 
-- Click **Actions** and select **Download YSQL Cert**, as shown in the following illustration. This triggers the download of the `yugabytedb.crt` and `yugabytedb.key` files.
+- Click **Actions** and select **Download YSQL Cert**, as shown in the following illustration. This triggers the download of the `yugabytedb.crt` and `yugabytedb.key` files.<br><br>
 
-  ![download-ysql-cert](/images/yp/encryption-in-transit/download-ysql-cert.png)
+  ![download-ysql-cert](/images/yp/encryption-in-transit/download-ysql-cert.png)<br><br>
 
 - Optionally, when connecting to universes that are configured with custom CA-signed certificates, obtain the root CA and client YSQL certificate from your administrator. These certificates are not available on Yugabyte Platform for downloading. 
 
@@ -238,7 +238,7 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
   yugabyte=#
   ```
 
-To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Postgres JDBC driver to connect to YugabyteDB, see [Configuring the Client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
+To use TLS from a different client, consult the client-specific documentation. For example, if you are using a PostgreSQL JDBC driver to connect to YugabyteDB, see [Configuring the Client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
 ### How to Connect to a YCQL Endpoint with TLS
 
@@ -246,9 +246,9 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 - Navigate to the **Certificates** page and then to your universe’s certificate. 
 
-- Click **Actions** and select **Download Root Cert**, as shown in the following illustration. This triggers the download of the `root.crt` file.
+- Click **Actions** and select **Download Root Cert**, as shown in the following illustration. This triggers the download of the `root.crt` file.<br><br>
 
-  ![download-root-cert](/images/yp/encryption-in-transit/download-root-cert.png)
+  ![download-root-cert](/images/yp/encryption-in-transit/download-root-cert.png)<br><br>
 
 - Optionally, when connecting to universes that are configured with custom CA-signed certificates, obtain the root CA and client YSQL certificate from your administrator. These certificates are not available on Yugabyte Platform for downloading. 
 
@@ -299,10 +299,22 @@ When configuring and using certificates, SSL issues may occasionally arise. You 
 
 ## Enforcing TLS Versions
 
-As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 (default).
+As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 or later versions.
 
-You can set the TLS version for node-to-node and client-node communication. To enforce the minimum TLS version of 1.2, add the following flag for T-Server: 
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, add the following flag for T-Server: 
 
-```
+```shell
 ssl_protocols = tls12
+```
+
+To enforce the minimum TLS version of 1.2, you need to specify all available subsequent versions for T-Server, as follows: 
+
+```shell
+ssl_protocols = tls12,tls13
+```
+
+In additioin, since the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version ( `ssl_min_protocol_version` ) for PostgreSQL by setting the following T-Server gflag:
+
+```shell
+--ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```

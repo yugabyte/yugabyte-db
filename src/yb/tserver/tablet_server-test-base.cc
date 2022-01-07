@@ -16,11 +16,12 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -37,6 +38,7 @@
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"

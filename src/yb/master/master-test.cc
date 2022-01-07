@@ -50,7 +50,10 @@
 #include "yb/master/master-test-util.h"
 #include "yb/master/master-test_base.h"
 #include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
@@ -271,7 +274,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_TRUE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
@@ -294,7 +297,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
     req.mutable_registration()->CopyFrom(fake_reg);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
@@ -323,7 +326,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
     req.mutable_registration()->CopyFrom(fake_reg);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
@@ -339,7 +342,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     tr->set_is_incremental(false);
     tr->set_sequence_number(0);
     tr->set_remaining_tablet_count(1);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_FALSE(resp.needs_full_tablet_report());
@@ -354,7 +357,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     tr->set_is_incremental(false);
     tr->set_sequence_number(0);
     tr->set_remaining_tablet_count(0);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_FALSE(resp.needs_full_tablet_report());
@@ -371,7 +374,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   {
     ListTabletServersRequestPB req;
     ListTabletServersResponsePB resp;
-    ASSERT_OK(proxy_->ListTabletServers(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_cluster_->ListTabletServers(req, &resp, ResetAndGetController()));
     LOG(INFO) << resp.DebugString();
     ASSERT_EQ(1, resp.servers_size());
     ASSERT_EQ("my-ts-uuid", resp.servers(0).instance_id().permanent_uuid());
@@ -402,7 +405,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     req.mutable_namespace_()->set_name(kNamespaceName);
     req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
     req.mutable_schema()->mutable_table_properties()->set_num_tablets(8);
-    ASSERT_OK(this->proxy_->CreateTable(req, &resp, controller.get()));
+    ASSERT_OK(this->proxy_ddl_->CreateTable(req, &resp, controller.get()));
     ASSERT_FALSE(resp.has_error());
     LOG(INFO) << "Done creating table";
   };
@@ -416,7 +419,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_name(kNamespaceName);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -427,7 +430,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     FLAGS_TEST_return_error_if_namespace_not_found = true;
     ListTablesRequestPB req;
     ListTablesResponsePB resp;
-    ASSERT_OK(proxy_->ListTables(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
     LOG(INFO) << "Finished first ListTables request";
     ASSERT_TRUE(resp.has_error());
     string msg = resp.error().status().message();
@@ -435,7 +438,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
 
     // After turning off this flag, ListTables should skip the table with the error.
     FLAGS_TEST_return_error_if_namespace_not_found = false;
-    ASSERT_OK(proxy_->ListTables(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
     LOG(INFO) << "Finished second ListTables request";
     ASSERT_FALSE(resp.has_error());
   }
@@ -677,7 +680,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
     col->set_is_key(true);
   }
 
-  ASSERT_OK(proxy_->CreateTable(req, &resp, ResetAndGetController()));
+  ASSERT_OK(proxy_ddl_->CreateTable(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(AppStatusPB::INVALID_ARGUMENT, resp.error().status().code());
@@ -735,7 +738,7 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
     // Set the "start" key greater than the "end" key.
     req.set_partition_key_start("zzzz");
     req.set_partition_key_end("aaaa");
-    ASSERT_OK(proxy_->GetTableLocations(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_client_->GetTableLocations(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(AppStatusPB::INVALID_ARGUMENT, resp.error().status().code());
@@ -749,7 +752,8 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
   Schema schema({ColumnSchema("key", INT32)}, 1);
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
-  ASSERT_OK(proxy_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController()));
+  ASSERT_OK(proxy_cluster_->GetMasterClusterConfig(
+      config_req, &config_resp, ResetAndGetController()));
   ASSERT_FALSE(config_resp.has_error());
   ASSERT_TRUE(config_resp.has_cluster_config());
   auto cluster_config = config_resp.cluster_config();
@@ -836,7 +840,7 @@ TEST_F(MasterTest, TestNamespaces) {
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_id(other_ns_id);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -872,7 +876,7 @@ TEST_F(MasterTest, TestNamespaces) {
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_name(other_ns_name);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -910,7 +914,7 @@ TEST_F(MasterTest, TestNamespaces) {
     DeleteNamespaceResponsePB resp;
 
     req.mutable_namespace_()->set_name("nonexistingns");
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
@@ -1053,7 +1057,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     DeleteNamespaceResponsePB resp;
     req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
     req.mutable_namespace_()->set_id(other_ns_pgsql_id);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
 
@@ -1090,7 +1094,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     DeleteNamespaceResponsePB resp;
 
     req.mutable_namespace_()->set_name(other_ns_name);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY);
@@ -1114,7 +1118,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     DeleteNamespaceResponsePB resp;
 
     req.mutable_namespace_()->set_id(other_ns_id);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY);
@@ -1151,7 +1155,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_name(other_ns_name);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -1269,7 +1273,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     req.mutable_table()->set_table_name(kTableName);
     req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
     req.mutable_new_namespace()->set_name("nonexistingns");
-    ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
@@ -1291,7 +1295,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     req.mutable_table()->set_table_name(kTableName);
     req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
     req.mutable_new_namespace()->set_id("deadbeafdeadbeafdeadbeafdeadbeaf");
-    ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
@@ -1313,7 +1317,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     req.mutable_table()->set_table_name(kTableName);
     req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
     req.mutable_new_namespace()->set_name(default_namespace_name);
-    ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -1342,7 +1346,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_name(other_ns_name);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -1391,7 +1395,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_name(test_name);
     req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::IN_TRANSITION_CAN_RETRY);
   }
@@ -1418,7 +1422,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
     DeleteNamespaceResponsePB del_resp;
     del_req.mutable_namespace_()->set_name("new_" + test_name);
     del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-    ASSERT_OK(proxy_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
     ASSERT_FALSE(del_resp.has_error());
 
     // ListNamespaces should not show the Namespace, because it's in the DELETING state.
@@ -1440,7 +1444,6 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
     ASSERT_OK(CreateNamespaceWait(resp.id(), YQLDatabase::YQL_DATABASE_PGSQL));
   }
 }
-
 
 TEST_F(MasterTest, TestNamespaceCreateFailure) {
   NamespaceName test_name = "test_pgsql";
@@ -1570,7 +1573,7 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
       ++created;
       // Ensure we can delete the failed namespace.
       DeleteNamespaceResponsePB del_resp;
-      ASSERT_OK(proxy_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
+      ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
       if (del_resp.has_error()) {
         LOG(INFO) << del_resp.error().DebugString();
       }
@@ -1611,7 +1614,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
     LOG(INFO) << "Iteration " << ++iter;
     bool delete_failed = false;
 
-    ASSERT_OK(proxy_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
 
     delete_failed = del_resp.has_error();
     if (del_resp.has_error()) {
@@ -1633,7 +1636,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
       LOG(INFO) << "Next Delete should succeed";
 
       // If the namespace delete fails, Ensure that we can restart the delete and it succeeds.
-      ASSERT_OK(proxy_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
+      ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
       ASSERT_FALSE(del_resp.has_error());
       ASSERT_OK(DeleteNamespaceWait(is_del_req));
     }
@@ -1717,7 +1720,7 @@ TEST_F(MasterTest, TestFullTableName) {
     req.mutable_table()->set_table_name(kTableName);
     req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
     req.mutable_new_namespace()->set_name(default_namespace_name);
-    ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_ALREADY_PRESENT);
@@ -1754,7 +1757,7 @@ TEST_F(MasterTest, TestFullTableName) {
     DeleteTableResponsePB resp;
     req.mutable_table()->set_table_name(kTableName);
     req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    ASSERT_OK(proxy_->DeleteTable(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_NOT_FOUND);
@@ -1779,7 +1782,7 @@ TEST_F(MasterTest, TestFullTableName) {
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_name(other_ns_name);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -1845,7 +1848,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
     req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
 
     // Check the request.
-    ASSERT_OK(proxy_->GetTableSchema(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->GetTableSchema(req, &resp, ResetAndGetController()));
 
     // Check the responsed data.
     SCOPED_TRACE(resp.DebugString());
@@ -1893,7 +1896,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_name(other_ns_name);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -1929,12 +1932,14 @@ TEST_F(MasterTest, TestNetworkErrorOnFirstRun) {
   ASSERT_OK(mini_master_->Start());
 }
 
-static void GetTableSchema(const char* table_name,
-                           const char* namespace_name,
-                           const Schema* kSchema,
-                           MasterServiceProxy* proxy,
-                           CountDownLatch* started,
-                           AtomicBool* done) {
+namespace {
+
+void GetTableSchema(const char* table_name,
+                    const char* namespace_name,
+                    const Schema* kSchema,
+                    const MasterDdlProxy& proxy,
+                    CountDownLatch* started,
+                    AtomicBool* done) {
   GetTableSchemaRequestPB req;
   GetTableSchemaResponsePB resp;
   req.mutable_table()->set_table_name(table_name);
@@ -1944,7 +1949,7 @@ static void GetTableSchema(const char* table_name,
   while (!done->Load()) {
     RpcController controller;
 
-    CHECK_OK(proxy->GetTableSchema(req, &resp, &controller));
+    CHECK_OK(proxy.GetTableSchema(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
 
     // There are two possible outcomes:
@@ -1967,6 +1972,8 @@ static void GetTableSchema(const char* table_name,
   }
 }
 
+} // namespace
+
 // The catalog manager had a bug wherein GetTableSchema() interleaved with
 // CreateTable() could expose intermediate uncommitted state to clients. This
 // test ensures that bug does not regress.
@@ -1984,7 +1991,7 @@ TEST_F(MasterTest, TestGetTableSchemaIsAtomicWithCreateTable) {
   scoped_refptr<Thread> t;
   ASSERT_OK(Thread::Create("test", "test",
                            &GetTableSchema, kTableName, default_namespace_name.c_str(),
-                           &kTableSchema, proxy_.get(), &started, &done, &t));
+                           &kTableSchema, std::cref(*proxy_ddl_), &started, &done, &t));
 
   // Only create the table after the thread has started.
   started.Wait();

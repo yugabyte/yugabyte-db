@@ -36,87 +36,18 @@ package yb.consensus;
 
 option java_package = "org.yb.consensus";
 
-import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/consensus/consensus_types.proto";
 import "yb/consensus/metadata.proto";
-import "yb/util/opid.proto";
+import "yb/tablet/operations.proto";
 import "yb/tserver/backup.proto";
-import "yb/tserver/tserver_admin.proto";
-import "yb/tserver/tserver.proto";
-
-// Consensus-specific errors use this protobuf
-message ConsensusErrorPB {
-  // The codes for consensus responses. These are set in the status when
-  // some consensus internal error occurs and require special handling
-  // by the caller. A generic error code is purposefully absent since
-  // generic errors should use tserver.TabletServerErrorPB.
-  enum Code {
-    UNKNOWN = 0;
-
-    // Invalid term.
-    // Sent by peers in response to leader RPCs whenever the term
-    // of one of the messages sent in a batch is lower than the
-    // the term the peer is expecting.
-    INVALID_TERM = 2;
-
-    // For leader election.
-    // The last OpId logged by the candidate is older than the last OpId logged
-    // by the local peer.
-    LAST_OPID_TOO_OLD = 3;
-
-    // For leader election.
-    // The local replica has already voted for another candidate in this term.
-    ALREADY_VOTED = 4;
-
-    // The replica does not recognize the caller's request as coming from a
-    // member of the configuration.
-    NOT_IN_QUORUM = 5;
-
-    // The responder's last entry didn't match the caller's preceding entry.
-    PRECEDING_ENTRY_DIDNT_MATCH = 6;
-
-    // The local replica is either a leader, or has heard from a valid leader
-    // more recently than the election timeout, so believes the leader to be alive.
-    LEADER_IS_ALIVE = 7;
-
-    // The local replica is in the middle of servicing either another vote
-    // or an update from a valid leader.
-    CONSENSUS_BUSY = 8;
-
-    // The local replica was unable to prepare a single transaction.
-    CANNOT_PREPARE = 9;
-
-    // Split operation has been added to this Raft group log.
-    TABLET_SPLIT = 10;
-  }
-
-  // The error code.
-  required Code code = 1;
-
-  // The Status object for the error. This will include a textual
-  // message that may be more useful to present in log messages, etc,
-  // though its error code is less specific.
-  required AppStatusPB status = 2;
-}
+import "yb/tserver/tserver_types.proto";
+import "yb/util/opid.proto";
 
 // ===========================================================================
 //  External Consensus Messages
 // ===========================================================================
-
-// The types of operations that need a commit message, i.e. those that require
-// at least one round of the consensus algorithm.
-enum OperationType {
-  UNKNOWN_OP = 0;
-  NO_OP = 1;
-  WRITE_OP = 3;
-  CHANGE_METADATA_OP = 4;
-  CHANGE_CONFIG_OP = 5;
-  UPDATE_TRANSACTION_OP = 6;
-  SNAPSHOT_OP = 7;
-  TRUNCATE_OP = 8;
-  HISTORY_CUTOFF_OP = 9;
-  SPLIT_OP = 10;
-}
 
 // The transaction driver type: indicates whether a transaction is
 // being executed on a leader or a replica.
@@ -137,13 +68,6 @@ message ChangeConfigRecordPB {
 
   // The new configuration to set the configuration to.
   required RaftConfigPB new_config = 3;
-}
-
-enum ChangeConfigType {
-  UNKNOWN_CHANGE = 0;
-  ADD_SERVER = 1;
-  REMOVE_SERVER = 2;
-  CHANGE_ROLE = 3;
 }
 
 // A configuration change request for the tablet with 'tablet_id'.
@@ -210,12 +134,12 @@ message ReplicateMsg {
   optional int64 monotonic_counter = 9;
 
   required OperationType op_type = 4;
-  optional tserver.WriteRequestPB write_request = 5;
-  optional tserver.ChangeMetadataRequestPB change_metadata_request = 6;
-  optional tserver.TransactionStatePB transaction_state = 10;
+  optional tablet.WritePB write = 5;
+  optional tablet.ChangeMetadataRequestPB change_metadata_request = 6;
+  optional tablet.TransactionStatePB transaction_state = 10;
   optional tserver.TabletSnapshotOpRequestPB snapshot_request = 11;
-  optional tserver.TruncateRequestPB truncate_request = 12;
-  optional tserver.SplitTabletRequestPB split_request = 14;
+  optional tablet.TruncatePB truncate = 12;
+  optional tablet.SplitTabletRequestPB split_request = 14;
   optional ChangeConfigRecordPB change_config_record = 7;
   optional HistoryCutoffPB history_cutoff = 13;
 
@@ -434,6 +358,14 @@ message ConsensusResponsePB {
   optional fixed64 propagated_hybrid_time = 6;
 }
 
+message MultiRaftConsensusRequestPB {
+  repeated ConsensusRequestPB consensus_request = 1;
+}
+
+message MultiRaftConsensusResponsePB {
+  repeated ConsensusResponsePB consensus_response = 1;
+}
+
 // A message reflecting the status of an in-flight transaction.
 message OperationStatusPB {
   required OpIdPB op_id = 1;
@@ -532,18 +464,6 @@ message LeaderStepDownResponsePB {
   optional int64 time_since_election_failure_ms = 2;
 }
 
-enum LeaderLeaseStatus {
-  HAS_LEASE = 0;
-  OLD_LEADER_MAY_HAVE_LEASE = 1;
-  NO_MAJORITY_REPLICATED_LEASE = 2;
-}
-
-enum OpIdType {
-  UNKNOWN_OPID_TYPE = 0;
-  RECEIVED_OPID = 1;
-  COMMITTED_OPID = 2;
-}
-
 message GetLastOpIdRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 2;
@@ -613,6 +533,10 @@ message StartRemoteBootstrapResponsePB {
 service ConsensusService {
   // Analogous to AppendEntries in Raft, but only used for followers.
   rpc UpdateConsensus(ConsensusRequestPB) returns (ConsensusResponsePB);
+
+  // Similar to UpdateConsensus but takes a batch of ConsensusRequestPB
+  // and returns a batch of ConsensusResponsePB.
+  rpc MultiRaftUpdateConsensus(MultiRaftConsensusRequestPB) returns (MultiRaftConsensusResponsePB);
 
   // RequestVote() from Raft.
   rpc RequestConsensusVote(VoteRequestPB) returns (VoteResponsePB);

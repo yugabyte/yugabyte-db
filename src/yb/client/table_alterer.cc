@@ -16,9 +16,10 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/schema-internal.h"
 
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_ddl.pb.h"
 
 namespace yb {
 namespace client {
@@ -40,7 +41,7 @@ YBTableAlterer::~YBTableAlterer() {
 }
 
 YBTableAlterer* YBTableAlterer::RenameTo(const YBTableName& new_name) {
-  rename_to_ = new_name;
+  rename_to_ = std::make_unique<YBTableName>(new_name);
   return this;
 }
 
@@ -62,12 +63,12 @@ YBTableAlterer* YBTableAlterer::DropColumn(const string& name) {
 }
 
 YBTableAlterer* YBTableAlterer::SetTableProperties(const TableProperties& table_properties) {
-  table_properties_ = table_properties;
+  table_properties_ = std::make_unique<TableProperties>(table_properties);
   return this;
 }
 
 YBTableAlterer* YBTableAlterer::replication_info(const master::ReplicationInfoPB& ri) {
-  replication_info_.emplace(ri);
+  replication_info_ = std::make_unique<master::ReplicationInfoPB>(ri);
   return this;
 }
 
@@ -101,7 +102,7 @@ Status YBTableAlterer::Alter() {
   auto deadline = CoarseMonoClock::Now() + timeout;
   RETURN_NOT_OK(client_->data_->AlterTable(client_, req, deadline));
   if (wait_) {
-    YBTableName alter_name = rename_to_.get_value_or(table_name_);
+    YBTableName alter_name = rename_to_ ? *rename_to_ : table_name_;
     RETURN_NOT_OK(client_->data_->WaitForAlterTableToFinish(
         client_, alter_name, table_id_, deadline));
   }
@@ -129,11 +130,11 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
     (req->mutable_table())->set_table_id(table_id_);
   }
 
-  if (rename_to_.is_initialized()) {
-    req->set_new_table_name(rename_to_.get().table_name());
+  if (rename_to_) {
+    req->set_new_table_name(rename_to_->table_name());
 
-    if (rename_to_.get().has_namespace()) {
-      req->mutable_new_namespace()->set_name(rename_to_.get().namespace_name());
+    if (rename_to_->has_namespace()) {
+      req->mutable_new_namespace()->set_name(rename_to_->namespace_name());
     }
   }
 
@@ -179,7 +180,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
     }
   }
 
-  if (table_properties_.is_initialized()) {
+  if (table_properties_) {
     table_properties_->ToTablePropertiesPB(req->mutable_alter_properties());
   }
 
@@ -189,7 +190,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
 
   if (replication_info_) {
     // TODO: Maybe add checks for the sanity of the replication_info.
-    req->mutable_replication_info()->CopyFrom(replication_info_.get());
+    req->mutable_replication_info()->CopyFrom(*replication_info_);
   }
 
   if (txn_) {

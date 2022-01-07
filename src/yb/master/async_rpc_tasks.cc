@@ -24,11 +24,14 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/tablet_split_complete_handler.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
@@ -450,13 +453,17 @@ Status RetryingTSRpcTask::ResetTSProxy() {
   shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
   shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy;
   shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
+  shared_ptr<tserver::TabletServerBackupServiceProxy> ts_backup_proxy;
+
   RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_proxy));
   RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_admin_proxy));
   RETURN_NOT_OK(target_ts_desc_->GetProxy(&consensus_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(&ts_backup_proxy));
 
   ts_proxy_.swap(ts_proxy);
   ts_admin_proxy_.swap(ts_admin_proxy);
   consensus_proxy_.swap(consensus_proxy);
+  ts_backup_proxy_.swap(ts_backup_proxy);
 
   return Status::OK();
 }
@@ -792,7 +799,7 @@ bool AsyncAlterTable::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
                       << tablet_->tablet_id() << " waiting for a read lock.";
 
-  tserver::ChangeMetadataRequestPB req;
+  tablet::ChangeMetadataRequestPB req;
   {
     auto l = table_->LockForRead();
     VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
@@ -834,7 +841,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
       << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
       << " version " << schema_version_ << " waiting for a read lock.";
 
-  tserver::ChangeMetadataRequestPB req;
+  tablet::ChangeMetadataRequestPB req;
   {
     auto l = table_->LockForRead();
     VLOG_WITH_PREFIX(1)

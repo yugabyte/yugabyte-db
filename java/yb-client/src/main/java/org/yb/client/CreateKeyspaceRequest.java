@@ -18,12 +18,12 @@ import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.Common.HostPortPB;
-import org.yb.Common.YQLDatabase;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.consensus.Consensus;
 import org.yb.consensus.Metadata;
 import org.yb.consensus.Metadata.RaftPeerPB;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.Pair;
 
 import java.util.ArrayList;
@@ -48,8 +48,8 @@ class CreateKeyspaceRequest extends YRpc<CreateKeyspaceResponse> {
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.CreateNamespaceRequestPB.Builder builder =
-      Master.CreateNamespaceRequestPB.newBuilder();
+    final MasterDdlOuterClass.CreateNamespaceRequestPB.Builder builder =
+      MasterDdlOuterClass.CreateNamespaceRequestPB.newBuilder();
     builder.setName(this.name);
     if (this.databaseType != null)
       builder.setDatabaseType(this.databaseType);
@@ -68,8 +68,8 @@ class CreateKeyspaceRequest extends YRpc<CreateKeyspaceResponse> {
   @Override
   Pair<CreateKeyspaceResponse, Object> deserialize(CallResponse callResponse,
                                                    String masterUUID) throws Exception {
-    final Master.CreateNamespaceResponsePB.Builder respBuilder =
-        Master.CreateNamespaceResponsePB.newBuilder();
+    final MasterDdlOuterClass.CreateNamespaceResponsePB.Builder respBuilder =
+        MasterDdlOuterClass.CreateNamespaceResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasErr = respBuilder.hasError();
     CreateKeyspaceResponse response =

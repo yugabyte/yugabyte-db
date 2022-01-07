@@ -35,7 +35,9 @@
 
 #include <string>
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/common/common_types.pb.h"
+
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/util/status_fwd.h"
@@ -85,7 +87,7 @@ bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req
 // Helper function to count number of peers of type member_type whose uuid doesn't match
 // ignore_uuid. We assume that peer's uuids are never empty strings.
 int CountMemberType(const RaftConfigPB& config,
-                    const RaftPeerPB::MemberType member_type,
+                    const PeerMemberType member_type,
                     const std::string& ignore_uuid = "");
 
 // Counts the number of voters in the configuration.
@@ -103,15 +105,12 @@ int MajoritySize(int num_voters);
 // Determines the role that the peer with uuid 'uuid' plays in the cluster.
 // If the peer uuid is not a voter in the configuration, this function will return
 // NON_PARTICIPANT, regardless of whether it is listed as leader in cstate.
-RaftPeerPB::Role GetConsensusRole(const std::string& uuid,
-                                  const ConsensusStatePB& cstate);
+PeerRole GetConsensusRole(const std::string& uuid, const ConsensusStatePB& cstate);
 
 // Determines the member type that the peer with uuid 'uuid' plays in the cluster.
 // If the peer uuid is not a voter in the configuration, this function will return
 // UNKNOWN_MEMBER_TYPE.
-RaftPeerPB::MemberType GetConsensusMemberType(const std::string& uuid,
-                                              const ConsensusStatePB& cstate);
-
+PeerMemberType GetConsensusMemberType(const std::string& uuid, const ConsensusStatePB& cstate);
 
 // Verifies that the provided configuration is well formed.
 // If type == COMMITTED_QUORUM, we enforce that opid_index is set.

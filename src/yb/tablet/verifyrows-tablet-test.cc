@@ -36,7 +36,8 @@
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"

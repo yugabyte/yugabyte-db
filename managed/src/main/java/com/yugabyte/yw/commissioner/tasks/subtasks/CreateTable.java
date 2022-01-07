@@ -14,30 +14,47 @@ import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import io.swagger.annotations.ApiModelProperty;
 import java.net.InetSocketAddress;
+import java.time.Instant;
 import java.util.List;
+import java.util.Random;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
 @Slf4j
 public class CreateTable extends AbstractTaskBase {
 
+  private static final Pattern YSQLSH_CREATE_TABLE_SUCCESS =
+      Pattern.compile("Command output:.*CREATE TABLE", Pattern.DOTALL);
+  private static final int RETRY_DELAY_SEC = 5;
+  private static final int MAX_TIMEOUT_SEC = 60;
+
   // To use for the Cassandra client
   private Cluster cassandraCluster;
   private Session cassandraSession;
+  private final NodeUniverseManager nodeUniverseManager;
 
   @Inject
-  protected CreateTable(BaseTaskDependencies baseTaskDependencies) {
+  protected CreateTable(
+      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
     super(baseTaskDependencies);
+    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   // Parameters for create table task.
@@ -51,11 +68,82 @@ public class CreateTable extends AbstractTaskBase {
     // The schema of the table to be created (required for YSQL)
     @ApiModelProperty(value = "Table details")
     public TableDetails tableDetails;
+    // Flag, indicating that we need to create table only if not exists
+    @ApiModelProperty(value = "Create only if table does not exist")
+    public boolean ifNotExist;
   }
 
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
+  }
+
+  private void createPgSqlTable() {
+    if (StringUtils.isEmpty(taskParams().tableName) || taskParams().tableDetails == null) {
+      throw new IllegalArgumentException("No name specified for table.");
+    }
+    TableDetails tableDetails = taskParams().tableDetails;
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+
+    String createTableStatement = tableDetails.getPgSqlCreateTableString(taskParams().ifNotExist);
+    List<NodeDetails> tserverLiveNodes =
+        universe
+            .getUniverseDetails()
+            .getNodesInCluster(primaryCluster.uuid)
+            .stream()
+            .filter(nodeDetails -> nodeDetails.isTserver)
+            .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
+            .collect(Collectors.toList());
+    if (tserverLiveNodes.isEmpty()) {
+      throw new IllegalStateException(
+          "No live TServers for a table creation op in " + taskParams().universeUUID);
+    }
+    boolean tableCreated = false;
+    Random random = new Random();
+    int attempt = 0;
+    Instant timeout = Instant.now().plusSeconds(MAX_TIMEOUT_SEC);
+    while (Instant.now().isBefore(timeout) || attempt < 2) {
+      NodeDetails randomTServer = tserverLiveNodes.get(random.nextInt(tserverLiveNodes.size()));
+      ShellResponse response =
+          nodeUniverseManager.runYsqlCommand(
+              randomTServer, universe, tableDetails.keyspace, createTableStatement);
+      if (!response.isSuccess()
+          || !YSQLSH_CREATE_TABLE_SUCCESS.matcher(response.getMessage()).find()) {
+        log.warn(
+            "{} attempt to create table via node {} failed, response {}",
+            attempt++,
+            randomTServer.nodeName,
+            response);
+        try {
+          Thread.sleep(RETRY_DELAY_SEC);
+        } catch (InterruptedException e) {
+          throw new RuntimeException(
+              "Wait between table creation attempts was interrupted "
+                  + "for universe "
+                  + universe.name,
+              e);
+        }
+      } else {
+        tableCreated = true;
+        break;
+      }
+    }
+    if (!tableCreated) {
+      throw new RuntimeException(
+          "Failed to create table '"
+              + tableDetails.keyspace
+              + "."
+              + tableDetails.tableName
+              + "' of type "
+              + taskParams().tableType);
+    }
+    log.info(
+        "Created table '{}.{}' of type {}.",
+        tableDetails.keyspace,
+        taskParams().tableName,
+        taskParams().tableType);
   }
 
   private Session getCassandraSession() {
@@ -129,7 +217,9 @@ public class CreateTable extends AbstractTaskBase {
   @Override
   public void run() {
     try {
-      if (taskParams().tableType == TableType.YQL_TABLE_TYPE) {
+      if (taskParams().tableType == TableType.PGSQL_TABLE_TYPE) {
+        createPgSqlTable();
+      } else if (taskParams().tableType == TableType.YQL_TABLE_TYPE) {
         createCassandraTable();
       } else {
         createRedisTable();

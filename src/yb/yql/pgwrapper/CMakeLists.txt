@@ -11,6 +11,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX pgwrapper)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
@@ -24,9 +27,7 @@ ADD_YB_LIBRARY(yb_pgwrapper
 set(PQ_UTILS_SRCS
     libpq_utils.cc)
 set(PQ_UTILS_DEPS
-    pgsql_protocol_proto
     pq
-    ql_protocol_proto
     yb_common_proto
     yb_pggate_flags)
 ADD_YB_LIBRARY(pq_utils

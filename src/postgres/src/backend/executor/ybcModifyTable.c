@@ -55,7 +55,7 @@
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
 
-bool yb_force_non_transactional_writes = false;
+bool yb_disable_transactional_writes = false;
 
 /*
  * Hack to ensure that the next CommandCounterIncrement() will call
@@ -114,13 +114,12 @@ Datum YBCGetYBTupleIdFromTuple(Relation rel,
 							   HeapTuple tuple,
 							   TupleDesc tupleDesc) {
 	Oid dboid = YBCGetDatabaseOid(rel);
-	Oid relid = RelationGetRelid(rel);
 	YBCPgTableDesc ybc_table_desc = NULL;
-	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(rel), &ybc_table_desc));
 	Bitmapset *pkey    = YBGetTableFullPrimaryKeyBms(rel);
 	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
 	YBCPgYBTupleIdDescriptor *descr = YBCCreateYBTupleIdDescriptor(
-		dboid, relid, bms_num_members(pkey));
+		dboid, YbGetStorageRelid(rel), bms_num_members(pkey));
 	YBCPgAttrValueDescriptor *next_attr = descr->attrs;
 	int col = -1;
 	while ((col = bms_next_member(pkey, col)) >= 0) {
@@ -229,7 +228,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(dboid,
-	                              relid,
+	                              YbGetStorageRelid(rel),
 	                              is_single_row_txn,
 	                              &insert_stmt));
 
@@ -315,7 +314,7 @@ Oid YBCExecuteInsertForDb(Oid dboid,
                           TupleDesc tupleDesc,
                           HeapTuple tuple)
 {
-	bool non_transactional = !IsSystemRelation(rel) && yb_force_non_transactional_writes;
+	bool non_transactional = !IsSystemRelation(rel) && yb_disable_transactional_writes;
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,
@@ -583,7 +582,7 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 
 	/* Create DELETE request. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
-								  relid,
+								  YbGetStorageRelid(rel),
 								  estate->es_yb_is_single_row_modify_txn,
 								  &delete_stmt));
 

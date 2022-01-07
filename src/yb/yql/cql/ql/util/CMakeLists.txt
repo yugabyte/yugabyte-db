@@ -11,16 +11,12 @@
 # under the License.
 #
 
-add_library(ql_util
-            cql_message.cc
-            errcodes.cc
-            statement_params.cc
-            statement_result.cc
-            ql_env.cc)
+set(YB_PCH_PREFIX ql)
+set(YB_PCH_PATH ../)
 
-target_link_libraries(ql_util
-                      yb_client
-                      yb_util
-                      lz4
-                      snappy)
+ADD_YB_LIBRARY(
+    ql_util
+    SRCS cql_message.cc errcodes.cc statement_params.cc statement_result.cc ql_env.cc
+    DEPS yb_client yb_util lz4 snappy)
+
 add_dependencies(ql_util ql_parser_flex_bison_output)

@@ -15,27 +15,17 @@
 #define YB_TABLET_ABSTRACT_TABLET_H
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/transaction.pb.h"
+
+#include "yb/docdb/docdb_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/result.h"
 
 namespace yb {
 namespace tablet {
-
-struct QLReadRequestResult {
-  QLResponsePB response;
-  faststring rows_data;
-  HybridTime restart_read_ht;
-};
-
-struct PgsqlReadRequestResult {
-  PgsqlResponsePB response;
-  faststring rows_data;
-  HybridTime restart_read_ht;
-};
 
 class TabletRetentionPolicy;
 
@@ -45,7 +35,7 @@ class AbstractTablet {
 
   virtual yb::SchemaPtr GetSchema(const std::string& table_id = "") const = 0;
 
-  virtual const YQLStorageIf& QLStorage() const = 0;
+  virtual const docdb::YQLStorageIf& QLStorage() const = 0;
 
   virtual TableType table_type() const = 0;
 

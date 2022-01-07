@@ -813,8 +813,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
    * expected to get read restart errors while running each of these threads.
    *
    * For the transactional SELECTs, we're only checking for restart read error on first operation.
-   * If it happens in the second, that's always valid. (TODO(Piyush): Once read restart are handled
-   * on a per statement level for READ COMMITTED, this will change)
+   * If it happens in the second, that's always valid (except for READ COMMITTED transactions since
+   * retries are handled on a per statement level in this isolation).
    */
   private abstract class ConcurrentInsertSelectTester<Stmt extends AutoCloseable>
       extends ConcurrentInsertQueryTester<Stmt>{
@@ -1008,11 +1008,27 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               " txnsSucceeded=" + txnsSucceeded +
               " selectsWithAbortError=" + selectsWithAbortError);
 
-          // TODO(Piyush): Once we handle read restarts on a per statement level for READ COMMITTED,
-          // update the below assertion to ensure selectsSecondOpRestartRequired == 0 in that case.
-          assertTrue(
-            (!expectReadRestartErrors && selectsFirstOpRestartRequired == 0) ||
-            (expectReadRestartErrors && selectsFirstOpRestartRequired > 0));
+          if (expectReadRestartErrors) {
+            assertTrue(selectsFirstOpRestartRequired > 0 && selectsSecondOpRestartRequired > 0);
+          }
+          else {
+            assertTrue(selectsFirstOpRestartRequired == 0);
+            if (isolation == IsolationLevel.REPEATABLE_READ) {
+              // Read restart errors are retried transparently only for the first statement in the
+              // transaction
+              assertTrue(selectsSecondOpRestartRequired > 0);
+            } else if (isolation == IsolationLevel.READ_COMMITTED) {
+              // Read restarts retries are performed transparently for each statement in
+              // READ COMMITTED isolation
+              assertTrue(selectsSecondOpRestartRequired == 0);
+            } else if (isolation == IsolationLevel.SERIALIZABLE) {
+              // Read restarts can't occur in SERIALIZABLE isolation
+              assertTrue(selectsSecondOpRestartRequired == 0);
+            } else {
+              assertTrue(false); // Shouldn't reach here.
+            }
+          }
+
           assertTrue(
             (!expectConflictErrors && selectsFirstOpConflictDetected == 0) ||
             (expectConflictErrors && selectsFirstOpConflictDetected > 0));

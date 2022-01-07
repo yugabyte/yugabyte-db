@@ -39,6 +39,7 @@
 
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_index.h"
+#include "yb/consensus/log_util.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -109,14 +110,13 @@ const int64_t LogReader::kNoSizeLimit = -1;
 
 Status LogReader::Open(Env *env,
                        const scoped_refptr<LogIndex>& index,
-                       const std::string& tablet_id,
+                       std::string log_prefix,
                        const std::string& tablet_wal_path,
-                       const std::string& peer_uuid,
                        const scoped_refptr<MetricEntity>& table_metric_entity,
                        const scoped_refptr<MetricEntity>& tablet_metric_entity,
                        std::unique_ptr<LogReader> *reader) {
   std::unique_ptr<LogReader> log_reader(new LogReader(
-      env, index, tablet_id, peer_uuid, table_metric_entity, tablet_metric_entity));
+      env, index, std::move(log_prefix), table_metric_entity, tablet_metric_entity));
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
   *reader = std::move(log_reader);
@@ -125,14 +125,12 @@ Status LogReader::Open(Env *env,
 
 LogReader::LogReader(Env* env,
                      const scoped_refptr<LogIndex>& index,
-                     string tablet_id,
-                     string peer_uuid,
+                     std::string log_prefix,
                      const scoped_refptr<MetricEntity>& table_metric_entity,
                      const scoped_refptr<MetricEntity>& tablet_metric_entity)
     : env_(env),
       log_index_(index),
-      tablet_id_(std::move(tablet_id)),
-      log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid)),
+      log_prefix_(std::move(log_prefix)),
       state_(kLogReaderInitialized) {
   if (table_metric_entity) {
     read_batch_latency_ = METRIC_log_reader_read_batch_latency.Instantiate(table_metric_entity);
@@ -342,34 +340,6 @@ int64_t LogReader::GetMinReplicateIndex() const {
     }
   }
   return min_remaining_op_idx;
-}
-
-void LogReader::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx, int32_t segments_count,
-                                              int64_t max_close_time_us,
-                                              std::map<int64_t, int64_t>*
-                                              max_idx_to_segment_size) const {
-  std::lock_guard<simple_spinlock> lock(lock_);
-  DCHECK_GE(segments_count, 0);
-  for (const scoped_refptr<ReadableLogSegment>& segment : segments_) {
-    if (max_idx_to_segment_size->size() == segments_count) {
-      break;
-    }
-    DCHECK(segment->HasFooter());
-    if (segment->footer().max_replicate_index() < min_op_idx) {
-      // This means we found a log we can GC. Adjust the expected number of logs.
-      segments_count--;
-      continue;
-    }
-
-    if (max_close_time_us < segment->footer().close_timestamp_micros()) {
-      int64_t age_seconds = segment->footer().close_timestamp_micros() / 1000000;
-      VLOG_WITH_PREFIX(2)
-          << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
-          << "won't be counted towards log retention";
-      break;
-    }
-    (*max_idx_to_segment_size)[segment->footer().max_replicate_index()] = segment->file_size();
-  }
 }
 
 scoped_refptr<ReadableLogSegment> LogReader::GetSegmentBySequenceNumber(int64_t seq) const {

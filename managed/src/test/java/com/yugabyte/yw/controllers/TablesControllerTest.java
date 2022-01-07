@@ -84,14 +84,14 @@ import org.mockito.Matchers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
-import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 import play.mvc.Http;
@@ -143,14 +143,14 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti1 =
         TableInfo.newBuilder()
             .setName("Table1")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString().replace("-", "")))
             .setTableType(TableType.REDIS_TABLE_TYPE)
             .build();
     TableInfo ti2 =
         TableInfo.newBuilder()
             .setName("Table2")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString().replace("-", "")))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .build();
@@ -158,7 +158,7 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti3 =
         TableInfo.newBuilder()
             .setName("Table3")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("system"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("system"))
             .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .setRelationType(RelationType.SYSTEM_TABLE_RELATION)
@@ -555,7 +555,6 @@ public class TablesControllerTest extends FakeDBApplication {
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorNodeValue(resultJson, "storageConfigUUID", "This field is required");
-    assertErrorNodeValue(resultJson, "actionType", "This field is required");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -977,21 +976,21 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti1 =
         TableInfo.newBuilder()
             .setName("Table1")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(table1Uuid.toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .build();
     TableInfo ti2 =
         TableInfo.newBuilder()
             .setName("Table2")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(table2Uuid.toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .build();
     TableInfo ti3 =
         TableInfo.newBuilder()
             .setName("TableIndex")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(indexUuid.toString()))
             .setTableType(TableType.YQL_TABLE_TYPE)
             .setRelationType(RelationType.INDEX_TABLE_RELATION)
@@ -999,7 +998,7 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti4 =
         TableInfo.newBuilder()
             .setName("TableYsql")
-            .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
+            .setNamespace(MasterTypes.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
             .setId(ByteString.copyFromUtf8(ysqlUuid.toString()))
             .setTableType(TableType.PGSQL_TABLE_TYPE)
             .build();

@@ -89,7 +89,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     testPgDumpHelper("ysql_dump" /* binaryName */,
                      "sql/yb_ysql_dump.sql" /* inputFileRelativePath */,
                      "output/yb_ysql_dump.out" /* outputFileRelativePath */,
-                     "expected/yb_ysql_dump.out" /* expectedFileRelativePath */);
+                     "expected/yb_ysql_dump.out" /* expectedFileRelativePath */,
+                     true /* includeYbMetadata */);
   }
 
   @Test
@@ -97,7 +98,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     testPgDumpHelper("ysql_dumpall" /* binaryName */,
                      "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
                      "output/yb_ysql_dumpall.out" /* outputFileRelativePath */,
-                     "expected/yb_ysql_dumpall.out" /* expectedFileRelativePath */);
+                     "expected/yb_ysql_dumpall.out" /* expectedFileRelativePath */,
+                     false /* includeYbMetadata is not an option for dumpall */);
   }
 
   @Test
@@ -128,6 +130,7 @@ public class TestYsqlDump extends BasePgSQLTest {
       // These users are required by the output from pg_dump
       statement.execute("CREATE USER regress_rls_alice NOLOGIN");
       statement.execute("CREATE USER rls_user NOLOGIN");
+      statement.execute("CREATE USER tablegroup_test_user SUPERUSER");
       // These tables are created to shift OIDs by a few so we can be more sure that dumps aren't
       // depending on fragile OIDs
       statement.execute("CREATE TABLE this_table_is_just_to_shift_oids_by_1 (a INT)");
@@ -135,31 +138,31 @@ public class TestYsqlDump extends BasePgSQLTest {
       statement.execute("CREATE TABLE this_table_is_just_to_shift_oids_by_3 (a INT)");
     }
 
-    buildAndRunProcess("ysqlsh_load_dumpall", new String[] {
+    buildAndRunProcess("ysqlsh_load_dumpall", Arrays.asList(
       ysqlshExec.toString(),
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
       "-f", dumpallOutput.toString()
-    });
+    ));
 
-    buildAndRunProcess("ysqlsh_load_dump", new String[] {
+    buildAndRunProcess("ysqlsh_load_dump", Arrays.asList(
       ysqlshExec.toString(),
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
       "-f", dumpOutput.toString()
-    });
+    ));
 
     // Run some validations
-    int exitCode = buildAndRunProcess("ysqlsh", new String[] {
+    int exitCode = buildAndRunProcess("ysqlsh", Arrays.asList(
       ysqlshExec.toString(),
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
       "-f", input.toString(),
       "-o", actual.toString()
-    });
+    ));
 
     compareExpectedAndActual(expected, actual);
   }
@@ -167,7 +170,8 @@ public class TestYsqlDump extends BasePgSQLTest {
   void testPgDumpHelper(final String binaryName,
                         final String inputFileRelativePath,
                         final String outputFileRelativePath,
-                        final String expectedFileRelativePath) throws Exception {
+                        final String expectedFileRelativePath,
+                        final boolean includeYbMetadata) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.getPgRegressDir();
 
@@ -192,19 +196,25 @@ public class TestYsqlDump extends BasePgSQLTest {
     File actual = new File(pgRegressDir, outputFileRelativePath);
     File expected = new File(pgRegressDir, expectedFileRelativePath);
 
-    int exitCode = buildAndRunProcess("ysql_dump", new String[] {
+    List<String> args = new ArrayList<>(Arrays.asList(
       ysqlDumpExec.toString(), "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
       "-f", actual.toString(),
       "-m", getMasterLeaderAddress().toString()
-    });
+    ));
+
+    if (includeYbMetadata) {
+      args.add("--include-yb-metadata");
+    }
+
+    buildAndRunProcess(binaryName, args);
 
     compareExpectedAndActual(expected, actual);
   }
 
-  private int buildAndRunProcess(String logPrefix, String[] args) throws Exception {
-    ProcessBuilder pb = new ProcessBuilder(Arrays.asList(args));
+  private int buildAndRunProcess(String logPrefix, List<String> args) throws Exception {
+    ProcessBuilder pb = new ProcessBuilder(args);
 
     // Handle the logs output by ysqlsh.
     Process proc = pb.start();

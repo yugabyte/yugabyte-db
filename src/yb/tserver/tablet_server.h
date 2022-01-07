@@ -38,8 +38,11 @@
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
+
+#include "yb/encryption/encryption_fwd.h"
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
 #include "yb/master/master_fwd.h"
@@ -48,8 +51,6 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
-#include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -64,8 +65,6 @@ namespace yb {
 
 class Env;
 class MaintenanceManager;
-class UniverseKeyRegistryPB;
-class UniverseKeysPB;
 
 namespace tserver {
 
@@ -191,10 +190,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   virtual rocksdb::Env* GetRocksDBEnv();
 
-  void SetUniverseKeys(const UniverseKeysPB& universe_keys);
+  void SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys);
 
   virtual CHECKED_STATUS SetUniverseKeyRegistry(
-      const UniverseKeyRegistryPB& universe_key_registry);
+      const encryption::UniverseKeyRegistryPB& universe_key_registry);
 
   void GetUniverseKeyRegistrySync();
 

@@ -2,6 +2,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../config';
+import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
 
 // Create Universe
@@ -235,7 +236,8 @@ export function deleteUniverseResponse(response) {
 export function pauseUniverse(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const request = axios.post(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/pause`);
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/pause`
+  );
   return {
     type: PAUSE_UNIVERSE,
     payload: request
@@ -252,7 +254,8 @@ export function pauseUniverseResponse(response) {
 export function restartUniverse(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const request = axios.post(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/resume`);
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/resume`
+  );
   return {
     type: RESTART_UNIVERSE,
     payload: request
@@ -684,7 +687,7 @@ export function updateBackupStateResponse(response) {
 }
 
 export function fetchLiveQueries(universeUUID) {
-  const customerUUID = localStorage.getItem("customerId");
+  const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/live_queries`;
   return axios.get(endpoint);
 }
@@ -714,13 +717,13 @@ export function resetSlowQueries(universeUUID) {
 export function getAlertTemplates(filter) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_templates`;
-  return axios.post(endpoint, filter).then(resp => resp.data);
+  return axios.post(endpoint, filter).then((resp) => resp.data);
 }
 
 export function getAlertConfigurations(filter) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_configurations/list`;
-  return axios.post(endpoint, filter).then(resp => resp.data);
+  return axios.post(endpoint, filter).then((resp) => resp.data);
 }
 
 export function createAlertConfiguration(data) {
@@ -739,4 +742,29 @@ export function downloadLogs(universeUUID, nodeName) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/${nodeName}/download_logs`;
   window.open(endpoint, '_blank');
+}
+
+//G-Flags
+export function fetchGFlags(dbVersion, params) {
+  const request = axios.get(`${ROOT_URL}/metadata/version/${dbVersion}/list_gflags`, {
+    params
+  });
+  return request;
+}
+
+export function fetchParticularFlag(dbVersion, params) {
+  const request = axios.get(`${ROOT_URL}/metadata/version/${dbVersion}/gflag`, {
+    params
+  });
+  return request;
+}
+
+export function validateGFlags(dbVersion, payload) {
+  const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+  if (apiToken && apiToken !== '') {
+    axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
+  }
+  axios.defaults.headers.common['Csrf-Token'] = Cookies.get('csrfCookie');
+  const request = axios.post(`${ROOT_URL}/metadata/version/${dbVersion}/validate_gflags`, payload);
+  return request;
 }

@@ -42,16 +42,20 @@
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/tserver/tserver_types.pb.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
+#include "yb/util/opid.pb.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -249,7 +253,7 @@ class Consensus {
                                       boost::optional<tserver::TabletServerErrorPB::Code>* error);
 
   // Returns the current Raft role of this instance.
-  virtual RaftPeerPB::Role role() const = 0;
+  virtual PeerRole role() const = 0;
 
   // Returns the leader status (see LeaderStatus type description for details).
   // If leader is ready, then also returns term, otherwise OpId::kUnknownTerm is returned.
@@ -371,81 +375,6 @@ YB_DEFINE_ENUM(StateChangeReason,
     (FOLLOWER_NO_OP_COMPLETE)
     (LEADER_CONFIG_CHANGE_COMPLETE)
     (FOLLOWER_CONFIG_CHANGE_COMPLETE));
-
-// Context provided for callback on master/tablet-server peer state change for post processing
-// e.g., update in-memory contents.
-struct StateChangeContext {
-
-  const StateChangeReason reason;
-
-  explicit StateChangeContext(StateChangeReason in_reason)
-      : reason(in_reason) {
-  }
-
-  StateChangeContext(StateChangeReason in_reason, bool is_locked)
-      : reason(in_reason),
-        is_config_locked_(is_locked) {
-  }
-
-  StateChangeContext(StateChangeReason in_reason, string uuid)
-      : reason(in_reason),
-        new_leader_uuid(uuid) {
-  }
-
-  StateChangeContext(StateChangeReason in_reason,
-                     ChangeConfigRecordPB change_rec,
-                     string remove = "")
-      : reason(in_reason),
-        change_record(change_rec),
-        remove_uuid(remove) {
-  }
-
-  bool is_config_locked() const {
-    return is_config_locked_;
-  }
-
-  ~StateChangeContext() {}
-
-  std::string ToString() const {
-    switch (reason) {
-      case StateChangeReason::TABLET_PEER_STARTED:
-        return "Started TabletPeer";
-      case StateChangeReason::CONSENSUS_STARTED:
-        return "RaftConsensus started";
-      case StateChangeReason::NEW_LEADER_ELECTED:
-        return strings::Substitute("New leader $0 elected", new_leader_uuid);
-      case StateChangeReason::FOLLOWER_NO_OP_COMPLETE:
-        return "Replicate of NO_OP complete on follower";
-      case StateChangeReason::LEADER_CONFIG_CHANGE_COMPLETE:
-        return strings::Substitute("Replicated change config $0 round complete on leader",
-          change_record.ShortDebugString());
-      case StateChangeReason::FOLLOWER_CONFIG_CHANGE_COMPLETE:
-        return strings::Substitute("Config change $0 complete on follower",
-          change_record.ShortDebugString());
-      case StateChangeReason::INVALID_REASON: FALLTHROUGH_INTENDED;
-      default:
-        return "INVALID REASON";
-    }
-  }
-
-  // Auxiliary info for some of the reasons above.
-  // Value is filled when the change reason is NEW_LEADER_ELECTED.
-  const string new_leader_uuid;
-
-  // Value is filled when the change reason is LEADER/FOLLOWER_CONFIG_CHANGE_COMPLETE.
-  const ChangeConfigRecordPB change_record;
-
-  // Value is filled when the change reason is LEADER_CONFIG_CHANGE_COMPLETE
-  // and it is a REMOVE_SERVER, then that server's uuid is saved here by the master leader.
-  const string remove_uuid;
-
-  // If this is true, the call-stack above has taken the lock for the raft consensus state. Needed
-  // in SysCatalogStateChanged for master to not re-get the lock. Not used for tserver callback.
-  // Note that the state changes using the UpdateConsensus() mechanism always hold the lock, so
-  // defaulting to true as they are majority. For ones that do not hold the lock, setting
-  // it to false in their constructor suffices currently, so marking it const.
-  const bool is_config_locked_ = true;
-};
 
 class Consensus::ConsensusFaultHooks {
  public:

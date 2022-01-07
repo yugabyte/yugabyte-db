@@ -92,4 +92,9 @@ extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
 
+extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, AttrNumber *newToOldAttmap);
+
+/*  System Validation -------------------------------------------------------------------------- */
+extern void YBCValidatePlacement(const char *placement_info);
+
 #endif

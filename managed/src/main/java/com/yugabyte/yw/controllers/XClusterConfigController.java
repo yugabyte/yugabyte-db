@@ -19,24 +19,25 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Result;
 
 @Api(
-    value = "XClusterConfig",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
-    hidden = true)
+    value = "Asynchronous Replication",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class XClusterConfigController extends AuthenticatedController {
 
@@ -75,7 +76,8 @@ public class XClusterConfigController extends AuthenticatedController {
         createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
 
     // Create xCluster config object
-    XClusterConfig xClusterConfig = XClusterConfig.create(createFormData);
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
 
     // Submit task to set up xCluster config
     XClusterConfigTaskParams taskParams =
@@ -137,6 +139,19 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
 
+    // If renaming, verify xcluster replication wtih same name (between same source/target)
+    // does not already exist.
+    if (editFormData.name != null) {
+      if (XClusterConfig.getByNameSourceTarget(
+              editFormData.name,
+              xClusterConfig.sourceUniverseUUID,
+              xClusterConfig.targetUniverseUUID)
+          != null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "XCluster config with same name already exists");
+      }
+    }
+
     // Submit task to edit xCluster config
     XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig, editFormData);
     UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, params);
@@ -188,20 +203,46 @@ public class XClusterConfigController extends AuthenticatedController {
     return new YBPTask(taskUUID).asResult();
   }
 
+  /**
+   * API that syncs target universe xCluster replication configuration with platform state.
+   *
+   * @return Result
+   */
+  @ApiOperation(
+      nickname = "syncXClusterConfig",
+      value = "Sync xcluster config",
+      response = YBPTask.class)
+  public Result sync(UUID customerUUID, UUID targetUniverseUUID) {
+    log.info("Received sync XClusterConfig request for universe({})", targetUniverseUUID);
+
+    // Parse and validate request
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe targetUniverse = Universe.getValidUniverseOrBadRequest(targetUniverseUUID, customer);
+
+    // Submit task to sync xCluster config
+    XClusterConfigTaskParams params = new XClusterConfigTaskParams(targetUniverseUUID);
+    UUID taskUUID = commissioner.submit(TaskType.SyncXClusterConfig, params);
+    CustomerTask.create(
+        customer,
+        targetUniverseUUID,
+        taskUUID,
+        TargetType.Universe,
+        CustomerTask.TaskType.SyncXClusterConfig,
+        targetUniverse.name);
+
+    log.info(
+        "Submitted sync XClusterConfig for universe({}), task {}", targetUniverseUUID, taskUUID);
+
+    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    return new YBPTask(taskUUID).asResult();
+  }
+
   private XClusterConfigCreateFormData parseCreateFormData() {
     XClusterConfigCreateFormData formData =
         formFactory.getFormDataOrBadRequest(
             request().body().asJson(), XClusterConfigCreateFormData.class);
 
-    // TODO: Make a custom validation constraint for this.
-    if (formData.tables != null && formData.tables.size() == 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Table set must be non-empty");
-    }
-
-    // Set default value for bootstrapIds
-    if (formData.bootstrapIds == null) {
-      formData.bootstrapIds = new HashSet<>();
-    }
+    validateTables(formData.tables);
 
     return formData;
   }
@@ -223,20 +264,17 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Must perform one edit operation at a time");
     }
 
-    // TODO: Make a custom validation constraint for this.
-    if (formData.tables != null && formData.tables.size() == 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Table set must be non-empty");
-    }
+    validateTables(formData.tables);
 
     return formData;
   }
 
   private void checkConfigDoesNotAlreadyExist(UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     // check if config specified in form exists or not (based on shouldExist)
-    List<XClusterConfig> results =
+    List<XClusterConfig> xClusterConfig =
         XClusterConfig.getBetweenUniverses(sourceUniverseUUID, targetUniverseUUID);
 
-    if (!results.isEmpty()) {
+    if (xClusterConfig.size() > 0) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "xCluster config between source universe "
@@ -244,6 +282,15 @@ public class XClusterConfigController extends AuthenticatedController {
               + " and target universe "
               + targetUniverseUUID
               + " already exists.");
+    }
+  }
+
+  private void validateTables(Set<String> tables) {
+    // TODO: Make custom validation constraints for this.
+    if (tables != null) {
+      if (tables.size() == 0) {
+        throw new PlatformServiceException(BAD_REQUEST, "Table set must be non-empty");
+      }
     }
   }
 }

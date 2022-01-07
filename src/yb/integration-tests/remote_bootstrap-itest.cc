@@ -60,6 +60,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
+#include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
@@ -91,6 +92,7 @@ using yb::client::YBTableType;
 using yb::client::YBTableName;
 using std::shared_ptr;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::consensus::PeerMemberType;
 using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_READY;
@@ -213,9 +215,7 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
-  ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
-                                         &cluster_->proxy_cache(),
-                                         &ts_map_));
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
   client_ = ASSERT_RESULT(cluster_->CreateClient());
 }
 
@@ -1184,7 +1184,7 @@ void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
 
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_,
+                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_,
                              NULL /* error code */,
                              true /* retry */));
 
@@ -1210,7 +1210,7 @@ void RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType table_type)
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, kWaitForCrashTimeout_));
   CrashTestVerify();
 }
@@ -1232,7 +1232,7 @@ void RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType table_type) 
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, kWaitForCrashTimeout_));
 
   CrashTestVerify();
@@ -1254,7 +1254,7 @@ void RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType table_type)
 
   TServerDetails* ts = ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
   ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
 
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_tserver_index_, kWaitForCrashTimeout_));
 
@@ -1341,7 +1341,7 @@ TEST_F(RemoteBootstrapITest, TestVeryLongRemoteBootstrap) {
   // Add back TS0.
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
   LOG(INFO) << "Adding tserver with uuid " << new_ts->uuid();
-  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, new_ts, RaftPeerPB::PRE_VOTER, boost::none,
+  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, new_ts, PeerMemberType::PRE_VOTER, boost::none,
                              timeout));
   // After adding  new_ts, the leader will detect that TS0 needs to be remote bootstrapped. Verify
   // that this process completes successfully.

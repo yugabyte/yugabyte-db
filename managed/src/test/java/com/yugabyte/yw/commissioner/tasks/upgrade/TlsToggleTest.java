@@ -69,6 +69,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.WaitForFollowerLag,
           TaskType.SetNodeState);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
@@ -311,10 +312,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     if (taskParams.upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       if (nodeToNodeChange != 0) {
-        expectedPosition += 58;
+        expectedPosition += 64;
         expectedNumberOfInvocations += 24;
       } else {
-        expectedPosition += 50;
+        expectedPosition += 56;
         expectedNumberOfInvocations += 18;
       }
     } else {

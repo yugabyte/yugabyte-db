@@ -10,7 +10,4 @@ use_chrony: false
 air_gap: false
 systemd_option: false
 yb_home_dir: "/home/{{ user_name }}"
-ssh_user_home_dir: "/home/{{ ssh_user }}"
-ssh_user_bin_dir: "{{ ssh_user_home_dir }}/bin"
-yb_metrics_dir: "/tmp/yugabyte/metrics"
-ysql_cgroup_mem_fraction: 0.1
+pg_max_mem_mb: 0

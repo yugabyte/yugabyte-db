@@ -34,8 +34,11 @@ syntax = "proto2";
 
 package yb.rpc_test;
 
+import "google/protobuf/any.proto";
+import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/rpc_header.proto";
 import "yb/rpc/rtest_diff_package.proto";
+import "yb/rpc/service.proto";
 
 message AddRequestPB {
   required uint32 x = 1;
@@ -140,4 +143,117 @@ service CalculatorService {
   rpc Ping(PingRequestPB) returns (PingResponsePB);
   rpc Disconnect(DisconnectRequestPB) returns (DisconnectResponsePB);
   rpc Forward(ForwardRequestPB) returns (ForwardResponsePB);
+
+  rpc Lightweight(LightweightRequestPB) returns (LightweightResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  };
+}
+
+message ConcatRequestPB {
+  optional string lhs = 1;
+  optional string rhs = 2;
+}
+
+message ConcatResponsePB {
+  optional string result = 1;
+}
+
+service AbacusService {
+  option (yb.rpc.custom_service_name) = "yb.rpc_test.CalculatorService";
+
+  rpc Concat(ConcatRequestPB) returns (ConcatResponsePB);
+}
+
+enum LightweightEnum {
+  ZERO = 0;
+  ONE = 1;
+  TWO = 2;
+  THREE = 3;
+  FOUR = 4;
+}
+
+message LightweightSubMessagePB {
+  optional sfixed32 sf32 = 1;
+  repeated sint32 rsi32 = 2;
+  optional string str = 3;
+  repeated bytes rbytes = 4;
+
+  optional LightweightSubMessagePB cycle = 5;
+}
+
+message LightweightPairPB {
+  optional string s1 = 1;
+  optional string s2 = 2;
+}
+
+message LightweightRequestPB {
+  optional int32 i32 = 1;
+  optional int64 i64 = 2;
+  optional fixed32 f32 = 3;
+  optional fixed64 f64 = 4;
+  optional uint32 u32 = 5;
+  optional uint64 u64 = 6;
+  optional float r32 = 7;
+  optional double r64 = 8;
+  optional string str = 9;
+  optional bytes bytes = 10;
+  optional LightweightEnum en = 11;
+  optional sfixed32 sf32 = 12;
+  optional sfixed64 sf64 = 13;
+  optional sint32 si32 = 14;
+  optional sint64 si64 = 15;
+
+  repeated uint32 ru32 = 16;
+  repeated fixed32 rf32 = 17;
+  repeated string rstr = 18;
+
+  optional LightweightSubMessagePB message = 19;
+  repeated LightweightSubMessagePB repeated_messages = 20;
+
+  repeated uint64 packed_u64 = 21 [packed = true];
+  repeated fixed32 packed_f32 = 22 [packed = true];
+
+  repeated LightweightPairPB pairs = 23;
+  optional LightweightSubMessagePB ptr_message = 24 [(yb.rpc.lightweight_field).pointer = true];
+
+  map<string, int64> map = 25;
+
+
+  optional google.protobuf.Any extra_data = 26;
+}
+
+message LightweightResponsePB {
+  optional int32 i32 = 1;
+  optional int64 i64 = 2;
+  optional fixed32 f32 = 3;
+  optional fixed64 f64 = 4;
+  optional uint32 u32 = 5;
+  optional uint64 u64 = 6;
+  optional float r32 = 7;
+  optional double r64 = 8;
+  optional string str = 9;
+  optional bytes bytes = 10;
+  optional LightweightEnum en = 11;
+  optional sfixed32 sf32 = 12;
+  optional sfixed64 sf64 = 13;
+  optional sint32 si32 = 14;
+  optional sint64 si64 = 15;
+
+  repeated uint32 ru32 = 16;
+  repeated fixed32 rf32 = 17;
+  repeated string rstr = 18;
+
+  optional LightweightSubMessagePB message = 19;
+  repeated LightweightSubMessagePB repeated_messages = 20;
+  repeated LightweightSubMessagePB repeated_messages_copy = 120;
+
+  repeated uint64 packed_u64 = 21 [packed = true];
+  repeated fixed32 packed_f32 = 22 [packed = true];
+
+  repeated LightweightPairPB pairs = 23;
+  optional LightweightSubMessagePB ptr_message = 24 [(yb.rpc.lightweight_field).pointer = true];
+
+  map<string, int64> map = 25;
+
+  optional string short_debug_string = 100;
 }

@@ -36,8 +36,12 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
+import "yb/tablet/tablet_types.proto";
+import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
-import "yb/tablet/metadata.proto";
+import "yb/tserver/tserver_types.proto";
 
 service TabletServerService {
   rpc Write(WriteRequestPB) returns (WriteResponsePB);
@@ -139,7 +143,7 @@ message ImportDataResponsePB {
 
 message UpdateTransactionRequestPB {
   optional bytes tablet_id = 1;
-  optional TransactionStatePB state = 2;
+  optional tablet.TransactionStatePB state = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
 }
