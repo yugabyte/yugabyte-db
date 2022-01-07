@@ -138,7 +138,7 @@ public class LdapUtil {
           users.setPassword(generatedPassword); // Password is not used.
           users.setUserType(Users.UserType.ldap);
           users.creationDate = new Date();
-          users.setIsPrimary(true);
+          users.setIsPrimary(false);
           users.setRole(roleToAssign);
         }
       }
