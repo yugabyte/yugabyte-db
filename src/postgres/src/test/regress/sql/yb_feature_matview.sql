@@ -238,3 +238,49 @@ SELECT * FROM pg_temp_foo;
 CREATE TABLE pg_temp__123 (col int);
 INSERT INTO pg_temp__123 values (1);
 SELECT * from pg_temp__123;
+DROP TABLE test_yb CASCADE;
+
+-- Test special characters in an attribute's name
+CREATE TABLE test_yb ("xyzID''\\b" int NOT NULL, "y" int);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX ON mtest_yb("xyzID''\\b");
+REFRESH MATERIALIZED VIEW mtest_yb;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
+DROP TABLE test_yb CASCADE;
+
+-- Test with special characters in the base relation's name
+CREATE TABLE "test_YB''\\b" ("xyzid" int NOT NULL);
+INSERT INTO "test_YB''\\b" VALUES (1);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM "test_YB''\\b" WITH NO DATA;
+CREATE UNIQUE INDEX ON mtest_yb("xyzid");
+REFRESH MATERIALIZED VIEW mtest_yb;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
+DROP TABLE "test_YB''\\b" CASCADE;
+
+-- Test with special characters in the matview's name
+CREATE TABLE test_yb ("xyzid" int NOT NULL);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW "mtest_YB''\\b" AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX ON mtest_YB("xyzid");
+REFRESH MATERIALIZED VIEW mtest_YB;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_YB;
+DROP TABLE test_yb CASCADE;
+
+-- Test with special characters in the unique index's name
+CREATE TABLE test_yb ("xyzid" int NOT NULL);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX "unique_IDX''\\b" ON mtest_YB("xyzid");
+REFRESH MATERIALIZED VIEW mtest_yb;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
+DROP TABLE test_yb CASCADE;
+
+-- Test with unicode characters
+CREATE TABLE test_yb ("U&'\0022hi\0022'" int NOT NULL);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX unique_IDX ON mtest_YB("U&'\0022hi\0022'");
+REFRESH MATERIALIZED VIEW mtest_yb;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
+DROP TABLE test_yb CASCADE;
