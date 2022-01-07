@@ -125,6 +125,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
     // failover.
     flagMap.put("load_balancer_initial_delay_secs", "0");
 
+    flagMap.put("durable_wal_write", "false");
+
     // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
     // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
     if (BuildTypeUtil.isSanitizerBuild()) {
