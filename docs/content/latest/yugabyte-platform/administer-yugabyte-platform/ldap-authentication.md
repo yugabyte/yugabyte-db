@@ -46,7 +46,7 @@ To enable LDAP authentication for Yugabyte Platform login, you need to use a num
   --data-raw 'true'
   ```
 
-- Thehe LDAP port, as follows:
+- The LDAP port, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_port' \
@@ -56,7 +56,7 @@ To enable LDAP authentication for Yugabyte Platform login, you need to use a num
   --data-raw '389'
   ```
 
-- The base directory name (DN) to enable restriction of users and user groups, as follows:
+- The base distinguished name (DN) to enable restriction of users and user groups, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_basedn' \
@@ -82,11 +82,10 @@ To enable LDAP authentication for Yugabyte Platform login, you need to use a num
 
   If the UUID is not specified, then single-tenant is assumed by Yugabyte Platform.
 
+When configured, Yugabyte Platform users are able to login by specifying the common name of the user and the password to bind to the LDAP server.
+
 For additional information, see [Update a configuration key](https://yugabyte.stoplight.io/docs/yugabyte-platform/b3A6MTg5NDc2OTY-update-a-configuration-key).
 
 ## Define the Yugabyte Platform Role
 
 You need to define a Yugabyte Platform-specific role for each user on your LDAP server by setting the a `YugabytePlatformRole` annotation.
-
-
-
