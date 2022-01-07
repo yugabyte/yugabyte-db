@@ -1,8 +1,8 @@
 ---
-title: Java Driver Compatibility
-linkTitle: Compatibility
-description: Java Driver Compatibility for YugabyteDB
-headcontent: Java Driver Compatibility for YugabyteDB
+title: Supported Versions
+linkTitle: Supported Versions
+description: Supported Versions for Java Drivers, ORMs and AppDev Frameworks
+headcontent: Supported Versions for Java Drivers, ORMs and AppDev Frameworks
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   latest:

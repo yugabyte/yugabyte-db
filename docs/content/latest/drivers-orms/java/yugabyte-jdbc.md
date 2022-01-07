@@ -38,33 +38,6 @@ This page provides details for getting started with `YugabyteDB JDBC Driver` for
 
 [Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
 Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
-The driver has the following features:
-
-- It is **cluster-aware**, which eliminates the need for an external load balancer.
-
-  The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (older than 5 minutes) is discovered.
-
-- It is **topology-aware**, which is essential for geographically-distributed applications.
-
-  The driver uses servers that are part of a set of geo-locations specified by topology keys.
-
-## Load balancing
-
-The Yugabyte JDBC driver has the following load balancing features:
-
-- Uniform load balancing
-
-   <br></br>
-   In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Yugabyte JDBC driver.
-
-- Topology-aware load balancing
-
-   <br></br>
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
-
-The Yugabyte JDBC driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and availability zones, and it can also configure another pool to talk to a completely different region and availability zones.
-
- <!-- place holder for adding link to YugabyteDB University course for Java Developers -->
 
 ## Quick Start
 
@@ -102,191 +75,296 @@ To get the driver and HikariPool, add the following dependencies to the Gradle p
 implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
+#### Add the YugabyteDB JDBC Driver Dependency
 
-## Fundamentals
+If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your `pom.xml` of your project.
 
-Learn how to perform the common tasks required for Java App Development using the PostgreSQL JDBC driver
+```xml
+<dependency>
+  <groupId>com.yugabyte</groupId>
+  <artifactId>jdbc-yugabytedb</artifactId>
+  <version>42.3.0</version>
+</dependency>
 
-{{< note title="Note">}}
-
-The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
-
-{{< /note >}}
-
-### Load balancing connection properties
-
-The following connection properties need to be added to enable load balancing:
-
-- load-balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud:region:zone`.
-
-## Use the driver
-
-The YugabyteDB JDBC driver’s driver class is `com.yugabyte.Driver`.
-
-To use the driver, do the following:
-
-- Pass new connection properties for load balancing in the connection URL or properties pool.
-
-  To enable uniform load balancing across all servers, you set the `load-balance` property to `true` in the URL, as per the following example:
-
-  ```java
-  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
-  DriverManager.getConnection(yburl);
-  ```
-
-  To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
-
-  ```java
-  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1.region1:zone1,cloud1.region1.zone2";
-  DriverManager.getConnection(yburl);
-  ```
-
-- Configure `YBClusterAwareDataSource` for uniform load balancing and then use it to create a connection, as per the following example:
-
-  ```java
-  String jdbcUrl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte";
-  YBClusterAwareDataSource ds = new YBClusterAwareDataSource();
-  ds.setUrl(jdbcUrl);
-  // Set topology keys to enable topology-aware distribution
-  ds.setTopologyKeys("cloud1.region1.zone1,cloud1.region2.zone2");
-  // Provide more end points to prevent first connection failure
-  // if an initial contact point is not available
-  ds.setAdditionalEndpoints("127.0.0.2:5433,127.0.0.3:5433");
-
-  Connection conn = ds.getConnection();
-  ```
-
-- Configure `YBClusterAwareDataSource` with a pooling solution such as Hikari and then use it to create a connection, as per the following example:
-
-  ```java
-  Properties poolProperties = new Properties();
-  poolProperties.setProperty("dataSourceClassName", "com.yugabyte.ysql.YBClusterAwareDataSource");
-  poolProperties.setProperty("maximumPoolSize", 10);
-  poolProperties.setProperty("dataSource.serverName", "127.0.0.1");
-  poolProperties.setProperty("dataSource.portNumber", "5433");
-  poolProperties.setProperty("dataSource.databaseName", "yugabyte");
-  poolProperties.setProperty("dataSource.user", "yugabyte");
-  poolProperties.setProperty("dataSource.password", "yugabyte");
-  // If you want to provide additional end points
-  String additionalEndpoints = "127.0.0.2:5433,127.0.0.3:5433,127.0.0.4:5433,127.0.0.5:5433";
-  poolProperties.setProperty("dataSource.additionalEndpoints", additionalEndpoints);
-  // If you want to load balance between specific geo locations using topology keys
-  String geoLocations = "cloud1.region1.zone1,cloud1.region2.zone2";
-  poolProperties.setProperty("dataSource.topologyKeys", geoLocations);
-
-  poolProperties.setProperty("poolName", name);
-
-  HikariConfig config = new HikariConfig(poolProperties);
-  config.validate();
-  HikariDataSource ds = new HikariDataSource(config);
-
-  Connection conn = ds.getConnection();
-
-  ```
-
-## Try it out
-
-This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. You’ll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/latest/admin/yb-ctl/#root) utility.
-Next, you’ll use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
-
-{{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
-{{< /note>}}
-
-### Install YugabyteDB and create a local Cluster
-
-Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
-
-```sh
-$ cd <path-to-yugabytedb-installation>
-
-./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
+<!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
+<dependency>
+  <groupId>com.zaxxer</groupId>
+  <artifactId>HikariCP</artifactId>
+  <version>4.0.3</version>
+</dependency>
 ```
 
-### Check Uniform load balancing using yb-sample-apps
+If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
-- Download the yb-sample-apps JAR file.
-
-  ```sh
-  wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.4.0/yb-sample-apps.jar
-  ```
-
-- Run the SqlInserts workload application, which creates multiple threads that perform read and write operations on a sample table created by the app. Uniform load balancing is enabled by default in all Sql* workloads of the yb-sample-apps, including SqlInserts.
-
-  ```sh
-  java -jar yb-sample-apps.jar  \
-       --workload SqlInserts \
-       --num_threads_read 15 --num_threads_write 15 \
-       --nodes 127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433
-  ```
-
-The application creates 30 connections, 1 for each reader and writer threads. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes.
-This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or simply search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
-
-![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
-
-### Check Topology-aware load balancing using yb-sample-apps
-
-For topology-aware load balancing, run the SqlInserts workload application with the `topology-keys1` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.
-
-  ```sh
-  java -jar yb-sample-apps.jar \
-        --workload SqlInserts \
-        --nodes 127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433 \
-        --num_threads_read 15 --num_threads_write 15 \
-        --topology_keys aws.us-west.us-west-2a
-  ```
-
-To verify the behavior, wait for the app to create connections and then navigate to `http://<host>:13000/rpcz`. The first two nodes should have 15 connections each, and the third node should have zero connections.
-
-## Clean up
-
-When you're done experimenting, run the following command to destroy the local cluster:
-
-```sh
-./bin/yb-ctl destroy
+```java
+implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
+implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
-## Other examples
+### Create a YugabyteDB Cluster
 
-To access sample applications that use the Yugabyte JDBC driver, visit [YugabyteDB JDBC driver](https://github.com/yugabyte/pgjdbc).
+You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/latest/quick-start/install/macos).
 
-To use the samples, complete the following steps:
+Alternatively, Set up a Free tier Cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](latest/yugabyte-cloud/cloud-quickstart/qs-add/).
 
-- Install YugabyteDB by following instructions provided in [Quick Start Guide](/latest/quick-start/install/).
+### Connect to your Cluster
 
-- Build the examples by running `mvn package`.
+After seeting up the dependenices, we implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
 
-- Run the `run.sh` script, as per the following guideline:
+We will setup the driver properties for pass in the credentials and SSL Certs for connecting to your cluster. Java Apps can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database will be part of `java.sql.*` package.
 
-  ```sh
-  ./run.sh [-v] [-i] -D -<path_to_yugabyte_installation>
-  ```
+Use the `DriverManager.getConnection` method for getting connection object for the YugabyteDB Database which can be used for performing DDLs and DMLs against the database.
 
-  In the preceding command, replace:
+Example JDBC URL for connecting to YugabyteDB can be seen below.
 
-  - *[-v] [-i]* with `-v` if you want to run the script in `VERBOSE` mode.
+```java
+string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true"
+DriverManager.getConnection(yburl);
+```
 
-  - *[-v] [-i]* with `-i` if you want to run the script in `INTERACTIVE` mode.
+| JDBC Params | Description | Default |
+| :---------- | :---------- | :------ |
+| hostname  | hostname of the YugabyteDB instance | localhost
+| port |  Listen port for YSQL | 5433
+| database | database name | yugabyte
+| user | user for connecting to the database | yugabyte
+| password | password for connecting to the database | yugabyte
+| load-balance | enables uniform load balancing | true
 
-  - *[-v] [-i]* with `-v -i` if you want to run the script in both `VERBOSE` and `INTERACTIVE` mode at the same time.
+Example JDBC URL for connecting to YugabyteDB cluster enabled with on the wire SSL encryption.
 
-  - *<path_to_yugabyte_installation>* with the path to the directory where you installed YugabyteDB.
+```java
+string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+Connection conn = DriverManager.getConnection(yburl);
+```
 
-  The following is an example of a shell command that runs the script:
+| JDBC Params | Description | Default |
+| :---------- | :---------- | :------ |
+| ssl  | Enable SSL client connection   | false
+| sslmode | SSL mode  | require
+| sslrootcert | path to the root certificate on your computer | ~/.postgresql/
 
-  ```sh
-  ./run.sh -v -i -D ~/yugabyte-2.7.2.0/
-  ```
+If you have created Free tier cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/), [Follow the steps](/latest/yugabyte-cloud/cloud-connect/connect-applications/) to download the Credentials and SSL Root certificate.
 
-  {{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher.
-  {{< /note>}}
+### Query the YugabyteDB Cluster from Your Application
 
-  The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
+Next, Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the sample code below in order to setup a YugbyteDB Tables and query the Table contents from the java client. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
 
-  When started, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Choose one of these options to run the corresponding script with its Java application in the background.
+```java
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.util.Scanner;
+
+public class QuickStartApp {
+  public static void main(String[] args) throws ClassNotFoundException, SQLException {
+    Class.forName("com.yugabyte.Driver");
+    String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
+    Connection conn = DriverManager.getConnection(yburl);
+    Statement stmt = conn.createStatement();
+    try {
+        System.out.println("Connected to the YugabyteDB Cluster successfully.");
+        stmt.execute("DROP TABLE IF EXISTS employee");
+        stmt.execute("CREATE TABLE IF NOT EXISTS employee" +
+                    "  (id int primary key, name varchar, age int, language text)");
+        System.out.println("Created table employee");
+
+        String insertStr = "INSERT INTO employee VALUES (1, 'John', 35, 'Java')";
+        stmt.execute(insertStr);
+        System.out.println("EXEC: " + insertStr);
+
+        ResultSet rs = stmt.executeQuery("select * from employee");
+        while (rs.next()) {
+          System.out.println(String.format("Query returned: name = %s, age = %s, language = %s",
+                                          rs.getString(2), rs.getString(3), rs.getString(4)));
+        }
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+    }
+  }
+}
+```
+
+When you run the Project, `QuickStartApp.java` should output something like below:
+
+```text
+Connected to the YugabyteDB Cluster successfully.
+Created table employee
+Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
+Query returned: name=John, age=35, language: Java
+```
+
+if you receive no output or error, check whether you included the proper connection string in your java class with the right credentials.
+
+After completing this steps, you should have a working Java app that uses YugabyteDB JDBC driver for connecting to your cluster, setup tables, run query and print out results.
+
+## Working with Domain Objects (ORMs)
+
+In the previous section, you ran a SQL query on a sample table and displayed the results set. In this section, we'll lear to use the Java Objects (Domain Objects) to store and retrive data from YugabyteDB Cluster.
+
+Java developers are often required to store the Domain objects of a Java Application into the Database Tables. An Object Relational Mapping (ORM) tool is used by the developers to handle database access, it allows developeres to map their object-oriented domain classes into the database tables. It simplies the CRUD operations on your domain objects and easily allow the evoluation of Domain objects to applied to the Database tables.
+
+[Hibernate](https://hibernate.org/orm/) is a popular ORM provider for Java applications which is widely used by Java Developers for Database access. YugabyteDB provides full support for Hiberante ORM and also can be easily used in any environment supporting Java Persistence API (JPA) including Java SE applications, and Java EE application servers connecting to YugabyteDB cluster.
+
+### Add the Hibernate ORM Dependency
+
+If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your `pom.xml` of your project.
+
+```xml
+<dependency>
+    <groupId>org.hibernate</groupId>
+    <artifactId>hibernate-core</artifactId>
+    <version>5.4.19.Final</version>
+</dependency>
+
+<dependency>
+    <groupId>org.hibernate</groupId>
+    <artifactId>hibernate-annotations</artifactId>
+    <version>3.5.6-Final</version>
+</dependency>
+```
+
+If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
+
+```java
+implementation 'org.hibernate:hibernate-core:5.4.19.Final'
+implementation 'org.hibernate:hibernate-annotations:3.5.6-Final'
+```
+
+### Implementing ORM mapping for YugabyteDB
+
+Create a file called `Employee.java` in the base package directory of your project and add the following code for a class that includes the following fields, setters and getters,
+
+```java
+@Entity
+@Table(name = "employee")
+public class Employee {
+
+  @Id
+  Integer id;
+  String name;
+  Integer age;
+  String language;
+
+  // Setters and Getters
+
+}
+```
+
+Create a Data Access Object (DAO) `EmployeeDAO.java` in the base package directory. DAO object is used for implementing the basic CRUD operations for the Domain object `Employee.java`. Copy the sample below sample code into your project,
+
+```java
+import org.hibernate.Session;
+
+public class EmployeeDAO {
+
+  Session hibernateSession;
+
+  public EmployeeDAO (Session session) {
+    hibernateSession = session;
+  }
+
+  public void save(final Employee employeeEntity) {
+    Transaction transaction = session.beginTransaction();
+        try {
+            session.save(entity);
+            transaction.commit();
+        } catch(RuntimeException rte) {
+            transaction.rollback();
+        }
+        session.close();
+  }
+
+  public Optional<Employee> findById(final Integer id) {
+    return Optional.ofNullable(session.get(Emplyee.class, id));
+  }
+}
+```
+<!-- Explain the above hibernate code especially hibernate session -->
+
+Add the hibernate configurations file `hibernate.cfg.xml` in the resources directory. Copy the following contents into `src/main/resources/hibernate.cfg.xml`
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE hibernate-configuration SYSTEM
+        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+
+<hibernate-configuration>
+    <session-factory>
+        <property name="hibernate.dialect">org.hibernate.dialect.PostgreSQLDialect</property>
+        <property name="hibernate.connection.driver_class">org.postgresql.Driver</property>
+        <property name="hibernate.connection.url">jdbc:postgresql://localhost:5433/yugabyte</property>
+        <property name="hibernate.connection.username">yugabyte</property>
+        <property name="hibernate.connection.password"></property>
+        <property name="hibernate.hbm2ddl.auto">update</property>
+        <property name="show_sql">true</property>
+        <property name="generate-ddl">true</property>
+        <property name="hibernate.ddl-auto">generate</property>
+        <property name="hibernate.connection.isolation">8</property>
+        <property name="hibernate.current_session_context_class">thread</property>
+        <property name="javax.persistence.create-database-schemas">true</property>
+        <mapping class="com.yugabyte.hibernatedemo.model.Employee"/>
+    </session-factory>
+</hibernate-configuration>
+```
+
+Next, Create a new Java class called `QuickStartOrmApp.java` in the base package directory of your project. Copy the sample code below in order to query the Table contents from the java client using Hibernate ORM. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
+
+```java
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.util.Scanner;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+
+public class QuickStartOrmApp {
+
+
+  public static void main(String[] args) throws ClassNotFoundException, SQLException {
+
+    SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
+    Session session = sessionFactory.openSession();
+
+    try {
+          System.out.println("Connected to the YugabyteDB Cluster successfully.");
+          EmplyeeDAO employeeDAO = new EmployeeDAO(session);
+          // Save an employee
+          employeeDAO.save(new Employee());
+
+          // Find the emplyee
+          Employee employee = employeeDAO.findByID(1);
+          System.out.println("Query Returned:" + employee.toString());
+        }
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+    }
+  }
+}
+```
+
+```text
+When you run the Project, QuickStartApp.java should output something like below:
+
+Connected to the YugabyteDB Cluster successfully.
+Created table employee
+Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
+Query returned: name=John, age=35, language: Java
+```
+
+## Next Steps
 
 ## Further Reading
 
