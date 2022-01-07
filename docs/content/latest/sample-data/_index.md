@@ -2,6 +2,7 @@
 title: Sample datasets
 linkTitle: Sample datasets
 description: Sample datasets
+headcontent: Explore the YugabyteDB YSQL API using sample datasets.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
 menu:
@@ -10,13 +11,17 @@ menu:
    weight: 2950
 ---
 
-YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. You can install and use the sample datasets using either a local installation of YugabyteDB, or by connecting to a cluster in Yugabyte Cloud (including your free cluster) via a client shell.
+YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. All of the datasets are PostgreSQL-compatible, and you can explore them using the [ysqlsh shell](../admin/ysqlsh/) to compare between PostgreSQL and the YugabyteDB [YSQL API](../api/ysql/).
 
-All of the datasets are PostgreSQL-compatible, and you can explore them using the [ysqlsh shell](../admin/ysqlsh/) to compare between PostgreSQL and the YugabyteDB [YSQL API](../api/ysql/).
+You can install and use the sample datasets using either a local installation of YugabyteDB, or by connecting to a cluster in Yugabyte Cloud (including your free cluster).
 
-For information on installing YugabyteDB, refer to [Quick Start](../quick-start/).
+Local install
+: The ysqlsh shell is included with the YugabyteDB installation. For information on installing YugabyteDB, refer to [Quick start](../quick-start/).
 
-For information on connecting to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Connect via Client Shell](../yugabyte-cloud/cloud-basics/connect-to-clusters#connect-via-client-shell). To get started with Yugabyte Cloud, refer to [Get Started](../yugabyte-cloud/cloud-basics/). The exercises can be run on free or paid clusters. Cloud shell does not support loading the data, but once the data is loaded, you can use cloud shell to run exercises and query the database.
+Yugabyte Cloud
+: For information on connecting to your Yugabyte Cloud cluster using `ysqlsh` in cloud shell, refer to [Connect using cloud shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/).
+: For information on connecting to your Yugabyte Cloud cluster using the `ysqlsh` client installed on your computer, refer to [Connect via client shells](../yugabyte-cloud/cloud-connect/connect-client-shell/).
+: The exercises can be run on free or standard clusters. To get started with Yugabyte Cloud, refer to [Quick start](../yugabyte-cloud/cloud-quickstart/).
 
 <div class="row">
 
@@ -31,7 +36,7 @@ For information on connecting to your Yugabyte Cloud cluster using `ysqlsh`, ref
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="northwind/">
           <div class="head">
