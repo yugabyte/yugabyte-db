@@ -20,8 +20,8 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const initialFormValues = {
     restoreToUniverseUUID: '',
-    restoreToTableName: '',
     restoreToKeyspace: '',
+    restoreToTableName: '',
     storageConfigUUID: '',
     storageLocation: '',
     restoreTimeStamp: '',
@@ -55,9 +55,8 @@ function mapStateToProps(state, ownProps) {
      * is a string while the other options, when selected, return an object
      * with the format { label: <display>, value: <internal> }
      */
-    initialFormValues.restoreToUniverseUUID = { value: universeUUID, label: currentUniverse.data.name };
-
     initialFormValues.restoreToTableName = tableName;
+    initialFormValues.restoreToUniverseUUID = { value: universeUUID, label: currentUniverse.data.name };
     initialFormValues.restoreTableNameList = tableNameList;
     initialFormValues.restoreTableUUIDList = tableUUIDList;
     initialFormValues.restoreToKeyspace = keyspace;

@@ -327,7 +327,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     // now a default for play.http.parser.maxMemoryBuffer)
     String largeKeyspace = new String(new char[keyspaceSz]).replace("\0", "#");
     bodyJson.put("keyspace", largeKeyspace);
-    bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", "s3://foo/bar");
@@ -366,7 +365,6 @@ public class BackupsControllerTest extends FakeDBApplication {
         app.config().getMemorySize("play.http.parser.maxMemoryBuffer").toBytes();
     String largeKeyspace = new String(new char[(int) (maxReqSizeInBytes)]).replace("\0", "#");
     bodyJson.put("keyspace", largeKeyspace);
-    bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", "s3://foo/bar");
