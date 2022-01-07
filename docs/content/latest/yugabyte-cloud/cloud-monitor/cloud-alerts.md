@@ -15,6 +15,8 @@ showAsideToc: true
 
 Use alerts to notify you and your team members when cluster and database resource use exceeds predefined limits, or of potential billing issues.
 
+If you receive an alert repeatedly, you may need to optimize your workload or scale your cluster.
+
 ## Configure alerts
 
 Enable alerts for your cloud using the **Configuration** tab on the **Alerts** page.
