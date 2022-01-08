@@ -1779,6 +1779,7 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
     Oid *types = NULL;
     int nargs = 0;
     int i = 0;
+    bool is_zero_boundary_case = false;
 
     /* build argument values to build the object */
     nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
@@ -1862,6 +1863,18 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
             Assert(agtv_path->type == AGTV_PATH);
 
             /*
+             * If the VLE path is the zero boundary case, there isn't an edge to
+             * process. Additionally, the start and end vertices are the same.
+             * We need to flag this condition so that we can skip processing the
+             * following vertex.
+             */
+            if (agtv_path->val.array.num_elems == 1)
+            {
+                is_zero_boundary_case = true;
+                continue;
+            }
+
+            /*
              * Add in the interior path - excluding the start and end vertices.
              * The other iterations of the for loop has handled start and will
              * handle end.
@@ -1888,10 +1901,22 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
                      errmsg("paths consist of alternating vertices and edges"),
                      errhint("argument %d must be an vertex", i + 1)));
         }
-        else
+        /*
+         * This will always add in vertices or edges depending on the loop
+         * iteration. However, when it is a vertex, there is the possibility
+         * that the previous iteration flagged a zero boundary case. We can only
+         * add it if this is not the case. If this is an edge, it is not
+         * possible to be a zero boundary case.
+         */
+        else if (is_zero_boundary_case == false)
         {
             add_agtype(AGTYPE_P_GET_DATUM(agt), false, &result, types[i],
                        false);
+        }
+        /* If we got here, we had a zero boundary case. So, clear it */
+        else
+        {
+            is_zero_boundary_case = false;
         }
     }
 
