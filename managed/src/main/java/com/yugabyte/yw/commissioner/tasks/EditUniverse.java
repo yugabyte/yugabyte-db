@@ -84,10 +84,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                   updateOnPremNodeUuidsOnTaskParams();
                   // Perform pre-task actions.
                   preTaskActions(u);
-                  // Run preflight checks on onprem nodes to be added.
-                  if (!performUniversePreflightChecks(taskParams().clusters)) {
-                    throw new RuntimeException("Preflight checks failed.");
-                  }
                   // Select master nodes, if needed. Changes in masters are not automatically
                   // applied.
                   SelectMastersResult selection = selectMasters(u.getMasterLeaderHostText());
@@ -115,6 +111,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                   updateTaskDetailsInDB(taskParams());
                 }
               });
+
+      // Create preflight node check tasks for on-prem nodes.
+      createPreflightNodeCheckTasks(universe, taskParams());
 
       Set<NodeDetails> addedMasters =
           taskParams()
