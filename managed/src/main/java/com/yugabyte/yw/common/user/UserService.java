@@ -37,9 +37,6 @@ public class UserService {
     try {
       UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
       String configFile = user.getRole().getFeaturesFile();
-      if (customer.code.equals("cloud")) {
-        configFile = "cloudFeatureConfig.json";
-      }
       if (configFile == null) {
         return userWithFeatures;
       }
