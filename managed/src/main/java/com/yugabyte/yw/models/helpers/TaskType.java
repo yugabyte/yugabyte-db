@@ -286,7 +286,10 @@ public enum TaskType {
 
   CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig"),
 
+  PreflightNodeCheck("subtasks.PreflightNodeCheck"),
+
   RunYsqlUpgrade("subtasks.RunYsqlUpgrade");
+
   private String relativeClassPath;
 
   TaskType(String relativeClassPath) {

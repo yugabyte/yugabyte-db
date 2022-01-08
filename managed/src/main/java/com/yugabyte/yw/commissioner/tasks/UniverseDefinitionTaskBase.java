@@ -7,7 +7,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -16,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -1210,6 +1210,63 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public static Set<NodeDetails> getNodesInCluster(UUID uuid, Set<NodeDetails> nodes) {
     return nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  // Create preflight node check tasks for on-prem nodes in the cluster and add them to the
+  // SubTaskGroup.
+  private void createPreflightNodeCheckTasks(
+      SubTaskGroup subTaskGroup, Cluster cluster, Set<NodeDetails> nodesToBeProvisioned) {
+    if (cluster.userIntent.providerType == CloudType.onprem) {
+      for (NodeDetails node : nodesToBeProvisioned) {
+        PreflightNodeCheck.Params params = new PreflightNodeCheck.Params();
+        UserIntent userIntent = cluster.userIntent;
+        params.nodeName = node.nodeName;
+        params.deviceInfo = userIntent.deviceInfo;
+        params.azUuid = node.azUuid;
+        params.universeUUID = taskParams().universeUUID;
+        UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
+            params.communicationPorts, node);
+        params.extraDependencies.installNodeExporter =
+            taskParams().extraDependencies.installNodeExporter;
+        PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
+        task.initialize(params);
+        subTaskGroup.addTask(task);
+      }
+    }
+  }
+
+  /**
+   * Create preflight node check tasks for on-prem nodes in the universe if the nodes are in
+   * ToBeAdded state.
+   *
+   * @param universe the universe
+   * @param taskParams the task params
+   */
+  public void createPreflightNodeCheckTasks(
+      Universe universe, UniverseDefinitionTaskParams taskParams) {
+    Set<Cluster> clusters =
+        taskParams
+            .clusters
+            .stream()
+            .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+            .collect(Collectors.toSet());
+    if (clusters.isEmpty()) {
+      return;
+    }
+    SubTaskGroup subTaskGroup = new SubTaskGroup("SetNodeStatus", executor);
+    for (Cluster cluster : clusters) {
+      Set<NodeDetails> nodesToProvision =
+          PlacementInfoUtil.getNodesToProvision(taskParams().getNodesInCluster(cluster.uuid));
+      applyOnNodesWithStatus(
+          universe,
+          nodesToProvision,
+          false,
+          NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+          filteredNodes -> {
+            createPreflightNodeCheckTasks(subTaskGroup, cluster, filteredNodes);
+          });
+    }
+    subTaskGroupQueue.add(subTaskGroup);
   }
 
   /**
