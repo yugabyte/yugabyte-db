@@ -25,9 +25,9 @@ ysqlsh: could not connect to server: Operation timed out
     TCP/IP connections on port 5433?
 ```
 
-If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-basics/add-connections/). If your IP address has changed, add the new IP address.
+If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-secure-clusters/add-connections/). If your IP address has changed, add the new IP address.
 
-If you have a VPC configured, add one or more IP addresses from the peered VPC to the cluster [IP allow list](../cloud-basics/add-connections/).
+If you have a VPC configured, add one or more IP addresses from the peered VPC to the cluster [IP allow list](../cloud-secure-clusters/add-connections/).
 
 ### SSL off
 
@@ -55,7 +55,7 @@ If you are unable to successfully create the VPC, contact [Yugabyte Support](htt
 
 #### Peering connection status is Pending
 
-A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-vpcs/cloud-add-peering/#peer-aws).
+A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-secure-clusters/cloud-vpcs/cloud-add-peering).
 
 #### Peering connection status is Expired (AWS only)
 
@@ -67,4 +67,4 @@ Select the peering request to display the **Peering Details** sheet and check th
 
 #### VPC and peering connection are active but your application cannot connect to the cluster
 
-Add the application VPC CIDR address to the [cluster IP allow list](../cloud-basics/add-connections/). Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
+Add the application VPC CIDR address to the [cluster IP allow list](../cloud-secure-clusters/add-connections/). Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
