@@ -30,6 +30,8 @@
 # under the License.
 #
 
+add_library(gutil_c STATIC dynamic_annotations.c utf/rune.c)
+
 set(YB_PCH_PREFIX gutil)
 set(YB_PCH_DEP_LIBS gmock)
 
@@ -37,7 +39,6 @@ set(GUTIL_SRCS
   bits.cc
   callback_internal.cc
   cpu.cc
-  dynamic_annotations.c
   hash/city.cc
   hash/hash.cc
   hash/jenkins.cc
@@ -65,7 +66,6 @@ set(GUTIL_SRCS
   strtoint.cc
   sysinfo.cc
   threading/thread_collision_warner.cc
-  utf/rune.c
   walltime.cc)
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
@@ -75,7 +75,8 @@ endif()
 set(GUTIL_LIBS
   glog
   gflags
-  protobuf)
+  protobuf
+  gutil_c)
 
 if (NOT APPLE)
   set(GUTIL_LIBS

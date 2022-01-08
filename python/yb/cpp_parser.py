@@ -1,3 +1,4 @@
+import logging
 import re
 import typing
 
@@ -110,7 +111,7 @@ def parse(fname, lines) -> ParsedFile:
         if parsed_include is not None:
             if result.trivial and last_unknown is not None:
                 result.trivial = False
-                print("{} non trivial because of {}".format(fname, last_unknown))
+                logging.debug("{} non trivial because of {}".format(fname, last_unknown))
             if result.trivial and if_nesting != 0:
                 result.trivial = False
             trivial = if_nesting == 0 and len(parsed_include.tail) == 0

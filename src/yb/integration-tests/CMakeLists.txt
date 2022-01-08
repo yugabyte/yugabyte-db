@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX integration-tests)
-set(YB_PCH_DEP_LIBS boost_regex)
+set(YB_PCH_DEP_LIBS boost_regex opid_proto)
 
 ADD_YB_TEST_LIBRARY(
     cdc_test_util

@@ -75,6 +75,4 @@ target_link_libraries(ql_parser
                       yb_util)
 add_dependencies(ql_parser ql_ptree)
 
-if(${YB_PCH_ON})
-  target_precompile_headers(ql_parser REUSE_FROM ql_util)
-endif()
+yb_use_pch(ql_parser ql)

@@ -12,6 +12,7 @@
 #
 
 set(YB_PCH_PREFIX docdb)
+set(YB_PCH_DEP_LIBS opid_proto)
 
 # docdb_proto
 

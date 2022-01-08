@@ -23,6 +23,4 @@ ADD_YB_LIBRARY(ql_api
                SRCS statement.cc ql_processor.cc
                DEPS ql_parser ql_audit ql_sem ql_exec ql_util)
 
-if(${YB_PCH_ON})
-  target_precompile_headers(ql_api REUSE_FROM ql_util)
-endif()
+yb_use_pch(ql_api ql)

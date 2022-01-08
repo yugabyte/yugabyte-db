@@ -31,6 +31,7 @@
 #
 
 set(YB_PCH_PREFIX consensus)
+set(YB_PCH_DEP_LIBS opid_proto)
 
 #########################################
 # consensus_metadata_proto

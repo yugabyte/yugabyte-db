@@ -14,7 +14,7 @@
 # RocksDB build.
 
 set(YB_PCH_PREFIX rocksdb)
-set(YB_PCH_DEP_LIBS yb_test_util)
+set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
 
 PROTOBUF_GENERATE_CPP(
   ROCKSDB_PROTO_SRCS ROCKSDB_PROTO_HDRS ROCKSDB_PROTO_TGTS
