@@ -27,7 +27,7 @@ ysqlsh: could not connect to server: Operation timed out
 
 If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-basics/add-connections/). If your IP address has changed, add the new IP address.
 
-If you have a VPC configured, add one or more IP addresses from the peered VPN to the cluster [IP allow list](../cloud-basics/add-connections/).
+If you have a VPC configured, add one or more IP addresses from the peered VPC to the cluster [IP allow list](../cloud-basics/add-connections/).
 
 ### SSL off
 
@@ -59,7 +59,7 @@ A peering connection status of _Pending_ indicates that you need to configure yo
 
 #### Peering connection status is Expired (AWS only)
 
-The peering request was not accepted. Retry the peering connection.
+The peering request was not accepted. Recreate the peering connection.
 
 #### Peering connection status is Failed
 
