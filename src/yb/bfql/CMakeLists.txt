@@ -12,6 +12,7 @@
 #
 
 set(YB_PCH_PREFIX bfql)
+set(YB_PCH_DEP_LIBS gutil yb_test_util yb_util)
 
 # Build the code generator.
 add_executable(bfql_codegen

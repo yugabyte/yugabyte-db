@@ -63,5 +63,6 @@
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/util/format.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
