@@ -17,6 +17,4 @@ ADD_YB_LIBRARY(
          eval_where.cc eval_misc.cc eval_aggr.cc eval_json.cc exec_context.cc executor.cc
     DEPS ql_parser ql_audit yb_client yb_util)
 
-if(${YB_PCH_ON})
-  target_precompile_headers(ql_exec REUSE_FROM ql_util)
-endif()
+yb_use_pch(ql_exec ql)
