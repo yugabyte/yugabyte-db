@@ -1729,7 +1729,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   if (placement_info_split.size() < 1) {
     return STATUS(InvalidCommand, "Cluster config must be a list of "
     "placement infos seperated by commas. "
-    "Format: 'cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3 ..."
+    "Format: 'cloud1.region1.zone1:[min_replica_count1],cloud2.region2.zone2[min_replica_count2] ..."
     + std::to_string(placement_info_split.size()));
   }
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
@@ -1741,7 +1741,27 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   // Iterate over the placement blocks of the placementInfo structure.
   std::unordered_map<std::string, int> placement_to_min_replicas;
   for (int iter = 0; iter < placement_info_split.size(); iter++) {
-    placement_to_min_replicas[placement_info_split[iter]]++;
+    std::vector<std::string> placement_info_min_replica_split = strings::Split(
+        placement_info_split[iter], ":", strings::AllowEmpty());
+
+    if(placement_info_min_replica_split.size() == 0 ||
+        placement_info_min_replica_split.size() > 2) {
+      return STATUS(InvalidCommand, "Each placement info must have at most 2 values separated by a colon. "
+          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: " + placement_info_split[iter]);
+    }
+
+    std::string placement_target = placement_info_min_replica_split[0],
+        placement_min_replica_count = "1";
+
+    if(placement_to_min_replicas.find(placement_target) != placement_to_min_replicas.end()) {
+      return STATUS(InvalidCommand, "A placement info can be specified only once. Duplicate found: " + placement_target);
+    }
+
+    if(placement_info_min_replica_split.size() == 2) {
+      placement_min_replica_count = placement_info_min_replica_split[1];
+    }
+
+    placement_to_min_replicas[placement_target] = VERIFY_RESULT(CheckedStoi(placement_min_replica_count));
   }
 
   for (const auto& placement_block : placement_to_min_replicas) {
