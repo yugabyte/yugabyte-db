@@ -1738,30 +1738,34 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
   live_replicas->set_num_replicas(replication_factor);
 
+  int total_min_replica_count = 0;
+
   // Iterate over the placement blocks of the placementInfo structure.
   std::unordered_map<std::string, int> placement_to_min_replicas;
-  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+  for (const auto& placement_block : placement_info_split) {
     std::vector<std::string> placement_info_min_replica_split = strings::Split(
-        placement_info_split[iter], ":", strings::AllowEmpty());
+        placement_block, ":", strings::AllowEmpty());
 
     if(placement_info_min_replica_split.size() == 0 ||
         placement_info_min_replica_split.size() > 2) {
       return STATUS(InvalidCommand, "Each placement info must have at most 2 values separated by a colon. "
-          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: " + placement_info_split[iter]);
+          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: " + placement_block);
     }
 
     std::string placement_target = placement_info_min_replica_split[0],
         placement_min_replica_count = "1";
 
-    if(placement_to_min_replicas.find(placement_target) != placement_to_min_replicas.end()) {
-      return STATUS(InvalidCommand, "A placement info can be specified only once. Duplicate found: " + placement_target);
-    }
-
     if(placement_info_min_replica_split.size() == 2) {
       placement_min_replica_count = placement_info_min_replica_split[1];
     }
 
-    placement_to_min_replicas[placement_target] = VERIFY_RESULT(CheckedStoi(placement_min_replica_count));
+    int min_replica_count = VERIFY_RESULT(CheckedStoi(placement_min_replica_count));
+    total_min_replica_count += min_replica_count;
+    placement_to_min_replicas[placement_target] += min_replica_count;
+  }
+
+  if (total_min_replica_count > replication_factor) {
+      return STATUS(InvalidCommand, "replication_factor should be more than the total of replica counts specified in placement_info.");
   }
 
   for (const auto& placement_block : placement_to_min_replicas) {
