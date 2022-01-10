@@ -627,7 +627,7 @@
   height: 100%;
   color: black;
 }
-.table-container {
+.gflag-table {
   width: 100%;
   padding: 10px;
   border: 1px solid #e3e3e5;
@@ -635,7 +635,7 @@
   margin-top: 10px;
 }
 
-.react-bs-table table td {
+.gflag-table .react-bs-table table td {
   padding: 6px 6px !important;
 }
 
@@ -664,4 +664,12 @@
 
 .muted-text {
   color: #a7a7a7;
+}
+
+.mr-20 {
+  margin-right: 20px;
+}
+
+.mr-10 {
+  margin-right: 10px;
 }

@@ -5,13 +5,16 @@ import { YBButton, YBFormInput, YBInputField } from '../../common/forms/fields';
 import { YBLabel } from '../../common/descriptors';
 import { YBLoading } from '../../common/indicators';
 import { FlexShrink, FlexContainer } from '../../common/flexbox/YBFlexBox';
-import { fetchGFlags } from '../../../actions/universe';
+import { fetchGFlags, fetchParticularFlag } from '../../../actions/universe';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
 
+//modes
+const EDIT = 'EDIT';
+
 const AddGFlag = ({ formProps, gFlagProps }) => {
-  const { mode, server } = gFlagProps;
+  const { mode, server, dbVersion } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
   const [toggleMostUsed, setToggleMostUsed] = useState(false);
@@ -23,55 +26,75 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   //Declarative methods
   const filterByText = (arr, text) => arr.filter((e) => e?.name?.includes(text));
 
+  const handleFlagSelect = (flag) => {
+    let flagvalue = null;
+    if (flag?.type === 'bool')
+      if (['false', false].includes(flag?.default)) flagvalue = false;
+      else flagvalue = true;
+    else if (!['bool', 'string'].includes(flag?.type)) flagvalue = Number(flag?.default);
+    else flagvalue = flag?.default;
+    setSelectedFlag(flag);
+    formProps.setValues({
+      ...gFlagProps,
+      flagname: flag?.name,
+      flagvalue
+    });
+  };
+
   //custom methods
-  const getAllFlags = async (mode) => {
+  const getAllFlags = async () => {
     try {
       const flags = await Promise.all([
-        fetchGFlags({ server }), //ALl GFlags
-        fetchGFlags({ server, mostUsedGFlags: true }) // Most used flags
+        fetchGFlags(dbVersion, { server }), //ALl GFlags
+        fetchGFlags(dbVersion, { server, mostUsedGFlags: true }) // Most used flags
       ]);
       setAllGflags(flags[0]?.data);
       setMostUsedFlags(flags[1]?.data);
       if (toggleMostUsed) setFilteredArr(flags[0]?.data);
       else setFilteredArr(flags[1]?.data);
-      if (mode === 'EDIT')
-        setSelectedFlag(flags[1]?.data?.find((e) => e?.name === gFlagProps?.flagname));
       setLoader(false);
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleFlagSelect = (flag) => {
-    let flagvalue = null;
-    if (flag?.type === 'bool')
-      if (['false', false].includes(flag?.default)) flagvalue = false;
-      else flagvalue = true;
-    else flagvalue = flag?.default;
-    setSelectedFlag(flag);
-    formProps.setValues({
-      flagname: flag?.name,
-      flagvalue,
-      ...gFlagProps
-    });
+  const getFlagByName = async () => {
+    try {
+      const { flagname } = gFlagProps;
+      const flag = await fetchParticularFlag(dbVersion, { server, name: flagname });
+      setAllGflags([flag?.data]);
+      setMostUsedFlags([flag?.data]);
+      setFilteredArr([flag?.data]);
+      handleFlagSelect(flag?.data);
+      if (!formProps.values['flagvalue'])
+        formProps.setValues({
+          ...gFlagProps,
+          flagvalue: flag?.data?.default
+        });
+      setLoader(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const onInit = () => {
+    if (mode === EDIT) {
+      formProps.setValues(gFlagProps);
+      getFlagByName();
+    } else getAllFlags();
+  };
+
+  const onValueChanged = () => {
+    if (!isLoading)
+      setFilteredArr(filterByText(toggleMostUsed ? mostUsedArr : allGFlagsArr, searchVal));
   };
 
   //Effects
-  useEffect(() => {
-    if (!isLoading)
-      setFilteredArr(filterByText(toggleMostUsed ? mostUsedArr : allGFlagsArr, searchVal));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toggleMostUsed, searchVal]);
-
-  useEffect(() => {
-    if (mode === 'EDIT') formProps.setValues(gFlagProps);
-    getAllFlags(mode);
-    return () => {};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(onValueChanged, [toggleMostUsed, searchVal]);
+  useEffect(onInit, []);
 
   //nodes
-  const label = (
+  const valueLabel = (
     <>
       Flag Value &nbsp;
       <Badge className="gflag-badge">{gFlagProps?.server}</Badge>
@@ -94,7 +117,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       <a
         className="gflag-doc-link"
         rel="noopener noreferrer"
-        href={`https://docs.yugabyte.com/latest/reference/configuration/yb-master/#${selectedFlag?.name
+        href={`https://docs.yugabyte.com/latest/reference/configuration/yb-${server.toLowerCase()}/#${selectedFlag?.name
           ?.split('_')
           .join('-')}`}
         target="_blank"
@@ -110,14 +133,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       case 'bool':
         return (
           <>
-            <YBLabel label={label}>
+            <YBLabel label={valueLabel}>
               <div className="row-flex">
                 {[true, false].map((target) => (
-                  <span
-                    className="btn-group btn-group-radio"
-                    style={{ marginRight: '20px' }}
-                    key={target}
-                  >
+                  <span className="btn-group btn-group-radio mr-20" key={target}>
                     <Field
                       name={'flagvalue'}
                       type="radio"
@@ -138,10 +157,19 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         );
 
       case 'string':
-        return <Field name="flagvalue" type="text" label={label} component={YBFormInput} />;
+        return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
 
       default:
-        return <Field name="flagvalue" type="number" label={label} component={YBFormInput} />;
+        //number type
+        return (
+          <Field
+            name="flagvalue"
+            type="number"
+            label={valueLabel}
+            component={YBFormInput}
+            step="any"
+          />
+        );
     }
   };
 
@@ -157,7 +185,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       <FlexShrink>
         <YBButton
           btnText="ALL FLAGS"
-          btnSize="sm"
+          disabled={mode === EDIT}
           btnClass={!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default'}
           onClick={() => {
             if (toggleMostUsed) {
@@ -169,7 +197,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         &nbsp;
         <YBButton
           btnText="MOST USED"
-          size="lg"
+          disabled={mode === EDIT}
           btnClass={toggleMostUsed ? 'btn btn-orange' : 'btn btn-default'}
           onClick={() => {
             if (!toggleMostUsed) {
