@@ -62,7 +62,14 @@ public class MetricQueryHelper {
    */
   public JsonNode query(List<String> metricKeys, Map<String, String> params) {
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
-    return query(metricKeys, params, filterOverrides);
+    return query(metricKeys, params, filterOverrides, false);
+  }
+
+  public JsonNode query(
+      List<String> metricKeys,
+      Map<String, String> params,
+      Map<String, Map<String, String>> filterOverrides) {
+    return query(metricKeys, params, filterOverrides, false);
   }
 
   /**
@@ -75,7 +82,8 @@ public class MetricQueryHelper {
   public JsonNode query(
       List<String> metricKeys,
       Map<String, String> params,
-      Map<String, Map<String, String>> filterOverrides) {
+      Map<String, Map<String, String>> filterOverrides,
+      boolean isRecharts) {
     if (metricKeys.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
     }
@@ -126,7 +134,12 @@ public class MetricQueryHelper {
 
       Callable<JsonNode> callable =
           new MetricQueryExecutor(
-              appConfig, apiHelper, queryParams, additionalFilters, ybMetricQueryComponent);
+              appConfig,
+              apiHelper,
+              queryParams,
+              additionalFilters,
+              ybMetricQueryComponent,
+              isRecharts);
       Future<JsonNode> future = threadPool.submit(callable);
       futures.add(future);
     }
@@ -136,11 +149,10 @@ public class MetricQueryHelper {
       JsonNode response = Json.newObject();
       try {
         response = future.get();
+        responseJson.set(response.get("queryKey").asText(), response);
       } catch (InterruptedException | ExecutionException e) {
         LOG.error("Error fetching metrics data", e);
       }
-
-      responseJson.set(response.get("queryKey").asText(), response);
     }
     threadPool.shutdown();
     return responseJson;

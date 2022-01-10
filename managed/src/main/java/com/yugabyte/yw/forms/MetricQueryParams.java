@@ -26,6 +26,9 @@ public class MetricQueryParams {
   @ApiModelProperty(value = "Node name")
   private String nodeName;
 
+  @ApiModelProperty(value = "Is Recharts")
+  private boolean isRecharts;
+
   public List<String> getMetrics() {
     return metrics;
   }
@@ -64,5 +67,13 @@ public class MetricQueryParams {
 
   public void setNodeName(String nodeName) {
     this.nodeName = nodeName;
+  }
+
+  public boolean getIsRecharts() {
+    return isRecharts;
+  }
+
+  public void setIsRecharts(boolean isRecharts) {
+    this.isRecharts = isRecharts;
   }
 }

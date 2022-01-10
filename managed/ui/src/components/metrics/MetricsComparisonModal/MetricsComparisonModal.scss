@@ -191,7 +191,10 @@
 
     .row {
       margin: 10px 0;
-      font-weight: normal;
+    }
+
+    .checkbox-label {
+      font-weight: normal !important;
     }
   }
 

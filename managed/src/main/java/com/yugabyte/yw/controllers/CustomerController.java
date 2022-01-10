@@ -398,8 +398,15 @@ public class CustomerController extends AuthenticatedController {
       filterJson.put("table_name", params.remove("tableName"));
     }
     params.put("filters", Json.stringify(filterJson));
-    JsonNode response =
-        metricQueryHelper.query(formData.get().getMetrics(), params, filterOverrides);
+    JsonNode response;
+    if (formData.get().getIsRecharts()) {
+      response =
+          metricQueryHelper.query(
+              formData.get().getMetrics(), params, filterOverrides, formData.get().getIsRecharts());
+    } else {
+      response = metricQueryHelper.query(formData.get().getMetrics(), params, filterOverrides);
+    }
+
     if (response.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
     }

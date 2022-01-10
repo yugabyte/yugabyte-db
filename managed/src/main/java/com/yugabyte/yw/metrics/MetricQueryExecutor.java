@@ -30,17 +30,30 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   private String queryUrl;
   private int queryRangeSecs = 0;
 
+  private boolean isRecharts;
+
   public MetricQueryExecutor(
       play.Configuration appConfig,
       ApiHelper apiHelper,
       Map<String, String> queryParam,
       Map<String, String> additionalFilters,
       YBMetricQueryComponent ybMetricQueryComponent) {
+    this(appConfig, apiHelper, queryParam, additionalFilters, ybMetricQueryComponent, false);
+  }
+
+  public MetricQueryExecutor(
+      play.Configuration appConfig,
+      ApiHelper apiHelper,
+      Map<String, String> queryParam,
+      Map<String, String> additionalFilters,
+      YBMetricQueryComponent ybMetricQueryComponent,
+      boolean isRecharts) {
     this.apiHelper = apiHelper;
     this.appConfig = appConfig;
     this.queryParam.putAll(queryParam);
     this.additionalFilters.putAll(additionalFilters);
     this.ybMetricQueryComponent = ybMetricQueryComponent;
+    this.isRecharts = isRecharts;
     int scrapeIntervalSecs = appConfig.getInt("yb.metrics.scrape_interval_secs", 10);
     if (queryParam.containsKey("step")) {
       // Rate queries like rate(rpc_latency_count[rate_interval]) are performed over multiple
@@ -131,6 +144,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     } else {
       Map<String, String> queries = config.getQueries(additionalFilters, this.queryRangeSecs);
       responseJson.set("layout", Json.toJson(config.getLayout()));
+      MetricRechartsGraphData rechartsOutput = new MetricRechartsGraphData();
       List<MetricGraphData> output = new ArrayList<>();
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
@@ -156,7 +170,11 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           output.addAll(queryResponse.getGraphData(metric, config.getLayout()));
         }
       }
-      responseJson.set("data", Json.toJson(output));
+      if (isRecharts) {
+        responseJson.set("data", Json.toJson(rechartsOutput));
+      } else {
+        responseJson.set("data", Json.toJson(output));
+      }
     }
 
     return responseJson;
