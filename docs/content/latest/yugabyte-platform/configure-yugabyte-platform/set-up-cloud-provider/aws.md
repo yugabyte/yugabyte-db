@@ -97,7 +97,7 @@ In order to deploy YugabyteDB nodes in your AWS account, Yugabyte Platform requi
 
 In order to be able to provision EC2 instances with YugabyteDB, Yugabyte Platform requires SSH access. The following are two ways to provide SSH access:
 
-- Enable Yugabyte Platform to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, Yugabyte Platform creates SSH Key Pairs across all the regions you choose to set up and store the relevant private key part of these locally in order to SSH into future EC2 instances.
+- Enable Yugabyte Platform to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, Yugabyte Platform creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
 - Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. Currently, this information must be the same across all the regions you choose to provision.
 
 If you use Yugabyte Platform to manage SSH Key Pairs for you and you deploy multiple Yugabyte Platform instances across your environment, then the AWS Provider name should be unique for each instance of Yugabyte Platform integrating with a given AWS Account.
@@ -132,7 +132,7 @@ You can use your own custom VPCs. This allows you the highest level of customiza
 
 ![Custom Region Modal](/images/ee/aws-setup/aws_custom_region.png)
 
-If you choose to provide your own VPC information, you will be responsible for having preconfigured networking connectivity. For single-region deployments, this might simply be a matter of region or VPC local Security Groups. Across regions, however, the setup can get quite complex. It is recommended that you use the [VPC peering](https://docs.aws.amazon.com/vpc/latest/peering/what-is-vpc-peering.html) feature of [Amazon Virtual Private Cloud (Amazon VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html) to set up private IP connectivity between nodes located across regions, as follows:
+If you choose to provide your own VPC information, you will be responsible for having preconfigured networking connectivity. For single-region deployments, this might simply be a matter of region or VPC local Security Groups. Across regions, however, the setup can get quite complex. It is recommended that you use the [VPC peering](https://docs.aws.amazon.com/vpc/latest/peering/working-with-vpc-peering.html) feature of [Amazon Virtual Private Cloud (Amazon VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html) to set up private IP connectivity between nodes located across regions, as follows:
 
 - VPC peering connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
 - Routing table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.

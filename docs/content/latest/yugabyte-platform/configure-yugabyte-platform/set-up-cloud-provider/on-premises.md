@@ -65,7 +65,7 @@ showAsideToc: true
 
 </ul>
 
-You can configure the on-premises cloud provider for YugabyteDB using the Yugabyte Platform UI. If no cloud providers are configured, the main Dashboard prompts you to configure at least one cloud provider, as per the following illustration:
+You can configure the on-premises cloud provider for YugabyteDB using the Yugabyte Platform console. If no cloud providers are configured, the main Dashboard prompts you to configure at least one cloud provider, as per the following illustration:
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-0.png)
 
@@ -165,7 +165,7 @@ After finishing the cloud provider configuration, click **Manage Instances** to 
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-4.png)
 
-For each node you want to add, click **Add Instances** to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances (instance ID is an optional user-defined identifier.)
+For each node you want to add, click **Add Instances** to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances (instance ID is an optional user-defined identifier).
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
 
@@ -193,20 +193,25 @@ Follow these steps to manually provision each node using the pre-provisioning Py
     sudo docker exec -it yugaware bash
     ```
 
-1. Copy and paste the Python script prompted in the UI and substitute for a node IP address and mount points. 
-Optionally, use the `--ask_password` flag if the sudo user requires password authentication.
-    
+1. Copy and paste the Python script prompted via the UI and substitute for a node IP address and mount points. 
+Optionally, use the `--ask_password` flag if the sudo user requires password authentication, as follows:
+   
+    ```bash
+    bash-4.4# /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
+    ```
+   
+   Expect the following output and prompt:
+   
     ```output
-bash-4.4# /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
     Executing provision now for instance with IP 10.9.116.65...
     SUDO password:
     ```
-    
+   
 1. Wait for the script to finish successfully.
 
 1. Repeat step 3 for every node that will participate in the universe.
 
-You’re finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
+This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
 
 #### How to set up database nodes manually
 
@@ -254,9 +259,9 @@ This table is based on the information on the [default ports page](/latest/refer
 
 This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from the Yugabyte Platform server will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
 
-Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be followed on each physical node, prior to universe creation:
+Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Log into each database node as a user with sudo enabled (the “centos” user in centos7 images)
+1. Login to each database node as a user with sudo enabled (the “centos” user in centos7 images).
 
 1. Add the following line to `/etc/chrony.conf` (sudo is required):
 
@@ -440,13 +445,12 @@ On each node, do the following as a user with sudo access:
       #ExecStartPre=/bin/sh -c  " chown -R prometheus '/var/run/prometheus' '/var/log/prometheus' "
       #PIDFile=/var/run/prometheus/node_exporter.pid
       
-      
       User=prometheus
       Group=prometheus
       
       ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
       ```
-
+    
 1. Exit from vi, and continue (sudo required):
 
     ```sh

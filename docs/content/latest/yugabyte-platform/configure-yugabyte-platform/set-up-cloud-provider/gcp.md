@@ -94,7 +94,7 @@ Take note of the following for configuring your GCP provider:
   Note that choosing to use the same VPC as Yugabyte Platform is an advanced option, which assumes that you are in complete control over this VPC and will be responsible for setting up the networking, SSH access, and firewall rules for it.
 
 
-Click **Save** and wait a few minutes for the configuration to complete. This includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity and a custom SSH key pair for Yugabyte Platform-to-YugabyteDB connectivity.
+Click **Save** and wait a few minutes for the configuration to complete. This includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for Yugabyte Platform-to-YugabyteDB connectivity.
 
 The following illustration shows the steps involved in creating GCP:
 
