@@ -14,13 +14,7 @@ import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")
-public class BackupTableParams extends TableManagerParams {
-  public enum ActionType {
-    CREATE,
-    RESTORE,
-    RESTORE_KEYS,
-    DELETE
-  }
+public class BackupRequestParams extends UniverseTaskParams {
 
   @Constraints.Required
   @ApiModelProperty(value = "Storage configuration UUID", required = true)
@@ -29,27 +23,12 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "KMS configuration UUID")
   public UUID kmsConfigUUID = null;
 
-  // Specifies the backup storage location in case of S3 it would have
-  // the S3 url based on universeUUID and timestamp.
-  @ApiModelProperty(value = "Storage location")
-  public String storageLocation;
-
-  @ApiModelProperty(value = "Action type")
-  public ActionType actionType;
+  @Constraints.Required
+  @ApiModelProperty(value = "Universe UUID", required = true)
+  public UUID universeUUID = null;
 
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
-
-  @ApiModelProperty(value = "Tables")
-  public List<String> tableNameList;
-
-  @ApiModelProperty(value = "Table UUIDs")
-  public List<UUID> tableUUIDList;
-
-  // Allows bundling multiple backup params. Used only in the case
-  // of backing up an entire universe transactionally
-  @ApiModelProperty(value = "Backups")
-  public List<BackupTableParams> backupList;
 
   // Specifies the frequency for running the backup in milliseconds.
   @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
@@ -72,9 +51,11 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Is verbose logging enabled")
   public boolean enableVerboseLogs = false;
 
-  // Should the backup be transactional across tables
-  @ApiModelProperty(value = "Is backup transactional across tables")
-  public boolean transactionalBackup = false;
+  @ApiModelProperty(value = "Is SSE")
+  public boolean sse = false;
+
+  @ApiModelProperty(value = "Backup info")
+  public List<KeyspaceTable> keyspaceTableList;
 
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
@@ -85,35 +66,20 @@ public class BackupTableParams extends TableManagerParams {
   public UUID scheduleUUID = null;
 
   @ApiModelProperty(value = "Customer UUID")
-  public UUID customerUuid = null;
-
-  @ApiModelProperty(value = "Backup UUID")
-  public UUID backupUuid = null;
+  public UUID customerUUID = null;
 
   @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;
 
-  @ApiModelProperty(value = "Restore TimeStamp")
-  public String restoreTimeStamp = null;
+  @ApiModel(description = "Keyspace and table info for backup")
+  public static class KeyspaceTable {
+    @ApiModelProperty(value = "Tables")
+    public List<String> tableNameList;
 
-  @ApiModelProperty(value = "Is tablespaces information included")
-  public Boolean useTablespaces = false;
+    @ApiModelProperty(value = "Table UUIDs")
+    public List<UUID> tableUUIDList;
 
-  @ApiModelProperty(value = "User name of the current tables owner")
-  public String oldOwner = "yugabyte";
-
-  @ApiModelProperty(value = "User name of the new tables owner")
-  public String newOwner = null;
-
-  @JsonIgnore
-  public Set<String> getTableNames() {
-    Set<String> tableNames = new HashSet<>();
-    if (tableUUIDList != null && !tableUUIDList.isEmpty()) {
-      tableNames.addAll(tableNameList);
-    } else if (getTableName() != null) {
-      tableNames.add(getTableName());
-    }
-
-    return tableNames;
+    @ApiModelProperty(value = "keyspace")
+    public String keyspace;
   }
 }
