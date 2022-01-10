@@ -1619,7 +1619,7 @@ public class NodeManager extends DevopsBase {
   }
 
   private boolean isLowMemInstanceType(String instanceType) {
-    List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2.");
+    List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2.", "t3.");
     String instanceTypePrefix = instanceType.split("\\.")[0] + ".";
     return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
   }
