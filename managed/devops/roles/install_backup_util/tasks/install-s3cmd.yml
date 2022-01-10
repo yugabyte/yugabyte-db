@@ -87,7 +87,7 @@
       ansible.builtin.package:
         name: python3-distutils
         state: present
-      when: py_version.stdout is match("Python 3.")
+      when: py_version.stdout is match("Python 3.") and ansible_architecture != 'aarch64'
 
     - name: s3cmd | Install setuptools
       command: "chdir={{ setuptools_package_path }}

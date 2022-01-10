@@ -1185,7 +1185,6 @@ scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
   return scoped_refptr<OperationDriver>(new OperationDriver(
       &operation_tracker_,
       consensus_.get(),
-      log_.get(),
       prepare_thread_.get(),
       tablet_->table_type()));
 }

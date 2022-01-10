@@ -255,7 +255,7 @@ public class Universe extends Model {
     // Find the universe.
     Universe universe = find.byId(universeUUID);
     if (universe == null) {
-      LOG.info("Cannot find universe {}", universeUUID);
+      LOG.trace("Cannot find universe {}", universeUUID);
       return Optional.empty();
     }
 
