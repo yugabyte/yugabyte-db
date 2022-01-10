@@ -2599,6 +2599,10 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "isRecharts" : {
+          "description" : "Is Recharts",
+          "type" : "boolean"
+        },
         "metrics" : {
           "description" : "Metrics",
           "items" : {
