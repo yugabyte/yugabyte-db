@@ -31,10 +31,11 @@ Geo-partitioning makes it easy for developers to move data closer to users for:
 * Meeting data residency requirements to comply with regulations such as GDPR
 {{< /tip >}}
 
-Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in two simple steps – first, partitioning a table into user-defined table partitions, and subsequently pinning these partitions to the desired geographic locations by configuring metadata for each partition.
+Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in three simple steps – first, creating local transaction status tables within each region; second, partitioning a table into user-defined table partitions; and finally, pinning these partitions to the desired geographic locations by configuring metadata for each partition.
 
-* The first step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to.
-* The second step involves creating partitions in the respective geographic locations using tablespaces. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
+* The first step of creating local transaction tables within each region is done by creating a new transaction table and setting its placement.
+* The second step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to.
+* The third step involves creating partitions in the respective geographic locations using tablespaces. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
 
 An entirely new geographic partition can be introduced dynamically by adding a new table partition and configuring it to keep the data resident in the desired geographic location. Data in one or more of the existing geographic locations can be purged efficiently simply by dropping the necessary partitions. Users of traditional RDBMS would recognize this scheme as being close to user-defined list-based table partitions, with the ability to control the geographic location of each partition.
 
@@ -129,7 +130,7 @@ First, we create tablespaces and transaction tables for each geographic region w
 
 ## Step 2. Create table with partitions
 
-First, we create the parent table that contains a `geo_partition` column which is used to create list-based partitions for each geographic region we want to partition data into as shown in the following diagram:
+Next, we create the parent table that contains a `geo_partition` column which is used to create list-based partitions for each geographic region we want to partition data into as shown in the following diagram:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-1.png)
 
