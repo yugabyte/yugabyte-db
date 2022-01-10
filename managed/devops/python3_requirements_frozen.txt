@@ -25,6 +25,7 @@ cryptography==3.3.2
 deepdiff==5.5.0
 distro==1.5.0
 docutils==0.15.2
+enum34==1.1.10
 fabric==2.2.1
 google-api-core==1.22.0
 google-api-python-client==1.10.0

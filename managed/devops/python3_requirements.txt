@@ -32,6 +32,7 @@ botocore==1.20.73
 cryptography==3.3.2
 deepdiff
 distro==1.5.0
+enum34==1.1.10
 fabric==2.2.1
 google-api-python-client==1.10.0
 google-api-core==1.22.0
