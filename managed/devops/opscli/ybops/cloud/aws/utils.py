@@ -844,7 +844,8 @@ def get_device_names(instance_type, num_volumes):
 
 
 def is_next_gen(instance_type):
-    return instance_type.startswith(("c3.", "c4.", "c5.", "m4.", "r4.", "m6g.", "t2.", "c6g."))
+    return instance_type.startswith(("c3.", "c4.", "c5.", "m4.", "r4.", "m6g.",
+                                     "t2.", "c6g.", "t3."))
 
 
 def is_nvme(instance_type):
@@ -986,6 +987,13 @@ def create_instance(args):
             }
             tag_dicts.append(resources_tag_dict)
     vars["TagSpecifications"] = tag_dicts
+
+    # Newer instance types have Credit Specification set to unlimited by default
+    if args.instance_type == "t3.small":
+        vars["CreditSpecification"] = {
+            "CpuCredits": 'standard'
+        }
+
     # TODO: user_data > templates/cloud_init.yml.j2, still needed?
     logging.info("[app] About to create AWS VM {}. ".format(args.search_pattern))
     instance_ids = client.create_instances(**vars)
