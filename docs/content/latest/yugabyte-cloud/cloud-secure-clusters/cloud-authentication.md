@@ -1,6 +1,6 @@
 ---
-title: Cluster authentication
-linkTitle: Cluster authentication
+title: Encryption in transit
+linkTitle: Encryption in transit
 description: Yugabyte Cloud cluster authentication and encryption.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
