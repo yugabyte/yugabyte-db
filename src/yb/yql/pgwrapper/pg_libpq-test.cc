@@ -2233,6 +2233,78 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(value, "b");
 }
 
+// Test postgres large oid (>= 2^31). Internally postgres oid is an unsigned 32-bit integer. But
+// when extended to Datum type (unsigned long), the sign-bit is extended so that the high 32-bit
+// is ffffffff. This caused unexpected assertion failures and errors.
+class PgLibPqLargeOidTest: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+      Format("--TEST_ysql_oid_prefetch_adjustment=$0", kOidAdjustment));
+  }
+  const Oid kOidAdjustment = 2147483648U - kPgFirstNormalObjectId; // 2^31 - 16384
+};
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(LargeOid),
+          PgLibPqLargeOidTest) {
+  // Test large OID with enum type which had Postgres Assert failure.
+  const string kDatabaseName ="yugabyte";
+  const string kTableName ="enum_table";
+  const string kEnumTypeName ="enum_type";
+  PGConn conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TYPE $0 as enum('a', 'c')", kEnumTypeName));
+  // Do ALTER TYPE to ensure we correctly put sort order as the high 32-bit after clearing
+  // the signed extended ffffffff. The following index scan would yield wrong order if we
+  // left ffffffff in the high 32-bit.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TYPE $0 ADD VALUE 'b' BEFORE 'c'", kEnumTypeName));
+  std::string query = "SELECT oid FROM pg_enum";
+  PGResultPtr res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<int32> enum_oids = {
+    ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+    ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+    ASSERT_RESULT(GetInt32(res.get(), 2, 0)),
+  };
+  // Ensure that we do see large OIDs in pg_enum table.
+  LOG(INFO) << "enum_oids: " << (Oid)enum_oids[0] << ","
+            << (Oid)enum_oids[1] << "," << (Oid)enum_oids[2];
+  ASSERT_GT((Oid)enum_oids[0], kOidAdjustment);
+  ASSERT_GT((Oid)enum_oids[1], kOidAdjustment);
+  ASSERT_GT((Oid)enum_oids[2], kOidAdjustment);
+
+  // Create a table using the enum type and insert a few rows.
+  ASSERT_OK(conn.ExecuteFormat(
+    "CREATE TABLE $0 (id $1)",
+    kTableName,
+    kEnumTypeName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('a'), ('b'), ('c')", kTableName));
+
+  // Create an index on the enum table column.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (id ASC)", kTableName));
+
+  // Index only scan to verify that with large OIDs, the contents of index table
+  // is still correct. This also triggers index backfill statement, which used to
+  // fail on large oid such as:
+  // BACKFILL INDEX 2147500041 WITH x'0880011a00' READ TIME 6725053491126669312 PARTITION x'5555';
+  // We fix the syntax error by rewriting it to
+  // BACKFILL INDEX -2147467255 WITH x'0880011a00' READ TIME 6725053491126669312 PARTITION x'5555';
+  // Internally, -2147467255 will be reinterpreted as OID 2147500041 which is the OID of the index.
+  query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<string> enum_values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  };
+  ASSERT_EQ(enum_values[0], "a");
+  ASSERT_EQ(enum_values[1], "b");
+  ASSERT_EQ(enum_values[2], "c");
+}
+
 namespace {
 
 class CoordinatedRunner {

@@ -21,6 +21,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/pggate.h"
@@ -39,6 +40,10 @@ DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-clien
 DEFINE_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
+DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
+                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
+                 "production environment. In unit test we use this flag to force allocation of "
+                 "large Postgres OIDs.");
 
 DECLARE_int32(num_connections_to_server);
 
@@ -244,8 +249,10 @@ YBCStatus YBCPgReserveOids(const YBCPgOid database_oid,
                            const uint32_t count,
                            YBCPgOid *begin_oid,
                            YBCPgOid *end_oid) {
-  return ToYBCStatus(pgapi->ReserveOids(database_oid, next_oid, count,
-                                        begin_oid, end_oid));
+  return ToYBCStatus(pgapi->ReserveOids(database_oid,
+                                        next_oid + static_cast<YBCPgOid>(
+                                          FLAGS_TEST_ysql_oid_prefetch_adjustment),
+                                        count, begin_oid, end_oid));
 }
 
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
