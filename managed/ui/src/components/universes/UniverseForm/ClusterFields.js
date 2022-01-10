@@ -31,6 +31,7 @@ import AZSelectorTable from './AZSelectorTable';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
+import GFlagComponent from './GFlagComponent';
 import {
   getPrimaryCluster,
   getReadOnlyCluster,
@@ -2259,27 +2260,17 @@ export default class ClusterFields extends Component {
       </div>
     );
 
-    if (clusterType === 'primary') {
+    if (clusterType === 'primary' && this.state.ybSoftwareVersion) {
       gflagArray = (
         <Row>
           <Col md={12}>
             <h4>G-Flags</h4>
           </Col>
-          <Col md={6}>
+          <Col md={12}>
             <FieldArray
-              component={GFlagArrayComponent}
-              name={`${clusterType}.masterGFlags`}
-              flagType="master"
-              operationType="Create"
-              isReadOnly={isFieldReadOnly}
-            />
-          </Col>
-          <Col md={6}>
-            <FieldArray
-              component={GFlagArrayComponent}
-              name={`${clusterType}.tserverGFlags`}
-              flagType="tserver"
-              operationType="Create"
+              component={GFlagComponent}
+              name={`${clusterType}.gFlags`}
+              dbVersion={this.state.ybSoftwareVersion}
               isReadOnly={isFieldReadOnly}
             />
           </Col>

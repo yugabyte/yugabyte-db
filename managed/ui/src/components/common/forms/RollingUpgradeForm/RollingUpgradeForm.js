@@ -3,73 +3,16 @@
 import _ from 'lodash';
 import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
-import { Row, Col, Tabs, Tab, Alert } from 'react-bootstrap';
-import {
-  YBModal,
-  YBInputField,
-  YBAddRowButton,
-  YBSelectWithLabel,
-  YBToggle,
-  YBCheckBox,
-  YBRadioButtonBarWithLabel
-} from '../fields';
-import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
+import { Col, Alert } from 'react-bootstrap';
+import { YBModal, YBInputField, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
+import { isNonEmptyArray, get } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import './RollingUpgradeForm.scss';
 import { EncryptionInTransit } from './EncryptionInTransit';
-
-class FlagInput extends Component {
-  render() {
-    const { deleteRow, item } = this.props;
-    return (
-      <Row>
-        <Col lg={5}>
-          <Field
-            name={`${item}.name`}
-            component={YBInputField}
-            className="input-sm"
-            placeHolder="Flag Name"
-          />
-        </Col>
-        <Col lg={5}>
-          <Field
-            name={`${item}.value`}
-            component={YBInputField}
-            className="input-sm"
-            placeHolder="Value"
-          />
-        </Col>
-        <Col lg={1}>
-          <i className="fa fa-times fa-fw delete-row-btn" onClick={deleteRow} />
-        </Col>
-      </Row>
-    );
-  }
-}
-
-class FlagItems extends Component {
-  componentDidMount() {
-    if (this.props.fields.length === 0) {
-      this.props.fields.push({});
-    }
-  }
-  render() {
-    const { fields } = this.props;
-    const addFlagItem = () => fields.push({});
-    const gFlagsFieldList = fields.map((item, idx) => (
-      <FlagInput item={item} key={idx} deleteRow={() => fields.remove(idx)} />
-    ));
-
-    return (
-      <div className="form-field-grid">
-        {gFlagsFieldList}
-        <YBAddRowButton btnText="Add" onClick={addFlagItem} />
-      </div>
-    );
-  }
-}
+import GFlagComponent from '../../../universes/UniverseForm/GFlagComponent';
+import { FlexShrink, FlexContainer } from '../../flexbox/YBFlexBox';
 
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
@@ -153,25 +96,15 @@ export default class RollingUpgradeForm extends Component {
     payload.ybSoftwareVersion = values.ybSoftwareVersion;
     payload.universeUUID = universeUUID;
     payload.nodePrefix = nodePrefix;
-    let masterGFlagList = [];
-    let tserverGFlagList = [];
-    if (isNonEmptyArray(values.masterGFlags)) {
-      masterGFlagList = values.masterGFlags
-        .map((masterFlag) => {
-          return masterFlag.name && masterFlag.value
-            ? { name: masterFlag.name, value: masterFlag.value }
-            : null;
-        })
-        .filter(Boolean);
-    }
-    if (isNonEmptyArray(values.tserverGFlags)) {
-      tserverGFlagList = values.tserverGFlags
-        .map((tserverFlag) => {
-          return tserverFlag.name && tserverFlag.value
-            ? { name: tserverFlag.name, value: tserverFlag.value }
-            : null;
-        })
-        .filter(Boolean);
+    const masterGFlagList = [];
+    const tserverGFlagList = [];
+    if (isNonEmptyArray(values?.gFlags)) {
+      values.gFlags.forEach((flag) => {
+        if (get(flag, 'MASTER', null))
+          masterGFlagList.push({ name: flag?.Name, value: flag['MASTER'] });
+        if (get(flag, 'TSERVER', null))
+          tserverGFlagList.push({ name: flag?.Name, value: flag['TSERVER'] });
+      });
     }
     primaryCluster.userIntent.ybSoftwareVersion = values.ybSoftwareVersion;
     primaryCluster.userIntent.masterGFlags = masterGFlagList;
@@ -297,33 +230,29 @@ export default class RollingUpgradeForm extends Component {
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
             title="Flags"
+            size="large"
             onFormSubmit={submitAction}
             error={error}
           >
-            <Tabs defaultActiveKey={1} className="gflag-display-container" id="gflag-container">
-              <Tab eventKey={1} title="Master" className="gflag-class-1" bsClass="gflag-class-2">
-                <FieldArray name="masterGFlags" component={FlagItems} />
-              </Tab>
-              <Tab eventKey={2} title="T-Server">
-                <FieldArray name="tserverGFlags" component={FlagItems} />
-              </Tab>
-            </Tabs>
-            <div className="form-right-aligned-labels rolling-upgrade-form top-10 time-delay-container">
-              <Field
-                name="upgradeOption"
-                component={YBRadioButtonBarWithLabel}
-                options={['Rolling', 'Non-Rolling', 'Non-Restart']}
-                label="Upgrade Option"
-                initialValue="Rolling"
-              />
-              <Field
-                name="timeDelay"
-                type="number"
-                component={YBInputField}
-                label="Rolling Upgrade Delay Between Servers (secs)"
-                isReadOnly={formValues.upgradeOption !== 'Rolling'}
-              />
-            </div>
+            <FieldArray name="gFlags" component={GFlagComponent} dbVersion={currentVersion} />
+            <FlexContainer className="gflag-upgrade-container">
+              <FlexShrink>
+                <span className="gflag-upgrade--label">G-Flag Upgrade Options</span>
+              </FlexShrink>
+              <div className="gflag-upgrade-options">
+                {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target) => (
+                  <span className="btn-group btn-group-radio upgrade-option" key={target}>
+                    <Field
+                      name={'upgradeOption'}
+                      type="radio"
+                      component="input"
+                      value={`${target}`}
+                    />{' '}
+                    {`${target}`}{' '}
+                  </span>
+                ))}
+              </div>
+            </FlexContainer>
             {errorAlert}
           </YBModal>
         );
