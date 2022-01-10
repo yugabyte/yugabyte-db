@@ -40,7 +40,13 @@ export default class YBModalForm extends Component {
           }}
         >
           {(props) => (
-            <form name={formName} onSubmit={props.handleSubmit}>
+            <form
+              name={formName}
+              onSubmit={(e) => {
+                e.stopPropagation(); // to prevent parent form submission
+                props.handleSubmit(e);
+              }}
+            >
               <Modal.Header closeButton>
                 <Modal.Title>{title}</Modal.Title>
                 <div

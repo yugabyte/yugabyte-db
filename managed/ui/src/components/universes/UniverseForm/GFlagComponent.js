@@ -37,7 +37,7 @@ const OPTIONS = [
         Add Flags
       </>
     ),
-    className: 'btn btn-orange',
+    className: 'btn btn-orange mr-10',
     bsStyle: 'danger'
   },
   {
@@ -64,7 +64,7 @@ const SERVER_LIST = [
 ];
 
 export default function GFlagComponent(props) {
-  const { fields, dbVersion } = props;
+  const { fields, dbVersion, isReadOnly } = props;
   const [selectedProps, setSelectedProps] = useState(null);
   const [toggleModal, setToggleModal] = useState(false);
   const [validationError, setValidationError] = useState([]);
@@ -78,14 +78,14 @@ export default function GFlagComponent(props) {
 
   const callValidation = async (flagArr) => {
     try {
-      let currentArr = fields.getAll() || [];
-      let duplicateArr = _.remove(currentArr, (e) => flagArr.some((f) => f.Name === e.Name));
-      let transformedArr = flagArr.map((e) => {
-        let dupEl = duplicateArr.find((f) => f.Name === e.Name) || {};
+      const currentArr = fields.getAll() || [];
+      const duplicateArr = _.remove(currentArr, (e) => flagArr.some((f) => f.Name === e.Name));
+      const transformedArr = flagArr.map((e) => {
+        const dupEl = duplicateArr.find((f) => f.Name === e.Name) || {};
         return { ...dupEl, ...e };
       });
       const payload = { gflags: [...currentArr, ...transformedArr] };
-      let validationResponse = await validateGFlags(dbVersion, payload);
+      const validationResponse = await validateGFlags(dbVersion, payload);
       setValidationError(validationResponse?.data);
     } catch (e) {
       console.error(e);
@@ -105,15 +105,15 @@ export default function GFlagComponent(props) {
     }
   };
 
-  const handleSubmit = (values, actions) => {
+  const handleFormSubmit = (values, actions) => {
     setToggleModal(false);
     switch (values.option) {
       case FREE_TEXT: {
         const formValues = JSON.parse(values?.flagvalue);
-        let newFlagArr = [];
+        const newFlagArr = [];
         if (Object.keys(formValues).length > 0) {
           Object.entries(formValues).forEach(([key, val]) => {
-            let obj = { Name: key, [values?.server]: val };
+            const obj = { Name: key, [values?.server]: val };
             checkExistsAndPush(obj);
             newFlagArr.push(obj);
           });
@@ -123,7 +123,7 @@ export default function GFlagComponent(props) {
       }
 
       case ADD_GFLAG: {
-        let obj = { Name: values?.flagname, [values?.server]: values?.flagvalue };
+        const obj = { Name: values?.flagname, [values?.server]: values?.flagvalue };
         checkExistsAndPush(obj);
         callValidation([obj]);
         break;
@@ -139,7 +139,7 @@ export default function GFlagComponent(props) {
       if (fields.length > 0) {
         try {
           const payload = { gflags: fields.getAll() };
-          let validationResponse = await validateGFlags(dbVersion, payload);
+          const validationResponse = await validateGFlags(dbVersion, payload);
           setValidationError(validationResponse?.data);
         } catch (e) {
           console.error(e);
@@ -175,6 +175,7 @@ export default function GFlagComponent(props) {
     const flagDoesNotExists =
       eInfo && eInfo[MASTER]?.exist === false && eInfo[TSERVER]?.exist === false;
 
+    if (isReadOnly) return <span className="cell-font">{cell}</span>;
     return (
       <div className={clsx('name-container', flagDoesNotExists && 'error-val-column')}>
         <span className="cell-font">{cell}</span>
@@ -213,6 +214,7 @@ export default function GFlagComponent(props) {
       mode: EDIT
     };
 
+    if (isReadOnly) return <span className="cell-font">{valueExists ? `${cell}` : ''}</span>;
     if (valueExists) {
       modalProps = {
         ...modalProps,
@@ -294,7 +296,7 @@ export default function GFlagComponent(props) {
 
   const renderTable = () => {
     return (
-      <div className="table-container">
+      <div className="gflag-table">
         <BootstrapTable data={fields.getAll()}>
           <TableHeaderColumn width="40%" dataField="Name" dataFormat={nameFormatter} isKey>
             FLAG NAME
@@ -340,15 +342,15 @@ export default function GFlagComponent(props) {
       <YBModalForm
         title={SERVER_LIST.find((e) => e.serverName === selectedProps?.server).label}
         visible={toggleModal}
-        size="lg"
+        size="large"
         submitLabel="Add Flag"
         formName="ADDGFlagForm"
         cancelLabel="Cancel"
         validationSchema={gflagSchema}
         showCancelButton={true}
         onHide={() => setToggleModal(false)}
-        onFormSubmit={handleSubmit}
-        render={(props) => renderOption(props)}
+        onFormSubmit={handleFormSubmit}
+        render={(properties) => renderOption(properties)}
       />
     );
   };
@@ -356,13 +358,12 @@ export default function GFlagComponent(props) {
   return (
     <FlexContainer direction="column">
       <FlexShrink>
-        {OPTIONS.map((option) => {
-          const { optionName, ...rest } = option;
-          return (
-            <>
+        {!isReadOnly &&
+          OPTIONS.map((option) => {
+            const { optionName, ...rest } = option;
+            return (
               <DropdownButton {...rest} id={optionName} key={optionName}>
                 {SERVER_LIST.map((server) => {
-                  //DRY
                   const { serverName, label } = server;
                   const serverProps = { option: optionName, server: serverName, mode: CREATE };
                   return (
@@ -375,10 +376,8 @@ export default function GFlagComponent(props) {
                   );
                 })}
               </DropdownButton>
-              &nbsp;&nbsp;
-            </>
-          );
-        })}
+            );
+          })}
       </FlexShrink>
       {fields.length > 0 && renderTable()}
       {toggleModal && renderModal()}
