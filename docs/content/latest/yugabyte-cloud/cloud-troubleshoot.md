@@ -31,13 +31,21 @@ If you have a VPC configured, add one or more IP addresses from the peered VPC t
 
 ### SSL off
 
-If you are connecting to a cluster and see the following error:
+If you are connecting to a cluster using YSQL and see the following error:
 
 ```output
 ysqlsh: FATAL:  no pg_hba.conf entry for host "144.244.44.44", user "admin", database "yugabyte", SSL off
 ```
 
-Yugabyte Cloud clusters require an SSL connection. If you set `sslmode` to `disable`, your connection will fail. Refer to [SSL modes in YSQL](../cloud-connect/connect-client-shell/#ssl-modes-in-ysql).
+Yugabyte Cloud clusters require an SSL connection. If you set `sslmode` to `disable`, your connection will fail. Refer to [SSL modes in YSQL](../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
+
+If you are connecting to a cluster using YCQL and see the following error:
+
+```output
+Connection error: ('Unable to connect to any servers', {'44.144.44.4': ConnectionShutdown('Connection to 44.144.44.4 was closed',)})
+```
+
+Ensure you are using the `--ssl` option and the path to the cluster certificate is correct.
 
 ### Application fails to connect
 
