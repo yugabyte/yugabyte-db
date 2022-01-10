@@ -65,11 +65,11 @@ showAsideToc: true
 
 </ul>
 
-You can configure an Azure cloud provider for YugabyteDB clusters using the Yugabyte Platform UI.
+You can configure an Azure cloud provider for YugabyteDB clusters using the Yugabyte Platform console.
 
 ## Prerequisites
 
-You need to add the following cloud provider credentials via the Yugabyte Platform UI:
+You need to add the following cloud provider credentials via the Yugabyte Platform console:
 
 * Subscription ID
 * Tenant ID
@@ -79,7 +79,7 @@ You need to add the following cloud provider credentials via the Yugabyte Platfo
 
 Yugabyte Platform uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
-When the configuration is completed, you will be able to see all the resources managed by Yugabyte Platform in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
+When the configuration is completed, you can see all the resources managed by Yugabyte Platform in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
 
 ## Configure Azure
 
