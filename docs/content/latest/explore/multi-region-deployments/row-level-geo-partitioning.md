@@ -136,7 +136,7 @@ First, we create the parent table that contains a `geo_partition` column which i
 1. Create the parent table.
 
     ```sql
-    CREATE TABLE transactions (
+    CREATE TABLE bank_transactions (
         user_id   INTEGER NOT NULL,
         account_id INTEGER NOT NULL,
         geo_partition VARCHAR,
@@ -147,25 +147,25 @@ First, we create the parent table that contains a `geo_partition` column which i
     ) PARTITION BY LIST (geo_partition);
     ```
 
-1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third partition for US region called `transactions_us`.
+1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `bank_transactions_eu`, another for the India region called `bank_transactions_india,` and a third partition for US region called `bank_transactions_us`.
 
     ```sql
-    CREATE TABLE transactions_eu
-        PARTITION OF transactions
+    CREATE TABLE bank_transactions_eu
+        PARTITION OF bank_transactions
           (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
         FOR VALUES IN ('EU') TABLESPACE eu_central_1_tablespace;
 
-    CREATE TABLE transactions_india
-        PARTITION OF transactions
+    CREATE TABLE bank_transactions_india
+        PARTITION OF bank_transactions
           (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
         FOR VALUES IN ('India') TABLESPACE ap_south_1_tablespace;
 
-    CREATE TABLE transactions_us
-        PARTITION OF transactions
+    CREATE TABLE bank_transactions_us
+        PARTITION OF bank_transactions
           (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
@@ -180,12 +180,12 @@ First, we create the parent table that contains a `geo_partition` column which i
 
     ```output
                     List of relations
-     Schema |         Name         | Type  |  Owner
-    --------+----------------------+-------+----------
-    public | transactions         | table | yugabyte
-    public | transactions_eu      | table | yugabyte
-    public | transactions_india   | table | yugabyte
-    public | transactions_us      | table | yugabyte
+     Schema |         Name                      | Type  |  Owner
+    --------+-----------------------------------+-------+----------
+     public | bank_transactions         | table | yugabyte
+     public | bank_transactions_eu      | table | yugabyte
+     public | bank_transactions_india   | table | yugabyte
+     public | bank_transactions_us      | table | yugabyte
     (4 rows)
     ```
 
@@ -193,7 +193,7 @@ The data is now arranged as follows:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-2.png)
 
-## Step 3. Pinning user transactions to geographic locations
+## Step 3. Pinning user bank transactions to geographic locations
 
 Now, the setup should automatically be able to pin rows to the appropriate regions based on the  value set in the `geo_partition` column. This is shown in the following diagram:
 
@@ -217,14 +217,14 @@ Expanded display is used automatically.
 1. Insert a row into the table with the `geo_partition` column value set to `EU` below.
 
     ```sql
-    INSERT INTO transactions
+    INSERT INTO bank_transactions
         VALUES (100, 10001, 'EU', 'checking', 120.50, 'debit');
     ```
 
-1. Verify that the row is present in the `transactions` table.
+1. Verify that the row is present in the `bank_transactions` table.
 
     ```sql
-    yugabyte=# select * from transactions;
+    yugabyte=# select * from bank_transactions;
     ```
 
     ```output
@@ -238,10 +238,10 @@ Expanded display is used automatically.
     created_at    | 2020-11-07 21:28:11.056236
     ```
 
-Additionally, the row must be present only in the `transactions_eu` partition, which can be easily verified by running the select statement directly against that partition. The other partitions should contain no rows.
+Additionally, the row must be present only in the `bank_transactions_eu` partition, which can be easily verified by running the select statement directly against that partition. The other partitions should contain no rows.
 
 ```sql
-yugabyte=# select * from transactions_eu;
+yugabyte=# select * from bank_transactions_eu;
 ```
 
 ```output
@@ -256,7 +256,7 @@ created_at    | 2020-11-07 21:28:11.056236
 ```
 
 ```sql
-yugabyte=# select count(*) from transactions_india;
+yugabyte=# select count(*) from bank_transactions_india;
 ```
 
 ```output
@@ -266,7 +266,7 @@ yugabyte=# select count(*) from transactions_india;
 ```
 
 ```sql
-yugabyte=# select count(*) from transactions_us;
+yugabyte=# select count(*) from bank_transactions_us;
 ```
 
 ```sql
@@ -278,16 +278,16 @@ yugabyte=# select count(*) from transactions_us;
 Now, let's insert data into the other partitions.
 
 ```sql
-INSERT INTO transactions
+INSERT INTO bank_transactions
     VALUES (200, 20001, 'India', 'savings', 1000, 'credit');
-INSERT INTO transactions
+INSERT INTO bank_transactions
     VALUES (300, 30001, 'US', 'checking', 105.25, 'debit');
 ```
 
 These can be verified as follows:
 
 ```sql
-yugabyte=# select * from transactions_india;
+yugabyte=# select * from bank_transactions_india;
 ```
 
 ```output
@@ -302,7 +302,7 @@ created_at    | 2020-11-07 21:45:26.011636
 ```
 
 ```sql
-yugabyte=# select * from transactions_us;
+yugabyte=# select * from bank_transactions_us;
 ```
 
 ```output
@@ -318,19 +318,19 @@ created_at    | 2020-11-07 21:45:26.067444
 
 ## Step 4. Users travelling across geographic locations
 
-In order to make things interesting, let us say user 100, whose first transaction was performed in the EU region travels to India and the US, and performs two other transactions. This can be simulated by using the following statements.
+In order to make things interesting, let us say user 100, whose first bank transaction was performed in the EU region travels to India and the US, and performs two other bank transactions. This can be simulated by using the following statements.
 
 ```sql
-INSERT INTO transactions
+INSERT INTO bank_transactions
     VALUES (100, 10001, 'India', 'savings', 2000, 'credit');
-INSERT INTO transactions
+INSERT INTO bank_transactions
     VALUES (100, 10001, 'US', 'checking', 105, 'debit');
 ```
 
-Now, each of the transactions would be pinned to the appropriate geographic locations. This can be verified as follows.
+Now, each of the bank transactions would be pinned to the appropriate geographic locations. This can be verified as follows.
 
 ```sql
-yugabyte=# select * from transactions_india where user_id=100;
+yugabyte=# select * from bank_transactions_india where user_id=100;
 ```
 
 ```output
@@ -345,7 +345,7 @@ created_at    | 2020-11-07 21:56:26.760253
 ```
 
 ```sql
-yugabyte=# select * from transactions_us where user_id=100;
+yugabyte=# select * from bank_transactions_us where user_id=100;
 ```
 
 ```output
@@ -359,10 +359,10 @@ txn_type      | debit
 created_at    | 2020-11-07 21:56:26.794173
 ```
 
-All the transactions made by the user can efficiently be retrieved using the following SQL statement.
+All the bank transactions made by the user can efficiently be retrieved using the following SQL statement.
 
 ```sql
-yugabyte=# select * from transactions where user_id=100 order by created_at desc;
+yugabyte=# select * from bank_transactions where user_id=100 order by created_at desc;
 ```
 
 ```output
@@ -392,7 +392,7 @@ txn_type      | debit
 created_at    | 2020-11-07 21:28:11.056236
 ```
 
-## Step 5. Running transactions
+## Step 5. Running distributed transactions
 
 So far, we have only been running `SELECT` and [single-row transactions](../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
 
@@ -400,8 +400,8 @@ Let's say we want to run the following transaction:
 
 ```sql
 BEGIN;
-INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
-INSERT INTO transactions VALUES (100, 10003, 'EU', 'checking', 400.00, 'credit');
+INSERT INTO bank_transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
+INSERT INTO bank_transactions VALUES (100, 10003, 'EU', 'checking', 400.00, 'credit');
 COMMIT;
 ```
 
@@ -409,7 +409,7 @@ If we attempt to run this while connected to a node in us-west-2, we get an erro
 
 ```sql
 BEGIN;
-INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
+INSERT INTO bank_transactions VALUES (100, 10002, 'EU', 'checking', 400.00, 'debit');
 ```
 
 ```output
@@ -422,7 +422,7 @@ However, if we instead connect to a node in eu-central-1 and run the exact same 
 
 ```sql
 BEGIN;
-INSERT INTO transactions VALUES (100, 10002, 'EU', 'checking', 400.0, 'debit');
+INSERT INTO bank_transactions VALUES (100, 10002, 'EU', 'checking', 400.0, 'debit');
 ```
 
 ```output
@@ -430,7 +430,7 @@ INSERT 1 0
 ```
 
 ```sql
-INSERT INTO transactions VALUES (100, 10003, 'EU', 'checking', 400.0, 'credit');
+INSERT INTO bank_transactions VALUES (100, 10003, 'EU', 'checking', 400.0, 'credit');
 ```
 
 ```output
@@ -449,8 +449,8 @@ Sometimes though, we might want to run a transaction that writes data to multipl
 
 ```sql
 BEGIN;
-INSERT INTO transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
-INSERT INTO transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
+INSERT INTO bank_transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
+INSERT INTO bank_transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
 COMMIT;
 ```
 
@@ -459,7 +459,7 @@ Running this transaction will fail whether we run it from us-west-2 or eu-centra
 ```sql
 SET force_global_transaction = TRUE;
 BEGIN;
-INSERT INTO transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
+INSERT INTO bank_transactions VALUES (100, 10004, 'US', 'checking', 400.00, 'debit');
 ```
 
 ```output
@@ -467,7 +467,7 @@ INSERT 1 0
 ```
 
 ```sql
-INSERT INTO transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
+INSERT INTO bank_transactions VALUES (200, 10005, 'EU', 'checking', 400.00, 'credit');
 ```
 
 ```output
@@ -492,17 +492,17 @@ Finally, let's say we want to delete the row we just inserted. If we run the fol
 
 ```sql
 SET force_global_transaction = FALSE;
-DELETE FROM transactions WHERE user_id = 200 AND account_id = 10005;
+DELETE FROM bank_transactions WHERE user_id = 200 AND account_id = 10005;
 ```
 
 ```output
 ERROR:  Illegal state: Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64: . Errors from tablet servers: [Illegal state (yb/client/transaction.cc:284): Nonlocal tablet accessed in local transaction: tablet c5a611afd571455e80450bd553a24a64]
 ```
 
-We are attempting to delete from the main table (`transactions` rather than `transactions_eu_west_1`) and not specifying the partition column (there's no `geo_partition = 'EU'` clause). This means that YugabyteDB is unable to tell that the row being deleted is in fact located in eu-central-1. To fix this, we could instead run:
+We are attempting to delete from the main table (`bank_transactions` rather than `bank_transactions_eu_west_1`) and not specifying the partition column (there's no `geo_partition = 'EU'` clause). This means that YugabyteDB is unable to tell that the row being deleted is in fact located in eu-central-1. To fix this, we could instead run:
 
 ```sql
-DELETE FROM transactions_eu_west_1 WHERE user_id = 200 AND account_id = 10005;
+DELETE FROM bank_transactions_eu_west_1 WHERE user_id = 200 AND account_id = 10005;
 ```
 
 ```output
@@ -541,21 +541,21 @@ Next, create the transaction table and adjust the placement. (Replace the IP add
 Finally, create the partition for Brazil:
 
 ```sql
-CREATE TABLE transactions_brazil
-    PARTITION OF transactions
+CREATE TABLE bank_transactions_brazil
+    PARTITION OF bank_transactions
       (user_id, account_id, geo_partition, account_type,
        amount, txn_type, created_at,
        PRIMARY KEY (user_id HASH, account_id, geo_partition))
     FOR VALUES IN ('Brazil') TABLESPACE sa_east_1_tablespace;
 ```
 
-And with that, the new region is ready to store transactions of the residents of Brazil.
+And with that, the new region is ready to store bank transactions of the residents of Brazil.
 
 ```sql
-INSERT INTO transactions
+INSERT INTO bank_transactions
     VALUES (400, 40001, 'Brazil', 'savings', 1000, 'credit');
 
-select * from transactions_brazil;
+select * from bank_transactions_brazil;
 ```
 
 ```output
