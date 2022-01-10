@@ -309,6 +309,9 @@ components:
         env_vars:
           - name: JAVA_OPTS
             static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m'
+          - name: HTTP_PROXY
+            value: {{repl ConsoleSetting "http.proxy"}}
+            when: {{repl ConsoleSettingEquals "http.proxy.enabled" "1"}}
         ports:
           - private_port: "9000"
             public_port: "9000"
