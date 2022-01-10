@@ -72,6 +72,8 @@ Replace the following:
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
 
+For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
+
 ## Connect using third party clients
 
 Because YugabyteDB is PostgreSQL-compatible, you can use third party PostgreSQL clients to connect to your YugabyteDB clusters in Yugabyte Cloud. To create connections to your cluster in Yugabyte Cloud, follow the client's configuration steps for PostgreSQL, but use the value for host as shown on the **Settings** tab for your cluster, port 5433, and the username and password of a user with permissions for the cluster.

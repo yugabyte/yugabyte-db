@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-authentication
     parent: cloud-secure-clusters
-    weight: 300
+    weight: 250
 isTocNested: true
 showAsideToc: true
 ---
