@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
+import com.yugabyte.yw.forms.EditBackupParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -378,6 +379,38 @@ public class BackupsController extends AuthenticatedController {
     backup.transitionState(BackupState.Stopped);
     auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.withMessage("Successfully stopped the backup process.");
+  }
+
+  @ApiOperation(
+      value = "Edit a backup",
+      notes = "Edit a backup",
+      response = Backup.class,
+      nickname = "editBackup")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "backup",
+          value = "Parameters of the backup to be edited",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.EditBackupParams",
+          required = true))
+  public Result editBackup(UUID customerUUID, UUID backupUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+    if (backup.state != Backup.BackupState.Completed) {
+      LOG.info("The backup {} you are trying to edit did not complete", backupUUID);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The backup you are trying to edit did not complete");
+    }
+
+    EditBackupParams taskParams = parseJsonAndValidate(EditBackupParams.class);
+    if (taskParams.timeBeforeDeleteFromPresentInMillis <= 0L) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot specify a non positive value to specify the expiry time");
+    }
+    backup.updateExpiryTime(taskParams.timeBeforeDeleteFromPresentInMillis);
+
+    auditService().createAuditEntry(ctx(), request());
+    return PlatformResults.withData(backup);
   }
 
   private static void waitForTask(UUID taskUUID) throws InterruptedException {

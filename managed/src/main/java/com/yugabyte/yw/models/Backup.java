@@ -114,6 +114,15 @@ public class Backup extends Model {
     return expiry;
   }
 
+  private void setExpiry(long timeBeforeDeleteFromPresent) {
+    this.expiry = new Date(System.currentTimeMillis() + timeBeforeDeleteFromPresent);
+  }
+
+  public void updateExpiryTime(long timeBeforeDeleteFromPresent) {
+    setExpiry(timeBeforeDeleteFromPresent);
+    save();
+  }
+
   public void setBackupInfo(BackupTableParams params) {
     this.backupInfo = params;
   }
