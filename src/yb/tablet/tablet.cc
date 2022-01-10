@@ -2101,7 +2101,9 @@ Status Tablet::BackfillIndexesForYsql(
   {
     std::stringstream ss;
     for (auto& index : indexes) {
-      Oid index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
+      // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
+      // lexer <ival> type. Use int to output as -2147467255 that is accepted by <ival>.
+      int index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
       ss << index_oid << ",";
     }
     index_oids = ss.str();
@@ -2116,7 +2118,7 @@ Status Tablet::BackfillIndexesForYsql(
         GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
 
     // This should be safe from injection attacks because the parameters only consist of characters
-    // [,0-9a-f].
+    // [-,0-9a-f].
     std::string query_str = Format(
         "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
         index_oids,

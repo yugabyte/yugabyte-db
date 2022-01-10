@@ -425,8 +425,13 @@ void YbDatumToEnum(Datum datum, int64 *data, int64 *bytes) {
 
 		/*
 		 * We expect datum to only contain a enum oid and does not already contain a sort order.
+		 * For OID >= 2147483648, Postgres sign-extends datum with 0xffffffff, which is -NaN and
+		 * does not reprensent a valid sort order.
 		 */
-		Assert(!(datum >> 32));
+		Assert(!(datum >> 32) || ((datum >> 32) == 0xffffffff));
+
+		/* Clear the high 4-byte in case it is not zero. */
+		datum &= 0xffffffff;
 
 		/*
 		 * Find the sort order of this enum oid.
