@@ -405,13 +405,13 @@ ybcSetupScanTargets(ForeignScanState *node)
 				 * even if all column values are NULL.
 				 */
 				YBCPgExpr const_handle;
-				YBCPgNewConstant(ybc_state->handle,
+				HandleYBStatus(YBCPgNewConstant(ybc_state->handle,
 								 type_entity,
 								 false /* collate_is_valid_non_c */,
 								 NULL /* collation_sortkey */,
 								 0 /* datum */,
 								 false /* is_null */,
-								 &const_handle);
+								 &const_handle));
 				HandleYBStatus(YBCPgOperatorAppendArg(op_handle, const_handle));
 			} else {
 				/* Add aggregate arguments to operator. */
@@ -425,13 +425,13 @@ ybcSetupScanTargets(ForeignScanState *node)
 						Assert(const_node->constisnull || const_node->constbyval);
 
 						YBCPgExpr const_handle;
-						YBCPgNewConstant(ybc_state->handle,
+						HandleYBStatus(YBCPgNewConstant(ybc_state->handle,
 										 type_entity,
 										 false /* collate_is_valid_non_c */,
 										 NULL /* collation_sortkey */,
 										 const_node->constvalue,
 										 const_node->constisnull,
-										 &const_handle);
+										 &const_handle));
 						HandleYBStatus(YBCPgOperatorAppendArg(op_handle, const_handle));
 					}
 					else if (IsA(tle->expr, Var))
