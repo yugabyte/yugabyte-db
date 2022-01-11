@@ -123,7 +123,7 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
     auto conn = ASSERT_RESULT(Connect());
     for (int i = 1; i <= NumTabletServers(); ++i) {
-        EXPECT_OK(conn.ExecuteFormat(R"#(
+        ASSERT_OK(conn.ExecuteFormat(R"#(
             CREATE TABLESPACE region$0 WITH (replica_placement='{
               "num_replicas": 1,
               "placement_blocks":[{
@@ -134,12 +134,12 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
               }]
             }')
         )#", i));
-        EXPECT_OK(conn.ExecuteFormat(
+        ASSERT_OK(conn.ExecuteFormat(
             "CREATE TABLE $0$1(value int) TABLESPACE region$1", kTablePrefix, i));
     }
   }
 
-  std::vector<TabletId> GetStatusTablets(int region, bool global) {
+  Result<std::vector<TabletId>> GetStatusTablets(int region, bool global) {
     YBTableName table_name;
     if (global) {
       table_name = YBTableName(
@@ -150,37 +150,51 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
           yb::Format("transactions_$0", region));
     }
     std::vector<TabletId> tablet_uuids;
-    EXPECT_OK(client_->GetTablets(
+    RETURN_NOT_OK(client_->GetTablets(
         table_name, 1000 /* max_tablets */, &tablet_uuids, nullptr /* ranges */));
     return tablet_uuids;
   }
 
   void CheckInsert(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
                    SetGlobalTransactionSessionVar session_var, ExpectedLocality expected) {
-    auto expected_status_tablets = GetStatusTablets(
-        to_region, expected != ExpectedLocality::kLocal);
+    auto expected_status_tablets = ASSERT_RESULT(GetStatusTablets(
+        to_region, expected != ExpectedLocality::kLocal));
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) =
         (set_global_transactions_gflag == SetGlobalTransactionsGFlag::kTrue);
 
     auto conn = ASSERT_RESULT(Connect());
-    EXPECT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
-    EXPECT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-    EXPECT_OK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
-    EXPECT_OK(conn.CommitTransaction());
+    ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
+    ASSERT_OK(conn.CommitTransaction());
 
     auto last_transaction = transaction_pool_->GetLastTransaction();
     auto metadata = last_transaction->GetMetadata().get();
-    EXPECT_OK(metadata);
+    ASSERT_OK(metadata);
     ASSERT_FALSE(expected_status_tablets.empty());
     ASSERT_TRUE(std::find(expected_status_tablets.begin(),
                           expected_status_tablets.end(),
                           metadata->status_tablet) != expected_status_tablets.end());
   }
 
+  void CheckAbort(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
+                  SetGlobalTransactionSessionVar session_var, int num_aborts) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) =
+        (set_global_transactions_gflag == SetGlobalTransactionsGFlag::kTrue);
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
+    for (int i = 0; i < num_aborts; ++i) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+      ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0$1(value) VALUES (0)", kTablePrefix, to_region));
+      ASSERT_OK(conn.RollbackTransaction());
+    }
+  }
+
   void WaitForStatusTabletsVersion(uint64_t version) {
     constexpr auto error =
         "Timed out waiting for transaction manager to update status tablet cache version to $0";
-    EXPECT_OK(WaitFor(
+    ASSERT_OK(WaitFor(
         [this, version] {
             return transaction_manager_->GetLoadedStatusTabletsVersion() == version;
         },
@@ -261,6 +275,9 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelecti
   CheckInsert(
       1, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
       ExpectedLocality::kLocal);
+  CheckAbort(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      1 /* num_aborts */);
   CheckInsert(
       1, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
       ExpectedLocality::kGlobal);
@@ -279,6 +296,22 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelecti
   CheckInsert(
       2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestNonlocalAbort)) {
+  constexpr int kNumAborts = 1000;
+
+  SetupTables();
+
+  CheckInsert(
+      2, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+
+  // Create region 1 local transaction table.
+  CreateTransactionTable(1);
+
+  CheckAbort(
+      2, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse, kNumAborts);
 }
 
 } // namespace client
