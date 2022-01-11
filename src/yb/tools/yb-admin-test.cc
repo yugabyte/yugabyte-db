@@ -205,6 +205,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   workload.set_write_timeout_millis(10000);
   workload.set_num_write_threads(1);
   workload.set_write_batch_size(1);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -223,19 +224,19 @@ TEST_F(AdminCliTest, TestChangeConfig) {
                                                 MonoDelta::FromSeconds(10)));
 
   workload.StopAndJoin();
-  int num_batches = workload.batches_completed();
+  auto num_batches = workload.batches_completed();
 
   LOG(INFO) << "Waiting for replicas to agree...";
   // Wait for all servers to replicate everything up through the last write op.
   // Since we don't batch, there should be at least # rows inserted log entries,
   // plus the initial leader's no-op, plus 1 for
   // the added replica for a total == #rows + 2.
-  int min_log_index = num_batches + 2;
+  auto min_log_index = num_batches + 2;
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(30),
                                   active_tablet_servers, tablet_id_,
                                   min_log_index));
 
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   ClusterVerifier cluster_verifier(cluster_.get());
@@ -567,6 +568,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   TestWorkload workload(cluster_.get());
   workload.set_table_name(extra_table);
   workload.set_timeout_allowed(true);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -638,7 +640,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Stop the workload.
   workload.StopAndJoin();
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   sleep(5);
@@ -672,6 +674,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   TestWorkload workload(cluster_.get());
   workload.set_table_name(extra_table);
   workload.set_timeout_allowed(true);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -721,7 +724,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
 
   // Stop the workload.
   workload.StopAndJoin();
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   sleep(5);
@@ -729,8 +732,8 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   // Verify that there was no data loss.
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
-  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
-    extra_table, ClusterVerifier::EXACTLY, rows_inserted));
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCountWithRetries(
+    extra_table, ClusterVerifier::EXACTLY, rows_inserted, 20s));
 }
 
 TEST_F(AdminCliTest, TestClearPlacementPolicy) {

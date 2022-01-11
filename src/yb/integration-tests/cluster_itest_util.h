@@ -235,7 +235,7 @@ Status GetConsensusState(const TServerDetails* replica,
 
 // Wait until the number of servers with the specified member type in the committed consensus
 // configuration is equal to config_size.
-Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
+Status WaitUntilCommittedConfigMemberTypeIs(size_t config_size,
                                             const TServerDetails* replica,
                                             const TabletId& tablet_id,
                                             const MonoDelta& timeout,
@@ -243,7 +243,7 @@ Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
 
 // Wait until the number of voters in the committed consensus configuration is
 // 'quorum_size', according to the specified replica.
-Status WaitUntilCommittedConfigNumVotersIs(int config_size,
+Status WaitUntilCommittedConfigNumVotersIs(size_t config_size,
                                            const TServerDetails* replica,
                                            const TabletId& tablet_id,
                                            const MonoDelta& timeout);

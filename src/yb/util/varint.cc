@@ -15,6 +15,8 @@
 
 #include <openssl/bn.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -193,7 +195,7 @@ Status VarInt::DecodeFromComparable(const Slice &slice, size_t *num_decoded_byte
         slice.ToDebugHexString(), num_ones);
   }
   *num_decoded_bytes = num_ones;
-  impl_.reset(BN_bin2bn(buffer.data() + idx, num_ones - idx, nullptr /* ret */));
+  impl_.reset(BN_bin2bn(buffer.data() + idx, narrow_cast<int>(num_ones - idx), nullptr /* ret */));
   if (negative) {
     BN_set_negative(impl_.get(), 1);
   }
@@ -242,7 +244,8 @@ Status VarInt::DecodeFromTwosComplement(const std::string& input) {
   bool negative = (input[0] & 0x80) != 0;
   if (!negative) {
     impl_.reset(BN_bin2bn(
-        pointer_cast<const unsigned char*>(input.data()), input.size(), nullptr /* ret */));
+        pointer_cast<const unsigned char*>(input.data()), narrow_cast<int>(input.size()),
+        nullptr /* ret */));
     return Status::OK();
   }
   std::string copy(input);
@@ -253,7 +256,7 @@ Status VarInt::DecodeFromTwosComplement(const std::string& input) {
   }
   --*back;
   FlipBits(data, copy.size());
-  impl_.reset(BN_bin2bn(data, input.size(), nullptr /* ret */));
+  impl_.reset(BN_bin2bn(data, narrow_cast<int>(input.size()), nullptr /* ret */));
   BN_set_negative(impl_.get(), 1);
 
   return Status::OK();

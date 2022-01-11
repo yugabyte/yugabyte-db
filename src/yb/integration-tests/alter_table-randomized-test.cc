@@ -107,12 +107,12 @@ class AlterTableRandomized : public YBTest {
     YBTest::TearDown();
   }
 
-  void RestartTabletServer(int idx) {
+  void RestartTabletServer(size_t idx) {
     LOG(INFO) << "Restarting TS " << idx;
     cluster_->tablet_server(idx)->Shutdown();
     CHECK_OK(cluster_->tablet_server(idx)->Restart());
-    CHECK_OK(cluster_->WaitForTabletsRunning(cluster_->tablet_server(idx),
-        MonoDelta::FromSeconds(60)));
+    CHECK_OK(cluster_->WaitForTabletsRunning(
+        cluster_->tablet_server(idx), MonoDelta::FromSeconds(60)));
   }
 
  protected:
@@ -200,7 +200,7 @@ struct TableState {
 
   void DropColumn(const string& name) {
     auto col_it = std::find(col_names_.begin(), col_names_.end(), name);
-    int index = col_it - col_names_.begin();
+    auto index = col_it - col_names_.begin();
     col_names_.erase(col_it);
     col_nullable_.erase(col_nullable_.begin() + index);
     for (auto& e : rows_) {
@@ -336,7 +336,7 @@ struct MirrorTable {
     DropAColumn(name);
   }
 
-  int num_columns() const {
+  size_t num_columns() const {
     return ts_.col_names_.size();
   }
 
@@ -465,7 +465,7 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
     } else if (r < 995) {
       t.DropRandomColumn(rng.Next());
     } else {
-      RestartTabletServer(rng.Uniform(cluster_->num_tablet_servers()));
+      RestartTabletServer(rng.Uniform64(cluster_->num_tablet_servers()));
     }
 
     if (i % 1000 == 0) {

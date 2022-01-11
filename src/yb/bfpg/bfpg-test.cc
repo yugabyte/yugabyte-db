@@ -85,13 +85,13 @@ class BfPgsqlTest : public YBTest {
   Status ConvertParams(const BFDecl *bfdecl,
                        const vector<BFTestValue::SharedPtr>& params,
                        vector<BFTestValue::SharedPtr> *converted_params) {
-    const int pcount = params.size();
+    const auto pcount = params.size();
     converted_params->resize(pcount);
     const std::vector<DataType>& ptypes = bfdecl->param_types();
 
     bool is_variadic = false;
     vector<BFTestValue::SharedPtr> cast_params(2);
-    for (int pindex = 0; pindex < pcount; pindex++) {
+    for (size_t pindex = 0; pindex < pcount; pindex++) {
       if (is_variadic || ptypes[pindex] == DataType::TYPEARGS) {
         // No conversion is needed for the rest of the arguments.
         is_variadic = true;
@@ -165,7 +165,7 @@ TEST_F(BfPgsqlTest, TestExactMatchSignature) {
 
   // Write the result to an integer and check the result.
   int expected_int_result = int_val1 + int_val2;
-  int return_int_result = result->int64_value();
+  auto return_int_result = result->int64_value();
   ASSERT_EQ(return_int_result, expected_int_result);
 
   // Test Case 2: The return type is exact match

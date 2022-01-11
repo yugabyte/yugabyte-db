@@ -39,7 +39,7 @@ class RestartTest : public YBTableTestBase {
 
   bool use_external_mini_cluster() override { return false; }
 
-  int num_tablet_servers() override { return 3; }
+  size_t num_tablet_servers() override { return 3; }
 
   int num_tablets() override { return 1; }
 

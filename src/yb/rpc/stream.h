@@ -143,7 +143,7 @@ struct StreamCreateData {
   Endpoint remote;
   const std::string& remote_hostname;
   Socket* socket;
-  int32_t receive_buffer_size;
+  size_t receive_buffer_size;
   std::shared_ptr<MemTracker> mem_tracker;
   scoped_refptr<MetricEntity> metric_entity;
 };

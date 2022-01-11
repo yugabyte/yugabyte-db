@@ -23,7 +23,7 @@ class TestQLDropStmt : public QLTestBase {
   TestQLDropStmt() : QLTestBase() {
   }
 
-  inline const string CqlError(int pos, string last = "") {
+  inline const string CqlError(string last = "") {
     return "Invalid CQL Statement" + last;
   }
 };
@@ -289,13 +289,12 @@ TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
       "INDEX CONCURRENTLY",
   };
   for (const auto& object : objects) {
-    const string expected_drop_error = CqlError(strlen("DROP "),
-                                                ". DROP " + object + " statement not supported");
+    const string expected_drop_error = CqlError(". DROP " + object + " statement not supported");
     auto drop_stmt = "DROP " + object + " test";
     EXEC_INVALID_STMT_WITH_ERROR(drop_stmt, expected_drop_error);
 
     const string expected_drop_if_exists_error =
-        CqlError(strlen("DROP "), ". DROP " + object + " IF EXISTS statement not supported");
+        CqlError(". DROP " + object + " IF EXISTS statement not supported");
     auto drop_if_exists_stmt = "DROP " + object + " IF EXISTS test";
     EXEC_INVALID_STMT_WITH_ERROR(drop_if_exists_stmt, expected_drop_if_exists_error);
   }
@@ -316,13 +315,13 @@ TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
   };
   for (const auto& drop_type : drop_types) {
     auto stmt = "DROP " + drop_type + " test";
-    EXEC_INVALID_STMT_WITH_ERROR(stmt, CqlError(strlen("DROP ")));
+    EXEC_INVALID_STMT_WITH_ERROR(stmt, CqlError());
   }
 
   vector<string> opt_drop_behaviors = {"CASCADE", "RESTRICT"};
   for (const auto& opt_drop_behavior : opt_drop_behaviors) {
     auto stmt = "DROP TABLE test ";
-    EXEC_INVALID_STMT_WITH_ERROR(stmt + opt_drop_behavior, CqlError(strlen(stmt)));
+    EXEC_INVALID_STMT_WITH_ERROR(stmt + opt_drop_behavior, CqlError());
   }
 }
 
@@ -333,14 +332,12 @@ TEST_F(TestQLDropStmt, TestQLDropStmtAnalyzer) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  string expected_drop_error = CqlError(strlen("DROP TABLE "),
-                                        ". Only one object name is allowed in a drop statement");
+  string expected_drop_error = CqlError(". Only one object name is allowed in a drop statement");
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b", expected_drop_error);
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b, c", expected_drop_error);
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b, c, d", expected_drop_error);
 
-  expected_drop_error = CqlError(strlen("DROP TABLE IF EXISTS "),
-                                 ". Only one object name is allowed in a drop statement");
+  expected_drop_error = CqlError(". Only one object name is allowed in a drop statement");
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE IF EXISTS a, b", expected_drop_error);
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE IF EXISTS a, b, c", expected_drop_error);
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE IF EXISTS a, b, c, d", expected_drop_error);

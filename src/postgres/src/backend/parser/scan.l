@@ -91,7 +91,7 @@ bool		standard_conforming_strings = true;
 #define ADVANCE_YYLLOC(delta)  ( *(yylloc) += (delta) )
 
 #define startlit()	( yyextra->literallen = 0 )
-static void addlit(char *ytext, int yleng, core_yyscan_t yyscanner);
+static void addlit(char *ytext, size_t yleng, core_yyscan_t yyscanner);
 static void addlitchar(unsigned char ychar, core_yyscan_t yyscanner);
 static char *litbufdup(core_yyscan_t yyscanner);
 static char *litbuf_udeescape(unsigned char escape, core_yyscan_t yyscanner);
@@ -1201,7 +1201,7 @@ scanner_finish(core_yyscan_t yyscanner)
 
 
 static void
-addlit(char *ytext, int yleng, core_yyscan_t yyscanner)
+addlit(char *ytext, size_t yleng, core_yyscan_t yyscanner)
 {
 	/* enlarge buffer if needed */
 	if ((yyextra->literallen + yleng) >= yyextra->literalalloc)

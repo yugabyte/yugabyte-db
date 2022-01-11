@@ -155,7 +155,7 @@ class DocWriteBatch {
   // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
   CHECKED_STATUS ReplaceRedisInList(
       const DocPath &doc_path,
-      const std::vector<int>& indices,
+      const std::vector<int64_t>& indices,
       const std::vector<SubDocument>& values,
       const ReadHybridTime& read_ht,
       const CoarseTimePoint deadline,
@@ -236,7 +236,7 @@ class DocWriteBatch {
       const Value& value,
       LazyIterator* doc_iter,
       bool is_deletion,
-      int num_subkeys);
+      size_t num_subkeys);
 
   // Handle the user provided timestamp during writes.
   Result<bool> SetPrimitiveInternalHandleUserTimestamp(const Value &value,

@@ -556,7 +556,7 @@ const void* YBCPgGetThreadLocalErrMsg();
 
 void YBCPgResetCatalogReadTime();
 
-YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
 #ifdef __cplusplus
 }  // extern "C"

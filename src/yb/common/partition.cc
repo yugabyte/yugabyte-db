@@ -91,7 +91,7 @@ Slice Partition::range_key(const string& partition_key) const {
 
 void Partition::ToPB(PartitionPB* pb) const {
   pb->Clear();
-  pb->mutable_hash_buckets()->Reserve(hash_buckets_.size());
+  pb->mutable_hash_buckets()->Reserve(narrow_cast<int>(hash_buckets_.size()));
   for (int32_t bucket : hash_buckets()) {
     pb->add_hash_buckets(bucket);
   }
@@ -135,7 +135,7 @@ Status ExtractColumnIds(const RepeatedPtrField<PartitionSchemaPB_ColumnIdentifie
           continue;
         }
         case PartitionSchemaPB_ColumnIdentifierPB::kName: {
-          int32_t column_idx = schema.find_column(identifier.name());
+          auto column_idx = schema.find_column(identifier.name());
           if (column_idx == Schema::kColumnNotFound) {
             return STATUS(InvalidArgument, "unknown column", identifier.DebugString());
           }
@@ -150,7 +150,7 @@ Status ExtractColumnIds(const RepeatedPtrField<PartitionSchemaPB_ColumnIdentifie
 // Sets a repeated field of column identifiers to the provided column IDs.
 void SetColumnIdentifiers(const vector<ColumnId>& column_ids,
                           RepeatedPtrField<PartitionSchemaPB_ColumnIdentifierPB>* identifiers) {
-    identifiers->Reserve(column_ids.size());
+    identifiers->Reserve(narrow_cast<int>(column_ids.size()));
     for (ColumnId column_id : column_ids) {
       identifiers->Add()->set_id(column_id);
     }
@@ -305,7 +305,7 @@ void PartitionSchema::KuduToPB(PartitionSchemaPB* pb) const {
   // - If this code is deleted, Kudu's original test needs to be updated.
   pb->Clear();
 
-  pb->mutable_hash_bucket_schemas()->Reserve(hash_bucket_schemas_.size());
+  pb->mutable_hash_bucket_schemas()->Reserve(narrow_cast<int>(hash_bucket_schemas_.size()));
   for (const HashBucketSchema& hash_bucket : hash_bucket_schemas_) {
     PartitionSchemaPB_HashBucketSchemaPB* hash_bucket_pb = pb->add_hash_bucket_schemas();
     SetColumnIdentifiers(hash_bucket.column_ids, hash_bucket_pb->mutable_columns());
@@ -546,6 +546,9 @@ Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
     return STATUS_SUBSTITUTE(InvalidArgument, "num_tablets should be greater than 0. Client "
                              "would need to wait for master leader get heartbeats from tserver.");
   }
+  if (num_tablets > 0xffff) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "Too many tablets requested: $0", num_tablets);
+  }
 
   // Allocate the partitions.
   partitions->resize(num_tablets);
@@ -714,7 +717,8 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
   // see PartitionTest::TestCreatePartitions.
   for (Partition& partition : *partitions) {
     if (partition.range_key_start().empty()) {
-      for (int i = partition.hash_buckets().size() - 1; i >= 0; i--) {
+      for (size_t i = partition.hash_buckets().size(); i > 0;) {
+        --i;
         if (partition.hash_buckets()[i] != 0) {
           break;
         }
@@ -722,7 +726,8 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
       }
     }
     if (partition.range_key_end().empty()) {
-      for (int i = partition.hash_buckets().size() - 1; i >= 0; i--) {
+      for (size_t i = partition.hash_buckets().size(); i > 0;) {
+        --i;
         partition.partition_key_end_.erase(kEncodedBucketSize * i);
         int32_t hash_bucket = partition.hash_buckets()[i] + 1;
         if (hash_bucket != hash_bucket_schemas_[i].num_buckets) {
@@ -1219,8 +1224,8 @@ uint16_t PartitionSchema::HashColumnCompoundValue(const string& compound) {
 // Encodes the hash columns of the supplied row into a 2-byte partition key.
 Status PartitionSchema::EncodeColumns(const ConstContiguousRow& row, string* buf) {
   string tmp;
-  int num_cols = row.schema()->num_hash_key_columns();
-  for (int col_idx = 0; col_idx < num_cols; col_idx++) {
+  auto num_cols = row.schema()->num_hash_key_columns();
+  for (size_t col_idx = 0; col_idx < num_cols; col_idx++) {
     const TypeInfo* type = row.schema()->column(col_idx).type_info();
     GetKeyEncoder<string>(type).Encode(row.cell_ptr(col_idx), col_idx + 1 == num_cols, &tmp);
   }
@@ -1233,8 +1238,8 @@ Status PartitionSchema::EncodeColumns(const ConstContiguousRow& row, string* buf
 // Encodes the hash columns of the supplied row into a 2-byte partition key.
 Status PartitionSchema::EncodeColumns(const YBPartialRow& row, string* buf) {
   string tmp;
-  int num_cols = row.schema()->num_hash_key_columns();
-  for (int col_idx = 0; col_idx < num_cols; col_idx++) {
+  auto num_cols = row.schema()->num_hash_key_columns();
+  for (size_t col_idx = 0; col_idx < num_cols; col_idx++) {
     const TypeInfo* type_info = row.schema()->column(col_idx).type_info();
     const KeyEncoder<string>& encoder = GetKeyEncoder<string>(type_info);
 

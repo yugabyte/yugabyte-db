@@ -52,13 +52,14 @@
 // Must come before gtest.h.
 #include "yb/gutil/mathlimits.h"
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/rle-encoding.h"
 #include "yb/util/bit-stream-utils.h"
 #include "yb/util/hexdump.h"
+#include "yb/util/format.h"
 #include "yb/util/test_util.h"
-#include <glog/logging.h>
 
 using std::string;
 using std::vector;
@@ -131,7 +132,7 @@ TEST(BitArray, TestBool) {
 
 // Writes 'num_vals' values with width 'bit_width' and reads them back.
 void TestBitArrayValues(int bit_width, int num_vals) {
-  const int kTestLen = BitUtil::Ceil(bit_width * num_vals, 8);
+  const int kTestLen = ceil_div(bit_width * num_vals, 8);
   const uint64_t mod = bit_width == 64? 1 : 1LL << bit_width;
 
   faststring buffer(kTestLen);
@@ -207,7 +208,7 @@ void ValidateRle(const vector<T>& values, int bit_width,
   faststring buffer;
   RleEncoder<T> encoder(&buffer, bit_width);
 
-  for (const auto value : values) {
+  for (const auto& value : values) {
     encoder.Put(value);
   }
   int encoded_len = encoder.Flush();
@@ -256,14 +257,14 @@ TEST(Rle, SpecificSequences) {
   }
 
   for (int width = 9; width <= MAX_WIDTH; ++width) {
-    ValidateRle(values, width, nullptr, 2 * (1 + BitUtil::Ceil(width, 8)));
+    ValidateRle(values, width, nullptr, 2 * (1 + ceil_div(width, 8)));
   }
 
   // Test 100 0's and 1's alternating
   for (int i = 0; i < 100; ++i) {
     values[i] = i % 2;
   }
-  int num_groups = BitUtil::Ceil(100, 8);
+  int num_groups = ceil_div(100, 8);
   expected_buffer[0] = (num_groups << 1) | 1;
   for (int i = 0; i < 100/8; ++i) {
     expected_buffer[i + 1] = BOOST_BINARY(1 0 1 0 1 0 1 0); // 0xaa
@@ -274,7 +275,7 @@ TEST(Rle, SpecificSequences) {
   // num_groups and expected_buffer only valid for bit width = 1
   ValidateRle(values, 1, expected_buffer, 1 + num_groups);
   for (int width = 2; width <= MAX_WIDTH; ++width) {
-    ValidateRle(values, width, nullptr, 1 + BitUtil::Ceil(width * 100, 8));
+    ValidateRle(values, width, nullptr, 1 + ceil_div(width * 100, 8));
   }
 }
 
@@ -410,12 +411,14 @@ TEST_F(TestRle, TestBulkPut) {
 TEST_F(TestRle, TestGetNextRun) {
   // Repeat the test with different number of items
   for (int num_items = 7; num_items < 200; num_items += 13) {
+    SCOPED_TRACE(Format("Num items: $0", num_items));
     // Test different block patterns
     //    1: 01010101 01010101
     //    2: 00110011 00110011
     //    3: 00011100 01110001
     //    ...
     for (int block = 1; block <= 20; ++block) {
+      SCOPED_TRACE(Format("Block: $0", block));
       faststring buffer(1);
       RleEncoder<bool> encoder(&buffer, 1);
       for (int j = 0; j < num_items; ++j) {
@@ -423,9 +426,11 @@ TEST_F(TestRle, TestGetNextRun) {
       }
       encoder.Flush();
 
+      SCOPED_TRACE(Format("Buffer: $0", Slice(buffer).ToDebugHexString()));
       RleDecoder<bool> decoder(buffer.data(), encoder.len(), 1);
       size_t count = num_items * block;
       for (int j = 0; j < num_items; ++j) {
+        SCOPED_TRACE(Format("j: $0", j));
         size_t run_length;
         bool val = false;
         DCHECK_GT(count, 0);
@@ -462,17 +467,17 @@ TEST_F(TestRle, TestRoundTripRandomSequencesWithRuns) {
   SeedRandom();
 
   // Test the limiting function of GetNextRun.
-  const int kMaxToReadAtOnce = (random() % 20) + 1;
+  const size_t kMaxToReadAtOnce = (random() % 20) + 1;
 
   // Generate a bunch of random bit sequences, and "round-trip" them
   // through the encode/decode sequence.
   for (int rep = 0; rep < 100; rep++) {
     faststring buf;
     string string_rep;
-    int num_bits = GenerateRandomBitString(10, &buf, &string_rep);
+    auto num_bits = GenerateRandomBitString(10, &buf, &string_rep);
     RleDecoder<bool> decoder(buf.data(), buf.size(), 1);
     string roundtrip_str;
-    int rem_to_read = num_bits;
+    auto rem_to_read = num_bits;
     size_t run_len;
     bool val = false;
     while (rem_to_read > 0 &&

@@ -164,7 +164,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
-    int32_t r1 = values[col_index++];  // h : int64
+    int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
@@ -231,7 +231,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
-    int32_t r1 = values[col_index++];  // h : int64
+    int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
@@ -298,7 +298,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
-    int32_t r1 = values[col_index++];  // h : int64
+    int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
@@ -367,7 +367,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
-    int32_t r1 = values[col_index++];  // h : int64
+    int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 

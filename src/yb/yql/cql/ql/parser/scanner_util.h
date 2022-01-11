@@ -63,7 +63,7 @@ void downcase_truncate_identifier(char *result, const char *ident, int len, bool
 //
 // We require the caller to pass in the string length since this saves a
 // strlen() call in some common usages.
-void truncate_identifier(char *ident, int len, bool warn);
+void truncate_identifier(char *ident, size_t len, bool warn);
 
 // is 'escape' acceptable as Unicode escape character (UESCAPE syntax) ?
 //
@@ -103,11 +103,11 @@ pg_wchar surrogate_pair_to_codepoint(pg_wchar first, pg_wchar second);
 //
 // pg_utf2wchar_with_len(), utf8_to_unicode(), pg_utf8_islegal(), and perhaps
 // other places would need to be fixed to change this.
-int pg_utf_mblen(const unsigned char *s);
+size_t pg_utf_mblen(const unsigned char *s);
 
 // returns the length (counted in wchars) of a multibyte string
 // (not necessarily NULL terminated)
-int pg_mbstrlen_with_len(const char *mbstr, int limit);
+size_t pg_mbstrlen_with_len(const char *mbstr, size_t limit);
 
 // Verify mbstr to make sure that it is validly encoded in the specified
 // encoding.
@@ -118,16 +118,16 @@ int pg_mbstrlen_with_len(const char *mbstr, int limit);
 // If OK, return length of string in the encoding.
 // If a problem is found, return -1 when noError is
 // true; when noError is false, ereport() a descriptive message.
-int pg_verify_mbstr_len(const char *mbstr, int len, bool noError);
+size_t pg_verify_mbstr_len(const char *mbstr, size_t len, bool noError);
 
 // report_invalid_encoding: complain about invalid multibyte character
 //
 // note: len is remaining length of string, not length of character;
 // len must be greater than zero, as we always examine the first byte.
-void report_invalid_encoding(const char *mbstr, int len);
+void report_invalid_encoding(const char *mbstr, size_t len);
 
 // Asserting UTF8 format.
-int pg_utf8_verifier(const unsigned char *s, int len);
+ssize_t pg_utf8_verifier(const unsigned char *s, size_t len);
 
 // Check for validity of a single UTF-8 encoded character
 //
@@ -141,10 +141,10 @@ int pg_utf8_verifier(const unsigned char *s, int len);
 //
 // length is assumed to have been obtained by pg_utf_mblen(), and the
 // caller must have checked that that many bytes are present in the buffer.
-bool pg_utf8_islegal(const unsigned char *source, int length);
+bool pg_utf8_islegal(const unsigned char *source, size_t length);
 
 // pg_mbcliplen with specified encoding
-int pg_encoding_mbcliplen(const char *mbstr, int len, int limit);
+size_t pg_encoding_mbcliplen(const char *mbstr, size_t len, size_t limit);
 
 }  // namespace ql
 }  // namespace yb

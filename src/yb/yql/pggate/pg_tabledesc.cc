@@ -25,6 +25,8 @@
 
 #include "yb/docdb/doc_key.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -85,7 +87,7 @@ const std::vector<std::string>& PgTableDesc::GetPartitions() const {
 }
 
 int PgTableDesc::GetPartitionCount() const {
-  return table_partitions_->keys.size();
+  return narrow_cast<int>(table_partitions_->keys.size());
 }
 
 Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {

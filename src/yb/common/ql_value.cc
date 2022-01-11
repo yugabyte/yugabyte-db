@@ -21,6 +21,7 @@
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_type.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -635,8 +636,8 @@ Status QLValue::Deserialize(
 
     case USER_DEFINED_TYPE: {
       set_map_value();
-      size_t fields_size = ql_type->udtype_field_names().size();
-      for (size_t i = 0; i < fields_size; i++) {
+      int fields_size = narrow_cast<int>(ql_type->udtype_field_names().size());
+      for (int i = 0; i < fields_size; i++) {
         // TODO (mihnea) default to null if value missing (CQL behavior)
         QLValue value;
         RETURN_NOT_OK(value.Deserialize(ql_type->param_type(i), client, data));
@@ -706,8 +707,8 @@ Status QLValue::Deserialize(
         }
 
         case USER_DEFINED_TYPE: {
-          const size_t fields_size = type->udtype_field_names().size();
-          for (size_t i = 0; i < fields_size; i++) {
+          const int fields_size = narrow_cast<int>(type->udtype_field_names().size());
+          for (int i = 0; i < fields_size; i++) {
             // TODO (mihnea) default to null if value missing (CQL behavior)
             QLValue value;
             RETURN_NOT_OK(value.Deserialize(type->param_type(i), client, data));

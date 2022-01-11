@@ -167,10 +167,10 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
     return op;
   }
 
-  void InsertRows(size_t num_rows) {
+  void InsertRows(int num_rows) {
     auto session = NewSession();
     boost::circular_buffer<std::future<FlushStatus>> futures(kInsertBatchSize);
-    for (size_t i = 0; i != num_rows; ++i) {
+    for (int i = 0; i != num_rows; ++i) {
       for (;;) {
         // Remove all the futures that are done.
         while (!futures.empty() && IsReady(futures.front())) {
@@ -1243,7 +1243,7 @@ TEST_F(QLDmlTest, ReadFollower) {
 
   auto must_see_all_rows_after_this_deadline = MonoTime::Now() + 5s * kTimeMultiplier;
   auto session = NewSession();
-  for (size_t i = 0; i != kNumRows; ++i) {
+  for (int i = 0; i != kNumRows; ++i) {
     for (;;) {
       auto row = ReadRow(session, KeyForIndex(i), YBConsistencyLevel::CONSISTENT_PREFIX);
       if (!row.ok() && row.status().IsNotFound()) {
@@ -1272,7 +1272,7 @@ TEST_F(QLDmlTest, ReadFollower) {
 
   // Check that after restart we don't miss any rows.
   std::vector<size_t> missing_rows;
-  for (size_t i = 0; i != kNumRows; ++i) {
+  for (int i = 0; i != kNumRows; ++i) {
     auto row = ReadRow(session, KeyForIndex(i), YBConsistencyLevel::CONSISTENT_PREFIX);
     if (!row.ok() && row.status().IsNotFound()) {
       missing_rows.push_back(i);

@@ -121,7 +121,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   // Since we're fault-tolerant we might mask when a tablet server is
   // dead. This returns Status::IllegalState() if fewer than 'num_tablet_servers'
   // are alive.
-  CHECKED_STATUS CheckTabletServersAreAlive(int num_tablet_servers);
+  CHECKED_STATUS CheckTabletServersAreAlive(size_t num_tablet_servers);
 
   void TearDown() override;
 
@@ -136,7 +136,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void BuildAndStart(const std::vector<std::string>& ts_flags = std::vector<std::string>(),
                      const std::vector<std::string>& master_flags = std::vector<std::string>());
 
-  void AssertAllReplicasAgree(int expected_result_count);
+  void AssertAllReplicasAgree(size_t expected_result_count);
 
   client::YBTableType table_type();
 

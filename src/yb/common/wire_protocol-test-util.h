@@ -82,9 +82,9 @@ QLWriteRequestPB* AddTestRowInsert(int32_t key, WriteRequestPB* req) {
 
 template <class Type, class WriteRequestPB>
 QLWriteRequestPB* AddTestRow(int32_t key,
-                int32_t int_val,
-                Type type,
-                WriteRequestPB* req) {
+                             int32_t int_val,
+                             Type type,
+                             WriteRequestPB* req) {
   auto wb = TestRow(key, type, req);
   auto column_value = wb->add_column_values();
   column_value->set_column_id(kFirstColumnId + 1);

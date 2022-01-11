@@ -381,7 +381,7 @@ class TabletPeer : public consensus::ConsensusContext,
   TableType table_type();
 
   // Returns the number of segments in log_.
-  int GetNumLogSegments() const;
+  size_t GetNumLogSegments() const;
 
   // Might update the can_be_deleted_.
   bool CanBeDeleted();

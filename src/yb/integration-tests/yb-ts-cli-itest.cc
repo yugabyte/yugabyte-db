@@ -97,7 +97,7 @@ TEST_F(YBTsCliITest, MoveTablet) {
   ASSERT_OK(ts->SetNumDrives(3));
   ASSERT_OK(ts->Restart());
 
-  int max_count = 0;
+  size_t max_count = 0;
   // Look for TS with max number of tablets on one drive and get one tablet to try move it.
   for (const auto& drive_and_tablets : inspect->DrivesOnTS(kServerIndex)) {
     const vector<string>& tablets = drive_and_tablets.second;

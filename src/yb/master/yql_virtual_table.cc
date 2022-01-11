@@ -109,7 +109,7 @@ CatalogManagerIf& YQLVirtualTable::catalog_manager() const {
 
 Result<std::pair<int, DataType>> YQLVirtualTable::ColumnIndexAndType(
     const std::string& col_name) const {
-  int column_index = schema_->find_column(col_name);
+  auto column_index = schema_->find_column(col_name);
   if (column_index == Schema::kColumnNotFound) {
     return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
   }

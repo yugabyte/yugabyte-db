@@ -59,7 +59,7 @@ Result<PlacementInfoConverter::Placement> PlacementInfoConverter::FromJson(
   }
 
   int64 total_min_replicas = 0;
-  for (int64 i = 0; i < pb.Size(); ++i) {
+  for (rapidjson::SizeType i = 0; i < pb.Size(); ++i) {
     const rapidjson::Value& placement = pb[i];
     if (!placement.HasMember("cloud") || !placement.HasMember("region") ||
         !placement.HasMember("zone") || !placement.HasMember("min_num_replicas")) {

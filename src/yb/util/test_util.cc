@@ -35,6 +35,7 @@
 #include <glog/logging.h>
 #include <gtest/gtest-spi.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
@@ -347,13 +348,13 @@ string GetToolPath(const string& rel_path, const string& tool_name) {
   return tool_path;
 }
 
-int CalcNumTablets(int num_tablet_servers) {
+int CalcNumTablets(size_t num_tablet_servers) {
 #ifdef NDEBUG
   return 0;  // Will use the default.
 #elif defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
-  return num_tablet_servers;
+  return narrow_cast<int>(num_tablet_servers);
 #else
-  return num_tablet_servers * 3;
+  return narrow_cast<int>(num_tablet_servers * 3);
 #endif
 }
 

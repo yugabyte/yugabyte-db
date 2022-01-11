@@ -196,7 +196,7 @@ bool JoinNonStaticRow(
 }
 
 CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
-                                  size_t index,
+                                  int index,
                                   rapidjson::Value* document,
                                   rapidjson::Value::MemberIterator* memberit,
                                   rapidjson::Value::ValueIterator* valueit,
@@ -683,7 +683,8 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
     // NOTE: lhs path cannot exceed by more than one hop
     if (last_elem_object && i == column_value.json_args_size()) {
       auto val = column_value.json_args(i - 1).operand().value().string_value();
-      rapidjson::Value v(val.c_str(), val.size(), document.GetAllocator());
+      rapidjson::Value v(
+          val.c_str(), narrow_cast<rapidjson::SizeType>(val.size()), document.GetAllocator());
       node->AddMember(v, rhs_doc, document.GetAllocator());
     } else {
       RETURN_NOT_OK(status);
@@ -1049,7 +1050,7 @@ Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_w
   if (request_.has_user_timestamp_usec()) {
     // If user_timestamp is provided, we need to add a tombstone for each individual
     // column in the schema since we don't want to analyze this on the read path.
-    for (int i = schema_->num_key_columns(); i < schema_->num_columns(); i++) {
+    for (auto i = schema_->num_key_columns(); i < schema_->num_columns(); i++) {
       const DocPath sub_path(row_path.encoded_doc_key(),
                              PrimitiveValue(schema_->column_id(i)));
       RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path,

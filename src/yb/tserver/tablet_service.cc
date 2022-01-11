@@ -463,7 +463,8 @@ class WriteQueryCompletionCallback {
       SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
       rows_data.clear();
       rowblock->Serialize(ql_write_req.client(), &rows_data);
-      ql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(rows_data));
+      ql_write_resp->set_rows_data_sidecar(
+          narrow_cast<int32_t>(context_->AddRpcSidecar(rows_data)));
     }
 
     if (!query_->pgsql_write_ops()->empty()) {
@@ -481,7 +482,8 @@ class WriteQueryCompletionCallback {
           auto* pgsql_write_resp = pgsql_write_op->response();
           const faststring& result_buffer = pgsql_write_op->result_buffer();
           if (!result_buffer.empty()) {
-            pgsql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(result_buffer));
+            pgsql_write_resp->set_rows_data_sidecar(
+                narrow_cast<int32_t>(context_->AddRpcSidecar(result_buffer)));
           }
         }
       }
@@ -2423,7 +2425,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       if (result.restart_read_ht.is_valid()) {
         return read_context->FormRestartReadHybridTime(result.restart_read_ht);
       }
-      result.response.set_rows_data_sidecar(read_context->context.AddRpcSidecar(result.rows_data));
+      result.response.set_rows_data_sidecar(
+          narrow_cast<int32_t>(read_context->context.AddRpcSidecar(result.rows_data)));
       read_context->resp->add_ql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();
@@ -2448,7 +2451,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       if (result.restart_read_ht.is_valid()) {
         return read_context->FormRestartReadHybridTime(result.restart_read_ht);
       }
-      result.response.set_rows_data_sidecar(read_context->context.AddRpcSidecar(result.rows_data));
+      result.response.set_rows_data_sidecar(
+          narrow_cast<int32_t>(read_context->context.AddRpcSidecar(result.rows_data)));
       read_context->resp->add_pgsql_batch()->Swap(&result.response);
     }
 

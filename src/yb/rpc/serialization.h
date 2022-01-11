@@ -64,11 +64,11 @@ Result<RefCntBuffer> SerializeRequest(
     size_t body_size, size_t additional_size, const google::protobuf::Message& header,
     AnyMessageConstPtr body);
 
-size_t SerializedMessageSize(size_t body_size, int additional_size);
+size_t SerializedMessageSize(size_t body_size, size_t additional_size);
 
 CHECKED_STATUS SerializeMessage(
     AnyMessageConstPtr msg, size_t body_size, const RefCntBuffer& param_buf,
-    int additional_size, size_t offset);
+    size_t additional_size, size_t offset);
 
 struct ParsedRequestHeader {
   Slice remote_method;

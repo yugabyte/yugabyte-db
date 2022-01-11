@@ -134,7 +134,7 @@ class MasterChangeConfigTest : public YBTest {
   void SetCurLogIndex();
 
   int num_masters_;
-  int cur_log_index_;
+  int64_t cur_log_index_;
   std::unique_ptr<ExternalMiniCluster> cluster_;
 };
 

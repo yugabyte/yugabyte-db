@@ -22,11 +22,11 @@
 namespace yb {
 namespace encryption {
 
-void DoTest(std::function<void(uint32_t, uint32_t)> file_op, int32_t size);
+void DoTest(const std::function<void(size_t, size_t)>& file_op, size_t size);
 
 template <typename Writable>
 void TestWrites(Writable* file, const Slice& data) {
-  DoTest([&](uint32_t begin, uint32_t end) {
+  DoTest([&](size_t begin, size_t end) {
     ASSERT_OK(file->Append(Slice(data.data() + begin, end - begin)));
   }, data.size());
 }
@@ -34,7 +34,7 @@ void TestWrites(Writable* file, const Slice& data) {
 template <typename BufType, typename Readable>
 void TestRandomAccessReads(Readable* file, const Slice& data) {
   auto buf = static_cast<BufType*>(EncryptionBuffer::Get()->GetBuffer(data.size()));
-  DoTest([&](uint32_t begin, uint32_t end) {
+  DoTest([&](size_t begin, size_t end) {
     Slice result;
     ASSERT_OK(file->Read(begin, end - begin, &result, buf));
     ASSERT_EQ(result.ToDebugHexString(),
@@ -44,7 +44,7 @@ void TestRandomAccessReads(Readable* file, const Slice& data) {
 
 template <typename BufType, typename Readable>
 void TestSequentialReads(Readable* file, const Slice& data) {
-  DoTest([&](uint32_t begin, uint32_t end) {
+  DoTest([&](size_t begin, size_t end) {
     auto buf = static_cast<BufType*>(EncryptionBuffer::Get()->GetBuffer(data.size()));
     Slice result;
     ASSERT_OK(file->Read(end - begin, &result, buf));

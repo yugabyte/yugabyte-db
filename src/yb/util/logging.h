@@ -137,9 +137,9 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 #define YB_SOME_KIND_OF_LOG_FIRST_N(severity, n, what_to_do) \
   static uint64_t LOG_OCCURRENCES = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging the first N is approximate"); \
-  if (LOG_OCCURRENCES++ < n) \
+  if (LOG_OCCURRENCES++ < (n)) \
     google::LogMessage( \
-      __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
+      __FILE__, __LINE__, google::GLOG_ ## severity, static_cast<int>(LOG_OCCURRENCES), \
       &what_to_do).stream()
 
 // The direct user-facing macros.

@@ -282,7 +282,7 @@ namespace {
 // Calculate the total byte size that will be used on the wire to replicate this message as part of
 // a consensus update request. This accounts for the length delimiting and tagging of the message.
 int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
-  int msg_size = google::protobuf::internal::WireFormatLite::LengthDelimitedSize(
+  auto msg_size = google::protobuf::internal::WireFormatLite::LengthDelimitedSize(
     msg.ByteSize());
   msg_size += 1; // for the type tag
   return msg_size;
@@ -544,7 +544,7 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
 
   std::lock_guard<simple_spinlock> lock(lock_);
 
-  int mem_required = 0;
+  size_t mem_required = 0;
   for (const auto& op_id : op_ids) {
     auto it = cache_.find(op_id.index);
     if (it != cache_.end() && it->second.msg->id().term() == op_id.term) {
@@ -559,8 +559,8 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
 
   // Try to consume the memory. If it can't be consumed, we may need to evict.
   if (!tracker_->TryConsume(mem_required)) {
-    int spare = tracker_->SpareCapacity();
-    int need_to_free = mem_required - spare;
+    auto spare = tracker_->SpareCapacity();
+    auto need_to_free = mem_required - spare;
     VLOG_WITH_PREFIX_UNLOCKED(1)
         << "Memory limit would be exceeded trying to append "
         << HumanReadableNumBytes::ToString(mem_required)

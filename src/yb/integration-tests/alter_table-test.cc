@@ -271,7 +271,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
         .Create();
   }
 
-  int GetSysCatalogWrites() {
+  int64_t GetSysCatalogWrites() {
     auto GetSysCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
       auto metrics = cluster_->mini_master()->sys_catalog().GetMetricEntity();
       return prototype.Instantiate(metrics)->value();

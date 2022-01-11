@@ -107,7 +107,7 @@ Status ExternalMiniClusterFsInspector::ListFilesInDir(const string& path,
   return Status::OK();
 }
 
-int ExternalMiniClusterFsInspector::CountFilesInDir(const string& path) {
+size_t ExternalMiniClusterFsInspector::CountFilesInDir(const string& path) {
   vector<string> entries;
   Status s = ListFilesInDir(path, &entries);
   if (!s.ok()) return 0;

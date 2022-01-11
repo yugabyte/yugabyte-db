@@ -492,13 +492,13 @@ Decimal Decimal::operator+(const Decimal& other) const {
   // If we need to add 0.1E+3 and 0.05E+3, we convert them to 0.10E+3 and 0.05E+3
   size_t max_digits = std::max(decimal.digits_.size(), other1.digits_.size());
   if (decimal.digits_.size() < max_digits) {
-    int increase = max_digits - decimal.digits_.size();
+    auto increase = max_digits - decimal.digits_.size();
     for (size_t i = 0; i < increase; i = i + 1) {
       decimal.digits_.push_back(0);
     }
   }
   if (other1.digits_.size() < max_digits) {
-    int increase = max_digits - other1.digits_.size();
+    auto increase = max_digits - other1.digits_.size();
     for (size_t i = 0; i < increase; i++) {
       other1.digits_.push_back(0);
     }

@@ -117,7 +117,7 @@ void SubstituteAndAppend(
   if (size == 0) return;
 
   // Build the string.
-  int original_size = output->size();
+  auto original_size = output->size();
   STLStringResizeUninitialized(output, original_size + size);
   char* target = string_as_array(output) + original_size;
 

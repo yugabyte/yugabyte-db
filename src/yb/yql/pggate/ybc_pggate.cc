@@ -1072,7 +1072,7 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   pgapi->SetTimeout(timeout_ms);
 }
 
-YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, int *count) {
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) {
   const auto result = pgapi->ListTabletServers();
   if (!result.ok()) {
     return ToYBCStatus(result.status());

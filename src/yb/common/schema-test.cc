@@ -354,7 +354,7 @@ TEST(TestSchema, TestCreateProjection) {
 
   // By names, with missing names.
   Status s = schema.CreateProjectionByNames({ "foobar" }, &partial_schema);
-  EXPECT_EQ("Not found: column not found: foobar", s.ToString(/* no file/line */ false));
+  EXPECT_EQ("Not found: Column not found: foobar", s.ToString(/* no file/line */ false));
 
   // By IDs
   ASSERT_OK(schema_with_ids.CreateProjectionByIdsIgnoreMissing({ schema_with_ids.column_id(0),

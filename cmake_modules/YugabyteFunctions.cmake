@@ -554,8 +554,8 @@ function(yb_process_pch target)
 
     # Intermediate target is required to make sure that PCH file generated before any dependent
     # binary source file compilation.
-    add_custom_target(${YB_PCH_PREFIX}_pch_proxy)
-    add_dependencies(${YB_PCH_PREFIX}_pch_proxy ${YB_PCH_PREFIX}_pch)
+    add_custom_target(${YB_PCH_PREFIX}_pch_proxy DEPENDS "${pch_h_file}")
+    add_dependencies(${YB_PCH_PREFIX}_pch_proxy "${YB_PCH_PREFIX}_pch")
   endif()
 
   yb_use_pch(${target} ${YB_PCH_PREFIX})

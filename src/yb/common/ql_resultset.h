@@ -48,7 +48,7 @@ class QLRSRowDesc {
   explicit QLRSRowDesc(const QLRSRowDescPB& desc_pb);
   virtual ~QLRSRowDesc();
 
-  int32_t rscol_count() const {
+  size_t rscol_count() const {
     return rscol_descs_.size();
   }
 

@@ -18,8 +18,8 @@
 // This file contains functions that remove a defined part from the string,
 // i.e., strip the string.
 
-#ifndef STRINGS_STRIP_H_
-#define STRINGS_STRIP_H_
+#ifndef YB_GUTIL_STRINGS_STRIP_H
+#define YB_GUTIL_STRINGS_STRIP_H
 
 #include <stddef.h>
 #include <string>
@@ -96,7 +96,7 @@ int StripDupCharacters(string* s, char dup_char, int start_pos);
 //    inconvenient, but correct, here.  Ask Amit is you want to know
 //    the type safety details.
 // ----------------------------------------------------------------------
-void StripWhiteSpace(const char** str, int* len);
+void StripWhiteSpace(const char** str, size_t* len);
 
 //------------------------------------------------------------------------
 // StripTrailingWhitespace()
@@ -113,7 +113,7 @@ void StripTrailingWhitespace(string* s);
 //------------------------------------------------------------------------
 bool StripTrailingNewline(string* s);
 
-inline void StripWhiteSpace(char** str, int* len) {
+inline void StripWhiteSpace(char** str, size_t* len) {
   // The "real" type for StripWhiteSpace is ForAll char types C, take
   // (C, int) as input and return (C, int) as output.  We're using the
   // cast here to assert that we can take a char*, even though the
@@ -123,7 +123,7 @@ inline void StripWhiteSpace(char** str, int* len) {
 
 inline void StripWhiteSpace(GStringPiece* str) {
   const char* data = str->data();
-  int len = str->size();
+  size_t len = str->size();
   StripWhiteSpace(&data, &len);
   str->set(data, len);
 }
@@ -227,22 +227,23 @@ string OutputWithMarkupTagsStripped(const string& s);
 //    Removes any occurrences of the characters in 'remove' from the start
 //    of the string.  Returns the number of chars trimmed.
 // ----------------------------------------------------------------------
-int TrimStringLeft(string* s, const GStringPiece& remove);
+size_t TrimStringLeft(string* s, const GStringPiece& remove);
 
 // ----------------------------------------------------------------------
 // TrimStringRight
 //    Removes any occurrences of the characters in 'remove' from the end
 //    of the string.  Returns the number of chars trimmed.
 // ----------------------------------------------------------------------
-int TrimStringRight(string* s, const GStringPiece& remove);
+size_t TrimStringRight(string* s, const GStringPiece& remove);
 
 // ----------------------------------------------------------------------
 // TrimString
 //    Removes any occurrences of the characters in 'remove' from either
 //    end of the string.
 // ----------------------------------------------------------------------
-inline int TrimString(string* s, const GStringPiece& remove) {
-  return TrimStringRight(s, remove) + TrimStringLeft(s, remove);
+inline size_t TrimString(string* s, const GStringPiece& remove) {
+  size_t right_trim = TrimStringRight(s, remove);
+  return right_trim + TrimStringLeft(s, remove);
 }
 
 // ----------------------------------------------------------------------
@@ -272,15 +273,15 @@ void RemoveNullsInString(string* s);
 //    Returns the new length.
 // ----------------------------------------------------------------------
 
-int strrm(char* str, char c);
-int memrm(char* str, int strlen, char c);
+size_t strrm(char* str, char c);
+size_t memrm(char* str, size_t strlen, char c);
 
 // ----------------------------------------------------------------------
 // strrmm()
 //    Remove all occurrences of a given set of characters from a string.
 //    Returns the new length.
 // ----------------------------------------------------------------------
-int strrmm(char* str, const char* chars);
-int strrmm(string* str, const string& chars);
+size_t strrmm(char* str, const char* chars);
+size_t strrmm(string* str, const string& chars);
 
-#endif  // STRINGS_STRIP_H_
+#endif  // YB_GUTIL_STRINGS_STRIP_H

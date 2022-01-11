@@ -48,11 +48,11 @@ class RedisServiceData {
   // Used for PubSub.
   virtual void AppendToSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-      std::vector<int>* subs) = 0;
+      std::vector<size_t>* subs) = 0;
   virtual void RemoveFromSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-      std::vector<int>* subs) = 0;
-  virtual int NumSubscribers(AsPattern type, const std::string& channel) = 0;
+      std::vector<size_t>* subs) = 0;
+  virtual size_t NumSubscribers(AsPattern type, const std::string& channel) = 0;
   virtual void CleanUpSubscriptions(rpc::Connection* conn) = 0;
   virtual std::unordered_set<std::string> GetSubscriptions(
       AsPattern type, rpc::Connection* conn) = 0;

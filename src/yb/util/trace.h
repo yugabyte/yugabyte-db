@@ -229,7 +229,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
 
   // Allocate a new entry from the arena, with enough space to hold a
   // message of length 'len'.
-  TraceEntry* NewEntry(int len, const char* file_path, int line_number, CoarseTimePoint now);
+  TraceEntry* NewEntry(size_t len, const char* file_path, int line_number, CoarseTimePoint now);
 
   // Add the entry to the linked list of entries.
   void AddEntry(TraceEntry* entry);

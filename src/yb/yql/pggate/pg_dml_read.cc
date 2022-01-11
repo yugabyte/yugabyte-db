@@ -176,7 +176,7 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     preceding_key_column_missed = true;
   }
 
-  size_t num_bound_range_columns = 0;
+  int num_bound_range_columns = 0;
 
   const auto range_columns_end = bind_.columns().begin() + bind_->num_columns();
   const auto range_columns_begin = bind_.columns().begin() + bind_->num_hash_key_columns();

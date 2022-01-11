@@ -23,6 +23,8 @@
 // #include <algorithm>
 #include <unordered_map>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/yql/cql/ql/parser/scanner.h"
 #include "yb/yql/cql/ql/parser/scanner_util.h"
@@ -202,15 +204,15 @@ GramProcessor::symbol_type LexProcessor::Scan() {
 //--------------------------------------------------------------------------------------------------
 
 int LexProcessor::LexerInput(char* buf, int max_size) {
-  return parse_context_->Read(buf, max_size);
+  return narrow_cast<int>(parse_context_->Read(buf, max_size));
 }
 
 //--------------------------------------------------------------------------------------------------
 
 void LexProcessor::CountNewlineInToken(const string& token) {
-  const int lines =
+  const auto lines =
     count(token.begin(), token.end(), '\n') + count(token.begin(), token.end(), '\r');
-  cursor_.lines(lines);
+  cursor_.lines(narrow_cast<int>(lines));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -278,7 +280,7 @@ MCSharedPtr<MCString> LexProcessor::MakeIdentifier(const char *text, int len, bo
 }
 
 void LexProcessor::TruncateIdentifier(const MCSharedPtr<MCString>& ident, bool warn) {
-  int len = ident->length();
+  auto len = ident->length();
   if (len >= NAMEDATALEN) {
     len = pg_encoding_mbcliplen(ident->c_str(), len, NAMEDATALEN - 1);
     if (warn) {
@@ -302,16 +304,16 @@ void LexProcessor::TruncateIdentifier(const MCSharedPtr<MCString>& ident, bool w
 // from '/**/' to '//'.
 //--------------------------------------------------------------------------------------------------
 
-inline void LexProcessor::EnlargeLiteralBuf(int bytes) {
+inline void LexProcessor::EnlargeLiteralBuf(size_t bytes) {
   // Increase literalbuf by the given number of "bytes".
-  int prev_literalalloc_;
-  if ((prev_literalalloc_ = literalalloc_) <= 0) {
+  auto prev_literalalloc = literalalloc_;
+  if (prev_literalalloc == 0) {
     literalalloc_ = 4096;
   }
   while (literalalloc_ < literallen_ + bytes) {
     literalalloc_ <<= 1;
   }
-  if (prev_literalalloc_ != literalalloc_) {
+  if (prev_literalalloc != literalalloc_) {
     literalbuf_ = reinterpret_cast<char *>(realloc(literalbuf_, literalalloc_));
   }
 }
@@ -320,7 +322,7 @@ void LexProcessor::startlit() {
   literallen_ = 0;
 }
 
-void LexProcessor::addlit(char *ytext, int yleng) {
+void LexProcessor::addlit(char *ytext, size_t yleng) {
   // Enlarge buffer if needed.
   EnlargeLiteralBuf(yleng);
 
@@ -356,7 +358,7 @@ char *LexProcessor::litbuf_udeescape(unsigned char escape) {
     if (in[0] == escape) {
       if (in[1] == escape) {
         if (pair_first) {
-          AdvanceCursor(in - litbuf + 3);                                             // 3 for U&".
+          AdvanceCursor(narrow_cast<int>(in - litbuf + 3)); // 3 for U&".
           ScanError("invalid Unicode surrogate pair");
         }
         *out++ = escape;
@@ -378,7 +380,7 @@ char *LexProcessor::litbuf_udeescape(unsigned char escape) {
             unicode = surrogate_pair_to_codepoint(pair_first, unicode);
             pair_first = 0;
           } else {
-            AdvanceCursor(in - litbuf + 3);   /* 3 for U&" */
+            AdvanceCursor(narrow_cast<int>(in - litbuf + 3));   /* 3 for U&" */
             ScanError("invalid Unicode surrogate pair");
           }
         } else if (is_utf16_surrogate_second(unicode)) {
@@ -414,7 +416,7 @@ char *LexProcessor::litbuf_udeescape(unsigned char escape) {
             unicode = surrogate_pair_to_codepoint(pair_first, unicode);
             pair_first = 0;
           } else {
-            AdvanceCursor(in - litbuf + 3);   /* 3 for U&" */
+            AdvanceCursor(narrow_cast<int>(in - litbuf + 3));   /* 3 for U&" */
             ScanError("invalid Unicode surrogate pair");
           }
         } else if (is_utf16_surrogate_second(unicode)) {
@@ -429,12 +431,12 @@ char *LexProcessor::litbuf_udeescape(unsigned char escape) {
         }
         in += 8;
       } else {
-        AdvanceCursor(in - litbuf + 3);   /* 3 for U&" */
+        AdvanceCursor(narrow_cast<int>(in - litbuf + 3));   /* 3 for U&" */
         ScanError("invalid Unicode escape value");
       }
     } else {
       if (pair_first) {
-        AdvanceCursor(in - litbuf + 3);   /* 3 for U&" */
+        AdvanceCursor(narrow_cast<int>(in - litbuf + 3));   /* 3 for U&" */
         ScanError("invalid Unicode surrogate pair");
       }
       *out++ = *in++;

@@ -349,7 +349,7 @@ Status YBSession::ApplyAndFlush(const std::vector<YBOperationPtr>& ops) {
   return FlushFuture().get().status;
 }
 
-int YBSession::TEST_CountBufferedOperations() const {
+size_t YBSession::TEST_CountBufferedOperations() const {
   return batcher_ ? batcher_->CountBufferedOperations() : 0;
 }
 

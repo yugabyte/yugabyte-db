@@ -17,6 +17,7 @@
 
 #include <thread>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/enums.h"
@@ -446,7 +447,8 @@ CppCassandraDriver::CppCassandraDriver(
   cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
   CheckErrorCode(cass_cluster_set_contact_points(cass_cluster_, hosts_str.c_str()));
   CheckErrorCode(cass_cluster_set_port(cass_cluster_, port));
-  cass_cluster_set_request_timeout(cass_cluster_, kCassandraTimeOut.ToMilliseconds());
+  cass_cluster_set_request_timeout(
+      cass_cluster_, narrow_cast<uint32_t>(kCassandraTimeOut.ToMilliseconds()));
 
   // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.
   cass_cluster_set_partition_aware_routing(

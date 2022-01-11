@@ -273,7 +273,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // - When parallelism by arguments is applied, each operator has only one argument.
   //   When tablet server will run the requests in parallel as it assigned one thread per request.
   //       PopulateNextHashPermutationOps()
-  CHECKED_STATUS ClonePgsqlOps(int op_count);
+  CHECKED_STATUS ClonePgsqlOps(size_t op_count);
 
   // Only active operators are kept in the active range [0, active_op_count_)
   // - Not execute operators that are outside of range [0, active_op_count_).
@@ -319,7 +319,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   std::vector<std::shared_ptr<client::YBPgsqlOp>> pgsql_ops_;
 
   // Number of active operators in the pgsql_ops_ list.
-  int32_t active_op_count_ = 0;
+  size_t active_op_count_ = 0;
 
   // Indicator for completing all request populations.
   bool request_population_completed_ = false;
@@ -383,7 +383,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Parallelism level.
   // - This is the maximum number of read/write requests being sent to servers at one time.
   // - When it is 1, there's no optimization. Available requests is executed one at a time.
-  int32_t parallelism_level_ = 1;
+  size_t parallelism_level_ = 1;
 
   // Output parameter of the execution.
   string out_param_backfill_spec_;
@@ -475,7 +475,7 @@ class PgDocReadOp : public PgDocOp {
   }
 
   // Get the read_op for a specific operation index from pgsql_ops_.
-  client::YBPgsqlReadOp *GetReadOp(int op_index) {
+  client::YBPgsqlReadOp *GetReadOp(size_t op_index) {
     return static_cast<client::YBPgsqlReadOp *>(pgsql_ops_[op_index].get());
   }
 

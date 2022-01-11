@@ -521,7 +521,7 @@ TableFilter MakeFilter(int32_t lower_bound, int32_t upper_bound, std::string col
   return TableFilter();
 }
 
-int CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency,
+size_t CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency,
                         int32_t lower_bound, int32_t upper_bound) {
   TableIteratorOptions options;
   options.consistency = consistency;
@@ -530,11 +530,11 @@ int CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency
   return boost::size(TableRange(table, options));
 }
 
-int CountRowsFromClient(const TableHandle& table, int32_t lower_bound, int32_t upper_bound) {
+size_t CountRowsFromClient(const TableHandle& table, int32_t lower_bound, int32_t upper_bound) {
   return CountRowsFromClient(table, YBConsistencyLevel::STRONG, lower_bound, upper_bound);
 }
 
-int CountRowsFromClient(const TableHandle& table) {
+size_t CountRowsFromClient(const TableHandle& table) {
   return CountRowsFromClient(table, kNoBound, kNoBound);
 }
 
@@ -1678,7 +1678,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   int tries = 0;
   for (;;) {
     tries++;
-    int num_rows = CountRowsFromClient(table);
+    auto num_rows = CountRowsFromClient(table);
     if (num_rows == kNumRowsToWrite) {
       LOG(INFO) << "Found expected number of rows: " << num_rows;
       break;
@@ -2011,9 +2011,9 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   FlushSessionOrDie(session);
 
   // Check both clients see rows
-  int fwd = CountRowsFromClient(client_table_);
+  auto fwd = CountRowsFromClient(client_table_);
   ASSERT_EQ(kNumRows, fwd);
-  int rev = CountRowsFromClient(rev_table);
+  auto rev = CountRowsFromClient(rev_table);
   ASSERT_EQ(kNumRows, rev);
 
   // Generate sessions

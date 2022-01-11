@@ -75,7 +75,7 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     transaction_manager_ = cluster_->mini_tablet_server(0)->server()->TransactionManager();
   }
 
-  virtual int NumTabletServers() override {
+  virtual size_t NumTabletServers() override {
     return 3;
   }
 
@@ -97,7 +97,7 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
   }
 
   void CreateTransactionTable(int region) {
-    int current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
+    auto current_version = transaction_manager_->GetLoadedStatusTabletsVersion();
     LOG(ERROR) << "TXN" << current_version;
 
     std::string name = strings::Substitute("transactions_$0", region);
@@ -177,7 +177,7 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
                           metadata->status_tablet) != expected_status_tablets.end());
   }
 
-  void WaitForStatusTabletsVersion(int version) {
+  void WaitForStatusTabletsVersion(uint64_t version) {
     constexpr auto error =
         "Timed out waiting for transaction manager to update status tablet cache version to $0";
     EXPECT_OK(WaitFor(

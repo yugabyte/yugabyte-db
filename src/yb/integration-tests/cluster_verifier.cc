@@ -124,14 +124,14 @@ Status ClusterVerifier::DoYsck() {
 
 void ClusterVerifier::CheckRowCount(const YBTableName& table_name,
                                     ComparisonMode mode,
-                                    int expected_row_count,
+                                    size_t expected_row_count,
                                     YBConsistencyLevel consistency) {
   ASSERT_OK(DoCheckRowCount(table_name, mode, expected_row_count, consistency));
 }
 
 Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
                                         ComparisonMode mode,
-                                        int expected_row_count,
+                                        size_t expected_row_count,
                                         YBConsistencyLevel consistency) {
   auto client = VERIFY_RESULT_PREPEND(
       cluster_->CreateClient(), "Unable to connect to cluster");
@@ -154,7 +154,7 @@ Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
 
 void ClusterVerifier::CheckRowCountWithRetries(const YBTableName& table_name,
                                                ComparisonMode mode,
-                                               int expected_row_count,
+                                               size_t expected_row_count,
                                                const MonoDelta& timeout) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);

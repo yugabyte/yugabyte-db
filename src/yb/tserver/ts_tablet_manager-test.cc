@@ -313,7 +313,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
   }
 }
 
-static void AssertMonotonicReportSeqno(int64_t* report_seqno,
+static void AssertMonotonicReportSeqno(int32_t* report_seqno,
                                        const TabletReportPB& report) {
   ASSERT_LT(*report_seqno, report.sequence_number());
   *report_seqno = report.sequence_number();
@@ -356,7 +356,7 @@ static void CopyReportToUpdates(const TabletReportPB& req, TabletReportUpdatesPB
 TEST_F(TsTabletManagerTest, TestTabletReports) {
   TabletReportPB report;
   TabletReportUpdatesPB updates;
-  int64_t seqno = -1;
+  int32_t seqno = -1;
 
   // Generate a tablet report before any tablets are loaded. Should be empty.
   tablet_manager_->StartFullTabletReport(&report);
@@ -441,7 +441,7 @@ TEST_F(TsTabletManagerTest, TestTabletReports) {
 TEST_F(TsTabletManagerTest, TestTabletReportLimit) {
   TabletReportPB report;
   TabletReportUpdatesPB updates;
-  int64_t seqno = -1;
+  int32_t seqno = -1;
 
   // Generate a tablet report before any tablets are loaded. Should be empty.
   tablet_manager_->StartFullTabletReport(&report);

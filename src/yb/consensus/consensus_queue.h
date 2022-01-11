@@ -405,7 +405,7 @@ class PeerMessageQueue {
   static const char* StateToStr(State state);
   friend std::ostream& operator <<(std::ostream& out, State mode);
 
-  static constexpr int kUninitializedMajoritySize = -1;
+  static constexpr ssize_t kUninitializedMajoritySize = -1;
 
   struct QueueState {
 
@@ -438,7 +438,7 @@ class PeerMessageQueue {
     int64_t current_term = OpId::Min().term;
 
     // The size of the majority for the queue.
-    int majority_size_ = kUninitializedMajoritySize;
+    ssize_t majority_size_ = kUninitializedMajoritySize;
 
     State state = State::kQueueConstructed;
 

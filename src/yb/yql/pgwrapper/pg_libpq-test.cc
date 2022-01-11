@@ -769,7 +769,7 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
   // Make a counter for each thread and have each thread increment it
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
-    int key = threads.size();
+    int key = narrow_cast<int>(threads.size());
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES ($0, 0)", key));
 
     threads.emplace_back([this, key, isolation] {
@@ -1669,7 +1669,7 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqTestSmallTSTimeout) {
   const std::string kDatabaseName = "co";
   const auto kTimeout = 60s;
-  const int starting_num_tablet_servers = cluster_->num_tablet_servers();
+  const auto starting_num_tablet_servers = cluster_->num_tablet_servers();
   ExternalMiniClusterOptions opts;
   std::map<std::string, int> ts_loads;
   static const int tserver_unresponsive_timeout_ms = 8000;
@@ -1763,7 +1763,7 @@ TEST_F_EX(PgLibPqTest,
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
   constexpr int kNumDatabases = 3;
   const auto kTimeout = 60s;
-  const int starting_num_tablet_servers = cluster_->num_tablet_servers();
+  const size_t starting_num_tablet_servers = cluster_->num_tablet_servers();
   const std::string kDatabasePrefix = "co";
   std::map<std::string, int> ts_loads;
 

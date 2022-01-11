@@ -191,7 +191,7 @@ class Jsonb {
                                                    Slice* result,
                                                    JEntry* element_metadata);
 
-  static inline size_t GetOffset(JEntry metadata) { return metadata & kJEOffsetMask; }
+  static inline uint32_t GetOffset(JEntry metadata) { return metadata & kJEOffsetMask; }
 
   static inline uint32_t GetJEType(JEntry metadata) { return metadata & kJETypeMask; }
 

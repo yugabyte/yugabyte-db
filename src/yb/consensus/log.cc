@@ -779,7 +779,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
       }
     }
 
-    uint32_t entry_batch_bytes = entry_batch->total_size_bytes();
+    auto entry_batch_bytes = entry_batch->total_size_bytes();
     // If there is no data to write return OK.
     if (PREDICT_FALSE(entry_batch_bytes == 0)) {
       return Status::OK();
@@ -909,7 +909,7 @@ Status Log::Sync() {
 
   if (!sync_disabled_) {
     if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_log_inject_latency))) {
-      Random r(GetCurrentTimeMicros());
+      Random r(static_cast<uint32_t>(GetCurrentTimeMicros()));
       int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
                               GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));
       if (sleep_ms > 0) {
@@ -966,7 +966,8 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
       min_op_idx, cdc_min_replicated_index_.load(std::memory_order_acquire), segments_to_gc));
 
-  int max_to_delete = std::max(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
+  auto max_to_delete = std::max<ssize_t>(
+      reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
   if (segments_to_gc->size() > max_to_delete) {
     VLOG_WITH_PREFIX(2)
         << "GCing " << segments_to_gc->size() << " in " << wal_dir_
@@ -975,7 +976,7 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
         << max_to_delete << "/" << reader_->num_segments();
     segments_to_gc->resize(max_to_delete);
   } else if (segments_to_gc->size() < max_to_delete) {
-    int extra_segments = max_to_delete - segments_to_gc->size();
+    auto extra_segments = max_to_delete - segments_to_gc->size();
     VLOG_WITH_PREFIX(2) << "Too many log segments, need to GC " << extra_segments << " more.";
   }
 
@@ -1254,9 +1255,9 @@ Status Log::Close() {
   }
 }
 
-int Log::num_segments() const {
+size_t Log::num_segments() const {
   std::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
-  return (reader_) ? reader_->num_segments() : 0;
+  return reader_ ? reader_->num_segments() : 0;
 }
 
 scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) const {

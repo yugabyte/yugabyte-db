@@ -62,7 +62,7 @@ using std::vector;
 // ----------------------------------------------------------------------
 char* JoinUsing(const vector<const char*>& components,
                 const char* delim,
-                int*  result_length_p);
+                size_t* result_length_p);
 
 // ----------------------------------------------------------------------
 // JoinUsingToBuffer()
@@ -76,9 +76,9 @@ char* JoinUsing(const vector<const char*>& components,
 // ----------------------------------------------------------------------
 char* JoinUsingToBuffer(const vector<const char*>& components,
                         const char* delim,
-                        int result_buffer_size,
+                        size_t result_buffer_size,
                         char* result_buffer,
-                        int*  result_length_p);
+                        size_t* result_length_p);
 
 // ----------------------------------------------------------------------
 // JoinStrings(), JoinStringsIterator(), JoinStringsInArray()
@@ -175,18 +175,18 @@ string JoinKeysAndValuesIterator(const ITERATOR& start,
 }
 
 void JoinStringsInArray(string const* const* components,
-                        int num_components,
+                        size_t num_components,
                         const char* delim,
                         string* result);
 void JoinStringsInArray(string const* components,
-                        int num_components,
+                        size_t num_components,
                         const char* delim,
                         string* result);
 string JoinStringsInArray(string const* const* components,
-                          int num_components,
+                          size_t num_components,
                           const char* delim);
 string JoinStringsInArray(string const* components,
-                          int num_components,
+                          size_t num_components,
                           const char* delim);
 
 // ----------------------------------------------------------------------
@@ -216,7 +216,7 @@ void JoinStringsIterator(const ITERATOR& start,
 
   // Precompute resulting length so we can reserve() memory in one shot.
   if (start != end) {
-    int length = delim.size()*(distance(start, end)-1);
+    auto length = delim.size()*(distance(start, end)-1);
     for (ITERATOR iter = start; iter != end; ++iter) {
       length += iter->size();
     }
@@ -242,7 +242,7 @@ inline string JoinStringsIterator(const ITERATOR& start,
 }
 
 inline string JoinStringsInArray(string const* const* components,
-                                 int num_components,
+                                 size_t num_components,
                                  const char* delim) {
   string result;
   JoinStringsInArray(components, num_components, delim, &result);
@@ -250,7 +250,7 @@ inline string JoinStringsInArray(string const* const* components,
 }
 
 inline string JoinStringsInArray(string const* components,
-                                 int num_components,
+                                 size_t num_components,
                                  const char* delim) {
   string result;
   JoinStringsInArray(components, num_components, delim, &result);

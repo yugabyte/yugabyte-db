@@ -58,14 +58,14 @@ using google::protobuf::io::CodedOutputStream;
 namespace yb {
 namespace rpc {
 
-size_t SerializedMessageSize(size_t body_size, int additional_size) {
+size_t SerializedMessageSize(size_t body_size, size_t additional_size) {
   auto full_size = body_size + additional_size;
-  return body_size + CodedOutputStream::VarintSize32(full_size);
+  return body_size + CodedOutputStream::VarintSize32(narrow_cast<uint32_t>(full_size));
 }
 
 CHECKED_STATUS SerializeMessage(
     AnyMessageConstPtr msg, size_t body_size, const RefCntBuffer& param_buf,
-    int additional_size, size_t offset) {
+    size_t additional_size, size_t offset) {
   DCHECK_EQ(msg.SerializedSize(), body_size);
   auto size = SerializedMessageSize(body_size, additional_size);
 
@@ -76,7 +76,8 @@ CHECKED_STATUS SerializeMessage(
 
   CHECK_EQ(param_buf.size(), offset + size) << "offset = " << offset;
   uint8_t *dst = param_buf.udata() + offset;
-  dst = CodedOutputStream::WriteVarint32ToArray(body_size + additional_size, dst);
+  dst = CodedOutputStream::WriteVarint32ToArray(
+      narrow_cast<uint32_t>(body_size + additional_size), dst);
   dst = VERIFY_RESULT(msg.SerializeToArray(dst));
   CHECK_EQ(dst - param_buf.udata(), param_buf.size());
 
@@ -97,7 +98,8 @@ Status SerializeHeader(const MessageLite& header,
   // Compute all the lengths for the packet.
   size_t header_pb_len = header.ByteSize();
   size_t header_tot_len = kMsgLengthPrefixLength        // Int prefix for the total length.
-      + CodedOutputStream::VarintSize32(header_pb_len)  // Varint delimiter for header PB.
+      + CodedOutputStream::VarintSize32(
+            narrow_cast<uint32_t>(header_pb_len))      // Varint delimiter for header PB.
       + header_pb_len;                                  // Length for the header PB itself.
   size_t total_size = header_tot_len + param_len;
 
@@ -109,11 +111,11 @@ Status SerializeHeader(const MessageLite& header,
 
   // 1. The length for the whole request, not including the 4-byte
   // length prefix.
-  NetworkByteOrder::Store32(dst, total_size - kMsgLengthPrefixLength);
+  NetworkByteOrder::Store32(dst, narrow_cast<uint32_t>(total_size - kMsgLengthPrefixLength));
   dst += sizeof(uint32_t);
 
   // 2. The varint-prefixed RequestHeader PB
-  dst = CodedOutputStream::WriteVarint32ToArray(header_pb_len, dst);
+  dst = CodedOutputStream::WriteVarint32ToArray(narrow_cast<uint32_t>(header_pb_len), dst);
   dst = header.SerializeWithCachedSizesToArray(dst);
 
   // We should have used the whole buffer we allocated.
@@ -211,7 +213,7 @@ template <class Header>
 CHECKED_STATUS DoParseYBMessage(const Slice& buf,
                                 Header* parsed_header,
                                 Slice* parsed_main_message) {
-  CodedInputStream in(buf.data(), buf.size());
+  CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
   in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size*3/4);
 
   uint32_t header_len;
@@ -262,8 +264,8 @@ Status ParseYBMessage(const Slice& buf,
 }
 
 Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf) {
-  CodedInputStream in(buf.data(), buf.size());
-  in.PushLimit(buf.size());
+  CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
+  in.PushLimit(narrow_cast<int>(buf.size()));
   ParsedRemoteMethod result;
   while (in.BytesUntilLimit() > 0) {
     auto tag = in.ReadTag();

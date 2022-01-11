@@ -73,7 +73,7 @@ class BFDecl {
     return param_types_;
   }
 
-  int param_count() const {
+  size_t param_count() const {
     return param_types_.size();
   }
 

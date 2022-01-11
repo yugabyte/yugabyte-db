@@ -17,6 +17,8 @@
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/master_client.pb.h"
 
 #include "yb/util/logging.h"
@@ -168,7 +170,7 @@ TablePartitionList YBTable::GetPartitionsCopy() const {
 
 int32_t YBTable::GetPartitionCount() const {
   SharedLock<decltype(mutex_)> lock(mutex_);
-  return partitions_->keys.size();
+  return narrow_cast<int32_t>(partitions_->keys.size());
 }
 
 int32_t YBTable::GetPartitionListVersion() const {

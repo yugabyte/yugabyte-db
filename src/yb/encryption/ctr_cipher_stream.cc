@@ -16,6 +16,7 @@
 #include "yb/encryption/cipher_stream.h"
 #include "yb/encryption/encryption_util.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
 #include "yb/util/status_format.h"
@@ -165,7 +166,7 @@ Status BlockAccessCipherStream::EncryptByBlock(
   int bytes_updated = 0;
   const int update_result = EVP_EncryptUpdate(
       encryption_context_.get(), static_cast<uint8_t*>(output), &bytes_updated, input.data(),
-      data_size);
+      narrow_cast<int>(data_size));
   if (update_result != 1) {
     return STATUS_FORMAT(InternalError,
                          "EVP_EncryptUpdate returned $0 when encrypting/decrypting $1 bytes "
@@ -186,7 +187,7 @@ Status BlockAccessCipherStream::EncryptByBlock(
 void BlockAccessCipherStream::IncrementCounter(
     const uint64_t start_idx, uint8_t* iv,
     EncryptionOverflowWorkaround counter_overflow_workaround) {
-  BigEndian::Store32(iv + EncryptionParams::kBlockSize - 4, start_idx);
+  BigEndian::Store32(iv + EncryptionParams::kBlockSize - 4, static_cast<uint32_t>(start_idx));
   if (start_idx <= std::numeric_limits<uint32_t>::max() ||
       (!UseOpensslCompatibleCounterOverflow() && !counter_overflow_workaround)) {
     return;

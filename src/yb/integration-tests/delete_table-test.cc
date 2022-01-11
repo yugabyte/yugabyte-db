@@ -657,6 +657,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
 
   // Start a workload on the cluster, and run it for a little while.
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
 
@@ -725,7 +726,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
-                            workload.rows_inserted()));
+                                                  workload.rows_inserted()));
 
   // For now there is no way to know if the server has finished its remote bootstrap (by verifying
   // that its role has changed in its consensus object). As a workaround, sleep for 10 seconds
@@ -1067,7 +1068,7 @@ vector<string> ListOpenFiles(pid_t pid) {
   return lines;
 }
 
-int PrintOpenTabletFiles(pid_t pid, const string& tablet_id) {
+size_t PrintOpenTabletFiles(pid_t pid, const string& tablet_id) {
   vector<string> lines = ListOpenFiles(pid);
   vector<const string*> wal_lines = Grep(tablet_id, lines);
   LOG(INFO) << "There are " << wal_lines.size() << " open WAL files for pid " << pid << ":";

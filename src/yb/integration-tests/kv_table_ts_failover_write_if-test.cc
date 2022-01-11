@@ -56,7 +56,7 @@ const auto kLeaderFailureMaxMissedHeartbeatPeriods = 3;
 const auto kKeyColumnName = "k";
 const auto kValueColumnName = "v";
 
-std::string TsNameForIndex(int idx) {
+std::string TsNameForIndex(size_t idx) {
   return Format("ts-$0", idx + 1);
 }
 
@@ -196,7 +196,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     return STATUS(NotFound, "No tablet server RAFT leader detected");
   }
 
-  void SetBoolFlag(int ts_idx, const std::string& flag, bool value) {
+  void SetBoolFlag(size_t ts_idx, const std::string& flag, bool value) {
     auto ts = external_mini_cluster()->tablet_server(ts_idx);
     LOG(INFO) << "Setting " << flag << " to " << value << " on " << TsNameForIndex(ts_idx);
     ASSERT_OK(external_mini_cluster()->SetFlag(ts, flag, yb::ToString(value)));

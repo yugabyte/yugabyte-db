@@ -269,9 +269,9 @@ class BFCodegen {
           // If the caller used the kRefAndRaw option, we'll have to convert the params vector from
           // vector<object> to vector<object*>.
           param_pointer = "local_params";
-          foper_h << "    const int count = params->size();" << endl
-                  << "    std::vector<PType*> local_params(count);"
-                  << "    for (int i = 0; i < count; i++) {" << endl
+          foper_h << "    const auto count = params->size();" << endl
+                  << "    std::vector<PType*> local_params(count);" << endl
+                  << "    for (size_t i = 0; i < count; i++) {" << endl
                   << "      local_params[i] = &(*params)[i];" << endl
                   << "    }" << endl;
           foper_h << "    return " << entry.cpp_name() << "(";

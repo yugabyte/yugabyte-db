@@ -674,7 +674,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "change_master_config", " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>",
       [client](const CLIArguments& args) -> Status {
-        int16 new_port = 0;
+        uint16_t new_port = 0;
         string new_host;
 
         if (args.size() != 3 && args.size() != 4) {
@@ -935,7 +935,7 @@ Result<client::YBTableName> ResolveSingleTableName(ClusterAdminClientClass* clie
   return std::move(tables.front());
 }
 
-Status CheckArgumentsCount(int count, int min, int max) {
+Status CheckArgumentsCount(size_t count, size_t min, size_t max) {
   if (count < min) {
     return STATUS_FORMAT(
         InvalidArgument, "Too few arguments $0, should be in range [$1, $2]", count, min, max);

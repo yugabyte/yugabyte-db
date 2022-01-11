@@ -36,6 +36,7 @@
 #include <iomanip>
 #include <string>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
@@ -243,7 +244,7 @@ Status RollingLog::CompressFile(const std::string& path) const {
     if (result.size() == 0) {
       break;
     }
-    int n = gzwrite(gzf, result.data(), result.size());
+    int n = gzwrite(gzf, result.data(), narrow_cast<unsigned>(result.size()));
     if (n == 0) {
       int errnum;
       return STATUS(IOError, "Unable to write to gzip output",

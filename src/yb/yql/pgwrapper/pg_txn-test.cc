@@ -40,7 +40,7 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
 
 class PgTxnRF1Test : public PgTxnTest {
  public:
-  int NumTabletServers() override {
+  size_t NumTabletServers() override {
     return 1;
   }
 };

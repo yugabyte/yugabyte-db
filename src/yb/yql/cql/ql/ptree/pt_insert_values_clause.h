@@ -63,7 +63,7 @@ class PTInsertValuesClause : public PTCollection {
   }
 
   // Number of provided tuples.
-  virtual int TupleCount() const {
+  size_t TupleCount() const {
     return tuples_.size();
   }
 

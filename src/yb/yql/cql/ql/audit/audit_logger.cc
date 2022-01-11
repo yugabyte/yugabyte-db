@@ -470,9 +470,9 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
   if (!regex_search(operation, m, pwd_start_regex)) {
     return operation;
   }
-  int pwd_start_idx = m.position() + m.length() - 1;
-  int pwd_length = -1;
-  for (int i = pwd_start_idx + 1; i < operation.length(); ++i) {
+  auto pwd_start_idx = m.position() + m.length() - 1;
+  ssize_t pwd_length = -1;
+  for (auto i = pwd_start_idx + 1; i < operation.length(); ++i) {
     if (operation[i] == '\'') {
       // If the next character is a quote too - this is an escaped quote.
       if (i < operation.length() - 1 && operation[i + 1] == '\'') {
@@ -652,7 +652,7 @@ Result<LogEntry> AuditLogger::CreateLogEntry(const Type& type,
   return entry;
 }
 
-Status AuditLogger::StartBatchRequest(int statements_count,
+Status AuditLogger::StartBatchRequest(size_t statements_count,
                                       IsRescheduled is_rescheduled) {
   if (!FLAGS_ycql_enable_audit_log || !conn_) {
     return Status::OK();

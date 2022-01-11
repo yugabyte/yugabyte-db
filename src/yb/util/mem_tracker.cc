@@ -527,7 +527,7 @@ bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
     LogUpdate(true, bytes);
   }
 
-  int i = 0;
+  ssize_t i = 0;
   // Walk the tracker tree top-down, to avoid expanding a limit on a child whose parent
   // won't accommodate the change.
   for (i = all_trackers_.size() - 1; i >= 0; --i) {
@@ -563,7 +563,7 @@ bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
   // TODO: This might leave us with an allocated resource that we can't use. Do we need
   // to adjust the consumption of the query tracker to stop the resource from never
   // getting used by a subsequent TryConsume()?
-  for (int j = all_trackers_.size() - 1; j > i; --j) {
+  for (ssize_t j = all_trackers_.size(); --j > i;) {
     IncrementBy(-bytes, &all_trackers_[j]->consumption_, all_trackers_[j]->metrics_);
   }
   if (blocking_mem_tracker) {

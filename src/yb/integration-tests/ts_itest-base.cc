@@ -356,8 +356,8 @@ Status TabletServerIntegrationTestBase::RestartServerWithUUID(const std::string&
 // Since we're fault-tolerant we might mask when a tablet server is
 // dead. This returns Status::IllegalState() if fewer than 'num_tablet_servers'
 // are alive.
-Status TabletServerIntegrationTestBase::CheckTabletServersAreAlive(int num_tablet_servers) {
-  int live_count = 0;
+Status TabletServerIntegrationTestBase::CheckTabletServersAreAlive(size_t num_tablet_servers) {
+  size_t live_count = 0;
   std::string error = strings::Substitute("Fewer than $0 TabletServers were alive. Dead TSs: ",
                                           num_tablet_servers);
   rpc::RpcController controller;
@@ -425,11 +425,11 @@ void TabletServerIntegrationTestBase::BuildAndStart(
   tablet_id_ = (*tablet_replicas_.begin()).first;
 }
 
-void TabletServerIntegrationTestBase::AssertAllReplicasAgree(int expected_result_count) {
+void TabletServerIntegrationTestBase::AssertAllReplicasAgree(size_t expected_result_count) {
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
-  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY,
-      expected_result_count));
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+      kTableName, ClusterVerifier::EXACTLY, expected_result_count));
 }
 
 client::YBTableType TabletServerIntegrationTestBase::table_type() {

@@ -37,13 +37,11 @@
 // ----------------------------------------------------------------------
 char* JoinUsing(const vector<const char*>& components,
                 const char* delim,
-                int*  result_length_p) {
-  const int num_components = components.size();
-  const int delim_length = strlen(delim);
-  int num_chars = (num_components > 1)
-                ? delim_length * (num_components - 1)
-                : 0;
-  for (int i = 0; i < num_components; ++i)
+                size_t* result_length_p) {
+  const auto num_components = components.size();
+  const auto delim_length = strlen(delim);
+  auto num_chars = num_components > 1 ? delim_length * (num_components - 1) : 0;
+  for (size_t i = 0; i < num_components; ++i)
     num_chars += strlen(components[i]);
 
   auto res_buffer = new char[num_chars + 1];
@@ -63,15 +61,15 @@ char* JoinUsing(const vector<const char*>& components,
 // ----------------------------------------------------------------------
 char* JoinUsingToBuffer(const vector<const char*>& components,
                          const char* delim,
-                         int result_buffer_size,
+                         size_t result_buffer_size,
                          char* result_buffer,
-                         int*  result_length_p) {
+                         size_t* result_length_p) {
   CHECK(result_buffer != nullptr);
-  const int num_components = components.size();
-  const int max_str_len = result_buffer_size - 1;
+  const auto num_components = components.size();
+  const auto max_str_len = result_buffer_size - 1;
   char* curr_dest = result_buffer;
-  int num_chars = 0;
-  for (int i = 0; (i < num_components) && (num_chars < max_str_len); ++i) {
+  size_t num_chars = 0;
+  for (size_t i = 0; (i < num_components) && (num_chars < max_str_len); ++i) {
     const char* curr_src = components[i];
     while ((*curr_src != '\0') && (num_chars < max_str_len)) {
       *curr_dest = *curr_src;
@@ -108,12 +106,12 @@ char* JoinUsingToBuffer(const vector<const char*>& components,
 // ----------------------------------------------------------------------
 
 void JoinStringsInArray(string const* const* components,
-                        int num_components,
+                        size_t num_components,
                         const char* delim,
                         string* result) {
   CHECK(result != nullptr);
   result->clear();
-  for (int i = 0; i < num_components; i++) {
+  for (size_t i = 0; i < num_components; i++) {
     if (i > 0) {
       (*result) += delim;
     }
@@ -122,7 +120,7 @@ void JoinStringsInArray(string const* const* components,
 }
 
 void JoinStringsInArray(string const *components,
-                        int num_components,
+                        size_t num_components,
                         const char *delim,
                         string *result) {
   JoinStringsIterator(components,
@@ -194,12 +192,11 @@ void JoinCSVLineWithDelimiter(const vector<string>& cols, char delimiter,
                               ascii_isspace(*col.rbegin())))) {
       // Double the original size, for escaping, plus two bytes for
       // the bracketing double-quotes, and one byte for the closing \0.
-      int size = 2 * col.size() + 3;
+      auto size = 2 * col.size() + 3;
       std::unique_ptr<char[]> buf(new char[size]);
 
       // Leave space at beginning and end for bracketing double-quotes.
-      int escaped_size = strings::EscapeStrForCSV(col.c_str(),
-                                                  buf.get() + 1, size - 2);
+      auto escaped_size = strings::EscapeStrForCSV(col.c_str(), buf.get() + 1, size - 2);
       CHECK_GE(escaped_size, 0) << "Buffer somehow wasn't large enough.";
       CHECK_GE(size, escaped_size + 3)
         << "Buffer should have one space at the beginning for a "

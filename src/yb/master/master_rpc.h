@@ -132,7 +132,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   std::vector<ServerEntryPB> responses_;
 
   // Number of pending responses.
-  int pending_responses_ = 0;
+  size_t pending_responses_ = 0;
 
   // If true, then we've already executed the user callback and the
   // RPC can be deallocated.

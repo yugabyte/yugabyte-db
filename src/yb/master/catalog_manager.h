@@ -1079,7 +1079,7 @@ class CatalogManager :
   // This method is called by "SelectReplicasForTablet".
   void SelectReplicas(
       const TSDescriptorVector& ts_descs,
-      int nreplicas, consensus::RaftConfigPB* config,
+      size_t nreplicas, consensus::RaftConfigPB* config,
       std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts,
       consensus::PeerMemberType member_type);
 

@@ -36,6 +36,7 @@
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
+#include <inttypes.h>
 
 #include "getopt_long.h"
 
@@ -16328,7 +16329,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 			if (properties.num_hash_key_columns > 0)
 				/* For hash-table. */
-				appendPQExpBuffer(q, "\nSPLIT INTO %u TABLETS", properties.num_tablets);
+				appendPQExpBuffer(q, "\nSPLIT INTO %" PRIu64 " TABLETS", properties.num_tablets);
 			else if (properties.num_tablets > 1)
 			{
 				/* For range-table. */

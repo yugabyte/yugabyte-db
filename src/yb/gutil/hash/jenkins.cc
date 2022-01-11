@@ -45,10 +45,9 @@ static inline uint64 char2unsigned64(char c) {
   return static_cast<uint64>(static_cast<unsigned char>(c));
 }
 
-uint32 Hash32StringWithSeedReferenceImplementation(const char *s, uint32 len,
-                                                   uint32 c) {
+uint32 Hash32StringWithSeedReferenceImplementation(const char *s, size_t len, uint32 c) {
   uint32 a, b;
-  uint32 keylen;
+  size_t keylen;
 
   a = b = 0x9e3779b9UL;           // the golden ratio; an arbitrary value
 
@@ -81,13 +80,12 @@ uint32 Hash32StringWithSeedReferenceImplementation(const char *s, uint32 len,
 }
 
 
-uint32 Hash32StringWithSeed(const char *s, uint32 len, uint32 c) {
+uint32 Hash32StringWithSeed(const char *s, size_t len, uint32 c) {
   uint32 a, b;
-  uint32 keylen;
 
   a = b = 0x9e3779b9UL;           // the golden ratio; an arbitrary value
 
-  keylen = len;
+  size_t keylen = len;
   if (keylen >= 4 * sizeof(a)) {
     uint32 word32AtOffset0 = Google1At(s);
     do {
@@ -155,9 +153,9 @@ uint32 Hash32StringWithSeed(const char *s, uint32 len, uint32 c) {
   return c;
 }
 
-uint64 Hash64StringWithSeed(const char *s, uint32 len, uint64 c) {
+uint64 Hash64StringWithSeed(const char *s, size_t len, uint64 c) {
   uint64 a, b;
-  uint32 keylen;
+  size_t keylen;
 
   a = b = GG_ULONGLONG(0xe08c1d668b756f82);   // the golden ratio; an arbitrary value
 

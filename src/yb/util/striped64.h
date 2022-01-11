@@ -55,6 +55,10 @@ struct HashCode {
 class Cell {
  public:
   Cell();
+
+  Cell(const Cell&) = delete;
+  void operator=(const Cell&) = delete;
+
   inline bool CompareAndSet(int64_t cmp, int64_t value) {
     return value_.CompareAndSet(cmp, value);
   }
@@ -64,8 +68,6 @@ class Cell {
   AtomicInt<int64_t> value_;
   char pad[CACHELINE_SIZE > ATOMIC_INT_SIZE ?
            CACHELINE_SIZE - ATOMIC_INT_SIZE : 1];
-
-  DISALLOW_COPY_AND_ASSIGN(Cell);
 } CACHELINE_ALIGNED;
 #undef ATOMIC_INT_SIZE
 
@@ -151,17 +153,6 @@ class Striped64 {
   // Table of cells. When non-null, size is the nearest power of 2 >= NCPU.
   striped64::internal::Cell* cells_;
   int32_t num_cells_;
-
-  // Static hash code per-thread. Shared across all instances to limit thread-local pollution.
-  // Also, if a thread hits a collision on one Striped64, it's also likely to collide on
-  // other Striped64s too.
-  DECLARE_STATIC_THREAD_LOCAL(striped64::internal::HashCode, hashcode_);
-
- private:
-
-  // Number of CPUs, to place bound on table size.
-  static const uint32_t kNumCpus;
-
 };
 
 // A 64-bit number optimized for high-volume concurrent updates.
@@ -190,4 +181,4 @@ class LongAdder : Striped64 {
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_STRIPED64_H_

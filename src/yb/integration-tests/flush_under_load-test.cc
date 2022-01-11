@@ -69,7 +69,7 @@ class FlushUnderLoadTest : public YBTableTestBase {
   bool use_external_mini_cluster() override { return false; }
 
   int num_tablets() override { return 1; }
-  int num_tablet_servers() override { return 1; }
+  size_t num_tablet_servers() override { return 1; }
 };
 
 TEST_F(FlushUnderLoadTest, LoadTest) {

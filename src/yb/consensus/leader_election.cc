@@ -66,11 +66,9 @@ using strings::Substitute;
 // VoteCounter
 ///////////////////////////////////////////////////
 
-VoteCounter::VoteCounter(int num_voters, int majority_size)
+VoteCounter::VoteCounter(size_t num_voters, size_t majority_size)
   : num_voters_(num_voters),
-    majority_size_(majority_size),
-    yes_votes_(0),
-    no_votes_(0) {
+    majority_size_(majority_size) {
   CHECK_LE(majority_size, num_voters);
   CHECK_GT(num_voters_, 0);
   CHECK_GT(majority_size_, 0);
@@ -133,7 +131,7 @@ ElectionVote VoteCounter::GetDecision() const {
   return ElectionVote::kUnknown;
 }
 
-int VoteCounter::GetTotalVotesCounted() const {
+size_t VoteCounter::GetTotalVotesCounted() const {
   return yes_votes_ + no_votes_;
 }
 

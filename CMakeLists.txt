@@ -373,7 +373,7 @@ if(IS_CLANG)
     message("YB_ENABLE_STATIC_ANALYZER is not set to 1, not enabling Clang static analyzer")
   endif()
 
-  # The actual static analysis is turned on using the --analyze flag.
+  ADD_CXX_FLAGS("-Wshorten-64-to-32")
 endif()
 
 if(USING_LINUXBREW AND IS_CLANG)

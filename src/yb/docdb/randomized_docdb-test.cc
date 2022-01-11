@@ -227,7 +227,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
   // case we did fewer than 15000 iterations.
   RemoveEntriesWithSecondComponentHigherThan(
       &expected_cleanup_ht_and_iteration,
-      load_gen_->last_operation_ht().value());
+      narrow_cast<int>(load_gen_->last_operation_ht().value()));
 
   ASSERT_FALSE(expected_cleanup_ht_and_iteration.empty());
   ASSERT_EQ(expected_cleanup_ht_and_iteration, cleanup_ht_and_iteration);
@@ -255,7 +255,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
   // Remove entries that don't apply to us because we did not get to do a cleanup at that
   // hybrid_time.
   RemoveEntriesWithSecondComponentHigherThan(&expected_divergent_snapshot_and_cleanup_ht,
-                                             max_history_cleanup_ht.value());
+                                             narrow_cast<int>(max_history_cleanup_ht.value()));
 
   ASSERT_EQ(expected_divergent_snapshot_and_cleanup_ht,
             load_gen_->divergent_snapshot_ht_and_cleanup_ht());

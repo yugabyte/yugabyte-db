@@ -134,7 +134,7 @@ string StringPrintfVector(const char* format, const vector<string>& v) {
   for (int i = 0; i < v.size(); ++i) {
     cstr[i] = v[i].c_str();
   }
-  for (int i = v.size(); i < arraysize(cstr); ++i) {
+  for (size_t i = v.size(); i < arraysize(cstr); ++i) {
     cstr[i] = &string_printf_empty_block[0];
   }
 

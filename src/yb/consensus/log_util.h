@@ -309,10 +309,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   CHECKED_STATUS ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries);
 
   // Format a nice error message to report on a corruption in a log file.
-  CHECKED_STATUS MakeCorruptionStatus(int batch_number, int64_t batch_offset,
-                              std::vector<int64_t>* recent_offsets,
-                              const std::vector<std::unique_ptr<LogEntryPB>>& entries,
-                              const Status& status) const;
+  CHECKED_STATUS MakeCorruptionStatus(
+      size_t batch_number, int64_t batch_offset, std::vector<int64_t>* recent_offsets,
+      const std::vector<std::unique_ptr<LogEntryPB>>& entries, const Status& status) const;
 
   CHECKED_STATUS ReadEntryHeaderAndBatch(int64_t* offset,
                                          faststring* tmp_buf,

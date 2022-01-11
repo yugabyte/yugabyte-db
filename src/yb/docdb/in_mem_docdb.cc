@@ -64,8 +64,8 @@ Status InMemDocDbState::SetPrimitive(const DocPath& doc_path, const PrimitiveVal
     current_subdoc = root_.GetOrAddChild(encoded_doc_key_as_primitive).first;
   }
 
-  const int num_subkeys = doc_path.num_subkeys();
-  for (int subkey_index = 0; subkey_index < num_subkeys - 1; ++subkey_index) {
+  const auto num_subkeys = doc_path.num_subkeys();
+  for (size_t subkey_index = 0; subkey_index < num_subkeys - 1; ++subkey_index) {
     const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
     if (subkey.value_type() == ValueType::kArrayIndex) {
       return STATUS(NotSupported, "Setting values at a given array index is not supported yet.");

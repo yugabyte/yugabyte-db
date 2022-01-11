@@ -599,7 +599,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     state_.store(TransactionState::kCommitted, std::memory_order_release);
     ChildTransactionResultPB result;
     auto& tablets = *result.mutable_tablets();
-    tablets.Reserve(tablets_.size());
+    tablets.Reserve(narrow_cast<int>(tablets_.size()));
     for (const auto& tablet : tablets_) {
       auto& out = *tablets.Add();
       out.set_tablet_id(tablet.first);
@@ -775,7 +775,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     // TODO(savepoints) -- Attach metadata about aborted subtransactions to commit message.
     state.set_status(seal_only ? TransactionStatus::SEALED : TransactionStatus::COMMITTED);
-    state.mutable_tablets()->Reserve(tablets_.size());
+    state.mutable_tablets()->Reserve(narrow_cast<int>(tablets_.size()));
     for (const auto& tablet : tablets_) {
       // If tablet does not have metadata it should not participate in commit.
       if (!seal_only && !tablet.second.has_metadata) {

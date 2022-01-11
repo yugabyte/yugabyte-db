@@ -123,10 +123,10 @@ class CAPABILITY("mutex") RWMutex {
   mutable simple_spinlock tid_lock_;
 
   // Tracks all current readers by tid.
-  std::unordered_set<pid_t> reader_tids_;
+  std::unordered_set<uint64_t> reader_tids_;
 
   // Tracks the current writer (if one exists) by tid.
-  pid_t writer_tid_;
+  uint64_t writer_tid_;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(RWMutex);

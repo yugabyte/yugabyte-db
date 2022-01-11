@@ -79,14 +79,14 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   // Writes `num_rows` rows into test table using `CreateInsertRequest`.
   // Returns a pair with min and max hash code written.
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRows(
-      size_t num_rows = 2000, size_t start_key = 1);
+      uint32_t num_rows = 2000, int32_t start_key = 1);
 
   CHECKED_STATUS FlushTestTable();
 
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRowsAndFlush(
-      const size_t num_rows = kDefaultNumRows, const size_t start_key = 1);
+      uint32_t num_rows = kDefaultNumRows, int32_t start_key = 1);
 
-  Result<docdb::DocKeyHash> WriteRowsAndGetMiddleHashCode(size_t num_rows);
+  Result<docdb::DocKeyHash> WriteRowsAndGetMiddleHashCode(uint32_t num_rows);
 
   Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
       master::CatalogManagerIf* catalog_manager);
@@ -127,7 +127,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   void SetUp() override;
 
-  Result<TabletId> CreateSingleTabletAndSplit(size_t num_rows);
+  Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows);
 
   Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
 

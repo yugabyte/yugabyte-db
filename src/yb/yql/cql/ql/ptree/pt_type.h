@@ -215,18 +215,19 @@ class PTCharBaseType : public PTSimpleType<InternalType::kStringValue, DataType:
 
   explicit PTCharBaseType(MemoryContext *memctx = nullptr,
                           YBLocationPtr loc = nullptr,
-                          int32_t max_length = -1);
+                          ssize_t max_length = -1);
   virtual ~PTCharBaseType();
 
-  int32_t max_length() {
+  ssize_t max_length() {
     return max_length_;
   }
-  void set_max_length(int32_t length) {
+
+  void set_max_length(ssize_t length) {
     max_length_ = length;
   }
 
  protected:
-  int32_t max_length_;
+  ssize_t max_length_;
 };
 
 class PTChar : public PTCharBaseType {

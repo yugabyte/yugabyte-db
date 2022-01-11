@@ -520,7 +520,7 @@ void DocDBLoadGenerator::CheckIfOldestSnapshotIsStillValid(const HybridTime clea
 
 void DocDBLoadGenerator::VerifyRandomDocDbSnapshot() {
   if (!docdb_snapshots_.empty()) {
-    const int snapshot_idx = NextRandomInt(docdb_snapshots_.size());
+    const int snapshot_idx = NextRandomInt(narrow_cast<int>(docdb_snapshots_.size()));
     ASSERT_NO_FATALS(VerifySnapshot(docdb_snapshots_[snapshot_idx]));
   }
 }
@@ -634,7 +634,7 @@ void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
 void DocDBRocksDBFixture::MinorCompaction(
     HybridTime history_cutoff,
     int num_files_to_compact,
-    int start_index) {
+    ssize_t start_index) {
 
   ASSERT_OK(FlushRocksDbAndWait());
   SetHistoryCutoffHybridTime(history_cutoff);
@@ -708,7 +708,7 @@ void DocDBRocksDBFixture::MinorCompaction(
       << "Files after compaction: " << yb::ToString(files_after_compaction);
 }
 
-int DocDBRocksDBFixture::NumSSTableFiles() {
+size_t DocDBRocksDBFixture::NumSSTableFiles() {
   rocksdb::ColumnFamilyMetaData cf_meta;
   regular_db_->GetColumnFamilyMetaData(&cf_meta);
   return cf_meta.levels[0].files.size();

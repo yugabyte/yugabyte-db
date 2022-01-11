@@ -282,7 +282,7 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   double sum_squared_deviation = 0;
   vector<int> tablet_counts;
   for (int ts_idx = 0; ts_idx < kNumServers; ts_idx++) {
-    int num_replicas = inspect_->ListTabletsOnTS(ts_idx).size();
+    auto num_replicas = inspect_->ListTabletsOnTS(ts_idx).size();
     LOG(INFO) << "TS " << ts_idx << " has " << num_replicas << " tablets";
     double deviation = static_cast<double>(num_replicas) - kMeanPerServer;
     sum_squared_deviation += deviation * deviation;

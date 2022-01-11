@@ -165,8 +165,8 @@ class SemState {
   bool processing_assignee() const { return processing_assignee_; }
   void set_processing_assignee(bool value) { processing_assignee_ = value; }
 
-  void set_index_select_prefix_length(int val) { index_select_prefix_length_ = val; }
-  int index_select_prefix_length() const { return index_select_prefix_length_; }
+  void set_index_select_prefix_length(size_t val) { index_select_prefix_length_ = val; }
+  size_t index_select_prefix_length() const { return index_select_prefix_length_; }
 
   void set_selecting_from_index(bool val) { selecting_from_index_ = val; }
   bool selecting_from_index() const { return selecting_from_index_; }
@@ -250,7 +250,7 @@ class SemState {
   bool selecting_from_index_ = false;
 
   // Length of prefix of cols in index table that have a sub-clause in WHERE with =/IN operator.
-  int index_select_prefix_length_ = 0;
+  size_t index_select_prefix_length_ = 0;
 
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;

@@ -110,8 +110,8 @@ const char* strncaseprefix(const char* haystack, int haystack_size,
 }
 
 char* strcasesuffix(char* str, const char* suffix) {
-  const int lenstr = strlen(str);
-  const int lensuffix = strlen(suffix);
+  const auto lenstr = strlen(str);
+  const auto lensuffix = strlen(suffix);
   char* strbeginningoftheend = str + lenstr - lensuffix;
 
   if (lenstr >= lensuffix && 0 == strcasecmp(strbeginningoftheend, suffix)) {
@@ -184,7 +184,7 @@ char* AdjustedLastPos(const char* str, char separator, int n) {
 // Misc. routines
 // ----------------------------------------------------------------------
 
-bool IsAscii(const char* str, int len) {
+bool IsAscii(const char* str, size_t len) {
   const char* end = str + len;
   while (str < end) {
     if (!ascii_isascii(*str++)) {
@@ -288,7 +288,8 @@ void RemoveStrings(vector<string>* v, const vector<int>& indices) {
   assert(indices.size() <= v->size());
   // go from largest index to smallest so that smaller indices aren't
   // invalidated
-  for (int lcv = indices.size() - 1; lcv >= 0; --lcv) {
+  for (auto lcv = indices.size(); lcv > 0;) {
+    --lcv;
 #ifndef NDEBUG
     // verify that indices is sorted least->greatest
     if (indices.size() >= 2 && lcv > 0)
@@ -375,8 +376,8 @@ char *gstrncasestr_split(const char* str,
                          const char* prefix, char non_alpha,
                          const char* suffix,
                          size_t n) {
-  int prelen = prefix == nullptr ? 0 : strlen(prefix);
-  int suflen = suffix == nullptr ? 0 : strlen(suffix);
+  auto prelen = prefix == nullptr ? 0 : strlen(prefix);
+  auto suflen = suffix == nullptr ? 0 : strlen(suffix);
 
   // adjust the string and its length to avoid unnessary searching.
   // an added benefit is to avoid unnecessary range checks in the if
@@ -494,7 +495,7 @@ const char* strstr_delimited(const char* haystack,
   if (!needle || !haystack) return nullptr;
   if (*needle == '\0') return haystack;
 
-  int needle_len = strlen(needle);
+  auto needle_len = strlen(needle);
 
   while (true) {
     // Skip any leading delimiters.
@@ -698,7 +699,7 @@ char* strdup_with_new(const char* the_string) {
     return strndup_with_new(the_string, strlen(the_string));
 }
 
-char* strndup_with_new(const char* the_string, int max_length) {
+char* strndup_with_new(const char* the_string, size_t max_length) {
   if (the_string == nullptr)
     return nullptr;
 
@@ -935,8 +936,8 @@ bool MatchPattern(const GStringPiece& eval,
 
 bool FindTagValuePair(const char* arg_str, char tag_value_separator,
                       char attribute_separator, char string_terminal,
-                      char **tag, int *tag_len,
-                      char **value, int *value_len) {
+                      char **tag, size_t *tag_len,
+                      char **value, size_t *value_len) {
   char* in_str = const_cast<char*>(arg_str);  // For msvc8.
   if (in_str == nullptr)
     return false;
@@ -974,7 +975,7 @@ void UniformInsertString(string* s, int interval, const char* separator) {
       separator_len == 0)  // invalid separator
     return;
 
-  int num_inserts = (s->size() - 1) / interval;  // -1 to avoid appending at end
+  auto num_inserts = (s->size() - 1) / interval;  // -1 to avoid appending at end
   if (num_inserts == 0)  // nothing to do
     return;
 
@@ -998,18 +999,18 @@ void UniformInsertString(string* s, int interval, const char* separator) {
 void InsertString(string *const s,
                   const vector<uint32> &indices,
                   char const *const separator) {
-  const unsigned num_indices(indices.size());
+  const auto num_indices = indices.size();
   if (num_indices == 0) {
     return;  // nothing to do...
   }
 
-  const unsigned separator_len(strlen(separator));
+  const auto separator_len = strlen(separator);
   if (separator_len == 0) {
     return;  // still nothing to do...
   }
 
   string tmp;
-  const unsigned s_len(s->size());
+  const auto s_len = s->size();
   tmp.reserve(s_len + separator_len * num_indices);
 
   vector<uint32>::const_iterator const ind_end(indices.end());
@@ -1038,7 +1039,7 @@ void InsertString(string *const s,
 //  or string::npos if n > number of occurrences of c.
 //  (returns string::npos = -1 if n <= 0)
 //------------------------------------------------------------------------
-int FindNth(GStringPiece s, char c, int n) {
+size_t FindNth(GStringPiece s, char c, size_t n) {
   size_t pos = string::npos;
 
   for ( int i = 0; i < n; ++i ) {
@@ -1056,7 +1057,7 @@ int FindNth(GStringPiece s, char c, int n) {
 //  or string::npos if n > number of occurrences of c.
 //  (returns string::npos if n <= 0)
 //------------------------------------------------------------------------
-int ReverseFindNth(GStringPiece s, char c, int n) {
+size_t ReverseFindNth(GStringPiece s, char c, size_t n) {
   if ( n <= 0 ) {
     return static_cast<int>(GStringPiece::npos);
   }

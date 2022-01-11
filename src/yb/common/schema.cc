@@ -414,11 +414,11 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   // Calculate the offset of each column in the row format.
   col_offsets_.reserve(cols_.size() + 1);  // Include space for total byte size at the end.
   size_t off = 0;
-  size_t i = 0;
+  size_t idx = 0;
   name_to_index_.clear();
   for (const ColumnSchema &col : cols_) {
     // The map uses the 'name' string from within the ColumnSchema object.
-    if (!InsertIfNotPresent(&name_to_index_, col.name(), i++)) {
+    if (!InsertIfNotPresent(&name_to_index_, col.name(), idx++)) {
       return STATUS(InvalidArgument, "Duplicate column name", col.name());
     }
 
@@ -448,9 +448,9 @@ Status Schema::CreateProjectionByNames(const std::vector<GStringPiece>& col_name
   vector<ColumnId> ids;
   vector<ColumnSchema> cols;
   for (const GStringPiece& name : col_names) {
-    int idx = find_column(name);
-    if (idx == -1) {
-      return STATUS(NotFound, "column not found", name);
+    auto idx = find_column(name);
+    if (idx == kColumnNotFound) {
+      return STATUS(NotFound, "Column not found", name);
     }
     if (has_column_ids()) {
       ids.push_back(column_id(idx));
@@ -504,8 +504,8 @@ Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
 
   vector<string> missing_columns;
   for (const ColumnSchema& pcol : projection.columns()) {
-    int index = find_column(pcol.name());
-    if (index < 0) {
+    auto index = find_column(pcol.name());
+    if (index == kColumnNotFound) {
       missing_columns.push_back(pcol.name());
     } else if (!pcol.EqualsType(cols_[index])) {
       // TODO: We don't support query with type adaptors yet
@@ -537,7 +537,7 @@ Status Schema::GetMappedReadProjection(const Schema& projection,
   mapped_ids.reserve(projection.num_columns());
 
   for (const ColumnSchema& col : projection.columns()) {
-    int index = find_column(col.name());
+    auto index = find_column(col.name());
     DCHECK_GE(index, 0) << col.name();
     mapped_cols.push_back(cols_[index]);
     mapped_ids.push_back(col_ids_[index]);
@@ -632,7 +632,7 @@ size_t Schema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
-Result<int> Schema::ColumnIndexByName(GStringPiece col_name) const {
+Result<ssize_t> Schema::ColumnIndexByName(GStringPiece col_name) const {
   auto index = find_column(col_name);
   if (index == kColumnNotFound) {
     return STATUS_FORMAT(Corruption, "$0 not found in schema $1", col_name, name_to_index_);
@@ -641,8 +641,8 @@ Result<int> Schema::ColumnIndexByName(GStringPiece col_name) const {
 }
 
 Result<ColumnId> Schema::ColumnIdByName(const std::string& column_name) const {
-  size_t column_index = find_column(column_name);
-  if (column_index == Schema::kColumnNotFound) {
+  auto column_index = find_column(column_name);
+  if (column_index == kColumnNotFound) {
     return STATUS_FORMAT(NotFound, "Couldn't find column $0 in the schema", column_name);
   }
   return ColumnId(column_id(column_index));

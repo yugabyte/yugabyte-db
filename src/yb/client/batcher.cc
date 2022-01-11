@@ -163,7 +163,7 @@ bool Batcher::HasPendingOperations() const {
   return !ops_.empty();
 }
 
-int Batcher::CountBufferedOperations() const {
+size_t Batcher::CountBufferedOperations() const {
   if (state_ == BatcherState::kGatheringOps) {
     return ops_.size();
   } else {

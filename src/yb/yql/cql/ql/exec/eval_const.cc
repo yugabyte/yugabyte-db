@@ -20,6 +20,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/escaping.h"
 
@@ -128,7 +129,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
         return exec_context_->Error(const_pt->loc(), "Invalid tiny integer/int8",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
-      const_pb->set_int8_value(value);
+      const_pb->set_int8_value(narrow_cast<int32>(value));
       break;
     }
     case InternalType::kInt16Value: {
@@ -138,7 +139,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
         return exec_context_->Error(const_pt->loc(), "Invalid small integer/int16",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
-      const_pb->set_int16_value(value);
+      const_pb->set_int16_value(narrow_cast<int32>(value));
       break;
     }
     case InternalType::kInt32Value: {
@@ -148,7 +149,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
         return exec_context_->Error(const_pt->loc(), "Invalid integer/int32",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
-      const_pb->set_int32_value(value);
+      const_pb->set_int32_value(narrow_cast<int32>(value));
       break;
     }
     case InternalType::kInt64Value: {
@@ -261,13 +262,13 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const
 
   switch (const_pt->expected_internal_type()) {
     case InternalType::kInt8Value:
-      const_pb->set_int8_value(value);
+      const_pb->set_int8_value(narrow_cast<int32>(value));
       break;
     case InternalType::kInt16Value:
-      const_pb->set_int16_value(value);
+      const_pb->set_int16_value(narrow_cast<int32>(value));
       break;
     case InternalType::kInt32Value:
-      const_pb->set_int32_value(value);
+      const_pb->set_int32_value(narrow_cast<int32>(value));
       break;
     case InternalType::kInt64Value:
       const_pb->set_int64_value(value);

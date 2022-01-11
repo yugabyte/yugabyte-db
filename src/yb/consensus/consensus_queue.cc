@@ -855,7 +855,7 @@ struct GetInfiniteWatermarkForLocalPeer<Policy, false> {
 template <class Policy>
 typename Policy::result_type PeerMessageQueue::GetWatermark() {
   DCHECK(queue_lock_.is_locked());
-  const int num_peers_required = queue_state_.majority_size_;
+  const auto num_peers_required = queue_state_.majority_size_;
   if (num_peers_required == kUninitializedMajoritySize) {
     // We don't even know the quorum majority size yet.
     return Policy::NotEnoughPeersValue();

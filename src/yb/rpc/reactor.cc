@@ -120,8 +120,8 @@ bool HasReactorStartedClosing(ReactorState state) {
   return state == ReactorState::kClosing || state == ReactorState::kClosed;
 }
 
-int32_t PatchReceiveBufferSize(int32_t receive_buffer_size) {
-  return std::max<int32_t>(
+size_t PatchReceiveBufferSize(size_t receive_buffer_size) {
+  return std::max<size_t>(
       64_KB, FLAGS_rpc_read_buffer_size ? FLAGS_rpc_read_buffer_size : receive_buffer_size);
 }
 
@@ -271,8 +271,8 @@ void Reactor::ShutdownInternal() {
 
 Status Reactor::GetMetrics(ReactorMetrics *metrics) {
   return RunOnReactorThread([metrics](Reactor* reactor) {
-    metrics->num_client_connections_ = reactor->client_conns_.size();
-    metrics->num_server_connections_ = reactor->server_conns_.size();
+    metrics->num_client_connections = reactor->client_conns_.size();
+    metrics->num_server_connections = reactor->server_conns_.size();
     return Status::OK();
   }, SOURCE_LOCATION());
 }
@@ -900,7 +900,7 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 // ------------------------------------------------------------------------------------------------
 
 void Reactor::RegisterInboundSocket(
-    Socket *socket, int32_t receive_buffer_size, const Endpoint& remote,
+    Socket *socket, size_t receive_buffer_size, const Endpoint& remote,
     const ConnectionContextFactoryPtr& factory) {
   VLOG_WITH_PREFIX(3) << "New inbound connection to " << remote;
   receive_buffer_size = PatchReceiveBufferSize(receive_buffer_size);

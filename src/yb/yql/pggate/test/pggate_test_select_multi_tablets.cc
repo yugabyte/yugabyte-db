@@ -202,7 +202,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
     // Check result.
     int col_index = 0;
-    int32_t id = values[col_index++];  // hash_key : int64
+    int64_t id = values[col_index++];  // hash_key : int64
     CHECK_EQ(id, seed) << "Unexpected result for hash column";
     CHECK_EQ(values[col_index++], id);  // id : int32
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16
@@ -263,7 +263,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
     // Check result.
     int col_index = 0;
-    int32_t id = values[col_index++];  // hash_key : int64
+    int64_t id = values[col_index++];  // hash_key : int64
     CHECK_EQ(values[col_index++], id);  // id : int32
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32

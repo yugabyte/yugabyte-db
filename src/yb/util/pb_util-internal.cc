@@ -31,6 +31,8 @@
 //
 #include "yb/util/pb_util-internal.h"
 
+#include "yb/gutil/casts.h"
+
 namespace yb {
 namespace pb_util {
 namespace internal {
@@ -45,10 +47,10 @@ bool SequentialFileFileInputStream::Next(const void **data, int *size) {
     return false;
   }
 
-  size_t available = (buffer_used_ - buffer_offset_);
+  size_t available = buffer_used_ - buffer_offset_;
   if (available > 0) {
     *data = buffer_.get() + buffer_offset_;
-    *size = available;
+    *size = narrow_cast<int>(available);
     buffer_offset_ += available;
     total_read_ += available;
     return true;
@@ -69,13 +71,13 @@ bool SequentialFileFileInputStream::Next(const void **data, int *size) {
   buffer_offset_ = buffer_used_;
   total_read_ += buffer_used_;
   *data = buffer_.get();
-  *size = buffer_used_;
+  *size = narrow_cast<int>(buffer_used_);
   return buffer_used_ > 0;
 }
 
 bool SequentialFileFileInputStream::Skip(int count) {
   CHECK_GT(count, 0);
-  int avail = (buffer_used_ - buffer_offset_);
+  auto avail = buffer_used_ - buffer_offset_;
   if (avail > count) {
     buffer_offset_ += count;
     total_read_ += count;
@@ -98,10 +100,10 @@ bool WritableFileOutputStream::Next(void **data, int *size) {
     return false;
   }
 
-  size_t available = (buffer_size_ - buffer_offset_);
+  size_t available = buffer_size_ - buffer_offset_;
   if (available > 0) {
     *data = buffer_.get() + buffer_offset_;
-    *size = available;
+    *size = narrow_cast<int>(available);
     buffer_offset_ += available;
     return true;
   }
@@ -112,7 +114,7 @@ bool WritableFileOutputStream::Next(void **data, int *size) {
 
   buffer_offset_ = buffer_size_;
   *data = buffer_.get();
-  *size = buffer_size_;
+  *size = narrow_cast<int>(buffer_size_);
   return true;
 }
 

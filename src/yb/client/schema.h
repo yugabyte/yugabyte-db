@@ -274,7 +274,7 @@ class YBSchema {
   void MoveFrom(YBSchema&& other);
 
   // DEPRECATED: will be removed soon.
-  CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, int key_columns,
+  CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, size_t key_columns,
                        const TableProperties& table_properties) WARN_UNUSED_RESULT;
 
   void Reset(std::unique_ptr<Schema> schema);
@@ -332,7 +332,7 @@ class YBSchema {
 
   const std::vector<ColumnSchema>& columns() const;
 
-  int FindColumn(const GStringPiece& name) const;
+  ssize_t FindColumn(const GStringPiece& name) const;
 
   std::string ToString() const;
 

@@ -191,11 +191,6 @@ set(CMAKE_CXX_FLAGS
    -Wextra -Wsign-compare -Wshadow -Woverloaded-virtual \
    -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable")
 
-if (IS_CLANG)
-  set(CMAKE_CXX_FLAGS
-    "${CMAKE_CXX_FLAGS} -Wshorten-64-to-32 -Wno-unevaluated-expression -Wno-parentheses-equality")
-endif()
-
 if (NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
 endif()

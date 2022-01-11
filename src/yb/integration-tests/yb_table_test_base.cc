@@ -59,11 +59,11 @@ YBTableTestBase::~YBTableTestBase() {
 const YBTableName YBTableTestBase::kDefaultTableName(
     YQL_DATABASE_CQL, "my_keyspace", "kv-table-test");
 
-int YBTableTestBase::num_masters() {
+size_t YBTableTestBase::num_masters() {
   return kDefaultNumMasters;
 }
 
-int YBTableTestBase::num_tablet_servers() {
+size_t YBTableTestBase::num_tablet_servers() {
   return kDefaultNumTabletServers;
 }
 

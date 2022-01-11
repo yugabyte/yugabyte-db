@@ -243,11 +243,11 @@ void InterruptNotNull(std::unique_ptr<Subprocess> sub) {
 // Assumes that end - start + 1 fits into an int
 void ReportTenthDone(int64_t key, int64_t start, int64_t end,
                      int id, int numids) {
-  int done = key - start + 1;
-  int total = end - start + 1;
+  auto done = key - start + 1;
+  auto total = end - start + 1;
   if (total < 10) return;
   if (done % (total / 10) == 0) {
-    int percent = done * 100 / total;
+    auto percent = done * 100 / total;
     LOG(INFO) << "Insertion thread " << id << " of "
               << numids << " is "<< percent << "% done.";
   }

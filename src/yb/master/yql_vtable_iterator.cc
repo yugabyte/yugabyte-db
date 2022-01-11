@@ -71,14 +71,14 @@ void YQLVTableIterator::Advance(bool increment) {
   if (increment) {
     ++vtable_index_;
   }
-  size_t num_hashed_columns = hashed_column_values_.size();
+  int num_hashed_columns = hashed_column_values_.size();
   if (num_hashed_columns == 0) {
     return;
   }
   while (vtable_index_ < vtable_->row_count()) {
     auto& row = vtable_->row(vtable_index_);
     bool bad = false;
-    for (size_t idx = 0; idx != num_hashed_columns; ++idx) {
+    for (int idx = 0; idx != num_hashed_columns; ++idx) {
       if (hashed_column_values_[idx].value() != row.column(idx)) {
         bad = true;
         break;

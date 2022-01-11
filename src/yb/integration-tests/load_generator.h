@@ -57,7 +57,7 @@ std::string FormatHexForLoadTestKey(uint64_t x);
 
 class KeyIndexSet {
  public:
-  int NumElements() const;
+  size_t NumElements() const;
   void Insert(int64_t key);
   bool Contains(int64_t key) const;
   bool RemoveIfContains(int64_t key);
@@ -184,7 +184,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   const KeyIndexSet* FailedKeys() const { return &failed_keys_; }
 
   int64_t num_writes() { return next_key_.load() - start_key_; }
-  int num_write_errors() { return failed_keys_.NumElements(); }
+  size_t num_write_errors() { return failed_keys_.NumElements(); }
   void AssertSucceeded() { ASSERT_EQ(num_write_errors(), 0); }
 
   void set_pause_flag(std::atomic<bool>* pause_flag) { pause_flag_ = pause_flag; }

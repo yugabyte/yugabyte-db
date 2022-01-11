@@ -277,7 +277,7 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
 }
 
 void LogIndex::GC(int64_t min_index_to_retain) {
-  int min_chunk_to_retain = min_index_to_retain / kEntriesPerIndexChunk;
+  auto min_chunk_to_retain = min_index_to_retain / kEntriesPerIndexChunk;
 
   // Enumerate which chunks to delete.
   vector<int64_t> chunks_to_delete;

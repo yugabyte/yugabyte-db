@@ -164,7 +164,7 @@ class DocOperationTest : public DocDBTestBase {
     ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), column_values.size());
     for (int i = 0; i < column_values.size(); i++) {
       auto column = ql_writereq_pb->add_column_values();
-      column->set_column_id(schema.num_key_columns() + i);
+      column->set_column_id(narrow_cast<int32_t>(schema.num_key_columns() + i));
       column->mutable_expr()->mutable_value()->set_int32_value(column_values[i]);
     }
   }

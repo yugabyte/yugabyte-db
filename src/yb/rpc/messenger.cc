@@ -586,8 +586,8 @@ size_t Messenger::max_concurrent_requests() const {
 }
 
 Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {
-  uint32_t hashCode = hash_value(remote);
-  int reactor_idx = (hashCode + idx) % reactors_.size();
+  auto hash_code = hash_value(remote);
+  auto reactor_idx = (hash_code + idx) % reactors_.size();
   // This is just a static partitioning; where each connection
   // to a remote is assigned to a particular reactor. We could
   // get a lot fancier with assigning Sockaddrs to Reactors,

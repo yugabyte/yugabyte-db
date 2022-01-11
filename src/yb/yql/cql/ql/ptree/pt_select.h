@@ -129,7 +129,7 @@ class SelectScanInfo : public MCBase {
 
   // Constructor.
   explicit SelectScanInfo(MemoryContext *memctx,
-                          int num_columns,
+                          size_t num_columns,
                           MCVector<const PTExpr*> *scan_filtering_exprs,
                           MCMap<MCString, ColumnDesc> *scan_column_map);
 
@@ -235,11 +235,11 @@ class SelectScanSpec {
     is_forward_scan_ = val;
   }
 
-  void set_prefix_length(int prefix_length) {
+  void set_prefix_length(size_t prefix_length) {
     prefix_length_ = prefix_length;
   }
 
-  int prefix_length() const {
+  size_t prefix_length() const {
     return prefix_length_;
   }
 
@@ -247,7 +247,7 @@ class SelectScanSpec {
   TableId index_id_;
   bool covers_fully_ = false;
   bool is_forward_scan_ = true;
-  int prefix_length_ = 0;
+  size_t prefix_length_ = 0;
 };
 
 //--------------------------------------------------------------------------------------------------
