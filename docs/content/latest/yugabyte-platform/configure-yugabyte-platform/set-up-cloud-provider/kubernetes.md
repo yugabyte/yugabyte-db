@@ -65,15 +65,13 @@ showAsideToc: true
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using the Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page highlights the need to configure at least one cloud provider, as per the following illustration:
+This document describes how to configure the Kubernetes provider for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page highlights the need to configure at least one cloud provider, as per the following illustration:
 
 ![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
 ## Prerequisites
 
-### Kubernetes
-
-If you plan to run YugabyteDB universes on Kubernetes, all you need to provide in the Yugabyte Platform console is your Kubernetes provider credentials. The Yugabyte Platform uses those credentials to automatically provision and de-provision the pods that run Yugabyte.
+To run YugabyteDB universes on Kubernetes, all you need to provide in the Yugabyte Platform console is your Kubernetes provider credentials. Yugabyte Platform uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
 
 Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
@@ -101,12 +99,12 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-You need to grant access to this ServiceAccount using ClusterRoles and Roles as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
+You need to grant access to this ServiceAccount using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
 Ensure that you have replaced the `namespace` from the commands with the correct namespace of the previously created ServiceAccount.
 
 The tasks you can perform depend on your access level.
 
-**Global Admin** can grant broad cluster level admin access by executing the following command:
+Global Admin can grant broad cluster level admin access by executing the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
@@ -114,7 +112,7 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
   | kubectl apply -n <namespace> -f -
 ```
 
-**Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
+Global Restricted can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
@@ -133,7 +131,7 @@ kubectl auth can-i \
     {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-**Namespace Admin** can grant namespace level admin access by using the following command:
+Namespace Admin can grant namespace-level admin access by using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
@@ -152,9 +150,9 @@ kubectl auth can-i \
     {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-**Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
+Namespace Restricted can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
-For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces.
+For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
@@ -203,7 +201,7 @@ You can use the Pivotal Container Service or Managed Kubernetes Service.
 Select the tab for the service you are using, as per the following illustration:
 <img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
 
-Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default).
+Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default), as per the following illustration:
 
 <img title="K8s Configuration -- empty" alt="K8s Configuration -- empty" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-empty.png" />
 
@@ -311,7 +309,3 @@ Continue configuring your Kubernetes provider by clicking **Add Zone** and notic
 <img title="K8s Configuration -- region" alt="K8s Configuration -- region" class="expandable-image" src="/images/ee/k8s-setup/k8s-add-region-flow.png" />
 
 Finally, click **Add Region**, and then click **Save** to save the configuration. If successful, you will be redirected to the table view of all configurations.
-
-## Next step
-
-You are now ready to create YugabyteDB universes, as described in the next section.

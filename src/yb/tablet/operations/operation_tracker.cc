@@ -247,7 +247,7 @@ std::vector<scoped_refptr<OperationDriver>> OperationTracker::GetPendingOperatio
 }
 
 
-int OperationTracker::GetNumPendingForTests() const {
+size_t OperationTracker::TEST_GetNumPending() const {
   std::lock_guard<std::mutex> l(mutex_);
   return pending_operations_.size();
 }

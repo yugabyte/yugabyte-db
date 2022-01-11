@@ -23,6 +23,8 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
@@ -181,7 +183,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
   // with an argument or no range key has an argument. Else, check that all range columns
   // have arguments.
   int range_keys = 0;
-  for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+  for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
     if ((*column_args_)[idx].IsInitialized()) {
       range_keys++;
     }
@@ -288,7 +290,7 @@ ExplainPlanPB PTInsertStmt::AnalysisResultToPB() {
   ExplainPlanPB explain_plan;
   InsertPlanPB *insert_plan = explain_plan.mutable_insert_plan();
   insert_plan->set_insert_type("Insert on " + table_name().ToString());
-  insert_plan->set_output_width(insert_plan->insert_type().length());
+  insert_plan->set_output_width(narrow_cast<int32_t>(insert_plan->insert_type().length()));
   return explain_plan;
 }
 

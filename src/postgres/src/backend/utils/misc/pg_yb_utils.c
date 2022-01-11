@@ -1482,7 +1482,7 @@ yb_servers(PG_FUNCTION_ARGS)
     funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
     YBCServerDescriptor *servers = NULL;
-    int numservers = 0;
+    size_t numservers = 0;
     HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
     funcctx->max_calls = numservers;
     funcctx->user_fctx = servers;

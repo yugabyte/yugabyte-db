@@ -16,8 +16,9 @@
 #include "postgres.h"
 
 #include <ctype.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <unistd.h>
 
 #include "access/amapi.h"
 #include "access/htup_details.h"
@@ -1487,7 +1488,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			if (yb_table_properties.num_hash_key_columns > 0)
 			{
 				/* For hash-partitioned tables */
-				appendStringInfo(&buf, " SPLIT INTO %u TABLETS", yb_table_properties.num_tablets);
+				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS", yb_table_properties.num_tablets);
 			}
 			else
 			{

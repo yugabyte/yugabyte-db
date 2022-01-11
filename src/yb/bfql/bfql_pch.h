@@ -87,6 +87,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"

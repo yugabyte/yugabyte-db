@@ -116,8 +116,7 @@ class InlineSlice {
   }
 
   template<class ArenaType>
-  void set(const uint8_t *src, size_t len,
-           ArenaType *alloc_arena) {
+  void set(const uint8_t *src, size_t len, ArenaType *alloc_arena) {
     if (len <= kMaxInlineData) {
       if (ATOMIC) {
         // If atomic, we need to make sure that we store the discriminator
@@ -142,7 +141,7 @@ class InlineSlice {
       // never see a pointer to an invalid region (i.e one without a proper length header).
       void *in_arena = CHECK_NOTNULL(alloc_arena->AllocateBytesAligned(len + sizeof(uint32_t),
                                                                        alignof(uint32_t)));
-      *reinterpret_cast<uint32_t *>(in_arena) = len;
+      *reinterpret_cast<uint32_t *>(in_arena) = narrow_cast<uint32_t>(len);
       memcpy(reinterpret_cast<uint8_t *>(in_arena) + sizeof(uint32_t), src, len);
       set_ptr(in_arena);
     }

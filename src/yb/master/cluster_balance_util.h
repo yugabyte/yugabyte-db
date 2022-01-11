@@ -286,10 +286,10 @@ class PerTableLoadState {
   };
 
   // Get the load for a certain TS.
-  int GetLoad(const TabletServerId& ts_uuid) const;
+  size_t GetLoad(const TabletServerId& ts_uuid) const;
 
   // Get the load for a certain TS.
-  int GetLeaderLoad(const TabletServerId& ts_uuid) const;
+  size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
 
   void SetBlacklist(const BlacklistPB& blacklist) { blacklist_ = blacklist; }
   void SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {

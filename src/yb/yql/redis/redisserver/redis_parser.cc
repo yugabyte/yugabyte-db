@@ -23,6 +23,8 @@
 
 #include "yb/common/redis_protocol.pb.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/split.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -390,12 +392,14 @@ CHECKED_STATUS ParseCollection(YBRedisOp *op,
     for (size_t i = 2; i < args.size(); i++) {
       subkey_set.insert(string(args[i].cdata(), args[i].size()));
     }
-    op->mutable_request()->mutable_key_value()->mutable_subkey()->Reserve(subkey_set.size());
+    op->mutable_request()->mutable_key_value()->mutable_subkey()->Reserve(
+        narrow_cast<int>(subkey_set.size()));
     for (const auto &val : subkey_set) {
       RETURN_NOT_OK(add_sub_key(val, op->mutable_request()->mutable_key_value()));
     }
   } else {
-    op->mutable_request()->mutable_key_value()->mutable_subkey()->Reserve(args.size() - 2);
+    op->mutable_request()->mutable_key_value()->mutable_subkey()->Reserve(
+        narrow_cast<int>(args.size() - 2));
     for (size_t i = 2; i < args.size(); i++) {
       RETURN_NOT_OK(add_sub_key(string(args[i].cdata(), args[i].size()),
                                 op->mutable_request()->mutable_key_value()));
@@ -699,9 +703,8 @@ CHECKED_STATUS ParseWithScores(const Slice& slice, RedisCollectionGetRangeReques
 }
 
 CHECKED_STATUS ParseRangeByScoreOptions(YBRedisReadOp* op, const RedisClientCommand& args) {
-  int i = 4;
-  int args_size = args.size();
-  while (i < args_size) {
+  auto args_size = args.size();
+  for (size_t i = 4; i < args_size; ++i) {
     string upper_arg;
     ToUpperCase(args[i].ToBuffer(), &upper_arg);
     if (upper_arg == "LIMIT") {
@@ -710,7 +713,7 @@ CHECKED_STATUS ParseRangeByScoreOptions(YBRedisReadOp* op, const RedisClientComm
             "expected 2 but found $0", args_size - (i + 1));
       }
       auto offset = VERIFY_RESULT(ParseInt64(args[++i], "offset"));
-      auto limit = VERIFY_RESULT(ParseInt64(args[++i], "count"));
+      auto limit = VERIFY_RESULT(ParseInt32(args[++i], "count"));
       op->mutable_request()->mutable_index_range()->mutable_lower_bound()->set_index(offset);
       op->mutable_request()->set_range_request_limit(limit);
     } else if (upper_arg == "WITHSCORES") {
@@ -718,7 +721,6 @@ CHECKED_STATUS ParseRangeByScoreOptions(YBRedisReadOp* op, const RedisClientComm
     } else {
       return STATUS_SUBSTITUTE(InvalidArgument, "Invalid argument $0", args[i].ToBuffer());
     }
-    i++;
   }
   return Status::OK();
 }

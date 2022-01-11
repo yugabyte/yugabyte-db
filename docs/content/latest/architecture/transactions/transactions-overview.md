@@ -79,7 +79,7 @@ The timestamp that we are using for MVCC comes from the [Hybrid Time](http://use
 
 ### Supported isolation levels
 
-YugabyteDB supports two transaction isolation levels - `SNAPSHOT` (which is mapped to the SQL isolation level `REPEATABLE READ`) and `SERIALIZABLE` (which maps to the SQL isolation level of the same name). Read more about [isolation levels in YugabyteDB](../isolation-levels).
+YugabyteDB supports three transaction isolation levels - Read Committed, Serializable (both map to the SQL isolation level of the same name) and Snapshot (which maps to the SQL isolation level `REPEATABLE READ`). Read more about [isolation levels in YugabyteDB](../isolation-levels).
 
 ### Explicit locking
 

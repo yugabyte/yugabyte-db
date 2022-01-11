@@ -271,9 +271,9 @@ constexpr int kMinutesPerDay = kMinutesPerHour * kHoursPerDay;
 constexpr int kSecondsPerDay = kSecondsPerHour * kHoursPerDay;
 
 string UptimeString(uint64_t seconds) {
-  int days = seconds / kSecondsPerDay;
-  int hours = (seconds / kSecondsPerHour) - (days * kHoursPerDay);
-  int mins = (seconds / kSecondsPerMinute) - (days * kMinutesPerDay) - (hours * kMinutesPerHour);
+  auto days = seconds / kSecondsPerDay;
+  auto hours = (seconds / kSecondsPerHour) - (days * kHoursPerDay);
+  auto mins = (seconds / kSecondsPerMinute) - (days * kMinutesPerDay) - (hours * kMinutesPerHour);
 
   std::ostringstream uptime_string_stream;
   uptime_string_stream << " ";
@@ -797,7 +797,7 @@ void MasterPathHandlers::HandleHealthCheck(
     jw.EndArray();
 
     jw.String("most_recent_uptime");
-    jw.Uint(most_recent_uptime);
+    jw.Uint64(most_recent_uptime);
 
     auto time_arg = req.parsed_args.find("tserver_death_interval_msecs");
     int64 death_interval_msecs = 0;

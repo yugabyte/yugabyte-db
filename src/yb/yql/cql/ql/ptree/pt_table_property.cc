@@ -23,6 +23,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/table_properties_constants.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
@@ -439,10 +441,11 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
       break;
     case KVProperty::kNumTablets:
       int64_t val;
-      if (!GetIntValueFromExpr(rhs_, table_property_name, &val).ok()) {
-        return STATUS(InvalidArgument, Substitute("Invalid value for tablets"));
+      auto status = GetIntValueFromExpr(rhs_, table_property_name, &val);
+      if (!status.ok()) {
+        return status.CloneAndAppend("Invalid value for tablets");
       }
-      table_property->SetNumTablets(val);
+      table_property->SetNumTablets(trim_cast<int32_t>(val));
       break;
   }
   return Status::OK();

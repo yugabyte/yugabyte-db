@@ -203,8 +203,8 @@ void CustomGlogFailureWriter(const char* data, int size) {
 void ReportRefCountedDebugEvent(
     const char* type_name,
     const void* this_ptr,
-    int32_t current_refcount,
-    int ref_delta) {
+    int64_t current_refcount,
+    int64_t ref_delta) {
   std::string demangled_type = DemangleName(type_name);
   LOG(INFO) << demangled_type << "::" << (ref_delta == 1 ? "AddRef" : "Release")
             << "(this=" << this_ptr << ", ref_count_=" << current_refcount << "):\n"
