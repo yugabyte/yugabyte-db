@@ -16,6 +16,7 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.BACKUP_SUCCESS_C
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_ATTEMPT_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_FAILURE_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_SUCCESS_COUNTER;
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.common.Util.lockedUpdateBackupState;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
@@ -24,9 +25,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -168,6 +169,13 @@ public class MultiTableBackup extends UniverseTaskBase {
                         + params().getKeyspace()
                         + "; actual keyspace is "
                         + tableKeySpace);
+                continue;
+              }
+
+              if (tableType == TableType.PGSQL_TABLE_TYPE
+                  && params().getKeyspace() == null
+                  && SYSTEM_PLATFORM_DB.equals(tableKeySpace)) {
+                log.info("Skipping " + SYSTEM_PLATFORM_DB + " database");
                 continue;
               }
 
