@@ -64,7 +64,8 @@ public class PrometheusPriorityRegexTest {
         "log_cache_num_ops",
         "glog_info_messages",
         "glog_warning_messages",
-        "glog_error_messages"
+        "glog_error_messages",
+        "follower_lag_ms"
       };
 
   @SuppressWarnings("unchecked")
