@@ -39,6 +39,12 @@ showAsideToc: true
       YCQL
     </a>
   </li>
+  <li>
+    <a href="{{< relref "./ysql-django.md" >}}" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Django
+    </a>
+  </li>
 </ul>
 
 ## Install the Yugabyte Python Driver for YCQL

@@ -1,13 +1,13 @@
 ---
-title: Build a Python application that uses SQLAlchemy and YSQL
+title: Build a Python application that uses YSQL and Django
 headerTitle: Build a Python application
 linkTitle: Python
-description: Build a Python e-commerce application that uses SQLAlchemy and YSQL.
+description: Build a Python application with Django that uses YSQL.
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: Python
-    identifier: python-2
+    identifier: python-4
     weight: 553
 type: page
 isTocNested: true
@@ -28,7 +28,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link active">
+    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
     </a>
@@ -39,26 +39,13 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-  <li>
-    <a href="{{< relref "./ysql-django.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Django
-    </a>
-  </li>
 </ul>
 
-This SQLAlchemy ORM example, running on Python, implements a simple REST API server for an e-commerce application scenario. Database access in this application is managed through [SQL Alchemy ORM](https://docs.sqlalchemy.org/en/13/orm/). The e-commerce database (`ysql-sqlalchemy`) includes the following tables:
-
-- `users`: the users of the e-commerce site
-- `products`: the products being sold
-- `orders`: the orders placed by the users
-- `orderline`: each line item of an order
-
-The source for this application can be found in the [`python/sqlalchemy` directory](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) GitHub repository.
+The following tutorial creates an e-commerce application running in Python, connects to a YugabyteDB cluster, and performs REST API calls to send requests and query the results.
 
 ## Before you begin
 
-To configure and run this application, make sure that you've completed these prerequisites.
+This tutorial assumes that you have satisfied the following prerequisites.
 
 ### YugabyteDB
 
@@ -66,55 +53,68 @@ YugabyteDB is up and running. If you are new to YugabyteDB, you can have Yugabyt
 
 ### Python
 
-Python 3 is installed
+[Python 3](https://www.python.org/downloads/) or later is installed.
 
-### Python packages (dependencies)
+### Django
 
-Python packages (dependencies) are installed
+[Django 2.2](https://www.djangoproject.com/download/) or later is installed.
 
-- [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/)
-- [psycopg2 (`psycopg2-binary`)](http://initd.org/psycopg/)
-- [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/)
-
-To quickly install these three packages, run the following command.
-
-```sh
-$ pip3 install psycopg2-binary sqlalchemy jsonpickle
-```
-
-## Clone the "orm-examples" repository
-
-Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-examples) by running the following command.
+## Clone the orm-examples repository
 
 ```sh
 $ git clone https://github.com/yugabyte/orm-examples.git
 ```
 
-Update the database settings in the `src/config.py` file to match the following. If YSQL authentication is enabled, add the password (default for the `yugabyte` user is `yugabyte`).
+This repository has a Django ORM example that implements a simple REST API server. Database access in this application is managed through the Django ORM. The e-commerce database `ysql_django` includes the following tables:
+
+- `users`: of the e-commerce site are stored in the `users` table.
+- `products`:  table contains a list of products the e-commerce site sells.
+- `orders`: placed by the users are populated in the `orders` table.
+- `orderline`:  stores multiple line items from an order in the `orderline` table.
+
+The source for the above application can be found in the `python/django` directory of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) repository.
+
+## Set up the application
+
+- Customize the database connection setting according to your environment in `ybstore/settings.py` under `orm-examples/python/django` directory:
 
 ```python
-import logging
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'ysql_django',
+        'USER': 'postgres',
+        'PASSWORD': '',
+        'HOST': '127.0.0.1',
+        'PORT': '5433',
+    }
+}
+```
 
-listen_port = 8080
-db_user = 'yugabyte'
-db_password = 'yugabyte'
-database = 'ysql_sqlalchemy'
-schema = 'ysql_sqlalchemy'
-db_host = 'localhost'
-db_port = 5433
+- Generate a Django secret key using any django secret key generator and paste the generated key in the following line of the `settings.py` file:
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s:%(levelname)s:%(message)s"
-    )
+```python
+SECRET_KEY = 'YOUR-SECRET-KEY'
+```
+
+- Create a database using the `YugabyteDB SQL shell`(ysqlsh) by navigating to the location of your local [YugabyteDB](#yugabytedb) cluster created above.
+
+```sh
+bin/ysqlsh -c "CREATE DATABASE ysql_django"
+```
+
+- From the `orm-examples/python/django` directory, create the migrations, and migrate the changes to the database using the following command:
+
+```sh
+python3 manage.py makemigrations && python3 manage.py migrate
 ```
 
 ## Start the REST API server
 
-Run the following Python script to start the server.
+Run the following Python script to start the REST API server at port `8080`. You can specify a port of your own choice.
 
-```sh
-python3 ./src/rest-service.py
+```python
+python3 manage.py runserver 8080
 ```
 
 The REST API server will start and listen for your requests at `http://localhost:8080`.
@@ -299,4 +299,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-The source for the application above can be found in the Yugabyte [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) repository.
+The source for the above application can be found in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/python/django).
