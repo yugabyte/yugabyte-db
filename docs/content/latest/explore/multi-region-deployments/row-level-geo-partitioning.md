@@ -194,7 +194,7 @@ The data is now arranged as follows:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-2.png)
 
-## Step 3. Pinning user bank transactions to geographic locations
+## Step 3. Pinning user partitions specific to geographic locations
 
 Now, the setup should automatically be able to pin rows to the appropriate regions based on the  value set in the `geo_partition` column. This is shown in the following diagram:
 
