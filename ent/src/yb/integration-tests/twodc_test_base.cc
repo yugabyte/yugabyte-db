@@ -63,7 +63,7 @@ void TwoDCTestBase::Destroy() {
   }
 
   producer_cluster_.client_.reset();
-  producer_cluster_.client_.reset();
+  consumer_cluster_.client_.reset();
 }
 
 Status TwoDCTestBase::SetupUniverseReplication(
