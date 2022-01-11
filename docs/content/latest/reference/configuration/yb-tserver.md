@@ -501,13 +501,9 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-Default: `REPEATABLE READ`
+Default: `READ COMMITTED`<sup>$</sup>
 
-{{< note title="Note" >}}
-
-YugabyteDB supports only two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The transaction isolation levels of `READ UNCOMMITTED` and `READ COMMITTED` are implemented in YugabyteDB as `REPEATABLE READ`.
-
-{{< /note >}}
+<sup>$</sup> Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 

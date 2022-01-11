@@ -259,7 +259,7 @@ components:
                       |log_(sync_latency_[^_]+|group_commit_latency_[^_]+\
                       |append_latency_[^_]+|bytes_logged|reader_bytes_read\
                       |append_latency_count|sync_latency_count|cache_size|cache_num_ops)\
-                      |glog_[^_]+_messages"
+                      |glog_[^_]+_messages|follower_lag_ms"
                   file_sd_configs:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/yugabyte.*.json'
@@ -309,6 +309,9 @@ components:
         env_vars:
           - name: JAVA_OPTS
             static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m'
+          - name: HTTP_PROXY
+            value: {{repl ConsoleSetting "http.proxy"}}
+            when: {{repl ConsoleSettingEquals "http.proxy.enabled" "1"}}
         ports:
           - private_port: "9000"
             public_port: "9000"

@@ -94,6 +94,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics_fwd.h"

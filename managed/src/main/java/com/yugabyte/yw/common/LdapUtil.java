@@ -125,7 +125,8 @@ public class LdapUtil {
             users.setLdapSpecifiedRole(false);
         }
         Users oldUser = Users.find.query().where().eq("email", email).findOne();
-        if (oldUser != null && (oldUser.getRole() == roleToAssign)) {
+        if (oldUser != null
+            && (oldUser.getRole() == roleToAssign || !oldUser.getLdapSpecifiedRole())) {
           return oldUser;
         } else if (oldUser != null && (oldUser.getRole() != roleToAssign)) {
           oldUser.setRole(roleToAssign);
@@ -138,7 +139,7 @@ public class LdapUtil {
           users.setPassword(generatedPassword); // Password is not used.
           users.setUserType(Users.UserType.ldap);
           users.creationDate = new Date();
-          users.setIsPrimary(true);
+          users.setIsPrimary(false);
           users.setRole(roleToAssign);
         }
       }

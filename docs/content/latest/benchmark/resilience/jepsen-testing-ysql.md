@@ -33,9 +33,9 @@ isTocNested: true
 
 The Yugabyte SQL API (YSQL) passed [Jepsen testing, performed by Kyle Kingsbury](https://jepsen.io/services), on YugabyteDB v1.3.1.2, with the exception of transactional DDL support, which virtually no other distributed SQL database supports. The impact of this issue is minor as it is limited to cases where DML happens before DDL has fully finished. [GitHub issue #2021](https://github.com/yugabyte/yugabyte-db/issues/2021) has already been fixed to take care of this issue.
 
-YugabyteDB supports serializable and snapshot isolation for transactions. The previous v1.2 release shipped with the Jepsen verification of YCQL, the Cassandra-inspired, semi-relational Yugabyte YCQL API. Because the YugabyteDB underlying distributed document store (DocDB), is common across both the YCQL and YSQL APIs, there was no surprise that YSQL relatively easily passed almost all of the official Jepsen safety tests (except for transactional DDL support).
+YugabyteDB supports serializable, snapshot and read committed isolation for transactions. The previous v1.2 release shipped with the Jepsen verification of YCQL, the Cassandra-inspired, semi-relational Yugabyte YCQL API. Because the YugabyteDB underlying distributed document store (DocDB), is common across both the YCQL and YSQL APIs, there was no surprise that YSQL relatively easily passed almost all of the official Jepsen safety tests (except for transactional DDL support).
 
-The primary focus of this Jepsen testing was to test the new serializable isolation level for distributed transactions, where isolation stands for the “I” in ACID. As a fully-relational SQL API, YSQL supports both serializable and snapshot isolation while the semi-relational YCQL API supports only the snapshot isolation level.
+The primary focus of this Jepsen testing was to test the new serializable isolation level for distributed transactions, where isolation stands for the “I” in ACID. As a fully-relational SQL API, YSQL supports serializable, snapshot and read committed isolation while the semi-relational YCQL API supports only the snapshot isolation level.
 
 By passing this Jepsen testing, YugabyteDB has the distinction of being the first database to pass Jepsen testing for two separate APIs. For details, see the [official Jepsen tests report by Kyle Kingsbury](https://jepsen.io/analyses/yugabyte-db-1.3.1). Below is a summary and discussion of the highlights from the report.
 
@@ -96,7 +96,7 @@ In order to create the table `foo` above in YSQL, a number of discrete steps nee
 2. Add the `pg_class` and `pg_attribute` entries.
 3. Modify the entries to set the default column value.
 
-Assume the steps above are being performed by a client. The table becomes operational after step 2 and an independent client can successfully insert data before step 3 is complete, when the default column value is set. Any inserts that occur before step 3 see `NULL` values instead of `now()` for the column `k`. In summary, this issue turned out to be not related to the core design or implementation of the YugabyteDB transaction layer that supports serializable and snapshot isolation levels, but occurs because the implementation of the `CREATE TABLE` sequence is not yet atomic. A simple, short-term workaround is to wait for the table creation to succeed before starting the workload against the table.
+Assume the steps above are being performed by a client. The table becomes operational after step 2 and an independent client can successfully insert data before step 3 is complete, when the default column value is set. Any inserts that occur before step 3 see `NULL` values instead of `now()` for the column `k`. In summary, this issue turned out to be not related to the core design or implementation of the YugabyteDB transaction layer that supports serializable, snapshot and read committed isolation levels, but occurs because the implementation of the `CREATE TABLE` sequence is not yet atomic. A simple, short-term workaround is to wait for the table creation to succeed before starting the workload against the table.
 
 ## Kudos from the Jepsen report
 
