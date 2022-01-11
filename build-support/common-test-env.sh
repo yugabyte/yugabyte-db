@@ -1856,6 +1856,8 @@ run_python_tests() {
     run_python_doctest
     log "Invoking the codecheck tool"
     python3 -m codecheck
+    log "Running unit tests with pytest"
+    pytest python/
   )
 }
 
