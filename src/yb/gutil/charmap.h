@@ -89,9 +89,9 @@ class Charmap {
  protected:
   uint32 m_[8];
 
-  void Init(const char* str, int len) {
+  void Init(const char* str, size_t len) {
     memset(&m_, 0, sizeof m_);
-    for (int i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
       unsigned char value = static_cast<unsigned char>(str[i]);
       m_[value >> 5] |= 1UL << (value & 0x1f);
     }

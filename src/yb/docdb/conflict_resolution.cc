@@ -504,7 +504,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   // Number of transactions that are not yet resolved. After successful resolution should be 0.
   size_t remaining_transactions_;
 
-  std::atomic<int> pending_requests_{0};
+  std::atomic<size_t> pending_requests_{0};
 };
 
 struct IntentData {

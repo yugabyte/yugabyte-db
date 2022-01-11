@@ -42,8 +42,8 @@
 // limitations under the License.
 
 
-#ifndef IMPALA_BIT_UTIL_H
-#define IMPALA_BIT_UTIL_H
+#ifndef YB_UTIL_BIT_UTIL_H
+#define YB_UTIL_BIT_UTIL_H
 
 #include <stdint.h>
 #include "yb/gutil/port.h"
@@ -54,20 +54,15 @@ namespace yb {
 // TODO: is this in boost or something else like that?
 class BitUtil {
  public:
-  // Returns the ceil of value/divisor
-  static inline int Ceil(int value, int divisor) {
-    return value / divisor + (value % divisor != 0);
-  }
-
   // Returns the 'num_bits' least-significant bits of 'v'.
-  static inline uint64_t TrailingBits(uint64_t v, int num_bits) {
+  static inline uint64_t TrailingBits(uint64_t v, size_t num_bits) {
     if (PREDICT_FALSE(num_bits == 0)) return 0;
     if (PREDICT_FALSE(num_bits >= 64)) return v;
-    int n = 64 - num_bits;
+    auto n = 64 - num_bits;
     return (v << n) >> n;
   }
 };
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_BIT_UTIL_H

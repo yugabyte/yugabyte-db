@@ -149,7 +149,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
     ASSERT_EQ(file_checksum, expected_checksum) << "File checksum didn't match expected checksum";
   }
 
-  void MakeVectors(int num_slices, int slice_size, int num_iterations,
+  void MakeVectors(size_t num_slices, size_t slice_size, size_t num_iterations,
                    std::unique_ptr<faststring[]>* data, vector<vector<Slice > >* vec) {
     data->reset(new faststring[num_iterations * num_slices]);
     vec->resize(num_iterations);
@@ -454,7 +454,7 @@ class ShortReadRandomAccessFile : public RandomAccessFile {
     CHECK_GT(n, 0);
     // Divide the requested amount of data by a small integer,
     // and issue the shorter read to the underlying file.
-    int short_n = n / ((rand_r(&seed_) % 3) + 1);
+    auto short_n = n / ((rand_r(&seed_) % 3) + 1);
     if (short_n == 0) {
       short_n = 1;
     }

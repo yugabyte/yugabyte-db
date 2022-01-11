@@ -74,6 +74,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/dynamic_annotations.h"   // for RunningOnValgrind
 #include "yb/gutil/macros.h"
 #include "yb/gutil/sysinfo.h"
@@ -141,7 +142,7 @@ static bool SlurpSmallTextFile(const char* file, char* buf, int buflen) {
   if (fd == -1) return ret;
 
   memset(buf, '\0', buflen);
-  int n = read(fd, buf, buflen - 1);
+  auto n = read(fd, buf, buflen - 1);
   CHECK_NE(n, buflen - 1) << "buffer of len " << buflen << " not large enough to store "
                           << "contents of " << file;
   if (n > 0) {
@@ -160,9 +161,9 @@ static bool ReadIntFromFile(const char *file, int *value) {
     return false;
   }
   char* err;
-  const int temp_value = strtol(line, &err, 10);
+  const auto temp_value = strtol(line, &err, 10);
   if (line[0] != '\0' && (*err == '\n' || *err == '\0')) {
-    *value = temp_value;
+    *value = narrow_cast<int>(temp_value);
     return true;
   }
   return false;
@@ -182,9 +183,9 @@ static int ReadMaxCPUIndex() {
 
   char* max_cpu_str = &buf[2];
   char* err;
-  int val = strtol(max_cpu_str, &err, 10);
+  auto val = strtol(max_cpu_str, &err, 10);
   CHECK(*err == '\n' || *err == '\0') << "unable to parse max CPU index from: " << buf;
-  return val;
+  return narrow_cast<int>(val);
 }
 
 #endif
@@ -248,10 +249,10 @@ static void InitializeSystemInfo() {
   bool saw_bogo = false;
   int num_cpus = 0;
   line[0] = line[1] = '\0';
-  int chars_read = 0;
+  ssize_t chars_read = 0;
   do {   // we'll exit when the last read didn't read anything
     // Move the next line to the beginning of the buffer
-    const int oldlinelen = strlen(line);
+    const auto oldlinelen = strlen(line);
     if (sizeof(line) == oldlinelen + 1)    // oldlinelen took up entire line
       line[0] = '\0';
     else                                   // still other lines left to save
@@ -259,8 +260,8 @@ static void InitializeSystemInfo() {
     // Terminate the new line, reading more if we can't find the newline
     char* newline = strchr(line, '\n');
     if (newline == NULL) {
-      const int linelen = strlen(line);
-      const int bytes_to_read = sizeof(line)-1 - linelen;
+      const auto linelen = strlen(line);
+      const int64_t bytes_to_read = sizeof(line)-1 - linelen;
       CHECK_GT(bytes_to_read, 0);  // because the memmove recovered >=1 bytes
       chars_read = read(fd, line + linelen, bytes_to_read);
       line[linelen + chars_read] = '\0';

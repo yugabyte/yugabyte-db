@@ -24,6 +24,8 @@
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/result.h"
@@ -266,11 +268,11 @@ void TnodeContext::InitializePartition(QLReadRequestPB *req, bool continue_user_
   // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6":
   // hashed_column_values() will be [1] and hash_values_options_ will be [[2,3],[4,5],[6]].
   int set_cols_size = req->hashed_column_values().size();
-  int unset_cols_size = hash_values_options_->size();
+  auto unset_cols_size = hash_values_options_->size();
 
   // Initialize the missing columns with default values (e.g. h2, h3, h4 in example above).
-  req->mutable_hashed_column_values()->Reserve(set_cols_size + unset_cols_size);
-  for (int i = 0; i < unset_cols_size; i++) {
+  req->mutable_hashed_column_values()->Reserve(narrow_cast<int>(set_cols_size + unset_cols_size));
+  for (size_t i = 0; i < unset_cols_size; i++) {
     req->add_hashed_column_values();
   }
 
@@ -280,10 +282,11 @@ void TnodeContext::InitializePartition(QLReadRequestPB *req, bool continue_user_
   //    h4 = 6 since pos is "0 % 1 = 0", (start_position becomes 0 / 1 = 0).
   //    h3 = 4 since pos is "0 % 2 = 0", (start_position becomes 0 / 2 = 0).
   //    h2 = 2 since pos is "0 % 2 = 0", (start_position becomes 0 / 2 = 0).
-  for (int i = unset_cols_size - 1; i >= 0; i--) {
+  for (auto i = unset_cols_size; i > 0;) {
+    --i;
     const auto& options = (*hash_values_options_)[i];
-    int pos = start_partition % options.size();
-    *req->mutable_hashed_column_values(i + set_cols_size) = options[pos];
+    auto pos = start_partition % options.size();
+    *req->mutable_hashed_column_values(narrow_cast<int>(i + set_cols_size)) = options[pos];
     start_partition /= options.size();
   }
 }
@@ -300,7 +303,7 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   uint64_t partition_counter = current_partition_index_;
   // Hash_values_options_ vector starts from the first column with an 'IN' restriction.
   const int hash_key_size = req->hashed_column_values().size();
-  const int fixed_cols_size = hash_key_size - hash_values_options_->size();
+  const auto fixed_cols_size = hash_key_size - hash_values_options_->size();
 
   // Set the right values for the missing/unset columns by converting partition index into positions
   // for each hash column and using the corresponding values from the hash values options vector.
@@ -310,7 +313,7 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   //    to be changed (i.e. are the same as for previous partition index) so we break.
   for (int i = hash_key_size - 1; i >= fixed_cols_size; i--) {
     const auto& options = (*hash_values_options_)[i - fixed_cols_size];
-    int pos = partition_counter % options.size();
+    auto pos = partition_counter % options.size();
     *req->mutable_hashed_column_values(i) = options[pos];
     if (pos != 0) break; // The previous position hash values must be unchanged.
     partition_counter /= options.size();

@@ -29,6 +29,7 @@
 
 #include "yb/encryption/encryption_util.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_defaults.h"
@@ -1206,14 +1207,14 @@ Status ClusterAdminClient::SetupUniverseReplication(
   master::SetupUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
 
-  req.mutable_producer_master_addresses()->Reserve(producer_addresses.size());
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
   for (const auto& addr : producer_addresses) {
     // HostPort::FromString() expects a default port.
     auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
     HostPortToPB(hp, req.add_producer_master_addresses());
   }
 
-  req.mutable_producer_table_ids()->Reserve(tables.size());
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
   for (const auto& table : tables) {
     req.add_producer_table_ids(table);
   }
@@ -1309,7 +1310,7 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   req.set_producer_id(producer_uuid);
 
   if (!producer_addresses.empty()) {
-    req.mutable_producer_master_addresses()->Reserve(producer_addresses.size());
+    req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
     for (const auto& addr : producer_addresses) {
       // HostPort::FromString() expects a default port.
       auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
@@ -1318,7 +1319,7 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   }
 
   if (!add_tables.empty()) {
-    req.mutable_producer_table_ids_to_add()->Reserve(add_tables.size());
+    req.mutable_producer_table_ids_to_add()->Reserve(narrow_cast<int>(add_tables.size()));
     for (const auto& table : add_tables) {
       req.add_producer_table_ids_to_add(table);
     }
@@ -1331,7 +1332,8 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
         return STATUS(InternalError, "Invalid number of bootstrap ids");
       }
 
-      req.mutable_producer_bootstrap_ids_to_add()->Reserve(producer_bootstrap_ids_to_add.size());
+      req.mutable_producer_bootstrap_ids_to_add()->Reserve(
+          narrow_cast<int>(producer_bootstrap_ids_to_add.size()));
       for (const auto& bootstrap_id : producer_bootstrap_ids_to_add) {
         req.add_producer_bootstrap_ids_to_add(bootstrap_id);
       }
@@ -1339,7 +1341,7 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   }
 
   if (!remove_tables.empty()) {
-    req.mutable_producer_table_ids_to_remove()->Reserve(remove_tables.size());
+    req.mutable_producer_table_ids_to_remove()->Reserve(narrow_cast<int>(remove_tables.size()));
     for (const auto& table : remove_tables) {
       req.add_producer_table_ids_to_remove(table);
     }

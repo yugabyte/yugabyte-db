@@ -21,6 +21,7 @@
 
 #include <boost/pointer_cast.hpp>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
 #include "yb/encryption/cipher_stream.h"
@@ -79,7 +80,7 @@ Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
   encryption_params->counter = encryption_header.counter();
   auto size = encryption_header.data_key().size();
   RETURN_NOT_OK(IsValidKeySize(size));
-  encryption_params->key_size = size;
+  encryption_params->key_size = narrow_cast<uint32_t>(size);
   encryption_params->openssl_compatible_counter_overflow =
       encryption_header.openssl_compatible_counter_overflow();
   return encryption_params;
@@ -93,7 +94,7 @@ Result<EncryptionParamsPtr> EncryptionParams::FromSlice(const Slice& s) {
   mutable_s.remove_prefix(sizeof(params->nonce) + sizeof(params->counter));
   RETURN_NOT_OK(IsValidKeySize(mutable_s.size()));
   memcpy(params->key, mutable_s.data(), mutable_s.size());
-  params->key_size = mutable_s.size();
+  params->key_size = narrow_cast<uint32_t>(mutable_s.size());
   return params;
 }
 
@@ -106,7 +107,8 @@ EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
   const int64_t ctr_min = GetAtomicFlag(&FLAGS_encryption_counter_min);
   const int64_t ctr_max = GetAtomicFlag(&FLAGS_encryption_counter_max);
   if (0 <= ctr_min && ctr_min <= ctr_max && ctr_max <= std::numeric_limits<uint32_t>::max()) {
-    encryption_params->counter = ctr_min + encryption_params->counter % (ctr_max - ctr_min + 1);
+    encryption_params->counter = narrow_cast<uint32_t>(
+        ctr_min + encryption_params->counter % (ctr_max - ctr_min + 1));
   } else {
     YB_LOG_EVERY_N_SECS(WARNING, 10)
         << "Invalid encrypted counter range: "
@@ -119,7 +121,7 @@ EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
   return encryption_params;
 }
 
-Status EncryptionParams::IsValidKeySize(uint32_t size) {
+Status EncryptionParams::IsValidKeySize(size_t size) {
   if (size != 16 && size != 24 && size != 32) {
     return STATUS_SUBSTITUTE(
         InvalidArgument,
@@ -136,7 +138,7 @@ bool EncryptionParams::Equals(const EncryptionParams& other) {
          openssl_compatible_counter_overflow == other.openssl_compatible_counter_overflow;
 }
 
-void* EncryptionBuffer::GetBuffer(uint32_t size_needed) {
+void* EncryptionBuffer::GetBuffer(size_t size_needed) {
   if (size_needed > size) {
     size = size_needed;
     if (buffer) {

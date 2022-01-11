@@ -103,9 +103,9 @@ using google::protobuf::RepeatedPtrField;
 using google::protobuf::util::MessageDifferencer;
 using strings::Substitute;
 
-DEFINE_uint64(cdc_state_table_num_tablets, 0,
-    "Number of tablets to use when creating the CDC state table."
-    "0 to use the same default num tablets as for regular tables.");
+DEFINE_int32(cdc_state_table_num_tablets, 0,
+             "Number of tablets to use when creating the CDC state table. "
+             "0 to use the same default num tablets as for regular tables.");
 
 DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
              "WAL retention time in seconds to be used for tables for which a CDC stream was "
@@ -1569,7 +1569,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   // However, still do the validation for regular colocated tables.
   if (!is_parent_colocated_table) {
     Schema persisted_schema;
-    int new_num_tablets = 0;
+    size_t new_num_tablets = 0;
     {
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
@@ -3362,7 +3362,7 @@ void CatalogManager::GetCDCStreamCallback(
         // the bootstrapping is complete.
         SysCDCStreamEntryPB new_entry;
         new_entry.set_table_id(*table_id);
-        new_entry.mutable_options()->Reserve(options->size());
+        new_entry.mutable_options()->Reserve(narrow_cast<int>(options->size()));
         for (const auto& option : *options) {
           auto new_option = new_entry.add_options();
           new_option->set_key(option.first);
@@ -3548,13 +3548,13 @@ Status CatalogManager::InitCDCConsumer(
 
   // Log the Network topology of the Producer Cluster
   auto master_addrs_list = StringSplit(master_addrs, ',');
-  producer_entry.mutable_master_addrs()->Reserve(master_addrs_list.size());
+  producer_entry.mutable_master_addrs()->Reserve(narrow_cast<int>(master_addrs_list.size()));
   for (const auto& addr : master_addrs_list) {
     auto hp = VERIFY_RESULT(HostPort::FromString(addr, 0));
     HostPortToPB(hp, producer_entry.add_master_addrs());
   }
 
-  producer_entry.mutable_tserver_addrs()->Reserve(tserver_addrs.size());
+  producer_entry.mutable_tserver_addrs()->Reserve(narrow_cast<int>(tserver_addrs.size()));
   for (const auto& addr : tserver_addrs) {
     HostPortToPB(addr, producer_entry.add_tserver_addrs());
   }

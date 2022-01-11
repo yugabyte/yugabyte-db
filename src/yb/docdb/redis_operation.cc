@@ -1186,7 +1186,7 @@ Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
     return Status::OK();
   }
 
-  std::vector<int> indices;
+  std::vector<int64_t> indices;
   std::vector<SubDocument> new_value = {SubDocument(PrimitiveValue(ValueType::kTombstone))};
   std::vector<std::string> value;
 
@@ -1309,12 +1309,17 @@ Status RedisReadOperation::Execute() {
   }
 }
 
-int RedisReadOperation::ApplyIndex(int32_t index, const int32_t len) {
-  if (index < 0) index += len;
-  if (index < 0) index = 0;
-  if (index > len) index = len;
-  return index;
+namespace {
+
+ssize_t ApplyIndex(ssize_t index, ssize_t len) {
+  if (index < 0) {
+    index += len;
+    return std::max<ssize_t>(index, 0);
+  }
+  return std::min<ssize_t>(index, len);
 }
+
+} // namespace
 
 Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
                                                       bool add_keys,
@@ -1429,7 +1434,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     IndexBound low_index;
     IndexBound high_index;
     if (request_.has_range_request_limit()) {
-      int32_t offset = request_.index_range().lower_bound().index();
+      auto offset = request_.index_range().lower_bound().index();
       int32_t limit = request_.range_request_limit();
 
       if (offset < 0 || limit == 0) {
@@ -1822,8 +1827,9 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
           });
 
       string current_value = "";
-      response_.mutable_array_response()->mutable_elements()->Reserve(num_subkeys);
-      for (int i = 0; i < num_subkeys; ++i) {
+      response_.mutable_array_response()->mutable_elements()->Reserve(
+          narrow_cast<int>(num_subkeys));
+      for (size_t i = 0; i < num_subkeys; ++i) {
         response_.mutable_array_response()->add_elements();
       }
       for (int i = 0; i < num_subkeys; ++i) {
@@ -1907,15 +1913,15 @@ Status RedisReadOperation::ExecuteGetRange() {
     return Status::OK();
   }
 
-  const int32_t len = value->value.length();
-  int32_t exclusive_end = request_.get_range_request().end() + 1;
+  const ssize_t len = value->value.length();
+  ssize_t exclusive_end = request_.get_range_request().end() + 1;
   if (exclusive_end == 0) {
     exclusive_end = len;
   }
 
   // We treat negative indices to refer backwards from the end of the string.
-  const int32_t start = ApplyIndex(request_.get_range_request().start(), len);
-  int32_t end = ApplyIndex(exclusive_end, len);
+  const auto start = ApplyIndex(request_.get_range_request().start(), len);
+  auto end = ApplyIndex(exclusive_end, len);
   if (end < start) {
     end = start;
   }
@@ -1946,9 +1952,9 @@ Status RedisReadOperation::ExecuteKeys() {
     RETURN_NOT_OK(doc_key.FullyDecodeFrom(key));
     const PrimitiveValue& key_primitive = doc_key.hashed_group().front();
     if (!key_primitive.IsString() ||
-        !RedisUtil::RedisPatternMatch(request_.keys_request().pattern(),
-                                     key_primitive.GetString(),
-                                     false /* ignore_case */)) {
+        !RedisPatternMatch(request_.keys_request().pattern(),
+                           key_primitive.GetString(),
+                           false /* ignore_case */)) {
       iterator_->SeekOutOfSubDoc(key);
       continue;
     }

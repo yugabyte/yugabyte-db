@@ -327,7 +327,7 @@ class ContiguousRowHelper {
 template<class ContiguousRowType>
 class ContiguousRowCell {
  public:
-  ContiguousRowCell(const ContiguousRowType* row, int idx)
+  ContiguousRowCell(const ContiguousRowType* row, size_t idx)
     : row_(row), col_idx_(idx) {
   }
 
@@ -345,7 +345,7 @@ class ContiguousRowCell {
   }
 
   const ContiguousRowType* row_;
-  int col_idx_;
+  size_t col_idx_;
 };
 
 // The row has all columns layed out in memory based on the schema.column_offset()
@@ -633,7 +633,7 @@ class RowBuilder {
   }
 
   void Advance() {
-    int size = schema_.column(col_idx_).type_info()->size();
+    auto size = schema_.column(col_idx_).type_info()->size();
     byte_idx_ += size;
     col_idx_++;
   }

@@ -29,7 +29,7 @@
 void GoogleOnceInternalInit(Atomic32 *control, void (*func)(),
                             void (*func_with_arg)(void*), void* arg) {
   if (DEBUG_MODE) {
-    int32 old_control = base::subtle::Acquire_Load(control);
+    int64 old_control = base::subtle::Acquire_Load(control);
     if (old_control != GOOGLE_ONCE_INTERNAL_INIT &&
         old_control != GOOGLE_ONCE_INTERNAL_RUNNING &&
         old_control != GOOGLE_ONCE_INTERNAL_WAITER &&
@@ -55,7 +55,7 @@ void GoogleOnceInternalInit(Atomic32 *control, void (*func)(),
       (*func_with_arg)(arg);
     }
     ANNOTATE_HAPPENS_BEFORE(control);
-    int32 old_control = base::subtle::NoBarrier_Load(control);
+    int64 old_control = base::subtle::NoBarrier_Load(control);
     base::subtle::Release_Store(control, GOOGLE_ONCE_INTERNAL_DONE);
     if (old_control == GOOGLE_ONCE_INTERNAL_WAITER) {
       base::internal::SpinLockWake(control, true);

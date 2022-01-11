@@ -351,7 +351,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   CHECK(tablet_servers_.empty()) << "Tablet servers are not empty (size: "
       << tablet_servers_.size() << "). Maybe you meant Restart()?";
   RETURN_NOT_OK(HandleOptions());
-  FLAGS_replication_factor = opts_.num_masters;
+  FLAGS_replication_factor = narrow_cast<int>(opts_.num_masters);
 
   if (messenger == nullptr) {
     rpc::MessengerBuilder builder("minicluster-messenger");
@@ -468,9 +468,8 @@ string ExternalMiniCluster::GetDataPath(const string& daemon_id) const {
 }
 
 namespace {
-vector<string> SubstituteInFlags(const vector<string>& orig_flags,
-                                 int index) {
-  string str_index = strings::Substitute("$0", index);
+vector<string> SubstituteInFlags(const vector<string>& orig_flags, size_t index) {
+  string str_index = std::to_string(index);
   vector<string> ret;
   for (const string& orig : orig_flags) {
     ret.push_back(StringReplace(orig, "${index}", str_index, true));
@@ -1033,7 +1032,7 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
   return Status::OK();
 }
 
-Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
+Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
   auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
 
   for (int i = 1;; i++) {
@@ -1145,18 +1144,18 @@ string ExternalMiniCluster::GetTabletServerHTTPAddresses() const {
 }
 
 Status ExternalMiniCluster::StartMasters() {
-  int num_masters = opts_.num_masters;
+  auto num_masters = opts_.num_masters;
 
   if (opts_.master_rpc_ports.size() != num_masters) {
     LOG(FATAL) << num_masters << " masters requested, but " <<
         opts_.master_rpc_ports.size() << " ports specified in 'master_rpc_ports'";
   }
 
-  for (int i = 0; i < opts_.master_rpc_ports.size(); ++i) {
-    if (opts_.master_rpc_ports[i] == 0) {
-      opts_.master_rpc_ports[i] = AllocateFreePort();
-      LOG(INFO) << "Using an auto-assigned port " << opts_.master_rpc_ports[i]
-        << " to start an external mini-cluster master";
+  for (auto& port : opts_.master_rpc_ports) {
+    if (port == 0) {
+      port = AllocateFreePort();
+      LOG(INFO) << "Using an auto-assigned port " << port
+                << " to start an external mini-cluster master";
     }
   }
 
@@ -1295,7 +1294,7 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx) {
   return is_stale;
 }
 
-string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
+string ExternalMiniCluster::GetBindIpForTabletServer(size_t index) const {
   if (opts_.use_even_ips) {
     return Substitute("127.0.0.$0", (index + 1) * 2);
   } else if (opts_.bind_to_unique_loopback_addresses) {
@@ -1315,11 +1314,11 @@ Status ExternalMiniCluster::AddTabletServer(
   CHECK(GetLeaderMaster() != nullptr)
       << "Must have started at least 1 master before adding tablet servers";
 
-  int idx = tablet_servers_.size();
+  size_t idx = tablet_servers_.size();
 
   string exe = GetBinaryPath(kTabletServerBinaryName);
   vector<HostPort> master_hostports;
-  for (int i = 0; i < num_masters(); i++) {
+  for (size_t i = 0; i < num_masters(); i++) {
     master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
   }
 
@@ -1369,13 +1368,13 @@ Status ExternalMiniCluster::AddTabletServer(
       idx, messenger_, proxy_cache_.get(), exe, GetDataPath(Substitute("ts-$0", idx + 1)),
       num_drives, GetBindIpForTabletServer(idx), ts_rpc_port, ts_http_port, redis_rpc_port,
       redis_http_port, cql_rpc_port, cql_http_port, pgsql_rpc_port, pgsql_http_port,
-      master_hostports,  SubstituteInFlags(flags, idx));
+      master_hostports, SubstituteInFlags(flags, idx));
   RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();
 }
 
-Status ExternalMiniCluster::WaitForTabletServerCount(int count, const MonoDelta& timeout) {
+Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDelta& timeout) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
 
@@ -1834,12 +1833,12 @@ ExternalMaster* ExternalMiniCluster::master() const {
 }
 
 // Return master at 'idx' or NULL if the master at 'idx' has not been started.
-ExternalMaster* ExternalMiniCluster::master(int idx) const {
+ExternalMaster* ExternalMiniCluster::master(size_t idx) const {
   CHECK_LT(idx, masters_.size());
   return masters_[idx].get();
 }
 
-ExternalTabletServer* ExternalMiniCluster::tablet_server(int idx) const {
+ExternalTabletServer* ExternalMiniCluster::tablet_server(size_t idx) const {
   CHECK_LT(idx, tablet_servers_.size());
   return tablet_servers_[idx].get();
 }
@@ -2460,7 +2459,7 @@ ScopedResumeExternalDaemon::~ScopedResumeExternalDaemon() {
 // ExternalMaster
 //------------------------------------------------------------
 ExternalMaster::ExternalMaster(
-    int master_index,
+    size_t master_index,
     rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const string& exe,
@@ -2539,7 +2538,7 @@ Status ExternalMaster::Restart() {
 //------------------------------------------------------------
 
 ExternalTabletServer::ExternalTabletServer(
-    int tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
+    size_t tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
     const std::string& exe, const std::string& data_dir, uint16_t num_drives,
     std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
     uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,

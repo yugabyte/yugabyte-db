@@ -528,7 +528,7 @@ Status GetRangeComponents(
     const Schema& schema, const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& range_cols,
     std::vector<docdb::PrimitiveValue>* range_components) {
   int i = 0;
-  int num_range_key_columns = schema.num_range_key_columns();
+  auto num_range_key_columns = schema.num_range_key_columns();
   for (const auto& col_id : schema.column_ids()) {
     if (!schema.is_range_column(col_id)) {
       continue;

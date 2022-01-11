@@ -22,6 +22,7 @@
 
 #include <mutex>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/linux_syscall_support.h"
 
 #include "yb/util/lockfree.h"
@@ -269,7 +270,7 @@ std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>
     // send a signal to some other process in the case that the thread has exited and
     // the TID been recycled.
 #if defined(__linux__)
-    int res = syscall(SYS_tgkill, getpid(), tids[i], g_stack_trace_signum);
+    int res = narrow_cast<int>(syscall(SYS_tgkill, getpid(), tids[i], g_stack_trace_signum));
 #else
     int res = pthread_kill(tids[i], g_stack_trace_signum);
 #endif

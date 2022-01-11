@@ -278,6 +278,7 @@ void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
 
   // Start a workload on the cluster, and run it for a little while.
   crash_test_workload_.reset(new TestWorkload(cluster_.get()));
+  crash_test_workload_->set_sequential_write(true);
   crash_test_workload_->Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(4));
 
@@ -403,6 +404,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(table_type);
 
   // Figure out the tablet id of the created tablet.
@@ -451,7 +453,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   // Wait for the NO_OP entry from the term 2 election to propagate to the
   // remaining nodes' logs so that we are guaranteed to reject the rogue
   // leader's remote bootstrap request when we bring it back online.
-  int log_index = workload.batches_completed() + 2; // 2 terms == 2 additional NO_OP entries.
+  auto log_index = workload.batches_completed() + 2; // 2 terms == 2 additional NO_OP entries.
   ASSERT_OK(WaitForServersToAgree(timeout, active_ts_map, tablet_id, log_index));
   // TODO: Write more rows to the new leader once KUDU-1034 is fixed.
 
@@ -523,6 +525,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
 
   // Populate a tablet with some data.
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(table_type);
   workload.Start();
   workload.WaitInserted(1000);
@@ -622,6 +625,7 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
   workload.set_timeout_allowed(true);
   workload.set_write_batch_size(10);
   workload.set_num_write_threads(10);
+  workload.set_sequential_write(true);
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
   workload.Start();
   workload.WaitInserted(RegularBuildVsSanitizers(500, 5000));
@@ -705,6 +709,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(table_type);
 
   // Figure out the tablet id of the created tablet.
@@ -999,6 +1004,7 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
   workload.set_write_timeout_millis(10000);
   workload.set_timeout_allowed(true);
   workload.set_not_found_allowed(true);
+  workload.set_sequential_write(true);
   workload.Setup(table_type);
 
   // Figure out the tablet id.
@@ -1021,7 +1027,7 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
 
   for (int i = 0; i < FLAGS_test_delete_leader_num_iters; i++) {
     LOG(INFO) << "Iteration " << (i + 1);
-    int rows_previously_inserted = workload.rows_inserted();
+    auto rows_previously_inserted = workload.rows_inserted();
 
     // Find out who's leader.
     ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
@@ -1322,6 +1328,7 @@ TEST_F(RemoteBootstrapITest, TestVeryLongRemoteBootstrap) {
   // Populate a tablet with some data.
   LOG(INFO)  << "Starting workload";
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
   workload.Start();
   workload.WaitInserted(10);
@@ -1385,6 +1392,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
   // Populate a tablet with some data.
   LOG(INFO) << "Starting workload";
   TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
   workload.Setup(YBTableType::YQL_TABLE_TYPE);
   workload.set_payload_bytes(1024);
   workload.Start();

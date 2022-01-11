@@ -198,7 +198,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // Note that this is different than TEST_HasPendingOperations() above, which includes
   // operations which have been sent and not yet responded to.
-  int TEST_CountBufferedOperations() const;
+  size_t TEST_CountBufferedOperations() const;
 
   // Returns true if this session has not flushed operations.
   bool HasNotFlushedOperations() const;

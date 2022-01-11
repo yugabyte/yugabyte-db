@@ -575,7 +575,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
     req_.mutable_index_info()->CopyFrom(table_lock->pb.index_info());
   }
   auto& req_schedules = *req_.mutable_snapshot_schedules();
-  req_schedules.Reserve(snapshot_schedules.size());
+  req_schedules.Reserve(narrow_cast<int>(snapshot_schedules.size()));
   for (const auto& id : snapshot_schedules) {
     req_schedules.Add()->assign(id.AsSlice().cdata(), id.size());
   }
