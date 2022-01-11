@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -46,6 +47,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   private static final UUID TABLE_2_UUID = UUID.randomUUID();
   private static final UUID TABLE_3_UUID = UUID.randomUUID();
   private static final UUID TABLE_4_UUID = UUID.randomUUID();
+  private static final UUID SYSTEM_TABLE_UUID = UUID.randomUUID();
 
   @Override
   @Before
@@ -85,10 +87,19 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
             .setId(ByteString.copyFromUtf8(TABLE_4_UUID.toString()))
             .setTableType(TableType.PGSQL_TABLE_TYPE)
             .build();
+    TableInfo ti5 =
+        TableInfo.newBuilder()
+            .setName("write_read_test")
+            .setNamespace(
+                MasterTypes.NamespaceIdentifierPB.newBuilder().setName(SYSTEM_PLATFORM_DB))
+            .setId(ByteString.copyFromUtf8(SYSTEM_TABLE_UUID.toString()))
+            .setTableType(TableType.PGSQL_TABLE_TYPE)
+            .build();
     tableInfoList.add(ti1);
     tableInfoList.add(ti2);
     tableInfoList.add(ti3);
     tableInfoList.add(ti4);
+    tableInfoList.add(ti5);
     tableInfoList1.add(ti1);
     tableInfoList2.add(ti3);
     tableInfoList2.add(ti4);
