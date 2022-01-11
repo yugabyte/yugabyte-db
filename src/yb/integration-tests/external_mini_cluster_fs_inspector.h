@@ -68,7 +68,7 @@ class ExternalMiniClusterFsInspector {
   ~ExternalMiniClusterFsInspector();
 
   CHECKED_STATUS ListFilesInDir(const std::string& path, std::vector<std::string>* entries);
-  int CountFilesInDir(const std::string& path);
+  size_t CountFilesInDir(const std::string& path);
   int CountWALSegmentsOnTS(int index);
 
   // List all of the tablets with tablet metadata in the cluster.

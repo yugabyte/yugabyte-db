@@ -1869,7 +1869,7 @@ struct kernel_statfs {
   #define LSS_RETURN(type, res)                                               \
     do {                                                                      \
       if ((unsigned long)(res) >= (unsigned long)(-4095)) {                   \
-        LSS_ERRNO = -(res);                                                   \
+        LSS_ERRNO = (int) -(res);                                                   \
         res = -1;                                                             \
       }                                                                       \
       return (type) (res);                                                    \
@@ -2223,7 +2223,7 @@ struct kernel_statfs {
     #define _LSS_RETURN(type, res, cast)                                      \
       do {                                                                    \
         if ((uint64_t)(res) >= (uint64_t)(-4095)) {                           \
-          LSS_ERRNO = -(res);                                                 \
+          LSS_ERRNO = (int) -(res);                                           \
           res = -1;                                                           \
         }                                                                     \
         return (type)(cast)(res);                                             \
@@ -4316,7 +4316,7 @@ struct kernel_statfs {
      */
     int rc, err;
     LSS_NAME(sched_yield)();
-    rc = LSS_NAME(ptrace)(PTRACE_DETACH, pid, (void *)0, (void *)0);
+    rc = (int) LSS_NAME(ptrace)(PTRACE_DETACH, pid, (void *)0, (void *)0);
     err = LSS_ERRNO;
     LSS_NAME(tkill)(pid, SIGCONT);
     /* Old systems don't have tkill */

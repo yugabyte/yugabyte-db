@@ -13,6 +13,8 @@
 
 #include "yb/common/doc_hybrid_time.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
@@ -91,7 +93,8 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
     int64_t decoded_micros =
         kYugaByteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice));
 
-    int64_t decoded_logical = VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice));
+    auto decoded_logical = narrow_cast<LogicalTimeComponent>(
+        VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice)));
 
     hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(decoded_micros, decoded_logical);
   }
@@ -107,7 +110,8 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
         Slice(ptr_before_decoding_write_id,
               slice->data() + slice->size() - ptr_before_decoding_write_id).ToDebugHexString());
   }
-  write_id_ = (decoded_shifted_write_id >> kNumBitsForHybridTimeSize) - 1;
+  write_id_ = narrow_cast<IntraTxnWriteId>(
+      (decoded_shifted_write_id >> kNumBitsForHybridTimeSize) - 1);
 
   const size_t bytes_decoded = previous_size - slice->size();
   const size_t size_at_the_end = (*(slice->data() - 1)) & kHybridTimeSizeMask;

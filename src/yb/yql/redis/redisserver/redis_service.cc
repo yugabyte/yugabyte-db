@@ -760,12 +760,12 @@ struct RedisServiceImplData : public RedisServiceData {
 
   void AppendToSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-      std::vector<int>* subs) override;
+      std::vector<size_t>* subs) override;
   void RemoveFromSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-      std::vector<int>* subs) override;
+      std::vector<size_t>* subs) override;
   void CleanUpSubscriptions(Connection* conn) override;
-  int NumSubscribers(AsPattern type, const std::string& channel) override;
+  size_t NumSubscribers(AsPattern type, const std::string& channel) override;
   std::unordered_set<std::string> GetSubscriptions(AsPattern type, rpc::Connection* conn) override;
   std::unordered_set<std::string> GetAllSubscriptions(AsPattern type) override;
   int Publish(const string& channel, const string& message);
@@ -773,7 +773,7 @@ struct RedisServiceImplData : public RedisServiceData {
       const string& channel, const string& message, const IntFunctor& f) override;
   int PublishToLocalClients(IsMonitorMessage mode, const string& channel, const string& message);
   Result<vector<HostPortPB>> GetServerAddrsForChannel(const string& channel);
-  int NumSubscriptionsUnlocked(Connection* conn);
+  size_t NumSubscriptionsUnlocked(Connection* conn);
 
   CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) override;
   CHECKED_STATUS Initialize();
@@ -1077,14 +1077,14 @@ void RedisServiceImplData::RemoveFromMonitors(Connection* conn) {
   }
 }
 
-int RedisServiceImplData::NumSubscriptionsUnlocked(Connection* conn) {
+size_t RedisServiceImplData::NumSubscriptionsUnlocked(Connection* conn) {
   return clients_to_subscriptions_[conn].channels.size() +
          clients_to_subscriptions_[conn].patterns.size();
 }
 
 void RedisServiceImplData::AppendToSubscribers(
     AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-    std::vector<int>* subs) {
+    std::vector<size_t>* subs) {
   boost::lock_guard<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   subs->clear();
   for (const auto& channel : channels) {
@@ -1107,7 +1107,7 @@ void RedisServiceImplData::AppendToSubscribers(
 
 void RedisServiceImplData::RemoveFromSubscribers(
     AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-    std::vector<int>* subs) {
+    std::vector<size_t>* subs) {
   boost::lock_guard<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   auto& map_to_clients = (type == AsPattern::kTrue ? patterns_to_clients_ : channels_to_clients_);
   auto& map_from_clients =
@@ -1145,7 +1145,7 @@ std::unordered_set<string> RedisServiceImplData::GetAllSubscriptions(AsPattern t
 }
 
 // ENG-4199: Consider getting all the cluster-wide subscribers?
-int RedisServiceImplData::NumSubscribers(AsPattern type, const std::string& channel) {
+size_t RedisServiceImplData::NumSubscribers(AsPattern type, const std::string& channel) {
   SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   const auto& look_in = (type ? patterns_to_clients_ : channels_to_clients_);
   const auto& iter = look_in.find(channel);
@@ -1310,7 +1310,7 @@ int RedisServiceImplData::PublishToLocalClients(
     for (auto& entry : patterns_to_clients_) {
       auto& pattern = entry.first;
       auto& clients_subscribed_to_pattern = entry.second;
-      if (!RedisUtil::RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
+      if (!RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
         continue;
       }
 

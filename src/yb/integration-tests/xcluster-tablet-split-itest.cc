@@ -24,7 +24,7 @@
 #include "yb/tools/admin-test-base.h"
 #include "yb/tserver/mini_tablet_server.h"
 
-DECLARE_uint64(cdc_state_table_num_tablets);
+DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
@@ -215,7 +215,7 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   client::YBSessionPtr consumer_session = consumer_client_->NewSession();
   consumer_session->SetTimeout(60s);
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    int num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
+    auto num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
     return num_rows == kDefaultNumRows;
   }, MonoDelta::FromSeconds(60), "Wait for data to be replicated"));
 
@@ -230,7 +230,7 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    int num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
+    auto num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
     return num_rows == 2 * kDefaultNumRows;
   }, MonoDelta::FromSeconds(60), "Wait for data to be replicated"));
 }

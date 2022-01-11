@@ -130,16 +130,16 @@ class TestRpc : public RpcTestBase {
   void CheckServerMessengerConnections(size_t num_connections) {
     ReactorMetrics metrics;
     ASSERT_OK(server_messenger()->TEST_GetReactorMetrics(0, &metrics));
-    ASSERT_EQ(metrics.num_server_connections_, num_connections)
+    ASSERT_EQ(metrics.num_server_connections, num_connections)
         << "Server should have " << num_connections << " server connection(s)";
-    ASSERT_EQ(metrics.num_client_connections_, 0) << "Server should have 0 client connections";
+    ASSERT_EQ(metrics.num_client_connections, 0) << "Server should have 0 client connections";
   }
 
   void CheckClientMessengerConnections(Messenger* messenger, size_t num_connections) {
     ReactorMetrics metrics;
     ASSERT_OK(messenger->TEST_GetReactorMetrics(0, &metrics));
-    ASSERT_EQ(metrics.num_server_connections_, 0) << "Client should have 0 server connections";
-    ASSERT_EQ(metrics.num_client_connections_, num_connections)
+    ASSERT_EQ(metrics.num_server_connections, 0) << "Client should have 0 server connections";
+    ASSERT_EQ(metrics.num_client_connections, num_connections)
         << "Client should have " << num_connections << " client connection(s)";
   }
 
@@ -509,9 +509,8 @@ static void AcceptAndReadForever(Socket* listen_sock) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(10));
 
-  size_t nread;
   uint8_t buf[1024];
-  while (server_sock.BlockingRecv(buf, sizeof(buf), &nread, deadline).ok()) {
+  while (server_sock.BlockingRecv(buf, sizeof(buf), deadline).ok()) {
   }
 }
 
@@ -774,7 +773,7 @@ TEST_F(TestRpc, QueueTimeout) {
   for (int i = 0; i != kCalls; ++i) {
     auto& call = calls[i];
     auto& req = call.req;
-    req.set_sleep_micros(kSleep.ToMicroseconds());
+    req.set_sleep_micros(narrow_cast<uint32_t>(kSleep.ToMicroseconds()));
     req.set_client_timeout_defined(true);
     call.controller.set_timeout(kSleep / 2);
     p.AsyncRequest(method, /* method_metrics= */ nullptr, req, &call.resp, &call.controller,

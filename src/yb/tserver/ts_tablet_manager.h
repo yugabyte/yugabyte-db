@@ -277,7 +277,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void UnmarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
 
   // Returns the number of tablets in the "dirty" map, for use by unit tests.
-  int GetNumDirtyTabletsForTests() const;
+  size_t TEST_GetNumDirtyTablets() const;
 
   // Return the number of tablets in RUNNING or BOOTSTRAPPING state.
   int GetNumLiveTablets() const;

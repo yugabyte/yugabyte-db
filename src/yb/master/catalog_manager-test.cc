@@ -62,7 +62,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
 
   // Define & create the splits.
   vector<string> split_keys = {"a", "b", "c"};  // The keys we split on.
-  const int kNumSplits = split_keys.size();
+  const size_t kNumSplits = split_keys.size();
   const int kNumReplicas = 1;
 
   CreateTable(split_keys, kNumReplicas, true, table.get(), &tablets);
@@ -71,7 +71,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
             kNumReplicas) << "Invalid replicas for created table.";
 
   // Ensure they give us what we are expecting.
-  for (int i = 0; i <= kNumSplits; i++) {
+  for (size_t i = 0; i <= kNumSplits; i++) {
     // Calculate the tablet id and start key.
     const string& start_key = (i == 0) ? "" : split_keys[i - 1];
     const string& end_key = (i == kNumSplits) ? "" : split_keys[i];

@@ -315,13 +315,13 @@ class QLExprExecutor {
 
 template <class Operands>
 CHECKED_STATUS EvalOperandsHelper(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, size_t index) {
+    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, int index) {
   return Status::OK();
 }
 
 template <class Operands, class... Args>
 CHECKED_STATUS EvalOperandsHelper(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, size_t index,
+    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, int index,
     QLExprResultWriter arg0, Args&&... args) {
   RETURN_NOT_OK(executor->EvalExpr(operands[index], table_row, arg0));
   return EvalOperandsHelper(executor, operands, table_row, index + 1, std::forward<Args>(args)...);
@@ -336,7 +336,7 @@ CHECKED_STATUS EvalOperands(
                          sizeof...(Args), operands.size());
   }
 
-  return EvalOperandsHelper(executor, operands, table_row,  0, std::forward<Args>(args)...);
+  return EvalOperandsHelper(executor, operands, table_row, 0, std::forward<Args>(args)...);
 }
 
 } // namespace yb

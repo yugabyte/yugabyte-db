@@ -22,6 +22,7 @@
 
 #include "yb/common/row_mark.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/util/status_format.h"
@@ -212,7 +213,7 @@ Result<int32_t> PgDocOp::GetRowsAffectedCount() const {
   return rows_affected_count_;
 }
 
-Status PgDocOp::ClonePgsqlOps(int op_count) {
+Status PgDocOp::ClonePgsqlOps(size_t op_count) {
   // Allocate batch operator, one per partition.
   SCHECK(op_count > 0, InternalError, "Table must have at least one partition");
   if (pgsql_ops_.size() < op_count) {
@@ -233,10 +234,10 @@ Status PgDocOp::ClonePgsqlOps(int op_count) {
 
 void PgDocOp::MoveInactiveOpsOutside() {
   // Move inactive op to the end.
-  const int total_op_count = pgsql_ops_.size();
+  const auto total_op_count = pgsql_ops_.size();
   bool has_sorting_order = !batch_row_orders_.empty();
-  int left_iter = 0;
-  int right_iter = total_op_count - 1;
+  ssize_t left_iter = 0;
+  ssize_t right_iter = total_op_count - 1;
   while (true) {
     // Advance left iterator.
     while (left_iter < total_op_count && pgsql_ops_[left_iter]->is_active()) left_iter++;
@@ -278,7 +279,7 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
          "Only send and receive the whole batch is supported");
 
   // Send at most "parallelism_level_" number of requests at one time.
-  int32_t send_count = std::min(parallelism_level_, active_op_count_);
+  size_t send_count = std::min(parallelism_level_, active_op_count_);
   response_ = VERIFY_RESULT(pg_session_->RunAsync(pgsql_ops_.data(), send_count, relation_id_,
                                                   &GetReadTime(), force_non_bufferable));
 
@@ -519,7 +520,7 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
 }
 
 Status PgDocReadOp::InitializeYbctidOperators() {
-  int op_count = table_->GetPartitionCount();
+  auto op_count = table_->GetPartitionCount();
 
   if (batch_row_orders_.size() == 0) {
     // First batch:
@@ -546,8 +547,8 @@ Status PgDocReadOp::PopulateNextHashPermutationOps() {
   RETURN_NOT_OK(InitializeHashPermutationStates());
 
   // Set the index at the start of inactive operators.
-  int op_count = pgsql_ops_.size();
-  int op_index = active_op_count_;
+  auto op_count = pgsql_ops_.size();
+  auto op_index = active_op_count_;
 
   // Fill inactive operators with new hash permutations.
   const size_t hash_column_count = table_->num_hash_key_columns();
@@ -556,7 +557,7 @@ Status PgDocReadOp::PopulateNextHashPermutationOps() {
     read_op->set_active(true);
 
     int pos = next_permutation_idx_++;
-    for (int c_idx = hash_column_count - 1; c_idx >= 0; --c_idx) {
+    for (int c_idx = narrow_cast<int>(hash_column_count); c_idx-- > 0;) {
       int sel_idx = pos % partition_exprs_[c_idx].size();
       read_op->mutable_request()->mutable_partition_column_values(c_idx)
           ->CopyFrom(*partition_exprs_[c_idx][sel_idx]);
@@ -635,8 +636,8 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   //
   // TODO(neil) The calculation for this control variable should be applied to ALL operators, but
   // the following calculation needs to be refined before it can be used for all statements.
-  parallelism_level_ = FLAGS_ysql_select_parallelism;
-  if (parallelism_level_ < 0) {
+  auto parallelism_level = FLAGS_ysql_select_parallelism;
+  if (parallelism_level < 0) {
     int tserver_count = VERIFY_RESULT(pg_session_->TabletServerCount(true /* primary_only */));
 
     // Establish lower and upper bounds on parallelism.
@@ -644,6 +645,8 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
     int kMaxParSelCountParallelism = 16;
     parallelism_level_ =
       std::min(std::max(tserver_count * 2, kMinParSelCountParallelism), kMaxParSelCountParallelism);
+  } else {
+    parallelism_level_ = parallelism_level;
   }
 
   // Assign partitions to operators.
@@ -764,9 +767,9 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
 Status PgDocReadOp::ProcessResponseReadStates() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
-  int32_t send_count = std::min(parallelism_level_, active_op_count_);
+  auto send_count = std::min(parallelism_level_, active_op_count_);
 
-  for (int op_index = 0; op_index < send_count; op_index++) {
+  for (size_t op_index = 0; op_index < send_count; op_index++) {
     YBPgsqlReadOp *read_op = GetReadOp(op_index);
     RETURN_NOT_OK(ReviewResponsePagingState(read_op));
 
@@ -813,7 +816,8 @@ Status PgDocReadOp::ProcessResponseReadStates() {
 
       // Delete the executed arguments from batch and keep those that haven't been executed.
       PgsqlReadRequestPB *req = read_op->mutable_request();
-      req->mutable_batch_arguments()->DeleteSubrange(0, res.batch_arg_count());
+      req->mutable_batch_arguments()->DeleteSubrange(
+          0, narrow_cast<int32_t>(res.batch_arg_count()));
 
       // Due to rolling upgrade reason, we must copy the first batch_arg to the scalar arg.
       FormulateRequestForRollingUpgrade(read_op->mutable_request());
@@ -878,7 +882,7 @@ Status PgDocReadOp::ProcessResponseReadStates() {
       } else {
         // Have enough of sample rows, estimate total table rows assuming they are evenly
         // distributed between partitions
-        int completed_ops = pgsql_ops_.size() - active_op_count_;
+        auto completed_ops = pgsql_ops_.size() - active_op_count_;
         sample_rows_ = floor((sample_rows_ / completed_ops) * pgsql_ops_.size() + 0.5);
         VLOG(1) << "Done sampling, prorated rowcount is " << sample_rows_;
         end_of_data_ = true;
@@ -950,7 +954,7 @@ void PgDocReadOp::SetReadTime() {
 
 Status PgDocReadOp::ResetInactivePgsqlOps() {
   // Clear the existing ybctids.
-  for (int op_index = active_op_count_; op_index < pgsql_ops_.size(); op_index++) {
+  for (auto op_index = active_op_count_; op_index < pgsql_ops_.size(); op_index++) {
     PgsqlReadRequestPB *read_req = GetReadOp(op_index)->mutable_request();
     read_req->clear_ybctid_column_value();
     read_req->clear_batch_arguments();
@@ -963,7 +967,7 @@ Status PgDocReadOp::ResetInactivePgsqlOps() {
 
   // Clear row orders.
   if (batch_row_orders_.size() > 0) {
-    for (int op_index = active_op_count_; op_index < pgsql_ops_.size(); op_index++) {
+    for (auto op_index = active_op_count_; op_index < pgsql_ops_.size(); op_index++) {
       batch_row_orders_[op_index].clear();
     }
   }

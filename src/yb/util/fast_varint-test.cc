@@ -95,7 +95,7 @@ void CheckEncoding(int64_t v) {
     static const string kPrefix = "some_prefix";
     string encoded_dest = kPrefix;
     FastEncodeDescendingSignedVarInt(-v, &encoded_dest);
-    const int encoded_size = encoded_dest.size() - kPrefix.size();
+    const auto encoded_size = encoded_dest.size() - kPrefix.size();
     ASSERT_EQ(correct_encoded,
               encoded_dest.substr(kPrefix.size(), encoded_size));
 

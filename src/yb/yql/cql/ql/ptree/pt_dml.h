@@ -238,11 +238,11 @@ class PTDmlStmt : public PTCollection {
     return column_map_;
   }
 
-  int num_columns() const;
+  size_t num_columns() const;
 
-  int num_key_columns() const;
+  size_t num_key_columns() const;
 
-  int num_hash_key_columns() const;
+  size_t num_hash_key_columns() const;
 
   std::string hash_key_columns() const;
 

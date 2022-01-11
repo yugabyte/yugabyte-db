@@ -38,6 +38,7 @@ set(YB_PCH_DEP_LIBS gmock)
 set(GUTIL_SRCS
   bits.cc
   callback_internal.cc
+  casts.cc
   cpu.cc
   hash/city.cc
   hash/hash.cc

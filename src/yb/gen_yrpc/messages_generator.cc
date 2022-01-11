@@ -656,14 +656,14 @@ class Message {
       printer("{\n");
       ScopedIndent field_indent(printer);
       auto tag_size = WireFormatLite::TagSize(field->number(), FieldType(field));
-      int fixed_size = FixedSize(field);
+      auto fixed_size = FixedSize(field);
       if (fixed_size) {
         if (field->is_packed()) {
           printer(
               "size_t body_size = " + std::to_string(fixed_size) + " * $field_name$_.size();\n"
               "result += " + std::to_string(tag_size) +
-              " + ::google::protobuf::io::CodedOutputStream::VarintSize32(body_size)" +
-              " + body_size"
+              " + ::google::protobuf::io::CodedOutputStream::VarintSize32("
+                  "narrow_cast<uint32_t>(body_size)) + body_size"
           );
         } else {
           printer("result += " + std::to_string(tag_size + fixed_size));
@@ -787,7 +787,7 @@ class Message {
         } else {
           printer(
               "repeated.Clear();\n"
-              "repeated.Reserve($field_name$_.size());\n"
+              "repeated.Reserve(narrow_cast<int>($field_name$_.size()));\n"
               "for (const auto& entry : $field_name$_) {\n"
           );
           if (StoredAsSlice(field)) {

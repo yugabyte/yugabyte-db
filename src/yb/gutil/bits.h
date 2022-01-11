@@ -48,19 +48,6 @@ class Bits {
 #endif
   }
 
-  // Count bits using popcnt instruction (available on argo machines).
-  // Doesn't check if the instruction exists.
-  // Please use TestCPUFeature(POPCNT) from base/cpuid/cpuid.h before using this.
-  static inline int CountOnes64withPopcount(uint64 n) {
-#if defined(__x86_64__) && defined __GNUC__
-    int64 count = 0;
-    asm("popcnt %1,%0" : "=r"(count) : "rm"(n) : "cc");
-    return count;
-#else
-    return CountOnes64(n);
-#endif
-  }
-
   // Reverse the bits in the given integer.
   static uint8 ReverseBits8(uint8 n);
   static uint32 ReverseBits32(uint32 n);

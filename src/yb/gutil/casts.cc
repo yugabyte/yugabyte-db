@@ -11,16 +11,14 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_REDIS_UTIL_H
-#define YB_UTIL_REDIS_UTIL_H
+#include <glog/logging.h>
 
-#include <string>
+#include "yb/gutil/casts.h"
 
 namespace yb {
 
-bool RedisPatternMatch(
-    const std::string& pattern, const std::string& string, bool ignore_case);
+void BadNarrowCast(char rel, const std::string& in, const std::string& limit) {
+  LOG(FATAL) << "Bad narrow cast: " << in << " " << rel << " " << limit;
+}
 
-} // namespace yb
-
-#endif // YB_UTIL_REDIS_UTIL_H
+}  // namespace yb

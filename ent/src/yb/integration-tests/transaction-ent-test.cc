@@ -18,6 +18,8 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/random_error_clock.h"
 
@@ -85,7 +87,7 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
   }
 
   while (threads.size() < share.values.size()) {
-    threads.emplace_back([this, &share, key = threads.size()] {
+    threads.emplace_back([this, &share, key = narrow_cast<int>(threads.size())] {
       CDSAttacher attacher;
       auto& transaction_manager = CreateTransactionManager();
       auto session = CreateSession();

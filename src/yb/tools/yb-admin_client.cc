@@ -936,7 +936,7 @@ Status ClusterAdminClient::DropRedisTable() {
 Status ClusterAdminClient::ChangeMasterConfig(
     const string& change_type,
     const string& peer_host,
-    int16 peer_port,
+    uint16_t peer_port,
     bool use_hostport) {
   CHECK(initted_);
 

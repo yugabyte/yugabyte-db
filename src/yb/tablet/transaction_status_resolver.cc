@@ -179,7 +179,7 @@ class TransactionStatusResolver::Impl {
     status_infos_.resize(response.status().size());
     auto it = queues_.begin();
     auto& queue = it->second;
-    for (size_t i = 0; i != response.status().size(); ++i) {
+    for (int i = 0; i != response.status().size(); ++i) {
       auto& status_info = status_infos_[i];
       status_info.transaction_id = queue.front();
       status_info.status = response.status(i);

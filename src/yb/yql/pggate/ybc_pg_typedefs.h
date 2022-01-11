@@ -329,8 +329,8 @@ typedef struct PgCallbacks {
 } YBCPgCallbacks;
 
 typedef struct PgTableProperties {
-  uint32_t num_tablets;
-  uint32_t num_hash_key_columns;
+  uint64_t num_tablets;
+  uint64_t num_hash_key_columns;
   bool is_colocated;
 } YBCPgTableProperties;
 
