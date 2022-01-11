@@ -310,8 +310,14 @@ components:
           - name: JAVA_OPTS
             static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m'
           - name: HTTP_PROXY
-            value: '{{repl ConsoleSetting "http.proxy"}}'
-            when: '{{repl ConsoleSettingEquals "http.proxy.enabled" "1"}}'
+            value: '{{repl ConfigOption "http_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: HTTPS_PROXY
+            value: '{{repl ConfigOption "https_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: NO_PROXY
+            value: '{{repl ConfigOption "no_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
         ports:
           - private_port: "9000"
             public_port: "9000"
@@ -515,6 +521,26 @@ config:
         help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
         type: text
         default: "10G"
+      - name: enable_proxy
+        title: Enable Proxy
+        help_text: When enabled pass the following settings for web proxy
+        type: bool
+        default: '{{repl ConsoleSetting "http.proxy.enabled"}}'
+      - name: http_proxy
+        title: HTTP Proxy setting
+        help_text: Specify the setting for HTTP_PROXY
+        type: string
+        default: '{{repl ConsoleSetting "http.proxy"}}'
+      - name: https_proxy
+        title: HTTPS Proxy setting
+        help_text: Specify the setting for HTTPS_PROXY
+        type: string
+        default: '{{repl ConsoleSetting "http.proxy"}}'
+      - name: no_proxy
+        title: HTTP no proxy setting
+        help_text: Specify the setting for NO_PROXY
+        type: string
+        default: ""
       - name: tls_version
         title: TLS Versions
         help_text: TLS version support for Platform HTTPS frontend
