@@ -57,6 +57,7 @@ public class BackupTableYb extends AbstractTaskBase {
           if (taskParams().backupList != null) {
             for (BackupTableParams backupParams : taskParams().backupList) {
               ShellResponse response = tableManagerYb.createBackup(backupParams);
+              processShellResponse(response);
               JsonNode jsonNode = null;
               try {
                 jsonNode = Json.parse(response.message);
