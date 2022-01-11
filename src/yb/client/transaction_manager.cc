@@ -86,7 +86,7 @@ class TransactionTableState {
     return initialized_.load();
   }
 
-  void UpdateStatusTablets(int new_version,
+  void UpdateStatusTablets(uint64_t new_version,
                            std::vector<TabletId>&& global_tablets,
                            std::vector<TabletId>&& local_tablets) EXCLUDES(mutex_) {
     std::lock_guard<yb::RWMutex> lock(mutex_);

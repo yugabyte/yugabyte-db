@@ -60,11 +60,11 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
 
   bool enable_ysql() override { return false; }
 
-  int num_tablet_servers() override {
+  size_t num_tablet_servers() override {
     return 3;
   }
 
-  int num_masters() override {
+  size_t num_masters() override {
     return 3;
   }
 

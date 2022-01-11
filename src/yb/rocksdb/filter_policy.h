@@ -212,7 +212,7 @@ extern const FilterPolicy* NewBloomFilterPolicy(int bits_per_key,
 //
 // Callers must delete the result after any database that is using the filter policy has been
 // closed.
-extern const FilterPolicy* NewFixedSizeFilterPolicy(uint32_t total_bits,
+extern const FilterPolicy* NewFixedSizeFilterPolicy(size_t total_bits,
                                                     double error_rate,
                                                     Logger* logger);
 }  // namespace rocksdb

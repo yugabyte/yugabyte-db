@@ -18,6 +18,8 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
@@ -83,7 +85,7 @@ TEST_F(LoadBalancerTest, PreferredZoneAddNode) {
   ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return client_->IsLoadBalanced(num_tablet_servers() + 1);
+    return client_->IsLoadBalanced(narrow_cast<uint32_t>(num_tablet_servers() + 1));
   },  kDefaultTimeout * 2, "IsLoadBalanced"));
 
   auto firstLoad = ASSERT_RESULT(GetLoadOnTserver(external_mini_cluster()->tablet_server(1)));
@@ -199,7 +201,7 @@ TEST_F_EX(LoadBalancerTest, MultiZoneTest, LoadBalancerOddTabletsTest) {
   },  kDefaultTimeout * 2, "IsLoadBalancerActive"));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return client_->IsLoadBalanced(num_tablet_servers() + 1);
+    return client_->IsLoadBalanced(narrow_cast<int>(num_tablet_servers() + 1));
   },  kDefaultTimeout * 2, "IsLoadBalanced"));
 }
 

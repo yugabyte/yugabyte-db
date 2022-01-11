@@ -100,7 +100,7 @@ TEST_F(GrowableBufferTest, TestConsume) {
     consumed += consume_size;
     ASSERT_EQ(consumed + buffer.size(), counter);
     auto iovs = buffer.AppendedVecs();
-    int value = consumed;
+    auto value = consumed;
     for (const auto& iov : iovs) {
       const auto* data = static_cast<const uint8_t*>(iov.iov_base);
       for (int j = 0; j != iov.iov_len; ++j) {

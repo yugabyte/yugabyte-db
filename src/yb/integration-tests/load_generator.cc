@@ -109,7 +109,7 @@ string FormatHexForLoadTestKey(uint64_t x) {
   return buf;
 }
 
-int KeyIndexSet::NumElements() const {
+size_t KeyIndexSet::NumElements() const {
   MutexLock l(mutex_);
   return set_.size();
 }
@@ -139,7 +139,7 @@ int64_t KeyIndexSet::GetRandomKey(std::mt19937_64* random_number_generator) cons
   MutexLock l(mutex_);
   // The set iterator does not support indexing, so we probabilistically choose a random element
   // by iterating the set.
-  int n = set_.size();
+  size_t n = set_.size();
   for (int64_t x : set_) {
     if ((*random_number_generator)() % n == 0) return x;
     --n;  // Decrement the number of remaining elements we are considering.

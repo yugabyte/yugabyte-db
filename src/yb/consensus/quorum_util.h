@@ -100,7 +100,7 @@ int CountVotersInTransition(const RaftConfigPB& config);
 int CountServersInTransition(const RaftConfigPB& config, const std::string& ignore_uuid = "");
 
 // Calculates size of a configuration majority based on # of voters.
-int MajoritySize(int num_voters);
+size_t MajoritySize(size_t num_voters);
 
 // Determines the role that the peer with uuid 'uuid' plays in the cluster.
 // If the peer uuid is not a voter in the configuration, this function will return

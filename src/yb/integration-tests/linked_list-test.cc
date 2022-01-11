@@ -860,7 +860,7 @@ void LinkedListVerifier::SummarizeBrokenLinks(const std::vector<int64_t>& broken
   const int kMaxToLog = 100;
 
   for (int64_t broken : broken_links) {
-    int tablet = std::upper_bound(split_key_ints_.begin(),
+    auto tablet = std::upper_bound(split_key_ints_.begin(),
                                   split_key_ints_.end(),
                                   broken) - split_key_ints_.begin();
     DCHECK_GE(tablet, 0);

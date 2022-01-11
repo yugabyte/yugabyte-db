@@ -40,6 +40,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/stringprintf.h"
 
 #include "yb/util/debug/trace_event.h"
@@ -295,7 +296,7 @@ enum class EndpointType {
 Status GetEndpoint(EndpointType type, int fd, Endpoint* out) {
   Endpoint temp;
   DCHECK_GE(fd, 0);
-  socklen_t len = temp.capacity();
+  socklen_t len = narrow_cast<socklen_t>(temp.capacity());
   auto result = type == EndpointType::LOCAL ? getsockname(fd, temp.data(), &len)
                                             : getpeername(fd, temp.data(), &len);
   if (result == -1) {
@@ -319,7 +320,7 @@ Status Socket::GetPeerAddress(Endpoint* out) const {
 
 Status Socket::Bind(const Endpoint& endpoint, bool explain_addr_in_use) {
   DCHECK_GE(fd_, 0);
-  if (PREDICT_FALSE(::bind(fd_, endpoint.data(), endpoint.size()) != 0)) {
+  if (PREDICT_FALSE(::bind(fd_, endpoint.data(), narrow_cast<socklen_t>(endpoint.size())) != 0)) {
     Errno err(errno);
     Status s = STATUS(NetworkError, Format("Error binding socket to $0", endpoint), err);
 
@@ -347,7 +348,7 @@ Status CheckAcceptError(Socket *new_conn) {
 Status Socket::Accept(Socket *new_conn, Endpoint* remote, int flags) {
   TRACE_EVENT0("net", "Socket::Accept");
   Endpoint temp;
-  socklen_t olen = temp.capacity();
+  socklen_t olen = narrow_cast<socklen_t>(temp.capacity());
   DCHECK_GE(fd_, 0);
 #if defined(__linux__)
   int accept_flags = SOCK_CLOEXEC;
@@ -389,7 +390,7 @@ Status Socket::Connect(const Endpoint& remote) {
   }
 
   DCHECK_GE(fd_, 0);
-  if (::connect(fd_, remote.data(), remote.size()) < 0) {
+  if (::connect(fd_, remote.data(), narrow_cast<socklen_t>(remote.size())) < 0) {
     if (IsTemporarySocketError(errno)) {
       static const Status try_connect_again = STATUS(TryAgain, "Connect not yet ready");
       return try_connect_again;
@@ -413,22 +414,19 @@ Status Socket::GetSockError() const {
   return Status::OK();
 }
 
-Status Socket::Write(const uint8_t *buf, int32_t amt, int32_t *nwritten) {
+Result<size_t> Socket::Write(const uint8_t *buf, ssize_t amt) {
   if (amt <= 0) {
-    return STATUS(
-        NetworkError, StringPrintf("invalid send of %" PRId32 " bytes", amt), Errno(EINVAL));
+    return STATUS_EC_FORMAT(NetworkError, Errno(EINVAL), "Invalid send of $0 bytes", amt);
   }
   DCHECK_GE(fd_, 0);
-  int res = ::send(fd_, buf, amt, MSG_NOSIGNAL);
+  auto res = ::send(fd_, buf, amt, MSG_NOSIGNAL);
   if (res < 0) {
     return STATUS(NetworkError, "Write error", Errno(errno));
   }
-  *nwritten = res;
-  return Status::OK();
+  return res;
 }
 
-Status Socket::Writev(const struct ::iovec *iov, int iov_len,
-                      int32_t *nwritten) {
+Result<size_t> Socket::Writev(const struct ::iovec *iov, int iov_len) {
   if (PREDICT_FALSE(iov_len <= 0)) {
     return STATUS(NetworkError,
                   StringPrintf("Writev: invalid io vector length of %d", iov_len),
@@ -440,7 +438,7 @@ Status Socket::Writev(const struct ::iovec *iov, int iov_len,
   memset(&msg, 0, sizeof(struct msghdr));
   msg.msg_iov = const_cast<iovec *>(iov);
   msg.msg_iovlen = iov_len;
-  int res = ::sendmsg(fd_, &msg, MSG_NOSIGNAL);
+  auto res = ::sendmsg(fd_, &msg, MSG_NOSIGNAL);
   if (PREDICT_FALSE(res < 0)) {
     if (IsTemporarySocketError(errno)) {
       static const Status try_write_again = STATUS(TryAgain, "Write not yet ready");
@@ -449,32 +447,25 @@ Status Socket::Writev(const struct ::iovec *iov, int iov_len,
     return STATUS(NetworkError, "sendmsg error", Errno(errno));
   }
 
-  *nwritten = res;
-  return Status::OK();
+  return res;
 }
 
 // Mostly follows writen() from Stevens (2004) or Kerrisk (2010).
-Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten,
-    const MonoTime& deadline) {
+Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, const MonoTime& deadline) {
   DCHECK_LE(buflen, std::numeric_limits<int32_t>::max()) << "Writes > INT32_MAX not supported";
-  DCHECK(nwritten);
 
-  size_t tot_written = 0;
-  while (tot_written < buflen) {
-    int32_t inc_num_written = 0;
-    int32_t num_to_write = buflen - tot_written;
+  const uint8_t* bufend = buf + buflen;
+  while (buf < bufend) {
+    auto num_to_write = bufend - buf;
     MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now());
     if (PREDICT_FALSE(timeout.ToNanoseconds() <= 0)) {
       return STATUS(TimedOut, "BlockingWrite timed out");
     }
     RETURN_NOT_OK(SetSendTimeout(timeout));
-    Status s = Write(buf, num_to_write, &inc_num_written);
-    tot_written += inc_num_written;
-    buf += inc_num_written;
-    *nwritten = tot_written;
+    auto inc_num_written = Write(buf, num_to_write);
 
-    if (PREDICT_FALSE(!s.ok())) {
-      Errno err(s);
+    if (PREDICT_FALSE(!inc_num_written.ok())) {
+      Errno err(inc_num_written.status());
       // Continue silently when the syscall is interrupted.
       if (err == EINTR) {
         continue;
@@ -482,25 +473,23 @@ Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten
       if (err == EAGAIN) {
         return STATUS(TimedOut, "");
       }
-      return s.CloneAndPrepend("BlockingWrite error");
+      return inc_num_written.status().CloneAndPrepend("BlockingWrite error");
     }
-    if (PREDICT_FALSE(inc_num_written == 0)) {
+    if (PREDICT_FALSE(*inc_num_written == 0)) {
       // Shouldn't happen on Linux with a blocking socket. Maybe other Unices.
-      break;
+      return STATUS_FORMAT(
+          IOError, "Wrote zero bytes on a BlockingWrite() call. Transferred $0 of $1 bytes.",
+          buflen - num_to_write, buflen);
     }
+    buf += *inc_num_written;
   }
 
-  if (tot_written < buflen) {
-    return STATUS(IOError, "Wrote zero bytes on a BlockingWrite() call",
-        StringPrintf("Transferred %zu of %zu bytes", tot_written, buflen));
-  }
   return Status::OK();
 }
 
-Result<int32_t> Socket::Recv(uint8_t* buf, int32_t amt) {
+Result<size_t> Socket::Recv(uint8_t* buf, ssize_t amt) {
   if (amt <= 0) {
-    return STATUS(
-        NetworkError, StringPrintf("invalid recv of %d bytes", amt), Slice(), Errno(EINVAL));
+    return STATUS_EC_FORMAT(NetworkError, Errno(EINVAL), "Invalid recv of $0 bytes", amt);
   }
 
   // The recv() call can return fewer than the requested number of bytes.
@@ -508,12 +497,11 @@ Result<int32_t> Socket::Recv(uint8_t* buf, int32_t amt) {
   // the context of unit tests. So, we provide an injection hook which
   // simulates the same behavior.
   if (PREDICT_FALSE(FLAGS_socket_inject_short_recvs && amt > 1)) {
-    Random r(GetRandomSeed32());
-    amt = 1 + r.Uniform(amt - 1);
+    amt = RandomUniformInt<ssize_t>(1, amt);
   }
 
   DCHECK_GE(fd_, 0);
-  int res = ::recv(fd_, buf, amt, 0);
+  auto res = ::recv(fd_, buf, amt, 0);
   if (res <= 0) {
     if (res == 0) {
       return STATUS(NetworkError, "Recv() got EOF from remote", Slice(), Errno(ESHUTDOWN));
@@ -524,10 +512,11 @@ Result<int32_t> Socket::Recv(uint8_t* buf, int32_t amt) {
     }
     return STATUS(NetworkError, "Recv error", Errno(errno));
   }
+
   return res;
 }
 
-Result<int32_t> Socket::Recvv(IoVecs* vecs) {
+Result<size_t> Socket::Recvv(IoVecs* vecs) {
   if (PREDICT_FALSE(vecs->empty())) {
     return STATUS(NetworkError, "Recvv: receive to empty vecs");
   }
@@ -538,7 +527,7 @@ Result<int32_t> Socket::Recvv(IoVecs* vecs) {
   struct msghdr msg;
   memset(&msg, 0, sizeof(struct msghdr));
   msg.msg_iov = vecs->data();
-  msg.msg_iovlen = vecs->size();
+  msg.msg_iovlen = narrow_cast<int>(vecs->size());
   auto res = recvmsg(fd_, &msg, MSG_NOSIGNAL);
   if (PREDICT_FALSE(res <= 0)) {
     if (res == 0) {
@@ -556,9 +545,8 @@ Result<int32_t> Socket::Recvv(IoVecs* vecs) {
 
 // Mostly follows readn() from Stevens (2004) or Kerrisk (2010).
 // One place where we deviate: we consider EOF a failure if < amt bytes are read.
-Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoTime& deadline) {
+Result<size_t> Socket::BlockingRecv(uint8_t *buf, size_t amt, const MonoTime& deadline) {
   DCHECK_LE(amt, std::numeric_limits<int32_t>::max()) << "Reads > INT32_MAX not supported";
-  DCHECK(nread);
   size_t tot_read = 0;
 
   // We populate this with the full (initial) duration of the timeout on the first iteration of the
@@ -567,8 +555,7 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
 
   while (tot_read < amt) {
     // Read at most the max value of int32_t bytes at a time.
-    const int32_t num_to_read = std::min(amt - tot_read,
-                                         static_cast<size_t>(std::numeric_limits<int32_t>::max()));
+    const auto num_to_read = std::min<size_t>(amt - tot_read, std::numeric_limits<int32_t>::max());
     const MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now());
     if (!full_timeout.Initialized()) {
       full_timeout = timeout;
@@ -587,7 +574,6 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
       } else {
         tot_read += inc_num_read;
         buf += inc_num_read;
-        *nread = tot_read;
       }
     } else {
       // Continue silently when the syscall is interrupted.
@@ -607,7 +593,8 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
     return STATUS(IOError, "Read zero bytes on a blocking Recv() call",
         StringPrintf("Transferred %zu of %zu bytes", tot_read, amt));
   }
-  return Status::OK();
+
+  return tot_read;
 }
 
 Status Socket::SetTimeout(int opt, std::string optname, const MonoDelta& timeout) {

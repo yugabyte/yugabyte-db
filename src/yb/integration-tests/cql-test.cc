@@ -246,7 +246,7 @@ Status CheckNumAddressesInYqlPartitionsTable(CassandraSession* session, int expe
   auto iterator = result.CreateIterator();
   while (iterator.Next()) {
     auto replica_addresses = iterator.Row().Value(kReplicaAddressesIndex).ToString();
-    int num_addrs = 0;
+    ssize_t num_addrs = 0;
     if (replica_addresses.size() > std::strlen("{}")) {
       num_addrs = std::count(replica_addresses.begin(), replica_addresses.end(), ',') + 1;
     }

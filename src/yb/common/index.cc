@@ -20,6 +20,8 @@
 #include "yb/common/index_column.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/result.h"
 
 using std::vector;
@@ -120,8 +122,8 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   for (const auto& column : columns_) {
     column.ToPB(pb->add_columns());
   }
-  pb->set_hash_column_count(hash_column_count_);
-  pb->set_range_column_count(range_column_count_);
+  pb->set_hash_column_count(narrow_cast<uint32_t>(hash_column_count_));
+  pb->set_range_column_count(narrow_cast<uint32_t>(range_column_count_));
   for (const auto& id : indexed_hash_column_ids_) {
     pb->add_indexed_hash_column_ids(id);
   }

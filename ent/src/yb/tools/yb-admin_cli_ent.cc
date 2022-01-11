@@ -268,7 +268,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         const string file_name = args[0];
         TypedNamespaceName keyspace;
-        int num_tables = 0;
+        size_t num_tables = 0;
         vector<YBTableName> tables;
 
         if (args.size() >= 2) {

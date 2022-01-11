@@ -54,7 +54,7 @@ uint32_t GetRandomSeed32();
 std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng = nullptr);
 std::string RandomString(size_t len, std::mt19937_64* rng = nullptr);
 
-std::string RandomHumanReadableString(int len, Random* rnd);
+std::string RandomHumanReadableString(size_t len, Random* rnd);
 
 class RandomDeviceSequence {
  public:

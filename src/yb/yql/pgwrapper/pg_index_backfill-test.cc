@@ -200,7 +200,7 @@ void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
   PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 1);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  int actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
   ASSERT_EQ(actual_num_rows, num_rows);
 }
 
@@ -398,7 +398,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(NonexistentDelete)) {
 TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Large)) {
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
-  int expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
+  auto expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
   auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
   ASSERT_GE(actual_calls, expected_calls);
 }
@@ -695,12 +695,12 @@ TEST_F_EX(PgIndexBackfillTest,
     // Check number of DocDB indexes.  Normally, failed indexes should be cleaned up ("Table
     // transaction failed, deleting"), but in the event of an unexpected issue, they may not be.
     // (Not necessarily a fatal issue because the postgres schema is good.)
-    int num_docdb_indexes = table_info->index_map.size();
+    auto num_docdb_indexes = table_info->index_map.size();
     if (num_docdb_indexes > 1) {
       LOG(INFO) << "found " << num_docdb_indexes << " DocDB indexes";
       // These failed indexes not getting rolled back mean one less schema change each.  Therefore,
       // adjust the expected schema version.
-      int num_failed_docdb_indexes = num_docdb_indexes - 1;
+      auto num_failed_docdb_indexes = num_docdb_indexes - 1;
       expected_schema_version -= num_failed_docdb_indexes;
     }
 
@@ -1475,7 +1475,7 @@ TEST_F_EX(PgIndexBackfillTest,
   const Result<PGResultPtr>& result = conn_->FetchFormat(
       "SELECT count(*) FROM $0 WHERE j = 'a'", kTableName);
   if (result.ok()) {
-    int count = ASSERT_RESULT(GetInt64(result.get().get(), 0, 0));
+    auto count = ASSERT_RESULT(GetInt64(result.get().get(), 0, 0));
     ASSERT_EQ(count, 0);
   } else if (result.status().IsNetworkError()) {
     Status s = result.status();
@@ -1781,7 +1781,7 @@ TEST_F_EX(PgIndexBackfillTest,
   const std::string query = Format("SELECT COUNT(*) FROM $0 WHERE i > 0", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
   PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-  int count = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto count = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
   ASSERT_EQ(count, 2);
 }
 

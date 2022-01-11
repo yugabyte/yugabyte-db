@@ -1226,7 +1226,7 @@ void TestBackfillIndexTable(
         if (!backfill_job) {
           return backfill_job.status();
         }
-        const int number_rows_processed = backfill_job->num_rows_processed();
+        const auto number_rows_processed = backfill_job->num_rows_processed();
         return number_rows_processed >= kLowerBound;
       }, kMaxWait),
       "Could not get BackfillJobPB. May be OK, if the backfill is already done.");

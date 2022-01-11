@@ -211,7 +211,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string()) {
-    auto* ts = cluster_->tablet_server(RandomUniformInt(0, cluster_->num_tablet_servers() - 1));
+    auto* ts = cluster_->tablet_server(
+        RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
     return pgwrapper::PGConn::Connect(HostPort(ts->bind_host(), ts->pgsql_rpc_port()), db_name);
   }
 
@@ -967,8 +968,8 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestore, YbAdminSnapshotConsist
 
   struct KeyData {
     KeyState state;
-    int start = -1;
-    int finish = -1;
+    ssize_t start = -1;
+    ssize_t finish = -1;
     int set_by = -1;
   };
 
@@ -1005,9 +1006,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestore, YbAdminSnapshotConsist
       continue;
     }
     for (auto set_state : {KeyState::kBeforeMissing, KeyState::kAfterMissing}) {
-      int begin = set_state == KeyState::kBeforeMissing ? 0 : keys[key].finish + 1;
-      int end = set_state == KeyState::kBeforeMissing ? keys[key].start : events.size();
-      for (int i = begin; i != end; ++i) {
+      auto begin = set_state == KeyState::kBeforeMissing ? 0 : keys[key].finish + 1;
+      auto end = set_state == KeyState::kBeforeMissing ? keys[key].start : events.size();
+      for (ssize_t i = begin; i != end; ++i) {
         auto& event = events[i];
         if (keys[event.key].state == KeyState::kMissing ||
             (event.finished != (set_state == KeyState::kBeforeMissing))) {

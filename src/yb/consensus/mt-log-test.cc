@@ -114,7 +114,7 @@ class MultiThreadedLogTest : public LogTestBase {
         std::lock_guard<simple_spinlock> lock_guard(lock_);
         for (int j = 0; j < num_ops; j++) {
           auto replicate = std::make_shared<ReplicateMsg>();
-          int32_t index = current_index_++;
+          auto index = current_index_++;
           OpIdPB* op_id = replicate->mutable_id();
           op_id->set_term(0);
           op_id->set_index(index);
@@ -123,7 +123,7 @@ class MultiThreadedLogTest : public LogTestBase {
           replicate->set_hybrid_time(clock_->Now().ToUint64());
 
           tserver::WriteRequestPB request;
-          AddTestRowInsert(index, 0, "this is a test insert", &request);
+          AddTestRowInsert(narrow_cast<int32_t>(index), 0, "this is a test insert", &request);
           request.set_tablet_id(kTestTablet);
           batch_replicates.push_back(replicate);
         }
@@ -165,7 +165,7 @@ class MultiThreadedLogTest : public LogTestBase {
 
 TEST_F(MultiThreadedLogTest, TestAppends) {
   BuildLog();
-  int start_current_id = current_index_;
+  auto start_current_id = current_index_;
   LOG_TIMING(INFO, strings::Substitute("inserting $0 batches($1 threads, $2 per-thread)",
                                       FLAGS_num_writer_threads * FLAGS_num_batches_per_thread,
                                       FLAGS_num_batches_per_thread, FLAGS_num_writer_threads)) {
