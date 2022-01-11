@@ -2961,10 +2961,9 @@ Datum age_match_vle_terminal_edge(PG_FUNCTION_ARGS)
                    (has_veid ? veid == gida[gidasize - 1] : true));
 }
 
+/* PG helper function to build an agtype (Datum) edge for matching */
 PG_FUNCTION_INFO_V1(age_build_vle_match_edge);
-/*
- * PG helper function to build an agtype (Datum) edge for matching.
- */
+
 Datum age_build_vle_match_edge(PG_FUNCTION_ARGS)
 {
     agtype_in_state result;
