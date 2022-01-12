@@ -58,7 +58,8 @@ class QLWriteOperation :
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
-  CHECKED_STATUS ApplyForJsonOperators(const QLColumnValuePB& column_value,
+  CHECKED_STATUS ApplyForJsonOperators(std::unordered_map<ColumnIdRep, QLValue>* res_map,
+                                       const QLColumnValuePB& column_value,
                                        const DocOperationApplyData& data,
                                        const DocPath& sub_path, const MonoDelta& ttl,
                                        const UserTimeMicros& user_timestamp,
