@@ -50,7 +50,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       ]);
       setAllGflags(flags[0]?.data);
       setMostUsedFlags(flags[1]?.data);
-      if (toggleMostUsed) setFilteredArr(flags[0]?.data);
+      if (!toggleMostUsed) setFilteredArr(flags[0]?.data);
       else setFilteredArr(flags[1]?.data);
       setLoader(false);
     } catch (e) {
@@ -60,17 +60,18 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   const getFlagByName = async () => {
     try {
-      const { flagname } = gFlagProps;
+      const { flagname, flagvalue } = gFlagProps;
       const flag = await fetchParticularFlag(dbVersion, { server, name: flagname });
       setAllGflags([flag?.data]);
       setMostUsedFlags([flag?.data]);
       setFilteredArr([flag?.data]);
-      handleFlagSelect(flag?.data);
-      if (!formProps.values['flagvalue'])
+      setSelectedFlag(flag?.data);
+      if (flagvalue === undefined)
         formProps.setValues({
           ...gFlagProps,
           flagvalue: flag?.data?.default
         });
+      else formProps.setValues(gFlagProps);
       setLoader(false);
     } catch (e) {
       console.error(e);
@@ -79,7 +80,6 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   const onInit = () => {
     if (mode === EDIT) {
-      formProps.setValues(gFlagProps);
       getFlagByName();
     } else getAllFlags();
   };
@@ -143,7 +143,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
                       component="input"
                       onChange={() => formProps.setFieldValue('flagvalue', target)}
                       value={`${target}`}
-                      checked={target === formProps?.values['flagvalue']}
+                      checked={`${target}` === `${formProps?.values['flagvalue']}`}
                     />{' '}
                     {`${target}`}{' '}
                     <span className="default-text">
@@ -243,9 +243,13 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
             {renderFieldInfo('Description', selectedFlag?.meaning)}
             <div className="gflag-detail-value">
               <FlexContainer direction="column">
-                <span className="gflag-description-title">Default Value</span>
-                <Badge className="gflag-badge">{selectedFlag?.default}</Badge>
-                <br />
+                {selectedFlag?.default && (
+                  <>
+                    <span className="gflag-description-title">Default Value</span>
+                    <Badge className="gflag-badge">{selectedFlag?.default}</Badge>
+                    <br />
+                  </>
+                )}
                 {documentationLink}
               </FlexContainer>
               {/* <FlexContainer direction="column">placeholder to show min and max values</FlexContainer> */}
