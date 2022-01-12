@@ -11,20 +11,22 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This document describes how to use [Django REST framework](https://www.django-rest-framework.org/), an ORM library in Python with YugabyteDB.
+This document describes how to use [Django REST framework](https://www.django-rest-framework.org/), an ORM library in Python, with YugabyteDB.
 
 ## Prerequisites
 
-- Install YugabyteDB and start a single node local cluster. Refer [YugabyteDB Quick start](../../quick-start/) to install and start a local cluster.
-- Install [Python3](https://www.python.org/downloads/).
-- Install [Django backend for YugabyteDB](https://github.com/yugabyte/yb-django).
-- Install Django REST framework.
+Before you can start using Django, ensure that you have the following installed and configured:
+
+- A YugabyteDB single node cluster.  Refer [YugabyteDB Quick start](../../quick-start/) to install and start a local cluster.
+- [Python3](https://www.python.org/downloads/).
+- [Django backend for YugabyteDB](https://github.com/yugabyte/yb-django).
+- Django REST framework by executing the following command:
 
 ```sh
 pip3 install djangorestframework
 ```
 
-- Install `psycopg2`.
+- `psycopg2` by executing the following command:
 
 ```sh
 pip3 install psycopg2
@@ -34,13 +36,13 @@ pip3 install psycopg2
 
 You can start using Django REST framework with YugabyteDB as follows:
 
-- Create a new Django project with the command:
+- Create a new Django project using the following command:
 
 ```python
 django-admin startproject yugabyteTest && cd yugabyteTest/
 ```
 
-- Set up a new Django application with the command:
+- Set up a new Django application using the following command:
 
 ```python
 python manage.py startapp testdb
@@ -107,7 +109,7 @@ urlpatterns = [
 ]
 ```
 
-For Django versions below 4.0 add the following code in `urls.py` instead, since you can import the urls using `django.conf.urls`:
+For Django versions earlier than 4.0, add the following code in `urls.py` instead, since you can import the urls using `django.conf.urls`:
 
 ```python
 from django.urls import path, include
@@ -123,7 +125,7 @@ urlpatterns = [
 ]
 ```
 
-- Configure the `yugabyteTest/settings.py` to use YugabyteDB by updating the value of DATABASES field with:
+- Configure `yugabyteTest/settings.py` to use YugabyteDB by updating the value of DATABASES field.
 
 ```python
 DATABASES = {
@@ -138,7 +140,7 @@ DATABASES = {
 }
 ```
 
-You also need the application and rest framework in the `INSTALLED_APPS` field. Replace the existing code with:
+You also need the application and rest framework in the `INSTALLED_APPS` field. Replace the existing code with the following:
 
 ```python
 INSTALLED_APPS = [
@@ -155,36 +157,38 @@ REST_FRAMEWORK = {
 }
 ```
 
-- Create the migrations with the command:
+- Create the migrations with the following command:
 
 ```python
 python3 manage.py makemigrations
 ```
 
-- Migrate the changes to the database with the command:
+- Migrate the changes to the database with the following command:
 
 ```python
 python3 manage.py migrate
 ```
 
-- A users table should be created in your database. Verify that the table is created with the [ysqlsh](../../explore/ysql-language-features/databases-schemas-tables/#list-tables) client shell.
+- A users table should be created in your database. Use the [ysqlsh](../../explore/ysql-language-features/databases-schemas-tables/#list-tables) client shell to verify that the users table has been created in your database.
 
 ## Run the application
 
-- Run the django project with the command:
+To run the application and insert a new row, execute the following steps:
+
+- Run the django project with the following command:
 
 ```python
 python3 manage.py runserver 8080
 ```
 
-- Insert a row with the command:
+- Insert a row with the following command:
 
 ```sh
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
        -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
-- Verify that the new row is inserted with the command:
+- Verify that the new row is inserted by executing the following command:
 
 ```sh
 $ curl http://localhost:8080/users
