@@ -53,12 +53,12 @@ inline bool SliceRead(google::protobuf::io::CodedInputStream* input, Slice* out)
 }
 
 inline size_t SliceSize(Slice value) {
-  uint32_t size = value.size();
+  uint32_t size = narrow_cast<uint32_t>(value.size());
   return CodedOutputStream::VarintSize32(size) + size;
 }
 
 inline uint8_t* SliceWrite(Slice value, uint8_t* out) {
-  uint32_t size = value.size();
+  uint32_t size = narrow_cast<uint32_t>(value.size());
   out = CodedOutputStream::WriteVarint32ToArray(size, out);
   memcpy(out, value.data(), size);
   return out + size;
@@ -67,7 +67,7 @@ inline uint8_t* SliceWrite(Slice value, uint8_t* out) {
 } // namespace
 
 Status LightweightMessage::ParseFromSlice(const Slice& slice) {
-  google::protobuf::io::CodedInputStream in(slice.data(), slice.size());
+  google::protobuf::io::CodedInputStream in(slice.data(), narrow_cast<int>(slice.size()));
   in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size * 3 / 4);
   return ParseFromCodedStream(&in);
 }
@@ -91,7 +91,7 @@ Status AnyMessagePtr::ParseFromSlice(const Slice& slice) {
     return lightweight()->ParseFromSlice(slice);
   }
 
-  google::protobuf::io::CodedInputStream in(slice.data(), slice.size());
+  google::protobuf::io::CodedInputStream in(slice.data(), narrow_cast<int>(slice.size()));
   in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size * 3 / 4);
   auto* proto = protobuf();
   if (PREDICT_FALSE(!proto->ParseFromCodedStream(&in))) {

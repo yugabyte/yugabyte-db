@@ -18,6 +18,9 @@
 //
 
 #include "yb/util/coding.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/util/coding-inl.h"
 
 namespace yb {
@@ -58,12 +61,12 @@ void PutVarint64(boost::container::small_vector_base<uint8_t>* dst, uint64_t val
 }
 
 void PutLengthPrefixedSlice(faststring* dst, const Slice& value) {
-  PutVarint32(dst, value.size());
+  PutVarint32(dst, narrow_cast<uint32_t>(value.size()));
   dst->append(value.data(), value.size());
 }
 
 void PutFixed32LengthPrefixedSlice(faststring* dst, const Slice& value) {
-  PutFixed32(dst, value.size());
+  PutFixed32(dst, narrow_cast<uint32_t>(value.size()));
   dst->append(value.data(), value.size());
 }
 

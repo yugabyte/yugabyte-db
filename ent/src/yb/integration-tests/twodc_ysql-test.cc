@@ -459,8 +459,8 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(),
-                                       tables_vector.size() * kNTabletsPerTable));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
 
   auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
     for (const auto& consumer_table : consumer_tables) {
@@ -599,7 +599,8 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
 
-  setup_universe_req.mutable_producer_table_ids()->Reserve(producer_tables.size());
+  setup_universe_req.mutable_producer_table_ids()->Reserve(
+      narrow_cast<int>(producer_tables.size()));
   for (const auto& producer_table : producer_tables) {
     setup_universe_req.add_producer_table_ids(producer_table->id());
     const auto& iter = table_bootstrap_ids.find(producer_table->id());
@@ -621,8 +622,8 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
       &get_universe_replication_resp));
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(),
-                                       tables_vector.size() * kNTabletsPerTable));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
 
   // 4. Write more data.
   for (const auto& producer_table : producer_tables) {

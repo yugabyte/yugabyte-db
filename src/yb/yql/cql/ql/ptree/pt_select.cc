@@ -28,6 +28,8 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/master_defaults.h"
 
 #include "yb/util/flag_tags.h"
@@ -138,7 +140,7 @@ class Selectivity {
 
   bool supporting_orderby() const { return !full_table_scan_; }
 
-  int prefix_length() const { return prefix_length_; }
+  size_t prefix_length() const { return prefix_length_; }
 
   // Comparison operator to sort the selectivity of an index.
   bool operator>(const Selectivity& other) const {
@@ -609,7 +611,7 @@ ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
   }
 
   // Set the output_width that has been calculated throughout the construction of the query plan.
-  select_plan->set_output_width(longest);
+  select_plan->set_output_width(narrow_cast<int32_t>(longest));
   return explain_plan;
 }
 
@@ -1172,7 +1174,7 @@ CHECKED_STATUS PTTableRef::Analyze(SemContext *sem_context) {
 //--------------------------------------------------------------------------------------------------
 
 SelectScanInfo::SelectScanInfo(MemoryContext *memctx,
-                               int num_columns,
+                               size_t num_columns,
                                MCVector<const PTExpr*> *scan_filtering_exprs,
                                MCMap<MCString, ColumnDesc> *scan_column_map)
     : col_ops_(memctx),

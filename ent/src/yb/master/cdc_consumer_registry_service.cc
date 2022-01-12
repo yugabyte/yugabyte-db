@@ -119,7 +119,7 @@ Status UpdateTableMappingOnTabletSplit(
   mutable_map->erase(split_tablet_ids.source);
   // TODO introduce a better mapping of tablets to improve locality (GH #10186).
   // For now we just distribute the producer tablets between both children.
-  for (size_t i = 0; i < producer_tablets.tablets().size(); ++i) {
+  for (int i = 0; i < producer_tablets.tablets().size(); ++i) {
     if (i % 2) {
       *(*mutable_map)[split_tablet_ids.children.first].add_tablets() = producer_tablets.tablets(i);
     } else {

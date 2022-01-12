@@ -278,7 +278,7 @@ output_file=""
 input_files=()
 library_files=()
 compiling_pch=false
-pch_codegen=false
+yb_pch=false
 
 rpath_found=false
 num_output_files_found=0
@@ -319,8 +319,8 @@ while [[ $# -gt 0 ]]; do
     c++-header)
       compiling_pch=true
     ;;
-    -fpch-codegen)
-      pch_codegen=true
+    -yb-pch)
+      yb_pch=true
     ;;
     -DYB_COMPILER_TYPE=*)
       compiler_type_from_cmd_line=${1#-DYB_COMPILER_TYPE=}
@@ -754,7 +754,116 @@ ${cmd[*]}
 fi
   unset IFS
 
-run_compiler_and_save_stderr "${cmd[@]}"
+# When -yb-pch is specified, we use it to generate precompiled header.
+if [[ "${yb_pch}" == "true" ]]; then
+  if [[ -n $output_file ]]; then
+    pch_cmd=( "$compiler_executable" )
+    skip_next=false
+    pch_file="${output_file%.cc.o}.h.pch"
+    # Replace original args with args required for compilation.
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case "$arg" in
+        -yb-pch)
+          pch_cmd+=( "-Xclang" "-emit-pch" "-fpch-instantiate-templates" "-fpch-codegen"
+                     "-fpch-debuginfo" "-c" )
+        ;;
+        -fpch-*|-x|c++-header)
+        ;;
+        -MT)
+          pch_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        -o)
+          pch_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        -c)
+          skip_next=true
+        ;;
+        *)
+          pch_cmd+=("$arg")
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${pch_cmd[@]}"
+    check_compiler_exit_code
+
+    codegen_cmd=( "$compiler_executable" )
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case $arg in
+        -yb-pch)
+          skip_next=true
+        ;;
+        -c)
+          codegen_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        *)
+          codegen_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${codegen_cmd[@]}"
+  else
+    new_cmd=( "$compiler_executable" )
+    skip_next=false
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case $arg in
+        -yb-pch)
+          skip_next=true
+        ;;
+        *)
+          new_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${new_cmd[@]}"
+  fi
+else
+  if [[ -n $output_file ]]; then
+    run_compiler_and_save_stderr "${cmd[@]}"
+  else
+    # Have to patch compiler command line to make CLion happy while loading CMake project.
+    new_cmd=( "$compiler_executable" )
+    skip_next=false
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        if [[ "$arg" == "-Xclang" ]]; then
+          continue
+        fi
+
+        skip_next=false
+        if [[ "$arg" == -* ]]; then
+          new_cmd+=( "$arg" )
+        else
+          new_cmd+=( "-include" "-Xclang" "$arg" )
+        fi
+        continue
+      fi
+      case $arg in
+        -include)
+          skip_next=true
+        ;;
+        *)
+          new_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${new_cmd[@]}"
+  fi
+fi
 
 # Skip printing some command lines commonly used by CMake for detecting compiler/linker version.
 # Extra output might break the version detection.
@@ -805,48 +914,4 @@ if is_clang &&
 
   compiler_exit_code=$?
   set -e
-fi
-
-# When -fpch-codegen is used to generate .pch file.
-# We also should execute compiler for output.
-# To generate .o file, that contains all generated code.
-if "$pch_codegen"; then
-  new_cmd=( "$compiler_executable" )
-  skip_next=false
-  # Replace original args with args required for compilation.
-  for arg in "${compiler_args[@]}"
-  do
-    if "$skip_next"; then
-      skip_next=false
-      continue
-    fi
-    case "$arg" in
-      -emit-pch)
-        new_cmd+=("-include-pch" "-Xclang" "$output_file")
-      ;;
-      -fpch-*|-x|c++-header)
-      ;;
-      -MT)
-        new_cmd+=("$arg" "$output_file.o")
-        skip_next=true
-      ;;
-      -MF)
-        new_cmd+=("$arg" "$output_file.o.d")
-        skip_next=true
-      ;;
-      -o)
-        new_cmd+=("$arg" "$output_file.o")
-        skip_next=true
-      ;;
-      -c)
-        new_cmd+=("$arg" "$output_file")
-        skip_next=true
-      ;;
-      *)
-        new_cmd+=("$arg")
-      ;;
-    esac
-  done
-  run_compiler_and_save_stderr "${new_cmd[@]}"
-  check_compiler_exit_code
 fi

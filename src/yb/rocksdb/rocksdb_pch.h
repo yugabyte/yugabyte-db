@@ -116,6 +116,7 @@
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/thread_annotations.h"

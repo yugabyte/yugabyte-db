@@ -2,7 +2,8 @@
   "exclude": [
      "(\\.l$)",
      "(Makefile$)",
-     "(src/yb/common/ql_type.h$)",
+     "(src/yb/common/ql_type.cc$)",
+     "(src/yb/gutil/valgrind.h$)",
      "(\\.ipynb$)",
      "(\\.sql$)",
      "(\\.txt$)",

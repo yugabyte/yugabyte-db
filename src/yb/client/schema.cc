@@ -219,7 +219,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     RETURN_NOT_OK(data_->specs[i]->ToColumnSchema(&cols[i]));
   }
 
-  int num_key_cols = 0;
+  size_t num_key_cols = 0;
   if (!data_->has_key_col_names) {
     // Change the API to allow specifying each column individually as part of a primary key.
     // Previously, we must pass an extra list of columns if the key is a compound of columns.
@@ -299,7 +299,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     // Currently we require that the key columns be contiguous at the front
     // of the schema. We'll lift this restriction later -- hence the more
     // flexible user-facing API.
-    for (int i = 0; i < key_col_indexes.size(); i++) {
+    for (size_t i = 0; i < key_col_indexes.size(); i++) {
       if (key_col_indexes[i] != i) {
         return STATUS(InvalidArgument, "Primary key columns must be listed first in the schema",
                                        data_->key_col_names[i]);
@@ -524,7 +524,7 @@ void YBSchema::Reset(std::unique_ptr<Schema> schema) {
   schema_ = std::move(schema);
 }
 
-Status YBSchema::Reset(const vector<YBColumnSchema>& columns, int key_columns,
+Status YBSchema::Reset(const vector<YBColumnSchema>& columns, size_t key_columns,
                        const TableProperties& table_properties) {
   vector<ColumnSchema> cols_private;
   for (const YBColumnSchema& col : columns) {
@@ -633,7 +633,7 @@ string YBSchema::ToString() const {
   return schema_->ToString();
 }
 
-int YBSchema::FindColumn(const GStringPiece& name) const {
+ssize_t YBSchema::FindColumn(const GStringPiece& name) const {
   return schema_->find_column(name);
 }
 

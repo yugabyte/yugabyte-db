@@ -92,9 +92,9 @@ class Reactor;
 // Simple metrics information from within a reactor.
 struct ReactorMetrics {
   // Number of client RPC connections currently connected.
-  int32_t num_client_connections_;
+  size_t num_client_connections;
   // Number of server RPC connections currently connected.
-  int32_t num_server_connections_;
+  size_t num_server_connections;
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -375,7 +375,7 @@ class Reactor {
   // 'socket', but not the Socket object itself.
   // If the reactor is already shut down, takes care of closing the socket.
   void RegisterInboundSocket(
-      Socket *socket, int32_t receive_buffer_size, const Endpoint& remote,
+      Socket *socket, size_t receive_buffer_size, const Endpoint& remote,
       const ConnectionContextFactoryPtr& factory);
 
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts

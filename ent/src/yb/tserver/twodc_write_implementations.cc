@@ -90,7 +90,7 @@ CHECKED_STATUS CombineExternalIntents(
     Uuid involved_tablet_;
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs_;
     docdb::KeyValuePairPB* out_;
-    size_t next_idx_ = 0;
+    int next_idx_ = 0;
   };
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));

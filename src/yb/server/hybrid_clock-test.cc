@@ -106,7 +106,7 @@ TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
   uint64_t now_micros = HybridClock::GetPhysicalValueMicros(now);
 
   // increase the logical value
-  uint64_t logical = HybridClock::GetLogicalValue(now);
+  auto logical = HybridClock::GetLogicalValue(now);
   logical += 10;
 
   // increase the physical value so that we're sure the clock will take this

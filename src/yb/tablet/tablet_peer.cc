@@ -1171,7 +1171,7 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
   return info;
 }
 
-int TabletPeer::GetNumLogSegments() const {
+size_t TabletPeer::GetNumLogSegments() const {
   auto log = log_atomic_.load(std::memory_order_acquire);
   return log ? log->num_segments() : 0;
 }

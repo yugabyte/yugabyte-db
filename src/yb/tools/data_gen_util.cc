@@ -34,6 +34,9 @@
 #include "yb/client/schema.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/util/random.h"
 #include "yb/util/status.h"
 
@@ -48,13 +51,13 @@ void WriteValueToColumn(const client::YBSchema& schema,
   char buf[kFastToBufferSize];
   switch (type) {
     case INT8:
-      out->set_int8_value(value);
+      out->set_int8_value(static_cast<int32_t>(value));
       return;
     case INT16:
-      out->set_int16_value(value);
+      out->set_int16_value(static_cast<int32_t>(value));
       return;
     case INT32:
-      out->set_int32_value(value);
+      out->set_int32_value(static_cast<int32_t>(value));
       return;
     case INT64:
       out->set_int64_value(value);

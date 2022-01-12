@@ -220,7 +220,7 @@ tserver::WriteRequestPB TabletSplitITestBase<MiniClusterType>::CreateInsertReque
 template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
-        const size_t num_rows, const size_t start_key) {
+        const uint32_t num_rows, const int32_t start_key) {
   auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
   auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
 
@@ -257,7 +257,7 @@ Status TabletSplitITestBase<MiniClusterType>::FlushTestTable() {
 template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRowsAndFlush(
-        const size_t num_rows, const size_t start_key) {
+        const uint32_t num_rows, const int32_t start_key) {
   auto result = VERIFY_RESULT(WriteRows(num_rows, start_key));
   RETURN_NOT_OK(FlushTestTable());
   return result;
@@ -265,7 +265,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
 
 template <class MiniClusterType>
 Result<docdb::DocKeyHash> TabletSplitITestBase<MiniClusterType>::WriteRowsAndGetMiddleHashCode(
-    size_t num_rows) {
+    uint32_t num_rows) {
   auto min_max_hash_code = VERIFY_RESULT(WriteRowsAndFlush(num_rows, 1));
   const auto split_hash_code = (min_max_hash_code.first + min_max_hash_code.second) / 2;
   LOG(INFO) << "Split hash code: " << split_hash_code;
@@ -347,7 +347,7 @@ Result<master::TabletInfos> TabletSplitITest::GetTabletInfosForTable(const Table
   return VERIFY_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets();
 }
 
-Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(size_t num_rows) {
+Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(uint32_t num_rows) {
   CreateSingleTablet();
   const auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(num_rows));
   return SplitTabletAndValidate(split_hash_code, num_rows);
@@ -599,7 +599,7 @@ Status TabletSplitITest::WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelt
 }
 
 Result<int> TabletSplitITest::NumPostSplitTabletPeersFullyCompacted() {
-  size_t count = 0;
+  int count = 0;
   for (auto peer : VERIFY_RESULT(ListPostSplitChildrenTabletPeers())) {
     const auto* tablet = peer->tablet();
     if (tablet->metadata()->has_been_fully_compacted()) {

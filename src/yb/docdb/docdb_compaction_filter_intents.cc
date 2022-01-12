@@ -160,7 +160,8 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
 Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTransactionMetadata(
     const Slice& key, const Slice& existing_value) {
   TransactionMetadataPB metadata_pb;
-  if (!metadata_pb.ParseFromArray(existing_value.cdata(), existing_value.size())) {
+  if (!metadata_pb.ParseFromArray(
+          existing_value.cdata(), narrow_cast<int>(existing_value.size()))) {
     return STATUS(IllegalState, "Failed to parse transaction metadata");
   }
   uint64_t write_time = metadata_pb.metadata_write_time();

@@ -291,12 +291,12 @@ Status BulkLoadTask::InsertRow(const string &row,
   }
 
   // Finally process the regular columns.
-  for (int i = schema.num_key_columns(); i < schema.num_columns(); it++, col_id++) {
+  for (auto i = schema.num_key_columns(); i < schema.num_columns(); it++, col_id++) {
     if (skipped_cols_.find(col_id) != skipped_cols_.end()) {
       continue;
     }
     QLColumnValuePB *column_value = req.add_column_values();
-    column_value->set_column_id(kFirstColumnId + i);
+    column_value->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
     if (IsNull(*it)) {
       // Use empty value for null.
       column_value->mutable_expr()->mutable_value();

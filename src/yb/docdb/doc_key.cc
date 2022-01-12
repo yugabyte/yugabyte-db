@@ -1089,7 +1089,7 @@ void SubDocKey::RemoveLastSubKey() {
   subkeys_.pop_back();
 }
 
-void SubDocKey::KeepPrefix(int num_sub_keys_to_keep) {
+void SubDocKey::KeepPrefix(size_t num_sub_keys_to_keep) {
   if (subkeys_.size() > num_sub_keys_to_keep) {
     subkeys_.resize(num_sub_keys_to_keep);
   }

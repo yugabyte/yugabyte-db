@@ -28,7 +28,7 @@ namespace ql {
 // This class can be used to describe any reference of a column.
 class ColumnDesc {
  public:
-  ColumnDesc(const int index,
+  ColumnDesc(const size_t index,
              const int id,
              const std::string& name,
              const bool is_hash,
@@ -50,7 +50,7 @@ class ColumnDesc {
         has_mangled_name_(has_mangled_name) {
   }
 
-  int index() const {
+  size_t index() const {
     return index_;
   }
 
@@ -100,7 +100,7 @@ class ColumnDesc {
   }
 
  private:
-  int index_ = -1;
+  size_t index_;
   int id_ = -1;
   std::string name_;
   bool is_hash_ = false;
