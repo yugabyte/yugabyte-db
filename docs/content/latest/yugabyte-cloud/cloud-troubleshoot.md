@@ -57,7 +57,9 @@ Be sure to encode any special characters in your connection string.
 
 ### Password failure connecting to the database
 
-Ensure that you have entered the correct password for the cluster database you are trying to access; refer to the cluster database admin credentials file you downloaded when you created the cluster. The database admin credentials are separate from your Yugabyte Cloud credentials, which are used exclusively to log in to the Yugabyte Cloud console.
+Ensure that you have entered the correct password for the cluster database you are trying to access; refer to the cluster database admin credentials file you downloaded when you created the cluster. The file is named `<cluster name> credentials.txt`.
+
+The database admin credentials are separate from your Yugabyte Cloud credentials, which are used exclusively to log in to the Yugabyte Cloud console.
 
 If you are a database user who was added to the database by an administrator, ask them to either re-send your credentials or reset your database password.
 
