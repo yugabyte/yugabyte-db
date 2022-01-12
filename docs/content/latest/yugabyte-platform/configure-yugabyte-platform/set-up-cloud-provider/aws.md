@@ -67,9 +67,7 @@ showAsideToc: true
 
 </ul>
 
-You can configure Amazon Web Services (AWS) for YugabyteDB using the Yugabyte Platform console. If no cloud providers are configured, the main **Dashboard** page highlights that you need to configure at least one cloud provider, as per the following illustration:
-
-![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
+You can configure Amazon Web Services (AWS) for YugabyteDB using the Yugabyte Platform console. If no cloud providers have been configured yet, the main Dashboard page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
