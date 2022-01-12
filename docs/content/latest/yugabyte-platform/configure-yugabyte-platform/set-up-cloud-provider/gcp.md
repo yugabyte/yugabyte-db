@@ -92,7 +92,7 @@ You can configure GCP as follows:
 
     - A region name.
     - A subnet ID.
-    - Optionally, a custom machine image. Yugabyte Platform allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom user (ubuntu).
+    - Optionally, a custom machine image. Yugabyte Platform allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
 
     The third option that is available only when your Yugabyte Platform host machine is also running on Google Cloud, is to use the same VPC on which the Yugabyte Platform host machine runs. Note that choosing to use the same VPC as Yugabyte Platform is an advanced option, which assumes that you are in complete control over this VPC and will be responsible for setting up the networking, SSH access, and firewall rules for it.
 
