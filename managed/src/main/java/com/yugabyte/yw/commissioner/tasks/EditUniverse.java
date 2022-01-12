@@ -116,7 +116,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               });
 
       // Create preflight node check tasks for on-prem nodes.
-      createPreflightNodeCheckTasks(universe, taskParams());
+      createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
       Set<NodeDetails> addedMasters =
           taskParams()
