@@ -147,7 +147,7 @@ In addition to CentOS, Yugabyte Platform allows you to bring up universes on the
 
 - Ubuntu 18.04, which requires Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom user (ubuntu).
 - Oracle 8, which requires the provider created with a custom AMI and custom user (ec2-user), assumes that gtar or gunzip is present on the host AMI, and uses the firewall-cmd client to set default target `ACCEPT`. Yugabyte Platform support for Oracle 8 has the following limitations:
-  - Only Red Hat Linux-compatible kernel is supported to allow port changing. Unbreakable Enterprise Kernel (UEK) is not supported.
+  - Only Red Hat Linux-compatible kernel is supported to allow port changing. There is no support for Unbreakable Enterprise Kernel (UEK).
   - Systemd services are not supported.
 
 ## Marketplace acceptance
