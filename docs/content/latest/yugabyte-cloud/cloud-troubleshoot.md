@@ -45,7 +45,9 @@ If you are connecting to a cluster using YCQL and see the following error:
 Connection error: ('Unable to connect to any servers', {'44.144.44.4': ConnectionShutdown('Connection to 44.144.44.4 was closed',)})
 ```
 
-Ensure you are using the `--ssl` option and the path to the cluster certificate is correct.
+Ensure you are using the `--ssl` option and the path to the cluster certificate is correct. YCQL connections require the `--ssl` option and the use of the cluster certificate.
+
+For information on connecting to clusters using a client shell, refer to [Connect via client shells](../cloud-connect/connect-client-shell/).
 
 ### Application fails to connect
 
