@@ -9,7 +9,6 @@ import com.github.dikhan.pagerduty.client.events.domain.ResolveIncident;
 import com.github.dikhan.pagerduty.client.events.domain.Severity;
 import com.github.dikhan.pagerduty.client.events.domain.TriggerIncident;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.alerts.AlertChannelPagerDutyParams;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
@@ -29,12 +28,9 @@ import org.json.JSONObject;
 @Singleton
 public class AlertChannelPagerDuty extends AlertChannelBase {
 
-  private final PagerDutyEventsClient pagerDutyEventsClient;
+  private volatile PagerDutyEventsClient pagerDutyEventsClient;
 
-  @Inject
-  public AlertChannelPagerDuty() {
-    this.pagerDutyEventsClient = PagerDutyEventsClient.create();
-  }
+  public AlertChannelPagerDuty() {}
 
   @VisibleForTesting
   AlertChannelPagerDuty(String apiUrl) {
@@ -50,6 +46,7 @@ public class AlertChannelPagerDuty extends AlertChannelBase {
     String text = getNotificationText(alert, channel);
 
     try {
+      PagerDutyEventsClient client = getPagerDutyEventsClient();
       EventResult eventResult;
       if (alert.getState() == State.ACTIVE) {
         Severity severity = Severity.ERROR;
@@ -82,13 +79,13 @@ public class AlertChannelPagerDuty extends AlertChannelBase {
             TriggerIncident.TriggerIncidentBuilder.newBuilder(params.getRoutingKey(), payload)
                 .setDedupKey(alert.getUuid().toString())
                 .build();
-        eventResult = pagerDutyEventsClient.trigger(incident);
+        eventResult = client.trigger(incident);
       } else {
         ResolveIncident resolveIncident =
             ResolveIncident.ResolveIncidentBuilder.newBuilder(
                     params.getRoutingKey(), alert.getUuid().toString())
                 .build();
-        eventResult = pagerDutyEventsClient.resolve(resolveIncident);
+        eventResult = client.resolve(resolveIncident);
       }
       if (!StringUtils.isEmpty(eventResult.getErrors())) {
         throw new PlatformNotificationException(
@@ -103,5 +100,16 @@ public class AlertChannelPagerDuty extends AlertChannelBase {
               alert.getName(), e.getMessage()),
           e);
     }
+  }
+
+  private PagerDutyEventsClient getPagerDutyEventsClient() {
+    if (pagerDutyEventsClient == null) {
+      synchronized (this) {
+        if (pagerDutyEventsClient == null) {
+          pagerDutyEventsClient = PagerDutyEventsClient.create();
+        }
+      }
+    }
+    return pagerDutyEventsClient;
   }
 }
