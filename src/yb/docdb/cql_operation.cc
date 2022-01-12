@@ -622,7 +622,8 @@ Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
   return result;
 }
 
-Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_value,
+Status QLWriteOperation::ApplyForJsonOperators(std::unordered_map<ColumnIdRep, QLValue>* res_map,
+                                               const QLColumnValuePB& column_value,
                                                const DocOperationApplyData& data,
                                                const DocPath& sub_path, const MonoDelta& ttl,
                                                const UserTimeMicros& user_timestamp,
@@ -633,12 +634,27 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   // Read the json column value inorder to perform a read modify write.
   QLExprResult temp;
   rapidjson::Document document;
-  RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), temp.Writer()));
-  const auto& ql_value = temp.Value();
-  if (!IsNull(ql_value)) {
-    Jsonb jsonb(std::move(ql_value.jsonb_value()));
+  ColumnIdRep col_id = column_value.column_id();
+  // Do we need to read the column.
+  bool read_needed = res_map->find(col_id) == res_map->end();
+  bool is_null = false;
+  if (read_needed) {
+    res_map->emplace(col_id, QLValue());
+    RETURN_NOT_OK(existing_row->ReadColumn(column_value.column_id(), temp.Writer()));
+    const auto& ql_value = temp.Value();
+    if (!IsNull(ql_value)) {
+      Jsonb jsonb(std::move(ql_value.jsonb_value()));
+      RETURN_NOT_OK(jsonb.ToRapidJson(&document));
+    } else {
+      is_null = true;
+    }
+  }
+  auto iter = res_map->find(col_id);
+  if (!read_needed) {
+    Jsonb jsonb(*(iter->second.mutable_jsonb_value()));
     RETURN_NOT_OK(jsonb.ToRapidJson(&document));
-  } else {
+  }
+  if (is_null) {
     if (!is_insert && column_value.json_args_size() > 1) {
       return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
         column_value.ShortDebugString());
@@ -695,20 +711,13 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   }
 
   // Now write the new json value back.
-  QLValue result;
   Jsonb jsonb_result;
   RETURN_NOT_OK(jsonb_result.FromRapidJson(document));
-  *result.mutable_jsonb_value() = std::move(jsonb_result.MoveSerializedJsonb());
-  const SubDocument& sub_doc =
-      SubDocument::FromQLValuePB(result.value(), column.sorting_type(),
-                                 yb::bfql::TSOpcode::kScalarInsert);
-  RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-    sub_path, sub_doc, data.read_time, data.deadline,
-    request_.query_id(), ttl, user_timestamp));
-
   // Update the current row as well so that we can accumulate the result of multiple json
   // operations and write the final value.
-  existing_row->AllocColumn(column_value.column_id()).value = result.value();
+  *(iter->second.mutable_jsonb_value()) = std::move(jsonb_result.MoveSerializedJsonb());
+
+  existing_row->AllocColumn(column_value.column_id()).value = iter->second.value();
   return Status::OK();
 }
 
@@ -907,6 +916,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             sub_path, value, data.read_time, data.deadline, request_.query_id()));
       }
 
+      std::unordered_map<ColumnIdRep, QLValue> res_map;
       for (const auto& column_value : request_.column_values()) {
         if (!column_value.has_column_id()) {
           return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
@@ -924,7 +934,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
 
         QLValue expr_result;
         if (!column_value.json_args().empty()) {
-          RETURN_NOT_OK(ApplyForJsonOperators(column_value, data, sub_path, ttl,
+          RETURN_NOT_OK(ApplyForJsonOperators(&res_map, column_value, data, sub_path, ttl,
                                               user_timestamp, column, &new_row, is_insert));
         } else if (!column_value.subscript_args().empty()) {
           RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, existing_row, data, ttl,
@@ -933,6 +943,24 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           RETURN_NOT_OK(ApplyForRegularColumns(column_value, existing_row, data, sub_path, ttl,
                                                user_timestamp, column, column_id, &new_row));
         }
+      }
+      // go over the map and generate (aggregated) SubDocument
+      for (const auto& entry : res_map) {
+        const ColumnId column_id(entry.first);
+        const auto maybe_column = schema_->column_by_id(column_id);
+        RETURN_NOT_OK(maybe_column);
+        const ColumnSchema& column = *maybe_column;
+        DocPath sub_path(
+            column.is_static() ?
+                encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
+            PrimitiveValue(column_id));
+
+        const SubDocument& sub_doc =
+            SubDocument::FromQLValuePB(entry.second.value(), column.sorting_type(),
+                                 yb::bfql::TSOpcode::kScalarInsert);
+        RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+            sub_path, sub_doc, data.read_time, data.deadline,
+            request_.query_id(), ttl, user_timestamp));
       }
 
       if (update_indexes_) {
