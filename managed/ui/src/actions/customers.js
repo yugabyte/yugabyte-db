@@ -408,7 +408,9 @@ export function updateUserProfileFailure(error) {
 
 export function fetchSoftwareVersions() {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`);
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`, {
+    params: { includeMetadata: true }
+  });
   return {
     type: FETCH_SOFTWARE_VERSIONS,
     payload: request
@@ -416,9 +418,12 @@ export function fetchSoftwareVersions() {
 }
 
 export function fetchSoftwareVersionsSuccess(result) {
+  const activeReleases = Object.entries(result?.data)
+    .filter((e) => e[1]?.state === 'ACTIVE')
+    .map((e) => e[0]);
   return {
     type: FETCH_SOFTWARE_VERSIONS_SUCCESS,
-    payload: result
+    payload: { ...result, data: activeReleases }
   };
 }
 
