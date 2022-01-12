@@ -65,9 +65,7 @@ showAsideToc: true
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page highlights the need to configure at least one cloud provider, as per the following illustration:
-
-![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
+This document describes how to configure the Kubernetes provider for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -80,11 +78,9 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-This is the ServiceAccount whose secret can be used to generate a `kubeconfig` file.
+This is the ServiceAccount whose secret can be used to generate a `kubeconfig` file. This account:
 
-This account:
-
-- Should not be deleted once it is in use by the platform.
+- Should not be deleted once it is in use by Yugabyte Platform.
 - `namespace` in the ServiceAccount creation command can be replaced by the desired namespace in which to install YugabyteDB.
 
 Run the following `kubectl` command to apply the YAML file:
@@ -201,7 +197,7 @@ You can use the Pivotal Container Service or Managed Kubernetes Service.
 Select the tab for the service you are using, as per the following illustration:<br><br>
 <img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
 
-Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default), as per the following illustration:
+Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default):
 
 <img title="K8s Configuration -- empty" alt="K8s Configuration -- empty" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-empty.png" />
 
