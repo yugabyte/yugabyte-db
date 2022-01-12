@@ -1752,20 +1752,19 @@ Status ClusterAdminClient::ModifyPlacementInfo(
           "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: " + placement_block);
     }
 
-    std::string placement_target = placement_info_min_replica_split[0],
-        placement_min_replica_count = "1";
+    std::string placement_target = placement_info_min_replica_split[0];
+    int placement_min_replica_count = 1;
 
     if(placement_info_min_replica_split.size() == 2) {
-      placement_min_replica_count = placement_info_min_replica_split[1];
+      placement_min_replica_count = VERIFY_RESULT(CheckedStoi(placement_info_min_replica_split[1]));
     }
 
-    int min_replica_count = VERIFY_RESULT(CheckedStoi(placement_min_replica_count));
-    total_min_replica_count += min_replica_count;
-    placement_to_min_replicas[placement_target] += min_replica_count;
+    total_min_replica_count += placement_min_replica_count;
+    placement_to_min_replicas[placement_target] += placement_min_replica_count;
   }
 
   if (total_min_replica_count > replication_factor) {
-      return STATUS(InvalidCommand, "replication_factor should be more than the total of replica counts specified in placement_info.");
+      return STATUS(InvalidCommand, "replication_factor should be greater than or equal to the total of replica counts specified in placement_info.");
   }
 
   for (const auto& placement_block : placement_to_min_replicas) {
