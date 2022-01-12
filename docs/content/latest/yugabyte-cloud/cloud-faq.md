@@ -59,7 +59,7 @@ A Yugabyte Cloud account is limited to a single free cluster; you can add as man
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
 | Scaling | None | Horizontal and Vertical |
 | Backups | None | Scheduled and on-demand |
-| YugabyteDB veersion | Latest | Stable |
+| YugabyteDB version | Latest | Stable |
 | Support | Slack Community | Enterprise Support |
 
 ### What can I do if I run out of resources on my free cluster?
