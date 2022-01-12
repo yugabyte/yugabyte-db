@@ -4,7 +4,7 @@ headerTitle: Security architecture
 linkTitle: Security architecture
 description: Security architecture of Yugabyte Cloud.
 image: /images/section_icons/index/secure.png
-headcontent: Yugabyte Cloud infrastructure security architecture.
+headcontent: Review Yugabyte Cloud's security architecture and shared responsibility model.
 menu:
   latest:
     parent: yugabyte-cloud
