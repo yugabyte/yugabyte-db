@@ -1701,8 +1701,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	char			     parentid_txt[32];
 	pgssSharedState      *pgss = pgsm_get_ss();
 	HTAB                 *pgss_hash = pgsm_get_hash();
-	char 				*query_txt = (char*) palloc0(PGSM_QUERY_MAX_LEN);
-	char 				*parent_query_txt = (char*) palloc0(PGSM_QUERY_MAX_LEN);
+	char 				*query_txt = (char*) palloc0(PGSM_QUERY_MAX_LEN + 1);
+	char 				*parent_query_txt = (char*) palloc0(PGSM_QUERY_MAX_LEN + 1);
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
@@ -2048,10 +2048,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
         values[i++] = BoolGetDatum(toplevel);
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
-	pfree(query_txt);
-	pfree(parent_query_txt);
 	/* clean up and return the tuplestore */
 	LWLockRelease(pgss->lock);
+
+	pfree(query_txt);
+	pfree(parent_query_txt);
 
 	tuplestore_donestoring(tupstore);
 }
