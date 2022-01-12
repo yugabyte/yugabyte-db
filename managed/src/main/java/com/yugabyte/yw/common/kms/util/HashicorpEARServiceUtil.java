@@ -22,7 +22,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.SecretEngineType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 
@@ -47,7 +47,7 @@ public class HashicorpEARServiceUtil {
     private static VaultSecretEngineBase buildSecretEngine(
         VaultAccessor accesor, String vaultSE, String mountPath, KeyType keyType) throws Exception {
       LOG.info("VaultSecretEngineBase.buildSecretEngine called");
-      SecretEngineType engineType = SecretEngineType.valueOf(vaultSE.toUpperCase());
+      KMSEngineType engineType = KMSEngineType.valueOf(vaultSE.toUpperCase());
 
       VaultSecretEngineBase returnVault = null;
       switch (engineType) {

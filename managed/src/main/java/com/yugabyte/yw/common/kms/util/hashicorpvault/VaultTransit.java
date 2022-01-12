@@ -36,16 +36,21 @@ public class VaultTransit extends VaultSecretEngineBase {
    * @param kType
    */
   public VaultTransit(VaultAccessor vault, String mPath, KeyType kType) throws Exception {
-    super(vault, SecretEngineType.TRANSIT, mPath, kType);
+    super(vault, KMSEngineType.TRANSIT, mPath, kType);
     LOG.debug("Calling VaultTransit");
 
     checkForPermissions();
   }
 
   @Override
-  public void checkForPermissions() throws Exception {
+  public void checkForPermissions() {
     final String path = buildPath(VaultOperations.KEYS, "");
-    String returnVal = vAccessor.listAt(path);
+    String returnVal = "";
+    try {
+      returnVal = vAccessor.listAt(path);
+    } catch (Exception e) {
+      LOG.warn("List operation at {} failed. Reason: {}", path, e.toString());
+    }
     LOG.debug("checkForPermissions called with path: {} and Returns {}", path, returnVal);
   }
 
