@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import AceEditor from 'react-ace';
-
+import 'ace-builds/webpack-resolver';
+import 'ace-builds/src-noconflict/worker-json';
 import 'ace-builds/src-noconflict/theme-textmate';
 import 'ace-builds/src-noconflict/mode-json';
-import 'ace-builds/src-noconflict/mode-text';
 import 'ace-builds/src-min-noconflict/snippets/json';
 
 const editorStyle = {
@@ -34,8 +34,7 @@ const EditorGFlag = ({ formProps, gFlagProps }) => {
         highlightActiveLine={true}
         enableSnippets={true}
         setOptions={{
-          showLineNumbers: true,
-          useWorker: false
+          showLineNumbers: true
         }}
         style={editorStyle}
         onChange={(val) => seteditorValue(val)}
