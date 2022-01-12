@@ -151,7 +151,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       validateNodeExistence(universe);
 
       // Create preflight node check tasks for on-prem nodes.
-      createPreflightNodeCheckTasks(universe, taskParams());
+      createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
