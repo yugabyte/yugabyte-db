@@ -43,9 +43,9 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 ### What are the differences between free and standard clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with the Latest release version of YugabyteDB. You can only have one free cluster.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with the [latest release](../../releases/whats-new/latest-release/) version of YugabyteDB. You can only have one free cluster.
 
-Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. Standard clusters are provisioned with the Stable release version of YugabyteDB.
+Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. Standard clusters are provisioned with the [stable release](../../releases/whats-new/stable-release/) version of YugabyteDB.
 
 A Yugabyte Cloud account is limited to a single free cluster; you can add as many standard clusters as you need.
 
@@ -59,7 +59,7 @@ A Yugabyte Cloud account is limited to a single free cluster; you can add as man
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
 | Scaling | None | Horizontal and Vertical |
 | Backups | None | Scheduled and on-demand |
-| YugabyteDB | Latest | Stable |
+| YugabyteDB veersion | Latest | Stable |
 | Support | Slack Community | Enterprise Support |
 
 ### What can I do if I run out of resources on my free cluster?
@@ -75,7 +75,7 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 
 ## YugabyteDB
 
-### What version of YugabyteDB does Yugabyte Cloud run on
+### What version of YugabyteDB does Yugabyte Cloud run on?
 
 New standard clusters are provisioned with the YugabyteDB [stable release](../../releases/whats-new/stable-release/).
 
@@ -141,7 +141,7 @@ Cloud console
 : During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
 
 Cluster (yugabyteDB) version upgrade
-: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify you of any upcoming upgrade schedule via email and Slack.
+: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify you of any upcoming upgrade schedule via email.
 : Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
 ### How do I connect to my cluster?
