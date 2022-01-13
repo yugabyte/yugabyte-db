@@ -2390,6 +2390,9 @@
         "airGapInstall" : {
           "type" : "boolean"
         },
+        "deleteRemote" : {
+          "type" : "boolean"
+        },
         "installNodeExporter" : {
           "type" : "boolean"
         },
@@ -3609,6 +3612,10 @@
         "name" : {
           "description" : "Provider name",
           "type" : "string"
+        },
+        "overrideKeyValidate" : {
+          "description" : "Transient property - only present in mutate API request",
+          "type" : "boolean"
         },
         "regions" : {
           "items" : {
