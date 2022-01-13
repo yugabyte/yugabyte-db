@@ -138,7 +138,9 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
   rapidjson::Value json_snapshots(rapidjson::kArrayType);
   if (!json) {
     if (resp.snapshots_size()) {
-      cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << endl;
+      // Using 2 tabs so that the header can be aligned to the time.
+      cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep
+           << "State" << kColumnSep << kColumnSep << "Creation Time" << endl;
     } else {
       cout << "No snapshots" << endl;
     }
@@ -161,7 +163,10 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
           HybridTimeToString(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
           &json_snapshot, &document.GetAllocator());
     } else {
-      cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
+      cout << SnapshotIdToString(snapshot.id()) << kColumnSep
+           << snapshot.entry().state() << kColumnSep
+           << HybridTimeToString(HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time()))
+           << endl;
     }
 
     // Not implemented in json mode.
