@@ -154,9 +154,9 @@ CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 
 For examples, see [Partial Indexes](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#partial-indexes).
 
-## Remove indexes
+## Drop indexes
 
-You can remove one or more existing indexes using the `DROP INDEX` statement that has the following syntax:
+You can drop one or more existing indexes using the `DROP INDEX` statement that has the following syntax:
 
 ```ysql
 DROP INDEX index_name1, index_name2, index_name3, ... ;
