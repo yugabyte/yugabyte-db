@@ -43,9 +43,9 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 ### What are the differences between free and standard clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an edge release, typically from the [latest track](../../releases/whats-new/latest-release/) of YugabyteDB; occasional edge releases will be a recent stable release. You can only have one free cluster.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an edge release, typically from the YugabyteDB [latest release series](../../releases/whats-new/latest-release/); occasional edge releases will be a recent stable release. You can only have one free cluster.
 
-Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a recent release from the [stable track](../../releases/whats-new/stable-release/) of YugabyteDB.
+Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a recent release from the YugabyteDB [stable release series](../../releases/whats-new/stable-release/).
 
 A Yugabyte Cloud account is limited to a single free cluster; you can add as many standard clusters as you need.
 
@@ -75,15 +75,15 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 
 ## YugabyteDB
 
-### What version of YugabyteDB does Yugabyte Cloud run on?
+### What version of YugabyteDB does my cluster run on?
 
-Free clusters are provisioned with an edge release, most often from the YugabyteDB [latest release](../../releases/whats-new/latest-release/) track; it may also be a recent stable release.
+Free clusters are provisioned with an edge release, most often from the YugabyteDB [latest release](../../releases/whats-new/latest-release/) series; it may also be a recent stable release.
 
-By default, new standard clusters are provisioned with a stable release from the YugabyteDB [stable release](../../releases/whats-new/stable-release/) track. You can choose the edge track when you create the cluster.
+By default, new standard clusters are provisioned with a release from the YugabyteDB [stable release](../../releases/whats-new/stable-release/) series. You can choose the edge track when you create the cluster.
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either edge or stable).
 
-To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name.
+To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
 
 ### Can I test YugabyteDB locally?
 
