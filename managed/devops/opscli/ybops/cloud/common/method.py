@@ -1154,6 +1154,7 @@ class AbstractAccessMethod(AbstractMethod):
         self.parser.add_argument("--key_file_path", required=True, help="Key file path")
         self.parser.add_argument("--public_key_file", required=False, help="Public key filename")
         self.parser.add_argument("--private_key_file", required=False, help="Private key filename")
+        self.parser.add_argument("--delete_remote", action="store_true")
 
     def validate_key_files(self, args):
         public_key_file = args.public_key_file
@@ -1199,7 +1200,8 @@ class AccessDeleteKeyMethod(AbstractAccessMethod):
 
     def callback(self, args):
         try:
-            self._delete_key_pair(args)
+            if (args.delete_remote):
+                self._delete_key_pair(args)
             self._cleanup_dir(args.key_file_path)
             print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
         except Exception as e:
