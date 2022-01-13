@@ -1,8 +1,8 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static play.test.Helpers.contentAsString;
@@ -14,17 +14,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
@@ -45,12 +41,6 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Users defaultUser = ModelFactory.testUser(defaultCustomer);
-    new File(TestHelper.TMP_PATH).mkdirs();
-  }
-
-  @After
-  public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File(TestHelper.TMP_PATH));
   }
 
   private Result createScriptSchedule(

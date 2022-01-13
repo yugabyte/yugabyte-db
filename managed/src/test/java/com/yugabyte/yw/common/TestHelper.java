@@ -9,9 +9,8 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 import org.slf4j.LoggerFactory;
 
 public class TestHelper {
@@ -25,9 +24,11 @@ public class TestHelper {
         filePath = basePath;
       }
       File tmpFile = new File(filePath, fileName);
+      tmpFile.getParentFile().mkdirs();
       fw = new FileWriter(tmpFile);
       fw.write(data);
       fw.close();
+      tmpFile.deleteOnExit();
       return tmpFile.getAbsolutePath();
     } catch (IOException ex) {
       return null;
@@ -39,7 +40,7 @@ public class TestHelper {
   }
 
   public static String createTempFile(String data) {
-    String fileName = new SimpleDateFormat("yyyyMMddhhmm").format(new Date());
+    String fileName = UUID.randomUUID().toString();
     return createTempFile(fileName, data);
   }
 

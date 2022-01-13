@@ -189,7 +189,7 @@ public class Commissioner {
       // Set retryable if eligible.
       responseJson.put("retryable", false);
       if (isTaskRetryable(taskInfo.getTaskType())
-          && task.getTarget() == TargetType.Universe
+          && (task.getTarget() == TargetType.Universe || task.getTarget() == TargetType.Cluster)
           && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
         // Retryable depends on the updating task UUID in the Universe.
         Universe.maybeGet(task.getTargetUUID())
