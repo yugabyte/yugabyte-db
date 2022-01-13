@@ -131,6 +131,9 @@ public class TableManager extends DevopsBase {
             } else {
               commandArgs.add(taskParams.getKeyspace());
             }
+            if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.pg_based")) {
+              commandArgs.add("--pg_based_backup");
+            }
           }
         } else if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.tableUUIDList != null
