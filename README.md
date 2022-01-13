@@ -29,7 +29,7 @@
 
 **NOTE**: This is a beta release and is subject to further changes. We recommend using it in testing environments only.
 
-The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQL. It attempts to provide a more holistic picture by providing much-needed query performance insights in a single view.
+The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQL. It attempts to provide a more holistic picture by providing much-needed query performance insights in a [single view](https://github.com/percona/pg_stat_monitor/blob/master/docs/REFERENCE.md).
 
 `pg_stat_monitor` provides improved insights that allow database users to understand query origins, execution, planning statistics and details, query information, and metadata. This significantly improves observability, enabling users to debug and tune query performance. `pg_stat_monitor` is developed on the basis of `pg_stat_statements` as its more advanced replacement.
 
@@ -39,7 +39,7 @@ To learn about other features, available in `pg_stat_monitor`, see the [Features
 
 `pg_stat_monitor` supports PostgreSQL versions 11 and above. It is compatible with both PostgreSQL provided by PostgreSQL Global Development Group (PGDG) and [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution).
 
-The RPM (for RHEL and CentOS) and the DEB (for Debian and Ubuntu) packages are available from Percona repositories for PostgreSQL versions [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/), and [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/).
+The `RPM` (for RHEL and CentOS) and the `DEB` (for Debian and Ubuntu) packages are available from Percona repositories for PostgreSQL versions [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/), and [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/).
 
 The RPM packages are also available in the official PostgreSQL (PGDG) yum repositories.
 
@@ -49,8 +49,8 @@ The `pg_stat_monitor` should work on the latest version of both [Percona Distrib
 
 | **Distribution** | **Version**     | **Provider** |
 | ---------------- | --------------- | ------------ |
-|[Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution)| [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/) and [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/)| Percona|
-| PostgreSQL       | 11, 12, and 13 | PostgreSQL Global Development Group (PGDG) |
+|[Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution)| [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/), [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/) and [14](https://www.percona.com/downloads/postgresql-distribution-14/LATEST/)| Percona|
+| PostgreSQL       | 11, 12, 13 and 14 | PostgreSQL Global Development Group (PGDG) |
 
 
 ### Features
@@ -69,10 +69,10 @@ The `pg_stat_monitor` should work on the latest version of both [Percona Distrib
 ### Documentation
 
 1. [User guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md)
-2. pg_stat_monitor vs pg_stat_statements
-3. pg_stat_monitor view reference
+2. [Comparing `pg_stat_monitor` and `pg_stat_statements`](https://github.com/percona/pg_stat_monitor/blob/master/docs/COMPARISON.md)
+3. [pg_stat_monitor view reference](https://github.com/percona/pg_stat_monitor/blob/master/docs/REFERENCE.md)
 4. [Release notes](https://github.com/percona/pg_stat_monitor/blob/master/docs/RELEASE_NOTES.md)
-5. Contributing guide (https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md)
+5. [Contributing guide](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md)
 
 
 ### Supported platforms
