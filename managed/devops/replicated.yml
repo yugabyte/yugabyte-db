@@ -529,17 +529,17 @@ config:
       - name: http_proxy
         title: HTTP Proxy setting
         help_text: Specify the setting for HTTP_PROXY
-        type: string
+        type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
       - name: https_proxy
         title: HTTPS Proxy setting
         help_text: Specify the setting for HTTPS_PROXY
-        type: string
+        type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
       - name: no_proxy
         title: HTTP no proxy setting
         help_text: Specify the setting for NO_PROXY
-        type: string
+        type: text
         default: ""
       - name: tls_version
         title: TLS Versions
