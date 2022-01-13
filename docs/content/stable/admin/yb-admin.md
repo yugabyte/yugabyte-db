@@ -1675,3 +1675,29 @@ yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_is_load_balancer_idle
 ```
+
+### Upgrade YSQL system catalog
+
+#### upgrade_ysql
+
+Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
+
+**Syntax**
+
+```sh
+yb-admin upgrade_ysql
+```
+
+**Example**
+
+```sh
+./bin/yb-admin upgrade_ysql
+```
+
+A successful upgrade returns the following message:
+
+```output
+YSQL successfully upgraded to the latest version
+```
+
+Refer [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.
