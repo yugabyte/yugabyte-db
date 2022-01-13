@@ -614,12 +614,14 @@ ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
 	if (array_contains_nulls(array))
 		PG_RETURN_NULL();
 
-	if (fcinfo->flinfo->fn_extra == NULL)
+	my_extra = (ArrayMetaState *) fcinfo->flinfo->fn_extra;
+	if (my_extra == NULL)
 	{
-		fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+		my_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
 													  sizeof(ArrayMetaState));
-		my_extra = (ArrayMetaState *) fcinfo->flinfo->fn_extra;
 		my_extra->element_type = ~element_type;
+
+		fcinfo->flinfo->fn_extra = my_extra;
 	}
 
 	if (my_extra->element_type != element_type)

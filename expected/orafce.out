@@ -4550,3 +4550,11 @@ SELECT oracle.least(1.2::real,2.4::real,2.2::real,2.3::real);
    1.2
 (1 row)
 
+SELECT i, oracle.greatest(100, 24, 1234, 12, i) FROM generate_series(1,3) g(i);
+ i | greatest 
+---+----------
+ 1 |     1234
+ 2 |     1234
+ 3 |     1234
+(3 rows)
+

@@ -1063,3 +1063,5 @@ SELECT oracle.least(1::smallint,2::smallint,3::smallint,4::smallint);
 SELECT oracle.least(1.2::numeric,2.4::numeric,2.3::numeric,2.2::numeric);
 SELECT oracle.least(1.2::double precision,2.4::double precision,2.3::double precision,2.2::double precision);
 SELECT oracle.least(1.2::real,2.4::real,2.2::real,2.3::real);
+
+SELECT i, oracle.greatest(100, 24, 1234, 12, i) FROM generate_series(1,3) g(i);
