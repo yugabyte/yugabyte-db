@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import socket
+import subprocess
 
 import boto3
 from botocore.exceptions import ClientError
@@ -98,12 +99,36 @@ class AwsCloud(AbstractCloud):
                 result[region][vpc.id]["zones"] = subnets
         return result
 
+    def _generate_fingerprints(self, key_file_path):
+        """
+        Method to generate all possible fingerprints of the key_file to match with KeyPair in AWS.
+        https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
+        """
+        try:
+            md5 = subprocess.check_output(
+                "ssh-keygen -ef {} -m PEM | openssl rsa -RSAPublicKey_in -outform DER "
+                "| openssl md5 -c".format(key_file_path), shell=True
+            ).decode('utf-8').strip()
+            sha1 = subprocess.check_output(
+                "openssl pkcs8 -in {} -inform PEM -outform DER -topk8 -nocrypt "
+                "| openssl sha1 -c".format(key_file_path), shell=True
+            ).decode('utf-8').strip()
+            sha256 = subprocess.check_output(
+                "ssh-keygen -ef {} -m PEM | openssl rsa -RSAPublicKey_in -outform DER "
+                "| openssl sha256 -c".format(key_file_path), shell=True
+            ).decode('utf-8').strip()
+        except subprocess.CalledProcessError as e:
+            raise YBOpsRuntimeError("Error generating fingerprints for {}. Shell Output {}"
+                                    .format(key_file_path, e.output))
+        return [md5, sha1, sha256]
+
     def list_key_pair(self, args):
         key_pair_name = args.key_pair_name if args.key_pair_name else '*'
         filters = [{'Name': 'key-name', 'Values': [key_pair_name]}]
         result = {}
         for region, client in self._get_clients(args.region).items():
-            result[region] = [keyInfo.name for keyInfo in client.key_pairs.filter(Filters=filters)]
+            result[region] = [(keyInfo.name, keyInfo.key_fingerprint)
+                              for keyInfo in client.key_pairs.filter(Filters=filters)]
         return result
 
     def delete_key_pair(self, args):
@@ -111,19 +136,17 @@ class AwsCloud(AbstractCloud):
             client.KeyPair(args.key_pair_name).delete()
 
     def add_key_pair(self, args):
+        """
+        Method to add key pair to AWS EC2.
+        True if new key pair with given name is added to AWS by Platform.
+        False if key pair with same name already exists and fingerprint is verified
+        Raises error if key is invalid, fingerprint generation fails, or fingerprint mismatches
+        """
         key_pair_name = args.key_pair_name
         # If we were provided with a private key file, we use that to generate the public
         # key using RSA. If not we will use the public key file (assuming the private key exists).
         key_file = args.private_key_file if args.private_key_file else args.public_key_file
         key_file_path = os.path.join(args.key_file_path, key_file)
-
-        # Make sure the key pair name doesn't exists already.
-        # TODO: may be add extra validation to see if the key exists in specific region
-        # if it doesn't exists in a region add them?. But only after validating the existing
-        # is the same key in other regions.
-        result = list(self.list_key_pair(args).values())[0]
-        if len(result) > 0:
-            raise YBOpsRuntimeError("KeyPair already exists {}".format(key_pair_name))
 
         if not os.path.exists(key_file_path):
             raise YBOpsRuntimeError("Key: {} file not found".format(key_file_path))
@@ -131,13 +154,24 @@ class AwsCloud(AbstractCloud):
         # This call would throw a exception if the file is not valid key file.
         rsa_key = validated_key_file(key_file_path)
 
+        # Validate the key pair if name already exists in AWS
+        result = list(self.list_key_pair(args).values())[0]
+        if len(result) > 0:
+            # Try to validate the keypair with KeyPair fingerprint in AWS
+            fingerprint = result[0][1]
+            possible_fingerprints = self._generate_fingerprints(key_file_path)
+            if fingerprint in possible_fingerprints:
+                return False
+            raise YBOpsRuntimeError("KeyPair {} already exists but fingerprint is invalid."
+                                    .format(key_pair_name))
+
         result = {}
         for region, client in self._get_clients(args.region).items():
             result[region] = client.import_key_pair(
                 KeyName=key_pair_name,
                 PublicKeyMaterial=format_rsa_key(rsa_key, public_key=True)
             )
-        return result
+        return True
 
     def _subset_region_data(self, per_region_meta):
         metadata_subset = {k: v for k, v in self.metadata["regions"].items()
