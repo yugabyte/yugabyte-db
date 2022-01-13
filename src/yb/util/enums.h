@@ -17,6 +17,7 @@
 #include <bitset>
 #include <string>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/core/demangle.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/expr_if.hpp>
@@ -29,6 +30,7 @@
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/util/math_util.h" // For constexpr_max
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -343,6 +345,23 @@ class EnumBitSet {
     return result;
   }
 };
+
+// Parses string representation to enum value
+template <typename EnumType>
+Result<EnumType> ParseEnumInsensitive(const char* str) {
+  for (auto value : List(static_cast<EnumType*>(nullptr))) {
+    if (boost::iequals(ToCString(value), str)) {
+      return value;
+    }
+  }
+  return STATUS_FORMAT(InvalidArgument, "$0 invalid value: $1", GetTypeName<EnumType>(), str);
+}
+
+template<typename EnumType>
+Result<EnumType> ParseEnumInsensitive(const std::string& str) {
+  return ParseEnumInsensitive<EnumType>(str.c_str());
+}
+
 
 }  // namespace yb
 

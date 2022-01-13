@@ -83,6 +83,11 @@ DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
 DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 256_MB,
              "Use to control write rate of flush and compaction.");
+DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "none",
+              "Allows to control rate limit sharing/calculation across RocksDB instances\n"
+              "  tserver - rate limit is shared across all RocksDB instances"
+              " at tabset server level\n"
+              "  none - rate limit is calculated independently for every RocksDB instance");
 DEFINE_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
              "Threshold beyond which compaction is considered large.");
 DEFINE_uint64(rocksdb_max_file_size_for_compaction, 0,
@@ -654,10 +659,8 @@ void InitRocksDBOptions(
     options->compaction_options_universal.min_merge_width =
         FLAGS_rocksdb_universal_compaction_min_merge_width;
     options->compaction_size_threshold_bytes = FLAGS_rocksdb_compaction_size_threshold_bytes;
-    if (FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec > 0) {
-      options->rate_limiter.reset(
-          rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
-    }
+    options->rate_limiter = tablet_options.rate_limiter ? tablet_options.rate_limiter
+                                                        : CreateRocksDBRateLimiter();
   } else {
     options->level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
     options->level0_stop_writes_trigger = std::numeric_limits<int>::max();
@@ -929,6 +932,24 @@ Status ForceRocksDBCompact(rocksdb::DB* db) {
       db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed:");
   return Status::OK();
+}
+
+RateLimiterSharingMode GetRocksDBRateLimiterSharingMode() {
+  auto result = ParseEnumInsensitive<RateLimiterSharingMode>(
+      FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode);
+  if (PREDICT_TRUE(result.ok())) {
+    return *result;
+  }
+  LOG(DFATAL) << result.status();
+  return RateLimiterSharingMode::NONE;
+}
+
+std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
+  if (PREDICT_TRUE((FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec > 0))) {
+    return std::shared_ptr<rocksdb::RateLimiter>(
+      rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
+  }
+  return nullptr;
 }
 
 } // namespace docdb
