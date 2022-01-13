@@ -145,6 +145,10 @@ public class Provider extends Model {
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public String destVpcId = null;
 
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean overrideKeyValidate = false;
+
   // End Transient Properties
 
   @JsonProperty("config")

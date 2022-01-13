@@ -105,7 +105,8 @@ public class CloudProviderHandler {
       if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
         new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
       }
-      accessManager.deleteKeyByProvider(provider, accessKey.getKeyCode());
+      accessManager.deleteKeyByProvider(
+          provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
       accessKey.delete();
     }
     NodeInstance.deleteByProvider(provider.uuid);

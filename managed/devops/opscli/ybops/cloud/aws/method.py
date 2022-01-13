@@ -259,8 +259,10 @@ class AwsAccessAddKeyMethod(AbstractAccessMethod):
 
     def callback(self, args):
         (private_key_file, public_key_file) = self.validate_key_files(args)
-        self.cloud.add_key_pair(args)
-        print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
+        delete_remote = self.cloud.add_key_pair(args)
+        print(json.dumps({"private_key": private_key_file,
+                          "public_key": public_key_file,
+                          "delete_remote": delete_remote}))
 
 
 class AwsAccessDeleteKeyMethod(AccessDeleteKeyMethod):
