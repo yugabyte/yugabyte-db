@@ -77,9 +77,11 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 
 ### What version of YugabyteDB does Yugabyte Cloud run on?
 
+Free clusters are provisioned with an edge release, most often from the YugabyteDB [latest release](../../releases/whats-new/latest-release/) track; it may also be a recent stable release.
+
 By default, new standard clusters are provisioned with a stable release from the YugabyteDB [stable release](../../releases/whats-new/stable-release/) track. You can choose the edge track when you create the cluster.
 
-Free clusters are provisioned with an edge release, most often from the YugabyteDB [latest release](../../releases/whats-new/latest-release/) track; it may also be a recent stable release.
+Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either edge or stable).
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name.
 
@@ -142,6 +144,7 @@ Cloud console
 
 Cluster (yugabyteDB) version upgrade
 : To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify you of any upcoming upgrade schedule via email.
+: The database is upgraded to the latest release in the release track that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
 : Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
 ### How do I connect to my cluster?
