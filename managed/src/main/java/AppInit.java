@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -13,6 +14,7 @@ import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
@@ -24,6 +26,7 @@ import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.Ebean;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
@@ -52,9 +55,12 @@ public class AppInit {
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
       QueryAlerts queryAlerts,
+      AlertConfigurationWriter alertConfigurationWriter,
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
       PlatformMetricsProcessor platformMetricsProcessor,
+      Scheduler scheduler,
+      CallHome callHome,
       SettableRuntimeConfigFactory sConfigFactory,
       Config config)
       throws ReflectiveOperationException {
@@ -139,9 +145,14 @@ public class AppInit {
 
       queryAlerts.start();
       platformMetricsProcessor.start();
+      alertConfigurationWriter.start();
 
       // Startup platform HA.
       replicationManager.init();
+
+      scheduler.start();
+      callHome.start();
+      queryAlerts.start();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

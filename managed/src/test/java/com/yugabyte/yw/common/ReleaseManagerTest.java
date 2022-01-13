@@ -44,8 +44,9 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReleaseManagerTest extends FakeDBApplication {
-  static String TMP_STORAGE_PATH = "/tmp/yugaware_tests/releases";
-  static String TMP_DOCKER_STORAGE_PATH = "/tmp/yugaware_tests/docker/releases";
+  String TMP_STORAGE_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/releases";
+  String TMP_DOCKER_STORAGE_PATH =
+      "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/docker/releases";
 
   @InjectMocks ReleaseManager releaseManager;
 

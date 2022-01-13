@@ -93,10 +93,9 @@ public class AlertConfigurationWriter {
     this.metricQueryHelper = metricQueryHelper;
     this.configFactory = configFactory;
     this.maintenanceService = maintenanceService;
-    this.initialize();
   }
 
-  private void initialize() {
+  public void start() {
     int configSyncPeriodSec = configFactory.globalRuntimeConf().getInt(CONFIG_SYNC_INTERVAL_PARAM);
     if (configSyncPeriodSec < MIN_CONFIG_SYNC_INTERVAL_SEC) {
       log.warn(
