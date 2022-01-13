@@ -3,7 +3,7 @@ import * as Yup from 'yup';
 import React, { useState } from 'react';
 import { Field, Form, Formik } from 'formik';
 import { Row, Col } from 'react-bootstrap';
-import { YBButton, YBFormInput } from '../../../common/forms/fields';
+import { YBButton, YBControlledNumericInput, YBFormInput } from '../../../common/forms/fields';
 import { AzureRegions } from './AzureRegions';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 
@@ -23,7 +23,9 @@ const validationSchema = Yup.object().shape({
   AZURE_CLIENT_SECRET: Yup.string().required('Azure Client Secret is a required field'),
   AZURE_TENANT_ID: Yup.string().required('Azure Tenant ID is a required field'),
   AZURE_SUBSCRIPTION_ID: Yup.string().required('Azure Subscription ID is a required field'),
-  AZURE_RG: Yup.string().required('Azure Resource Group is a required field')
+  AZURE_RG: Yup.string().required('Azure Resource Group is a required field'),
+  sshPort: Yup.number(),
+  sshUser: Yup.string()
 });
 
 const convertFormDataToPayload = (formData) => {
@@ -52,8 +54,14 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
   const [regionsFormData, setRegionsFormData] = useState([]);
 
   const createProviderConfig = (values) => {
-    const config = _.omit(values, 'providerName', 'networkSetup');
+    const config = _.omit(values, 'providerName', 'networkSetup', 'sshPort', 'sshUser');
     const regions = convertFormDataToPayload(regionsFormData);
+    if (values['sshPort']) {
+      regions['sshPort'] = values['sshPort'];
+    }
+    if (values['sshUser']) {
+      regions['sshUser'] = values['sshUser'];
+    }
     createAzureProvider(values.providerName, config, regions);
   };
 
@@ -124,6 +132,42 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
                       title="Azure Config"
                       content="This is the unique identifier of the Azure Active Directory instance. "
                     />
+                  </Col>
+                </Row>
+                <Row className="config-provider-row">
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">SSH Port</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field name="sshPort" type="number">
+                      {({ field, form: { setFieldValue } }) => (
+                        <YBControlledNumericInput
+                          name="sshPort"
+                          input={{
+                            placeholder: 'SSH Port'
+                          }}
+                          val={field.value}
+                          onInputChanged={(valAsNum) => setFieldValue('sshPort', valAsNum)}
+                        />
+                      )}
+                    </Field>
+                  </Col>
+                  <Col lg={1} className="config-provider-tooltip">
+                    <YBInfoTip
+                      title="SSH Port"
+                      content="Which port should YugaWare open and connect to?"
+                    />
+                  </Col>
+                </Row>
+                <Row className="config-provider-row">
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">SSH User</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field name="sshUser" placeholder="SSH User" component={YBFormInput} />
+                  </Col>
+                  <Col lg={1} className="config-provider-tooltip">
+                    <YBInfoTip title="SSH User" content="Custom SSH User." />
                   </Col>
                 </Row>
                 <Row className="config-provider-row">
