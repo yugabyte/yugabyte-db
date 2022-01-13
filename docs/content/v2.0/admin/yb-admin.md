@@ -534,8 +534,8 @@ yb-admin -master_addresses <master-addresses> modify_placement_info <placement_i
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-- *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`. It is not recommended to repeat placement multiple times but instead specify the total count after the colon. However, in the event that the user specifies a placement multiple times, the total count from all mentions is taken.
-- *replication_factor*: The number of replicas for each tablet. This value should be more than the total of replica counts specified in *placement_info*.
+- *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
+- *replication_factor*: The number of replicas for each tablet.
 - *placement_id*: The identifier of the primary cluster, which can be any unique string. If not set, a randomly-generated ID will be used.
 
 **Example**
@@ -543,13 +543,8 @@ yb-admin -master_addresses <master-addresses> modify_placement_info <placement_i
 ```sh
 $ ./bin/yb-admin --master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
-    aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:3,aws.us-west.us-west-2c 8
+    aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
 ```
-
-This will place a minimum of:
-1. 2 replicas in aws.us-west.us-west-2a
-2. 3 replicas in aws.us-west.us-west-2b
-3. 1 replica in aws.us-west.us-west-2c
 
 You can verify the new placement information by running the following `curl` command:
 
