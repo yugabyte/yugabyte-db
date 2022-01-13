@@ -264,7 +264,7 @@ By default, GIN indexes use a single range-partitioned tablet.
 Like regular tables and indexes, it is possible to presplit a GIN index to multiple tablets at specified split points.
 These split points are for the index, so they need to be represented in the index key format.
 This is simple for tsvector and array types, but it gets complicated for jsonb and text (`pg_trgm`).
-`jsonb_path_ops` especially should use hash partitioning since the index key is itself a hash, but hash partitioning `gin` indexes is currently unsupported.
+`jsonb_path_ops` especially should use hash partitioning since the index key is itself a hash, but hash partitioning GIN indexes is currently unsupported.
 
 ```sql
 CREATE INDEX NONCONCURRENTLY vectors_split_idx ON vectors USING gin (v) SPLIT AT VALUES (('j'), ('o'));
