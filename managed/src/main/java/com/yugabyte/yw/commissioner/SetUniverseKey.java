@@ -59,14 +59,13 @@ public class SetUniverseKey {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.ybService = ybService;
-    this.initialize();
   }
 
   public void setRunningState(AtomicBoolean state) {
     this.running = state;
   }
 
-  private void initialize() {
+  public void start() {
     this.actorSystem
         .scheduler()
         .schedule(

@@ -45,7 +45,6 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -67,8 +66,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -96,7 +93,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
-    new File(TestHelper.TMP_PATH).mkdirs();
     try {
       String kubeFile = createTempFile("test2.conf", "test5678");
       when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
@@ -104,11 +100,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     } catch (Exception e) {
       // Do nothing
     }
-  }
-
-  @After
-  public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File(TestHelper.TMP_PATH));
   }
 
   private Result listProviders() {

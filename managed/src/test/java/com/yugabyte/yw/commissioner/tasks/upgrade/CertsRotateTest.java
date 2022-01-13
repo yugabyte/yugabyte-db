@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
@@ -211,6 +212,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
       UUID rootCA,
       UUID clientRootCA)
       throws IOException, NoSuchAlgorithmException {
+    createTempFile("cert_rotate_test_ca.crt", "test data");
+
     CertificateInfo.create(
         rootCA,
         defaultCustomer.uuid,
@@ -218,7 +221,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
         new Date(),
         new Date(),
         "privateKey",
-        TestHelper.TMP_PATH + "/ca.crt",
+        TestHelper.TMP_PATH + "/cert_rotate_test_ca.crt",
         CertificateInfo.Type.SelfSigned);
 
     CertificateInfo.create(
@@ -228,7 +231,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
         new Date(),
         new Date(),
         "privateKey",
-        TestHelper.TMP_PATH + "/ca.crt",
+        TestHelper.TMP_PATH + "/cert_rotate_test_ca.crt",
         CertificateInfo.Type.SelfSigned);
 
     defaultUniverse =
@@ -278,7 +281,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           new Date(),
           new Date(),
           "privateKey",
-          TestHelper.TMP_PATH + "/ca.crt",
+          TestHelper.TMP_PATH + "/cert_rotate_test_ca.crt",
           CertificateInfo.Type.SelfSigned);
     }
     if (rotateClientRootCA) {
@@ -290,7 +293,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           new Date(),
           new Date(),
           "privateKey",
-          TestHelper.TMP_PATH + "/ca.crt",
+          TestHelper.TMP_PATH + "/cert_rotate_test_ca.crt",
           CertificateInfo.Type.SelfSigned);
     }
     if (rotateRootCA && rotateClientRootCA && rootAndClientRootCASame) {

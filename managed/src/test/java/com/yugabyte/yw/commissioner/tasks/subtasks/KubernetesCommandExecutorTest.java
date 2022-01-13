@@ -61,6 +61,8 @@ import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
+  private static final String CERTS_DIR = "/tmp/yugaware_tests/kcet_certs";
+
   KubernetesManager kubernetesManager;
   Provider defaultProvider;
   Universe defaultUniverse;
@@ -114,19 +116,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultAZ.updateConfig(config);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     defaultUniverse = updateUniverseDetails("small");
+    new File(CERTS_DIR).mkdirs();
     defaultCert =
         CertificateInfo.get(
             CertificateHelper.createRootCA(
                 defaultUniverse.getUniverseDetails().nodePrefix,
                 defaultProvider.customerUUID,
-                "/tmp/certs"));
+                CERTS_DIR));
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
   }
 
   @After
   public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File("/tmp/certs"));
+    FileUtils.deleteDirectory(new File(CERTS_DIR));
   }
 
   private Universe updateUniverseDetails(String instanceTypeCode) {

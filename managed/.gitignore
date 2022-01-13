@@ -4,6 +4,7 @@ logs
 target
 .idea
 .idea_modules
+jacoco.exec
 /.classpath
 /.project
 /.settings

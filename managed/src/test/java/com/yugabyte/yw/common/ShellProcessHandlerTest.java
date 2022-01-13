@@ -32,7 +32,7 @@ public class ShellProcessHandlerTest {
   @InjectMocks ShellProcessHandler shellProcessHandler;
 
   @Mock play.Configuration appConfig;
-  static String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
+  static String TMP_STORAGE_PATH = "/tmp/yugaware_tests/spht_certs";
 
   @Before
   public void beforeTest() {
