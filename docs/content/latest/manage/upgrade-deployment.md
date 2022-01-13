@@ -112,7 +112,9 @@ YSQL successfully upgraded to the latest version
 
 In certain scenarios, YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
 
+```sh
 $ ./bin/yb-admin -timeout_ms 180000 upgrade_ysql
+```
 
 Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
 
