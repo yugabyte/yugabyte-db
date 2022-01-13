@@ -13,7 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The use of indexes can enhance database performance by enabling the database server to find rows faster. 
+The use of indexes can enhance database performance by enabling the database server to find rows faster. YugabyteDB provides two index types: LSM (Log-Strucured Merge) and GIN. Each index type uses a different algorithm that is best suited to different types of queries. By default, the CREATE INDEX command creates LSM indexes, which fit the most common situations.
+
+These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen. For more information on `gin`, see [Generalized inverted index][explore-gin].
 
 YSQL allows you to create, drop, and list indexes, as well as use indexes on expressions.
 
@@ -28,8 +30,6 @@ CREATE INDEX index_name ON table_name(column_list);
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index.
 
 You can also create a functional index, in which case you would replace any element of *column_list* with an expression. For more information, see [Use indexes on expressions](#use-indexes-on-expressions).
-
-YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen. For more information on `ybgin`, see [Generalized inverted index][explore-gin].
 
 You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC examples](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 
