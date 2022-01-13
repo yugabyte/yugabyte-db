@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { YBFormInput, YBFormSelect, YBInputField } from '../common/forms/fields';
 
-import './ConfigureReplicationModal.scss';
 import { YBModalForm } from '../common/forms';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { IReplicationTable } from './IClusterReplication';
@@ -11,6 +10,7 @@ import { YBLoading } from '../common/indicators';
 import {
   createXClusterReplication,
   fetchTablesInUniverse,
+  fetchTaskUntilItCompletes,
   fetchUniversesList
 } from '../../actions/xClusterReplication';
 
@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
 import { YSQL_TABLE_TYPE } from './ReplicationUtils';
+import './ConfigureReplicationModal.scss';
 
 const validationSchema = Yup.object().shape({
   name: Yup.string().required('Replication name is required'),
@@ -56,9 +57,21 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
       );
     },
     {
-      onSuccess: () => {
+      onSuccess: (resp) => {
         onHide();
-        queryClient.invalidateQueries('universe');
+        fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
+          if (err) {
+            toast.error(
+              <span className='alertMsg'>
+                <i className="fa fa-exclamation-circle" />
+                <span>Replication creation failed.</span>
+                <a href={`/tasks/${resp.data.taskUUID}`} rel="noopener noreferrer" target="_blank">View Details</a>
+              </span>
+            );
+          }
+          queryClient.invalidateQueries('universe');
+
+        });
       },
       onError: (err: any) => {
         toast.error(err.response.data.error);
