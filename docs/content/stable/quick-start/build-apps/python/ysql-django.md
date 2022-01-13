@@ -67,16 +67,16 @@ $ git clone https://github.com/yugabyte/orm-examples.git
 
 This repository has a Django ORM example that implements a simple REST API server. Database access in this application is managed through the Django ORM. The e-commerce database `ysql_django` includes the following tables:
 
-- `users`: of the e-commerce site are stored in the `users` table.
-- `products`:  table contains a list of products the e-commerce site sells.
-- `orders`: placed by the users are populated in the `orders` table.
-- `orderline`:  stores multiple line items from an order in the `orderline` table.
+- `users` stores users of the e-commerce site.
+- `products` contains a list of products the e-commerce site sells.
+- `orders` contains orders placed by the users.
+- `orderline` stores multiple line items from an order.
 
 The source for the above application can be found in the `python/django` directory of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) repository.
 
 ## Set up the application
 
-- Customize the database connection setting according to your environment in `ybstore/settings.py` under `orm-examples/python/django` directory:
+- Customize the database connection setting according to your environment in the `ybstore/settings.py` file. This file is in the `orm-examples/python/django` directory.
 
 ```python
 DATABASES = {
@@ -91,19 +91,19 @@ DATABASES = {
 }
 ```
 
-- Generate a Django secret key using any django secret key generator and paste the generated key in the following line of the `settings.py` file:
+- Generate a [Django secret key](https://docs.djangoproject.com/en/dev/ref/settings/#secret-key) and paste the generated key in the following line of the `settings.py` file:
 
 ```python
 SECRET_KEY = 'YOUR-SECRET-KEY'
 ```
 
-- Create a database using the `YugabyteDB SQL shell`(ysqlsh) by navigating to the location of your local [YugabyteDB](#yugabytedb) cluster created above.
+- Create a database using the YugabyteDB YSQL shell (ysqlsh). From the location of your local [YugabyteDB](#yugabytedb) cluster, run the following shell command:
 
 ```sh
 bin/ysqlsh -c "CREATE DATABASE ysql_django"
 ```
 
-- From the `orm-examples/python/django` directory, create the migrations, and migrate the changes to the database using the following command:
+- From the `orm-examples/python/django` directory, run the following command to create the migrations and migrate the changes to the database:
 
 ```sh
 python3 manage.py makemigrations && python3 manage.py migrate
@@ -111,13 +111,13 @@ python3 manage.py makemigrations && python3 manage.py migrate
 
 ## Start the REST API server
 
-Run the following Python script to start the REST API server at port `8080`. You can specify a port of your own choice.
+Run the following Python script to start the REST API server at port 8080, or specify a port of your own choice.
 
-```python
+```sh
 python3 manage.py runserver 8080
 ```
 
-The REST API server will start and listen for your requests at `http://localhost:8080`.
+The REST API server starts and listens for your requests at `http://localhost:8080`.
 
 ## Send requests to the application
 
