@@ -3,6 +3,7 @@ import { Col, Row } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';
 import { closeDialog, openDialog } from '../../actions/modal';
 import { YBButton } from '../common/forms/fields';
+import { ConfigureMaxLagTimeModal } from './ConfigureMaxLagTimeModal';
 import { ConfigureReplicationModal } from './ConfigureReplicationModal';
 
 import { ReplicationList } from './ReplicationList';
@@ -15,6 +16,10 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
     dispatch(openDialog('addClusterReplicationModal'));
   };
 
+  const showConfigureMaxLagTimeModal = () => {
+    dispatch(openDialog('configureMaxLagTimeModal'));
+  }
+
   const hideModal = () => dispatch(closeDialog());
 
   return (
@@ -25,18 +30,24 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
         </Col>
         <Col lg={6}>
           <Row className="cluster_action">
-            <Col lg={9} className="cluster_support_text">
-              <i className="fa fa-exclamation-circle"></i> For replicating a source universe with
-              existing data, please{' '}
-              <a href="https://support.yugabyte.com/hc/en-us">contact support</a>
-            </Col>
-            <Col lg={3}>
+            <Row>
               <YBButton
-                btnText="Configure replication"
+                btnText="Max acceptable lag time"
+                btnClass={'btn configure-max-lag'}
+                btnIcon="fa fa-bell-o"
+                onClick={showConfigureMaxLagTimeModal}
+              />
+              <YBButton
+                btnText="Configure Replication"
                 btnClass={'btn btn-orange'}
                 onClick={showAddClusterReplicationModal}
               />
-            </Col>
+            </Row>
+            <Row className="cluster_support_text">
+              <i className="fa fa-exclamation-circle"></i> For replicating a source universe with
+              existing data, please{' '}
+              <a href="https://support.yugabyte.com/hc/en-us">contact support</a>
+            </Row>
           </Row>
         </Col>
       </Row>
@@ -47,6 +58,12 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
             currentUniverseUUID={currentUniverseUUID}
             onHide={hideModal}
             visible={showModal && visibleModal === 'addClusterReplicationModal'}
+          />
+          <ConfigureMaxLagTimeModal
+            visible={showModal && visibleModal === 'configureMaxLagTimeModal'}
+            // visible={true}
+            currentUniverseUUID={currentUniverseUUID}
+            onHide={hideModal}
           />
         </Col>
       </Row>
