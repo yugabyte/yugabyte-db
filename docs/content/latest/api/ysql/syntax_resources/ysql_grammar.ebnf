@@ -453,6 +453,13 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'NONCONCURRENTLY' ] \
 index_elem = ( column_name | '(' expression ')' ) [ operator_class_name ]
              [ 'HASH' | 'ASC' | 'DESC' ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
 
+(* 'CREATE' 'MATERIALIZED 'VIEW')
+create_materialized_view = 'CREATE' 'MATERIALIZED' 'VIEW' [ 'IF' 'NOT' 'EXISTS' ] \
+                           matview_name [ '(' column_name { ',' column_name } ')' ] \
+                           [ 'WITH' '(' storage_parameters ')' ] \
+                           [ 'TABLESPACE' tablespace ] \
+                           'AS' query [ 'WITH' [ 'NO' ] 'DATA' ] ;
+
 (* 'CREATE' 'OPERATOR' *)
 create_operator = 'CREATE' 'OPERATOR' operator_name '('
                   ( 'FUNCTION' '=' function_name | 'PROCEDURE' '=' procedure_name )
@@ -737,6 +744,10 @@ argtype_decl = [ argmode ] [ argname ] argtype;
 (* 'DROP' 'GROUP' *)
 drop_group = 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
+(* 'DROP' 'MATERIALIZED' 'VIEW' *)
+drop_matview = 'DROP' 'MATERIALIZED' 'VIEW' [ 'IF' 'EXISTS' ] matview_name \
+               [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'OPERATOR' *)
 drop_operator = 'DROP' 'OPERATOR' [ 'IF' 'EXISTS' ] ( operator_name '(' operator_signature ')' )
                 { ',' ( operator_name '(' operator_signature ')' ) }
@@ -884,6 +895,10 @@ prepare_statement = 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' 
 (* 'REASSIGN' 'OWNED' *)
 reassign_owned = 'REASSIGN' 'OWNED' 'BY' role_specification { ',' role_specification }
                                     'TO' role_specification ;
+
+(* 'REFRESH' 'MATERIALIZED' 'VIEW' *)
+refresh_matview = 'REFRESH' 'MATERIALIZED' 'VIEW' [ 'CONCURRENTLY' ] \
+                  matview_name [ 'WITH' [ 'NO' ] 'DATA' ] ;
 
 (* 'RESET' *)
 reset_stmt := 'RESET' ( name | 'ALL' ) ;
@@ -1267,6 +1282,8 @@ new_name = name ;
 
 version = '<text literal>' ;
 extension_name = name ;
+
+matview_name = qualified_name ;
 
 (*
   Notice that the "demo-2" rule uses ( ... ) redundantly.

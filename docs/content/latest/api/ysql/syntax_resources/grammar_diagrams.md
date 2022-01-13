@@ -1335,6 +1335,13 @@ drop_group ::= DROP GROUP [ IF EXISTS ] role_name [ , ... ]
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="445" height="80" viewbox="0 0 445 80"><path class="connector" d="M0 52h15m53 0h10m62 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h35m24 0h35q5 0 5 5v20q0 5-5 5m-5 0h35"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="53" height="25" rx="7"/><text class="text" x="25" y="52">DROP</text><rect class="literal" x="78" y="35" width="62" height="25" rx="7"/><text class="text" x="88" y="52">GROUP</text><rect class="literal" x="170" y="35" width="32" height="25" rx="7"/><text class="text" x="180" y="52">IF</text><rect class="literal" x="212" y="35" width="64" height="25" rx="7"/><text class="text" x="222" y="52">EXISTS</text><rect class="literal" x="356" y="5" width="24" height="25" rx="7"/><text class="text" x="366" y="22">,</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="326" y="35" width="84" height="25"/><text class="text" x="336" y="52">role_name</text></a><polygon points="441,59 445,59 445,45 441,45" style="fill:black;stroke-width:0"/></svg>
 
+### drop_matview
+```
+drop_matview ::= DROP MATERIALIZED VIEW [ IF EXISTS ] matview_name  
+                 [ CASCADE | RESTRICT ]
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="546" height="120" viewbox="0 0 546 120"><path class="connector" d="M0 22h15m53 0h10m111 0h10m53 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h10m113 0h7m2 0h2m2 0h2m-546 50h2m2 0h2m2 0h27m77 0h22m-109 25q0 5 5 5h5m79 0h5q5 0 5-5m-104-25q5 0 5 5v33q0 5 5 5h89q5 0 5-5v-33q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="53" height="25" rx="7"/><text class="text" x="25" y="22">DROP</text><rect class="literal" x="78" y="5" width="111" height="25" rx="7"/><text class="text" x="88" y="22">MATERIALIZED</text><rect class="literal" x="199" y="5" width="53" height="25" rx="7"/><text class="text" x="209" y="22">VIEW</text><rect class="literal" x="282" y="5" width="32" height="25" rx="7"/><text class="text" x="292" y="22">IF</text><rect class="literal" x="324" y="5" width="64" height="25" rx="7"/><text class="text" x="334" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#matview-name"><rect class="rule" x="418" y="5" width="113" height="25"/><text class="text" x="428" y="22">matview_name</text></a><rect class="literal" x="35" y="55" width="77" height="25" rx="7"/><text class="text" x="45" y="72">CASCADE</text><rect class="literal" x="35" y="85" width="79" height="25" rx="7"/><text class="text" x="45" y="102">RESTRICT</text><polygon points="145,79 149,79 149,65 145,65" style="fill:black;stroke-width:0"/></svg>
+
 ### drop_operator
 ```ebnf
 drop_operator ::= DROP OPERATOR [ IF EXISTS ] 
@@ -1613,6 +1620,13 @@ reassign_owned ::= REASSIGN OWNED BY role_specification [ , ... ] TO
                    role_specification
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="585" height="65" viewbox="0 0 585 65"><path class="connector" d="M0 52h15m83 0h10m67 0h10m35 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h54m24 0h54q5 0 5 5v20q0 5-5 5m-5 0h30m36 0h10m122 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="83" height="25" rx="7"/><text class="text" x="25" y="52">REASSIGN</text><rect class="literal" x="108" y="35" width="67" height="25" rx="7"/><text class="text" x="118" y="52">OWNED</text><rect class="literal" x="185" y="35" width="35" height="25" rx="7"/><text class="text" x="195" y="52">BY</text><rect class="literal" x="299" y="5" width="24" height="25" rx="7"/><text class="text" x="309" y="22">,</text><a xlink:href="../grammar_diagrams#role-specification"><rect class="rule" x="250" y="35" width="122" height="25"/><text class="text" x="260" y="52">role_specification</text></a><rect class="literal" x="402" y="35" width="36" height="25" rx="7"/><text class="text" x="412" y="52">TO</text><a xlink:href="../grammar_diagrams#role-specification"><rect class="rule" x="448" y="35" width="122" height="25"/><text class="text" x="458" y="52">role_specification</text></a><polygon points="581,59 585,59 585,45 581,45" style="fill:black;stroke-width:0"/></svg>
+
+### refresh_matview
+```
+refresh_matview ::= REFRESH MATERIALIZED VIEW [ CONCURRENTLY ]  
+                    matview_name [ WITH [ NO ] DATA ]
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="457" height="115" viewbox="0 0 457 115"><path class="connector" d="M0 22h15m76 0h10m111 0h10m53 0h30m117 0h20m-152 0q5 0 5 5v8q0 5 5 5h127q5 0 5-5v-8q0-5 5-5m5 0h7m2 0h2m2 0h2m-457 50h2m2 0h2m2 0h7m113 0h30m53 0h30m38 0h20m-73 0q5 0 5 5v8q0 5 5 5h48q5 0 5-5v-8q0-5 5-5m5 0h10m52 0h20m-238 0q5 0 5 5v23q0 5 5 5h213q5 0 5-5v-23q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="76" height="25" rx="7"/><text class="text" x="25" y="22">REFRESH</text><rect class="literal" x="101" y="5" width="111" height="25" rx="7"/><text class="text" x="111" y="22">MATERIALIZED</text><rect class="literal" x="222" y="5" width="53" height="25" rx="7"/><text class="text" x="232" y="22">VIEW</text><rect class="literal" x="305" y="5" width="117" height="25" rx="7"/><text class="text" x="315" y="22">CONCURRENTLY</text><a xlink:href="../grammar_diagrams#matview-name"><rect class="rule" x="15" y="55" width="113" height="25"/><text class="text" x="25" y="72">matview_name</text></a><rect class="literal" x="158" y="55" width="53" height="25" rx="7"/><text class="text" x="168" y="72">WITH</text><rect class="literal" x="241" y="55" width="38" height="25" rx="7"/><text class="text" x="251" y="72">NO</text><rect class="literal" x="309" y="55" width="52" height="25" rx="7"/><text class="text" x="319" y="72">DATA</text><polygon points="392,79 396,79 396,65 392,65" style="fill:black;stroke-width:0"/></svg>
 
 ### reset_stmt
 ```ebnf
@@ -2634,6 +2648,12 @@ version ::= '<text literal>'
 extension_name ::= name
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="84" height="35" viewbox="0 0 84 35"><path class="connector" d="M0 22h15m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="15" y="5" width="54" height="25"/><text class="text" x="25" y="22">name</text></a><polygon points="80,29 84,29 84,15 80,15" style="fill:black;stroke-width:0"/></svg>
+
+### matview_name
+```
+matview_name ::= qualified_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
 
 ### savepoint_create
 ```ebnf
