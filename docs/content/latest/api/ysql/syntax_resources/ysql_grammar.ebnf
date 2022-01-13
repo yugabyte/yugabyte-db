@@ -453,8 +453,8 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'NONCONCURRENTLY' ] \
 index_elem = ( column_name | '(' expression ')' ) [ operator_class_name ]
              [ 'HASH' | 'ASC' | 'DESC' ] [ 'NULLS' ( 'FIRST' | 'LAST' ) ] ;
 
-(* 'CREATE' 'MATERIALIZED 'VIEW')
-create_materialized_view = 'CREATE' 'MATERIALIZED' 'VIEW' [ 'IF' 'NOT' 'EXISTS' ] \
+(* 'CREATE' 'MATERIALIZED 'VIEW' *)
+create_matview = 'CREATE' 'MATERIALIZED' 'VIEW' [ 'IF' 'NOT' 'EXISTS' ] \
                            matview_name [ '(' column_name { ',' column_name } ')' ] \
                            [ 'WITH' '(' storage_parameters ')' ] \
                            [ 'TABLESPACE' tablespace ] \
