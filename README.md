@@ -20,7 +20,7 @@
 * [Setup](#setup)
 * [Building from source code](#building-from-source)
 * [How to contribute](#how-to-contribute)
-* [Report a Bug](#report-a-bug)
+* [Report a bug](#report-a-bug)
 * [Support, discussions and forums](#support-discussions-and-forums)
 * [License](#license)
 * [Copyright notice](#copyright-notice)
@@ -85,7 +85,7 @@ The PostgreSQL YUM repository supports `pg_stat_monitor` for all [supported vers
 Find the list of supported platforms for `pg_stat_monitor` within [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) on the [Percona Release Lifecycle Overview](https://www.percona.com/services/policies/percona-software-support-lifecycle#pgsql) page.
 
 
-### Installation Guidelines
+### Installation guidelines
 
 You can install `pg_stat_monitor` from the following sources:
 
@@ -118,7 +118,7 @@ Replace XX with the desired PostgreSQL version. For example, to install `pg_stat
       yum install percona-pg-stat-monitor13
       ```
 
-#### Installing from PostgreSQL yum repositories
+#### Installing from PostgreSQL `yum` repositories
 
 Install the PostgreSQL repositories following the instructions in the [Linux downloads (Red Hat family)](https://www.postgresql.org/download/linux/redhat/) chapter in PostgreSQL documentation.
 
@@ -154,10 +154,8 @@ You can enable `pg_stat_monitor` when your `postgresql` instance is not running.
 
 Use the [ALTER SYSTEM](https://www.postgresql.org/docs/current/sql-altersystem.html)command from `psql` terminal to modify the `shared_preload_libraries` parameter.
 
-```
+```sql
 ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
-
-ALTER SYSTEM
 ```
 
 > **NOTE**: If you’ve added other modules to the `shared_preload_libraries` parameter (for example, `pg_stat_statements`), list all of them separated by commas for the `ALTER SYSTEM` command. 
@@ -170,23 +168,22 @@ Start or restart the `postgresql` instance to apply the changes.
 
 * On Debian and Ubuntu:
 
-```
+```sh
 sudo systemctl restart postgresql.service
 ```
 
 * On Red Hat Enterprise Linux and CentOS:
 
 
-```
+```sh
 sudo systemctl restart postgresql-13
 ```
 
 Create the extension using the [CREATE EXTENSION](https://www.postgresql.org/docs/current/sql-createextension.html) command. Using this command requires the privileges of a superuser or a database owner. Connect to `psql` as a superuser for a database and run the following command:
 
 
-```
+```sql
 CREATE EXTENSION pg_stat_monitor;
-CREATE EXTENSION
 ```
 
 
@@ -242,9 +239,11 @@ We welcome and strongly encourage community participation and contributions, and
 
 The [Contributing Guide](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md) contains the guidelines on how you can contribute.
 
-### Report a Bug
+### Report a bug
 
-Please report all bugs to Percona's Jira: https://jira.percona.com/projects/PG/issues
+If you would like to suggest a new feature / an improvement or you found a bug in `pg_stat_monitor`, please submit the report to the [Percona Jira issue tracker](https://jira.percona.com/projects/PG). 
+
+Refer to the [Submit a bug report or a feature request](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md#submit-a-bug-report-or-a-feature-request) section for bug reporting guidelines.
 
 
 ### Support, discussions and forums
