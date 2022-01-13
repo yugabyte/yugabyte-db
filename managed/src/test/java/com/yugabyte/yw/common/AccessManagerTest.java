@@ -502,7 +502,8 @@ public class AccessManagerTest extends FakeDBApplication {
             + " --key_pair_name foo --key_file_path "
             + TMP_KEYS_PATH
             + "/"
-            + defaultProvider.uuid;
+            + defaultProvider.uuid
+            + " --delete_remote";
     String commandStr = String.join(" ", command.getValue());
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
     assertTrue(cloudCredentials.getValue().isEmpty());

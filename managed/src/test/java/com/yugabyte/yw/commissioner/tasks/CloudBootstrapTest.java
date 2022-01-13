@@ -71,6 +71,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     taskParams.destVpcId = destVpcId;
     taskParams.sshPort = 12345;
     taskParams.airGapInstall = false;
+    taskParams.overrideKeyValidate = false;
     return taskParams;
   }
 
@@ -154,6 +155,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(taskParams.sshUser),
                 eq(taskParams.sshPort),
                 eq(taskParams.airGapInstall),
+                eq(false),
                 eq(false));
       } else {
         String expectedAccessKeyCode = taskParams.keyPairName;
