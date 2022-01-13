@@ -63,28 +63,27 @@ This option is only permitted when there is at least one UNIQUE index on the mat
 Basic example.
 
 ```plpgsql
-yugabyte=# CREATE TABLE t1(a int4, b int4);
-yugabyte=# INSERT INTO t1 VALUES (2, 4), (3, 4);
-yugabyte=# CREATE MATERIALIZED VIEW m1 AS SELECT * FROM t1 WHERE a = 3;
-yugabyte=# SELECT * FROM t1;
-```
-
-```
- a | b
----+---
- 3 | 4
- 2 | 4
-(2 rows)
-```
-
-```plpgsql
+yugabyte=# CREATE TABLE t1(a int4);
+yugabyte=# CREATE MATERIALIZED VIEW m1 AS SELECT * FROM t1;
+yugabyte=# INSERT INTO t1 VALUES (1);
 yugabyte=# SELECT * FROM m1;
 ```
 
 ```
- a | b
----+---
- 3 | 4
+ a
+---
+(0 rows)
+```
+
+```plpgsql
+yugabyte=# REFRESH MATERIALIZED VIEW m1;
+yugabyte=# SELECT * FROM m1;
+```
+
+```
+ a
+---
+ 1
 (1 row)
 ```
 
