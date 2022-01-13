@@ -42,19 +42,22 @@ public class CertificateHelperTest extends FakeDBApplication {
   @Before
   public void setUp() {
     c = ModelFactory.testCustomer();
-    certPath = String.format("/tmp/certs/%s/", c.uuid);
+    certPath = String.format("/tmp/" + getClass().getSimpleName() + "/certs/%s/", c.uuid);
+    new File(certPath).mkdirs();
   }
 
   @After
   public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File("/tmp/certs"));
+    FileUtils.deleteDirectory(new File("/tmp/" + getClass().getSimpleName() + "/certs"));
   }
 
   @Test
   public void testCreateRootCAWithoutClientCert() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
+    UUID rootCA =
+        CertificateHelper.createRootCA(
+            taskParams.nodePrefix, c.uuid, "/tmp/" + getClass().getSimpleName());
     assertNotNull(CertificateInfo.get(rootCA));
     try {
       InputStream in = new FileInputStream(certPath + String.format("/%s/ca.root.crt", rootCA));
@@ -70,7 +73,9 @@ public class CertificateHelperTest extends FakeDBApplication {
   public void testCreateRootCAWithClientCert() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
+    UUID rootCA =
+        CertificateHelper.createRootCA(
+            taskParams.nodePrefix, c.uuid, "/tmp/" + getClass().getSimpleName());
     CertificateHelper.createClientCertificate(
         rootCA, String.format(certPath + "/%s", rootCA), "yugabyte", null, null);
     assertNotNull(CertificateInfo.get(rootCA));
@@ -92,7 +97,9 @@ public class CertificateHelperTest extends FakeDBApplication {
   public void testCreateClientRootCAWithClientCert() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID clientRootCA = CertificateHelper.createClientRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
+    UUID clientRootCA =
+        CertificateHelper.createClientRootCA(
+            taskParams.nodePrefix, c.uuid, "/tmp/" + getClass().getSimpleName());
     CertificateHelper.createClientCertificate(
         clientRootCA, String.format(certPath + "/%s", clientRootCA), "yugabyte", null, null);
     assertNotNull(CertificateInfo.get(clientRootCA));

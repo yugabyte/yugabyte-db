@@ -42,17 +42,15 @@ public class CallHome {
     this.executionContext = executionContext;
     this.environment = environment;
     this.callHomeManager = callHomeManager;
+  }
 
+  public void start() {
     // We don't want to start callhome on dev environments
     if (this.environment.isDev()) {
       log.info("Skip callhome scheduling");
-    } else {
-      log.info("Initialize callhome service");
-      this.initialize();
+      return;
     }
-  }
-
-  private void initialize() {
+    log.info("Initialize callhome service");
     this.actorSystem
         .scheduler()
         .schedule(

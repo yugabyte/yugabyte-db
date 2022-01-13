@@ -83,7 +83,7 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
 
-  static String TMP_CHART_PATH = "/tmp/yugaware_tests/UniverseUiOnlyControllerTest/charts";
+  private String TMP_CHART_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
 
   @Before
   public void setUp() {
