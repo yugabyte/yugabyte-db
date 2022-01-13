@@ -7,6 +7,8 @@ import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.*;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.junit.Before;
 import org.junit.Test;
@@ -23,6 +25,7 @@ import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
 import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -38,6 +41,9 @@ public class TableManagerTest extends FakeDBApplication {
   @Mock ReleaseManager releaseManager;
 
   @InjectMocks TableManager tableManager;
+
+  @Mock RuntimeConfigFactory mockruntimeConfigFactory;
+  @Mock Config mockConfigUniverseScope;
 
   private Provider testProvider;
   private Customer testCustomer;
@@ -273,6 +279,8 @@ public class TableManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata metadata = new ReleaseManager.ReleaseMetadata();
     metadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
+    when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
+    when(mockConfigUniverseScope.getBoolean("yb.backup.pg_based")).thenReturn(false);
   }
 
   @Test

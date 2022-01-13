@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -48,6 +49,7 @@ public class TableManager extends DevopsBase {
   }
 
   @Inject ReleaseManager releaseManager;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
@@ -118,6 +120,9 @@ public class TableManager extends DevopsBase {
               commandArgs.add("ysql." + taskParams.getKeyspace());
             } else {
               commandArgs.add(taskParams.getKeyspace());
+            }
+            if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.pg_based")) {
+              commandArgs.add("--pg_based_backup");
             }
           }
         } else if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {

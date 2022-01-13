@@ -67,6 +67,7 @@ TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
 
 METADATA_FILE_NAME = 'SnapshotInfoPB'
 SQL_DUMP_FILE_NAME = 'YSQLDump'
+SQL_DATA_DUMP_FILE_NAME = 'YSQLDump_data'
 CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
@@ -291,6 +292,10 @@ def compare_checksums_cmd(checksum_file1, checksum_file2):
 
 def get_db_name_cmd(dump_file):
     return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
+
+
+def get_grep_enums_cmd(dump_file):
+    return "egrep '^CREATE TYPE ' " + pipes.quote(dump_file) + " || [[ $? == 1 ]]"
 
 
 def replace_db_name_cmd(dump_file, old_name, new_name):
@@ -654,6 +659,12 @@ class YBBackup:
             '--remote_ysql_shell_binary', default=DEFAULT_REMOTE_YSQL_SHELL_PATH,
             help="Path to the remote ysql shell binary")
         parser.add_argument(
+            '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
+                                                                          "pg based backup.")
+        parser.add_argument(
+            '--detect_enums', action='store_true', default=True, help="Use it to detect enums "
+                                                                      "in schema.")
+        parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
             '--ssh_user', default=DEFAULT_YB_USER, help="Username to use for the ssh connection.")
@@ -967,6 +978,16 @@ class YBBackup:
             args += ['--port=' + self.args.ysql_port]
         return args
 
+    def run_cli_tool(self, cli_tool_with_args):
+        """
+        Runs a command line tool.
+        :param cli_tool_with_args: command-line tool with arguments as a single string
+        :return: the standard output of the tool
+        """
+
+        run_at_ip = self.get_live_tserver_ip() if self.is_k8s() else None
+        return self.run_tool(None, cli_tool_with_args, [], [], run_ip=run_at_ip)
+
     def run_ysql_dump(self, cmd_line_args):
         """
         Runs the ysql_dump utility from the configured location.
@@ -1111,6 +1132,7 @@ class YBBackup:
         """
         tablet_leaders = []
 
+        assert self.args.table
         for i in range(0, len(self.args.table)):
             # Don't call list_tablets on a parent colocated table.
             if is_parent_colocated_table_name(self.args.table[i]):
@@ -1757,6 +1779,68 @@ class YBBackup:
                     "'Version: <number>' in the end: {}".format(output))
         return matched.group('version')
 
+    def is_enum_present(self, sql_dump_path):
+        """
+        Detects the presence of enum in schema of a YSQL database.
+        """
+        resp = self.run_cli_tool(get_grep_enums_cmd(sql_dump_path))
+        return ' AS ENUM (' in resp if resp else False
+
+    def create_metadata_files(self):
+        """
+        :return: snapshot_id and list of sql_dump files
+        """
+        snapshot_id = None
+        dump_files = []
+        pg_based_backup = self.args.pg_based_backup
+        if self.is_ysql_keyspace():
+            sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
+            db_name = keyspace_name(self.args.keyspace[0])
+            ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
+                              '--schema-only', '--dbname=' + db_name, '--file=' + sql_dump_path]
+
+            logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
+                            db_name, sql_dump_path))
+            self.run_ysql_dump(ysql_dump_args)
+
+            if not pg_based_backup and self.args.detect_enums:
+                logging.info('Detecting enum in {}'.format(sql_dump_path))
+                pg_based_backup = self.is_enum_present(sql_dump_path)
+
+            dump_files.append(sql_dump_path)
+            if pg_based_backup:
+                sql_data_dump_path = os.path.join(self.get_tmp_dir(), SQL_DATA_DUMP_FILE_NAME)
+                logging.info("[app] Performing ysql_dump based backup!")
+                self.run_ysql_dump(['--include-yb-metadata', '--serializable-deferrable',
+                                    '--data-only', '--dbname=' + db_name,
+                                    '--file=' + sql_data_dump_path])
+                dump_files.append(sql_data_dump_path)
+
+        if not self.args.snapshot_id and not pg_based_backup:
+            snapshot_id = self.create_snapshot()
+            logging.info("Snapshot started with id: %s" % snapshot_id)
+            # TODO: Remove the following try-catch for compatibility to un-relax the code, after
+            #       we ensure nobody uses versions < v2.1.4 (after all move to >= v2.1.8).
+            try:
+                # With 'update_table_list=True' it runs: 'yb-admin list_snapshots SHOW_DETAILS'
+                # to get updated list of backed up namespaces and tables. Note that the last
+                # argument 'SHOW_DETAILS' is not supported in old YB versions (< v2.1.4).
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
+                                       update_table_list=True)
+            except CompatibilityException as ex:
+                logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
+                # In the compatibility mode repeat the command in old style
+                # (without the new command line argument 'SHOW_DETAILS').
+                # With 'update_table_list=False' it runs: 'yb-admin list_snapshots'.
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
+                                       update_table_list=False)
+
+            if not self.args.no_snapshot_deleting:
+                logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
+                atexit.register(self.delete_created_snapshot, snapshot_id)
+
+        return (snapshot_id, dump_files)
+
     def create_and_upload_metadata_files(self, snapshot_filepath):
         """
         Generates and uploads metadata files describing the given snapshot to the target
@@ -1775,8 +1859,6 @@ class YBBackup:
 
         is_ysql = self.is_ysql_keyspace()
         if is_ysql:
-            sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
-            db_name = keyspace_name(self.args.keyspace[0])
             start_version = self.get_ysql_catalog_version()
 
         stored_keyspaces = self.args.keyspace
@@ -1787,36 +1869,9 @@ class YBBackup:
         while num_retry > 0:
             num_retry = num_retry - 1
 
-            if not self.args.snapshot_id:
-                snapshot_id = self.create_snapshot()
-                logging.info("Snapshot started with id: %s" % snapshot_id)
-                # TODO: Remove the following try-catch for compatibility to un-relax the code, after
-                #       we ensure nobody uses versions < v2.1.4 (after all move to >= v2.1.8).
-                try:
-                    # With 'update_table_list=True' it runs: 'yb-admin list_snapshots SHOW_DETAILS'
-                    # to get updated list of backed up namespaces and tables. Note that the last
-                    # argument 'SHOW_DETAILS' is not supported in old YB versions (< v2.1.4).
-                    self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
-                                           update_table_list=True)
-                except CompatibilityException as ex:
-                    logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
-                    # In the compatibility mode repeat the command in old style
-                    # (without the new command line argument 'SHOW_DETAILS').
-                    # With 'update_table_list=False' it runs: 'yb-admin list_snapshots'.
-                    self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
-                                           update_table_list=False)
-
-                if not self.args.no_snapshot_deleting:
-                    logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
-                    atexit.register(self.delete_created_snapshot, snapshot_id)
+            (snapshot_id, dump_files) = self.create_metadata_files()
 
             if is_ysql:
-                logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
-                             db_name, sql_dump_path))
-                self.run_ysql_dump(['--include-yb-metadata', '--serializable-deferrable',
-                                    '--create', '--schema-only',
-                                    '--dbname=' + db_name, '--file=' + sql_dump_path])
-
                 final_version = self.get_ysql_catalog_version()
                 logging.info('[app] YSQL catalog versions: {} - {}'.format(
                              start_version, final_version))
@@ -1837,16 +1892,17 @@ class YBBackup:
         if num_retry == 0:
             raise BackupException("Couldn't create metafiles due to catalog changes")
 
-        metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
-        logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
-        self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path],
-                          run_ip=self.get_main_host_ip())
-        self.upload_metadata_and_checksum(metadata_path,
-                                          os.path.join(snapshot_filepath, METADATA_FILE_NAME))
+        if snapshot_id:
+            metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
+            logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
+            self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path],
+                              run_ip=self.get_main_host_ip())
 
-        if is_ysql:
-            self.upload_metadata_and_checksum(sql_dump_path,
-                                              os.path.join(snapshot_filepath, SQL_DUMP_FILE_NAME))
+            self.upload_metadata_and_checksum(metadata_path,
+                                              os.path.join(snapshot_filepath, METADATA_FILE_NAME))
+        for file_path in dump_files:
+            self.upload_metadata_and_checksum(
+                file_path, os.path.join(snapshot_filepath, os.path.basename(file_path)))
 
         return snapshot_id
 
@@ -1894,13 +1950,20 @@ class YBBackup:
             snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
 
         snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
-        tablet_leaders = self.find_tablet_leaders()
-        self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
-        logging.info(
-            '[app] Backed up tables %s to %s successfully!' %
-            (self.table_names_str(), snapshot_filepath))
+
+        pg_based_backup = snapshot_id is None
         if self.args.backup_keys_source:
             self.upload_encryption_key_file()
+
+        if pg_based_backup:
+            logging.info("[app] PG based backup successful!")
+        else:
+            tablet_leaders = self.find_tablet_leaders()
+
+            self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
+            logging.info("[app] Backed up tables {} to {} successfully!".format(
+                self.table_names_str(), snapshot_filepath))
+
         print(json.dumps({"snapshot_url": snapshot_filepath}))
 
     def download_file(self, src_path, target_path):
@@ -1954,10 +2017,7 @@ class YBBackup:
         else:
             self.create_remote_tmp_dir(self.get_main_host_ip())
 
-        src_metadata_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
-        metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
-        self.download_file(src_metadata_path, metadata_path)
-
+        dump_files = []
         src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
         sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
 
@@ -1974,12 +2034,32 @@ class YBBackup:
                              format(src_sql_dump_path, ex))
                 sql_dump_path = None
 
-        return (metadata_path, sql_dump_path)
+        if sql_dump_path:
+            dump_files.append(sql_dump_path)
+            src_sql_data_dump_path = os.path.join(
+                    self.args.backup_location, SQL_DATA_DUMP_FILE_NAME)
+            sql_data_dump_path = os.path.join(self.get_tmp_dir(), SQL_DATA_DUMP_FILE_NAME)
+            try:
+                self.download_file(src_sql_data_dump_path, sql_data_dump_path)
+                dump_files.append(sql_data_dump_path)
+                logging.info('Skipping ' + METADATA_FILE_NAME + ' metadata file downloading.')
+                return (None, dump_files)
+            except subprocess.CalledProcessError as ex:
+                logging.info("Ignoring the exception in downloading of {}: {}".
+                             format(src_sql_data_dump_path, ex))
+                sql_data_dump_path = None
+
+        src_metadata_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
+        metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
+        self.download_file(src_metadata_path, metadata_path)
+
+        return (metadata_path, dump_files)
 
     def import_ysql_dump(self, dump_file_path):
         """
         Import the YSQL dump using the provided file.
         """
+        new_db_name = None
         if self.args.keyspace:
             cmd = get_db_name_cmd(dump_file_path)
 
@@ -1999,6 +2079,7 @@ class YBBackup:
                 self.run_ssh_cmd(cmd, self.get_main_host_ip())
 
         self.run_ysql_shell(['--echo-all', '--file=' + dump_file_path])
+        return new_db_name
 
     def import_snapshot(self, metadata_file_path):
         """
@@ -2146,11 +2227,28 @@ class YBBackup:
         elif self.args.table:
             raise BackupException('Need to specify --keyspace')
 
-        logging.info('Restoring backup from {}'.format(self.args.backup_location))
+        logging.info('[app] Restoring backup from {}'.format(self.args.backup_location))
+        (metadata_file_path, dump_file_paths) = self.download_metadata_file()
 
-        (metadata_file_path, dump_file_path) = self.download_metadata_file()
-        if dump_file_path:
-            self.import_ysql_dump(dump_file_path)
+        for dump_file_path in dump_file_paths:
+            dump_file = os.path.basename(dump_file_path)
+            if dump_file == SQL_DUMP_FILE_NAME:
+                logging.info('[app] Create YSQL tables from {}'.format(dump_file_path))
+                new_db_name = self.import_ysql_dump(dump_file_path)
+            elif dump_file == SQL_DATA_DUMP_FILE_NAME:
+                # Note: YSQLDump_data must be last in the dump file list.
+                logging.info('[app] Apply complete YSQL data dump from {}'.format(dump_file_path))
+                ysqlsh_args = ['--file=' + dump_file_path]
+                if new_db_name:
+                    ysqlsh_args += ['--dbname=' + new_db_name]
+
+                self.run_ysql_shell(ysqlsh_args)
+
+                # Skipping Snapshot loading & restoring because
+                # PG based backup means only complete YSQL Data Dump applying.
+                logging.info('[app] Restored PG based backup successfully!')
+                print(json.dumps({"success": True}))
+                return
 
         snapshot_metadata = self.import_snapshot(metadata_file_path)
         snapshot_id = snapshot_metadata['snapshot_id']['new']
