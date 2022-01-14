@@ -17,12 +17,75 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
    ->  Seq Scan on t2
    ->  Memoize
          Cache Key: t2.val
+         Cache Mode: logical
          ->  Index Scan using t1_val on t1
                Index Cond: (val = t2.val)
-(6 rows)
+(7 rows)
 
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.debug_print TO on;
+SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
+ ?column? 
+----------
+ t
+(1 row)
+
+SHOW pg_hint_plan.enable_hint_table;
+ pg_hint_plan.enable_hint_table 
+--------------------------------
+ off
+(1 row)
+
+/* query-id related test */
+SET compute_query_id to off;
+SET pg_hint_plan.enable_hint_table to on;	-- error
+ERROR:  table hint is not activated because queryid is not available
+HINT:  Set compute_query_id to on or auto to use hint table.
+SET compute_query_id to on;
+SET pg_hint_plan.enable_hint_table to on;
+SET compute_query_id to off;
+SELECT 1;									-- gets warining
+WARNING:  hint table feature is deactivated because queryid is not available
+HINT:  Set compute_query_id to "auto" or "on" to use hint table.
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1;									-- not
+ ?column? 
+----------
+        1
+(1 row)
+
+SET compute_query_id to on;
+SELECT 1;									-- reactivated
+LOG:  hint table feature is reactivated
+ ?column? 
+----------
+        1
+(1 row)
+
+SET compute_query_id to off;
+SELECT 1;									-- gets warining
+WARNING:  hint table feature is deactivated because queryid is not available
+HINT:  Set compute_query_id to "auto" or "on" to use hint table.
+ ?column? 
+----------
+        1
+(1 row)
+
+SET pg_hint_plan.enable_hint_table to off;
+SET compute_query_id to on;
+SET pg_hint_plan.enable_hint_table to on;
+SELECT 1;									-- no warining
+ ?column? 
+----------
+        1
+(1 row)
+
+RESET compute_query_id;
+RESET pg_hint_plan.enable_hint_table;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -39,9 +102,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
    ->  Seq Scan on t2
    ->  Memoize
          Cache Key: t2.val
+         Cache Mode: logical
          ->  Index Scan using t1_val on t1
                Index Cond: (val = t2.val)
-(6 rows)
+(7 rows)
 
 /*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;

@@ -5,8 +5,31 @@ SET client_min_messages TO log;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
+
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.debug_print TO on;
+SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
+SHOW pg_hint_plan.enable_hint_table;
+
+/* query-id related test */
+SET compute_query_id to off;
+SET pg_hint_plan.enable_hint_table to on;	-- error
+SET compute_query_id to on;
+SET pg_hint_plan.enable_hint_table to on;
+SET compute_query_id to off;
+SELECT 1;									-- gets warining
+SELECT 1;									-- not
+SET compute_query_id to on;
+SELECT 1;									-- reactivated
+SET compute_query_id to off;
+SELECT 1;									-- gets warining
+SET pg_hint_plan.enable_hint_table to off;
+SET compute_query_id to on;
+SET pg_hint_plan.enable_hint_table to on;
+SELECT 1;									-- no warining
+
+RESET compute_query_id;
+RESET pg_hint_plan.enable_hint_table;
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;

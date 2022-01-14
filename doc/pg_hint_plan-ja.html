@@ -101,7 +101,7 @@ postgres=#
 
 <h4 id="hint-table">テーブルでの指定</h4>
 <p>指定したいヒントを、実行計画を制御したいクエリと併せてヒント用のテーブルに登録します。</p>
-<p>デフォルトでは無効なので、テーブルで指定したヒントは適用されません。そのため、ヒントをテーブルで指定する場合は、<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>pg_hint_plan.enable_hint_tableの設定を変更します。</p>
+<p>デフォルトでは無効なので、テーブルで指定したヒントは適用されません。そのため、ヒントをテーブルで指定する場合は、<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>pg_hint_plan.enable_hint_tableの設定を変更します。この機能を利用する場合にはcompute_query_idが"auto"または"on"である必要があります。</p>
 <p>ヒント用のテーブルは「<span class="bold">hint_plan.hints</span>」です。hint_plan.hintsテーブルには、以下の情報を登録します。</p>
 <table>
 <thead>

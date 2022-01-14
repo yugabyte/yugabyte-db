@@ -237,6 +237,16 @@ static unsigned int msgqno = 0;
 static char qnostr[32];
 static const char *current_hint_str = NULL;
 
+/*
+ * We can utilize in-core generated jumble state in post_parse_analyze_hook.
+ * On the other hand there's a case where we're forced to get hints in
+ * planner_hook, where we don't have a jumble state.  If we a query had not a
+ * hint, we need to try to retrieve hints twice or more for one query, which is
+ * the quite common case.  To avoid such case, this variables is set true when
+ * we *try* hint retrieval.
+ */
+static bool current_hint_retrieved = false;
+
 /* common data for all hints. */
 struct Hint
 {
@@ -394,6 +404,9 @@ typedef struct HintParser
 	HintKeyword			hint_keyword;
 } HintParser;
 
+static bool enable_hint_table_check(bool *newval, void **extra, GucSource source);
+static void assign_enable_hint_table(bool newval, void *extra);
+
 /* Module callbacks */
 void		_PG_init(void);
 void		_PG_fini(void);
@@ -401,6 +414,8 @@ void		_PG_fini(void);
 static void push_hint(HintState *hstate);
 static void pop_hint(void);
 
+static void pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query,
+											JumbleState *jstate);
 static PlannedStmt *pg_hint_plan_planner(Query *parse, const char *query_string,
 										 int cursorOptions,
 										 ParamListInfo boundParams);
@@ -522,6 +537,8 @@ static int hint_inhibit_level = 0;			/* Inhibit hinting if this is above 0 */
 											/* (This could not be above 1)        */
 static int max_hint_nworkers = -1;		/* Maximum nworkers of Workers hints */
 
+static bool	hint_table_deactivated = false;
+
 static const struct config_enum_entry parse_messages_level_options[] = {
 	{"debug", DEBUG2, true},
 	{"debug5", DEBUG5, false},
@@ -558,6 +575,7 @@ static const struct config_enum_entry parse_debug_level_options[] = {
 };
 
 /* Saved hook values in case of unload */
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static planner_hook_type prev_planner = NULL;
 static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
@@ -679,11 +697,15 @@ _PG_init(void)
 							 false,
 							 PGC_USERSET,
 							 0,
-							 NULL,
-							 NULL,
+							 enable_hint_table_check,
+							 assign_enable_hint_table,
 							 NULL);
 
+	EmitWarningsOnPlaceholders("pg_hint_plan");
+
 	/* Install hooks. */
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
+	post_parse_analyze_hook = pg_hint_plan_post_parse_analyze;
 	prev_planner = planner_hook;
 	planner_hook = pg_hint_plan_planner;
 	prev_join_search = join_search_hook;
@@ -715,6 +737,31 @@ _PG_fini(void)
 	/* uninstall PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
 	*var_ptr = NULL;
+}
+
+static bool
+enable_hint_table_check(bool *newval, void **extra, GucSource source)
+{
+	if (*newval)
+	{
+		EnableQueryId();
+
+		if (!IsQueryIdEnabled())
+		{
+			GUC_check_errmsg("table hint is not activated because queryid is not available");
+			GUC_check_errhint("Set compute_query_id to on or auto to use hint table.");
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static void
+assign_enable_hint_table(bool newval, void *extra)
+{
+	if (!newval)
+		hint_table_deactivated = false;
 }
 
 /*
@@ -2399,7 +2446,7 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 						  hint->base.keyword));
 		else if (nworkers < 0)
 			hint_ereport(hint->nworkers_str,
-						 ("number of workers must be positive: %s",
+						 ("number of workers must be greater than zero: %s",
 						  hint->base.keyword));
 		else if (nworkers > max_worker_processes)
 			hint_ereport(hint->nworkers_str,
@@ -2743,13 +2790,27 @@ pop_hint(void)
  * Retrieve and store hint string from given query or from the hint table.
  */
 static void
-get_current_hint_string(Query *query, const char *query_str)
+get_current_hint_string(Query *query, const char *query_str,
+						JumbleState *jstate)
 {
 	MemoryContext	oldcontext;
 
-	/* do nothing while scanning hint table */
-	if (hint_inhibit_level > 0)
+	/* We shouldn't get here for internal queries. */
+	Assert (hint_inhibit_level == 0);
+
+	/* We shouldn't get here if hint is disabled. */
+	Assert (pg_hint_plan_enable_hint);
+
+	/* Do not anything if we have already tried to get hints for this query. */
+	if (current_hint_retrieved)
 		return;
+
+	/* No way to retrieve hints from empty string. */
+	if (!query_str)
+		return;
+
+	/* Don't parse the current query hereafter */
+	current_hint_retrieved = true;
 
 	/* Make sure trashing old hint string */
 	if (current_hint_str)
@@ -2757,10 +2818,6 @@ get_current_hint_string(Query *query, const char *query_str)
 		pfree((void *)current_hint_str);
 		current_hint_str = NULL;
 	}
-
-	/* Return if nothing to do. */
-	if (!pg_hint_plan_enable_hint || !query_str)
-		return;
 
 	/* increment the query number */
 	qnostr[0] = 0;
@@ -2771,11 +2828,36 @@ get_current_hint_string(Query *query, const char *query_str)
 	/* search the hint table for a hint if requested */
 	if (pg_hint_plan_enable_hint_table)
 	{
-		JumbleState	   *jstate;
-		int				query_len;
-		char		   *normalized_query;
+		int			query_len;
+		char	   *normalized_query;
 
-		jstate = JumbleQuery(query, query_str);
+		if (!IsQueryIdEnabled())
+		{
+			/*
+			 * compute_query_id was turned off while enable_hint_table is
+			 * on. Do not go ahead and complain once until it is turned on
+			 * again.
+			 */
+			if (!hint_table_deactivated)
+				ereport(WARNING,
+						(errmsg ("hint table feature is deactivated because queryid is not available"),
+						 errhint("Set compute_query_id to \"auto\" or \"on\" to use hint table.")));
+
+			hint_table_deactivated = true;
+			return;
+		}
+
+		if (hint_table_deactivated)
+		{
+			ereport(LOG, (errmsg ("hint table feature is reactivated")));
+			hint_table_deactivated = false;
+		}
+
+		if (!jstate)
+			jstate = JumbleQuery(query, query_str);
+
+		if (!jstate)
+			return;
 
 		/*
 		 * Normalize the query string by replacing constants with '?'
@@ -2859,6 +2941,32 @@ get_current_hint_string(Query *query, const char *query_str)
 }
 
 /*
+ * Retrieve hint string from the current query.
+ */
+static void
+pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query,
+								JumbleState *jstate)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+
+	if (!pg_hint_plan_enable_hint || hint_inhibit_level > 0)
+		return;
+
+	/* always retrieve hint from the top-level query string */
+	if (plpgsql_recurse_level == 0)
+		current_hint_retrieved = false;
+
+	/*
+	 * Jumble state is required when hint table is used.  This is the only
+	 * chance to have one already generated in-core.  If it's not the case, no
+	 * use to do the work now and pg_hint_plan_planner() will do the all work.
+	 */
+	if (jstate)
+		get_current_hint_string(query, pstate->p_sourcetext, jstate);
+}
+
+/*
  * Read and set up hint information
  */
 static PlannedStmt *
@@ -2888,16 +2996,30 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 		goto standard_planner_proc;
 	}
 
-	/* always retrieve hint from the top-level query string */
-	if (plpgsql_recurse_level == 0 && current_hint_str)
+	/*
+	 * SQL commands invoked in plpgsql functions may also have hints. In that
+	 * case override the upper level hint by the new hint.
+	 */
+	if (plpgsql_recurse_level > 0)
 	{
-		pfree((void *)current_hint_str);
+		const char	 *tmp_hint_str = current_hint_str;
+
+		/* don't let get_current_hint_string free this string */
 		current_hint_str = NULL;
+
+		current_hint_retrieved = false;
+
+		get_current_hint_string(parse, query_string, NULL);
+
+		if (current_hint_str == NULL)
+			current_hint_str = tmp_hint_str;
+		else if (tmp_hint_str != NULL)
+			pfree((void *)tmp_hint_str);
 	}
+	else
+		get_current_hint_string(parse, query_string, NULL);
 
-	get_current_hint_string(parse, query_string);
-
-	/* No hint, go the normal way */
+	/* No hints, go the normal way */
 	if (!current_hint_str)
 		goto standard_planner_proc;
 
@@ -2985,7 +3107,8 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	{
 		/*
 		 * Rollback changes of GUC parameters, and pop current hint context
-		 * from hint stack to rewind the state.
+		 * from hint stack to rewind the state. current_hint_str will be freed
+		 * by context deletion.
 		 */
 		current_hint_str = prev_hint_str;
 		recurse_level--;
@@ -2998,12 +3121,13 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 
 	/*
 	 * current_hint_str is useless after planning of the top-level query.
+	 * There's a case where the caller has multiple queries. This causes hint
+	 * parsing multiple times for the same string but we don't have a simple
+	 * and reliable way to distinguish that case from the case where of
+	 * separate queries.
 	 */
-	if (recurse_level < 1 && current_hint_str)
-	{
-		pfree((void *)current_hint_str);
-		current_hint_str = NULL;
-	}
+	if (recurse_level < 1)
+		current_hint_retrieved = false;
 
 	/* Print hint in debug mode. */
 	if (debug_level == 1)

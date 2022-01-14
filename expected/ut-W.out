@@ -1167,7 +1167,7 @@ EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 INFO:  pg_hint_plan: hint syntax error at or near "100x"
 DETAIL:  number of workers must be a number: Parallel
 INFO:  pg_hint_plan: hint syntax error at or near "-1000"
-DETAIL:  number of workers must be positive: Parallel
+DETAIL:  number of workers must be greater than zero: Parallel
 INFO:  pg_hint_plan: hint syntax error at or near "1000000"
 DETAIL:  number of workers = 1000000 is larger than max_worker_processes(8): Parallel
 INFO:  pg_hint_plan: hint syntax error at or near "hoge"

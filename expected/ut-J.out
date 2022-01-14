@@ -4730,9 +4730,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.val = t2.val and t2.id =
                ->  Seq Scan on t3
    ->  Memoize
          Cache Key: t2.val
+         Cache Mode: logical
          ->  Index Scan using t1_val on t1
                Index Cond: (val = t2.val)
-(11 rows)
+(12 rows)
 
 /*+ nomemoize(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.val = t2.val and t2.id = t3.id;  -- doesn't work
@@ -4754,9 +4755,10 @@ error hint:
                ->  Seq Scan on t3
    ->  Memoize
          Cache Key: t2.val
+         Cache Mode: logical
          ->  Index Scan using t1_val on t1
                Index Cond: (val = t2.val)
-(11 rows)
+(12 rows)
 
 /*+ nomemoize(t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.val = t2.val and t2.id = t3.id;

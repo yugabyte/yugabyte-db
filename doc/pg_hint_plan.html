@@ -81,7 +81,8 @@ postgres=# </pre>
 <p> Hints are described in a comment in a special form in the above
 section. This is inconvenient in the case where queries cannot be
 edited. In the case hints can be placed in a special table named
-"hint_plan.hints". The table consists of the following columns.</p>
+"hint_plan.hints". This feature requires compute_query_id to be "on"
+or "auto". The table consists of the following columns.</p>
 <table>
 <thead>
 <tr>
