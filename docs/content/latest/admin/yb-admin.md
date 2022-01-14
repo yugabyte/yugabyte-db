@@ -1745,4 +1745,18 @@ A successful upgrade returns the following message:
 YSQL successfully upgraded to the latest version
 ```
 
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+
+```sh
+$ ./bin/yb-admin \
+      -timeout_ms 180000 \
+      upgrade_ysql
+```
+
+Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+
+{{< note title="Note" >}}
+Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
+{{< /note >}}
+
 Refer [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.
