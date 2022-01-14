@@ -60,7 +60,6 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     log.info("Completed {}", getName());
   }
 
-  @Transactional
   private void syncXClusterConfigs(
       CatalogEntityInfo.SysClusterConfigEntryPB config, UUID targetUniverseUUID) {
 
