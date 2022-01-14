@@ -44,10 +44,12 @@ public class LdapUtil {
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_basedn");
     String ldapCustomerUUID =
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_customeruuid");
+    String ldapDnPrefix =
+        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_dn_prefix");
 
     Users user =
         authViaLDAP(
-            data.getEmail().toLowerCase(), data.getPassword(), ldapUrl, ldapPort, ldapBaseDN);
+            data.getEmail(), data.getPassword(), ldapUrl, ldapPort, ldapBaseDN, ldapDnPrefix);
     if (user == null) {
       return user;
     }
@@ -82,13 +84,19 @@ public class LdapUtil {
   }
 
   private Users authViaLDAP(
-      String email, String password, String ldapUrl, Integer ldapPort, String ldapBaseDN)
+      String email,
+      String password,
+      String ldapUrl,
+      Integer ldapPort,
+      String ldapBaseDN,
+      String ldapDnPrefix)
       throws LdapException {
     Users users = new Users();
     LdapNetworkConnection connection = null;
     try {
       connection = new LdapNetworkConnection(ldapUrl, ldapPort);
-      String distinguishedName = ldapBaseDN + "CN=" + email;
+      String distinguishedName = ldapDnPrefix + email + ldapBaseDN;
+      email = email.toLowerCase();
       try {
         connection.bind(distinguishedName, password);
       } catch (LdapNoSuchObjectException e) {
@@ -99,49 +107,56 @@ public class LdapUtil {
         String errorMessage = "Failed with " + e.getMessage();
         throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
       }
-      EntryCursor cursor =
-          connection.search(distinguishedName, "(objectclass=*)", SearchScope.SUBTREE, "*");
-      while (cursor.next()) {
-        Entry entry = cursor.get();
-        Attribute parseRole = entry.get("YugabytePlatformRole");
-        String role = parseRole.getString();
-        Users.Role roleToAssign;
-        users.setLdapSpecifiedRole(true);
-        switch (role) {
-          case "Admin":
-            roleToAssign = Users.Role.Admin;
-            break;
-          case "SuperAdmin":
-            roleToAssign = Users.Role.SuperAdmin;
-            break;
-          case "BackupAdmin":
-            roleToAssign = Users.Role.BackupAdmin;
-            break;
-          case "ReadOnly":
-            roleToAssign = Users.Role.ReadOnly;
-            break;
-          default:
-            roleToAssign = Users.Role.ReadOnly;
-            users.setLdapSpecifiedRole(false);
+      String role = "";
+      try {
+        EntryCursor cursor =
+            connection.search(distinguishedName, "(objectclass=*)", SearchScope.SUBTREE, "*");
+        while (cursor.next()) {
+          Entry entry = cursor.get();
+          Attribute parseRole = entry.get("yugabytePlatformRole");
+          role = parseRole.getString();
         }
-        Users oldUser = Users.find.query().where().eq("email", email).findOne();
-        if (oldUser != null
-            && (oldUser.getRole() == roleToAssign || !oldUser.getLdapSpecifiedRole())) {
-          return oldUser;
-        } else if (oldUser != null && (oldUser.getRole() != roleToAssign)) {
-          oldUser.setRole(roleToAssign);
-          return oldUser;
-        } else {
-          users.email = email.toLowerCase();
-          byte[] passwordLdap = new byte[16];
-          new Random().nextBytes(passwordLdap);
-          String generatedPassword = new String(passwordLdap, Charset.forName("UTF-8"));
-          users.setPassword(generatedPassword); // Password is not used.
-          users.setUserType(Users.UserType.ldap);
-          users.creationDate = new Date();
-          users.setIsPrimary(false);
-          users.setRole(roleToAssign);
-        }
+      } catch (Exception e) {
+        log.debug(
+            String.format(
+                "LDAP query failed with {} Defaulting to ReadOnly role.", e.getMessage()));
+      }
+      Users.Role roleToAssign;
+      users.setLdapSpecifiedRole(true);
+      switch (role) {
+        case "Admin":
+          roleToAssign = Users.Role.Admin;
+          break;
+        case "SuperAdmin":
+          roleToAssign = Users.Role.SuperAdmin;
+          break;
+        case "BackupAdmin":
+          roleToAssign = Users.Role.BackupAdmin;
+          break;
+        case "ReadOnly":
+          roleToAssign = Users.Role.ReadOnly;
+          break;
+        default:
+          roleToAssign = Users.Role.ReadOnly;
+          users.setLdapSpecifiedRole(false);
+      }
+      Users oldUser = Users.find.query().where().eq("email", email).findOne();
+      if (oldUser != null
+          && (oldUser.getRole() == roleToAssign || !oldUser.getLdapSpecifiedRole())) {
+        return oldUser;
+      } else if (oldUser != null && (oldUser.getRole() != roleToAssign)) {
+        oldUser.setRole(roleToAssign);
+        return oldUser;
+      } else {
+        users.email = email.toLowerCase();
+        byte[] passwordLdap = new byte[16];
+        new Random().nextBytes(passwordLdap);
+        String generatedPassword = new String(passwordLdap, Charset.forName("UTF-8"));
+        users.setPassword(generatedPassword); // Password is not used.
+        users.setUserType(Users.UserType.ldap);
+        users.creationDate = new Date();
+        users.setIsPrimary(false);
+        users.setRole(roleToAssign);
       }
     } catch (LdapException e) {
       LOG.error("LDAP error while attempting to auth email {}", email);

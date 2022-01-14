@@ -255,7 +255,7 @@ components:
                       |compact_[^_]+_bytes|compaction_times_micros_[^_]+\
                       |numfiles_in_singlecompaction_[^_]+)\
                       |async_replication_[^_]+_lag_micros|transaction_conflicts\
-                      |majority_sst_files_rejections|expired_transactions
+                      |majority_sst_files_rejections|expired_transactions\
                       |log_(sync_latency_[^_]+|group_commit_latency_[^_]+\
                       |append_latency_[^_]+|bytes_logged|reader_bytes_read\
                       |append_latency_count|sync_latency_count|cache_size|cache_num_ops)\
@@ -523,17 +523,17 @@ config:
       - name: http_proxy
         title: HTTP Proxy setting
         help_text: Specify the setting for HTTP_PROXY
-        type: string
+        type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
       - name: https_proxy
         title: HTTPS Proxy setting
         help_text: Specify the setting for HTTPS_PROXY
-        type: string
+        type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
       - name: no_proxy
         title: HTTP no proxy setting
         help_text: Specify the setting for NO_PROXY
-        type: string
+        type: text
         default: ""
       - name: tls_version
         title: TLS Versions

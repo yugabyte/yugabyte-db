@@ -75,6 +75,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                 // The universe parameter in this callback has local changes which may be needed by
                 // the methods inside e.g updateInProgress field.
                 if (isFirstTryForTask(taskParams())) {
+                  // Fetch the task params from the DB to start from fresh on retry.
+                  // Otherwise, some operations like name assignment can fail.
+                  fetchTaskDetailsFromDB();
                   // TODO Transaction is required mainly because validations are done here.
                   // Set all the node names.
                   setNodeNames(u);
@@ -113,7 +116,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               });
 
       // Create preflight node check tasks for on-prem nodes.
-      createPreflightNodeCheckTasks(universe, taskParams());
+      createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
       Set<NodeDetails> addedMasters =
           taskParams()

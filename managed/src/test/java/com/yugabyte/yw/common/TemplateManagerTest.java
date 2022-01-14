@@ -36,7 +36,7 @@ import org.mockito.runners.MockitoJUnitRunner;
 public class TemplateManagerTest extends FakeDBApplication {
 
   private static final String YB_STORAGE_PATH_KEY = "yb.storage.path";
-  private static final String YB_STORAGE_PATH_VALUE = "/tmp/yugaware_tests";
+  private static final String YB_STORAGE_PATH_VALUE = "/tmp/yugaware_tests/tmt_certs";
   private static final String YB_THIRDPARTY_KEY = "yb.thirdparty.packagePath";
   private static final String YB_THIRDPARTY_VALUE = "/tmp/thirdparty";
   private static final String KEY_CODE = "test-key";

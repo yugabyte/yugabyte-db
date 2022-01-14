@@ -68,7 +68,7 @@ The connection string includes parameters for TLS settings (`ssl`, `sslmode` and
 
 If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to Yugabyte Cloud, refer to [Connect Hasura Cloud to Yugabyte Cloud](../../cloud-develop/hasura-cloud/).
 
-For information on using other SSL modes, refer to [SSL modes in YSQL](../connect-client-shell/#ssl-modes-in-ysql).
+For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
 ### YCQL
 
