@@ -812,6 +812,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
   private void createPostUpgradeTasks() {
     if (taskParams().taskType == UpgradeTaskType.Software) {
+      // Run YSQL upgrade on the universe
+      createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+          .setSubTaskGroupType(getTaskSubGroupType());
       // Update the software version on success.
       createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
           .setSubTaskGroupType(getTaskSubGroupType());

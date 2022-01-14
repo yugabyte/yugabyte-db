@@ -239,6 +239,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
     ShellResponse dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    ShellResponse successResponse = new ShellResponse();
+    successResponse.message = "YSQL successfully upgraded to the latest version";
+    when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyLong()))
+        .thenReturn(successResponse);
   }
 
   private TaskInfo submitTask(UpgradeUniverse.Params taskParams, UpgradeTaskType taskType) {
@@ -820,7 +824,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       }
 
       commonNodeTasks.addAll(
-          ImmutableList.of(TaskType.UpdateSoftwareVersion, TaskType.UniverseUpdateSucceeded));
+          ImmutableList.of(
+              TaskType.RunYsqlUpgrade,
+              TaskType.UpdateSoftwareVersion,
+              TaskType.UniverseUpdateSucceeded));
     }
     for (TaskType commonNodeTask : commonNodeTasks) {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask);

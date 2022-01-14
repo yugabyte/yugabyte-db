@@ -37,6 +37,9 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               getUniverse().getUniverseDetails().getPrimaryCluster().placementInfo;
           createUpgradeTask(
               getUniverse(), placementInfo, taskParams().ybSoftwareVersion, true, true);
+          // Run YSQL upgrade on the universe
+          createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());

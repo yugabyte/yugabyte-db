@@ -38,6 +38,8 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -48,6 +50,9 @@ import play.libs.Json;
 public class CommonUtils {
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
+
+  private static final Pattern RELEASE_REGEX =
+      Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");
 
   private static final String maskRegex = "(?<!^.?).(?!.?$)";
 
@@ -449,6 +454,33 @@ public class CommonUtils {
         .filter(entry -> entry.getValue() == mapsCount)
         .map(Map.Entry::getKey)
         .collect(Collectors.toMap(Pair::getFirst, Pair::getSecond));
+  }
+
+  public static boolean isReleaseEqualOrAfter(String thresholdRelease, String actualRelease) {
+    Matcher thresholdMatcher = RELEASE_REGEX.matcher(thresholdRelease);
+    Matcher actualMatcher = RELEASE_REGEX.matcher(actualRelease);
+    if (!thresholdMatcher.matches()) {
+      throw new IllegalArgumentException(
+          "Threshold release " + thresholdRelease + " does not match release pattern");
+    }
+    if (!actualMatcher.matches()) {
+      log.warn(
+          "Actual release {} does not match release pattern - handle as latest release",
+          actualRelease);
+      return true;
+    }
+    for (int i = 1; i < 5; i++) {
+      int thresholdPart = Integer.parseInt(thresholdMatcher.group(i));
+      int actualPart = Integer.parseInt(actualMatcher.group(i));
+      if (actualPart > thresholdPart) {
+        return true;
+      }
+      if (actualPart < thresholdPart) {
+        return false;
+      }
+    }
+    // Equal releases.
+    return true;
   }
 
   @FunctionalInterface
