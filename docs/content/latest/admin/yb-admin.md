@@ -58,6 +58,7 @@ $ ./bin/yb-admin --help
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
+* [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)
 
 ---
 
@@ -1717,6 +1718,8 @@ yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_is_load_balancer_idle
 ```
+
+---
 
 ### Upgrade YSQL system catalog
 
