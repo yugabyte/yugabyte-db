@@ -31,28 +31,28 @@ Yugabyte Cloud supports both vertical and horizontal scaling, so you can change 
 
 ### Fault tolerance
 
-The Fault Tolerance determines how resilient the cluster is to node and cloud zone failures. Yugabyte Cloud provides the following options for providing replication and redundancy:
+The **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures. Yugabyte Cloud provides the following options for providing replication and redundancy:
 
-- Node Level. Includes a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages.
+- **Node Level**. Includes a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages.
 
-- Availability Zone Level. Includes a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
+- **Availability Zone Level**. Includes a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
 
-- Region Level. Yugabyte supports multi-region clusters with regional fault tolerance. Region level can’t be self-provisioned in Yugabyte Cloud. Contact Yugabyte Support for assistance.
+- **Region Level**. Yugabyte supports multi-region clusters with regional fault tolerance. Region level can’t be self-provisioned in Yugabyte Cloud. Contact Yugabyte Support for assistance.
 
-While the cluster fault tolerance cannot be changed once the cluster is created, you can scale horizontally as follows:
+Although you can't change the cluster fault tolerance once the cluster is created, you can scale horizontally as follows:
 
 - For Node Level, you can scale nodes in increments of 1.
 - For Availability Zone Level, you can scale nodes in increments of 3.
 
 For production clusters, Availability Zone Level is recommended.
 
-For application development and testing, you can set Fault tolerance to None to create a single-node cluster. Single-node clusters cannot be scaled.
+For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. Single-node clusters can't be scaled.
 
 ## Security
 
 If your applications are running in a virtual private cloud (VPC), deploy your cluster in a VPC to improve security and lower network latency. You need to create the VPC before you deploy the cluster. Yugabyte Cloud supports AWS and GCP for VPCs. Refer to [VPC network](../../cloud-secure-clusters/cloud-vpcs/).
 
-By default, access to clusters is restricted to IP addresses that you specify in IP allow lists. Once the cluster is deployed, add the IP addresses of the clients to the cluster allow list. This includes the CIDR ranges of any application VPCs, and addresses of users connecting to the cluster. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
+By default, access to clusters is restricted to IP addresses that you specify in IP allow lists. Once the cluster is deployed, add the IP addresses of the clients to the cluster allow list. This includes the _CIDR ranges of any application VPCs_, as well as addresses of users connecting to the cluster using a client. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
 ## YugabyteDB version
 
@@ -62,7 +62,7 @@ You can opt to create your database using an edge release for development and te
 
 If you require a feature from an edge release (that is not available in a stable release) for a production deployment, first contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-Once you choose a track, database upgrades will continue to take releases from the track you chose.
+Once you choose a release track (edge or stable), database upgrades will continue to take releases from the track you chose.
 
 ## Pricing
 

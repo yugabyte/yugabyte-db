@@ -16,8 +16,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-As a fully managed YugabyteDB-as-a-service, Yugabyte Cloud makes it easy for you to create YugabyteDB clusters.
-
 To create a cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
 
 {{< note title="Note" >}}
@@ -108,13 +106,13 @@ Save your database credentials in a safe place. If you lose these credentials yo
 
 ## Viewing the cluster
 
-After you complete the wizard, the [**Clusters**](../../cloud-clusters/) page appears with the provisioning of your new cluster in progress.
+After you complete the wizard, the **Clusters** page appears with the provisioning of your new cluster in progress.
 
 ![Cluster being provisioned](/images/yb-cloud/cloud-cluster-provisioning.png)
 
 Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) tab is displayed.
 
-You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud with the credentials you specified.
+You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud with the database admin credentials you specified.
 
 ## Next steps
 
