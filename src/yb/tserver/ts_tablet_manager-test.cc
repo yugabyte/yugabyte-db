@@ -92,12 +92,14 @@ using docdb::RateLimiterSharingMode;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
 using master::TabletReportUpdatesPB;
+using strings::Substitute;
 using tablet::TabletPeer;
 using gflags::FlagSaver;
 
 static const char* const kTableId = "my-table-id";
 static const char* const kTabletId = "my-tablet-id";
 static const int kConsensusRunningWaitMs = 10000;
+static const int kDrivesNum = 4;
 
 class TsTabletManagerTest : public YBTest {
  public:
@@ -105,10 +107,20 @@ class TsTabletManagerTest : public YBTest {
     : schema_({ ColumnSchema("key", UINT32) }, 1) {
   }
 
+  string GetDrivePath(int index) {
+    return JoinPathSegments(test_data_root_, Substitute("drive-$0", index + 1));
+  }
+
   void CreateMiniTabletServer() {
-    auto mini_ts = MiniTabletServer::CreateMiniTabletServer(test_data_root_, 0);
-    ASSERT_OK(mini_ts);
-    mini_server_ = std::move(*mini_ts);
+    auto options_result = TabletServerOptions::CreateTabletServerOptions();
+    ASSERT_OK(options_result);
+    std::vector<std::string> paths;
+    for (int i = 0; i < kDrivesNum; ++i) {
+      auto s = GetDrivePath(i);
+      ASSERT_OK(env_->CreateDirs(s));
+      paths.push_back(s);
+    }
+    mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
 
   void SetUp() override {
@@ -665,6 +677,20 @@ TEST_F(TsTabletManagerTest, RateLimiterSharing) {
   ASSERT_NO_FATAL_FAILURE(AddTablets(2, &peers));
   ASSERT_EQ(2, ASSERT_RESULT(CountUniqueLimiters(peers, peers_num)));
   peers_num = peers.size();
+}
+
+TEST_F(TsTabletManagerTest, DataAndWalFilesLocations) {
+  std::string wal;
+  std::string data;
+  auto drive_path_len = GetDrivePath(0).size();
+  for (int i = 0; i < kDrivesNum; ++i) {
+    tablet_manager_->GetAndRegisterDataAndWalDir(fs_manager_,
+                                                 kTableId,
+                                                 Substitute("tablet-$0", i + 1),
+                                                 &data,
+                                                 &wal);
+    ASSERT_EQ(data.substr(0, drive_path_len), wal.substr(0, drive_path_len));
+  }
 }
 
 } // namespace tserver
