@@ -33,6 +33,8 @@
 #include <iostream>
 #include <string>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/inetaddress.h"
@@ -261,7 +263,7 @@ Status ConvertI64ToI32(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    target->set_int32_value(source->int64_value());
+    target->set_int32_value(static_cast<int32_t>(source->int64_value()));
   }
   return Status::OK();
 }
@@ -720,7 +722,7 @@ Status ConvertVarintToI32(PTypePtr source, RTypePtr target) {
     if (val < INT32_MIN || val > INT32_MAX) {
       return STATUS(InvalidArgument, "VarInt cannot be converted to int32 due to overflow");
     }
-    target->set_int32_value(val);
+    target->set_int32_value(static_cast<int32_t>(val));
   }
   return Status::OK();
 }

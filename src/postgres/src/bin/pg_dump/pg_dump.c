@@ -36,6 +36,7 @@
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
+#include <inttypes.h>
 
 #include "getopt_long.h"
 
@@ -16130,9 +16131,18 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 
 			/*
-			 * Add a PRIMARY KEY constraint if it exists.
+			 * Add a PRIMARY KEY constraint if it exists, unless this is
+			 * table partition, and the primary key is being defined by the
+			 * parent partitioned table.
 			 */
-			if (tbinfo->primaryKeyIndex)
+			bool parent_has_primary_key = false;
+			if (tbinfo->ispartition)
+			{
+				TableInfo  *parentRel = tbinfo->parents[0];
+				parent_has_primary_key = parentRel->primaryKeyIndex;
+			}
+
+			if (tbinfo->primaryKeyIndex && !parent_has_primary_key)
 			{
 				IndxInfo *index = tbinfo->primaryKeyIndex;
 
@@ -16319,7 +16329,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 			if (properties.num_hash_key_columns > 0)
 				/* For hash-table. */
-				appendPQExpBuffer(q, "\nSPLIT INTO %u TABLETS", properties.num_tablets);
+				appendPQExpBuffer(q, "\nSPLIT INTO %" PRIu64 " TABLETS", properties.num_tablets);
 			else if (properties.num_tablets > 1)
 			{
 				/* For range-table. */

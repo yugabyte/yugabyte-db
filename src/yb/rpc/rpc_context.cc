@@ -93,7 +93,7 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 }  // anonymous namespace
 
 Result<size_t> RpcCallPBParams::ParseRequest(Slice param) {
-  google::protobuf::io::CodedInputStream in(param.data(), param.size());
+  google::protobuf::io::CodedInputStream in(param.data(), narrow_cast<int>(param.size()));
   in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size * 3 / 4);
   auto& message = request();
   if (PREDICT_FALSE(!message.ParseFromCodedStream(&in))) {

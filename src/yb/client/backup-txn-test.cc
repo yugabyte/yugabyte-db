@@ -164,7 +164,7 @@ TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
   auto session = CreateSession();
   ASSERT_OK(WriteRow(session, kKey, 0));
   auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
-  for (size_t r = 1; r <= kNumWrites; ++r) {
+  for (int r = 1; r <= kNumWrites; ++r) {
     ASSERT_OK(WriteRow(session, kKey, r, WriteOpType::INSERT, client::Flush::kFalse));
     futures.push_back(session->FlushFuture());
   }

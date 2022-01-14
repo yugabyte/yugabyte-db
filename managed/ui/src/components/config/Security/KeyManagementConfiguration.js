@@ -379,6 +379,12 @@ class KeyManagementConfiguration extends Component {
               className={'kube-provider-input-field'}
             />
           </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Vault Address"
+              content="Vault Address must be a valid URL with port number, Ex:- http://0.0.0.0:0000"
+            />
+          </Col>
         </Row>
         <Row className="config-provider-row" key={'v-token-field'}>
           <Col lg={3}>
@@ -530,7 +536,11 @@ class KeyManagementConfiguration extends Component {
 
       HC_VAULT_ADDRESS: Yup.mixed().when('kmsProvider', {
         is: (provider) => provider?.value === 'HASHICORP',
-        then: Yup.mixed().required('Vault Address is Required')
+        then: Yup.string()
+          .matches(/^(?:http(s)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d+/, {
+            message: 'Vault Address must be a valid URL with port number'
+          })
+          .required('Vault Address is Required')
       }),
 
       HC_VAULT_TOKEN: Yup.mixed().when('kmsProvider', {

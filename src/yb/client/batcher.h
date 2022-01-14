@@ -180,12 +180,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   // Return the number of buffered operations. These are only those operations which are
   // "corked" (i.e not yet flushed). Once Flush has been called, this returns 0.
-  int CountBufferedOperations() const;
-
-  // Return the number of operations successfully added, but not yet flushed.
-  // This differs from CountBufferedOperations that can decrease before flush due to tablet lookup
-  // errors after addition.
-  int GetAddedNotFlushedOperationsCount() const;
+  size_t CountBufferedOperations() const;
 
   // Flush any buffered operations. The callback will be called once there are no
   // more pending operations from this Batcher. If all of the operations succeeded,

@@ -825,6 +825,8 @@ class CatalogManager :
 
   BlacklistSet BlacklistSetFromPB() const override;
 
+  std::vector<std::string> GetMasterAddresses();
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1079,7 +1081,7 @@ class CatalogManager :
   // This method is called by "SelectReplicasForTablet".
   void SelectReplicas(
       const TSDescriptorVector& ts_descs,
-      int nreplicas, consensus::RaftConfigPB* config,
+      size_t nreplicas, consensus::RaftConfigPB* config,
       std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts,
       consensus::PeerMemberType member_type);
 
@@ -1497,6 +1499,9 @@ class CatalogManager :
   std::unique_ptr<YsqlTransactionDdl> ysql_transaction_;
 
   MonoTime time_elected_leader_;
+
+  std::unique_ptr<client::YBClient> cdc_state_client_;
+
 
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);

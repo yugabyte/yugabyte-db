@@ -44,6 +44,7 @@
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 
 using namespace std::literals; // NOLINT
 
@@ -164,7 +165,7 @@ class DocOperationTest : public DocDBTestBase {
     ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), column_values.size());
     for (int i = 0; i < column_values.size(); i++) {
       auto column = ql_writereq_pb->add_column_values();
-      column->set_column_id(schema.num_key_columns() + i);
+      column->set_column_id(narrow_cast<int32_t>(schema.num_key_columns() + i));
       column->mutable_expr()->mutable_value()->set_int32_value(column_values[i]);
     }
   }
@@ -1233,6 +1234,8 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
 }
 
 TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
+  // Ensure that any number of files can trigger a compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
   ASSERT_OK(DisableCompactions());
   const size_t kMaxFileSize = 100_KB;
   const int kNumFilesToWrite = 20;
@@ -1249,18 +1252,21 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
   auto files = rocksdb()->GetLiveFilesMetaData();
   ASSERT_EQ(kNumFilesToWrite, files.size());
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
+
   // Files will be ordered from latest to earliest, so select the nth file from the back.
   auto last_to_discard =
       rocksdb::TableFileNameToNumber(files[files.size() - kNumFilesToExpire].name);
 
   SetMaxFileSizeForCompaction(kMaxFileSize);
 
-  // Use a filter factory that will expire every three files.
+  // Use a filter factory that will expire exactly three files.
   compaction_file_filter_factory_ =
       std::make_shared<DiscardUntilFileFilterFactory>(last_to_discard);
 
+  // Reinitialize the DB options with the file filter factory.
   ASSERT_OK(ReinitDBOptions());
 
+  // Compactions will be kicked off as part of options reinitialization.
   WaitCompactionsDone(rocksdb());
 
   files = rocksdb()->GetLiveFilesMetaData();

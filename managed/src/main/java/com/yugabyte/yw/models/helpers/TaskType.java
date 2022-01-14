@@ -284,7 +284,11 @@ public enum TaskType {
 
   WaitForTServerHBs("subtasks.check.WaitForTServerHBs"),
 
-  CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig");
+  CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig"),
+
+  PreflightNodeCheck("subtasks.PreflightNodeCheck"),
+
+  RunYsqlUpgrade("subtasks.RunYsqlUpgrade");
 
   private String relativeClassPath;
 

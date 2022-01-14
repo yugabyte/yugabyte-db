@@ -63,7 +63,7 @@ public class PlatformInstanceController extends AuthenticatedController {
     PlatformInstance instance =
         PlatformInstance.create(
             config.get(),
-            formData.get().address,
+            formData.get().getCleanAddress(),
             formData.get().is_leader,
             formData.get().is_local);
 

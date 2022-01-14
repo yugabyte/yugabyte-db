@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
@@ -572,6 +573,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to run YSQL upgrade on the universe. */
+  public TaskExecutor.SubTaskGroup createRunYsqlUpgradeTask(String ybSoftwareVersion) {
+    TaskExecutor.SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RunYsqlUpgrade");
+
+    RunYsqlUpgrade task = createTask(RunYsqlUpgrade.class);
+
+    RunYsqlUpgrade.Params params = new RunYsqlUpgrade.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.ybSoftwareVersion = ybSoftwareVersion;
+
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -1909,7 +1926,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           newVersion);
     } catch (Exception e) {
       log.error(
-          "Error occurred incrementing cluster config version for universe {}", universeUUID, e);
+          "Error occurred incrementing cluster config version for universe " + universeUUID, e);
       throw new RuntimeException("Error incrementing cluster config version", e);
     } finally {
       ybService.closeClient(client, hostPorts);

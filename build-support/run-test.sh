@@ -42,6 +42,9 @@
 set -euo pipefail
 readonly YB_COMPLETED_TEST_FLAG_DIR=/tmp/yb_completed_tests
 
+# Do not fsync the WAL in master by default in tests.
+export YB_MASTER_DURABLE_WAL_WRITE_BY_DEFAULT=0
+
 declare -i process_tree_supervisor_pid=0
 process_supervisor_log_path=""
 

@@ -102,6 +102,8 @@ public class CustomerTaskController extends AuthenticatedController {
       CustomerTaskFormData taskData = new CustomerTaskFormData();
       taskData.percentComplete = taskProgress.get("percent").asInt();
       taskData.status = taskProgress.get("status").asText();
+      taskData.abortable = taskProgress.get("abortable").asBoolean();
+      taskData.retryable = taskProgress.get("retryable").asBoolean();
       taskData.id = task.getTaskUUID();
       taskData.title = task.getFriendlyDescription();
       taskData.createTime = task.getCreateTime();
@@ -252,11 +254,15 @@ public class CustomerTaskController extends AuthenticatedController {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
     JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
     TaskType taskType = taskInfo.getTaskType();
-
+    if (!Commissioner.isTaskRetryable(taskType)) {
+      String errMsg = String.format("Invalid task type: Task %s cannot be retried", taskUUID);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
     UniverseTaskParams taskParams = null;
     switch (taskType) {
       case CreateUniverse:
       case EditUniverse:
+      case ReadOnlyClusterCreate:
         UniverseDefinitionTaskParams params =
             Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         // Reset the error string.
@@ -271,7 +277,7 @@ public class CustomerTaskController extends AuthenticatedController {
     }
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
-      String errMsg = String.format("Invalid task state: Task %s cannot retried", taskUUID);
+      String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
     taskParams.firstTry = false;

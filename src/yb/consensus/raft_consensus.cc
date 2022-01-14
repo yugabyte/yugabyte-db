@@ -661,7 +661,7 @@ Result<LeaderElectionPtr> RaftConsensus::CreateElectionUnlocked(
 
   // Initialize the VoteCounter.
   int num_voters = CountVoters(active_config);
-  int majority_size = MajoritySize(num_voters);
+  auto majority_size = MajoritySize(num_voters);
 
   // Vote for ourselves.
   if (!preelection) {
@@ -1737,8 +1737,8 @@ Status RaftConsensus::CheckLeaderRequestOpIdSequence(
     // We take ownership of the deduped ops.
     DCHECK_GE(deduped_req.first_message_idx, 0);
     request->mutable_ops()->ExtractSubrange(
-        deduped_req.first_message_idx,
-        deduped_req.messages.size(),
+        narrow_cast<int>(deduped_req.first_message_idx),
+        narrow_cast<int>(deduped_req.messages.size()),
         nullptr);
   }
 
@@ -2339,7 +2339,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 
   if (remaining_old_leader_lease.Initialized()) {
     response->set_remaining_leader_lease_duration_ms(
-        remaining_old_leader_lease.ToMilliseconds());
+        narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
     response->set_leader_lease_uuid(state_->old_leader_lease().holder_uuid);
   }
 

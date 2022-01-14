@@ -16,6 +16,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_defaults.h"
@@ -24,7 +26,7 @@
 
 #include "yb/util/result.h"
 
-DECLARE_uint64(cdc_state_table_num_tablets);
+DECLARE_int32(cdc_state_table_num_tablets);
 
 namespace yb {
 namespace master {
@@ -120,7 +122,7 @@ Status MasterTestEnt::SetupUniverseReplication(
   SetupUniverseReplicationResponsePB resp;
 
   req.set_producer_id(producer_id);
-  req.mutable_producer_master_addresses()->Reserve(producer_master_addrs.size());
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_master_addrs.size()));
   for (const auto& addr : producer_master_addrs) {
     std::vector<std::string> hp;
     boost::split(hp, addr, boost::is_any_of(":"));
@@ -129,7 +131,7 @@ Status MasterTestEnt::SetupUniverseReplication(
     master->set_host(hp[0]);
     master->set_port(boost::lexical_cast<uint32_t>(hp[1]));
   }
-  req.mutable_producer_table_ids()->Reserve(tables.size());
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
   for (const auto& table : tables) {
     req.add_producer_table_ids(table);
   }

@@ -307,7 +307,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
   BuildLog();
 
   // Append a REPLICATE with no commit
-  int replicate_index = current_index_++;
+  auto replicate_index = current_index_++;
 
   OpIdPB opid = MakeOpId(1, replicate_index);
 
@@ -637,7 +637,7 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
   const auto final_op_id_by_index = GenerateRawEntriesAndFinalOpByIndex(
       num_entries, rng, res_input);
 
-  const auto committed_op_id_for_index = [&final_op_id_by_index](int index) -> OpId {
+  const auto committed_op_id_for_index = [&final_op_id_by_index](int64_t index) -> OpId {
     auto it = final_op_id_by_index.find(index);
     if (it == final_op_id_by_index.end()) {
       return OpId();

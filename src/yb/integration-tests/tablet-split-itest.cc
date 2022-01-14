@@ -824,7 +824,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       const string& tablet_id, int num_rows_per_batch,
       int64_t threshold, int* key) {
     uint64_t current_size = 0;
-    int cur_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id()).size();
+    auto cur_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id()).size();
     while (current_size <= threshold) {
       RETURN_NOT_OK(WriteRows(num_rows_per_batch, *key));
       *key += num_rows_per_batch;
@@ -927,7 +927,8 @@ TEST_F(AutomaticTabletSplitITest, TabletSplitHasClusterReplicationInfo) {
 
   // Set cluster level placement information using only the first 3 clouds/regions/zones
   master::ReplicationInfoPB replication_info;
-  replication_info.mutable_live_replicas()->set_num_replicas(clouds.size() - 1);
+  replication_info.mutable_live_replicas()->set_num_replicas(
+      narrow_cast<int32_t>(clouds.size() - 1));
   for (int i = 0; i < clouds.size() - 1; i++) {
     auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
     auto* cloud_info = placement_block->mutable_cloud_info();
@@ -1049,12 +1050,13 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMovesToNextPhase) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
 
-  const auto this_phase_tablet_lower_limit = FLAGS_tablet_split_low_phase_shard_count_per_node
-      * cluster_->num_tablet_servers();
-  const auto this_phase_tablet_upper_limit = FLAGS_tablet_split_high_phase_shard_count_per_node
-      * cluster_->num_tablet_servers();
+  auto num_tservers = cluster_->num_tablet_servers();
+  const auto this_phase_tablet_lower_limit =
+      FLAGS_tablet_split_low_phase_shard_count_per_node * num_tservers;
+  const auto this_phase_tablet_upper_limit =
+      FLAGS_tablet_split_high_phase_shard_count_per_node * num_tservers;
 
-  auto num_tablets = this_phase_tablet_lower_limit;
+  auto num_tablets = narrow_cast<int>(this_phase_tablet_lower_limit);
   SetNumTablets(num_tablets);
   CreateTable();
 
@@ -1063,7 +1065,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMovesToNextPhase) {
     ASSERT_OK(WriteRows(kNumRowsPerBatch, key));
     key += kNumRowsPerBatch;
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-    num_tablets = peers.size();
+    num_tablets = narrow_cast<int>(peers.size());
     for (const auto& peer : peers) {
       // Flush other replicas of this shard to ensure that even if the leader changed we will be in
       // a state where yb-master should initiate a split.
@@ -1098,10 +1100,11 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
   CreateTable();
 
   int key = 1;
-  auto num_peers = 1;
+  size_t num_peers = 1;
   const auto num_tservers = cluster_->num_tablet_servers();
 
-  auto test_phase = [&key, &num_peers, this](int tablet_count_limit, int split_threshold_bytes) {
+  auto test_phase = [&key, &num_peers, this](
+      int64_t tablet_count_limit, int64_t split_threshold_bytes) {
     while (num_peers < tablet_count_limit) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_split_tablet_candidate_processing) = true;
       ASSERT_OK(WriteRows(kNumRowsPerBatch, key));
@@ -1208,7 +1211,7 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
     ASSERT_OK(WaitForTestTablePostSplitTabletsFullyCompacted(15s * kTimeMultiplier));
 
     peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-    num_tablets = peers.size();
+    num_tablets = narrow_cast<int32_t>(peers.size());
 
     // There should be kTabletSplitLimit intial tablets + kTabletSplitLimit new tablets per loop.
     EXPECT_EQ(num_tablets, (split_round + 2) * kTabletSplitLimit);

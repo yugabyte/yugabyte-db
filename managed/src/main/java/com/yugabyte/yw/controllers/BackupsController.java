@@ -134,6 +134,8 @@ public class BackupsController extends AuthenticatedController {
     BackupTableParams taskParams = formData.get();
     // Since we hit the restore endpoint, lets default the action type to RESTORE
     taskParams.actionType = BackupTableParams.ActionType.RESTORE;
+    // Overriding the tableName in restore request as we don't support renaming of table.
+    taskParams.setTableName(null);
     if (taskParams.storageLocation == null && taskParams.backupList == null) {
       String errMsg = "Storage Location is required";
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
@@ -166,33 +168,23 @@ public class BackupsController extends AuthenticatedController {
 
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     LOG.info(
-        "Submitted task to RESTORE table backup to {}.{} with config {} from {}, task uuid = {}.",
+        "Submitted task to RESTORE table backup to {} with config {} from {}, task uuid = {}.",
         taskParams.getKeyspace(),
-        taskParams.getTableName(),
         storageConfig.configName,
         taskParams.storageLocation,
         taskUUID);
-    if (taskParams.getTableName() != null) {
+    if (taskParams.getKeyspace() != null) {
+      // We cannot add long keySpace name in customer_task db table as in
+      // the table schema we provide a 255 byte limit on target_name column of customer_task.
+      // Currently, we set the limit of 500k on keySpace name size through
+      // play.http.parser.maxMemoryBuffer.
       CustomerTask.create(
           customer,
           universeUUID,
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Restore,
-          taskParams.getTableName());
-      LOG.info(
-          "Saved task uuid {} in customer tasks table for table {}.{}",
-          taskUUID,
-          taskParams.getKeyspace(),
-          taskParams.getTableName());
-    } else if (taskParams.getKeyspace() != null) {
-      CustomerTask.create(
-          customer,
-          universeUUID,
-          taskUUID,
-          CustomerTask.TargetType.Backup,
-          CustomerTask.TaskType.Restore,
-          taskParams.getKeyspace());
+          "keySpace");
       LOG.info(
           "Saved task uuid {} in customer tasks table for keyspace {}",
           taskUUID,

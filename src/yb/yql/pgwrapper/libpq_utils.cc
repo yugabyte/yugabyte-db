@@ -20,6 +20,7 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
 #include "yb/util/enums.h"
@@ -355,7 +356,7 @@ bool PGConn::CopyFlushBuffer() {
   }
   ptrdiff_t len = copy_data_->pos - copy_data_->buffer;
   if (len) {
-    int res = PQputCopyData(impl_.get(), copy_data_->buffer, len);
+    int res = PQputCopyData(impl_.get(), copy_data_->buffer, narrow_cast<int>(len));
     if (res < 0) {
       copy_data_->error = STATUS_FORMAT(NetworkError, "Put copy data failed: $0", res);
       return false;

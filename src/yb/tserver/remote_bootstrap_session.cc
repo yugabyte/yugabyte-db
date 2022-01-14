@@ -39,6 +39,7 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
 
@@ -197,7 +198,7 @@ Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::
   }
 
   google::protobuf::RepeatedPtrField<tablet::FilePB> result;
-  result.Reserve(files.size());
+  result.Reserve(narrow_cast<int>(files.size()));
   for (const auto& file : files) {
     auto full_path = JoinPathSegments(dir, file);
     if (VERIFY_RESULT(env->IsDirectory(full_path))) {

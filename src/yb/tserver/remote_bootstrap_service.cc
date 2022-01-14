@@ -43,6 +43,8 @@
 
 #include "yb/consensus/log_util.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -199,7 +201,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   resp->mutable_initial_committed_cstate()->CopyFrom(session->initial_committed_cstate());
 
   auto const& log_segments = session->log_segments();
-  resp->mutable_deprecated_wal_segment_seqnos()->Reserve(log_segments.size());
+  resp->mutable_deprecated_wal_segment_seqnos()->Reserve(narrow_cast<int>(log_segments.size()));
   for (const scoped_refptr<log::ReadableLogSegment>& segment : log_segments) {
     resp->add_deprecated_wal_segment_seqnos(segment->header().sequence_number());
   }
