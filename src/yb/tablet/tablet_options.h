@@ -52,6 +52,7 @@ struct TabletOptions {
   std::vector<std::shared_ptr<rocksdb::EventListener>> listeners;
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
+  std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
 };
 
 struct TabletInitData {

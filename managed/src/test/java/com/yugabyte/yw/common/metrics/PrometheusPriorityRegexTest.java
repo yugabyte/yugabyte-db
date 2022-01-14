@@ -49,6 +49,7 @@ public class PrometheusPriorityRegexTest {
         "async_replication_sent_lag_micros",
         "async_replication_committed_lag_micros",
         "majority_sst_files_rejections",
+        "expired_transactions",
         "log_sync_latency_sum",
         "log_sync_latency_count",
         "log_group_commit_latency_sum",

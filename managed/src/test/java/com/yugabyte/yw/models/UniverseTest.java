@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -152,7 +153,8 @@ public class UniverseTest extends FakeDBApplication {
     executor.shutdown();
     try {
       executor.awaitTermination(120, TimeUnit.SECONDS);
-    } catch (InterruptedException ignored) {
+    } catch (InterruptedException e) {
+      fail();
     }
     Universe updUniv = Universe.getOrBadRequest(u.universeUUID);
     assertEquals(numNodes, updUniv.getNodes().size());
