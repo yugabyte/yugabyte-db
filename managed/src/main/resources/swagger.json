@@ -7454,6 +7454,18 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "name",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "providerCode",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
