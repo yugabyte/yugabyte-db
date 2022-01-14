@@ -17,7 +17,8 @@ This document describes how to use [Django REST framework](https://www.django-re
 
 Before you can start using Django, ensure that you have the following installed and configured:
 
-- A YugabyteDB single node cluster.  Refer [YugabyteDB Quick start](../../quick-start/) to install and start a local cluster.
+- YugabyteDB version 2.7 or later. (See [YugabyteDB Quick Start Guide](../../quick-start/))
+- YugabyteDB single node cluster. (See [Create a local cluster](../../quick-start/create-local-cluster/))
 - [Python3](https://www.python.org/downloads/).
 - [Django backend for YugabyteDB](https://github.com/yugabyte/yb-django).
 - Django REST framework by executing the following command:
@@ -157,13 +158,13 @@ REST_FRAMEWORK = {
 }
 ```
 
-- Create the migrations with the following command:
+- Create the migrations using the following command:
 
 ```python
 python3 manage.py makemigrations
 ```
 
-- Migrate the changes to the database with the following command:
+- Migrate the changes to the database using the following command:
 
 ```python
 python3 manage.py migrate
@@ -175,13 +176,13 @@ python3 manage.py migrate
 
 To run the application and insert a new row, execute the following steps:
 
-- Run the django project with the following command:
+- Run the django project using the following command:
 
 ```python
 python3 manage.py runserver 8080
 ```
 
-- Insert a row with the following command:
+- Insert a row using the following command:
 
 ```sh
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
