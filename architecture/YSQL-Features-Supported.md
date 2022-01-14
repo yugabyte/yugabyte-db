@@ -50,8 +50,12 @@ Here are the features currently supported as of YugabyteDB v2.11, Nov 2021.
     - [ ] GIST Indexes
 - [ ] Transactions
     - [x] TRANSACTION blocks
-    - [x] Serializable and Snapshot Isolation levels
+    - [x] SERIALIZABLE isolation
+    - [x] REPEATABLE READ (snapshot) isolation
+    - [x] READ COMMITTED isolation
     - [x] Savepoints
+    - [x] Optimistic locking
+    - [ ] Pessimistic locking ![Generic badge](https://img.shields.io/badge/Target-v2.13-green.svg)
 - [ ] Advanced SQL Support
     - [x] Stored procedures
     - [x] User-defined functions
