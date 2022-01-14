@@ -57,6 +57,7 @@ $ ./bin/yb-admin --help
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
+* [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)
 
 ---
 
@@ -1675,3 +1676,45 @@ yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_is_load_balancer_idle
 ```
+
+---
+
+### Upgrade YSQL system catalog
+
+#### upgrade_ysql
+
+Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
+
+**Syntax**
+
+```sh
+yb-admin upgrade_ysql
+```
+
+**Example**
+
+```sh
+./bin/yb-admin upgrade_ysql
+```
+
+A successful upgrade returns the following message:
+
+```output
+YSQL successfully upgraded to the latest version
+```
+
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+
+```sh
+$ ./bin/yb-admin \
+      -timeout_ms 180000 \
+      upgrade_ysql
+```
+
+Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+
+{{< note title="Note" >}}
+Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
+{{< /note >}}
+
+Refer [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.

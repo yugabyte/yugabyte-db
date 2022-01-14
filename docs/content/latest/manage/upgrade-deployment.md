@@ -88,6 +88,10 @@ Similar to PostgreSQL, YugabyteDB YSQL stores the system metadata, (also referre
 
 YSQL system catalog comes as an additional layer to store metadata on top of YugabyteDB software itself. It is accessible through YSQL API and is crucial for the YSQL functionality.
 
+{{< note title="Note" >}}
+YSQL system catalog upgrades are applicable for clusters with YugabyteDB version 2.8 or higher.
+{{< /note >}}
+
 ### Why upgrade YSQL system catalog
 
 With the addition of new features , there's a need to add more objects such as new tables and functions to the YSQL system catalog.
@@ -98,7 +102,7 @@ While a newly created cluster on the latest release is initialized with the most
 
 ### How to upgrade YSQL system catalog
 
-After the YugabyteDB upgrade process completes successfully, use the `yb-admin` utility to perform an upgrade of the YSQL system catalog(YSQL upgrade) as follows:
+After the YugabyteDB upgrade process completes successfully, use the [yb-admin](../../admin/yb-admin/) utility to perform an upgrade of the YSQL system catalog(YSQL upgrade) as follows:
 
 ```sh
 $ ./bin/yb-admin upgrade_ysql
@@ -110,7 +114,7 @@ For a successful YSQL upgrade, a message will be displayed as follows:
 YSQL successfully upgraded to the latest version
 ```
 
-In certain scenarios, YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
 
 ```sh
 $ ./bin/yb-admin -timeout_ms 180000 upgrade_ysql
