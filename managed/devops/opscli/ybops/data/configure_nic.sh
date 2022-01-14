@@ -2,7 +2,16 @@ secondary_network=""
 secondary_netmask=""
 cloud=""
 rtb_id=250 # Just free route table ID
-rtb_name="secondary"
+rtb_name="secondary" # This is customer side of the routing table
+mgmt_rtb_id=251
+mgmt_rtb_name="mgmt" # This is management side of the routing table
+
+# AWS - Primary - ens5 :: Secondary interface can be - eth0 eth1 ens6
+# GCP - Primary - eth0 or ens5 :: Secondary can be - eth1 ens6
+# We will use secondary or the customer side to be the default route
+# Adding two different route tables for mgmt and secondary(customer) sides, makes it
+# scalable for future extensions and we can add more specific rules to each table
+# rather than changing default table
 
 fix_ifcfg() {
   #eth0 - primary interface is ens5 and AWS setup eth0
@@ -21,13 +30,22 @@ fix_ifcfg() {
   done
 }
 
-configure_second_nic() {
+configure_nics() {
+  # Create Table for customer side
   echo "Create route table ${rtb_id}"
   egrep "^${rtb_id}" /etc/iproute2/rt_tables && {
     echo "RTb ID $rtb_id exists, change to $(($rtb_id + 1))"
     exit 1
   }
   echo -e "${rtb_id}\t$rtb_name" >>/etc/iproute2/rt_tables
+  # Create Table for Mgmt side
+  echo "Create route table ${mgmt_rtb_id}"
+    egrep "^${mgmt_rtb_id}" /etc/iproute2/rt_tables && {
+      echo "RTb ID mgmt_rtb_id exists, change to $((mgmt_rtb_id + 1))"
+      exit 1
+    }
+    echo -e "${mgmt_rtb_id}\t$mgmt_rtb_name" >>/etc/iproute2/rt_tables
+
   cat - >/etc/dhcp/dhclient-up-hooks <<EOF
 #!/usr/bin/env bash
 set -x
@@ -46,7 +64,8 @@ if [[ "$cloud" == "gcp" ]]; then
 fi
 
 log "Configure for \$new_network_number"
-[ "\$new_network_number" == "\${secondary_network}" ] && {
+
+if [ "\$new_network_number" == "\${secondary_network}" ]; then
  log "It's secondary CIDR (\${secondary_network}), update rule and route!"
  ip rule show | grep "from \${secondary_network}/\${secondary_netmask} table $rtb_name" && {
    log "Rule already set"
@@ -58,7 +77,22 @@ log "Configure for \$new_network_number"
  } || {
    ip route add default table $rtb_name via \$new_routers dev \$interface
  }
-}
+ #Add default route via the customer interface
+ ip route del default
+ ip route add default via \$new_routers
+else
+ log "It's management CIDR !"
+ ip rule show | grep "from \${$new_network_number}/\${new_subnet_mask} table $mgmt_rtb_name" && {
+   log "Rule already set"
+ } || {
+   ip rule add from \${$new_network_number}/\${new_subnet_mask} table $mgmt_rtb_name
+ }
+ ip route show | grep "default table $mgmt_rtb_name via \$new_routers dev \$interface" && {
+   log "Route already set"
+ } || {
+   ip route add default table $mgmt_rtb_name via \$new_routers dev \$interface
+ }
+fi
 log Done
 EOF
   chmod +x /etc/dhcp/dhclient-up-hooks
@@ -126,4 +160,4 @@ done
 if [[ "$cloud" == "aws" ]]; then
   fix_ifcfg
 fi
-configure_second_nic
+configure_nics
