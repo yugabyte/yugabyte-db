@@ -4407,17 +4407,23 @@ typedef void(*YBFunctor)(const void*);
 
 static void
 yb_exec_query_wrapper(MemoryContext exec_context,
-                      YBQueryRestartData* restart_data,
-                      YBFunctor functor,
-                      const void* functor_context)
+					  YBQueryRestartData* restart_data,
+					  YBFunctor functor,
+					  const void* functor_context)
 {
-	for (int attempt = 0;; ++attempt)
+	bool retry = true;
+	for (int attempt = 0; retry; ++attempt)
 	{
-		YBSaveOutputBufferPosition(!yb_is_begin_transaction(restart_data->command_tag));
+		YBSaveOutputBufferPosition(
+			!yb_is_begin_transaction(restart_data->command_tag));
 		PG_TRY();
 		{
 			(*functor)(functor_context);
-			return;
+			/*
+			 * Stop retrying if successfull. Note, break or return could not be
+			 * used here, they would prevent PG_END_TRY();
+			 */
+			retry = false;
 		}
 		PG_CATCH();
 		{

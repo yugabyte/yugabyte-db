@@ -1984,10 +1984,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 	{
 		MemoryContext error_context = MemoryContextSwitchTo(exec_context);
 		ErrorData* edata = CopyErrorData();
-		FlushErrorState();
 
-		elog(DEBUG2, "Error when trying to lock row. wait_policy=%d message=%s", wait_policy,
-				 edata->message);
+		elog(DEBUG2, "Error when trying to lock row. wait_policy=%d txn_errcode=%d message=%s",
+			 wait_policy, edata->yb_txn_errcode, edata->message);
 
 		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 			res = HeapTupleUpdated;
@@ -1998,6 +1997,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 			MemoryContextSwitchTo(error_context);
 			PG_RE_THROW();
 		}
+
+		/* Discard the error if not rethrown */
+		FlushErrorState();
 	}
 	PG_END_TRY();
 
