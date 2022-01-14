@@ -11,7 +11,7 @@ menu:
   latest:
     identifier: create-clusters
     parent: cloud-basics
-    weight: 10
+    weight: 50
 isTocNested: true
 showAsideToc: true
 ---
@@ -38,13 +38,13 @@ The **Create Cluster** wizard has the following three pages:
 
 ### Select Cluster Type
 
-Use the **Free** cluster to get started with YugabyteDB. Although it's not suitable for production workloads, the free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
+Use the free cluster to get started with YugabyteDB. Although it's not suitable for production workloads, the free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
 
 - Single node
 - Up to 2 vCPUs and 10 GB of storage, depending on the cloud provider
 - Limit of one free cluster per account
 
-**Paid** clusters support multi-node and highly available deployments and include the following features:
+Standard clusters support multi-node and highly available deployments and include the following features:
 
 - No limit on cluster size - choose any cluster size based on your use case
 - Horizontal and vertical scaling - add or remove nodes and add storage to suit your production loads
@@ -68,7 +68,7 @@ Set the following options:
 - **Cluster Name**: Enter a name for the cluster.
 - **Region**: Choose the Region where the cluster will be located.
 
-If you are creating a **Paid** cluster, set the following additional options:
+If you are creating a standard (not free) cluster, set the following additional options:
 
 - **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures:
 
@@ -84,9 +84,11 @@ If you are creating a **Paid** cluster, set the following additional options:
 
 - **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
 
+- **Database Version**: By default, clusters are deployed using a recent build from the Stable release series. Free clusters are always deployed with an edge release (typically from the Latest release series, but occasionally a new stable release). If you want to use an edge release for a standard cluster, click **Advanced** and choose a release. If you have arranged a custom build with Yugabyte, it will also be listed here.
+
 The cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
-Paid clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
+Standard clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
 
 ### Database Admin Credentials
 
@@ -100,7 +102,7 @@ Download the credentials, and click **Create Cluster**.
 
 {{< warning title="Important" >}}
 
-Save your credentials in a safe place. If you lose these credentials you will not be able to use the database.
+Save your database credentials in a safe place. If you lose these credentials you will not be able to use the database.
 
 {{< /warning >}}
 
