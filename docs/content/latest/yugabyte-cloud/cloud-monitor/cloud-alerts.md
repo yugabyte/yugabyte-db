@@ -19,7 +19,7 @@ Alerts and notifications are configured and managed on the **Alerts** page.
 
 - Yugabyte Cloud sends email notifications to all cloud account members.
 
-- Alerts are only sent once for each occurrence. For example, an alert is triggered when CPU use exceeds 75% for 10 minutes; if the condition continues for 30 minutes, you will still receive only one notification.
+- Alerts are only sent once for each occurrence. For example, an alert is triggered when CPU use exceeds 75% for 5 minutes; if the condition continues for 30 minutes, you will still receive only one notification.
 
 - Alerts are enabled for all clusters in your cloud.
 
