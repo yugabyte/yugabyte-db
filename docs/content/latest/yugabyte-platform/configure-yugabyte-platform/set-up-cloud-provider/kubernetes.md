@@ -217,7 +217,7 @@ The following illustration shows the completed form:
 
 <img title="K8s Configuration -- filled" alt="K8s Configuration -- filled" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-filled.png" />
 
-## Configure the region and zones
+## Configure region and zones
 
 Continue configuring your Kubernetes provider by clicking **Add Region** and completing the **Add new region** dialog, as follows:
 
@@ -302,14 +302,9 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
     
   - Overrides to publish Node-IP as the server broadcast address.
   
-    By default, master and T-Server pod IPs are published as the server broadcast address. To publish the IPs of the nodes on which database pods are deployed, add the following YAML to each zone override configuration:
+    By default, Master and T-Server pod fully-qualified domain names (FQDNs) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YugabyteDB TServer pods are deployed, add the following YAML to each zone override configuration:
   
     ```yml
-    master:
-      podAnnotations:
-        prometheus.io/path: "/prometheus-metrics"
-        # Any other required annotations
-    
     tserver:
       extraEnv:
       - name: NODE_IP
@@ -327,9 +322,6 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
                 values:
                 - "yb-tserver"
             topologyKey: kubernetes.io/hostname
-      podAnnotations:
-        prometheus.io/path: "/prometheus-metrics"
-        # Any other required annotations
     
     # Required to esure that the Kubernetes FQDNs are used for
     # internal communication between the nodes and node-to-node
