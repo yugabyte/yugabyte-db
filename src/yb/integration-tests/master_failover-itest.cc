@@ -212,7 +212,7 @@ class MasterFailoverTest : public YBTest {
   }
 
  protected:
-  int num_masters_;
+  size_t num_masters_;
   ExternalMiniClusterOptions opts_;
   std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
@@ -509,8 +509,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
 
   // Disable TS heartbeats.
   LOG(INFO) << "Disabled Heartbeats";
-  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_disable_heartbeat_test_only",
-                                        "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_tserver_disable_heartbeat", "true"));
 
   // Blacklist a TS.
   ExternalMaster *leader = cluster_->GetLeaderMaster();
@@ -529,7 +528,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
   master::GetLoadMovePercentResponsePB resp;
   ASSERT_OK(proxy.GetLoadMoveCompletion(req, &resp, &rpc));
 
-  int initial_total_load = resp.total();
+  auto initial_total_load = resp.total();
 
   // Failover the leader.
   LOG(INFO) << "Failing over master leader.";
@@ -547,8 +546,8 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
   LOG(INFO) << "Initial loads. Before master leader failover: " <<  initial_total_load
             << " v/s after master leader failover: " << resp.total();
 
-  EXPECT_EQ(resp.total(), initial_total_load) << "Expected the initial blacklisted load"
-                                  " to be propagated to new leader master.";
+  EXPECT_EQ(resp.total(), initial_total_load)
+      << "Expected the initial blacklisted load to be propagated to new leader master.";
 
   // The progress should be reported as 0 until tservers heartbeat
   // their tablet reports.
@@ -556,8 +555,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
                                   " to be zero.";
 
   // Now enable heartbeats.
-  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_disable_heartbeat_test_only",
-                                        "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_tserver_disable_heartbeat", "false"));
   ASSERT_OK(cluster_->SetFlagOnMasters("blacklist_progress_initial_delay_secs",
                                         std::to_string((kHeartbeatIntervalMs * 20)/1000)));
   LOG(INFO) << "Enabled heartbeats";

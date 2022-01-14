@@ -33,7 +33,7 @@ public abstract class VaultSecretEngineBase {
    * com.bettercloud.vault.api.mounts.MountTypes enum has all types of secret engine Currently we
    * are using only following
    */
-  public enum SecretEngineType {
+  public enum KMSEngineType {
     @EnumValue("transit") // only supported use case so far
     TRANSIT,
 
@@ -93,7 +93,7 @@ public abstract class VaultSecretEngineBase {
     }
   }
 
-  SecretEngineType secretEngineType;
+  KMSEngineType engineType;
   String mountPath;
   KeyType eKeyType;
 
@@ -108,8 +108,8 @@ public abstract class VaultSecretEngineBase {
    * @param kType
    */
   public VaultSecretEngineBase(
-      VaultAccessor vaultAccessor, SecretEngineType type, String mPath, KeyType kType) {
-    secretEngineType = type;
+      VaultAccessor vaultAccessor, KMSEngineType type, String mPath, KeyType kType) {
+    engineType = type;
     mountPath = mPath;
     eKeyType = kType;
     vAccessor = vaultAccessor;
@@ -126,9 +126,9 @@ public abstract class VaultSecretEngineBase {
     String fetchedType = null;
     try {
       fetchedType = vAccessor.getMountType(mountPath);
-      SecretEngineType type = SecretEngineType.valueOf(fetchedType);
-      if (type == secretEngineType)
-        LOG.info("Secret Engine:{} resides on Path: {}", secretEngineType.toString(), mountPath);
+      KMSEngineType type = KMSEngineType.valueOf(fetchedType);
+      if (type == engineType)
+        LOG.info("Secret Engine:{} resides on Path: {}", engineType.toString(), mountPath);
     } catch (Exception e) {
       LOG.error("Cannot validate path and secret engine using /sys/mounts/, Exception: e", e);
     }

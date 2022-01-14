@@ -292,9 +292,9 @@ TAG_FLAG(cluster_uuid, hidden);
 
 DECLARE_int32(yb_num_shards_per_tserver);
 
-DEFINE_uint64(transaction_table_num_tablets, 0,
-    "Number of tablets to use when creating the transaction status table."
-    "0 to use transaction_table_num_tablets_per_tserver.");
+DEFINE_int32(transaction_table_num_tablets, 0,
+             "Number of tablets to use when creating the transaction status table."
+             "0 to use transaction_table_num_tablets_per_tserver.");
 
 DEFINE_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of tablets per tablet server for transaction status table. If the value is "
@@ -302,9 +302,9 @@ DEFINE_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerT
 
 DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 
-DEFINE_uint64(metrics_snapshots_table_num_tablets, 0,
-    "Number of tablets to use when creating the metrics snapshots table."
-    "0 to use the same default num tablets as for regular tables.");
+DEFINE_int32(metrics_snapshots_table_num_tablets, 0,
+             "Number of tablets to use when creating the metrics snapshots table."
+             "0 to use the same default num tablets as for regular tables.");
 
 DEFINE_bool(disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YCQL indexes.");
@@ -596,8 +596,8 @@ class IndexInfoBuilder {
       col->set_column_id(index_schema.column_id(i));
       col->set_indexed_column_id(indexed_schema.column_id(indexed_col_idx));
     }
-    index_info_.set_hash_column_count(index_schema.num_hash_key_columns());
-    index_info_.set_range_column_count(index_schema.num_range_key_columns());
+    index_info_.set_hash_column_count(narrow_cast<uint32_t>(index_schema.num_hash_key_columns()));
+    index_info_.set_range_column_count(narrow_cast<uint32_t>(index_schema.num_range_key_columns()));
 
     for (size_t i = 0; i < indexed_schema.num_hash_key_columns(); i++) {
       index_info_.add_indexed_hash_column_ids(indexed_schema.column_id(i));
@@ -1234,6 +1234,28 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   l.Commit();
 
   return Status::OK();
+}
+
+std::vector<std::string> CatalogManager::GetMasterAddresses() {
+  std::vector<std::string> result;
+  consensus::ConsensusStatePB state;
+  auto status = GetCurrentConfig(&state);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to get current config: " << status;
+    return result;
+  }
+  for (const auto& peer : state.config().peers()) {
+    std::vector<std::string> peer_addresses;
+    for (const auto& list : {peer.last_known_private_addr(), peer.last_known_broadcast_addr()}) {
+      for (const auto& entry : list) {
+        peer_addresses.push_back(HostPort::FromPB(entry).ToString());
+      }
+    }
+    if (!peer_addresses.empty()) {
+      result.push_back(JoinStrings(peer_addresses, ","));
+    }
+  }
+  return result;
 }
 
 Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
@@ -2947,8 +2969,8 @@ Status CheckNumReplicas(const PlacementInfoPB& placement_info,
                         const TSDescriptorVector& ts_descs,
                         const vector<Partition>& partitions,
                         CreateTableResponsePB* resp) {
-  int max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
-  int num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
+  auto max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
+  auto num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
   if (num_replicas > 1 && max_tablets > 0 && partitions.size() > max_tablets) {
     std::string msg = Substitute("The requested number of tablets ($0) is over the permitted "
                                  "maximum ($1)", partitions.size(), max_tablets);
@@ -3149,8 +3171,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // to (a new) master leader.
     const auto num_live_tservers =
         GetNumLiveTServersForPlacement(placement_info.placement_uuid());
-    num_tablets = num_live_tservers * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
-                                                   : FLAGS_yb_num_shards_per_tserver);
+    num_tablets = narrow_cast<int>(
+        num_live_tservers * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
+                                         : FLAGS_yb_num_shards_per_tserver));
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
               << num_live_tservers << " primary servers";
   }
@@ -3166,7 +3189,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema));
     if (req.partitions_size() > 0) {
       if (req.partitions_size() != num_tablets) {
-        Status  s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
+        Status s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
         return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       }
       string last;
@@ -3188,7 +3211,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
     // The vector 'partitions' contains real setup partitions, so the variable
     // should be updated.
-    num_tablets = partitions.size();
+    num_tablets = narrow_cast<int>(partitions.size());
   }
 
   TSDescriptorVector all_ts_descs;
@@ -3500,7 +3523,8 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
   std::string matview_table_prefix = "pg_temp_";
   if (table->name().find(matview_table_prefix) == 0) {
     try {
-      table_storage_id = std::stol(table->name().substr(matview_table_prefix.length()));
+      table_storage_id = narrow_cast<uint32_t>(std::stol(
+          table->name().substr(matview_table_prefix.length())));
     }
     catch (...) {
       string msg = Substitute("Unexpected materialized view table name ($0), assuming user table",
@@ -3575,7 +3599,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                                                ValidateReplicationInfoResponsePB* resp) {
   // Verify that the total number of tablets is reasonable, relative to the number
   // of live tablet servers.
-  int num_live_tservers = ts_descs.size();
+  auto num_live_tservers = ts_descs.size();
   int num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
   Status s;
   string msg;
@@ -3705,15 +3729,14 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(rpc::RpcCont
 
   // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
   // will use the same defaults as for regular tables.
-  size_t num_tablets;
+  int num_tablets;
   if (FLAGS_transaction_table_num_tablets > 0) {
     num_tablets = FLAGS_transaction_table_num_tablets;
   } else {
-    num_tablets = GetNumLiveTServersForPlacement(cluster_config_->LockForRead()
-                                                     ->pb.replication_info()
-                                                     .live_replicas()
-                                                     .placement_uuid()) *
-                  FLAGS_transaction_table_num_tablets_per_tserver;
+    auto placement_uuid =
+        cluster_config_->LockForRead()->pb.replication_info().live_replicas().placement_uuid();
+    num_tablets = narrow_cast<int>(GetNumLiveTServersForPlacement(placement_uuid) *
+                                   FLAGS_transaction_table_num_tablets_per_tserver);
   }
   req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets);
 
@@ -7726,10 +7749,10 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
     UDTypeInfoPB* udtype = resp->add_udtypes();
     udtype->set_id(entry.second->id());
     udtype->set_name(ltm->name());
-    for (size_t i = 0; i <= ltm->field_names_size(); i++) {
+    for (int i = 0; i <= ltm->field_names_size(); i++) {
       udtype->add_field_names(ltm->field_names(i));
     }
-    for (size_t i = 0; i <= ltm->field_types_size(); i++) {
+    for (int i = 0; i <= ltm->field_types_size(); i++) {
       udtype->add_field_types()->CopyFrom(ltm->field_types(i));
     }
 
@@ -8907,7 +8930,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type);
     }
 
-    int replicas_left = nreplicas - already_selected_ts.size();
+    ssize_t replicas_left = nreplicas - already_selected_ts.size();
     DCHECK_GE(replicas_left, 0);
     if (replicas_left > 0) {
       // No need to do an extra check here, as we checked early if we have enough to cover all
@@ -9161,11 +9184,11 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
 }
 
 void CatalogManager::SelectReplicas(
-    const TSDescriptorVector& ts_descs, int nreplicas, consensus::RaftConfigPB* config,
+    const TSDescriptorVector& ts_descs, size_t nreplicas, consensus::RaftConfigPB* config,
     set<shared_ptr<TSDescriptor>>* already_selected_ts, PeerMemberType member_type) {
   DCHECK_LE(nreplicas, ts_descs.size());
 
-  for (int i = 0; i < nreplicas; ++i) {
+  for (size_t i = 0; i < nreplicas; ++i) {
     // We have to derefence already_selected_ts here, as the inner mechanics uses ReservoirSample,
     // which in turn accepts only a reference to the set, not a pointer. Alternatively, we could
     // have passed it in as a non-const reference, but that goes against our argument passing
@@ -9556,11 +9579,12 @@ void CatalogManager::ReportMetrics() {
   // Report metrics on how many tservers are alive.
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  const int32 num_live_servers = ts_descs.size();
-  metric_num_tablet_servers_live_->set_value(num_live_servers);
+  const auto num_live_servers = ts_descs.size();
+  metric_num_tablet_servers_live_->set_value(narrow_cast<uint32_t>(num_live_servers));
 
   master_->ts_manager()->GetAllDescriptors(&ts_descs);
-  metric_num_tablet_servers_dead_->set_value(ts_descs.size() - num_live_servers);
+  metric_num_tablet_servers_dead_->set_value(
+      narrow_cast<uint32_t>(ts_descs.size() - num_live_servers));
 }
 
 void CatalogManager::ResetMetrics() {
@@ -9631,15 +9655,15 @@ Status CatalogManager::SetClusterConfig(
   SysClusterConfigEntryPB config(req->cluster_config());
 
   if (config.has_server_blacklist()) {
-    config.mutable_server_blacklist()->set_initial_replica_load(
-        GetNumRelevantReplicas(config.server_blacklist(), false /* leaders_only */));
+    config.mutable_server_blacklist()->set_initial_replica_load(narrow_cast<int32_t>(
+        GetNumRelevantReplicas(config.server_blacklist(), false /* leaders_only */)));
     LOG(INFO) << Format("Set blacklist of total tservers: $0, with initial load: $1",
                     config.server_blacklist().hosts().size(),
                     config.server_blacklist().initial_replica_load());
   }
   if (config.has_leader_blacklist()) {
-    config.mutable_leader_blacklist()->set_initial_leader_load(
-        GetNumRelevantReplicas(config.leader_blacklist(), true /* leaders_only */));
+    config.mutable_leader_blacklist()->set_initial_leader_load(narrow_cast<int32_t>(
+        GetNumRelevantReplicas(config.leader_blacklist(), true /* leaders_only */)));
     LOG(INFO) << Format("Set leader blacklist of total tservers: $0, with initial load: $1",
                     config.leader_blacklist().hosts().size(),
                     config.leader_blacklist().initial_leader_load());

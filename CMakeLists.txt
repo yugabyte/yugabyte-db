@@ -72,6 +72,11 @@ else()
   message(FATAL_ERROR "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  # Optimize for Graviton on Linux/aarch64 (not mac/arm64)
+  ADD_CXX_FLAGS("-march=armv8.2-a+fp16+rcpc+dotprod+crypto")
+endif()
+
 if (NOT "$ENV{YB_TARGET_ARCH}" STREQUAL "" AND
     NOT "$ENV{YB_TARGET_ARCH}" STREQUAL "${CMAKE_SYSTEM_PROCESSOR}")
   message(FATAL_ERROR "YB_TARGET_ARCH is set to $ENV{YB_TARGET_ARCH} but CMAKE_SYSTEM_PROCESSOR "
@@ -373,7 +378,7 @@ if(IS_CLANG)
     message("YB_ENABLE_STATIC_ANALYZER is not set to 1, not enabling Clang static analyzer")
   endif()
 
-  # The actual static analysis is turned on using the --analyze flag.
+  ADD_CXX_FLAGS("-Wshorten-64-to-32")
 endif()
 
 if(USING_LINUXBREW AND IS_CLANG)

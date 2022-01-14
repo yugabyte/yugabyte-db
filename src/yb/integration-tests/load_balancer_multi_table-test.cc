@@ -423,11 +423,11 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
 
 TEST_F(LoadBalancerMultiTableTest, TestLBWithDeadBlacklistedTS) {
   const int rf = 3;
-  int num_ts = num_tablet_servers();
+  auto num_ts = num_tablet_servers();
 
   // Reduce the time after which a TS is marked DEAD.
   int tserver_unresponsive_timeout_ms = 5000;
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "tserver_unresponsive_timeout_ms",
                                               std::to_string(tserver_unresponsive_timeout_ms)));
@@ -517,7 +517,7 @@ TEST_F(LoadBalancerMultiTableTest, TestLBWithDeadBlacklistedTS) {
 }
 
 TEST_F(LoadBalancerMultiTableTest, GlobalLeaderBalancing) {
-  int num_ts = num_tablet_servers();
+  auto num_ts = num_tablet_servers();
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return client_->IsLoadBalancerIdle();

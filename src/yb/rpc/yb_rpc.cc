@@ -300,7 +300,7 @@ size_t YBInboundCall::CopyToLastSidecarBuffer(const Slice& car) {
 }
 
 size_t YBInboundCall::AddRpcSidecar(Slice car) {
-  sidecar_offsets_.Add(total_sidecars_size_);
+  sidecar_offsets_.Add(narrow_cast<uint32_t>(total_sidecars_size_));
   total_sidecars_size_ += car.size();
   // Copy start of sidecar to existing buffer if present.
   car.remove_prefix(CopyToLastSidecarBuffer(car));
@@ -382,7 +382,7 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
 
 void YBInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
-  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+  auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
   if (header_.timeout_ms > 0) {
     double log_threshold = header_.timeout_ms * 0.75f;

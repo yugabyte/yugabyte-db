@@ -191,8 +191,8 @@ void SpinLock::SlowUnlock(uint64 wait_cycles) {
 }
 
 inline int32 SpinLock::CalculateWaitCycles(int64 wait_start_time) {
-  int32 wait_cycles = ((CycleClock::Now() - wait_start_time) >>
-                       PROFILE_TIMESTAMP_SHIFT);
+  int32 wait_cycles = static_cast<int32>(
+      (CycleClock::Now() - wait_start_time) >> PROFILE_TIMESTAMP_SHIFT);
   // The number of cycles waiting for the lock is used as both the
   // wait_cycles and lock value, so it can't be kSpinLockFree or
   // kSpinLockHeld.  Make sure the value returned is at least

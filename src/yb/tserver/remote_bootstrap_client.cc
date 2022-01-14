@@ -608,7 +608,7 @@ Status RemoteBootstrapClient::DownloadWALs() {
       }
     }
   } else {
-    int num_segments = wal_seqnos_.size();
+    auto num_segments = wal_seqnos_.size();
     LOG_WITH_PREFIX(INFO) << "Starting download of " << num_segments << " WAL segments...";
     for (uint64_t seg_seqno : wal_seqnos_) {
       UpdateStatusMessage(Substitute("Downloading WAL segment with seq. number $0 ($1/$2)",

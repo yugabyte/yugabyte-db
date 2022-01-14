@@ -66,7 +66,7 @@ static uint64 Rotate(uint64 val, int shift) {
 // Equivalent to Rotate(), but requires the second arg to be non-zero.
 // On x86-64, and probably others, it's possible for this to compile
 // to a single instruction if both args are already in registers.
-static uint64 RotateByAtLeast1(uint64 val, int shift) {
+static uint64 RotateByAtLeast1(uint64 val, size_t shift) {
   DCHECK_GE(shift, 1);
   DCHECK_LE(shift, 63);
   return (val >> shift) | (val << (64 - shift));
@@ -97,7 +97,7 @@ static uint64 HashLen0to16(const char *s, size_t len) {
     uint8 b = s[len >> 1];
     uint8 c = s[len - 1];
     uint32 y = static_cast<uint32>(a) + (static_cast<uint32>(b) << 8);
-    uint32 z = len + (static_cast<uint32>(c) << 2);
+    uint32 z = static_cast<uint32>(len) + (static_cast<uint32>(c) << 2);
     return ShiftMix(y * k2 ^ z * k3) * k2;
   }
   return k2;

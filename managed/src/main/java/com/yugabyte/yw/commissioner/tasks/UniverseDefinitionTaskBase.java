@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -1185,6 +1186,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return wasCallbackRun;
   }
 
+  /** Sets the task params from the DB. */
+  public void fetchTaskDetailsFromDB() {
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+    taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
+  }
+
   /**
    * Update the task details for the task info in the DB.
    *
@@ -1233,21 +1240,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * ToBeAdded state.
    *
    * @param universe the universe
-   * @param taskParams the task params
+   * @param clusters the clusters
    */
-  public void createPreflightNodeCheckTasks(
-      Universe universe, UniverseDefinitionTaskParams taskParams) {
-    Set<Cluster> clusters =
-        taskParams
-            .clusters
+  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
+    Set<Cluster> onPremClusters =
+        clusters
             .stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
             .collect(Collectors.toSet());
-    if (clusters.isEmpty()) {
+    if (onPremClusters.isEmpty()) {
       return;
     }
     SubTaskGroup subTaskGroup = new SubTaskGroup("SetNodeStatus", executor);
-    for (Cluster cluster : clusters) {
+    for (Cluster cluster : onPremClusters) {
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().getNodesInCluster(cluster.uuid));
       applyOnNodesWithStatus(

@@ -21,6 +21,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -270,8 +271,9 @@ bool CQLRequest::ParseRequest(
         buffer = std::make_unique<uint8_t[]>(uncomp_size);
         body_data += sizeof(uncomp_size);
         body_size -= sizeof(uncomp_size);
-        const int size = LZ4_decompress_safe(to_char_ptr(body_data), to_char_ptr(buffer.get()),
-                                             body_size, uncomp_size);
+        const int size = LZ4_decompress_safe(
+            to_char_ptr(body_data), to_char_ptr(buffer.get()), narrow_cast<int>(body_size),
+            uncomp_size);
         if (size < 0 || size != uncomp_size) {
           error_response->reset(
               new ErrorResponse(
@@ -997,11 +999,11 @@ void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststri
       case CQLMessage::CompressionScheme::kLz4: {
         SerializeInt(static_cast<int32_t>(body.size()), mesg);
         const size_t curr_size = mesg->size();
-        const int max_comp_size = LZ4_compressBound(body.size());
+        const int max_comp_size = LZ4_compressBound(narrow_cast<int>(body.size()));
         mesg->resize(curr_size + max_comp_size);
         const int comp_size = LZ4_compress_default(to_char_ptr(body.data()),
                                                    to_char_ptr(mesg->data() + curr_size),
-                                                   body.size(),
+                                                   narrow_cast<int>(body.size()),
                                                    max_comp_size);
         CHECK_NE(comp_size, 0) << "LZ4 compression failed";
         mesg->resize(curr_size + comp_size);
@@ -1433,7 +1435,7 @@ ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name
       paging_state(paging_state),
       global_table_spec(no_metadata ? "" : table_name.namespace_name(),
                         no_metadata ? "" : table_name.table_name()),
-      col_count(columns.size()) {
+      col_count(narrow_cast<int>(columns.size())) {
   if (!no_metadata) {
     col_specs.reserve(col_count);
     for (const auto& column : columns) {
@@ -1631,9 +1633,9 @@ PreparedResultResponse::~PreparedResultResponse() {
 void PreparedResultResponse::SerializePreparedMetadata(
     const PreparedMetadata& metadata, faststring* mesg) const {
   SerializeInt(metadata.flags, mesg);
-  SerializeInt(metadata.col_specs.size(), mesg);
+  SerializeInt(narrow_cast<int32_t>(metadata.col_specs.size()), mesg);
   if (VersionIsCompatible(kV4Version)) {
-    SerializeInt(metadata.pk_indices.size(), mesg);
+    SerializeInt(narrow_cast<int32_t>(metadata.pk_indices.size()), mesg);
     for (const auto& pk_index : metadata.pk_indices) {
       SerializeShort(pk_index, mesg);
     }

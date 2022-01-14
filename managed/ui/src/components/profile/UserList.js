@@ -63,6 +63,7 @@ class UserList extends Component {
     ) {
       return null;
     } else {
+      const disableRoleEdit = user?.ldapSpecifiedRole; //if user is LDAP
       return (
         <DropdownButton
           className="btn btn-default"
@@ -70,7 +71,10 @@ class UserList extends Component {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem onClick={() => this.editRole(user)}>
+          <MenuItem
+            disabled={disableRoleEdit}
+            onClick={() => !disableRoleEdit && this.editRole(user)}
+          >
             <span className="fa fa-edit" /> Edit User Role
           </MenuItem>
           <MenuItem onClick={() => this.showDeleteUserModal(user)}>

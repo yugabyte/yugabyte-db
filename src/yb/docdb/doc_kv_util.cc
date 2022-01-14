@@ -32,7 +32,7 @@ namespace docdb {
 
 bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_doc_key) {
   if (key.starts_with(encoded_doc_key)) {
-    const int encoded_doc_key_size = encoded_doc_key.size();
+    const auto encoded_doc_key_size = encoded_doc_key.size();
     const char* key_data = key.cdata();
     return key.size() >= encoded_doc_key_size + 2 &&
            key_data[encoded_doc_key_size] == '\0' &&

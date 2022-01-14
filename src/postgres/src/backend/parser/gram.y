@@ -6940,8 +6940,8 @@ TruncateStmt:
 		;
 
 opt_restart_seqs:
-			CONTINUE_P IDENTITY_P		{ $$ = false; parser_ybc_not_support(@1, "sequences"); }
-			| RESTART IDENTITY_P		{ $$ = true; parser_ybc_not_support(@1, "sequences"); }
+			CONTINUE_P IDENTITY_P		{ $$ = false;  }
+			| RESTART IDENTITY_P		{ $$ = true; }
 			| /* EMPTY */				{ $$ = false; }
 		;
 
@@ -15870,7 +15870,11 @@ SignedIconst: Iconst								{ $$ = $1; }
 			| '-' Iconst							{ $$ = - $2; }
 		;
 
-Oid:		ICONST									{ $$ = $1; };
+/*
+ * Iconst does not accept large OID such as 2147500041, use SignedIconst to convert
+ * it to -2147467255 instead. See process_integer_literal and strtoint for details.
+ */
+Oid:		SignedIconst							{ $$ = $1; };
 
 /* Role specifications */
 RoleId:		RoleSpec

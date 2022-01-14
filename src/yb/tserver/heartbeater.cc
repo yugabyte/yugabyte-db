@@ -111,10 +111,8 @@ DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
              "rather than retrying.");
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
-DEFINE_bool(tserver_disable_heartbeat_test_only, false, "Should heartbeat be disabled");
-TAG_FLAG(tserver_disable_heartbeat_test_only, unsafe);
-TAG_FLAG(tserver_disable_heartbeat_test_only, hidden);
-TAG_FLAG(tserver_disable_heartbeat_test_only, runtime);
+DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
+TAG_FLAG(TEST_tserver_disable_heartbeat, runtime);
 
 DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
@@ -552,8 +550,8 @@ Status Heartbeater::Thread::DoHeartbeat() {
     return STATUS(IOError, "failing all heartbeats for tests");
   }
 
-  if (PREDICT_FALSE(FLAGS_tserver_disable_heartbeat_test_only)) {
-    LOG_WITH_PREFIX(INFO) << "Heartbeat disabled for testing.";
+  if (PREDICT_FALSE(FLAGS_TEST_tserver_disable_heartbeat)) {
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Heartbeat disabled for testing.";
     return Status::OK();
   }
 

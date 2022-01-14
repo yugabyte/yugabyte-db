@@ -99,9 +99,9 @@ using namespace std::literals;
 
 DEFINE_int32(num_client_threads, 8,
              "Number of client threads to launch");
-DEFINE_int64(client_inserts_per_thread, 50,
+DEFINE_int32(client_inserts_per_thread, 50,
              "Number of rows inserted by each client thread");
-DEFINE_int64(client_num_batches_per_thread, 5,
+DEFINE_int32(client_num_batches_per_thread, 5,
              "In how many batches to group the rows, for each client");
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);
@@ -282,9 +282,9 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     return ret;
   }
 
-  void InsertTestRowsRemoteThread(uint64_t first_row,
-                                  uint64_t count,
-                                  uint64_t num_batches,
+  void InsertTestRowsRemoteThread(int32_t first_row,
+                                  uint32_t count,
+                                  int num_batches,
                                   const vector<CountDownLatch*>& latches) {
     client::TableHandle table;
     ASSERT_OK(table.Open(kTableName, client_.get()));
@@ -295,8 +295,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     for (int i = 0; i < num_batches; i++) {
       SCOPED_TRACE(Format("Batch: $0", i));
 
-      uint64_t first_row_in_batch = first_row + (i * count / num_batches);
-      uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
+      auto first_row_in_batch = first_row + (i * count / num_batches);
+      auto last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
         auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
@@ -405,7 +405,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     if (kill) {
       CHECK_OK(old_leader_ets->Restart());
       // Wait until we have the same number of followers.
-      int initial_followers = followers.size();
+      auto initial_followers = followers.size();
       do {
         GetOnlyLiveFollowerReplicas(tablet_id_, &followers);
       } while (followers.size() < initial_followers);
@@ -1194,7 +1194,7 @@ void RaftConsensusITest::TestAddRemoveServer(PeerMemberType member_type) {
   // Go from 3 tablet servers down to 1 in the configuration.
   vector<int> remove_list = { 2, 1 };
   for (int to_remove_idx : remove_list) {
-    int num_servers = active_tablet_servers.size();
+    auto num_servers = active_tablet_servers.size();
     LOG(INFO) << "Remove: Going from " << num_servers << " to " << num_servers - 1 << " replicas";
 
     TServerDetails* tserver_to_remove = tservers[to_remove_idx];
@@ -1214,7 +1214,7 @@ void RaftConsensusITest::TestAddRemoveServer(PeerMemberType member_type) {
   // Add the tablet servers back, in reverse order, going from 1 to 3 servers in the configuration.
   vector<int> add_list = { 1, 2 };
   for (int to_add_idx : add_list) {
-    int num_servers = active_tablet_servers.size();
+    auto num_servers = active_tablet_servers.size();
     if (PeerMemberType::PRE_VOTER == member_type) {
       LOG(INFO) << "Add: Going from " << num_servers << " to " << num_servers + 1 << " replicas";
     } else {
@@ -1510,6 +1510,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   workload.set_write_timeout_millis(1000);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(1);
+  workload.set_sequential_write(true);
   workload.Setup(client::YBTableType::YQL_TABLE_TYPE);
   workload.Start();
 
@@ -1584,6 +1585,7 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   workload.set_write_timeout_millis(100);
   workload.set_num_write_threads(2);
   workload.set_write_batch_size(1);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -2112,14 +2114,14 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
   // Calculate number of servers to leave unpaused (minority).
   // This math is a little unintuitive but works for cluster sizes including 2 and 1.
   // Note: We assume all of these TSes are voters.
-  int config_size = tablet_servers.size();
-  int minority_to_retain = MajoritySize(config_size) - 1;
+  auto config_size = tablet_servers.size();
+  auto minority_to_retain = MajoritySize(config_size) - 1;
 
   // Only perform this part of the test if we have some servers to pause, else
   // the failure assertions will throw.
   if (config_size > 1) {
     // Pause enough replicas to prevent a majority.
-    int num_to_pause = config_size - minority_to_retain;
+    auto num_to_pause = config_size - minority_to_retain;
     LOG(INFO) << "Pausing " << num_to_pause << " tablet servers in config of size " << config_size;
     vector<string> paused_uuids;
     for (const auto& entry : tablet_servers) {
@@ -2587,7 +2589,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
     // Go from 3 tablet servers down to 1 in the configuration.
     vector<int> remove_list = {2, 1};
     for (int to_remove_idx : remove_list) {
-      int num_servers = active_tablet_servers.size();
+      auto num_servers = active_tablet_servers.size();
       LOG(INFO) << "Remove: Going from " << num_servers << " to " << num_servers - 1 << " replicas";
 
       TServerDetails *tserver_to_remove = tservers[to_remove_idx];
@@ -2605,7 +2607,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
     // configuration.
     vector<int> add_list = {1, 2};
     for (int to_add_idx : add_list) {
-      int num_servers = active_tablet_servers.size();
+      auto num_servers = active_tablet_servers.size();
       LOG(INFO) << "Add: Going from " << num_servers << " to " << num_servers + 1 << " replicas";
 
       TServerDetails *tserver_to_add = tservers[to_add_idx];
@@ -2764,13 +2766,14 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   workload.set_table_name(kTableName);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(100);
+  workload.set_sequential_write(true);
   workload.Setup();
 
   LOG(INFO) << "Starting write workload...";
   workload.Start();
 
   while (true) {
-    int rows_inserted = workload.rows_inserted();
+    auto rows_inserted = workload.rows_inserted();
     if (rows_inserted >= num_rows_to_write) {
       break;
     }
@@ -2787,19 +2790,19 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
       MonoDelta::FromSeconds(NonTsanVsTsan(20, 60))));
 
   workload.StopAndJoin();
-  int num_batches = workload.batches_completed();
+  auto num_batches = workload.batches_completed();
 
   LOG(INFO) << "Waiting for replicas to agree...";
   // Wait for all servers to replicate everything up through the last write op.
   // Since we don't batch, there should be at least # rows inserted log entries,
   // plus the initial leader's no-op, plus 1 for
   // the added replica for a total == #rows + 2.
-  int min_log_index = num_batches + 2;
+  auto min_log_index = num_batches + 2;
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(120),
                                   active_tablet_servers, tablet_id_,
                                   min_log_index));
 
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
   ASSERT_ALL_REPLICAS_AGREE(rows_inserted);
 }

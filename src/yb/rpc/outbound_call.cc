@@ -228,7 +228,8 @@ Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr
   size_t header_pb_len = 1 + call_id_size + serialized_remote_method.size() + 1 + timeout_ms_size;
   size_t header_size =
       kMsgLengthPrefixLength                            // Int prefix for the total length.
-      + CodedOutputStream::VarintSize32(header_pb_len)  // Varint delimiter for header PB.
+      + CodedOutputStream::VarintSize32(
+            narrow_cast<uint32_t>(header_pb_len))       // Varint delimiter for header PB.
       + header_pb_len;                                  // Length for the header PB itself.
   size_t total_size = header_size + message_size;
 
@@ -237,11 +238,11 @@ Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr
 
   // 1. The length for the whole request, not including the 4-byte
   // length prefix.
-  NetworkByteOrder::Store32(dst, total_size - kMsgLengthPrefixLength);
+  NetworkByteOrder::Store32(dst, narrow_cast<uint32_t>(total_size - kMsgLengthPrefixLength));
   dst += sizeof(uint32_t);
 
   // 2. The varint-prefixed RequestHeader PB
-  dst = CodedOutputStream::WriteVarint32ToArray(header_pb_len, dst);
+  dst = CodedOutputStream::WriteVarint32ToArray(narrow_cast<uint32_t>(header_pb_len), dst);
   dst = Output::WriteTagToArray(RequestHeader::kCallIdFieldNumber << 3, dst);
   dst = Output::WriteVarint32ToArray(call_id_, dst);
   memcpy(dst, serialized_remote_method.data(), serialized_remote_method.size());
@@ -547,7 +548,7 @@ Result<uint32_t> OutboundCall::TimeoutMs() const {
     if (timeout_millis <= 0) {
       return STATUS(TimedOut, "Call timed out before sending");
     }
-    return timeout_millis;
+    return narrow_cast<uint32_t>(timeout_millis);
   } else {
     return 0;
   }

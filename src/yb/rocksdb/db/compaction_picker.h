@@ -286,6 +286,12 @@ class UniversalCompactionPicker : public CompactionPicker {
       VersionStorageInfo* vstorage, double score,
       const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);
 
+  // Pick Universal compaction to directly delete files that are no longer needed.
+  std::unique_ptr<Compaction> PickCompactionUniversalDeletion(
+      const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage, double score,
+      const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);
+
   // At level 0 we could compact only continuous sequence of files.
   // Since there could be too-large-to-compact files, we could get several such sequences.
   // Files from one sequence are compacted together, and files from different sequences are not

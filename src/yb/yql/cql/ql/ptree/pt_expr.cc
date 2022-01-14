@@ -1320,7 +1320,7 @@ CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_contex
 
   // Check the last operator to determine type.
   auto json_operator = std::dynamic_pointer_cast<PTJsonOperator>(
-      operators_->element(operators_->size() - 1))->json_operator();
+      operators_->node_list().back())->json_operator();
 
   if (json_operator == JsonOperator::JSON_OBJECT) {
     ql_type_ = QLType::Create(DataType::JSONB);

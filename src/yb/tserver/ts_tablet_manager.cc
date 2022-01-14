@@ -218,6 +218,8 @@ DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeou
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
+DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
+
 namespace yb {
 namespace tserver {
 
@@ -411,17 +413,21 @@ Status TSTabletManager::Init() {
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
   tablet_options_.listeners = server_->options().listeners;
+  if (docdb::GetRocksDBRateLimiterSharingMode() == docdb::RateLimiterSharingMode::TSERVER) {
+    tablet_options_.rate_limiter = docdb::CreateRocksDBRateLimiter();
+  }
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
   // FsManager isn't initialized until this point.
   int max_bootstrap_threads = FLAGS_num_tablets_to_open_simultaneously;
   if (max_bootstrap_threads == 0) {
-    size_t num_cpus = base::NumCPUs();
+    int num_cpus = base::NumCPUs();
     if (num_cpus <= 2) {
       max_bootstrap_threads = 2;
     } else {
-      max_bootstrap_threads = min(num_cpus - 1, fs_manager_->GetDataRootDirs().size() * 8);
+      max_bootstrap_threads = min(
+          num_cpus - 1, narrow_cast<int>(fs_manager_->GetDataRootDirs().size()) * 8);
     }
     LOG_WITH_PREFIX(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
@@ -1422,7 +1428,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     tablet_peer->RegisterMaintenanceOps(server_->maintenance_manager());
   }
 
-  int elapsed_ms = MonoTime::Now().GetDeltaSince(start).ToMilliseconds();
+  auto elapsed_ms = MonoTime::Now().GetDeltaSince(start).ToMilliseconds();
   if (elapsed_ms > FLAGS_tablet_start_warn_threshold_ms) {
     LOG(WARNING) << kLogPrefix << "Tablet startup took " << elapsed_ms << "ms";
     if (Trace::CurrentTrace()) {
@@ -1740,7 +1746,7 @@ void TSTabletManager::UnmarkTabletBeingRemoteBootstrapped(
   tablets_being_remote_bootstrapped_per_table_[table_id].erase(tablet_id);
 }
 
-int TSTabletManager::GetNumDirtyTabletsForTests() const {
+size_t TSTabletManager::TEST_GetNumDirtyTablets() const {
   SharedLock<RWMutex> lock(mutex_);
   return dirty_tablets_.size();
 }
@@ -1869,7 +1875,7 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
   TabletIdSet tablet_ids;
-  int32_t dirty_count, report_limit;
+  size_t dirty_count, report_limit;
   {
     std::lock_guard<RWMutex> write_lock(mutex_);
     uint32_t cur_report_seq = next_report_seq_++;
@@ -1939,7 +1945,8 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
     // Enforce a max tablet limit on reported tablets.
     if (report->updated_tablets_size() >= report_limit) break;
   }
-  report->set_remaining_tablet_count(dirty_count - report->updated_tablets_size());
+  report->set_remaining_tablet_count(
+      narrow_cast<int>(dirty_count - report->updated_tablets_size()));
 }
 
 void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
@@ -1950,7 +1957,7 @@ void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
   // to block if there is a waiting writer (see KUDU-2193). So, we just make
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
-  int32_t dirty_count, report_limit;
+  size_t dirty_count, report_limit;
   {
     std::lock_guard<RWMutex> write_lock(mutex_);
     uint32_t cur_report_seq = next_report_seq_++;
@@ -1968,7 +1975,8 @@ void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
     // Enforce a max tablet limit on reported tablets.
     if (report->updated_tablets_size() >= report_limit) break;
   }
-  report->set_remaining_tablet_count(dirty_count - report->updated_tablets_size());
+  report->set_remaining_tablet_count(
+      narrow_cast<int32_t>(dirty_count - report->updated_tablets_size()));
 }
 
 void TSTabletManager::MarkTabletReportAcknowledged(int32_t acked_seq,

@@ -83,7 +83,7 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
 
-  static String TMP_CHART_PATH = "/tmp/yugaware_tests/UniverseUiOnlyControllerTest/charts";
+  private String TMP_CHART_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
 
   @Before
   public void setUp() {
@@ -561,8 +561,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     when(mockReleaseManager.getReleaseByVersion("1.0.0"))
         .thenReturn(
             ReleaseManager.ReleaseMetadata.create("1.0.0")
-                .withChartPath(TMP_CHART_PATH + "/yugabyte-1.0.0-helm.tar.gz"));
-    createTempFile(TMP_CHART_PATH, "yugabyte-1.0.0-helm.tar.gz", "Sample helm chart data");
+                .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-1.0.0-helm.tar.gz"));
+    createTempFile(TMP_CHART_PATH, "ucctb_yugabyte-1.0.0-helm.tar.gz", "Sample helm chart data");
 
     Provider p;
     switch (cloudType) {

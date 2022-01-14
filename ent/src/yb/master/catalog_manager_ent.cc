@@ -103,9 +103,9 @@ using google::protobuf::RepeatedPtrField;
 using google::protobuf::util::MessageDifferencer;
 using strings::Substitute;
 
-DEFINE_uint64(cdc_state_table_num_tablets, 0,
-    "Number of tablets to use when creating the CDC state table."
-    "0 to use the same default num tablets as for regular tables.");
+DEFINE_int32(cdc_state_table_num_tablets, 0,
+             "Number of tablets to use when creating the CDC state table. "
+             "0 to use the same default num tablets as for regular tables.");
 
 DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
              "WAL retention time in seconds to be used for tables for which a CDC stream was "
@@ -117,6 +117,9 @@ DEFINE_bool(enable_transaction_snapshots, true,
 TAG_FLAG(enable_transaction_snapshots, hidden);
 TAG_FLAG(enable_transaction_snapshots, advanced);
 TAG_FLAG(enable_transaction_snapshots, runtime);
+
+DEFINE_test_flag(bool, disable_cdc_state_insert_on_setup, false,
+                 "Disable inserting new entries into cdc state as part of the setup flow.");
 
 namespace yb {
 
@@ -1569,7 +1572,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   // However, still do the validation for regular colocated tables.
   if (!is_parent_colocated_table) {
     Schema persisted_schema;
-    int new_num_tablets = 0;
+    size_t new_num_tablets = 0;
     {
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
@@ -2549,6 +2552,34 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
   LOG(INFO) << "Created CDC stream " << stream->ToString();
 
   RETURN_NOT_OK(CreateCdcStateTableIfNeeded(rpc));
+  if (!PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) &&
+     (!req->has_initial_state() || (req->initial_state() == master::SysCDCStreamEntryPB::ACTIVE))) {
+    // Create the cdc state entries for the tablets in this table from scratch since we have no
+    // data to bootstrap. If we data to bootstrap, let the BootstrapProducer logic take care of
+    // populating entries in cdc_state.
+    auto ybclient = master_->cdc_state_client_initializer().client();
+    if (!ybclient) {
+      return STATUS(IllegalState, "Client not initialized or shutting down");
+    }
+    client::TableHandle cdc_table;
+    const client::YBTableName cdc_state_table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+    RETURN_NOT_OK(ybclient->WaitForCreateTableToFinish(cdc_state_table_name));
+    RETURN_NOT_OK(cdc_table.Open(cdc_state_table_name, ybclient));
+    std::shared_ptr<client::YBSession> session = ybclient->NewSession();
+    auto tablets = table->GetTablets();
+    for (const auto& tablet : tablets) {
+      const auto op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto* const req = op->mutable_request();
+      QLAddStringHashValue(req, tablet->id());
+      QLAddStringRangeValue(req, stream->id());
+      cdc_table.AddStringColumnValue(req, master::kCdcCheckpoint, OpId().ToString());
+      cdc_table.AddTimestampColumnValue(
+          req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+      session->Apply(op);
+    }
+    RETURN_NOT_OK(session->Flush());
+  }
   return Status::OK();
 }
 
@@ -2647,7 +2678,7 @@ Status CatalogManager::FindCDCStreamsMarkedAsDeleting(
 
 Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
-  auto ybclient = master_->async_client_initializer().client();
+  auto ybclient = master_->cdc_state_client_initializer().client();
   if (!ybclient) {
     return STATUS(IllegalState, "Client not initialized or shutting down");
   }
@@ -3362,7 +3393,7 @@ void CatalogManager::GetCDCStreamCallback(
         // the bootstrapping is complete.
         SysCDCStreamEntryPB new_entry;
         new_entry.set_table_id(*table_id);
-        new_entry.mutable_options()->Reserve(options->size());
+        new_entry.mutable_options()->Reserve(narrow_cast<int>(options->size()));
         for (const auto& option : *options) {
           auto new_option = new_entry.add_options();
           new_option->set_key(option.first);
@@ -3548,13 +3579,13 @@ Status CatalogManager::InitCDCConsumer(
 
   // Log the Network topology of the Producer Cluster
   auto master_addrs_list = StringSplit(master_addrs, ',');
-  producer_entry.mutable_master_addrs()->Reserve(master_addrs_list.size());
+  producer_entry.mutable_master_addrs()->Reserve(narrow_cast<int>(master_addrs_list.size()));
   for (const auto& addr : master_addrs_list) {
     auto hp = VERIFY_RESULT(HostPort::FromString(addr, 0));
     HostPortToPB(hp, producer_entry.add_master_addrs());
   }
 
-  producer_entry.mutable_tserver_addrs()->Reserve(tserver_addrs.size());
+  producer_entry.mutable_tserver_addrs()->Reserve(narrow_cast<int>(tserver_addrs.size()));
   for (const auto& addr : tserver_addrs) {
     HostPortToPB(addr, producer_entry.add_tserver_addrs());
   }

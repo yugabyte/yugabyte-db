@@ -30,9 +30,12 @@ public class TokenAuthenticator extends Action.Simple {
   public static final Set<String> READ_POST_ENDPOINTS =
       ImmutableSet.of(
           "/alerts/page",
+          "/alerts/count",
           "/alert_templates",
           "/alert_configurations/page",
-          "/alert_configurations/list");
+          "/alert_configurations/list",
+          "/maintenance_windows/page",
+          "/maintenance_windows/list");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";

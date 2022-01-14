@@ -22,6 +22,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_manager_if.h"
@@ -79,7 +81,7 @@ Status TwoDCTestBase::SetupUniverseReplication(
   auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
 
-  req.mutable_producer_table_ids()->Reserve(tables.size());
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
   for (const auto& table : tables) {
     req.add_producer_table_ids(table->id());
   }
@@ -90,11 +92,15 @@ Status TwoDCTestBase::SetupUniverseReplication(
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  RETURN_NOT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return STATUS(IllegalState, "Failed setting up universe replication");
-  }
-  return Status::OK();
+  return WaitFor([&] () -> Result<bool> {
+    if (!master_proxy->SetupUniverseReplication(req, &resp, &rpc).ok()) {
+      return false;
+    }
+    if (resp.has_error()) {
+      return false;
+    }
+    return true;
+  }, MonoDelta::FromSeconds(30), "Setup universe replication");
 }
 
 Status TwoDCTestBase::VerifyUniverseReplication(
@@ -207,12 +213,11 @@ Status TwoDCTestBase::DeleteUniverseReplication(
   return Status::OK();
 }
 
-uint32_t TwoDCTestBase::NumProducerTabletsPolled(MiniCluster* cluster) {
-  uint32_t size = 0;
+size_t TwoDCTestBase::NumProducerTabletsPolled(MiniCluster* cluster) {
+  size_t size = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
-    uint32_t new_size = 0;
-    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(
-        mini_tserver->server());
+    size_t new_size = 0;
+    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
     CDCConsumer* cdc_consumer;
     if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
       auto tablets_running = cdc_consumer->TEST_producer_tablets_running();

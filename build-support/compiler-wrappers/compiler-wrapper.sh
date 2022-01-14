@@ -777,10 +777,6 @@ if [[ "${yb_pch}" == "true" ]]; then
           pch_cmd+=( "$arg" "$pch_file" )
           skip_next=true
         ;;
-        -MF)
-          pch_cmd+=( "$arg" "$pch_file.d" )
-          skip_next=true
-        ;;
         -o)
           pch_cmd+=( "$arg" "$pch_file" )
           skip_next=true

@@ -120,7 +120,7 @@ class LogReader {
   Result<yb::OpId> LookupOpId(int64_t op_index) const;
 
   // Returns the number of segments.
-  const int num_segments() const;
+  size_t num_segments() const;
 
   std::string ToString() const;
 

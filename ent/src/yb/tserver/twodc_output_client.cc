@@ -77,9 +77,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
  private:
   void TabletLookupCallback(
-      const size_t record_idx, const Result<client::internal::RemoteTabletPtr>& tablet);
+      const int record_idx, const Result<client::internal::RemoteTabletPtr>& tablet);
 
-  void TabletLookupCallbackFastTrack(const size_t record_idx);
+  void TabletLookupCallbackFastTrack(const int record_idx);
 
   // Processes the Record and sends the CDCWrite for it.
   void ProcessRecord(const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
@@ -99,7 +99,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   bool UseLocalTserver();
 
   void TabletRangeLookupCallback(
-      const size_t record_idx,
+      const int record_idx,
       const std::string partition_key_start,
       const std::string partition_key_end,
       const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
@@ -247,14 +247,14 @@ void TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_ids
 }
 
 void TwoDCOutputClient::TabletLookupCallback(
-    const size_t record_idx,
+    const int record_idx,
     const Result<client::internal::RemoteTabletPtr>& tablet) {
   INCREMENT_AND_RETURN_IF_ERROR_RESULT(tablet);
   ProcessRecord({tablet->get()->tablet_id()}, twodc_resp_copy_.records(record_idx));
 }
 
 void TwoDCOutputClient::TabletRangeLookupCallback(
-    const size_t record_idx,
+    const int record_idx,
     const std::string partition_key_start,
     const std::string partition_key_end,
     const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets) {
@@ -273,7 +273,7 @@ void TwoDCOutputClient::TabletRangeLookupCallback(
   ProcessRecord(tablet_ids, twodc_resp_copy_.records(record_idx));
 }
 
-void TwoDCOutputClient::TabletLookupCallbackFastTrack(const size_t record_idx) {
+void TwoDCOutputClient::TabletLookupCallbackFastTrack(const int record_idx) {
   ProcessRecord({consumer_tablet_info_.tablet_id}, twodc_resp_copy_.records(record_idx));
 }
 

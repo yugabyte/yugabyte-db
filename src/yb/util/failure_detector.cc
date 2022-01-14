@@ -184,7 +184,7 @@ Status RandomizedFailureMonitor::MonitorFailureDetector(const string& name,
 
 Status RandomizedFailureMonitor::UnmonitorFailureDetector(const string& name) {
   std::lock_guard<simple_spinlock> l(lock_);
-  int count = fds_.erase(name);
+  auto count = fds_.erase(name);
   if (PREDICT_FALSE(count == 0)) {
     return STATUS(NotFound, Substitute("Failure detector '$0' not found", name));
   }
