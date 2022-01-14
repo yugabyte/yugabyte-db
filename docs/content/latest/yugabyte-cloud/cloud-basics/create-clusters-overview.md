@@ -23,7 +23,7 @@ For lowest data transfer costs, use the same cloud provider and locate your clus
 
 ## Sizing
 
-The basic configuration for Yugabyte Cloud clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs. 
+The basic configuration for Yugabyte Cloud clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs.
 
 Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. For production clusters, a minimum of 3 nodes with 2 vCPUs per node is recommended.
 
