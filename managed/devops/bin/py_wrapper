@@ -16,5 +16,4 @@ activate_virtualenv
 cd "$yb_devops_home"
 
 activate_virtualenv
-export SITE_PACKAGES=$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
-"$@"
+$PYTHON_EXECUTABLE "$@"
