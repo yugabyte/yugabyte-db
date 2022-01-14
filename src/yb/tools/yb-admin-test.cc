@@ -546,7 +546,8 @@ TEST_F(AdminCliTest, TestModifyPlacementPolicy) {
 
   auto output = ASSERT_RESULT(CallAdmin("get_universe_config"));
 
-  std::string expected_placement_blocks = "[{\"cloudInfo\":{\"placementCloud\":\"c\",\"placementRegion\":\"r\","
+  std::string expected_placement_blocks =
+      "[{\"cloudInfo\":{\"placementCloud\":\"c\",\"placementRegion\":\"r\","
       "\"placementZone\":\"z1\"},\"minNumReplicas\":2},{\"cloudInfo\":{\"placementCloud\":\"c\","
       "\"placementRegion\":\"r\",\"placementZone\":\"z0\"},\"minNumReplicas\":3}]";
 

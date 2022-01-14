@@ -1008,8 +1008,8 @@ yb-admin \
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, a minimum replica count can be specified after a colon, the default being 1. It is not recommended to repeat placement multiple times but instead specify the total count after the colon. However, in the event that the user specifies a placement multiple times, the total count from all mentions is taken.
-* *replication_factor*: The number of replicas for each tablet. This value should be more than the total of replica counts specified in *placement_info*.
+* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, we can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, in the event that the user specifies a placement multiple times, the total count from all mentions is taken.
+* *replication_factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement_info*.
 * *placement_id*: The identifier of the primary cluster, which can be any unique string. Optional. If not set, a randomly-generated ID will be used.
 
 **Example**
