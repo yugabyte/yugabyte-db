@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ApiUtils;
@@ -47,7 +48,10 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
   protected Map<String, String> config = new HashMap<>();
 
   protected void setupUniverse(
-      boolean setMasters, UserIntent userIntent, PlacementInfo placementInfo) {
+      boolean setMasters,
+      UserIntent userIntent,
+      PlacementInfo placementInfo,
+      boolean mockGetLeaderMaster) {
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
@@ -75,6 +79,16 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
       YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+
+      String masterLeaderName = "yb-master-0.yb-masters.demo-universe.svc.cluster.local";
+      if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
+        masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";
+      }
+      if (mockGetLeaderMaster) {
+        when(mockClient.getLeaderMasterHostAndPort())
+            .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
+      }
+
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -82,7 +96,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     }
   }
 
-  protected void setupUniverseSingleAZ(boolean setMasters) {
+  protected void setupUniverseSingleAZ(boolean setMasters, boolean mockGetLeaderMaster) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     InstanceType i =
@@ -91,7 +105,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 3, 3, true);
-    setupUniverse(setMasters, userIntent, placementInfo);
+    setupUniverse(setMasters, userIntent, placementInfo, mockGetLeaderMaster);
     ShellResponse responsePods = new ShellResponse();
     responsePods.message =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
@@ -127,7 +141,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
   }
 
-  protected void setupUniverseMultiAZ(boolean setMasters) {
+  protected void setupUniverseMultiAZ(boolean setMasters, boolean mockGetLeaderMaster) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
@@ -140,7 +154,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     PlacementInfoUtil.addPlacementZone(az1.uuid, placementInfo, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, placementInfo, 1, 1, true);
     PlacementInfoUtil.addPlacementZone(az3.uuid, placementInfo, 1, 1, false);
-    setupUniverse(setMasters, userIntent, placementInfo);
+    setupUniverse(setMasters, userIntent, placementInfo, mockGetLeaderMaster);
 
     String nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
     String nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);

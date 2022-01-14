@@ -131,7 +131,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Test
   public void testGFlagUpgradeSingleAZ() {
-    setupUniverseSingleAZ(false);
+    setupUniverseSingleAZ(false, false);
     gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -177,7 +177,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Test
   public void testGFlagUpgradeMultiAZ() {
-    setupUniverseMultiAZ(false);
+    setupUniverseMultiAZ(false, false);
     gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);

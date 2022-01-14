@@ -22,6 +22,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.ApiUtils;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -57,6 +59,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   @InjectMocks private UpgradeKubernetesUniverse upgradeUniverse;
 
+  private YBClient mockClient;
+
   private Universe defaultUniverse;
 
   private static final String NODE_PREFIX = "demo-universe";
@@ -64,6 +68,15 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   private static final String YB_SOFTWARE_VERSION_NEW = "new-version";
 
   private Map<String, String> config = new HashMap<>();
+
+  @Before
+  public void setUp() {
+    super.setUp();
+    ShellResponse successResponse = new ShellResponse();
+    successResponse.message = "YSQL successfully upgraded to the latest version";
+    when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyLong()))
+        .thenReturn(successResponse);
+  }
 
   private void setupUniverse(
       boolean setMasters, UserIntent userIntent, PlacementInfo placementInfo) {
@@ -96,6 +109,12 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
     YBClient mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    String masterLeaderName = "yb-master-0.yb-masters.demo-universe.svc.cluster.local";
+    if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
+      masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";
+    }
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
@@ -218,6 +237,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.LoadBalancerStateChange,
+          TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
           TaskType.UniverseUpdateSucceeded);
 
@@ -319,6 +339,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
                 "new-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

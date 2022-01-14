@@ -11,6 +11,8 @@ class KubernetesClient:
         self.is_master = args.is_master
 
     def wrap_command(self, cmd):
+        if isinstance(cmd, str):
+            cmd = cmd.split()
         return ['kubectl', 'exec', '-n', self.namespace, '-c',
                 'yb-master' if self.is_master else 'yb-tserver', self.node_name, '--'] + cmd
 

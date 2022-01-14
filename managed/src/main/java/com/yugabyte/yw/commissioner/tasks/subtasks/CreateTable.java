@@ -112,10 +112,11 @@ public class CreateTable extends AbstractTaskBase {
       if (!response.isSuccess()
           || !YSQLSH_CREATE_TABLE_SUCCESS.matcher(response.getMessage()).find()) {
         log.warn(
-            "{} attempt to create table via node {} failed, response {}",
+            "{} attempt to create table via node {} failed, response {}:{}",
             attempt++,
             randomTServer.nodeName,
-            response);
+            response.code,
+            response.message);
         try {
           Thread.sleep(RETRY_DELAY_SEC);
         } catch (InterruptedException e) {

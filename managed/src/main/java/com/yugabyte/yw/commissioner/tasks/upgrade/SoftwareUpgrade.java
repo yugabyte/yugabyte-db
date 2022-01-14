@@ -50,6 +50,9 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           // Install software on nodes
           createUpgradeTaskFlow(
               this::createSoftwareInstallTasks, taskParams().upgradeOption, nodes, false);
+          // Run YSQL upgrade on the universe
+          createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
