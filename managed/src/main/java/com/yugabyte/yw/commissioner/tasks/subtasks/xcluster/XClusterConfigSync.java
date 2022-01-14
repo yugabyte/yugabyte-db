@@ -59,7 +59,6 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     log.info("Completed {}", getName());
   }
 
-  @Transactional
   private void syncXClusterConfigs(Master.SysClusterConfigEntryPB config, UUID targetUniverseUUID) {
 
     Set<Pair<UUID, String>> foundXClusterConfigs = new HashSet<>();
