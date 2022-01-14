@@ -530,22 +530,10 @@ public class TaskExecutor {
       return executorService;
     }
 
-    private void setParentRunnableTask(RunnableTask runnableTask) {
+    private void setRunnableTaskContext(RunnableTask runnableTask, int position) {
       this.runnableTask = runnableTask;
       for (RunnableSubTask runnable : subTasks) {
-        runnable.setParentRunnableTask(runnableTask);
-      }
-    }
-
-    private void setPosition(int position) {
-      for (RunnableSubTask runnable : subTasks) {
-        runnable.setPosition(position);
-      }
-    }
-
-    private void saveSubTasks() {
-      for (RunnableSubTask runnable : subTasks) {
-        runnable.saveTask();
+        runnable.setRunnableTaskContext(runnableTask, position);
       }
     }
 
@@ -760,9 +748,12 @@ public class TaskExecutor {
       return taskInfo.getTaskUUID();
     }
 
+    // This is invoked from tasks to save the updated task details generally in transaction with
+    // other DB updates.
     public synchronized void setTaskDetails(JsonNode taskDetails) {
+      taskInfo.refresh();
       taskInfo.setTaskDetails(taskDetails);
-      taskInfo.save();
+      taskInfo.update();
     }
 
     protected abstract Instant getAbortTime();
@@ -781,10 +772,6 @@ public class TaskExecutor {
       return taskInfo.getTaskType();
     }
 
-    synchronized void saveTask() {
-      taskInfo.save();
-    }
-
     synchronized void setPosition(int position) {
       taskInfo.setPosition(position);
     }
@@ -795,7 +782,7 @@ public class TaskExecutor {
 
     synchronized void setTaskState(TaskInfo.State state) {
       taskInfo.setTaskState(state);
-      taskInfo.save();
+      taskInfo.update();
     }
 
     synchronized boolean compareAndSetTaskState(TaskInfo.State expected, TaskInfo.State state) {
@@ -806,8 +793,7 @@ public class TaskExecutor {
         Set<TaskInfo.State> expectedStates, TaskInfo.State state) {
       TaskInfo.State currentState = taskInfo.getTaskState();
       if (expectedStates.contains(currentState)) {
-        taskInfo.setTaskState(state);
-        taskInfo.save();
+        setTaskState(state);
         return true;
       }
       return false;
@@ -834,8 +820,7 @@ public class TaskExecutor {
 
       ObjectNode details = taskDetails.deepCopy();
       details.put("errorString", errorString);
-      taskInfo.setTaskDetails(details);
-      taskInfo.save();
+      setTaskDetails(details);
     }
 
     void publishBeforeTask() {
@@ -929,8 +914,9 @@ public class TaskExecutor {
     }
 
     public synchronized void doHeartbeat() {
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(getTaskUUID());
       taskInfo.markAsDirty();
-      taskInfo.save();
+      taskInfo.update();
     }
 
     /**
@@ -940,9 +926,7 @@ public class TaskExecutor {
      */
     public void addSubTaskGroup(SubTaskGroup subTaskGroup) {
       log.info("Adding SubTaskGroup #{}: {}", subTaskGroups.size(), subTaskGroup.name);
-      subTaskGroup.setParentRunnableTask(this);
-      subTaskGroup.setPosition(subTaskPosition);
-      subTaskGroup.saveSubTasks();
+      subTaskGroup.setRunnableTaskContext(this, subTaskPosition);
       subTaskGroups.add(subTaskGroup);
       subTaskPosition++;
     }
@@ -1038,9 +1022,12 @@ public class TaskExecutor {
       }
     }
 
-    private synchronized void setParentRunnableTask(RunnableTask parentRunnableTask) {
+    private synchronized void setRunnableTaskContext(
+        RunnableTask parentRunnableTask, int position) {
       this.parentRunnableTask = parentRunnableTask;
-      this.taskInfo.setParentUuid(parentRunnableTask.getTaskUUID());
+      taskInfo.setParentUuid(parentRunnableTask.getTaskUUID());
+      taskInfo.setPosition(position);
+      taskInfo.save();
     }
   }
 }
