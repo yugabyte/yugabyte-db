@@ -260,8 +260,9 @@ public enum TaskType {
 
   ResetUniverseVersion("subtasks.ResetUniverseVersion"),
 
-  DeleteCertificate("subtasks.DeleteCertificate");
+  DeleteCertificate("subtasks.DeleteCertificate"),
 
+  RunYsqlUpgrade("subtasks.RunYsqlUpgrade");
   private String relativeClassPath;
 
   TaskType(String relativeClassPath) {

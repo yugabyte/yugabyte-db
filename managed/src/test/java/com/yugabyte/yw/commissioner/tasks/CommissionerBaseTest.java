@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -73,6 +74,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AlertService alertService;
   protected AlertDefinitionService alertDefinitionService;
   protected AlertConfigurationService alertConfigurationService;
+  protected NodeUniverseManager mockNodeUniverseManager;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -129,6 +131,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
+    mockNodeUniverseManager = mock(NodeUniverseManager.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -151,6 +154,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+                .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies)))
         .build();
   }
