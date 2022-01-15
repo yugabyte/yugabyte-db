@@ -725,6 +725,22 @@ export YB_GZIP_PER_TEST_METHOD_LOGS=1
 export YB_GZIP_TEST_LOGS=1
 export YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS=1
 
+if should_use_lto; then
+  log "Using LTO"
+  (
+    set -x
+    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+        --build-root "$BUILD_ROOT" \
+        --file-regex "^.*/yb-tserver$" \
+        --lto-output-suffix="" \
+        link-whole-program
+    ls -l "$BUILD_ROOT/bin/yb-tserver"
+    ldd "$BUILD_ROOT/bin/yb-tserver"
+  )
+else
+  log "Not using LTO: YB_COMPILER_TYPE=${YB_COMPILER_TYPE}, build_type=${build_type}"
+fi
+
 if [[ $YB_COMPILE_ONLY != "1" ]]; then
   if spark_available; then
     if [[ $YB_BUILD_CPP == "1" || $YB_BUILD_JAVA == "1" ]]; then
@@ -740,11 +756,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         test_conf_path="$BUILD_ROOT/test_conf.json"
         # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
         # of tests to run. Useful when testing this script.
-        "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-            --build-root "$BUILD_ROOT" \
-            --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-            --output-test-config "$test_conf_path" \
-            affected
+        (
+          set -x
+          "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+              --build-root "$BUILD_ROOT" \
+              --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
+              --output-test-config "$test_conf_path" \
+              affected
+        )
         run_tests_extra_args+=( "--test_conf" "$test_conf_path" )
         unset test_conf_path
       fi
