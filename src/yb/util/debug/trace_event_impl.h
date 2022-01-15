@@ -738,6 +738,14 @@ class BASE_EXPORT TraceLog {
   DISALLOW_COPY_AND_ASSIGN(TraceLog);
 };
 
+extern std::atomic<bool> trace_events_enabled;
+
+inline bool TraceEventsEnabled() {
+  return trace_events_enabled.load(std::memory_order_relaxed);
+}
+
+void EnableTraceEvents();
+
 }  // namespace debug
 }  // namespace yb
 
