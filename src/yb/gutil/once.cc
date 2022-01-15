@@ -39,15 +39,15 @@ void GoogleOnceInternalInit(Atomic32 *control, void (*func)(),
                     "or there's a memory corruption.";
     }
   }
-  static const base::internal::SpinLockWaitTransition trans[] = {
+  static const yb::base::internal::SpinLockWaitTransition trans[] = {
     { GOOGLE_ONCE_INTERNAL_INIT, GOOGLE_ONCE_INTERNAL_RUNNING, true },
     { GOOGLE_ONCE_INTERNAL_RUNNING, GOOGLE_ONCE_INTERNAL_WAITER, false },
     { GOOGLE_ONCE_INTERNAL_DONE, GOOGLE_ONCE_INTERNAL_DONE, true }
   };
   // Short circuit the simplest case to avoid procedure call overhead.
-  if (base::subtle::Acquire_CompareAndSwap(control, GOOGLE_ONCE_INTERNAL_INIT,
+  if (::base::subtle::Acquire_CompareAndSwap(control, GOOGLE_ONCE_INTERNAL_INIT,
           GOOGLE_ONCE_INTERNAL_RUNNING) == GOOGLE_ONCE_INTERNAL_INIT ||
-      base::internal::SpinLockWait(control, ARRAYSIZE(trans), trans) ==
+      yb::base::internal::SpinLockWait(control, ARRAYSIZE(trans), trans) ==
       GOOGLE_ONCE_INTERNAL_INIT) {
     if (func != nullptr) {
       (*func)();
@@ -56,9 +56,9 @@ void GoogleOnceInternalInit(Atomic32 *control, void (*func)(),
     }
     ANNOTATE_HAPPENS_BEFORE(control);
     int64 old_control = base::subtle::NoBarrier_Load(control);
-    base::subtle::Release_Store(control, GOOGLE_ONCE_INTERNAL_DONE);
+    ::base::subtle::Release_Store(control, GOOGLE_ONCE_INTERNAL_DONE);
     if (old_control == GOOGLE_ONCE_INTERNAL_WAITER) {
-      base::internal::SpinLockWake(control, true);
+      yb::base::internal::SpinLockWake(control, true);
     }
   } // else *control is already GOOGLE_ONCE_INTERNAL_DONE
 }

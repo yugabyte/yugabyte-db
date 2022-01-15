@@ -137,8 +137,6 @@ static bool RpcThrottleThresholdBytesValidator(const char* flagname, int32_t val
 } // namespace
 
 DECLARE_int32(rpc_throttle_threshold_bytes);
-__attribute__((unused))
-DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
 
 namespace yb {
 namespace consensus {
@@ -1605,6 +1603,21 @@ void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
 Result<OpId> PeerMessageQueue::TEST_GetLastOpIdWithType(
     int64_t max_allowed_index, OperationType op_type) {
   return log_cache_.TEST_GetLastOpIdWithType(max_allowed_index, op_type);
+}
+
+Status ValidateFlags() {
+  // Normally we would have used
+  //   DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
+  // right after defining the rpc_throttle_threshold_bytes flag. However, this leads to a segfault
+  // in the LTO-enabled build, presumably due to indeterminate order of static initialization.
+  // Instead, we invoke this function from master/tserver main() functions when static
+  // initialization is already finished.
+  if (!RpcThrottleThresholdBytesValidator(
+      "rpc_throttle_threshold_bytes", FLAGS_rpc_throttle_threshold_bytes)) {
+    return STATUS(InvalidArgument, "Flag validation failed");
+  }
+
+  return Status::OK();
 }
 
 }  // namespace consensus

@@ -729,3 +729,30 @@ function(parse_build_root_basename)
         "but CMAKE_SYSTEM_PROCESSOR is ${CMAKE_SYSTEM_PROCESSOR}")
   endif()
 endfunction()
+
+macro(enable_lto_if_needed)
+  if(NOT DEFINED COMPILER_FAMILY)
+    message(FATAL_ERROR "COMPILER_FAMILY not defined")
+  endif()
+  if(NOT DEFINED USING_LINUXBREW)
+    message(FATAL_ERROR "USING_LINUXBREW not defined")
+  endif()
+  if(NOT DEFINED YB_BUILD_TYPE)
+    message(FATAL_ERROR "YB_BUILD_TYPE not defined")
+  endif()
+
+  if("${YB_BUILD_TYPE}" STREQUAL "release" AND
+     "${COMPILER_FAMILY}" STREQUAL "clang" AND
+     "${YB_COMPILER_TYPE}" STREQUAL "clang12" AND
+     USING_LINUXBREW AND
+     NOT APPLE)
+    message("Enabling full LTO and lld linker")
+    ADD_CXX_FLAGS("-flto=full -fuse-ld=lld")
+  else()
+    message("Not enabling LTO: "
+            "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
+            "COMPILER_FAMILY=${COMPILER_FAMILY}, "
+            "USING_LINUXBREW=${USING_LINUXBREW}, "
+            "APPLE=${APPLE}")
+  endif()
+endmacro()

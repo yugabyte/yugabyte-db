@@ -61,6 +61,10 @@ using base::SpinLockHolder;
 using strings::SubstituteAndAppend;
 using std::string;
 
+// This is used to avoid generating trace events during global initialization. If we allow that to
+// happen, it may lead to segfaults (https://github.com/yugabyte/yugabyte-db/issues/11033).
+std::atomic<bool> trace_events_enabled{false};
+
 __thread TraceLog::PerThreadInfo* TraceLog::thread_local_info_ = nullptr;
 
 namespace {
@@ -2400,6 +2404,10 @@ void CategoryFilter::Clear() {
 const CategoryFilter::StringList&
     CategoryFilter::GetSyntheticDelayValues() const {
   return delays_;
+}
+
+void EnableTraceEvents() {
+  trace_events_enabled.store(true);
 }
 
 }  // namespace debug

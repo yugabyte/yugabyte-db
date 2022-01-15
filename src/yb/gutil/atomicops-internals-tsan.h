@@ -39,7 +39,7 @@ struct AtomicOps_x86CPUFeatureStruct {
   bool has_sse2;             // Processor has SSE2.
 };
 BASE_EXPORT extern struct AtomicOps_x86CPUFeatureStruct
-    AtomicOps_Internalx86CPUFeatures;
+    YbAtomicOps_Internalx86CPUFeatures;
 
 #define ATOMICOPS_COMPILER_BARRIER() __asm__ __volatile__("" : : : "memory")
 

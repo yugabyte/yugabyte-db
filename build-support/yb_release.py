@@ -47,7 +47,7 @@ def main():
                              'false if --build_target is specified, true otherwise.')
     parser.add_argument('--destination', help='Copy release to Destination folder.')
     parser.add_argument('--force', help='Skip prompts', action='store_true')
-    parser.add_argument('--commit', help='Custom specify a git commit.')
+    parser.add_argument('--commit', help='Specifies a custom git commit to use in archive name.')
     parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
     parser.add_argument('--build_target',
                         help='Target directory to put the YugaByte distribution into. This can '
@@ -221,8 +221,13 @@ def main():
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
     release_util = ReleaseUtil(
-        YB_SRC_ROOT, build_type, build_target, args.force, args.commit, build_root,
-        args.package_name)
+        repository=YB_SRC_ROOT,
+        build_type=build_type,
+        distribution_path=build_target,
+        force=args.force,
+        commit=args.commit,
+        build_root=build_root,
+        package_name=args.package_name)
 
     system = platform.system().lower()
     library_packager_args = dict(

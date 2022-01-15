@@ -148,8 +148,7 @@ void SpinLock::SlowLock() {
     }
 
     // Wait for an OS specific delay.
-    base::internal::SpinLockDelay(&lockword_, lock_value,
-                                  ++lock_wait_call_count);
+    yb::base::internal::SpinLockDelay(&lockword_, lock_value, ++lock_wait_call_count);
     // Spin again after returning from the wait routine to give this thread
     // some chance of obtaining the lock.
     lock_value = SpinLoop(wait_start_time, &wait_cycles);
@@ -169,7 +168,7 @@ void SpinLock::SlowLock() {
 enum { PROFILE_TIMESTAMP_SHIFT = 7 };
 
 void SpinLock::SlowUnlock(uint64 wait_cycles) {
-  base::internal::SpinLockWake(&lockword_, false);  // wake waiter if necessary
+  yb::base::internal::SpinLockWake(&lockword_, false);  // wake waiter if necessary
 
   // Collect contentionz profile info, expanding the wait_cycles back out to
   // the full value.  If wait_cycles is <= kSpinLockSleeper, then no wait

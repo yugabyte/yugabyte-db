@@ -28,7 +28,7 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID_IMPL(TransactionId);
 
-const std::string kGlobalTransactionsTableName = "transactions";
+const char* kGlobalTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 const std::string kTransactionTablePrefix = "transactions_";
 

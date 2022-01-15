@@ -54,9 +54,9 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/integral_types.h"
 
+namespace yb {
 namespace base {
 namespace internal {
-
 // SpinLockWait() waits until it can perform one of several transitions from
 // "from" to "to".  It returns when it performs a transition where done==true.
 struct SpinLockWaitTransition {
@@ -76,5 +76,6 @@ void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop);
 
 } // namespace internal
 } // namespace base
+} // namespace yb
 
 #endif // YB_GUTIL_SPINLOCK_INTERNAL_H

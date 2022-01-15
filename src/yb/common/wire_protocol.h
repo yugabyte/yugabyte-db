@@ -48,6 +48,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/type_traits.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
