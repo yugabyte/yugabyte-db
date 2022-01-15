@@ -21,7 +21,7 @@ Monitor performance metrics for your cluster to ensure the cluster configuration
 
 Use these metrics to monitor the performance of your cluster and to determine whether the configuration needs to change. For information on changing or scaling your cluster, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
-You can apply alerts for some performance metrics. Refer to [Cloud alerts](../cloud-alerts/).
+You can enable alerts for some performance metrics. Refer to [Cloud alerts](../cloud-alerts/).
 
 ![Cloud Cluster Performance Metrics](/images/yb-cloud/cloud-clusters-metrics.png)
 
@@ -31,6 +31,8 @@ You can show metrics for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
 The **Overview** tab shows metrics averaged over all the nodes in the cluster.
 
+You can enable alerts for CPU usage and disk usage. Refer to [Cloud alerts](../cloud-alerts/).
+
 The following table describes the metrics available on the **Overview**.
 
 | Graph | Description | Use |
@@ -39,8 +41,6 @@ The following table describes the metrics available on the **Overview**.
 | Average Latency | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
 | CPU Usage | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
 | Disk Usage | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks; some file systems issue an alert at 75% usage due to performance degradation. |
-
-You can enable alerts for CPU usage and disk usage. Refer to [Cloud alerts](../cloud-alerts/).
 
 ## Performance metrics
 

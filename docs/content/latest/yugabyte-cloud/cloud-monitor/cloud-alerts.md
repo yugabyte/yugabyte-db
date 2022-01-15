@@ -49,9 +49,17 @@ Alerts can be triggered for issues with a particular cluster, or for billing iss
 
 ### Cluster alerts
 
-When you receive a cluster alert, the first step is to review the chart for the metric over time to evaluate trends and monitor your progress. Refer to [Performance metrics](../overview/#performance-metrics).
+When you receive a cluster alert, the first step is to review the chart for the metric over time to evaluate trends and monitor your progress. The following charts are available:
 
-Alerts are available for the following cluster metrics.
+| Alert | Chart |
+| !--- | !--- |
+| Node CPU Utilization | CPU Usage |
+| Node Free Storage | Disk Usage |
+| Cluster Queues Overflow | RPC Queue Size |
+| Compaction Overload | Compaction |
+| YSQL Connections | No chart |
+
+Refer to [Performance metrics](../overview/#performance-metrics).
 
 #### Fix storage alerts
 
@@ -81,14 +89,20 @@ High CPU use could also indicate a problem and may require debugging by Yugabyte
 
 If CPU use is continuously higher than 80%, your workload may also have exceeded the capacity of your cluster. Consider scaling your cluster by adding vCPUs. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
-#### Fix overload alerts
+#### Fix transaction overload alerts
 
 A notification is sent if database connection metrics exceed the threshold, as follows:
 
 - Cluster queue (RPC) overflow and/or compaction overload.
 - Cluster exceeds 200 simultaneous YSQL connections.
 
-The cluster (RPC) queue size is an indicator of the incoming traffic. If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors.
+The cluster (RPC) queue size is an indicator of the incoming traffic. If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors. This can cause performance degradation.
+
+Simultaneous YSQL connections are also an indicator of incoming traffic. Spikes in connections could indicate a security incident, such as a DDoS attack.
+
+Review the applications connecting to the database and how they spawn and clean up connections. If connections are opened but never closed, you can eventually exceed the connection limit. Additionally, you may need to implement some form of connection pooling.
+
+Read and write IOPS are evenly distributed across all the nodes in a cluster. If your user base is too large for your current configuration, consider scaling the cluster to support more transactions per second and a greater number of concurrent connections.
 
 ### Billing alerts
 
