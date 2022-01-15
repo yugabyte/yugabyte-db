@@ -29,7 +29,7 @@ To monitor clusters in real time, use the Performance Metrics on the cluster [Ov
 
 ## Configure alerts
 
-Enable alerts for your cloud using the **Configuration** tab on the **Alerts** page. Only cloud admin users can configure billing alerts.
+Enable alerts for your cloud using the **Configurations** tab on the **Alerts** page. Only cloud admin users can configure billing alerts.
 
 To view alert details, select the alert to display the **Alert Policy Settings** sheet.
 
@@ -91,7 +91,7 @@ If CPU use is continuously higher than 80%, your workload may also have exceeded
 
 #### Fix transaction overload alerts
 
-A notification is sent if database connection metrics exceed the threshold, as follows:
+A notification is sent if database transaction metrics exceed the threshold, as follows:
 
 - Cluster queue (RPC) overflow and/or compaction overload.
 - Cluster exceeds 200 simultaneous YSQL connections.
