@@ -80,6 +80,10 @@ public class Schedule extends Model {
     return frequency;
   }
 
+  public void setFrequency(long frequency) {
+    this.frequency = frequency;
+  }
+
   @ApiModelProperty(
       value = "Schedule task parameters",
       accessMode = READ_WRITE,
@@ -133,6 +137,36 @@ public class Schedule extends Model {
     save();
   }
 
+  public void setFailureCount(int count) {
+    this.failureCount = count;
+    if (count >= MAX_FAIL_COUNT) {
+      this.status = State.Paused;
+    }
+    save();
+  }
+
+  public void resetSchedule() {
+    this.status = State.Active;
+    save();
+  }
+
+  public void stopSchedule() {
+    this.status = State.Stopped;
+    save();
+  }
+
+  public void updateFrequency(long frequency) {
+    this.frequency = frequency;
+    this.cronExpression = null;
+    resetSchedule();
+  }
+
+  public void updateCronExpression(String cronExpression) {
+    this.cronExpression = cronExpression;
+    this.frequency = 0L;
+    resetSchedule();
+  }
+
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
   public static Schedule create(
@@ -164,6 +198,17 @@ public class Schedule extends Model {
     Schedule schedule = get(scheduleUUID);
     if (schedule == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Schedule UUID: " + scheduleUUID);
+    }
+    return schedule;
+  }
+
+  public static Schedule getOrBadRequest(UUID customerUUID, UUID scheduleUUID) {
+    Schedule schedule =
+        find.query().where().idEq(scheduleUUID).eq("customer_uuid", customerUUID).findOne();
+    if (schedule == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Invalid Customer UUID: " + customerUUID + ", Schedule UUID: " + scheduleUUID);
     }
     return schedule;
   }
@@ -214,23 +259,5 @@ public class Schedule extends Model {
                         .equals(customerConfigUUID.toString()))
             .collect(Collectors.toList());
     return scheduleList;
-  }
-
-  public void setFailureCount(int count) {
-    this.failureCount = count;
-    if (count >= MAX_FAIL_COUNT) {
-      this.status = State.Paused;
-    }
-    save();
-  }
-
-  public void resetSchedule() {
-    this.status = State.Active;
-    save();
-  }
-
-  public void stopSchedule() {
-    this.status = State.Stopped;
-    save();
   }
 }
