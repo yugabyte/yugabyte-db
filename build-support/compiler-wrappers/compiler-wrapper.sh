@@ -276,7 +276,6 @@ fi
 
 output_file=""
 input_files=()
-library_files=()
 compiling_pch=false
 yb_pch=false
 
