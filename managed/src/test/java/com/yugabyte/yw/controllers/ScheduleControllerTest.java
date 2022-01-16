@@ -7,6 +7,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
@@ -15,11 +17,14 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.EditBackupParams;
+import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import org.junit.Before;
@@ -63,6 +68,14 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
 
     return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+  }
+
+  private Result editSchedule(UUID scheduleUUID, UUID customerUUID, JsonNode body) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "PUT";
+    String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
+
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
   }
 
   @Test
@@ -122,5 +135,113 @@ public class ScheduleControllerTest extends FakeDBApplication {
     resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());
     assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditScheduleUpdateFrequency() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.frequency = 2 * 86400L * 1000L;
+    params.status = State.Active;
+    JsonNode requestJson = Json.toJson(params);
+    Result result = editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    assertEquals(1, resultJson.size());
+    assertEquals(
+        resultJson.get(0).get("scheduleUUID").asText(), defaultSchedule.scheduleUUID.toString());
+    assertTrue(resultJson.get(0).get("frequency").asLong() == params.frequency);
+    assertTrue(resultJson.get(0).get("status").asText().equals(params.status.name()));
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditScheduleUpdateCronExpression() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.cronExpression = "0 12 * * *";
+    params.status = State.Active;
+    JsonNode requestJson = Json.toJson(params);
+    Result result = editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    assertEquals(1, resultJson.size());
+    assertEquals(
+        resultJson.get(0).get("scheduleUUID").asText(), defaultSchedule.scheduleUUID.toString());
+    assertEquals(resultJson.get(0).get("cronExpression").asText(), params.cronExpression);
+    assertTrue(resultJson.get(0).get("status").asText().equals(params.status.name()));
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditScheduleUpdateCronExpressionWithStateAsStopped() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.status = State.Stopped;
+    params.frequency = 2 * 86400L * 1000L;
+    JsonNode requestJson = Json.toJson(params);
+    Result result = editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
+    assertEquals(0, resultJson.size());
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditScheduleUpdateCronExpressionToThirtyMins() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.cronExpression = "15,45 * * * *";
+    params.status = State.Active;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(result, "Duration between the cron schedules cannot be less than 1 hour");
+  }
+
+  @Test
+  public void testEditScheduleUpdateCronExpressionWithInvalidCron() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.cronExpression = "15,45 * * * * *";
+    params.status = State.Active;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(result, "Cron expression specified is invalid");
+  }
+
+  @Test
+  public void testEditScheduleUpdateCronExpressionWithBothParams() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.cronExpression = "15,45 * * * * *";
+    params.status = State.Active;
+    params.frequency = 2 * 86400L * 1000L;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(result, "Both schedule frequency and cron expression cannot be provided");
+  }
+
+  @Test
+  public void testEditScheduleUpdateCronExpressionWithNoParamsProvided() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.status = State.Active;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(result, "Both schedule frequency and cron expression cannot be null");
+  }
+
+  @Test
+  public void testEditScheduleUpdateCronExpressionWithStateAsPaused() {
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.status = State.Paused;
+    params.frequency = 2 * 86400L * 1000L;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(
+        result, "State paused is an internal state and cannot be specified by the user");
   }
 }
