@@ -50,7 +50,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'HypoPG'
-copyright = '2015-2021, Julien Rouhaud'
+copyright = '2015-2022, Julien Rouhaud'
 author = 'Julien Rouhaud'
 
 # The version info for the project you're documenting, acts as replacement for
