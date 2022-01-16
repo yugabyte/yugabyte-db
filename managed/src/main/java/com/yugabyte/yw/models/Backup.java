@@ -8,6 +8,7 @@ import static java.lang.Math.abs;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -89,6 +90,10 @@ public class Backup extends Model {
     @EnumValue("V2")
     V2
   }
+
+  public static final Set<BackupState> IN_PROGRESS_STATES =
+      Sets.immutableEnumSet(
+          BackupState.InProgress, BackupState.QueuedForDeletion, BackupState.DeleteInProgress);
 
   @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
   @Id
