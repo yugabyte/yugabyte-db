@@ -31,9 +31,7 @@ public class DeleteBackupYb extends AbstractTaskBase {
   @Override
   public void run() {
     Backup backup = Backup.getOrBadRequest(params().customerUUID, params().backupUUID);
-    if (backup.state == BackupState.InProgress
-        || backup.state == BackupState.DeleteInProgress
-        || backup.state == BackupState.QueuedForDeletion) {
+    if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
       log.error("Cannot delete backup that are in {} state", backup.state);
       return;
     }
