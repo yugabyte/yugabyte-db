@@ -649,6 +649,7 @@ export default class ClusterFields extends Component {
 
         const currentProviderUuid = currentCluster.userIntent.provider;
         updateFormField(`${clusterType}.provider`, currentProviderUuid);
+        if (type === 'Async') this.providerChanged(currentProviderUuid);
       } else {
         const firstProviderUuid = cloud.providers.data[0]?.uuid;
         updateFormField(`${clusterType}.provider`, firstProviderUuid);
