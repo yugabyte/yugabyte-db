@@ -1456,7 +1456,8 @@ void YBClient::GetCDCStream(const CDCStreamId& stream_id,
 }
 
 Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
-                                 bool force,
+                                 bool force_delete,
+                                 bool ignore_errors,
                                  master::DeleteCDCStreamResponsePB* ret) {
   if (streams.empty()) {
     return STATUS(InvalidArgument, "At least one stream id should be provided");
@@ -1468,7 +1469,8 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
   for (const auto& stream : streams) {
     req.add_stream_id(stream);
   }
-  req.set_force(force);
+  req.set_force_delete(force_delete);
+  req.set_ignore_errors(ignore_errors);
 
   if (ret) {
     CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*ret), DeleteCDCStream);
@@ -1480,10 +1482,13 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
   return Status::OK();
 }
 
-Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id) {
+Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id, bool force_delete,
+                                 bool ignore_errors) {
   // Setting up request.
   DeleteCDCStreamRequestPB req;
   req.add_stream_id(stream_id);
+  req.set_force_delete(force_delete);
+  req.set_ignore_errors(ignore_errors);
 
   DeleteCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, DeleteCDCStream);
