@@ -65,9 +65,7 @@ showAsideToc: true
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page highlights the need to configure at least one cloud provider, as per the following illustration:
-
-![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
+This document describes how to configure the Kubernetes provider for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -80,11 +78,9 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-This is the ServiceAccount whose secret can be used to generate a `kubeconfig` file.
+This is the ServiceAccount whose secret can be used to generate a `kubeconfig` file. This account:
 
-This account:
-
-- Should not be deleted once it is in use by the platform.
+- Should not be deleted once it is in use by Yugabyte Platform.
 - `namespace` in the ServiceAccount creation command can be replaced by the desired namespace in which to install YugabyteDB.
 
 Run the following `kubectl` command to apply the YAML file:
@@ -198,10 +194,10 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
 
 You can use the Pivotal Container Service or Managed Kubernetes Service. 
 
-Select the tab for the service you are using, as per the following illustration:
+Select the tab for the service you are using, as per the following illustration:<br><br>
 <img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
 
-Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default), as per the following illustration:
+Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default):
 
 <img title="K8s Configuration -- empty" alt="K8s Configuration -- empty" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-empty.png" />
 
@@ -221,7 +217,7 @@ The following illustration shows the completed form:
 
 <img title="K8s Configuration -- filled" alt="K8s Configuration -- filled" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-filled.png" />
 
-## Configure the region and zones
+## Configure region and zones
 
 Continue configuring your Kubernetes provider by clicking **Add Region** and completing the **Add new region** dialog, as follows:
 
@@ -303,6 +299,57 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
     ```yml
     istioCompatibility: enabled: true
     ```
+    
+  - Overrides to publish Node-IP as the server broadcast address.
+  
+    By default, Master and T-Server pod fully-qualified domain names (FQDNs) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YugabyteDB TServer pods are deployed, add the following YAML to each zone override configuration:
+  
+    ```yml
+    tserver:
+      extraEnv:
+      - name: NODE_IP
+        valueFrom:
+          fieldRef:
+            fieldPath: status.hostIP
+      serverBroadcastAddress: "$(NODE_IP)"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-tserver"
+            topologyKey: kubernetes.io/hostname
+    
+    # Required to esure that the Kubernetes FQDNs are used for
+    # internal communication between the nodes and node-to-node
+    # TLS certificates are validated correctly.
+    
+    gflags:
+      master:
+        use_private_ip: cloud
+      tserver:
+        use_private_ip: cloud
+    
+    serviceEndpoints:
+      - name: "yb-master-ui"
+        type: LoadBalancer
+        app: "yb-master"
+        ports:
+          http-ui: "7000"
+    
+      - name: "yb-tserver-service"
+        type: NodePort
+        externalTrafficPolicy: "Local"
+        app: "yb-tserver"
+        ports:
+          tcp-yql-port: "9042"
+          tcp-yedis-port: "6379"
+          tcp-ysql-port: "5433"
+    ```
+  
 
 Continue configuring your Kubernetes provider by clicking **Add Zone** and notice that there are might be multiple zones, as per the following illustration:
 
