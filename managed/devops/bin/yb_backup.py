@@ -1088,10 +1088,17 @@ class YBBackup:
                                      'access_token = ' + '\n')
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 host_base = os.getenv('AWS_HOST_BASE')
+                path_style_access = True if os.getenv('PATH_STYLE_ACCESS',
+                                                      "false") == "true" else False
                 if host_base:
-                    host_base_cfg = 'host_base = {0}\n' \
-                                    'host_bucket = {1}.{0}\n'.format(
-                                        host_base, self.args.backup_location)
+                    if path_style_access:
+                        host_base_cfg = 'host_base = {0}\n' \
+                                        'host_bucket = {1}\n'.format(
+                                            host_base, self.args.backup_location)
+                    else:
+                        host_base_cfg = 'host_base = {0}\n' \
+                                        'host_bucket = {1}.{0}\n'.format(
+                                            host_base, self.args.backup_location)
                 else:
                     host_base_cfg = ''
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
