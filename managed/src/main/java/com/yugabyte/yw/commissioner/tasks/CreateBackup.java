@@ -29,6 +29,8 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
@@ -223,7 +225,12 @@ public class CreateBackup extends UniverseTaskBase {
           //   tableBackupParams.transactionalBackup = params().transactionalBackup;
           tableBackupParams.backupType = params().backupType;
 
-          Backup backup = Backup.create(params().customerUuid, tableBackupParams);
+          Backup backup =
+              Backup.create(
+                  params().customerUuid,
+                  tableBackupParams,
+                  BackupCategory.YB_BACKUP_SCRIPT,
+                  BackupVersion.V2);
           backup.setTaskUUID(userTaskUUID);
           tableBackupParams.backupUuid = backup.backupUUID;
           log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
@@ -235,7 +242,12 @@ public class CreateBackup extends UniverseTaskBase {
           createTableBackupTaskYb(tableBackupParams)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         } else if (params().getKeyspace() != null) {
-          Backup backup = Backup.create(params().customerUuid, tableBackupParams);
+          Backup backup =
+              Backup.create(
+                  params().customerUuid,
+                  tableBackupParams,
+                  BackupCategory.YB_BACKUP_SCRIPT,
+                  BackupVersion.V2);
           backup.setTaskUUID(userTaskUUID);
           tableBackupParams.backupUuid = backup.backupUUID;
           log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
