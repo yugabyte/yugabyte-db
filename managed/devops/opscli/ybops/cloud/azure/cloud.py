@@ -16,7 +16,8 @@ from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
     AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
-from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, create_resource_group
+from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, \
+    create_resource_group
 
 
 class AzureCloud(AbstractCloud):
@@ -52,7 +53,7 @@ class AzureCloud(AbstractCloud):
 
         # First, make sure the resource group exists.
         # If not, place it in arbitrary Azure region about to be bootstrapped.
-        create_resource_group(os.environ.get("AZURE_RG"), next(iter(perRegionMetadata.keys())))
+        create_resource_group(next(iter(perRegionMetadata.keys())))
 
         user_provided_vnets = 0
         # Verify that the user provided data

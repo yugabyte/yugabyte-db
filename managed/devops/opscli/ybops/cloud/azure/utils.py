@@ -82,15 +82,14 @@ def get_credentials():
     return credentials
 
 
-def create_resource_group(resource_group, region):
-    resource_group_client = ResourceManagementClient(get_credentials(), SUBSCRIPTION_ID)
-    if resource_group_client.resource_groups.check_existence(resource_group):
+def create_resource_group(region, subscription_id=None, resource_group=None):
+    rg = resource_group if resource_group else RESOURCE_GROUP
+    sid = subscription_id if subscription_id else SUBSCRIPTION_ID
+    resource_group_client = ResourceManagementClient(get_credentials(), sid)
+    if resource_group_client.resource_groups.check_existence(rg):
         return
     resource_group_params = {'location': region}
-    return resource_group_client.resource_groups.create_or_update(
-        RESOURCE_GROUP,
-        resource_group_params
-    )
+    return resource_group_client.resource_groups.create_or_update(rg, resource_group_params)
 
 
 def id_to_name(resourceId):
@@ -316,7 +315,7 @@ class AzureCloudAdmin():
         self.credentials = get_credentials()
         self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
         self.network_client = NetworkManagementClient(self.credentials, SUBSCRIPTION_ID)
-        self.dns_client = PrivateDnsManagementClient(self.credentials, SUBSCRIPTION_ID)
+        self.dns_client = None
 
     def network(self, per_region_meta={}):
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
@@ -793,25 +792,38 @@ class AzureCloudAdmin():
                 "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
                 "universe_uuid": universe_uuid}
 
+    def get_dns_client(self, subscription_id):
+        if self.dns_client is None:
+            self.dns_client = PrivateDnsManagementClient(self.credentials,
+                                                         subscription_id)
+        return self.dns_client
+
     def list_dns_record_set(self, dns_zone_id):
-        return self.dns_client.private_zones.get(*self._get_dns_zone_info(dns_zone_id))
+        # Passing None as domain_name_prefix is not dangerous here as we are using subscription ID
+        # only.
+        _, subscr_id = self._get_dns_record_set_args(dns_zone_id, None)
+        return self.get_dns_client(
+            subscr_id).private_zones.get(*self._get_dns_zone_info(dns_zone_id))
 
     def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
-        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix, ip_list)
+        parameters, subscr_id = self._get_dns_record_set_args(
+            dns_zone_id, domain_name_prefix, ip_list)
         # Setting if_none_match="*" will cause this to error if a record with the name exists.
-        return self.dns_client.record_sets.create_or_update(if_none_match="*", **parameters)
+        return self.get_dns_client(subscr_id).record_sets.create_or_update(if_none_match="*",
+                                                                           **parameters)
 
     def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
-        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix, ip_list)
-        return self.dns_client.record_sets.update(**parameters)
+        parameters, subscr_id = self._get_dns_record_set_args(
+            dns_zone_id, domain_name_prefix, ip_list)
+        return self.get_dns_client(subscr_id).record_sets.update(**parameters)
 
     def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
-        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix)
-        return self.dns_client.record_sets.delete(**parameters)
+        parameters, subscr_id = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix)
+        return self.get_dns_client(subscr_id).record_sets.delete(**parameters)
 
     def _get_dns_record_set_args(self, dns_zone_id, domain_name_prefix, ip_list=None):
         zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
-        rg, zone_name = self._get_dns_zone_info(dns_zone_id)
+        rg, zone_name, subscr_id = self._get_dns_zone_info_long(dns_zone_id)
         args = {
             "resource_group_name": rg,
             "private_zone_name": zone_name,
@@ -826,14 +838,21 @@ class AzureCloudAdmin():
             }
             args["parameters"] = params
 
-        return args
+        return args, subscr_id
+
+    def _get_dns_zone_info_long(self, dns_zone_id):
+        """Returns tuple of (resource_group, dns_zone_name, subscription_id).
+        Assumes dns_zone_id is the zone name if it's not given in Resource ID format.
+        """
+        zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
+        if zone_info:
+            return zone_info.group('resource_group'), zone_info.group(
+                'zone_name'), zone_info.group('subscription_id')
+        else:
+            return RESOURCE_GROUP, dns_zone_id, SUBSCRIPTION_ID
 
     def _get_dns_zone_info(self, dns_zone_id):
         """Returns tuple of (resource_group, dns_zone_name). Assumes dns_zone_id is the zone name
         if it's not given in Resource ID format.
         """
-        zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
-        if zone_info:
-            return zone_info.group('resource_group'), zone_info.group('zone_name')
-        else:
-            return RESOURCE_GROUP, dns_zone_id
+        return self._get_dns_zone_info_long(dns_zone_id)[:2]
