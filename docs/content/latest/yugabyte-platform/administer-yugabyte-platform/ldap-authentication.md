@@ -25,18 +25,9 @@ If configured by the LDAP server, Yugabyte Platform can prevent the user from be
 
 ## Use the Yugabyte Platform API
 
-To enable LDAP authentication for Yugabyte Platform login, you need to use a number of API calls to specify the following:
+To enable LDAP authentication for Yugabyte Platform login, you need to perform a number of runtime configurations to specify the following:
 
-- Your LDAP server endpoint, as follows:
-
-  ```shell
-  curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_url' \
-  --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
-  --header 'Content-Type: text/plain' \
-  --data-raw '10.9.140.199'
-  ```
-
-- LDAP usage, as follows:
+- LDAP usage `yb.security.ldap.use_ldap` must be set to `true`, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.use_ldap' \
@@ -46,7 +37,17 @@ To enable LDAP authentication for Yugabyte Platform login, you need to use a num
   --data-raw 'true'
   ```
 
-- The LDAP port, as follows:
+
+- Your LDAP server endpoint `yb.security.ldap.ldap_url` must be set using the *0.0.0.0* format, as follows:
+
+  ```shell
+  curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_url' \
+  --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
+  --header 'Content-Type: text/plain' \
+  --data-raw '10.9.140.199'
+  ```
+
+- The LDAP port `yb.security.ldap.ldap_port` must be set using the *000* format, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_port' \
@@ -56,7 +57,7 @@ To enable LDAP authentication for Yugabyte Platform login, you need to use a num
   --data-raw '389'
   ```
 
-- The base distinguished name (DN) to enable restriction of users and user groups, as follows:
+- The base distinguished name (DN) `yb.security.ldap.ldap_basedn` to enable restriction of users and user groups, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_basedn' \
@@ -68,7 +69,19 @@ To enable LDAP authentication for Yugabyte Platform login, you need to use a num
 
   <br>Replace `[LDAP DN]` with the actual value.
 
-- The universally unique identifier (UUID) if you have a multi-tenant setup, as follows:
+- Prefix to the common name (CN) of the user `yb.security.ldap.ldap_dn_prefix`, as follows:
+
+  ```shell
+  curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_dn_prefix' \
+  --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
+  --header 'Content-Type: text/plain' \
+  --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
+  --data-raw '[LDAP DN PREFIX]'
+  ```
+
+  <br>Replace `[LDAP DN PREFIX]` with the actual value.
+
+- The universally unique identifier (UUID) `yb.security.ldap.ldap_customeruuid`,  if you have a multi-tenant setup, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_customeruuid' \
@@ -88,4 +101,7 @@ For additional information, see [Update a configuration key](https://yugabyte.st
 
 ## Define the Yugabyte Platform Role
 
-You need to define a Yugabyte Platform-specific role for each user on your LDAP server by setting the a `YugabytePlatformRole` annotation.
+You need to define a Yugabyte Platform-specific role for each user on your LDAP server by setting the `YugabytePlatformRole` annotation. The value set for this annotation is read during the Yugabyte Platform login. Note that this value cannot be changed from the Yugabyte Platform side; if the value is modified on the LDAP server, the change is propagated to Yugabyte Platform and automatically updated during login. Password updates are also automatically handled.
+
+If the role is not specified, users are created with ReadOnly privileges by default, which can be modified by the local super admin.
+
