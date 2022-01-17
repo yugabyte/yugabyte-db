@@ -10,6 +10,10 @@ import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
+import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
@@ -69,6 +73,8 @@ public class CustomerConfigValidator {
 
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
 
+  public static final String AWS_PATH_STYLE_ACCESS = "PATH_STYLE_ACCESS";
+
   public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
 
   private static final String NFS_PATH_REGEXP = "^/|//|(/[\\w-]+)+$";
@@ -76,6 +82,10 @@ public class CustomerConfigValidator {
   public static final Integer MIN_PORT_VALUE = 0;
 
   public static final Integer MAX_PORT_VALUE = 65535;
+
+  public static final Integer HTTP_PORT = 80;
+
+  public static final Integer HTTPS_PORT = 443;
 
   private final BeanValidator beanValidator;
 
@@ -160,14 +170,7 @@ public class CustomerConfigValidator {
             String[] bucketSplit = s3UriPath.split("/", 2);
             String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
             String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
-            AmazonS3Client s3Client =
-                create(
-                    data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
-                    data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
-            if (data.get(AWS_HOST_BASE_FIELDNAME) != null
-                && !StringUtils.isBlank(data.get(AWS_HOST_BASE_FIELDNAME).textValue())) {
-              s3Client.setEndpoint(data.get(AWS_HOST_BASE_FIELDNAME).textValue());
-            }
+            AmazonS3 s3Client = create(data);
             // Only the bucket has been given, with no subdir.
             if (bucketSplit.length == 1) {
               if (!s3Client.doesBucketExistV2(bucketName)) {
@@ -287,7 +290,10 @@ public class CustomerConfigValidator {
           Integer port = new Integer(uri.getPort());
           boolean validPort = true;
           if (!uri.toString().equals(uriToValidate)
-              && (port < MIN_PORT_VALUE || port > MAX_PORT_VALUE)) {
+              && (port < MIN_PORT_VALUE
+                  || port > MAX_PORT_VALUE
+                  || port == HTTPS_PORT
+                  || port == HTTP_PORT)) {
             validPort = false;
           }
           valid = validPort && urlValidator.isValid(uriToValidate);
@@ -491,8 +497,34 @@ public class CustomerConfigValidator {
   }
 
   // TODO: move this out to some common util file.
-  public static AmazonS3Client create(String key, String secret) {
+  public static AmazonS3 create(JsonNode data) {
+
+    String key = data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText();
+    String secret = data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText();
+    Boolean isPathStyleAccess =
+        data.has(AWS_PATH_STYLE_ACCESS) ? data.get(AWS_PATH_STYLE_ACCESS).asBoolean(false) : false;
+    String endpoint =
+        (data.get(AWS_HOST_BASE_FIELDNAME) != null
+                && !StringUtils.isBlank(data.get(AWS_HOST_BASE_FIELDNAME).textValue()))
+            ? data.get(AWS_HOST_BASE_FIELDNAME).textValue()
+            : null;
     AWSCredentials credentials = new BasicAWSCredentials(key, secret);
-    return new AmazonS3Client(credentials);
+    if (!isPathStyleAccess || endpoint == null) {
+      AmazonS3Client client = new AmazonS3Client(credentials);
+      if (endpoint != null) {
+        client.setEndpoint(endpoint);
+      }
+      return client;
+    }
+    AWSCredentialsProvider creds = new AWSStaticCredentialsProvider(credentials);
+    EndpointConfiguration endpointConfiguration = new EndpointConfiguration(endpoint, null);
+    AmazonS3 client =
+        AmazonS3Client.builder()
+            .withCredentials(creds)
+            .withForceGlobalBucketAccessEnabled(true)
+            .withPathStyleAccessEnabled(true)
+            .withEndpointConfiguration(endpointConfiguration)
+            .build();
+    return client;
   }
 }
