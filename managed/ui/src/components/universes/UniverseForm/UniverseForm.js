@@ -535,15 +535,16 @@ class UniverseForm extends Component {
       ];
     }
 
-    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
-      return {
-        ...nodeDetail,
-        cloudInfo: {
-          ...nodeDetail.cloudInfo,
-          assignPublicIP: formValues['primary'].assignPublicIP
-        }
-      };
-    });
+    if (formValues['primary'])
+      submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
+        return {
+          ...nodeDetail,
+          cloudInfo: {
+            ...nodeDetail.cloudInfo,
+            assignPublicIP: formValues['primary'].assignPublicIP
+          }
+        };
+      });
 
     submitPayload.clusters = submitPayload.clusters.filter((c) => c.userIntent !== null);
     // filter clusters array if configuring(adding only) Read Replica due to server side validation
