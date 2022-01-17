@@ -4,10 +4,10 @@ linkTitle: Troubleshoot
 description: Troubleshoot issues in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-troubleshoot
-    parent: yugabyte-cloud
     weight: 850
 isTocNested: true
 showAsideToc: true

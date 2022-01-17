@@ -4,10 +4,10 @@ linkTitle: What's new
 description: Yugabyte Cloud release notes and known issues.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-release
-    parent: yugabyte-cloud
     weight: 950
 isTocNested: true
 showAsideToc: true
