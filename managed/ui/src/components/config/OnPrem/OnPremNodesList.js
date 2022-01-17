@@ -102,7 +102,7 @@ class OnPremNodesList extends Component {
     const onPremProvider = this.findProvider();
     const self = this;
     const currentCloudRegions = supportedRegionList.data.filter(
-      (region) => region.provider.code === 'onprem'
+      (region) => region.provider.uuid === onPremProvider.uuid
     );
     const currentCloudAccessKey = accessKeys.data
       .filter((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid)
