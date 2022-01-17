@@ -60,7 +60,9 @@ DEFINE_string(
     "present in the list of comma separated rpc_bind_addresses");
 TAG_FLAG(webserver_interface, advanced);
 
-DEFINE_string(webserver_doc_root, yb::GetDefaultDocumentRoot(),
+// We use an empty default value here because we can't call GetDefaultDocumentRoot from flag
+// initilization. Instead, we call GetDefaultDocumentRoot if we find that the flag is empty.
+DEFINE_string(webserver_doc_root, "",
     "Files under <webserver_doc_root> are accessible via the debug webserver. "
     "Defaults to $YB_HOME/www, or if $YB_HOME is not set, disables the document "
     "root");
@@ -98,12 +100,13 @@ static string GetDefaultDocumentRoot() {
 WebserverOptions::WebserverOptions()
   : bind_interface(FLAGS_webserver_interface),
     port(FLAGS_webserver_port),
-    doc_root(FLAGS_webserver_doc_root),
     enable_doc_root(FLAGS_webserver_enable_doc_root),
     certificate_file(FLAGS_webserver_certificate_file),
     authentication_domain(FLAGS_webserver_authentication_domain),
     password_file(FLAGS_webserver_password_file),
     num_worker_threads(FLAGS_webserver_num_worker_threads) {
+  doc_root = FLAGS_webserver_doc_root.empty() ?
+      GetDefaultDocumentRoot() : FLAGS_webserver_doc_root;
 }
 
 } // namespace yb

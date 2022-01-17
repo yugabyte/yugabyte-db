@@ -319,7 +319,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             waiter(status);
           }
           if (abort) {
-            DoAbort(TransactionRpcDeadline(), transaction_->shared_from_this());
+            Abort(TransactionRpcDeadline());
           }
           return false;
         }

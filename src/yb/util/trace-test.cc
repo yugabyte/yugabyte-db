@@ -484,17 +484,30 @@ TEST_F(TraceEventCallbackTest, TraceEventCallback) {
   TraceLog::GetInstance()->SetEventCallbackDisabled();
   TRACE_EVENT_INSTANT0("all", "after callback removed",
                        TRACE_EVENT_SCOPE_GLOBAL);
+  const auto n = std::min(collected_events_names_.size(), collected_events_phases_.size());
+  for (size_t i = 0; i < n; ++i) {
+    const auto& name = collected_events_names_[i];
+    const auto phase = collected_events_phases_[i];
+    LOG(INFO) << "Collected event #" << i << ": name=" << name << ", phase=" << phase;
+  }
+
   ASSERT_EQ(5u, collected_events_names_.size());
+
   EXPECT_EQ("event1", collected_events_names_[0]);
   EXPECT_EQ(TRACE_EVENT_PHASE_INSTANT, collected_events_phases_[0]);
+
   EXPECT_EQ("event2", collected_events_names_[1]);
   EXPECT_EQ(TRACE_EVENT_PHASE_INSTANT, collected_events_phases_[1]);
+
   EXPECT_EQ("duration", collected_events_names_[2]);
   EXPECT_EQ(TRACE_EVENT_PHASE_BEGIN, collected_events_phases_[2]);
+
   EXPECT_EQ("event3", collected_events_names_[3]);
   EXPECT_EQ(TRACE_EVENT_PHASE_INSTANT, collected_events_phases_[3]);
+
   EXPECT_EQ("duration", collected_events_names_[4]);
   EXPECT_EQ(TRACE_EVENT_PHASE_END, collected_events_phases_[4]);
+
   for (size_t i = 1; i < collected_events_timestamps_.size(); i++) {
     EXPECT_LE(collected_events_timestamps_[i - 1],
               collected_events_timestamps_[i]);
