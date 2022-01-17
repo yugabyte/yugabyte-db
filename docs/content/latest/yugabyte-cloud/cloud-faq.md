@@ -41,9 +41,11 @@ Refer to [Cloud provider regions](../release-notes#cloud-provider-regions) for a
 
 Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
+## Clusters
+
 ### What are the differences between free and standard clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an edge release, typically from the YugabyteDB [latest release series](../../releases/whats-new/latest-release/); occasional edge releases will be a recent stable release. You can only have one free cluster.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an edge release, typically from the YugabyteDB [latest release series](../../releases/whats-new/latest-release/); occasional edge releases will be a recent stable release. You can only have one free cluster. Free clusters that are idle are deleted after three days.
 
 Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a recent release from the YugabyteDB [stable release series](../../releases/whats-new/stable-release/).
 
@@ -72,6 +74,18 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 ### Can I migrate my free cluster to a standard cluster?
 
 Currently self-service migration is not supported. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for help with migration.
+
+### What is the upgrade policy for clusters?
+
+Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
+
+Cloud console
+: During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
+
+Cluster (yugabyteDB) version upgrade
+: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). We will notify you of any upcoming upgrade schedule via email.
+: The database is upgraded to the latest release in the release track that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
+: Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
 ## YugabyteDB
 
@@ -135,18 +149,6 @@ Free clusters are limited to a single node in a single region.
 
 For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-### What is the upgrade policy for clusters?
-
-Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
-
-Cloud console
-: During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
-
-Cluster (yugabyteDB) version upgrade
-: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify you of any upcoming upgrade schedule via email.
-: The database is upgraded to the latest release in the release track that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
-: Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
-
 ### How do I connect to my cluster?
 
 You can connect to clusters in the following ways:
@@ -189,6 +191,16 @@ Applications
 : Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-secure-clusters/cloud-vpcs/) to add private IP addresses.
 
 For more details, refer to [Connect to clusters](../cloud-connect).
+
+### How is a cluster determined to be idle?
+
+A cluster is classified as idle and paused when the following conditions are met:
+
+- There has been no activity on the cluster.
+
+### How are idle free clusters deleted?
+
+Free clusters that are idle for 3 days are deleted automatically.
 
 ## Backups
 
