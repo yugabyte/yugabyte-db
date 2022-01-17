@@ -11,7 +11,7 @@ aliases:
 menu:
   latest:
     identifier: cloud-quickstart
-    weight: 10
+    weight: 20
 ---
 
 The quickest way to get started with YugabyteDB is to [sign up for Yugabyte Cloud](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
