@@ -155,6 +155,7 @@ public class AppInit {
 
       scheduler.start();
       callHome.start();
+      queryAlerts.start();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

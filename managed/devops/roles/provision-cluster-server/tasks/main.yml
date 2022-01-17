@@ -111,6 +111,16 @@
   # setting up cgroup on YB DB nodes requires installing additional packages from external repos.
   when: not air_gap and pg_max_mem_mb > 0
 
+# Give yugabyte user sudo access to start/stop/restart master and tserver
+- name: Add yugabyte sudo user without password for metric collection operations
+  lineinfile:
+    dest: /etc/sudoers.d/yugabyte-metrics
+    line: 'yugabyte ALL=(ALL:ALL) NOPASSWD: /usr/bin/journalctl -k --since 10min\ ago'
+    create: yes
+    state: present
+    mode: 0440
+    validate: 'visudo -cf %s'
+
 - block:
   # Give yugabyte user sudo access to start/stop/restart master and tserver
   - name: Add yugabyte sudo user without password
@@ -156,8 +166,7 @@
             /bin/systemctl restart yb-collect_metrics,
             /bin/systemctl enable yb-collect_metrics,
             /bin/systemctl disable yb-collect_metrics,
-            /bin/systemctl daemon-reload,
-            /usr/bin/journalctl -k --since 10min\ ago'
+            /bin/systemctl daemon-reload'
       create: yes
       state: present
       mode: 0440
