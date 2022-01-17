@@ -737,18 +737,7 @@ class YBBackup:
         if self.args.storage_type == 'nfs':
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
             pool = ThreadPool(self.args.parallelism)
-            tablets_by_leader_ip = []
-
-            output = self.run_yb_admin(['list_all_tablet_servers'])
-            for line in output.splitlines():
-                if LEADING_UUID_RE.match(line):
-                    fields = split_by_space(line)
-                    ip_port = fields[1]
-                    state = fields[3]
-                    (ip, port) = ip_port.split(':')
-                    if state == 'ALIVE':
-                        tablets_by_leader_ip.append(ip)
-            tserver_ips = list(tablets_by_leader_ip)
+            tserver_ips = self.get_live_tservers()
             SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
@@ -867,9 +856,10 @@ class YBBackup:
             output = self.run_yb_admin(['list_all_masters'])
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    (uuid, ip_port, state, role) = split_by_tab(line)
-                    (ip, port) = ip_port.split(':')
+                    fields = split_by_tab(line)
+                    (uuid, ip_port, state, role) = (fields[0], fields[1], fields[2], fields[3])
                     if state == 'ALIVE':
+                        (ip, port) = ip_port.split(':')
                         alive_master_ip = ip
                     if role == 'LEADER':
                         break
@@ -877,21 +867,30 @@ class YBBackup:
 
         return self.leader_master_ip
 
+    def get_live_tservers(self):
+        tserver_ips = []
+        output = self.run_yb_admin(['list_all_tablet_servers'])
+        for line in output.splitlines():
+            if LEADING_UUID_RE.match(line):
+                fields = split_by_space(line)
+                (ip_port, state) = (fields[1], fields[3])
+                if state == 'ALIVE':
+                    (ip, port) = ip_port.split(':')
+                    tserver_ips.append(ip)
+        return tserver_ips
+
     def get_live_tserver_ip(self):
         if not self.live_tserver_ip:
-            output = self.run_yb_admin(['list_all_tablet_servers'])
-            for line in output.splitlines():
-                if LEADING_UUID_RE.match(line):
-                    fields = split_by_space(line)
-                    ip_port = fields[1]
-                    state = fields[3]
-                    (ip, port) = ip_port.split(':')
-                    if state == 'ALIVE':
-                        self.live_tserver_ip = ip
-                        break
-
-        if not self.live_tserver_ip:
-            raise BackupException("Cannot get alive TS:\n{}".format(output))
+            alive_ts_ips = self.get_live_tservers()
+            if alive_ts_ips:
+                all_master_hosts = {hp.split(':')[0] for hp in self.args.masters.split(",")}
+                selected_ts_ips = all_master_hosts.intersection(alive_ts_ips)
+                # Return a first alive TS if the IP is in the list of Master IPs.
+                # Else return just the last alive TS.
+                self.live_tserver_ip =\
+                    selected_ts_ips.pop() if selected_ts_ips else alive_ts_ips[-1]
+            else:
+                raise BackupException("Cannot get alive TS: {}".format(alive_ts_ips))
 
         return self.live_tserver_ip
 
@@ -1126,8 +1125,7 @@ class YBBackup:
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
                     fields = split_by_tab(line)
-                    tablet_id = fields[0]
-                    tablet_leader_host_port = fields[2]
+                    (tablet_id, tablet_leader_host_port) = (fields[0], fields[2])
                     (ts_host, ts_port) = tablet_leader_host_port.split(":")
                     tablet_leaders.append((tablet_id, ts_host))
 
@@ -2068,11 +2066,17 @@ class YBBackup:
         tablets_by_tserver_ip = {}
         for new_id in snapshot_metadata['tablet']:
             output = self.run_yb_admin(['list_tablet_servers', new_id])
+            num_ts = 0
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    (ts_uuid, ts_ip_port, role) = split_by_tab(line)
-                    (ts_ip, ts_port) = ts_ip_port.split(':')
-                    tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
+                    fields = split_by_tab(line)
+                    (ts_ip_port, role) = (fields[1], fields[2])
+                    if role == 'LEADER' or role == 'FOLLOWER':
+                        (ts_ip, ts_port) = ts_ip_port.split(':')
+                        tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
+                        num_ts += 1
+            if num_ts == 0:
+                raise BackupException("No alive TS found for tablet {}:\n{}".format(new_id, output))
 
         return tablets_by_tserver_ip
 
