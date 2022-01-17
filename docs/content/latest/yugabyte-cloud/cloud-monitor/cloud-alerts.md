@@ -108,8 +108,10 @@ Read and write IOPS are evenly distributed across all the nodes in a cluster. If
 
 Billing alerts can trigger for the following events:
 
-- Credit card expiring within 3 months. Add a new card.
-- Invoice payment failure. Check with your card issuer to ensure that your card is still valid and has not exceeded its limit. Alternatively, you can add another credit card to your billing profile.
-- Credit point usage exceeds the 50%, 75%, and 90% limit. If you are reaching the limit of your Yugabyte credit, add a credit card to your billing profile, or contact Yugabyte Support.
+| Alert | Response |
+| :--- | :--- |
+| Credit card expiring within 3 months | Add a new credit card. |
+| Invoice payment failure | Check with your card issuer to ensure that your card is still valid and has not exceeded its limit. Alternatively, you can add another credit card to your billing profile. |
+| Credit point usage exceeds the 50%, 75%, and 90% limit | Add a credit card to your billing profile, or contact Yugabyte Support. |
 
-For information on adding credit cards and managing your billing profile, refer to [Manage credit cards](../../cloud-admin/cloud-billing-profile/).
+For information on adding credit cards and managing your billing profile, refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
