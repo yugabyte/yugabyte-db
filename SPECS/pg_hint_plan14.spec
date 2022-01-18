@@ -59,7 +59,7 @@ if [ ! -d %{_rpmdir} ]; then mkdir -p %{_rpmdir}; fi
 ## Set variables for build environment
 %build
 PATH=/usr/pgsql-14/bin:$PATH
-make USE_PGXS=1 %{?_smp_mflags}
+make USE_PGXS=1 LDFLAGS+=-Wl,--build-id %{?_smp_mflags}
 
 ## Set variables for install
 %install
