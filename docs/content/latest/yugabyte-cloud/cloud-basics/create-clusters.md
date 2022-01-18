@@ -64,7 +64,7 @@ Select **Yugabyte Cloud Free** or **Yugabyte Cloud** and click **Next** to displ
 
 Set the following options:
 
-- **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact Yugabyte Support.)
+- **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact {{<support-cloud>}}.)
 - **Cluster Name**: Enter a name for the cluster.
 - **Region**: Choose the Region where the cluster will be located.
 
