@@ -530,6 +530,7 @@ static int	pg_hint_plan_parse_message_level = INFO;
 static int	pg_hint_plan_debug_message_level = LOG;
 /* Default is off, to keep backward compatibility. */
 static bool	pg_hint_plan_enable_hint_table = false;
+static bool	pg_hint_plan_hints_anywhere = false;
 
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
 static int recurse_level = 0;		/* recursion level incl. direct SPI calls */
@@ -699,6 +700,17 @@ _PG_init(void)
 							 0,
 							 enable_hint_table_check,
 							 assign_enable_hint_table,
+							 NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.hints_anywhere",
+							 "Read hints from anywhere in a query.",
+							 "This option lets pg_hint_plan ignore syntax so be cautious for false reads.",
+							 &pg_hint_plan_hints_anywhere,
+							 false,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
 							 NULL);
 
 	EmitWarningsOnPlaceholders("pg_hint_plan");
@@ -1881,33 +1893,35 @@ get_hints_from_comment(const char *p)
 	hint_head = strstr(p, HINT_START);
 	if (hint_head == NULL)
 		return NULL;
-	for (;p < hint_head; p++)
+	if (!pg_hint_plan_hints_anywhere)
 	{
-		/*
-		 * Allow these characters precedes hint comment:
-		 *   - digits
-		 *   - alphabets which are in ASCII range
-		 *   - space, tabs and new-lines
-		 *   - underscores, for identifier
-		 *   - commas, for SELECT clause, EXPLAIN and PREPARE
-		 *   - parentheses, for EXPLAIN and PREPARE
-		 *
-		 * Note that we don't use isalpha() nor isalnum() in ctype.h here to
-		 * avoid behavior which depends on locale setting.
-		 */
-		if (!(*p >= '0' && *p <= '9') &&
-			!(*p >= 'A' && *p <= 'Z') &&
-			!(*p >= 'a' && *p <= 'z') &&
-			!isspace(*p) &&
-			*p != '_' &&
-			*p != ',' &&
-			*p != '(' && *p != ')')
-			return NULL;
+		for (;p < hint_head; p++)
+		{
+			/*
+			 * Allow these characters precedes hint comment:
+			 *   - digits
+			 *   - alphabets which are in ASCII range
+			 *   - space, tabs and new-lines
+			 *   - underscores, for identifier
+			 *   - commas, for SELECT clause, EXPLAIN and PREPARE
+			 *   - parentheses, for EXPLAIN and PREPARE
+			 *
+			 * Note that we don't use isalpha() nor isalnum() in ctype.h here to
+			 * avoid behavior which depends on locale setting.
+			 */
+			if (!(*p >= '0' && *p <= '9') &&
+				!(*p >= 'A' && *p <= 'Z') &&
+				!(*p >= 'a' && *p <= 'z') &&
+				!isspace(*p) &&
+				*p != '_' &&
+				*p != ',' &&
+				*p != '(' && *p != ')')
+				return NULL;
+		}
 	}
 
-	len = strlen(HINT_START);
-	head = (char *) p;
-	p += len;
+	head = (char *)hint_head;
+	p = head + strlen(HINT_START);
 	skip_space(p);
 
 	/* find hint end keyword. */

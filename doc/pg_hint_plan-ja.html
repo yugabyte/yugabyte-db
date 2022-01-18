@@ -368,6 +368,8 @@ EXPLAIN SELECT * FROM a, b WHERE a.val = b.val;
   <td>動作状況を示すログメッセージの出力を制御します。指定可能な値は off, on, verbose, detailed です。</td><td>off</td></tr>
 <tr><td>pg_hint_plan.message_level</td>
   <td>動作ログメッセージのログレベルを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warning、またはerrorです。</td><td>LOG</td></tr>
+<tr><td>pg_hint_plan.hints_anywhere</td>
+  <td>On の場合、pg_hint_planはSQL構文を無視してヒント文字列の読み取りを行います。この設定ではヒントをSQL文のどこにでも記述することができますが、意図しない文字列がヒントととして読み取られる可能性がある点に注意してください。</td><td>off</td></tr>
 
 </tbody>
 </table>
