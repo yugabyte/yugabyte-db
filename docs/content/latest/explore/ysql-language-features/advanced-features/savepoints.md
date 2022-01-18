@@ -2,13 +2,14 @@
 title: Savepoints
 linkTitle: Savepoints
 description: Savepoints in YSQL
-headcontent: Savepoints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: advanced-features-savepoints
     parent: advanced-features
     weight: 235
+aliases:
+  - /latest/explore/ysql-language-features/savepoints/
 isTocNested: true
 showAsideToc: true
 ---

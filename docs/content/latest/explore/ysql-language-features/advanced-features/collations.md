@@ -2,13 +2,14 @@
 title: Collations
 linkTitle: Collations
 description: YSQL collations
-headcontent: Collations
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: advanced-features-collations
     parent: advanced-features
     weight: 240
+aliases:
+  - /latest/explore/ysql-language-features/collations/
 isTocNested: true
 showAsideToc: true
 ---

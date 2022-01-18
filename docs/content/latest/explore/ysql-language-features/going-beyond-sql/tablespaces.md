@@ -9,6 +9,8 @@ menu:
     identifier: going-beyond-sql-tablespaces
     parent: going-beyond-sql
     weight: 320
+aliases:
+  - /latest/explore/ysql-language-features/tablespaces/
 isTocNested: true
 showAsideToc: true
 ---
@@ -233,4 +235,4 @@ YSQL Tablespaces thus allow specifying placement policy on a per-table basis. Th
 * Tables with critical information can have higher replication factor and increased fault tolerance compared to the rest of the data.
 * Based on the access pattern, a table can be constrained to the region or zone where it is more heavily accessed.
 * A table can have an index with an entirely different placement policy, thus boosting the read performance without affecting the placement policy of the table itself.
-* Coupled with [Table Partitioning](../partitions/), tablespaces can be used to implement [Row-Level Geo-Partitioning](../../multi-region-deployments/row-level-geo-partitioning/). This allows pinning the rows of a table in different geo-locations based on the values of certain columns in that row.
+* Coupled with [Table Partitioning](../../advanced-features/partitions/), tablespaces can be used to implement [Row-Level Geo-Partitioning](../../../multi-region-deployments/row-level-geo-partitioning/). This allows pinning the rows of a table in different geo-locations based on the values of certain columns in that row.

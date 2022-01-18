@@ -43,16 +43,16 @@ The following table lists the most important YSQL features which you would find 
 
 ## Advanced features in YSQL
 
-The following table lists the advanced features in YSQL which you can explore.
+The following table lists the advanced features in YSQL.
 
 | YSQL Feature | Description |
 | :----------- | :---------- |
-| <span style="font-size:16px">[Cursors](cursor/)</span> | Declaration of cursors in YSQL |
-| <span style="font-size:16px">[Table Partitioning](partitions/)</span> | List, range, and hash partitioning of tables |
-| <span style="font-size:16px">[Views](views/)</span> | Views and updatable views |
-| <span style="font-size:16px">[Savepoints](savepoints/)</span> | Savepoints in YSQL |
-| <span style="font-size:16px">[Collations](collations/)</span> | Collations in YSQL |
-| <span style="font-size:16px">[Extensions](extensions/)</span> | Pre-bundled extensions for YugabyteDB |
+| <span style="font-size:16px">[Cursors](advanced-features/cursor/)</span> | Declaration of cursors in YSQL |
+| <span style="font-size:16px">[Table Partitioning](advanced-features/partitions/)</span> | List, range, and hash partitioning of tables |
+| <span style="font-size:16px">[Views](advanced-features/views/)</span> | Views and updatable views |
+| <span style="font-size:16px">[Savepoints](advanced-features/savepoints/)</span> | Savepoints in YSQL |
+| <span style="font-size:16px">[Collations](advanced-features/collations/)</span> | Collations in YSQL |
+| <span style="font-size:16px">[Extensions](advanced-features/extensions/)</span> | Pre-bundled extensions for YugabyteDB |
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
@@ -66,8 +66,8 @@ Since YugabyteDB is a distributed SQL database, YSQL has a number of features th
 | YSQL Feature                                                 | Description                                                  |
 | :----------------------------------------------------------- | :----------------------------------------------------------- |
 | <span style="font-size:16px">[Data distribution with `HASH`](../linear-scalability/sharding-data/)</span> | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
-| <span style="font-size:16px">[`Tablespaces`](tablespaces)</span> | Enables pinning of data in tables and table partitions to different geographic locations |
-| <span style="font-size:16px">[`Follower Reads`](../multi-region-deployments/follower-reads-ysql/)</span> | Enables more read IOPS with low latencies in YugabyteDB clusters |
+| <span style="font-size:16px">[`Tablespaces`](going-beyond-sql/tablespaces)</span> | Enables pinning of data in tables and table partitions to different geographic locations |
+| <span style="font-size:16px">[`Follower Reads`](going-beyond-sql/follower-reads-ysql/)</span> | Enables more read IOPS with low latencies in YugabyteDB clusters |
 | <span style="font-size:16px">`Tablegroups`</span> | Enables colocation of multiple smaller tables into one tablet for better performance |
 
 <!--

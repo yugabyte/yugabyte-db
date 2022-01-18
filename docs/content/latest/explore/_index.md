@@ -74,6 +74,18 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="indexes-constraints/">
+      <div class="head">
+        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="title">Indexes and constraints</div>
+      </div>
+      <div class="body">
+        Improve database performance with indexes and constraints.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="json-support/jsonb-ysql/">
       <div class="head">
         <div class="icon"><i class="far fa-file-code"></i></div>

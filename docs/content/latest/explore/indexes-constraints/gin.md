@@ -5,9 +5,12 @@ description: Generalized inverted indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: explore-ysql-language-features-gin
-    parent: explore-ysql-language-features
+    identifier: indexes-constraints-gin
+    parent: explore-indexes-constraints
     weight: 400
+aliases:
+   - /latest/explore/ysql-language-features/gin/
+
 isTocNested: true
 showAsideToc: true
 ---

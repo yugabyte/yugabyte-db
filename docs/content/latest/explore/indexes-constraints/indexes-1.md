@@ -1,16 +1,15 @@
 ---
 title: Indexes
 linkTitle: Indexes
-description: Using indexes
-headcontent: Indexes
+description: Using Indexes
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: indexes-1
-    parent: explore-ysql-language-features
-    weight: 250
-isTocNested: true
-showAsideToc: true
+    parent: explore-indexes-constraints
+    weight: 251
+aliases:
+   - /latest/explore/ysql-language-features/indexes-1/
 ---
 
 The use of indexes can enhance database performance by enabling the database server to find rows faster.

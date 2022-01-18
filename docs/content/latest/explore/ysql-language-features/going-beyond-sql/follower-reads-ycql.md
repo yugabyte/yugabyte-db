@@ -8,6 +8,7 @@ aliases:
   - /latest/explore/tunable-reads/
   - /latest/explore/follower-reads/
   - /latest/explore/high-performance/tunable-reads/
+  - /latest/explore/multi-region-deployments/follower-reads-ycql/
 menu:
   latest:
     identifier: going-beyond-sql-follower-reads-ycql

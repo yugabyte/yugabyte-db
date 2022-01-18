@@ -2,13 +2,14 @@
 title: Views
 linkTitle: Views
 description: Views in YSQL
-headcontent: Views in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
     identifier: advanced-features-views
     parent: advanced-features
     weight: 230
+aliases:
+  - /latest/explore/ysql-language-features/views/
 isTocNested: true
 showAsideToc: true
 ---
