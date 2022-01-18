@@ -884,7 +884,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
         RandomHumanReadableString(kValueSize)));
 
     return false;
-  }, 5s, "Intents cleanup", 200ms));
+  }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {

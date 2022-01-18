@@ -52,6 +52,7 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
@@ -233,7 +234,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   std::atomic<bool> responded_{false};
 
-  const RpcMethodMetrics* rpc_method_metrics_ = nullptr;
+  scoped_refptr<Counter> rpc_method_response_bytes_;
+  scoped_refptr<Histogram> rpc_method_handler_latency_;
 
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.

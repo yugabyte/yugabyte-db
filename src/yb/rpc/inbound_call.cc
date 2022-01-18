@@ -168,8 +168,8 @@ void InboundCall::RecordHandlingCompleted() {
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_completed.Initialized()) << "Already marked as completed";
   timing_.time_completed = MonoTime::Now();
   VLOG_WITH_PREFIX(4) << "Completed handling";
-  if (rpc_method_metrics_ && rpc_method_metrics_->handler_latency) {
-    rpc_method_metrics_->handler_latency->Increment(
+  if (rpc_method_handler_latency_) {
+    rpc_method_handler_latency_->Increment(
         (timing_.time_completed - timing_.time_handled).ToMicroseconds());
   }
 }
@@ -232,11 +232,13 @@ void InboundCall::InboundCallTask::Done(const Status& status) {
 }
 
 void InboundCall::SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value) {
-  rpc_method_metrics_ = &value.get();
-  if (rpc_method_metrics_ && rpc_method_metrics_->request_bytes) {
+  const auto& metrics = value.get();
+  rpc_method_response_bytes_ = metrics.response_bytes;
+  rpc_method_handler_latency_ = metrics.handler_latency;
+  if (metrics.request_bytes) {
     auto request_size = request_data_.size();
     if (request_size) {
-      rpc_method_metrics_->request_bytes->IncrementBy(request_size);
+      metrics.request_bytes->IncrementBy(request_size);
     }
   }
 }
@@ -244,13 +246,13 @@ void InboundCall::SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetr
 void InboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   size_t old_size = output->size();
   DoSerialize(output);
-  if (rpc_method_metrics_ && rpc_method_metrics_->response_bytes) {
+  if (rpc_method_response_bytes_) {
     auto response_size = 0;
     for (size_t i = old_size; i != output->size(); ++i) {
       response_size += (*output)[i].size();
     }
     if (response_size) {
-      rpc_method_metrics_->response_bytes->IncrementBy(response_size);
+      rpc_method_response_bytes_->IncrementBy(response_size);
     }
   }
 }
