@@ -873,6 +873,45 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to upgrade YSQL cluster");
         return Status::OK();
       });
+
+  Register(
+      // Today we have a weird pattern recognization for table name.
+      // The expected input argument for the <table> is:
+      // <db type>.<namespace> <table name>
+      // (with a space in between).
+      // So the expected arguement size is 3 (= 2 for the table name + 1 for the retention time).
+      "set_wal_retention_secs", " <table> <seconds>", [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
+
+        uint32_t wal_ret_secs = 0;
+        const auto table_name = VERIFY_RESULT(
+            ResolveSingleTableName(client, args.begin(), args.end(),
+            [&wal_ret_secs] (auto i, const auto& end) -> Status {
+              if (PREDICT_FALSE(i == end)) {
+                return STATUS(InvalidArgument, "Table name not found in the command");
+              }
+
+              const auto raw_time = VERIFY_RESULT(CheckedStoi(*i));
+              if (raw_time < 0) {
+                return STATUS(
+                    InvalidArgument, "WAL retention time must be non-negative integer in seconds");
+              }
+              wal_ret_secs = static_cast<uint32_t>(raw_time);
+              return Status::OK();
+            }
+            ));
+        RETURN_NOT_OK_PREPEND(
+            client->SetWalRetentionSecs(table_name, wal_ret_secs),
+            "Unable to set WAL retention time (sec) for the cluster");
+        return Status::OK();
+      });
+
+  Register("get_wal_retention_secs", " <table>", [client](const CLIArguments& args) -> Status {
+    RETURN_NOT_OK(CheckArgumentsCount(args.size(), 2, 2));
+    const auto table_name = VERIFY_RESULT(ResolveSingleTableName(client, args.begin(), args.end()));
+    RETURN_NOT_OK(client->GetWalRetentionSecs(table_name));
+    return Status::OK();
+  });
 } // NOLINT, prevents long function message
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

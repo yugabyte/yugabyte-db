@@ -40,6 +40,7 @@
 #include <rapidjson/document.h>
 
 #include "yb/util/status_fwd.h"
+#include "yb/tools/tools_fwd.h"
 
 namespace yb {
 namespace client {
@@ -50,7 +51,6 @@ class YBTableName;
 
 namespace tools {
 
-class ClusterAdminClient;
 typedef enterprise::ClusterAdminClient ClusterAdminClientClass;
 
 // Tool to administer a cluster from the CLI.

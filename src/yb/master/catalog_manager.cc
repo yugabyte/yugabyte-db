@@ -5448,6 +5448,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->mutable_identifier()->mutable_namespace_()->set_name((**nsinfo).name());
   }
 
+  if (l->pb.has_wal_retention_secs()) {
+    resp->set_wal_retention_secs(l->pb.wal_retention_secs());
+  }
+
   // Get namespace name by id.
   SharedLock lock(mutex_);
   TRACE("Looking up namespace");
