@@ -85,6 +85,7 @@ class ReleasePackage(object):
         self.build_type = None
         self.system = None
         self.machine = None
+        self.compiler = None
 
     @classmethod
     def from_pieces(cls, repo, version, commit, build_type=None):
@@ -133,7 +134,7 @@ class ReleasePackage(object):
         else:
             # Add commit hash and maybe build type.
             pattern += "-(?P<commit_hash>[^-]+)(-(?P<build_type>[^-]+))?"
-        pattern += "-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
+        pattern += "(-(?P<compiler>[^-]+))?-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
         match = re.match(pattern, package_name)
         if not match:
             raise YBOpsRuntimeError("Invalid package name format: {}".format(package_name))
@@ -142,6 +143,7 @@ class ReleasePackage(object):
         self.build_number = match.group("build_number") if is_official_release else None
         self.commit = match.group("commit_hash") if not is_official_release else None
         self.build_type = match.group("build_type") if not is_official_release else None
+        self.compiler = match.group("compiler")
         self.system = match.group("system")
         self.machine = match.group("machine")
 
