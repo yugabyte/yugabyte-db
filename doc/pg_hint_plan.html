@@ -2,7 +2,7 @@
 <html lang="en_US">
 <head>
 <title>pg_hint_plan</title>
-<!-- Uncoment after the tool has been hosted somewhere.
+<!-- Uncomment after the tool has been hosted somewhere.
 <link rel="home" title="pg_hint_plan" href="index.html">
 -->
 <link rel="stylesheet" type="text/css" href="style.css">
@@ -18,7 +18,7 @@ pre { margin: 0 2em 0 2em; padding:0.3em; border-style: solid; border-width:0.1e
 </head>
 
 <body>
-<h1 id="pg_hint_plan">pg_hint_plan 1.4</h1>
+<h1 id="pg_hint_plan">pg_hint_plan 1.6</h1>
 <div class="navigation">
   <a href="pg_hint_plan.html">pg_hint_plan</a>
 </div>
@@ -34,7 +34,7 @@ pre { margin: 0 2em 0 2em; padding:0.3em; border-style: solid; border-width:0.1e
 <li><a href="#examples">Hint descriptions</a></li>
 <li><a href="#hint_syntax">Hint syntax</a></li>
 <li><a href="#restrictions">Restrictions</a></li>
-<li><a href="#techniques">Techniques to hint on disired targets</a></li>
+<li><a href="#techniques">Techniques to hint on desired targets</a></li>
 <li><a href="#errors">Errors of hints</a></li>
 <li><a href="#func_limits">Functional limitations</a></li>
 <li><a href="#requirement">Requirements</a></li>
@@ -46,15 +46,15 @@ pre { margin: 0 2em 0 2em; padding:0.3em; border-style: solid; border-width:0.1e
 <p>pg_hint_plan -- controls execution plan with hinting phrases in comment of special form.</p>
 
 <h2 id="synopsis">Synopsis</h2>
-<p>PostgreSQL uses cost based optimizer, which utilizes data statistics, not static rules. The planner (optimizer) esitimates costs of each possible execution plans for a SQL statement then the execution plan with the lowest cost finally be executed.  The planner does its best to select the best best execution plan, but not perfect, since it doesn't count some properties of the data, for example, correlation between columns.</p>
+<p>PostgreSQL uses cost based optimizer, which utilizes data statistics, not static rules. The planner (optimizer) estimates costs of each possible execution plan for a SQL statement, and then the execution plan with the lowest cost is eventually executed.  The planner does its best to select the best execution plan, but it is not perfect, since it doesn't know all properties of the data, for example, correlation between columns.</p>
 <p>pg_hint_plan makes it possible to tweak execution plans using so-called "hints", which are simple descriptions in the SQL comment of special form.</p>
 
 <h2 id="description">Description</h2>
 
 <h3 id="hint-rule">Basic Usage</h3>
-<p>pg_hint_plan reads hinting phrases in a comment of special form given with the target SQL statement. The special form is beginning by the character sequence "/*+" and ends with "*/". Hint phrases are consists of hint name and following parameters enclosed by parentheses and delimited by spaces. Each hinting phrases can be delimited by new lines for readability.</p>
+<p>pg_hint_plan reads hinting phrases in a comment of special form given with the target SQL statement. The special form is beginning by the character sequence "/*+" and ends with "*/". Hint phrases consist of hint name and following parameters enclosed by parentheses and delimited by spaces. Each hinting phrases can be delimited by new lines for readability.</p>
 
-<p>In the example below , hash join is selected as the joning method and scanning pgbench_accounts by sequential scan method.</p>
+<p>In the example below , hash join is selected as the join method and scanning pgbench_accounts by sequential scan method.</p>
 <pre>
 postgres=# /*+
 postgres*#    <span class="strong">HashJoin(a b)</span>
@@ -118,15 +118,14 @@ UPDATE 1
 DELETE 1
 <span class="strong">postgres=#</span>
 </pre>
-<p>The hint table is owned by the creator user and having the default previledges at the time of creation.
-during CREATE EXTENSION. Table hints are prioritized than comment hits.</p>
+<p>The hint table is owned by the creator user and having the default privileges at the time of creation during CREATE EXTENSION. Table hints are prioritized then comment hits.</p>
 
 <h3 id="hint-group">The types of hints</h3>
 <p>Hinting phrases are classified into six types based on what kind of object and how they can affect planning. Scaning methods, join methods, joining order, row number correction, parallel query and GUC setting. You will see the lists of hint phrases of each type in <a href="hint_list.html">Hint list</a>.</p>
 
 <h4>Hints for scan methods </h4>
 <p>Scan method hints enforce specific scanning method on the target table. pg_hint_plan recognizes the target table by alias names if any. They are 'SeqScan' , 'IndexScan' and so on in this kind of hint.</p>
-<p>Scan hints are effective on ordinary tables, inheritance tables, UNLOGGED tables, temporary tables and  system catalogs. External(foreign) tables, table functions, VALUES clause, CTEs, views and subquiries are not affected.</p>
+<p>Scan hints are effective on ordinary tables, inheritance tables, UNLOGGED tables, temporary tables and  system catalogs. External(foreign) tables, table functions, VALUES clause, CTEs, views and subqueries are not affected.</p>
 <pre>
 <span class="strong">postgres=# /*+</span>
 <span class="strong">postgres*#     SeqScan(t1)</span>
@@ -141,7 +140,7 @@ during CREATE EXTENSION. Table hints are prioritized than comment hits.</p>
 <p>This can affect on joins only on ordinary tables, inheritance tables, UNLOGGED tables, temporary tables, external (foreign) tables, system catalogs, table functions, VALUES command results and CTEs are allowed to be in the parameter list. But joins on views and sub query are not affected.</p>
 
 <h4>Hint for joining order</h4>
-<p> This hint "Leading" enforces the order of join on two or more tables. There are two ways of enforcing. One is enforcing specific order of joining but not restricting direction at each join level. Another enfoces join direction additionaly. Details are seen in the <a href="hint_list.html">hint list</a> table.</p>
+<p> This hint "Leading" enforces the order of join on two or more tables. There are two ways of enforcing. One is enforcing specific order of joining but not restricting direction at each join level. Another enforces join direction additionally. Details are seen in the <a href="hint_list.html">hint list</a> table.</p>
 
 <pre>
 <span class="strong">postgres=# /*+</span>
@@ -182,7 +181,7 @@ EXPLAIN SELECT * FROM a, b WHERE a.val = b.val;
 
 <h4>Hint for parallel plan</h4>
 <p>This hint "Parallel" enforces parallel execution configuration on
-scans. The third parameter specifies the strength of enfocement. "soft" means that pg_hint_plan only changes max_parallel_worker_per_gather and leave all others to planner. "hard" changes other planner parameters so as to forcibly apply the number. This can affect on ordinary tables, inheritnce parents, unlogged
+scans. The third parameter specifies the strength of enforcement. "soft" means that pg_hint_plan only changes max_parallel_worker_per_gather and leave all others to planner. "hard" changes other planner parameters so as to forcibly apply the number. This can affect on ordinary tables, inheritance parents, unlogged
 tables and system catalogues. External tables, table functions, values clause, CTEs, views and subqueries are not affected. Internal tables of a view can be specified by its real name/alias as the target object. The following example shows that the query is enforced differently on each table.</p>
 
 <pre>
@@ -228,17 +227,17 @@ postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
 <table>
 <thead>
 <tr>
-<tr><th>Parameter name</th><th>discription</th><th>Default</th></tr>
+<tr><th>Parameter name</th><th>description</th><th>Default</th></tr>
 </tr></thead>
 <tbody>
 <tr><td>pg_hint_plan.enable_hint</td>
-  <td>True enbles pg_hint_plan.</td><td>on</td></tr>
+  <td>True enables pg_hint_plan.</td><td>on</td></tr>
 <tr><td>pg_hint_plan.enable_hint_table</td>
   <td>True enbles hinting by table. true or false.</td><td>off</td></tr>
 <tr><td>pg_hint_plan.parse_messages</td>
   <td>Specifies the log level of hint parse error. Valid values are error, warning, notice, info, log, debug<n>.</td><td>INFO</td></tr>
 <tr><td>pg_hint_plan.debug_print</td>
-  <td>Controls debug print and verbosity. Valid vaiues are off, on, detailed and verbose.</td><td>off</td></tr>
+  <td>Controls debug print and verbosity. Valid values are off, on, detailed and verbose.</td><td>off</td></tr>
 <tr><td>pg_hint_plan.message_level</td>
   <td>Specifies message level of debug print. Valid values are error, warning, notice, info, log, debug<n>.</td><td>INFO</td></tr>
 </tbody>
@@ -255,7 +254,7 @@ $ su
 # make install
 </pre>
 
-<h3 id="hint-load">Loding pg_hint_plan</h3>
+<h3 id="hint-load">Loading pg_hint_plan</h3>
 <p>Basically pg_hint_plan does not requires CREATE EXTENSION. Simply loading it by LOAD command will activate it and of course you can load it globally by setting shared_preload_libraries in postgresql.conf. Or you might be interested in ALTER USER SET/ALTER DATABASE SET for automatic loading for specific sessions. 
 <pre>
 postgres=# LOAD 'pg_hint_plan';
@@ -306,13 +305,13 @@ postgres=# </pre>
 <dt>Using with PL/pgSQL</dt>
 <dd>pg_hint_plan works for queries in PL/pgSQL scripts with some restrictions.
 <ul>
- <li>Hints affect only on the following kind of queires.
+ <li>Hints affect only on the following kind of queries.
  <ul>
-  <li>Queries that returns one row. (SELECT, INSERT, UPDATE and DELETE)</li>
-  <li>Queries that returns multiple rows. (RETURN QUERY)</li>
+  <li>Queries that return one row. (SELECT, INSERT, UPDATE and DELETE)</li>
+  <li>Queries that return multiple rows. (RETURN QUERY)</li>
   <li>Dynamic SQL statements. (EXECUTE)</li>
   <li>Cursor open. (OPEN)</li>
-  <li>Loop over result of a query (FOR)</li>
+  <li>Loop over results of a query (FOR)</li>
  </ul>
 
  <li>A hint comment have to be placed after the first word in a query
@@ -339,14 +338,14 @@ postgres$# $$ LANGUAGE plpgsql;
 <dd>Unlike the way PostgreSQL handles object names, pg_hint_plan compares bare object names in hints against the database internal object names in case sensitive way. Therefore an object name TBL in a hint matches only "TBL" in database and does not match any unquoted names like TBL, tbl or Tbl.
 </dd>
 
-<dt>Escaping special chacaters in object names</dt>
+<dt>Escaping special characters in object names</dt>
 <dd>The objects as the hint parameter should be enclosed by double quotes if they includes parentheses, double quotes and white spaces. The escaping rule is the same as PostgreSQL.
 </dd>
 
-<h3>Distinction between multiple occurances of a table</h3>
+<h3>Distinction between multiple occurences of a table</h3>
 <dd>pg_hint_plan identifies the target object by using aliases if
-exists. This behavior is usable to point a specific occurance
-among multiple occurances of one table.
+exists. This behavior is usable to point a specific occurence
+among multiple occurences of one table.
 <pre>
 <span class="strong">postgres=# /*+ HashJoin(t1 t1) */</span>
 <span class="strong">postgres-#</span> EXPLAIN SELECT * FROM s1.t1
@@ -400,7 +399,7 @@ to children are not in effect.
 so it is hintable if it is the only VALUES in a query. Two or more
 VALUES expressions in a query seems distinguishable looking its
 explain result. But in reality it is mere a cosmetic and they are not
-distinguisable.
+distinguishable.
 <pre>
 <span class="strong">postgres=#</span> <span class="strong">/*+ MergeJoin(*VALUES*_1 *VALUES*) */</span>
       EXPLAIN SELECT * FROM (VALUES (1, 1), (2, 2)) v (a, b)
@@ -445,20 +444,20 @@ IN (SELECT ... {<span class="strong">LIMIT | OFFSET</span> ...} ...)
 </dd>
 
 <dt>Using IndexOnlyScan hint</dt>
-<dd>Index scan may unexpectedly performed on another index when the index specifed in IndexOnlyScan hint cannot perform index only scan.</dd>
+<dd>Index scan may unexpectedly performed on another index when the index specified in IndexOnlyScan hint cannot perform index only scan.</dd>
 
 <dt>Behavior of NoIndexScan</dt>
-<dd>NoIndexScan hint involes NoIndexOnlyScan.</dd>
+<dd>NoIndexScan hint involves NoIndexOnlyScan.</dd>
 
 <dt>Parallel hint and UNION</dt>
 <dd>A UNION can run in parallel only when all underlying subqueries
 are parallel-safe. Conversely enforcing parallel on any of
 the subqueries let a parallel-executable UNION run in
-parallel. Meanwhile, a parallel hint with zero workers hinhibits a scan
-from executed in parallel.</dd>
+parallel. Meanwhile, a parallel hint with zero workers inhibits a scan
+from being executed in parallel.</dd>
 
 <dt>Setting pg_hint_plan parameters by Set hints</dt>
-<dd><p>pg_hint_plan paramters change the behavior of itself so some parameters doesn't work as expected.</p>
+<dd><p>pg_hint_plan parameters change the behavior of itself so some parameters doesn't work as expected.</p>
 <ul>
 <li>Hints to change enable_hint, enable_hint_tables are ignored even though they are reported as "used hints" in debug logs.</li>
 <li>Setting debug_print and message_level works from midst of the processing of the target query.</li>
@@ -472,13 +471,13 @@ from executed in parallel.</dd>
 <dt>Syntax errors </dt>
 <dd>Any syntactical errors or wrong hint names are reported as an syntax error. These errors are reported in the server log with the message level which specified by pg_hint_plan.message_level if pg_hint_plan.debug_print is on and aboves.</dd>
 <dt>Object misspecifications</dt>
-<dd>Object misspecifications results silent ingorance of the hints. This kind of error is reported as "not used hints" in the server log by the same condtion to syntax errors.</dd>
+<dd>Object misspecifications results silent ingnorance of the hints. This kind of error is reported as "not used hints" in the server log by the same condition to syntax errors.</dd>
 
 <dt>Redundant or conflicting hints</dt>
 <dd>The last hint will be active when redundant hints or hints conflicting with each other. This kind of error is reported as "duplication hints" in the server log by the same condition to syntax errors.</dd>
 
 <dt>Nested comments</dt>
-<dd>Hint comment cannot include another block comment within. If pg_hint_plan finds it, differently from other erros, it stops parsing and abandans all hints already parsed. This kind of error is reported in the same manner as other errors. </dd>
+<dd>Hint comment cannot include another block comment within. If pg_hint_plan finds it, differently from other errors, it stops parsing and abandons all hints already parsed. This kind of error is reported in the same manner as other errors. </dd>
 
 <h2 id="func_limits">Functional limitations</h2>
 <dt>Influences of some of planner GUC parameters</dt>
@@ -494,18 +493,18 @@ from executed in parallel.</dd>
 </dd>
 
 <dt>Queries in ECPG</dt>
-<dd>ECPG removes comments in queries written as embedded SQLs so hints cannot be passed form those queries. The only exception is that EXECUTE command passes given string unmodifed. Please consider hint tables in the case.</dd>
+<dd>ECPG removes comments in queries written as embedded SQLs so hints cannot be passed form those queries. The only exception is that EXECUTE command passes given string unmodified. Please consider hint tables in the case.</dd>
 
 <dt>Work with pg_stat_statements</dt>
-<dd>pg_stat_statements generates a query id ignoring comments. As the result the identical queires with different hints are summerized as the same query.</dd>
+<dd>pg_stat_statements generates a query id ignoring comments. As the result the identical queires with different hints are summarized as the same query.</dd>
 
 <h2 id="requirement">Requirements</h2>
-pg_hint_plan13 1.3 requires PostgreSQL 13.
+pg_hint_plan14 1.6 requires PostgreSQL 14.
 <dl>
 <dt>PostgreSQL versions tested</dt>
-  <dd>Version 13</dd>
+  <dd>Version 14</dd>
 <dt>OS versions tested</dt>
-  <dd>CentOS 8.2</dd>
+  <dd>CentOS 8.5</dd>
 </dl>
 
 <h2 id="seealso">See also</h2>
@@ -520,6 +519,6 @@ pg_hint_plan13 1.3 requires PostgreSQL 13.
   <a href="pg_hint_plan.html">pg_hint_plan</a>
 </div>
 
-<p class="footer">Copyright (c) 2012-2021, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+<p class="footer">Copyright (c) 2012-2022, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
 </body>
 </html>
