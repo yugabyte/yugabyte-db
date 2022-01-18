@@ -6,9 +6,9 @@ headcontent: Collations
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: explore-ysql-language-features-collations
-    parent: explore-ysql-language-features
-    weight: 410
+    identifier: advanced-features-collations
+    parent: advanced-features
+    weight: 240
 isTocNested: true
 showAsideToc: true
 ---

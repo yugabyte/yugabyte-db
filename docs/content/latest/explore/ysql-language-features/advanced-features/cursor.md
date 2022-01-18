@@ -6,8 +6,8 @@ headcontent: Cursors in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: explore-ysql-language-features-cursor
-    parent: explore-ysql-language-features
+    identifier: advanced-features-cursor
+    parent: advanced-features
     weight: 220
 isTocNested: true
 showAsideToc: true

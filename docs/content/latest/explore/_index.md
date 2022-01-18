@@ -29,10 +29,10 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     <a class="section-link icon-offset" href="ysql-language-features/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">Distributed SQL features</div>
+        <div class="title">SQL features</div>
       </div>
       <div class="body">
-        Distributed SQL features in YSQL.
+        SQL features in YSQL.
       </div>
     </a>
   </div>
@@ -146,7 +146,6 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
-
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cluster-management/">

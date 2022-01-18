@@ -6,8 +6,8 @@ headcontent: Tablespaces in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: explore-ysql-language-features-tablespaces
-    parent: explore-ysql-language-features
+    identifier: going-beyond-sql-tablespaces
+    parent: going-beyond-sql
     weight: 320
 isTocNested: true
 showAsideToc: true

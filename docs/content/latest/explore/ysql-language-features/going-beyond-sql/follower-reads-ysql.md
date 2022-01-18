@@ -7,8 +7,8 @@ aliases:
   - /latest/explore/multi-region-deployments/read-replicas
 menu:
   latest:
-    identifier: explore-multi-region-deployments-follower-reads-ysql
-    parent: explore-multi-region-deployments
+    identifier: going-beyond-sql-follower-reads-ysql
+    parent: going-beyond-sql
     weight: 280
 isTocNested: true
 showAsideToc: true

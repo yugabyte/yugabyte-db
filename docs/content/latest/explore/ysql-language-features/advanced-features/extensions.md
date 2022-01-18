@@ -9,9 +9,9 @@ aliases:
 image: /images/section_icons/explore/monitoring.png
 menu:
   latest:
-    identifier: explore-ysql-language-features-extensions
-    parent: explore-ysql-language-features
-    weight: 620
+    identifier: advanced-features-extensions
+    parent: advanced-features
+    weight: 245
 isTocNested: true
 showAsideToc: true
 ---
