@@ -257,7 +257,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
 
   // The table with cluster placement policy should have tablets spread across all tservers.
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     ASSERT_GT(counts_per_ts[ii], 0);
   }
 
@@ -272,7 +272,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   WaitForLoadBalancer();
 
   GetLoadOnTservers(custom_policy_table, num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     if (ii == 0 || ii == 4) {
       // The table with custom policy should have no tablets in z0, i.e. ts0 and ts4.
       ASSERT_EQ(counts_per_ts[ii], 0);
@@ -302,7 +302,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   // The table with cluster placement policy should continue to have tablets spread across all
   // tservers.
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     ASSERT_GT(counts_per_ts[ii], 0);
   }
 }

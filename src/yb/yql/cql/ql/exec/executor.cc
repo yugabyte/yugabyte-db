@@ -1025,7 +1025,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     // DocDB will do LIMIT and OFFSET computation for this query.
     if (tnode->limit()) {
       // Setup request to DocDB according to the given LIMIT.
-      auto user_limit = query_state->select_limit() - query_state->read_count();
+      size_t user_limit = query_state->select_limit() - query_state->read_count();
       if (!req->has_limit() || user_limit <= req->limit()) {
         // Set limit and instruct DocDB to clear paging state if limit is reached.
         req->set_limit(user_limit);
@@ -1212,7 +1212,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
   }
 
   // Setup counters in read request to DocDB.
-  const size_t current_fetch_row_count = tnode_context->row_count();
+  const int64_t current_fetch_row_count = tnode_context->row_count();
   const int64_t total_rows_skipped = query_state->skip_count();
   const int64_t total_row_count = query_state->read_count();
 
@@ -2234,7 +2234,8 @@ bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
     case QLWriteRequestPB::QL_STMT_DELETE: {
       const Schema& schema = tnode->table()->InternalSchema();
       return (req.column_values().empty() &&
-              req.range_column_values_size() == schema.num_range_key_columns());
+              static_cast<size_t>(req.range_column_values_size()) ==
+                  schema.num_range_key_columns());
     }
   }
   return false; // Not feasible

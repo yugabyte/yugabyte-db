@@ -118,7 +118,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   // master is a leader, or if responses have been received from all
   // of the Masters.
   void GetMasterRegistrationRpcCbForNode(
-      int idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
+      size_t idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
       rpc::Rpcs::Handle handle);
 
   LeaderCallback user_cb_;

@@ -418,7 +418,7 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   ASSERT_NO_FATALS(WriteData());
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
-  for (int i = 0; i != cluster_->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     auto tablet_peer = cluster_->mini_master(i)->tablet_peer();
     ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
   }

@@ -968,21 +968,22 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
 
   auto max_to_delete = std::max<ssize_t>(
       reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
-  if (segments_to_gc->size() > max_to_delete) {
+  ssize_t segments_to_gc_size = segments_to_gc->size();
+  if (segments_to_gc_size > max_to_delete) {
     VLOG_WITH_PREFIX(2)
-        << "GCing " << segments_to_gc->size() << " in " << wal_dir_
+        << "GCing " << segments_to_gc_size << " in " << wal_dir_
         << " would not leave enough remaining segments to satisfy minimum "
         << "retention requirement. Only considering "
         << max_to_delete << "/" << reader_->num_segments();
     segments_to_gc->resize(max_to_delete);
-  } else if (segments_to_gc->size() < max_to_delete) {
-    auto extra_segments = max_to_delete - segments_to_gc->size();
+  } else if (segments_to_gc_size < max_to_delete) {
+    auto extra_segments = max_to_delete - segments_to_gc_size;
     VLOG_WITH_PREFIX(2) << "Too many log segments, need to GC " << extra_segments << " more.";
   }
 
   // Don't GC segments that are newer than the configured time-based retention.
   int64_t now = GetCurrentTimeMicros();
-  for (int i = 0; i < segments_to_gc->size(); i++) {
+  for (size_t i = 0; i < segments_to_gc->size(); i++) {
     const scoped_refptr<ReadableLogSegment>& segment = (*segments_to_gc)[i];
 
     // Segments here will always have a footer, since we don't return the in-progress segment up

@@ -454,7 +454,7 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
       DCHECK_EQ(seq.elems_size(), field_names.size());
       QLMapValuePB* map = value->mutable_map_value();
 
-      if (seq.elems_size() == field_names.size()) {
+      if (implicit_cast<size_t>(seq.elems_size()) == field_names.size()) {
         for (int i = 0; i < seq.elems_size(); ++i) {
           map->add_keys()->set_string_value(field_names[i]);
           *(map->add_values()) = seq.elems(i);

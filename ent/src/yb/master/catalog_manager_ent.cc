@@ -1146,7 +1146,7 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   CreateTableResponsePB resp;
   req.set_name(meta.name());
   req.set_table_type(meta.table_type());
-  req.set_num_tablets(table_data->num_tablets);
+  req.set_num_tablets(narrow_cast<int32_t>(table_data->num_tablets));
   for (const auto& p : table_data->partitions) {
     *req.add_partitions() = p;
   }
@@ -2976,7 +2976,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
 
   // We assume that the list of table ids is unique.
   if (req->producer_bootstrap_ids().size() > 0 &&
-      req->producer_table_ids().size() != table_id_to_bootstrap_id.size()) {
+      implicit_cast<size_t>(req->producer_table_ids().size()) != table_id_to_bootstrap_id.size()) {
     return STATUS(InvalidArgument, "When providing bootstrap ids, "
                   "the list of tables must be unique", req->ShortDebugString(),
                   MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -3290,7 +3290,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
   if (!s.ok()) {
     MarkUniverseReplicationFailed(universe, s);
     std::ostringstream oss;
-    for (int i = 0; i < infos->size(); ++i) {
+    for (size_t i = 0; i < infos->size(); ++i) {
       oss << ((i == 0) ? "" : ", ") << (*infos)[i].table_id;
     }
     LOG(ERROR) << "Error getting schema for tables: [ " << oss.str() << " ]: " << s;
@@ -4093,7 +4093,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       // the same check is performed by SetupUniverseReplication because
       // duplicate table ids can cause a bootstrap id entry in table_id_to_bootstrap_id
       // to be overwritten.
-      if (table_id_to_bootstrap_id.size() != req->producer_table_ids_to_add().size()) {
+      if (table_id_to_bootstrap_id.size() !=
+              implicit_cast<size_t>(req->producer_table_ids_to_add().size())) {
         return STATUS(InvalidArgument, "When providing bootstrap ids, "
                       "the list of tables must be unique", req->ShortDebugString(),
                       MasterError(MasterErrorPB::INVALID_REQUEST));

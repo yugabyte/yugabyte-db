@@ -220,7 +220,7 @@ class ColumnSchema {
       case kDescendingNullsLast:
         return "desc nulls last";
     }
-    LOG (FATAL) << "Invalid sorting type: " << sorting_type_;
+    LOG(FATAL) << "Invalid sorting type: " << sorting_type_;
   }
 
   const std::string &name() const {

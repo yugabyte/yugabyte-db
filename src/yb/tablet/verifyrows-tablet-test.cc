@@ -98,7 +98,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     CountDownOnScopeExit dec_count(&running_insert_count_);
     shared_ptr<TimeSeries> inserts = ts_collector_.GetTimeSeries("inserted");
 
-    uint32_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
+    int32_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
         / kNumInsertThreads;
 
     if (max_rows < FLAGS_inserts_per_thread) {
