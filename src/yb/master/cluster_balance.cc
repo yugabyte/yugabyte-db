@@ -179,7 +179,7 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
     for (const auto& path : to_ts_meta.sorted_path_load_by_leader_count) {
       auto path_list = to_ts_meta.path_to_tablets.find(path);
       if (path_list == to_ts_meta.path_to_tablets.end()) {
-        LOG(INFO) << "Found uninitialized path "<< path;
+        // No tablets on this path, so skip it.
         continue;
       }
       transform(path_list->second.begin(), path_list->second.end(), std::back_inserter(peers),
