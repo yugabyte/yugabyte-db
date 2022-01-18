@@ -562,8 +562,11 @@ void PerTableLoadState::SortDriveLoad() {
   for (const auto& ts : sorted_load_) {
     auto& ts_meta = per_ts_meta_[ts];
     std::vector<std::pair<std::string, uint64>> drive_load;
+    bool empty_path_found = false;
     for (const auto& path_to_tablet : ts_meta.path_to_tablets) {
       if (path_to_tablet.first.empty()) {
+        // TS reported tablet without path (rolling restart case).
+        empty_path_found = true;
         continue;
       }
       int starting_tablets_count = FindWithDefault(ts_meta.path_to_starting_tablets_count,
@@ -582,8 +585,11 @@ void PerTableLoadState::SortDriveLoad() {
     std::transform(drive_load.begin(), drive_load.end(),
                     std::back_inserter(ts_meta.sorted_path_load_by_tablets_count),
                     [](const std::pair<std::string, uint64>& v) { return v.first;});
-    // Add undefined to the end for backward compatibility.
-    ts_meta.sorted_path_load_by_tablets_count.push_back(std::string());
+    if (empty_path_found) {
+      // Empty path was found at path_to_tablets, so add the empty path to the
+      // end so that it has the lowest priority.
+      ts_meta.sorted_path_load_by_tablets_count.push_back(std::string());
+    }
   }
 }
 
@@ -622,9 +628,11 @@ void PerTableLoadState::SortDriveLeaderLoad() {
   for (const auto& ts : sorted_leader_load_) {
     auto& ts_meta = per_ts_meta_[ts];
     std::vector<std::pair<std::string, uint64>> drive_load;
+    bool empty_path_found = false;
     // Add drives with leaders
     for (const auto& path_to_tablet : ts_meta.path_to_leaders) {
       if (path_to_tablet.first.empty()) {
+        empty_path_found = true;
         continue;
       }
       drive_load.emplace_back(std::pair<std::string, uint>(
@@ -647,12 +655,15 @@ void PerTableLoadState::SortDriveLeaderLoad() {
           [](const std::pair<std::string, uint64>& l, const std::pair<std::string, uint64>& r) {
               return l.second < r.second;
             });
-    ts_meta.sorted_path_load_by_leader_count.reserve(drive_load.size());
+    bool add_empty_path = empty_path_found || ts_meta.path_to_leaders.empty();
+    ts_meta.sorted_path_load_by_leader_count.reserve(drive_load.size() + (add_empty_path ? 1 : 0));
+    if (add_empty_path) {
+      // Empty path was found at path_to_leaders or no leaders on TS, so add the empty path.
+      ts_meta.sorted_path_load_by_leader_count.push_back(std::string());
+    }
     std::transform(drive_load.begin(), drive_load.end(),
                     std::back_inserter(ts_meta.sorted_path_load_by_leader_count),
                     [](const std::pair<std::string, uint64>& v) { return v.first;});
-    // Add undefined to the end for backward compatibility.
-    ts_meta.sorted_path_load_by_leader_count.push_back(std::string());
   }
 }
 
