@@ -78,9 +78,9 @@ DEFINE_test_flag(double, transaction_ignore_applying_probability, 0,
 DEFINE_test_flag(bool, fail_in_apply_if_no_metadata, false,
                  "Fail when applying intents if metadata is not found.");
 
-DEFINE_uint64(max_transactions_in_status_request, 128,
-              "Request status for at most specified number of transactions at once. "
-                  "0 disables load time transaction status resolution.");
+DEFINE_int32(max_transactions_in_status_request, 128,
+             "Request status for at most specified number of transactions at once. "
+                 "0 disables load time transaction status resolution.");
 
 DEFINE_uint64(transactions_cleanup_cache_size, 256, "Transactions cleanup cache size.");
 

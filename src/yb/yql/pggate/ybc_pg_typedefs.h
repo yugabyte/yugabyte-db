@@ -337,7 +337,7 @@ typedef struct PgTableProperties {
 typedef struct PgYBTupleIdDescriptor {
   YBCPgOid database_oid;
   YBCPgOid table_oid;
-  int32_t nattrs;
+  size_t nattrs;
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;
 

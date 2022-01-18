@@ -359,7 +359,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // Logs the usage of this tracker and all of its children (recursively).
   std::string LogUsage(
-      const std::string& prefix = "", size_t usage_threshold = 0, int indent = 0) const;
+      const std::string& prefix = "", int64_t usage_threshold = 0, int indent = 0) const;
 
   void EnableLogging(bool enable, bool log_stack) {
     enable_logging_ = enable;

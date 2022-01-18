@@ -1025,7 +1025,7 @@ size_t Base64UnescapeInternal(
   }
 
   // Process the leftover data contained in 'temp' at the end of the input.
-  int expected_equals = 0;
+  size_t expected_equals = 0;
   switch (state) {
     case 0:
       // Nothing left over; output is a multiple of 3 bytes.
@@ -1384,7 +1384,7 @@ size_t Base32Unescape(const char* src, size_t slen, char* dest, size_t szdest) {
     // Convert the 8 escaped bytes to 5 unescaped bytes and copy to dest.
     EightBase32DigitsToFiveBytes(escaped_bytes, unescaped_bytes);
     const auto num_unescaped = kBase32NumUnescapedBytes[non_padded_len];
-    for (int i = 0; i < num_unescaped; ++i) {
+    for (size_t i = 0; i < num_unescaped; ++i) {
       if (destidx == szdest) {
         // No more room in dest, so terminate early.
         return -1;

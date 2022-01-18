@@ -377,7 +377,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   if (opts_.num_tablet_servers > 0) {
     LOG(INFO) << "Starting " << opts_.num_tablet_servers << " tablet servers";
 
-    for (int i = 1; i <= opts_.num_tablet_servers; i++) {
+    for (size_t i = 1; i <= opts_.num_tablet_servers; i++) {
       RETURN_NOT_OK_PREPEND(
           AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy),
           Substitute("Failed starting tablet server $0", i));
@@ -727,9 +727,9 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
 // We look for the exact master match. Since it is possible to stop/restart master on
 // a given host/port, we do not want a stale master pointer input to match a newer master.
 int ExternalMiniCluster::GetIndexOfMaster(ExternalMaster* master) const {
-  for (int i = 0; i < masters_.size(); i++) {
+  for (size_t i = 0; i < masters_.size(); i++) {
     if (masters_[i].get() == master) {
-      return i;
+      return narrow_cast<int>(i);
     }
   }
   return -1;
@@ -1112,7 +1112,7 @@ Status ExternalMiniCluster::GetLastOpIdForLeader(OpIdPB* opid) {
 
 string ExternalMiniCluster::GetMasterAddresses() const {
   string peer_addrs = "";
-  for (int i = 0; i < opts_.num_masters; i++) {
+  for (size_t i = 0; i < opts_.num_masters; i++) {
     if (!peer_addrs.empty()) {
       peer_addrs += ",";
     }
@@ -1160,7 +1160,7 @@ Status ExternalMiniCluster::StartMasters() {
   }
 
   vector<string> peer_addrs;
-  for (int i = 0; i < num_masters; i++) {
+  for (size_t i = 0; i < num_masters; i++) {
     string addr = MasterAddressForPort(opts_.master_rpc_ports[i]);
     peer_addrs.push_back(addr);
   }
@@ -1183,7 +1183,7 @@ Status ExternalMiniCluster::StartMasters() {
   string exe = GetBinaryPath(kMasterBinaryName);
 
   // Start the masters.
-  for (int i = 0; i < num_masters; i++) {
+  for (size_t i = 0; i < num_masters; i++) {
     uint16_t http_port = AllocateFreePort();
     scoped_refptr<ExternalMaster> peer =
       new ExternalMaster(
@@ -1213,7 +1213,7 @@ Status ExternalMiniCluster::WaitForInitDb() {
   int num_timeouts = 0;
   const int kMaxTimeouts = 10;
   while (true) {
-    for (int i = 0; i < opts_.num_masters; i++) {
+    for (size_t i = 0; i < opts_.num_masters; i++) {
       auto elapsed_time = std::chrono::steady_clock::now() - start_time;
       if (elapsed_time > kTimeout) {
         return STATUS_FORMAT(
@@ -1403,7 +1403,7 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
 
     last_unmatched = tablet_servers_;
     had_leader = false;
-    for (int i = 0; i < masters_.size(); i++) {
+    for (size_t i = 0; i < masters_.size(); i++) {
       master::ListTabletServersRequestPB req;
       master::ListTabletServersResponsePB resp;
       rpc::RpcController rpc;
@@ -1418,7 +1418,7 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
       // ListTabletServers() may return servers that are no longer online.
       // Do a second step of verification to verify that the descs that we got
       // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
-      int match_count = 0;
+      size_t match_count = 0;
       for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
         for (auto it = last_unmatched.begin(); it != last_unmatched.end(); ++it) {
           if ((**it).instance_id().permanent_uuid() == e.instance_id().permanent_uuid() &&
@@ -1467,7 +1467,7 @@ Result<std::vector<ListTabletsForTabletServerResponsePB::Entry>> ExternalMiniClu
 
 Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
     const std::string& tablet_id) {
-  for (int i = 0; i < this->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < this->num_tablet_servers(); i++) {
     auto tserver = this->tablet_server(i);
     auto ts_service_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
         proxy_cache_.get(), tserver->bound_rpc_addr());
@@ -1556,7 +1556,7 @@ Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
   return STATUS(TimedOut, resp.DebugString());
 }
 
-Status ExternalMiniCluster::WaitForTSToCrash(int index, const MonoDelta& timeout) {
+Status ExternalMiniCluster::WaitForTSToCrash(size_t index, const MonoDelta& timeout) {
   ExternalTabletServer* ts = tablet_server(index);
   return WaitForTSToCrash(ts, timeout);
 }
@@ -1586,21 +1586,19 @@ void LeaderMasterCallback(HostPort* dst_hostport,
 }
 }  // anonymous namespace
 
-Status ExternalMiniCluster::GetFirstNonLeaderMasterIndex(int* idx) {
-  return GetPeerMasterIndex(idx, false);
+Result<size_t> ExternalMiniCluster::GetFirstNonLeaderMasterIndex() {
+  return GetPeerMasterIndex(false);
 }
 
-Status ExternalMiniCluster::GetLeaderMasterIndex(int* idx) {
-  return GetPeerMasterIndex(idx, true);
+Result<size_t> ExternalMiniCluster::GetLeaderMasterIndex() {
+  return GetPeerMasterIndex(true);
 }
 
-Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
+Result<size_t> ExternalMiniCluster::GetPeerMasterIndex(bool is_leader) {
   Synchronizer sync;
   server::MasterAddresses addrs;
   HostPort leader_master_hp;
   auto deadline = CoarseMonoClock::Now() + 5s;
-
-  *idx = 0;  // default to 0'th index, even in case of errors.
 
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
     if (master->IsProcessAlive()) {
@@ -1621,53 +1619,47 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   rpc->SendRpc();
   RETURN_NOT_OK(sync.Wait());
   rpcs.Shutdown();
-  bool found = false;
-  for (int i = 0; i < masters_.size(); i++) {
+
+  const char* peer_type = is_leader ? "leader" : "non-leader";
+  for (size_t i = 0; i < masters_.size(); i++) {
     bool matches_leader = masters_[i]->bound_rpc_hostport().port() == leader_master_hp.port();
     if (is_leader == matches_leader) {
-      found = true;
-      *idx = i;
-      break;
+      LOG(INFO) << "Found peer " << peer_type << " at index " << i << ".";
+      return i;
     }
   }
 
-  const string peer_type = is_leader ? "leader" : "non-leader";
-  if (!found) {
-    // There is never a situation where this should happen, so it's
-    // better to exit with a FATAL log message right away vs. return a
-    // Status::IllegalState().
-    LOG(FATAL) << "Peer " << peer_type << " master is not in masters_ list.";
-  }
-
-  LOG(INFO) << "Found peer " << peer_type << " at index " << *idx << ".";
-
-  return Status::OK();
+  // There is never a situation where this should happen, so it's
+  // better to exit with a FATAL log message right away vs. return a
+  // Status::IllegalState().
+  auto status = STATUS_FORMAT(NotFound, "Peer $0 master is not in masters_ list", peer_type);
+  LOG(FATAL) << status;
+  return status;
 }
 
 ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
-  int idx = 0;
   int num_attempts = 0;
-  Status s;
   // Retry to get the leader master's index - due to timing issues (like election in progress).
-  do {
+  for (;;) {
     ++num_attempts;
-    s = GetLeaderMasterIndex(&idx);
-    if (!s.ok()) {
-      LOG(INFO) << "GetLeaderMasterIndex@" << num_attempts << " hit error: " << s.ToString();
-      if (num_attempts >= kMaxRetryIterations) {
-        LOG(WARNING) << "Failed to get leader master after " << num_attempts << " attempts, "
-                     << "returning the first master.";
-        break;
-      }
-      SleepFor(MonoDelta::FromMilliseconds(num_attempts * 10));
+    auto idx = GetLeaderMasterIndex();
+    if (idx.ok()) {
+      return master(*idx);
     }
-  } while (!s.ok());
+    LOG(INFO) << "GetLeaderMasterIndex@" << num_attempts << " hit error: " << idx.status();
+    if (num_attempts >= kMaxRetryIterations) {
+      LOG(WARNING) << "Failed to get leader master after " << num_attempts << " attempts, "
+                   << "returning the first master.";
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(num_attempts * 10));
+  }
 
-  return master(idx);
+  return master(0);
 }
 
-Result<int> ExternalMiniCluster::GetTabletLeaderIndex(const std::string& tablet_id) {
-  for (int i = 0; i < num_tablet_servers(); ++i) {
+Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(const std::string& tablet_id) {
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
     auto tserver = tablet_server(i);
     if (tserver->IsProcessAlive()) {
       auto tablets = VERIFY_RESULT(GetTablets(tserver));
@@ -1692,9 +1684,9 @@ ExternalTabletServer* ExternalMiniCluster::tablet_server_by_uuid(const std::stri
 }
 
 int ExternalMiniCluster::tablet_server_index_by_uuid(const std::string& uuid) const {
-  for (int i = 0; i < tablet_servers_.size(); i++) {
+  for (size_t i = 0; i < tablet_servers_.size(); i++) {
     if (tablet_servers_[i]->uuid() == uuid) {
-      return i;
+      return narrow_cast<int>(i);
     }
   }
   return -1;
@@ -2668,10 +2660,10 @@ Status ExternalTabletServer::SetNumDrives(uint16_t num_drives) {
 }
 
 Status RestartAllMasters(ExternalMiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
     cluster->master(i)->Shutdown();
   }
-  for (int i = 0; i != cluster->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
     RETURN_NOT_OK(cluster->master(i)->Restart());
   }
 

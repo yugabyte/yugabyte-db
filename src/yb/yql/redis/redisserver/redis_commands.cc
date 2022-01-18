@@ -439,7 +439,7 @@ void HandlePubSub(LocalCommandData data) {
     response.set_int_response(names.size());
   } else if (boost::iequals(data.arg(1).ToBuffer(), "NUMSUB")) {
     auto array_response = response.mutable_array_response();
-    for (int idx = 2; idx < data.arg_size(); idx++) {
+    for (size_t idx = 2; idx < data.arg_size(); idx++) {
       const string& channel = data.arg(idx).ToBuffer();
       auto subs = data.context()->service_data()->NumSubscribers(AsPattern::kFalse, channel);
       AddElements(redisserver::EncodeAsBulkString(channel), array_response);
@@ -472,7 +472,7 @@ void HandleSubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
 
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
   vector<string> channels;
-  for (int idx = 1; idx < data.arg_size(); idx++) {
+  for (size_t idx = 1; idx < data.arg_size(); idx++) {
     channels.emplace_back(data.arg(idx).ToBuffer());
   }
   auto conn = data.call()->connection().get();
@@ -508,7 +508,7 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
   auto conn = data.call()->connection().get();
   vector<string> channels;
   if (data.arg_size() > 1) {
-    for (int idx = 1; idx < data.arg_size(); idx++) {
+    for (size_t idx = 1; idx < data.arg_size(); idx++) {
       channels.push_back(data.arg(idx).ToBuffer());
     }
   } else {
@@ -660,7 +660,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
   std::shared_ptr<client::YBRedisWriteOp> write_dest_op_;
   std::shared_ptr<client::YBRedisWriteOp> write_dest_ttl_op_;
   std::shared_ptr<client::YBRedisWriteOp> delete_src_op_;
-  std::atomic_int num_tablets_{0};
+  std::atomic<size_t> num_tablets_{0};
 
   client::YBSession* session_;
   StatusFunctor src_functor_, dest_functor_;

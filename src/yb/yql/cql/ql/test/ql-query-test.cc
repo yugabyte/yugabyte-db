@@ -107,7 +107,7 @@ class TestQLQuery : public QLTestBase {
     auto row_block = processor->row_block();
     // checking result
     ASSERT_EQ(test_rows.size(), row_block->row_count());
-    for (int i = 0; i < test_rows.size(); i++) {
+    for (size_t i = 0; i < test_rows.size(); i++) {
       QLRow &row = row_block->row(i);
       EXPECT_EQ(std::get<1>(test_rows[i]), row.column(0).int32_value());
       EXPECT_EQ(std::get<2>(test_rows[i]), row.column(1).string_value());
@@ -755,7 +755,7 @@ TEST_F(TestQLQuery, TestPagingState) {
     do {
       CHECK_OK(processor->Run(select_stmt, params));
       std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-      for (int j = 0; j < row_block->row_count(); j++) {
+      for (size_t j = 0; j < row_block->row_count(); j++) {
         const QLRow& row = row_block->row(j);
         i++;
         CHECK_EQ(row.column(0).int32_value(), 1);
@@ -797,7 +797,7 @@ TEST_F(TestQLQuery, TestPagingState) {
     do {
       CHECK_OK(processor->Run("SELECT h, r, v FROM t WHERE r > 100;", params));
       std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-      for (int j = 0; j < row_block->row_count(); j++) {
+      for (size_t j = 0; j < row_block->row_count(); j++) {
         const QLRow& row = row_block->row(j);
         CHECK_EQ(row.column(0).int32_value() + 100, row.column(1).int32_value());
         sum += row.column(0).int32_value();
@@ -829,7 +829,7 @@ TEST_F(TestQLQuery, TestPagingState) {
     do {
       CHECK_OK(processor->Run(select_stmt, params));
       std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-      for (int j = 0; j < row_block->row_count(); j++) {
+      for (size_t j = 0; j < row_block->row_count(); j++) {
         const QLRow& row = row_block->row(j);
         CHECK_EQ(row.column(0).int32_value() + 100, row.column(1).int32_value());
         sum += row.column(0).int32_value();
@@ -904,7 +904,7 @@ void RunPaginationWithDescTest(
   do {
     CHECK_OK(processor->Run(select_stmt, params));
     std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-    for (int j = 0; j < row_block->row_count(); j++) {
+    for (size_t j = 0; j < row_block->row_count(); j++) {
       const QLRow& row = row_block->row(j);
       rows->push_back(row);
     }
@@ -1626,7 +1626,7 @@ TEST_F(TestQLQuery, TestPagination) {
   auto row_block = processor->row_block();
   EXPECT_EQ(10, row_block->row_count());
   int sum = 0;
-  for (int i = 0; i < row_block->row_count(); i++) {
+  for (size_t i = 0; i < row_block->row_count(); i++) {
     sum += row_block->row(i).column(0).int32_value();
   }
   EXPECT_EQ(55, sum);

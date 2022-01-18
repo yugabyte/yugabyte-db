@@ -109,7 +109,7 @@ CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
-  int idx = 3;
+  size_t idx = 3;
   while (idx < args.size()) {
     string upper_arg;
     if (args[idx].size() == 2) {
@@ -203,8 +203,8 @@ CHECKED_STATUS ParseHIncrBy(YBRedisWriteOp *op, const RedisClientCommand& args) 
   return Status::OK();
 }
 
-CHECKED_STATUS ParseZAddOptions(SortedSetOptionsPB *options,
-                                const RedisClientCommand& args, int *idx) {
+CHECKED_STATUS ParseZAddOptions(
+    SortedSetOptionsPB *options, const RedisClientCommand& args, size_t *idx) {
   // While we keep seeing flags, set the appropriate field in options and increment idx. When
   // we finally stop seeing flags, the idx will be set to that token for later parsing.
   // Note that we can see duplicate flags, and it should have the same behavior as seeing the
@@ -253,7 +253,7 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
     op->mutable_request()->mutable_set_request()->set_expect_ok_response(true);
   }
 
-  int start_idx = 2;
+  size_t start_idx = 2;
   if (type == REDIS_TYPE_SORTEDSET) {
     RETURN_NOT_OK(ParseZAddOptions(
         op->mutable_request()->mutable_set_request()->mutable_sorted_set_options(),
@@ -277,7 +277,7 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
   }
 
   std::unordered_map<string, string> kv_map;
-  for (int i = start_idx; i < args.size(); i += 2) {
+  for (size_t i = start_idx; i < args.size(); i += 2) {
     // EXPIRE_AT/EXPIRE_IN only supported for redis timeseries currently.
     if (type == REDIS_TYPE_TIMESERIES) {
       string upper_arg;
@@ -361,7 +361,7 @@ Status ParsePush(YBRedisWriteOp *op, const RedisClientCommand& args, RedisSide s
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_LIST);
 
   auto mutable_key = op->mutable_request()->mutable_key_value();
-  for (int i = 2; i < args.size(); ++i) {
+  for (size_t i = 2; i < args.size(); ++i) {
     mutable_key->add_value(args[i].cdata(), args[i].size());
   }
   return Status::OK();
