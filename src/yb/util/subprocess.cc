@@ -290,8 +290,8 @@ void CloseNonStandardFDs(DIR* fd_dir, const std::unordered_set<int>& excluding) 
   // buys us is reentrancy, and not async-signal-safety, due to the use of
   // dir->lock, so seems not worth the added complexity in lifecycle & plumbing.
   while ((ent = READDIR(fd_dir)) != nullptr) {
-    uint32_t fd;
-    if (!safe_strtou32(ent->d_name, &fd)) continue;
+    int32_t fd;
+    if (!safe_strto32(ent->d_name, &fd)) continue;
     if (!(fd == STDIN_FILENO  ||
           fd == STDOUT_FILENO ||
           fd == STDERR_FILENO ||
@@ -725,8 +725,8 @@ Result<std::vector<int>> Subprocess::CloseFileDescriptorsForPosixSpawn(
   struct DIRENT* ent;
   std::vector<int> fds_to_close;
   while ((ent = READDIR(fd_dir)) != nullptr) {
-    uint32_t fd;
-    if (!safe_strtou32(ent->d_name, &fd)) continue;
+    int32_t fd;
+    if (!safe_strto32(ent->d_name, &fd)) continue;
     if (fd == STDIN_FILENO  ||
         fd == STDOUT_FILENO ||
         fd == STDERR_FILENO ||

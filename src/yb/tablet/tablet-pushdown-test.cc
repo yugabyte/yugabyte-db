@@ -80,7 +80,7 @@ class TabletPushdownTest : public YBTabletTest {
 
     LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
-    for (int32_t i = 0; i < nrows_; i++) {
+    for (int i = 0; i < nrows_; i++) {
       QLAddInt32HashValue(&req, i);
       QLAddInt32ColumnValue(&req, kFirstColumnId + 1, i * 10);
       QLAddStringColumnValue(&req, kFirstColumnId + 2, StringPrintf("%08d", i));
@@ -122,7 +122,7 @@ class TabletPushdownTest : public YBTabletTest {
   }
 
  private:
-  uint64_t nrows_;
+  int nrows_;
 };
 
 TEST_F(TabletPushdownTest, TestPushdownIntKeyRange) {

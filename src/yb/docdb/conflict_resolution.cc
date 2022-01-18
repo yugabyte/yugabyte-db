@@ -1039,7 +1039,7 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
 // transaction_id_slice used in INTENT_KEY_SCHECK
 Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
   ParsedIntent result;
-  int doc_ht_size = 0;
+  size_t doc_ht_size = 0;
   result.doc_path = intent_key;
   // Intent is encoded as "DocPath + IntentType + DocHybridTime".
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(result.doc_path, &doc_ht_size));

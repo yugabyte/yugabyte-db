@@ -167,7 +167,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
 
     std::vector<YBTableName> tables;
     std::vector<std::shared_ptr<client::YBTable>> yb_tables;
-    for (int i = 0; i < num_consumer_tablets.size(); i++) {
+    for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
       RETURN_NOT_OK(CreateTable(i, num_producer_tablets[i], &producer_cluster_,
                                 &tables, colocated));
       std::shared_ptr<client::YBTable> producer_table;
@@ -385,7 +385,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
   producer_tables.reserve(tables.size() / 2);
-  for (int i = 0; i < tables.size(); i += 2) {
+  for (size_t i = 0; i < tables.size(); i += 2) {
     producer_tables.push_back(tables[i]);
   }
   ASSERT_OK(SetupUniverseReplication(
@@ -396,12 +396,12 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
   ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
   ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
-  for (int i = 0; i < producer_tables.size(); i++) {
-    ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
+  for (size_t i = 0; i < producer_tables.size(); i++) {
+    ASSERT_EQ(resp.entry().tables(narrow_cast<int>(i)), producer_tables[i]->id());
   }
 
   // Verify that CDC streams were created on producer for all tables.
-  for (int i = 0; i < producer_tables.size(); i++) {
+  for (size_t i = 0; i < producer_tables.size(); i++) {
     master::ListCDCStreamsResponsePB stream_resp;
     ASSERT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
@@ -426,7 +426,7 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
   producer_tables.reserve(tables.size() / 2);
   consumer_tables.reserve(tables.size() / 2);
-  for (int i = 0; i < tables.size(); ++i) {
+  for (size_t i = 0; i < tables.size(); ++i) {
     if (i % 2 == 0) {
       producer_tables.push_back(tables[i]);
     } else {
@@ -518,7 +518,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
   producer_tables.reserve(tables.size() / 2);
   consumer_tables.reserve(tables.size() / 2);
-  for (int i = 0; i < tables.size(); ++i) {
+  for (size_t i = 0; i < tables.size(); ++i) {
     if (i % 2 == 0) {
       producer_tables.push_back(tables[i]);
     } else {
@@ -693,7 +693,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   consumer_tables.reserve(colocated_tables.size() / 2 + 1);
   colocated_producer_tables.reserve(colocated_tables.size() / 2);
   colocated_consumer_tables.reserve(colocated_tables.size() / 2);
-  for (int i = 0; i < colocated_tables.size(); ++i) {
+  for (size_t i = 0; i < colocated_tables.size(); ++i) {
     if (i % 2 == 0) {
       producer_tables.push_back(colocated_tables[i]);
       colocated_producer_tables.push_back(colocated_tables[i]);

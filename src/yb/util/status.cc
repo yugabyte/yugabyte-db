@@ -551,7 +551,7 @@ Status Status::CloneAndAddErrorCode(const StatusErrorCode& error_code) const {
     out = DoEncode(error_code, out);
     *out++ = 0;
   }
-  auto encoded_size = out - buffer;
+  size_t encoded_size = out - buffer;
   LOG_IF(DFATAL, encoded_size != new_errors_size)
       << "New error codes size is expected to be " << new_errors_size << " but " << encoded_size
       << " bytes were encoded";

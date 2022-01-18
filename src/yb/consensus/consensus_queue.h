@@ -522,7 +522,7 @@ class PeerMessageQueue {
   Result<ReadOpsResult> ReadFromLogCache(
     int64_t after_index,
     int64_t to_index,
-    int max_batch_size,
+    size_t max_batch_size,
     const std::string& peer_uuid,
     const CoarseTimePoint deadline = CoarseTimePoint::max());
 

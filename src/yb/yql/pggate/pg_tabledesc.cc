@@ -86,8 +86,8 @@ const std::vector<std::string>& PgTableDesc::GetPartitions() const {
   return table_partitions_->keys;
 }
 
-int PgTableDesc::GetPartitionCount() const {
-  return narrow_cast<int>(table_partitions_->keys.size());
+size_t PgTableDesc::GetPartitionCount() const {
+  return table_partitions_->keys.size();
 }
 
 Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {

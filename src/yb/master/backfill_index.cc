@@ -652,7 +652,7 @@ BackfillTable::BackfillTable(
   if (pb.backfill_jobs_size() > 0 && pb.backfill_jobs(0).has_backfilling_timestamp() &&
       read_time_for_backfill_.FromUint64(pb.backfill_jobs(0).backfilling_timestamp()).ok()) {
     DCHECK(pb.backfill_jobs_size() == 1) << "Expect only 1 outstanding backfill job";
-    DCHECK(pb.backfill_jobs(0).indexes_size() == index_infos_.size())
+    DCHECK(implicit_cast<size_t>(pb.backfill_jobs(0).indexes_size()) == index_infos_.size())
         << "Expect to use the same set of indexes.";
     timestamp_chosen_.store(true, std::memory_order_release);
     VLOG_WITH_PREFIX(1) << "Will be using " << read_time_for_backfill_

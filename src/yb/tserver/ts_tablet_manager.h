@@ -241,7 +241,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // 'seq_num' - only remove tablets unchanged since the acknowledged report sequence number.
   // 'updates' - explicitly ACK'd updates from the Master, may be a subset of request tablets.
   // 'dirty_check' - DEBUG. Confirm we've processed all dirty tablets after a full sweep.
-  void MarkTabletReportAcknowledged(int32_t seq_num,
+  void MarkTabletReportAcknowledged(uint32_t seq_num,
                                     const master::TabletReportUpdatesPB& updates,
                                     bool dirty_check = false);
 

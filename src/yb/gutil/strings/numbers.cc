@@ -58,11 +58,11 @@ using std::string;
 // the last symbol seen was a '.', which will be ignored. This is
 // useful in case that an initial '-' or final '.' would have another
 // meaning (as a separator, e.g.).
-static inline bool EatADouble(const char** text, size_t* len, bool allow_question,
+static inline bool EatADouble(const char** text, ssize_t* len, bool allow_question,
                               double* val, bool* initial_minus,
                               bool* final_period) {
   const char* pos = *text;
-  size_t rem = *len;  // remaining length, or -1 if null-terminated
+  ssize_t rem = *len;  // remaining length, or -1 if null-terminated
 
   if (pos == nullptr || rem == 0)
     return false;
@@ -125,7 +125,7 @@ static inline bool EatADouble(const char** text, size_t* len, bool allow_questio
 // *text is null-terminated. If update is false, don't alter *text and
 // *len. If null_ok, then update must be false, and, if text has no
 // more chars, then return '\1' (arbitrary nonzero).
-static inline char EatAChar(const char** text, size_t* len,
+static inline char EatAChar(const char** text, ssize_t* len,
                             const char* acceptable_chars,
                             bool update, bool null_ok) {
   assert(!(update && null_ok));
@@ -147,7 +147,7 @@ static inline char EatAChar(const char** text, size_t* len,
 
 // Parse an expression in 'text' of the form: <comparator><double> or
 // <double><sep><double> See full comments in header file.
-bool ParseDoubleRange(const char* text, size_t len, const char** end,
+bool ParseDoubleRange(const char* text, ssize_t len, const char** end,
                       double* from, double* to, bool* is_currency,
                       const DoubleRangeOptions& opts) {
   const double from_default = opts.dont_modify_unbounded ? *from : -HUGE_VAL;
@@ -254,7 +254,7 @@ bool ParseDoubleRange(const char* text, size_t len, const char** end,
                               && EatAChar(&text, &len, "$", true, false);
     bool second_double_seen = EatADouble(
       &text, &len, opts.allow_unbounded_markers, to, nullptr, nullptr);
-    if (opts.num_required_bounds > double_seen + second_double_seen)
+    if (opts.num_required_bounds > static_cast<uint32_t>(double_seen + second_double_seen))
       return false;
     if (second_dollar_seen && !second_double_seen) {
       --text;
@@ -1164,7 +1164,7 @@ int AutoDigitStrCmp(const char* a, size_t alen,
         return 1;
       } else {
         // Same lengths, so compare digit by digit
-        for (int i = 0; i < aindex-astart; i++) {
+        for (size_t i = 0; i < aindex-astart; i++) {
           if (a[astart+i] < b[bstart+i]) {
             return -1;
           } else if (a[astart+i] > b[bstart+i]) {

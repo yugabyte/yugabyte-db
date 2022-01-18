@@ -48,7 +48,7 @@ class LocalOutboundCall : public OutboundCall {
  protected:
   void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
-  Result<Slice> GetSidecar(int idx) const override;
+  Result<Slice> GetSidecar(size_t idx) const override;
 
  private:
   friend class LocalYBInboundCall;

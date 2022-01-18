@@ -2166,7 +2166,7 @@ TEST_F_EX(PgLibPqTest,
   // A new PostgreSQL process will be respawned by the tablet server and
   // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
   // server.
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
                                                 "postmaster.pid");

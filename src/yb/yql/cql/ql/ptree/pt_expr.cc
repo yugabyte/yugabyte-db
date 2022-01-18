@@ -452,14 +452,14 @@ CHECKED_STATUS PTCollectionExpr::InitializeUDTValues(const QLType::SharedPtr& ex
     string field_name(field_ref->name()->last_name().c_str());
 
     // All keys must be existing field names from the UDT
-    int field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
-    if (field_idx < 0) {
+    auto field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
+    if (!field_idx) {
       return process_context->Error(this, "Invalid field name found for user-defined type instance",
                                     ErrorCode::INVALID_ARGUMENTS);
     }
 
     // Setting the corresponding field value
-    udtype_field_values_[field_idx] = *values_it;
+    udtype_field_values_[*field_idx] = *values_it;
     values_it++;
   }
   return Status::OK();
@@ -574,7 +574,7 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
       sem_state.set_allowing_column_refs(false);
 
       RETURN_NOT_OK(InitializeUDTValues(expected_type, sem_context));
-      for (int i = 0; i < udtype_field_values_.size(); i++) {
+      for (size_t i = 0; i < udtype_field_values_.size(); i++) {
         if (!udtype_field_values_[i]) {
           // Skip missing values
           continue;

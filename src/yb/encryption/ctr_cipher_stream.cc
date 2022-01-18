@@ -131,16 +131,16 @@ bool BlockAccessCipherStream::UseOpensslCompatibleCounterOverflow() {
 Status BlockAccessCipherStream::EncryptByBlock(
     uint64_t block_index, const Slice& input, void* output,
     EncryptionOverflowWorkaround counter_overflow_workaround) {
-  const uint64_t data_size = input.size();
-  if (data_size == 0) {
+  if (input.size() == 0) {
     return Status::OK();
   }
-  if (data_size > std::numeric_limits<int>::max()) {
+  if (input.size() > implicit_cast<size_t>(std::numeric_limits<int>::max())) {
     return STATUS_FORMAT(InternalError,
                          "Cannot encrypt/decrypt $0 bytes at once (it is more than $1 bytes). "
                          "Encryption block index: $2.",
-                         data_size, std::numeric_limits<int>::max(), block_index);
+                         input.size(), std::numeric_limits<int>::max(), block_index);
   }
+  int data_size = narrow_cast<int>(input.size());
 
   // Set the last 4 bytes of the iv based on counter + block_index.
   uint8_t iv[EncryptionParams::kBlockSize];
@@ -166,7 +166,7 @@ Status BlockAccessCipherStream::EncryptByBlock(
   int bytes_updated = 0;
   const int update_result = EVP_EncryptUpdate(
       encryption_context_.get(), static_cast<uint8_t*>(output), &bytes_updated, input.data(),
-      narrow_cast<int>(data_size));
+      data_size);
   if (update_result != 1) {
     return STATUS_FORMAT(InternalError,
                          "EVP_EncryptUpdate returned $0 when encrypting/decrypting $1 bytes "

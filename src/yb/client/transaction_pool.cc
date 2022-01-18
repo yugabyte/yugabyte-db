@@ -255,7 +255,7 @@ class SingleLocalityPool {
   std::condition_variable cond_;
   std::deque<TransactionEntry> transactions_ GUARDED_BY(mutex_);
   bool closing_ GUARDED_BY(mutex_) = false;
-  int preparing_transactions_ GUARDED_BY(mutex_) = 0;
+  size_t preparing_transactions_ GUARDED_BY(mutex_) = 0;
   rpc::ScheduledTaskId scheduled_task_ GUARDED_BY(mutex_) = rpc::kUninitializedScheduledTaskId;
   uint64_t taken_transactions_ GUARDED_BY(mutex_) = 0;
   uint64_t taken_during_preparation_sum_ GUARDED_BY(mutex_) = 0;

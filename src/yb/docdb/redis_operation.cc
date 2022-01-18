@@ -1043,10 +1043,11 @@ Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
     return Status::OK();
   }
 
-  if (request_.set_range_request().offset() > value->value.length()) {
-    value->value.resize(request_.set_range_request().offset(), 0);
+  size_t set_range_offset = request_.set_range_request().offset();
+  if (set_range_offset > value->value.length()) {
+    value->value.resize(set_range_offset, 0);
   }
-  value->value.replace(request_.set_range_request().offset(), kv.value(0).length(), kv.value(0));
+  value->value.replace(set_range_offset, kv.value(0).length(), kv.value(0));
   response_.set_code(RedisResponsePB::OK);
   response_.set_int_response(value->value.length());
 
@@ -1817,7 +1818,7 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
 
       response_.set_allocated_array_response(new RedisArrayPB());
       const auto& req_kv = request_.key_value();
-      size_t num_subkeys = req_kv.subkey_size();
+      auto num_subkeys = req_kv.subkey_size();
       vector<int> indices(num_subkeys);
       for (int i = 0; i < num_subkeys; ++i) {
         indices[i] = i;
@@ -1827,9 +1828,8 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
           });
 
       string current_value = "";
-      response_.mutable_array_response()->mutable_elements()->Reserve(
-          narrow_cast<int>(num_subkeys));
-      for (size_t i = 0; i < num_subkeys; ++i) {
+      response_.mutable_array_response()->mutable_elements()->Reserve(num_subkeys);
+      for (int i = 0; i < num_subkeys; ++i) {
         response_.mutable_array_response()->add_elements();
       }
       for (int i = 0; i < num_subkeys; ++i) {

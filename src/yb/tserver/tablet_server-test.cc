@@ -706,7 +706,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
     InsertTestRowsRemote(0, i, 1);
   }
 
-  uint64_t max_rows = AllowSlowTests() ?
+  auto max_rows = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_insert_rows : 100;
 
   MonoTime start = MonoTime::Now();

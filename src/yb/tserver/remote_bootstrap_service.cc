@@ -177,10 +177,8 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
           tablet_peer, session_id, requestor_uuid, &nsessions_));
       it = sessions_.emplace(session_id, SessionData{session, CoarseTimePoint()}).first;
       auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
-      if (new_nsessions != sessions_.size()) {
-        LOG(DFATAL) << "nsessions_ " << new_nsessions
-                    << " !=  number of sessions " << sessions_.size();
-      }
+      LOG_IF(DFATAL, implicit_cast<size_t>(new_nsessions) != sessions_.size())
+          << "nsessions_ " << new_nsessions << " !=  number of sessions " << sessions_.size();
     } else {
       session = it->second.session;
       LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id

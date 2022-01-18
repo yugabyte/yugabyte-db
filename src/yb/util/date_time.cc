@@ -105,7 +105,7 @@ string GetSystemTimezone() {
   const int hours = narrow_cast<int>(offset.hours());
   const int minutes = narrow_cast<int>(offset.minutes());
   char buffer[7]; // "+HH:MM" or "-HH:MM"
-  const int result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, minutes);
+  const size_t result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, minutes);
   CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
   return buffer;
 }
@@ -147,7 +147,7 @@ Result<string> GetTimezone(string timezoneID) {
   const int hours = narrow_cast<int>(td.hours());
   const int minutes = narrow_cast<int>(td.minutes());
   char buffer[7]; // "+HH:MM" or "-HH:MM"
-  const int result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, abs(minutes));
+  const size_t result = snprintf(buffer, sizeof(buffer), "%+2.2d:%2.2d", hours, abs(minutes));
   if (result <= 0 || result >= sizeof(buffer)) {
     return STATUS(Corruption, "Parsing timezone into timezone offset string failed");
   }
@@ -273,7 +273,7 @@ Result<string> DateTime::DateToString(const uint32_t date) {
     return STATUS(InvalidArgument, "Failed to get date", u_errorName(status));
   }
   char buffer[15]; // Between "-5877641-06-23" and "5881580-07-11".
-  const int result = snprintf(buffer, sizeof(buffer), "%d-%2.2d-%2.2d", year, month, day);
+  const size_t result = snprintf(buffer, sizeof(buffer), "%d-%2.2d-%2.2d", year, month, day);
   CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
   return buffer;
 }
@@ -326,8 +326,8 @@ Result<string> DateTime::TimeToString(int64_t time) {
   }
   const int hour = narrow_cast<int>(time);
   char buffer[19]; // "hh:mm:ss[.fffffffff]"
-  const int result = snprintf(buffer, sizeof(buffer), "%2.2d:%2.2d:%2.2d.%9.9d",
-                              hour, minute, second, nano_sec);
+  const size_t result = snprintf(buffer, sizeof(buffer), "%2.2d:%2.2d:%2.2d.%9.9d",
+                                 hour, minute, second, nano_sec);
   CHECK(result > 0 && result < sizeof(buffer)) << "Unexpected snprintf result: " << result;
   return buffer;
 }

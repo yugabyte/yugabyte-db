@@ -772,7 +772,7 @@ void MemTracker::GcTcmalloc() {
 #endif
 }
 
-string MemTracker::LogUsage(const string& prefix, size_t usage_threshold, int indent) const {
+string MemTracker::LogUsage(const string& prefix, int64_t usage_threshold, int indent) const {
   stringstream ss;
   ss << prefix << std::string(indent, ' ') << id_ << ":";
   if (CheckLimitExceeded()) {

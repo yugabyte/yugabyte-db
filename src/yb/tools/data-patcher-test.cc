@@ -142,10 +142,10 @@ TEST_F(DataPatcherTest, AddTimeDelta) {
   ASSERT_OK(cluster_->CompactTablets());
 
   std::vector<FsManager*> fs_managers;
-  for (int i = 0; i != cluster_->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     fs_managers.push_back(&cluster_->mini_master(i)->fs_manager());
   }
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     fs_managers.push_back(&cluster_->mini_tablet_server(i)->fs_manager());
   }
 

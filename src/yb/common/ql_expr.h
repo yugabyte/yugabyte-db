@@ -11,11 +11,16 @@
 
 #include <boost/optional/optional.hpp>
 
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/bfpg/tserver_opcodes.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/ql_value.h"
-#include "yb/bfql/tserver_opcodes.h"
-#include "yb/bfpg/tserver_opcodes.h"
+
+#include "yb/gutil/casts.h"
+
+
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
@@ -189,7 +194,8 @@ class QLTableRow {
   std::unordered_map<ColumnIdRep, unsigned int> column_id_to_index_;
 
   static constexpr size_t kPreallocatedSize = 8;
-  static constexpr size_t kFirstNonPreallocatedColumnId = kFirstColumnIdRep + kPreallocatedSize;
+  static constexpr ColumnIdRep kFirstNonPreallocatedColumnId =
+      kFirstColumnIdRep + static_cast<ColumnIdRep>(kPreallocatedSize);
 
   // The two following vectors will be of the same size.
   // We use separate fields to achieve the following features:

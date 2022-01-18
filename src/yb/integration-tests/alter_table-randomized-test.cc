@@ -45,6 +45,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -158,7 +159,7 @@ struct TableState {
     }
     row->clear();
     row->push_back(make_pair("key", key));
-    for (int i = 1; i < col_names_.size(); i++) {
+    for (size_t i = 1; i < col_names_.size(); i++) {
       int32_t val;
       if (col_nullable_[i] && seed % 2 == 1) {
         val = kNullValue;
@@ -283,8 +284,8 @@ struct MirrorTable {
 
     vector<pair<string, int32_t>> update;
     update.push_back(make_pair("key", row_key));
-    for (int i = 1; i < num_columns(); i++) {
-      int32_t val = rand * i;
+    for (size_t i = 1; i < num_columns(); i++) {
+      auto val = static_cast<int32_t>(rand * i);
       if (val == kNullValue) val++;
       if (ts_.col_nullable_[i] && val % 2 == 1) {
         val = kNullValue;

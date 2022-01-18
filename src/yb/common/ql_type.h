@@ -18,6 +18,8 @@
 #ifndef YB_COMMON_QL_TYPE_H_
 #define YB_COMMON_QL_TYPE_H_
 
+#include <boost/optional.hpp>
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/value.pb.h"
 #include "yb/util/status_fwd.h"
@@ -48,7 +50,7 @@ class UDTypeInfo {
     return field_names_;
   }
 
-  const std::string& field_name(int index) const {
+  const std::string& field_name(size_t index) const {
     return field_names_[index];
   }
 
@@ -174,7 +176,7 @@ class QLType {
 
   std::shared_ptr<QLType> values_type() const;
 
-  const QLType::SharedPtr& param_type(int member_index = 0) const;
+  const QLType::SharedPtr& param_type(size_t member_index = 0) const;
 
   const TypeInfo* type_info() const;
 
@@ -189,7 +191,7 @@ class QLType {
     return udtype_info_->field_names();
   }
 
-  const std::string& udtype_field_name(int index) const {
+  const std::string& udtype_field_name(size_t index) const {
     return udtype_info_->field_name(index);
   }
 
@@ -213,15 +215,7 @@ class QLType {
   }
 
   // returns position of "field_name" in udtype_field_names() vector if found, otherwise -1
-  int GetUDTypeFieldIdxByName(const std::string &field_name) const {
-    const std::vector<std::string>& field_names = udtype_field_names();
-    int i = 0;
-    while (i != field_names.size()) {
-      if (field_names[i] == field_name) return i;
-      i++;
-    }
-    return -1;
-  }
+  boost::optional<size_t> GetUDTypeFieldIdxByName(const std::string &field_name) const;
 
   // Get the type ids of all UDTs (transitively) referenced by this UDT.
   std::vector<std::string> GetUserDefinedTypeIds() const {

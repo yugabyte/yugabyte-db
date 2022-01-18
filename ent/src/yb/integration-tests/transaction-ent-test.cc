@@ -81,7 +81,7 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
 
   std::vector<std::thread> threads;
   RandomErrorClockShare share;
-  for (int32_t key = 0; key != share.values.size(); ++key) {
+  for (int32_t key = 0; key != narrow_cast<int32_t>(share.values.size()); ++key) {
     share.values[key].store(0, std::memory_order_release);
     ASSERT_OK(WriteRow(CreateSession(), key, 0));
   }

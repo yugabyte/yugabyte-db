@@ -55,9 +55,7 @@ Status DecodeHybridTimeFromEndOfKey(
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
-Status CheckHybridTimeSizeAndValueType(
-    const rocksdb::Slice& key,
-    int* ht_byte_size_dest) {
+Status CheckHybridTimeSizeAndValueType(const rocksdb::Slice& key, size_t* ht_byte_size_dest) {
   RETURN_NOT_OK(
       DocHybridTime::CheckAndGetEncodedSize(key, ht_byte_size_dest));
   const size_t hybrid_time_value_type_offset = key.size() - *ht_byte_size_dest - 1;

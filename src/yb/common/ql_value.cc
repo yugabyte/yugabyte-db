@@ -392,8 +392,9 @@ void QLValue::Serialize(
       // For every field the UDT has, we try to find a corresponding map entry. If found we
       // serialize the value, else null. Map keys should always be in ascending order.
       int key_idx = 0;
-      for (int i = 0; i < ql_type->udtype_field_names().size(); i++) {
-        if (key_idx < map.keys_size() && map.keys(key_idx).int16_value() == i) {
+      for (size_t i = 0; i < ql_type->udtype_field_names().size(); i++) {
+        if (key_idx < map.keys_size() &&
+            implicit_cast<size_t>(map.keys(key_idx).int16_value()) == i) {
           QLValue::Serialize(ql_type->param_type(i), client, map.values(key_idx), buffer);
           key_idx++;
         } else { // entry not found -> writing null

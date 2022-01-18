@@ -278,7 +278,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
     std::vector<client::YBqlWriteOpPtr> ops;
     ops.swap(retry_ops);
     const auto num_more_keys_to_insert = should_run ? options.write_batch_size - ops.size() : 0;
-    for (int i = 0; i < num_more_keys_to_insert; i++) {
+    for (size_t i = 0; i < num_more_keys_to_insert; i++) {
       if (options.pathological_one_row_enabled) {
         if (!pathological_one_row_inserted_) {
           if (++pathological_one_row_counter_ != 1) {

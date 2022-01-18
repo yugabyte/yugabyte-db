@@ -660,7 +660,7 @@ Result<LeaderElectionPtr> RaftConsensus::CreateElectionUnlocked(
                         << active_config.ShortDebugString();
 
   // Initialize the VoteCounter.
-  int num_voters = CountVoters(active_config);
+  auto num_voters = CountVoters(active_config);
   auto majority_size = MajoritySize(num_voters);
 
   // Vote for ourselves.
@@ -722,8 +722,8 @@ string RaftConsensus::ServersInTransitionMessage() {
   string err_msg;
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
   const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
-  int servers_in_transition = CountServersInTransition(active_config);
-  int committed_servers_in_transition = CountServersInTransition(committed_config);
+  auto servers_in_transition = CountServersInTransition(active_config);
+  auto committed_servers_in_transition = CountServersInTransition(committed_config);
   LOG(INFO) << Substitute("Active config has $0 and committed has $1 servers in transition.",
                           servers_in_transition, committed_servers_in_transition);
   if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
@@ -1639,7 +1639,7 @@ Status RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_r
     deduplicated_req->messages.emplace_back(leader_msg);
   }
 
-  if (deduplicated_req->messages.size() != rpc_req->ops_size()) {
+  if (deduplicated_req->messages.size() != implicit_cast<size_t>(rpc_req->ops_size())) {
     LOG_WITH_PREFIX(INFO) << "Deduplicated request from leader. Original: "
                           << rpc_req->preceding_id() << "->" << OpsRangeString(*rpc_req)
                           << "   Dedup: " << deduplicated_req->preceding_op_id << "->"
@@ -2363,7 +2363,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                                            const string& server_uuid) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-  int servers_in_transition = 0;
+  size_t servers_in_transition = 0;
   if (type == ADD_SERVER) {
     servers_in_transition = CountServersInTransition(active_config);
   } else if (type == REMOVE_SERVER) {

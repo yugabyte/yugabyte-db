@@ -157,7 +157,7 @@ DEFINE_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
 DEFINE_bool(delete_intents_sst_files, true,
             "Delete whole intents .SST files when possible.");
 
-DEFINE_int32(backfill_index_write_batch_size, 128, "The batch size for backfilling the index.");
+DEFINE_uint64(backfill_index_write_batch_size, 128, "The batch size for backfilling the index.");
 TAG_FLAG(backfill_index_write_batch_size, advanced);
 TAG_FLAG(backfill_index_write_batch_size, runtime);
 
@@ -168,7 +168,7 @@ DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
 TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(verify_index_read_batch_size, 128, "The batch size for reading the index.");
+DEFINE_uint64(verify_index_read_batch_size, 128, "The batch size for reading the index.");
 TAG_FLAG(verify_index_read_batch_size, advanced);
 TAG_FLAG(verify_index_read_batch_size, runtime);
 
@@ -223,7 +223,7 @@ DEFINE_bool(tablet_enable_ttl_file_filter, false,
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
-DEFINE_test_flag(int32, backfill_paging_size, 0,
+DEFINE_test_flag(uint64, backfill_paging_size, 0,
                  "If set > 0, returns early after processing this number of rows.");
 
 DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
@@ -1446,10 +1446,10 @@ Status Tablet::HandlePgsqlReadRequest(
 // are split into two sub-tablets, then such batched index lookups of ybctid requests should be sent
 // to multiple tablets (the two sub-tablets). Hence, the request ends up not being a single tablet
 // request.
-Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
-    size_t row_count) const {
+Result<bool> Tablet::IsQueryOnlyForTablet(
+    const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const {
   if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-       (pgsql_read_request.batch_arguments_size() == row_count ||
+       (implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) == row_count ||
         pgsql_read_request.batch_arguments_size() == 0)) ||
        !pgsql_read_request.partition_column_values().empty() ) {
     return true;
@@ -1462,7 +1462,8 @@ Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_r
   }
 
   if (schema->num_hash_key_columns() == 0 &&
-      schema->num_range_key_columns() == pgsql_read_request.range_column_values_size()) {
+      schema->num_range_key_columns() ==
+          implicit_cast<size_t>(pgsql_read_request.range_column_values_size())) {
     // PK is contained within this tablet.
     return true;
   }
@@ -1479,7 +1480,7 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
     // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
     // occur when tablets split after request is prepared.
     if (pgsql_read_request.has_ybctid_column_value() &&
-        pgsql_read_request.batch_arguments_size() > row_count) {
+        implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) > row_count) {
       if (!pgsql_read_request.upper_bound().has_key()) {
           return false;
       }

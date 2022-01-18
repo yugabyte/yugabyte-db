@@ -311,10 +311,11 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   //    h4 = 6 since pos is "3 % 1 = 0", new partition counter is "3 / 1 = 3".
   //    h3 = 5 since pos is "3 % 2 = 1", pos is non-zero which guarantees previous cols don't need
   //    to be changed (i.e. are the same as for previous partition index) so we break.
-  for (int i = hash_key_size - 1; i >= fixed_cols_size; i--) {
+  for (size_t i = hash_key_size; i > fixed_cols_size;) {
+    --i;
     const auto& options = (*hash_values_options_)[i - fixed_cols_size];
     auto pos = partition_counter % options.size();
-    *req->mutable_hashed_column_values(i) = options[pos];
+    *req->mutable_hashed_column_values(narrow_cast<int>(i)) = options[pos];
     if (pos != 0) break; // The previous position hash values must be unchanged.
     partition_counter /= options.size();
   }

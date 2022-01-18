@@ -912,7 +912,7 @@ TEST_P(AlterTableTest, TestMultipleAlters) {
   ASSERT_OK(CreateTable(kSplitTableName));
 
   // Issue a bunch of new alters without waiting for them to finish.
-  for (int i = 0; i < kNumNewCols; i++) {
+  for (size_t i = 0; i < kNumNewCols; i++) {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
     table_alterer->AddColumn(strings::Substitute("new_col$0", i))
                  ->Type(INT32)->NotNull();

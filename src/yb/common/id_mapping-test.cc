@@ -30,8 +30,9 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/id_mapping.h"
 #include "yb/util/random.h"
@@ -74,7 +75,7 @@ TEST(TestIdMapping, TestRandom) {
     picked.push_back(k);
   }
 
-  for (int i = 0; i < picked.size(); i++) {
+  for (size_t i = 0; i < picked.size(); i++) {
     ASSERT_EQ(i, m.get(picked[i]));
   }
 }

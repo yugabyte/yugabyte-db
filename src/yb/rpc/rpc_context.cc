@@ -53,7 +53,6 @@
 #include "yb/util/trace.h"
 
 using google::protobuf::Message;
-DECLARE_int32(rpc_max_message_size);
 
 namespace yb {
 namespace rpc {
@@ -94,7 +93,7 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 
 Result<size_t> RpcCallPBParams::ParseRequest(Slice param) {
   google::protobuf::io::CodedInputStream in(param.data(), narrow_cast<int>(param.size()));
-  in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size * 3 / 4);
+  SetupLimit(&in);
   auto& message = request();
   if (PREDICT_FALSE(!message.ParseFromCodedStream(&in))) {
     return STATUS(InvalidArgument, message.InitializationErrorString());

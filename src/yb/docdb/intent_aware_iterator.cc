@@ -853,7 +853,7 @@ Result<DocHybridTime>
 IntentAwareIterator::GetMatchingRegularRecordDocHybridTime(
     const Slice& key_without_ht) {
   DocHybridTime doc_ht;
-  int other_encoded_ht_size = 0;
+  size_t other_encoded_ht_size = 0;
   RETURN_NOT_OK(CheckHybridTimeSizeAndValueType(iter_.key(), &other_encoded_ht_size));
   Slice iter_key_without_ht = iter_.key();
   iter_key_without_ht.remove_suffix(1 + other_encoded_ht_size);
@@ -1034,7 +1034,7 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
       }
       continue;
     }
-    int doc_ht_size = 0;
+    size_t doc_ht_size = 0;
     auto decode_status = DocHybridTime::CheckAndGetEncodedSize(encoded_doc_ht, &doc_ht_size);
     if (!decode_status.ok()) {
       LOG(ERROR) << "Decode doc ht from key failed: " << decode_status
@@ -1154,7 +1154,7 @@ Status IntentAwareIterator::SetIntentUpperbound() {
     // Strip ValueType::kHybridTime + DocHybridTime at the end of SubDocKey in iter_ and append
     // to upperbound with 0xff.
     Slice subdoc_key = iter_.key();
-    int doc_ht_size = 0;
+    size_t doc_ht_size = 0;
     RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(subdoc_key, &doc_ht_size));
     subdoc_key.remove_suffix(1 + doc_ht_size);
     intent_upperbound_keybytes_.AppendRawBytes(subdoc_key);

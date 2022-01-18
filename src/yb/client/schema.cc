@@ -158,11 +158,6 @@ YBColumnSpec* YBColumnSpec::Type(DataType type) {
 
 class YBSchemaBuilder::Data {
  public:
-  Data()
-      : has_key_col_names(false),
-        key_hash_col_count(0) {
-  }
-
   ~Data() {
     // Rather than delete the specs here, we have to do it in
     // ~YBSchemaBuilder(), to avoid a circular dependency in the
@@ -171,9 +166,9 @@ class YBSchemaBuilder::Data {
 
   // These members can be used to specify a subset of columns are primary or hash primary keys.
   // NOTE: "key_col_names" and "key_hash_col_count" are not used unless "has_key_col_names" is true.
-  bool has_key_col_names;
+  bool has_key_col_names = false;
   vector<string> key_col_names;
-  int key_hash_col_count;
+  size_t key_hash_col_count = 0;
 
   vector<YBColumnSpec*> specs;
   TableProperties table_properties;
@@ -201,7 +196,7 @@ YBColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
 
 YBSchemaBuilder* YBSchemaBuilder::SetPrimaryKey(
     const std::vector<std::string>& key_col_names,
-    int key_hash_col_count) {
+    size_t key_hash_col_count) {
   data_->has_key_col_names = true;
   data_->key_col_names = key_col_names;
   data_->key_hash_col_count = key_hash_col_count;
@@ -215,7 +210,7 @@ YBSchemaBuilder* YBSchemaBuilder::SetTableProperties(const TableProperties& tabl
 
 Status YBSchemaBuilder::Build(YBSchema* schema) {
   std::vector<YBColumnSchema> cols(data_->specs.size(), YBColumnSchema());
-  for (int i = 0; i < cols.size(); i++) {
+  for (size_t i = 0; i < cols.size(); i++) {
     RETURN_NOT_OK(data_->specs[i]->ToColumnSchema(&cols[i]));
   }
 
@@ -229,7 +224,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     //   then they should have set it on exactly one column.
     const YBColumnSpec::Data* reached_primary_column = nullptr;
     const YBColumnSpec::Data* reached_regular_column = nullptr;
-    for (int i = 0; i < cols.size(); i++) {
+    for (size_t i = 0; i < cols.size(); i++) {
       auto& column_data = *data_->specs[i]->data_;
       if (column_data.hash_primary_key) {
         num_key_cols++;
@@ -263,8 +258,8 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     }
   } else {
     // Build a map from name to index of all of the columns.
-    unordered_map<string, int> name_to_idx_map;
-    int i = 0;
+    unordered_map<string, size_t> name_to_idx_map;
+    size_t i = 0;
     for (YBColumnSpec* spec : data_->specs) {
       // If they did pass the key column names, then we should not have explicitly
       // set it on any columns.
@@ -287,9 +282,9 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     }
 
     // Convert the key column names to a set of indexes.
-    vector<int> key_col_indexes;
+    vector<size_t> key_col_indexes;
     for (const string& key_col_name : data_->key_col_names) {
-      int idx;
+      size_t idx;
       if (!FindCopy(name_to_idx_map, key_col_name, &idx)) {
         return STATUS(InvalidArgument, "Primary key column not defined", key_col_name);
       }
@@ -621,12 +616,12 @@ void YBSchema::set_version(uint32_t version) {
   version_ = version;
 }
 
-void YBSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {
-  indexes->clear();
-  indexes->resize(num_key_columns());
-  for (int i = 0; i < num_key_columns(); i++) {
-    (*indexes)[i] = i;
+std::vector<size_t> YBSchema::GetPrimaryKeyColumnIndexes() const {
+  std::vector<size_t> result(num_key_columns());
+  for (size_t i = 0; i < num_key_columns(); i++) {
+    result[i] = i;
   }
+  return result;
 }
 
 string YBSchema::ToString() const {

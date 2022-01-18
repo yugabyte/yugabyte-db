@@ -182,7 +182,7 @@ void YBTableTestBase::TearDown() {
 
 vector<uint16_t> YBTableTestBase::master_rpc_ports() {
   vector<uint16_t> master_rpc_ports;
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     master_rpc_ports.push_back(0);
   }
   return master_rpc_ports;

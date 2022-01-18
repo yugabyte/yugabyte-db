@@ -79,7 +79,7 @@ class CompositePushdownTest : public YBTabletTest {
   }
 
   void FillTestTablet() {
-    uint32_t nrows = 10 * 12 * 28;
+    int nrows = 10 * 12 * 28;
     int i = 0;
 
     LocalTabletWriter writer(tablet().get());

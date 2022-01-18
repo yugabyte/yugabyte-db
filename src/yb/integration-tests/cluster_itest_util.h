@@ -423,7 +423,7 @@ Status WaitForNumVotersInConfigOnMaster(
 // specified 'count' number of replicas.
 Status WaitForNumTabletsOnTS(
     TServerDetails* ts,
-    int count,
+    size_t count,
     const MonoDelta& timeout,
     std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets);
 

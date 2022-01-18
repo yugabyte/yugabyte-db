@@ -232,7 +232,8 @@ bool PgDmlRead::IsConcreteRowRead() const {
          (ybctid_bind_ ||
           (secondary_index_query_ && secondary_index_query_->has_doc_op()) ||
           (bind_->num_key_columns() ==
-              (read_req_->partition_column_values_size() + read_req_->range_column_values_size())));
+              static_cast<size_t>(read_req_->partition_column_values_size() +
+                                  read_req_->range_column_values_size())));
 }
 
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {

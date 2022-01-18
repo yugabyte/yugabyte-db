@@ -470,7 +470,7 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
   if (!regex_search(operation, m, pwd_start_regex)) {
     return operation;
   }
-  auto pwd_start_idx = m.position() + m.length() - 1;
+  size_t pwd_start_idx = m.position() + m.length() - 1;
   ssize_t pwd_length = -1;
   for (auto i = pwd_start_idx + 1; i < operation.length(); ++i) {
     if (operation[i] == '\'') {

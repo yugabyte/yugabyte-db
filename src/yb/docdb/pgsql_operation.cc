@@ -915,7 +915,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
         ql_storage, index_request, index_projection, *index_schema, txn_op_context_,
         deadline, read_time, is_explicit_request_read_time));
     iter = index_iter_.get();
-    const size_t idx = index_schema->find_column("ybidxbasectid");
+    const auto idx = index_schema->find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
     ybbasectid_id = index_schema->column_id(idx);
     scan_schema = index_schema;

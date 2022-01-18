@@ -64,11 +64,11 @@ DECLARE_bool(TEST_tserver_timeout);
 DECLARE_bool(TEST_enable_backpressure_mode_for_testing);
 DECLARE_bool(yedis_enable_flush);
 DECLARE_int32(redis_service_yb_client_timeout_millis);
-DECLARE_int32(redis_max_value_size);
-DECLARE_int32(redis_max_command_size);
+DECLARE_uint64(redis_max_value_size);
+DECLARE_uint64(redis_max_command_size);
 DECLARE_int32(redis_password_caching_duration_ms);
-DECLARE_int32(rpc_max_message_size);
-DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
 

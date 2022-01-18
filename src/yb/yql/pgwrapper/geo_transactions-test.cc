@@ -122,20 +122,20 @@ class GeoTransactionsTest : public pgwrapper::PgMiniTestBase {
     // Create tablespaces and tables.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
     auto conn = ASSERT_RESULT(Connect());
-    for (int i = 1; i <= NumTabletServers(); ++i) {
-        ASSERT_OK(conn.ExecuteFormat(R"#(
-            CREATE TABLESPACE region$0 WITH (replica_placement='{
-              "num_replicas": 1,
-              "placement_blocks":[{
-                "cloud": "cloud0",
-                "region": "rack$0",
-                "zone": "zone",
-                "min_num_replicas": 1
-              }]
-            }')
-        )#", i));
-        ASSERT_OK(conn.ExecuteFormat(
-            "CREATE TABLE $0$1(value int) TABLESPACE region$1", kTablePrefix, i));
+    for (size_t i = 1; i <= NumTabletServers(); ++i) {
+      ASSERT_OK(conn.ExecuteFormat(R"#(
+          CREATE TABLESPACE region$0 WITH (replica_placement='{
+            "num_replicas": 1,
+            "placement_blocks":[{
+              "cloud": "cloud0",
+              "region": "rack$0",
+              "zone": "zone",
+              "min_num_replicas": 1
+            }]
+          }')
+      )#", i));
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0$1(value int) TABLESPACE region$1", kTablePrefix, i));
     }
   }
 

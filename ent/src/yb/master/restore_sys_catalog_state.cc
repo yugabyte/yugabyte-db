@@ -643,7 +643,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
           docdb::SubDocKey sub_doc_key;
           RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
               restoring_state.key(), docdb::HybridTimeRequired::kFalse));
-          SCHECK_EQ(sub_doc_key.subkeys().size(), 1, Corruption, "Wrong number of subdoc keys");
+          SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
           if (sub_doc_key.subkeys()[0].value_type() == docdb::ValueType::kColumnId) {
             auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
             const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_version_schema.column_by_id(

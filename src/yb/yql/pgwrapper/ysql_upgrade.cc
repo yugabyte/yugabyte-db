@@ -209,7 +209,7 @@ Status YsqlUpgradeHelper::AnalyzeMigrationFiles() {
   // Check that all migrations conform to the naming schema.
   static const std::regex regex("V(\\d+)(\\.(\\d+))?__\\d+__[_0-9A-Za-z]+\\.sql");
   std::smatch version_match;
-  for (int i = 0; i < migration_filenames.size(); ++i) {
+  for (size_t i = 0; i < migration_filenames.size(); ++i) {
     const auto& filename = migration_filenames[i];
     SCHECK(std::regex_search(filename.begin(), filename.end(), version_match, regex),
            InternalError,

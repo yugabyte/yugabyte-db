@@ -229,7 +229,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   // is 'expected_count'. If it takes more than 10 seconds, then
   // fails the test.
   void WaitForRowCount(TabletServerServiceProxy* replica_proxy,
-                       int expected_count,
+                       size_t expected_count,
                        vector<string>* results) {
     LOG(INFO) << "Waiting for row count " << expected_count << "...";
     MonoTime start = MonoTime::Now();
@@ -283,7 +283,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   }
 
   void InsertTestRowsRemoteThread(int32_t first_row,
-                                  uint32_t count,
+                                  int32_t count,
                                   int num_batches,
                                   const vector<CountDownLatch*>& latches) {
     client::TableHandle table;
@@ -1137,7 +1137,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   ASSERT_OK(replica_ets->Resume());
 
   // Ensure that none of the tablet servers crashed.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     // Make sure it didn't crash.
     ASSERT_TRUE(cluster_->tablet_server(i)->IsProcessAlive())
       << "Tablet server " << i << " crashed";
@@ -1445,7 +1445,7 @@ TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
 
 int RaftConsensusITest::RestartAnyCrashedTabletServers() {
   int restarted = 0;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     if (!cluster_->tablet_server(i)->IsProcessAlive()) {
       LOG(INFO) << "TS " << i << " appears to have crashed. Restarting.";
       cluster_->tablet_server(i)->Shutdown();
@@ -1457,7 +1457,7 @@ int RaftConsensusITest::RestartAnyCrashedTabletServers() {
 }
 
 void RaftConsensusITest::AssertNoTabletServersCrashed() {
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     if (cluster_->tablet_server(i)->IsShutdown()) continue;
 
     ASSERT_TRUE(cluster_->tablet_server(i)->IsProcessAlive())
@@ -1525,7 +1525,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
 
   // After we stop the writes, we can still get crashes because heartbeats could
   // trigger the fault path. So, disable the faults and restart one more time.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     vector<string>* flags = ts->mutable_flags();
     bool removed_flag = false;
@@ -2823,8 +2823,8 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   TServerDetails* details;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &details));
   int num_shutdown = 0;
-  int leader_ts_idx = -1;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  ssize_t leader_ts_idx = -1;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     if (ts->instance_id().permanent_uuid() != details->uuid()) {
       ts->Shutdown();
@@ -2939,7 +2939,7 @@ TEST_F(RaftConsensusITest, TestSlowFollower) {
   TServerDetails* leader;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
   int num_reconfigured = 0;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     if (ts->instance_id().permanent_uuid() != leader->uuid()) {
       TServerDetails* follower;
@@ -2965,7 +2965,7 @@ TEST_F(RaftConsensusITest, TestHammerOneRow) {
   if (!AllowSlowTests()) return;
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
 
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
     TServerDetails* follower;
     follower = GetReplicaWithUuidOrNull(tablet_id_, ts->instance_id().permanent_uuid());
@@ -3276,7 +3276,7 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
         ASSERT_OK(ts->Restart());
       }
     }
-    for (auto idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
+    for (size_t idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
       auto* ts = cluster_->tablet_server(idx);
       ASSERT_OK(cluster_->SetFlag(ts, "log_inject_latency", "false"));
     }
@@ -3493,7 +3493,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     RETURN_NOT_OK(get_split_op_ids());
-    for (int i = 0; i < tservers.size(); ++i) {
+    for (size_t i = 0; i < tservers.size(); ++i) {
       if (tservers[i]->uuid() == new_leader->uuid() && split_op_ids[i].index > 0) {
         return true;
       }
@@ -3503,7 +3503,7 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   LOG(INFO) << "split_op_ids: " << AsString(split_op_ids);
 
   // Make sure followers have split_op_id not yet set.
-  for (int i = 0; i < tservers.size(); ++i) {
+  for (size_t i = 0; i < tservers.size(); ++i) {
     if (tservers[i]->uuid() != new_leader->uuid()) {
       ASSERT_EQ(split_op_ids[i], OpId());
     }

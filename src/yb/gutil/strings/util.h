@@ -372,7 +372,7 @@ int GlobalReplaceSubstring(const GStringPiece& substring,
 // Removes v[i] for every element i in indices. Does *not* preserve the order of
 // v. indices must be sorted in strict increasing order (no duplicates). Runs in
 // O(indices.size()).
-void RemoveStrings(vector<string>* v, const vector<int>& indices);
+void RemoveStrings(vector<string>* v, const vector<size_t>& indices);
 
 // Case-insensitive strstr(); use system strcasestr() instead.
 // WARNING: Removes const-ness of string argument!

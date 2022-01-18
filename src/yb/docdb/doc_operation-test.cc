@@ -83,7 +83,8 @@ class DiscardUntilFileFilter : public rocksdb::CompactionFileFilter {
   // Setting last_discard_ to the kAlwaysDiscard constant will result in every
   // incoming file being filtered.
   rocksdb::FilterDecision Filter(const rocksdb::FileMetaData* file) override {
-    if (last_discard_ == kAlwaysDiscard || file->fd.GetNumber() <= last_discard_) {
+    if (last_discard_ == kAlwaysDiscard ||
+        file->fd.GetNumber() <= implicit_cast<uint64_t>(last_discard_)) {
       LOG(INFO) << "Filtering file: " << file->fd.GetNumber() << ", size: "
           << file->fd.GetBaseFileSize() << ", total file size: " << file->fd.GetTotalFileSize();
       return rocksdb::FilterDecision::kDiscard;
@@ -163,7 +164,7 @@ class DocOperationTest : public DocDBTestBase {
                        const vector<int32_t>& column_values,
                        yb::QLWriteRequestPB* ql_writereq_pb) {
     ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), column_values.size());
-    for (int i = 0; i < column_values.size(); i++) {
+    for (size_t i = 0; i < column_values.size(); i++) {
       auto column = ql_writereq_pb->add_column_values();
       column->set_column_id(narrow_cast<int32_t>(schema.num_key_columns() + i));
       column->mutable_expr()->mutable_value()->set_int32_value(column_values[i]);
@@ -784,7 +785,7 @@ class DocOperationScanTest : public DocOperationTest {
     rows_.clear();
     for (int32_t i = 0; i != kNumKeys; ++i) {
       int32_t r_key = NewInt(&rng_, &used_ints);
-      for (int32_t j = 0; j < num_rows_per_key; ++j) {
+      for (size_t j = 0; j < num_rows_per_key; ++j) {
         RowData row_data = {h_key_, r_key, NewInt(&rng_, &used_ints)};
         auto ht = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
             NewInt(&rng_, &used_ints, kMinTime, kMaxTime), 0);

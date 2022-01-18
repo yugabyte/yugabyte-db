@@ -2742,7 +2742,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; HT{ physica
   CaptureLogicalSnapshot();
   // Starting with each snapshot, perform the final history compaction and verify we always get the
   // same result.
-  for (int i = 0; i < logical_snapshots().size(); ++i) {
+  for (size_t i = 0; i < logical_snapshots().size(); ++i) {
     RestoreToRocksDBLogicalSnapshot(i);
     FullyCompactHistoryBefore(8000_usec_ht);
     ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(

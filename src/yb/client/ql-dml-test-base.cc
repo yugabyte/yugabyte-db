@@ -204,7 +204,7 @@ void CreateTable(
 
 void InitIndex(
     Transactional transactional,
-    int indexed_column_index,
+    size_t indexed_column_index,
     bool use_mangled_names,
     const TableHandle& table,
     IndexInfoPB* index_info,

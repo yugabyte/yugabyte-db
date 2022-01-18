@@ -122,8 +122,8 @@ void StripWhiteSpace(string* str) {
   size_t str_length = str->length();
 
   // Strip off leading whitespace.
-  int first = 0;
-  while (first < str_length && ascii_isspace(str->at(first))) {
+  size_t first = 0;
+  while (first < str_length && ascii_isspace((*str)[first])) {
     ++first;
   }
   // If entire string is white space.
@@ -138,7 +138,7 @@ void StripWhiteSpace(string* str) {
 
   // Strip off trailing whitespace.
   size_t last = str_length - 1;
-  while (last >= 0 && ascii_isspace(str->at(last))) {
+  while (last >= 0 && ascii_isspace((*str)[last])) {
     --last;
   }
   if (last != (str_length - 1) && last >= 0) {

@@ -66,7 +66,7 @@ RollingLog::~RollingLog() {
   WARN_NOT_OK(Close(), "Unable to close RollingLog");
 }
 
-void RollingLog::SetSizeLimitBytes(int64_t size) {
+void RollingLog::SetSizeLimitBytes(size_t size) {
   CHECK_GT(size, 0);
   size_limit_bytes_ = size;
 }

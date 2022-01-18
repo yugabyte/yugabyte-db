@@ -212,11 +212,11 @@ Status PgTxnManager::EnableFollowerReads(bool enable_follower_reads, int32_t ses
 
 Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
   if (enable_follower_reads_ && read_only_ && !updated_read_time_for_follower_reads_) {
-    constexpr int32_t kMargin = 2;
+    constexpr uint64_t kMargin = 2;
     RSTATUS_DCHECK(
         follower_read_staleness_ms_ * 1000 > kMargin * GetAtomicFlag(&FLAGS_max_clock_skew_usec),
         InvalidArgument,
-        yb::Format("Setting follower read staleness less than the $0 x max_clock_skew.", kMargin));
+        Format("Setting follower read staleness less than the $0 x max_clock_skew.", kMargin));
     // Add a delta to the start point to lower the read point.
     session_->SetReadPoint(ReadHybridTime::SingleTime(
         clock_->Now().AddMilliseconds(-1 * follower_read_staleness_ms_)));

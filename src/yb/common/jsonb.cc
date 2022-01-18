@@ -349,7 +349,7 @@ Status Jsonb::FromJsonbProcessObject(const Slice& jsonb,
 
   // Now read the kv pairs and build the json.
   document->SetObject();
-  for (int i = 0; i < nelems; i++) {
+  for (size_t i = 0; i < nelems; i++) {
     Slice key;
     RETURN_NOT_OK(GetObjectKey(i, jsonb, metadata_begin_offset, data_begin_offset, &key));
     Slice json_value;
@@ -527,7 +527,7 @@ Status Jsonb::FromJsonbProcessArray(const Slice& jsonb,
 
   // Now read the array members.
   document->SetArray();
-  for (int i = 0; i < nelems; i++) {
+  for (size_t i = 0; i < nelems; i++) {
     Slice result;
     JEntry element_metadata;
     RETURN_NOT_OK(GetArrayElement(i, jsonb, metadata_begin_offset, data_begin_offset, &result,
@@ -672,7 +672,7 @@ Status Jsonb::ApplyJsonbOperatorToArray(const Slice& jsonb, const QLJsonOperatio
   RETURN_NOT_OK(varint.DecodeFromComparable(json_op.operand().value().varint_value()));
   int64_t array_index = VERIFY_RESULT(varint.ToInt64());
 
-  if (array_index < 0 || array_index >= num_array_entries) {
+  if (array_index < 0 || implicit_cast<size_t>(array_index) >= num_array_entries) {
     return STATUS_SUBSTITUTE(NotFound, "Array index: $0 out of bounds [0, $1)",
                              array_index, num_array_entries);
   }

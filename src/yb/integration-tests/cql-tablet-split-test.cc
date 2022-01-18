@@ -58,7 +58,7 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
-DECLARE_int32(max_queued_split_candidates);
+DECLARE_uint64(max_queued_split_candidates);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);

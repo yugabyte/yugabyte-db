@@ -210,7 +210,7 @@ struct ReplayState {
 
   // half_limit is half the limit on the number of entries added
   void AddEntriesToStrings(
-      const OpIndexToEntryMap& entries, std::vector<std::string>* strings, int half_limit) const;
+      const OpIndexToEntryMap& entries, std::vector<std::string>* strings, size_t half_limit) const;
 
   // half_limit is half the limit on the number of entries to be dumped
   void DumpReplayStateToStrings(std::vector<std::string>* strings, int half_limit) const;
@@ -314,7 +314,7 @@ void ReplayState::UpdateCommittedOpId(const OpId& id) {
 
 void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
                                       std::vector<std::string>* strings,
-                                      int half_limit) const {
+                                      size_t half_limit) const {
   const auto n = entries.size();
   const bool overflow = n > 2 * half_limit;
   size_t index = 0;

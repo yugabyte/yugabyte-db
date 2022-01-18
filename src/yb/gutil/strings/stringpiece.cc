@@ -132,7 +132,7 @@ static inline void BuildLookupTable(GStringPiece characters_wanted,
                                     bool* table) {
   const size_t length = characters_wanted.length();
   const char* const data = characters_wanted.data();
-  for (int i = 0; i < length; ++i) {
+  for (size_t i = 0; i < length; ++i) {
     table[static_cast<unsigned char>(data[i])] = true;
   }
 }

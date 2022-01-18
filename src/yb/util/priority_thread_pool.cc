@@ -368,7 +368,7 @@ PriorityThreadPoolTask::PriorityThreadPoolTask()
 // If the queue is empty, the worker is added to the vector of free workers.
 class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
  public:
-  explicit Impl(int64_t max_running_tasks) : max_running_tasks_(max_running_tasks) {
+  explicit Impl(size_t max_running_tasks) : max_running_tasks_(max_running_tasks) {
     CHECK_GE(max_running_tasks, 1);
   }
 
@@ -687,8 +687,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
   PriorityThreadPoolWorker* PickWorker() REQUIRES(mutex_) {
-    if (static_cast<int64_t>(workers_.size()) - paused_workers_ -
-        static_cast<int64_t>(free_workers_.size()) >= max_running_tasks_) {
+    if (workers_.size() - paused_workers_ - free_workers_.size() >= max_running_tasks_) {
       VLOG(1) << "We already have " << workers_.size() << " - " << paused_workers_ << " - "
               << free_workers_.size() << " >= " << max_running_tasks_
                           << " workers running, we could not run a new worker.";
@@ -760,11 +759,11 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     });
   }
 
-  const int64_t max_running_tasks_;
+  const size_t max_running_tasks_;
   std::mutex mutex_;
 
   // Number of paused workers.
-  int64_t paused_workers_ GUARDED_BY(mutex_) = 0;
+  size_t paused_workers_ GUARDED_BY(mutex_) = 0;
 
   std::vector<yb::ThreadPtr> threads_ GUARDED_BY(mutex_);
   boost::container::stable_vector<PriorityThreadPoolWorker> workers_ GUARDED_BY(mutex_);
@@ -814,7 +813,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 // Forwarding method calls for the "pointer to impl" idiom
 // ------------------------------------------------------------------------------------------------
 
-PriorityThreadPool::PriorityThreadPool(int64_t max_running_tasks)
+PriorityThreadPool::PriorityThreadPool(size_t max_running_tasks)
     : impl_(new Impl(max_running_tasks)) {
 }
 

@@ -67,7 +67,7 @@ Result<rapidjson::Document> AdminTestBase::ParseJson(const std::string& raw) {
 Result<CassandraSession> AdminTestBase::CqlConnect(const std::string& db_name) {
   if (!cql_driver_) {
     std::vector<std::string> hosts;
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       hosts.push_back(cluster_->tablet_server(i)->bind_host());
     }
     LOG(INFO) << "CQL hosts: " << AsString(hosts);

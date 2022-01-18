@@ -1439,7 +1439,7 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
 
   auto test_finish = std::chrono::steady_clock::now() + kTestTime;
   while (std::chrono::steady_clock::now() < test_finish) {
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
         if (peer->consensus() &&
@@ -1523,12 +1523,12 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
   std::this_thread::sleep_for(5s * kTimeMultiplier);
 
   // Shutdown to reset cached logs.
-  for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 1; i != cluster_->num_tablet_servers(); ++i) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
 
   // Start all servers. Cluster verifier should check that all tablets are synchronized.
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
   }
 

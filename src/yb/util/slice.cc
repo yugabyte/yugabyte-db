@@ -78,7 +78,7 @@ std::string Slice::ToDebugString(size_t max_len) const {
     abbreviated = true;
   }
 
-  int num_not_graph = 0;
+  size_t num_not_graph = 0;
   for (size_t i = 0; i < bytes_to_print; i++) {
     if (!isgraph(begin_[i])) {
       ++num_not_graph;
@@ -93,7 +93,7 @@ std::string Slice::ToDebugString(size_t max_len) const {
 
   std::string ret;
   ret.reserve(size);
-  for (int i = 0; i < bytes_to_print; i++) {
+  for (size_t i = 0; i < bytes_to_print; i++) {
     auto ch = begin_[i];
     if (!isgraph(ch)) {
       if (ch == '\r') {

@@ -36,7 +36,7 @@ namespace {
 
 struct OnConflictKey {
   int key;
-  int operation_index = 0;
+  size_t operation_index = 0;
 };
 
 constexpr int kMaxBatchSize = 5;

@@ -98,7 +98,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -170,7 +170,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -230,7 +230,7 @@ TEST_F(TabletReplacementITest, TestEvictAndReplaceDeadFollower) {
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -293,7 +293,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }

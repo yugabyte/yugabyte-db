@@ -66,8 +66,7 @@ TEST_F(YBAdminMultiMasterTest, InitialMasterAddresses) {
 
   // Verify that yb-admin query results with --init_master_addrs match
   // query results with the full master addresses
-  int non_leader_idx = -1;
-  ASSERT_OK(cluster_->GetFirstNonLeaderMasterIndex(&non_leader_idx));
+  auto non_leader_idx = ASSERT_RESULT(cluster_->GetFirstNonLeaderMasterIndex());
   auto non_leader = cluster_->master(non_leader_idx);
   HostPort non_leader_hp = non_leader->bound_rpc_hostport();
   std::string output1;
@@ -101,9 +100,8 @@ void YBAdminMultiMasterTest::TestRemoveDownMaster(UseUUID use_uuid) {
   const int kNumInitMasters = 3;
   const auto admin_path = GetToolPath(kAdminToolName);
   ASSERT_NO_FATALS(StartCluster({}, {}, 1/*num tservers*/, kNumInitMasters));
-  int idx = -1;
   const auto master_addrs = cluster_->GetMasterAddresses();
-  ASSERT_OK(cluster_->GetFirstNonLeaderMasterIndex(&idx));
+  auto idx = ASSERT_RESULT(cluster_->GetFirstNonLeaderMasterIndex());
   const auto addr = cluster_->master(idx)->bound_rpc_addr();
   const auto uuid = cluster_->master(idx)->uuid();
   ASSERT_OK(cluster_->master(idx)->Pause());

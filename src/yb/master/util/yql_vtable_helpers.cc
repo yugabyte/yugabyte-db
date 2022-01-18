@@ -75,7 +75,7 @@ bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
   return false;
 }
 
-QLValuePB GetReplicationValue(int replication_factor) {
+QLValuePB GetReplicationValue(size_t replication_factor) {
   QLValuePB value_pb;
   QLMapValuePB *map_value = value_pb.mutable_map_value();
 

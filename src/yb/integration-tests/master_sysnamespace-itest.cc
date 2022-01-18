@@ -77,7 +77,7 @@ class MasterSysNamespaceTest : public YBTest {
         ASSERT_EQ(leader_mini_master->permanent_uuid(), replica.ts_info().permanent_uuid());
       } else {
         // Search for appropriate master.
-        int i;
+        size_t i;
         for (i = 0; i < cluster_->num_masters(); i++) {
           if (cluster_->mini_master(i)->permanent_uuid() == replica.ts_info().permanent_uuid()) {
             ASSERT_EQ(cluster_->mini_master(i)->bound_rpc_addr().host(),

@@ -26,6 +26,7 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
+#include <boost/optional.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
@@ -110,7 +111,7 @@ class IndexInfo {
   std::string ToString() const;
 
   // Same as "IsExprCovered" but only search the key columns.
-  int32_t FindKeyIndex(const std::string& key_name) const;
+  boost::optional<size_t> FindKeyIndex(const std::string& key_name) const;
 
   bool use_mangled_column_name() const {
     return use_mangled_column_name_;

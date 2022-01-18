@@ -100,7 +100,7 @@ class DocDBRocksDBFixture : public DocDBRocksDBUtil {
   // start_index - the index of the file to start with (0 = the oldest file, -1 = compact
   //               num_files_to_compact newest files).
   void MinorCompaction(
-      HybridTime history_cutoff, int num_files_to_compact, ssize_t start_index = -1);
+      HybridTime history_cutoff, size_t num_files_to_compact, ssize_t start_index = -1);
 
   size_t NumSSTableFiles();
   StringVector SSTableFileNames();

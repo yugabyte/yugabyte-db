@@ -100,12 +100,10 @@ DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeout
 // In order to support up to three 64MB strings along with other strings,
 // we have the total size of a redis command at 253_MB, which is less than the consensus size
 // to account for the headers in the consensus layer.
-DEFINE_int32(redis_max_command_size, 253_MB,
-             "Maximum size of the command in redis");
+DEFINE_uint64(redis_max_command_size, 253_MB, "Maximum size of the command in redis");
 
 // Maximum value size is 64MB
-DEFINE_int32(redis_max_value_size, 64_MB,
-             "Maximum size of the value in redis");
+DEFINE_uint64(redis_max_value_size, 64_MB, "Maximum size of the value in redis");
 DEFINE_int32(redis_callbacks_threadpool_size, 64,
              "The maximum size for the threadpool which handles callbacks from the ybclient layer");
 
@@ -960,7 +958,7 @@ class BatchContextImpl : public BatchContext {
       }
     }
 
-    int idx = 0;
+    size_t idx = 0;
     for (auto& tablet : tablets_) {
       tablet.second.Done(&impl_data_->session_pool_, ++idx == tablets_.size());
     }

@@ -199,8 +199,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Per table structure for external cluster snapshot importing to this cluster.
   // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
   struct ExternalTableSnapshotData {
-    ExternalTableSnapshotData() : num_tablets(0), tablet_id_map(nullptr), table_meta(nullptr) {}
-
     bool is_index() const {
       return !table_entry_pb.indexed_table_id().empty();
     }
@@ -210,16 +208,16 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     TableId new_table_id;
     SysTablesEntryPB table_entry_pb;
     std::string pg_schema_name;
-    int num_tablets;
+    size_t num_tablets = 0;
     typedef std::pair<std::string, std::string> PartitionKeys;
     typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
     typedef std::vector<PartitionPB> Partitions;
     Partitions partitions;
     PartitionToIdMap new_tablets_map;
     // Mapping: Old tablet ID -> New tablet ID.
-    google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map;
+    google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map = nullptr;
 
-    ImportSnapshotMetaResponsePB_TableMetaPB* table_meta;
+    ImportSnapshotMetaResponsePB_TableMetaPB* table_meta = nullptr;
   };
 
   // Map: old_namespace_id (key) -> new_namespace_id (value) + db_type.

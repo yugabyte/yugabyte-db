@@ -266,7 +266,7 @@ void MultiThreadedAction::WaitForCompletion() {
 
 MultiThreadedWriter::MultiThreadedWriter(
     int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
-    atomic_bool* stop_flag, int value_size, int max_num_write_errors)
+    atomic_bool* stop_flag, int value_size, size_t max_num_write_errors)
     : MultiThreadedAction(
           "writers", num_keys, start_key, num_writer_threads, 2, session_factory->ClientId(),
           stop_flag, value_size),

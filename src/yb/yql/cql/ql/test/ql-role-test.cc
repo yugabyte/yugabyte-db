@@ -241,12 +241,12 @@ class TestQLPermission : public QLTestAuthentication {
     EXPECT_EQ(canonical_resource, row.column(1).string_value());
 
     EXPECT_EQ(InternalType::kListValue, row.column(2).type());
-    QLSeqValuePB list_value = row.column(2).list_value();
+    const QLSeqValuePB& list_value = row.column(2).list_value();
     EXPECT_EQ(permissions.size(), list_value.elems_size());
     // Create a set of the values:
     std::unordered_set<string> permissions_set;
-    for (int i = 0; i < permissions.size(); i++) {
-      permissions_set.insert(list_value.elems(i).string_value());
+    for (const auto& elem : list_value.elems()) {
+      permissions_set.insert(elem.string_value());
     }
 
     for (const auto& permission : permissions) {

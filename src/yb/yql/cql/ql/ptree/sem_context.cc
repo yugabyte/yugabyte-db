@@ -90,7 +90,7 @@ Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
 
   if (col_descs != nullptr) {
     col_descs->reserve(num_columns);
-    for (int idx = 0; idx < num_columns; idx++) {
+    for (size_t idx = 0; idx < num_columns; idx++) {
       // Find the column descriptor.
       const YBColumnSchema col = schema.Column(idx);
       col_descs->emplace_back(idx,

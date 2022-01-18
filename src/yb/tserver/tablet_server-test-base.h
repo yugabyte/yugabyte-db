@@ -91,15 +91,15 @@ class TabletServerTestBase : public YBTest {
   void ResetClientProxies();
 
   // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
-  void InsertTestRowsDirect(int32_t start_row, uint32_t num_rows);
+  void InsertTestRowsDirect(int32_t start_row, int32_t num_rows);
 
   // Inserts 'num_rows' test rows remotely into the tablet (i.e via RPC)
   // Rows are grouped in batches of 'count'/'num_batches' size.
   // Batch size defaults to 1.
   void InsertTestRowsRemote(int tid,
                             int32_t first_row,
-                            uint32_t count,
-                            uint32_t num_batches = -1,
+                            int32_t count,
+                            int32_t num_batches = -1,
                             TabletServerServiceProxy* proxy = nullptr,
                             string tablet_id = kTabletId,
                             std::vector<uint64_t>* write_hybrid_times_collector = nullptr,
@@ -108,7 +108,7 @@ class TabletServerTestBase : public YBTest {
 
   // Delete specified test row range.
   void DeleteTestRowsRemote(int32_t first_row,
-                            uint32_t count,
+                            int32_t count,
                             TabletServerServiceProxy* proxy = nullptr,
                             string tablet_id = kTabletId);
 

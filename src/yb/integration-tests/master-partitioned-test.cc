@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
@@ -108,7 +110,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
         .Build());
   }
 
-  Status BreakMasterConnectivityTo(int from_idx, int to_idx) {
+  Status BreakMasterConnectivityTo(size_t from_idx, size_t to_idx) {
     master::MiniMaster* src_master = cluster_->mini_master(from_idx);
     IpAddress src = VERIFY_RESULT(HostToAddress(src_master->bound_rpc_addr().host()));
     // TEST_RpcAddress is 1-indexed; we expect from_idx/to_idx to be 0-indexed.
@@ -122,7 +124,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  Status RestoreMasterConnectivityTo(int from_idx, int to_idx) {
+  Status RestoreMasterConnectivityTo(size_t from_idx, size_t to_idx) {
     master::MiniMaster* src_master = cluster_->mini_master(from_idx);
     IpAddress src = VERIFY_RESULT(HostToAddress(src_master->bound_rpc_addr().host()));
     // TEST_RpcAddress is 1-indexed; we expect from_idx/to_idx to be 0-indexed.
@@ -277,12 +279,12 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
 
 TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   // Partition away the old master leader from the cluster.
-  int old_leader_idx = cluster_->LeaderMasterIdx();
+  auto old_leader_idx = cluster_->LeaderMasterIdx();
   LOG(INFO) << "Old leader master: " << old_leader_idx;
 
-  int new_cohort_peer1 = -1, new_cohort_peer2 = -1;
-  for (int i = 0; i < cluster_->num_masters(); i++) {
-    if (i == old_leader_idx) {
+  ssize_t new_cohort_peer1 = -1, new_cohort_peer2 = -1;
+  for (size_t i = 0; i < cluster_->num_masters(); i++) {
+    if (implicit_cast<ssize_t>(i) == old_leader_idx) {
       continue;
     }
     if (new_cohort_peer1 == -1) {
@@ -334,7 +336,7 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
                     ->catalog_manager()
                     ->GetCurrentConfig(&cbp1));
 
-  int new_leader_idx = -1;
+  ssize_t new_leader_idx = -1;
   if (cbp1.leader_uuid() == uuid1) {
     new_leader_idx = new_cohort_peer1;
   } else if (cbp1.leader_uuid() == uuid2) {

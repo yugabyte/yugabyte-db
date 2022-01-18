@@ -242,7 +242,7 @@ class YBSchemaBuilder {
   // 'key_hash_col_count' columns in the primary are hash columns whose values will be used for
   // table partitioning. This may be used to specify a compound primary key.
   YBSchemaBuilder* SetPrimaryKey(const std::vector<std::string>& key_col_names,
-                                 int key_hash_col_count = 0);
+                                 size_t key_hash_col_count = 0);
 
   YBSchemaBuilder* SetTableProperties(const TableProperties& table_properties);
 
@@ -320,7 +320,7 @@ class YBSchema {
   // In current versions of YB, these will always be contiguous column
   // indexes starting with 0. However, in future versions this assumption
   // may not hold, so callers should not assume it is the case.
-  void GetPrimaryKeyColumnIndexes(std::vector<int>* indexes) const;
+  std::vector<size_t> GetPrimaryKeyColumnIndexes() const;
 
   // Create a new row corresponding to this schema.
   //

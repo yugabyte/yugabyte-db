@@ -109,9 +109,9 @@ Status DocPgEvalExpr(const std::string& expr_str,
   int32_t min_attno = params[0].attno;
   int32_t max_attno = params[0].attno;
 
-  for (int i = 1; i < params.size(); i++) {
-    min_attno = std::min(min_attno, params[i].attno);
-    max_attno = std::max(max_attno, params[i].attno);
+  for (const auto& param : params) {
+    min_attno = std::min(min_attno, param.attno);
+    max_attno = std::max(max_attno, param.attno);
   }
 
   PG_RETURN_NOT_OK(YbgExprContextCreate(min_attno, max_attno, &expr_ctx));
@@ -125,7 +125,7 @@ Status DocPgEvalExpr(const std::string& expr_str,
     // and 2 for some internal queries (catalog version increment).
     // TODO Rethink this if we ever allow more params here.
     DCHECK_LT(params.size(), 3);
-    for (int i = 0; i < params.size(); i++) {
+    for (size_t i = 0; i < params.size(); i++) {
       if (column->order() == params[i].attno) {
         const QLValuePB* val = table_row.GetColumn(col_id.rep());
         bool is_null = false;

@@ -291,7 +291,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     std::unordered_map<TabletId, OpId> last_tablet_op;
 
     size_t max_tablets = 0;
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
       auto ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
       max_tablets = std::max(max_tablets, ts_tablet_peers.size());
@@ -302,7 +302,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       }
     }
 
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       MiniTabletServer* ts = cluster_->mini_tablet_server(i);
       auto predicate = [max_tablets, ts]() {
         return ts->server()->tablet_manager()->GetTabletPeers().size() >= max_tablets;
@@ -311,7 +311,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     }
 
     // Check snapshot files existence.
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
       auto ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
       SCOPED_TRACE(Format("TServer: $0", i));
@@ -385,7 +385,7 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   SetupWorkload(); // Used to create table
 
   // Check tablet folders before the snapshot creation.
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
     auto ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
 
@@ -503,7 +503,7 @@ TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
   }
 
   // Flushing tablets for all tablet servers except for the one that we stopped.
-  for (int i = 1; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 1; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->FlushTablets());
   }
 

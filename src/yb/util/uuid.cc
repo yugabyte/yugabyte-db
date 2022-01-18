@@ -188,7 +188,7 @@ CHECKED_STATUS Uuid::HashMACAddress() {
   sha1.process_bytes(boost_uuid_.data + kTimeUUIDMacOffset, kTimeUUIDTotalMacBytes);
   uint8_t tmp[kTimeUUIDTotalMacBytes];
   sha1.get_digest(hash);
-  for (int i = 0; i < kTimeUUIDTotalMacBytes; i ++) {
+  for (size_t i = 0; i < kTimeUUIDTotalMacBytes; i ++) {
     tmp[i] = (hash[i % kShaDigestSize] & 255);
     hash[i % kShaDigestSize] = hash[i % kShaDigestSize] >> 8;
   }
@@ -228,7 +228,7 @@ CHECKED_STATUS Uuid::ToUnixTimestamp(int64_t* timestamp_ms) const {
   ToTimestampBytes(output);
   output[0] = (output[0] & 0x0f);
   *timestamp_ms = 0;
-  for (int i = 0; i < kUuidMsbSize; i++) {
+  for (size_t i = 0; i < kUuidMsbSize; i++) {
     *timestamp_ms = (*timestamp_ms << 8) | (output[i] & 0xff);
   }
   // Convert from nano seconds since Gregorian calendar start to millis since unix epoch.

@@ -50,7 +50,7 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_int32(max_stale_read_bound_time_ms);
+DECLARE_uint64(max_stale_read_bound_time_ms);
 
 using namespace std::literals;
 
@@ -253,7 +253,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
 
     VERIFY_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     auto rowblock = RowsResult(op.get()).GetRowBlock();
-    VERIFY_EQ(1, rowblock->row_count());
+    VERIFY_EQ(1U, rowblock->row_count());
     const auto& row = rowblock->row(0);
     VERIFY_EQ(c1, row.column(0).int32_value());
     VERIFY_EQ(c2, row.column(1).string_value());
@@ -362,7 +362,7 @@ class QLDmlRangeFilterBase: public QLDmlTest {
 size_t CountIterators(MiniCluster* cluster) {
   size_t result = 0;
 
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       auto statistics = peer->tablet()->regulardb_statistics();
@@ -380,7 +380,7 @@ const std::string kHashStr = "all_records_have_same_id";
 } // namespace
 
 TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
-  constexpr size_t kTotalLines = NonTsanVsTsan(25000ULL, 5000ULL);
+  constexpr int32_t kTotalLines = NonTsanVsTsan(25000ULL, 5000ULL);
   auto session = NewSession();
   if (!FLAGS_mini_cluster_reuse_data) {
     for(int32_t i = 0; i != kTotalLines;) {
@@ -1258,7 +1258,7 @@ TEST_F(QLDmlTest, ReadFollower) {
 
   LOG(INFO) << "All rows were read successfully";
 
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
 

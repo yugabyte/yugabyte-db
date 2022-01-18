@@ -285,9 +285,9 @@ class Selectivity {
 
     if (index_info_) {
       for (const JsonColumnOp& col_op : scan_info->col_json_ops()) {
-        int32_t idx = index_info_->FindKeyIndex(col_op.IndexExprToColumnName());
-        if (idx >= 0) {
-          ops[idx] = GetOperatorSelectivity(col_op.yb_op());
+        auto idx = index_info_->FindKeyIndex(col_op.IndexExprToColumnName());
+        if (idx) {
+          ops[*idx] = GetOperatorSelectivity(col_op.yb_op());
         } else {
           num_non_key_ops_++;
         }
@@ -296,9 +296,9 @@ class Selectivity {
       // Enable the following code-block when allowing INDEX of collection fields.
       if (false) {
         for (const SubscriptedColumnOp& col_op : scan_info->col_subscript_ops()) {
-          int32_t idx = index_info_->FindKeyIndex(col_op.IndexExprToColumnName());
-          if (idx >= 0) {
-            ops[idx] = GetOperatorSelectivity(col_op.yb_op());
+          auto idx = index_info_->FindKeyIndex(col_op.IndexExprToColumnName());
+          if (idx) {
+            ops[*idx] = GetOperatorSelectivity(col_op.yb_op());
           } else {
             num_non_key_ops_++;
           }
@@ -792,7 +792,7 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
   if (!scan_spec.covers_fully()) {
     const auto& loc = selected_exprs_->loc_ptr();
     selected_exprs = PTExprListNode::MakeShared(memctx, loc);
-    for (int i = 0; i < num_key_columns(); i++) {
+    for (size_t i = 0; i < num_key_columns(); i++) {
       const client::YBColumnSchema& column = table_->schema().Column(i);
       auto column_name_str = MCMakeShared<MCString>(memctx, column.name().c_str());
       auto column_name = PTQualifiedName::MakeShared(memctx, loc, column_name_str);
@@ -932,7 +932,7 @@ bool PTSelectStmt::CoversFully(const IndexInfo& index_info,
 
 CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
   // Only partition and static columns are allowed to be used with distinct clause.
-  int key_count = 0;
+  size_t key_count = 0;
   for (const auto& pair : column_map_) {
     const ColumnDesc& desc = pair.second;
     if (desc.is_hash()) {

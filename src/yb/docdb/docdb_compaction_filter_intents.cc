@@ -37,8 +37,8 @@
 DEFINE_uint64(aborted_intent_cleanup_ms, 60000, // 1 minute by default, 1 sec for testing
              "Duration in ms after which to check if a transaction is aborted.");
 
-DEFINE_int32(aborted_intent_cleanup_max_batch_size, 256, // Cleanup 256 transactions at a time
-             "Number of transactions to collect for possible cleanup.");
+DEFINE_uint64(aborted_intent_cleanup_max_batch_size, 256, // Cleanup 256 transactions at a time
+              "Number of transactions to collect for possible cleanup.");
 
 DEFINE_int32(external_intent_cleanup_secs, 60 * 60 * 24, // 24 hours by default
              "Duration in secs after which to cleanup external intents.");
@@ -187,7 +187,7 @@ DocDBIntentsCompactionFilter::FilterExternalIntent(const Slice& key) {
   auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
       DecodeInvertedDocHt(key_slice), "Could not decode hybrid time");
   auto write_time_micros = doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
-  auto delta_micros = compaction_start_time_ - write_time_micros;
+  int64_t delta_micros = compaction_start_time_ - write_time_micros;
   if (delta_micros >
       GetAtomicFlag(&FLAGS_external_intent_cleanup_secs) * MonoTime::kMicrosecondsPerSecond) {
     return rocksdb::FilterDecision::kDiscard;

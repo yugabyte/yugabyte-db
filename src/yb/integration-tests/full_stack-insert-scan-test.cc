@@ -39,6 +39,8 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/client/callbacks.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
@@ -177,7 +179,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
   // Adds newly generated client's session and table pointers to arrays at id
   void CreateNewClient(int id) {
-    while (tables_.size() <= id) {
+    while (tables_.size() <= implicit_cast<size_t>(id)) {
       auto table = std::make_unique<client::TableHandle>();
       ASSERT_OK(table->Open(kTableName, client_.get()));
       tables_.push_back(std::move(table));
@@ -391,7 +393,7 @@ void FullStackInsertScanTest::DoTestScans() {
 }
 
 void FullStackInsertScanTest::FlushToDisk() {
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     tserver::TabletServer* ts = cluster_->mini_tablet_server(i)->server();
     ts->maintenance_manager()->Shutdown();
     auto peers = ts->tablet_manager()->GetTabletPeers();
@@ -459,7 +461,7 @@ void FullStackInsertScanTest::ScanProjection(const vector<string>& cols,
 
 vector<string> FullStackInsertScanTest::AllColumnNames() const {
   vector<string> ret;
-  for (int i = 0; i < schema_.num_columns(); i++) {
+  for (size_t i = 0; i < schema_.num_columns(); i++) {
     ret.push_back(schema_.Column(i).name());
   }
   return ret;

@@ -970,9 +970,9 @@ class TestLoadBalancerBase {
 
     // Prepare the replicas.
     tablet::RaftGroupStatePB state = tablet::RUNNING;
-    for (int i = 0; i < tablets_.size(); ++i) {
+    for (size_t i = 0; i < tablets_.size(); ++i) {
       auto replica_map = std::make_shared<TabletReplicaMap>();
-      for (int j = 0; j < ts_descs_.size(); ++j) {
+      for (size_t j = 0; j < ts_descs_.size(); ++j) {
         TabletReplica replica;
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;

@@ -639,9 +639,8 @@ class CatalogManager :
   CHECKED_STATUS SetPreferredZones(
       const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp);
 
-  CHECKED_STATUS GetReplicationFactor(int* num_replicas) override;
-  CHECKED_STATUS GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet,
-      int* num_replicas);
+  Result<size_t> GetReplicationFactor() override;
+  Result<size_t> GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet);
 
   void GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas);
 
@@ -735,12 +734,12 @@ class CatalogManager :
     return permissions_manager_.get();
   }
 
-  uintptr_t tablets_version() const override NO_THREAD_SAFETY_ANALYSIS {
+  intptr_t tablets_version() const override NO_THREAD_SAFETY_ANALYSIS {
     // This method should not hold the lock, because Version method is thread safe.
     return tablet_map_.Version() + table_ids_map_.Version();
   }
 
-  uintptr_t tablet_locations_version() const override {
+  intptr_t tablet_locations_version() const override {
     return tablet_locations_version_.load(std::memory_order_acquire);
   }
 

@@ -67,7 +67,7 @@ class PlacementInfoTest : public YBTest {
 
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start(tserver_opts));
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       std::string ts_uuid = cluster_->mini_tablet_server(i)->server()->fs_manager()->uuid();
       ts_uuid_to_index_.emplace(ts_uuid, i);
     }

@@ -357,7 +357,7 @@ static size_t FindMaxChunkSize(size_t header_len, const F& max_compressed_len) {
   size_t r = max_value;
   while (r > l) {
     size_t m = (l + r + 1) / 2;
-    if (max_compressed_len(narrow_cast<int>(m)) > max_value) {
+    if (implicit_cast<size_t>(max_compressed_len(narrow_cast<int>(m))) > max_value) {
       r = m - 1;
     } else {
       l = m;

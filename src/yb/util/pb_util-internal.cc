@@ -75,8 +75,9 @@ bool SequentialFileFileInputStream::Next(const void **data, int *size) {
   return buffer_used_ > 0;
 }
 
-bool SequentialFileFileInputStream::Skip(int count) {
-  CHECK_GT(count, 0);
+bool SequentialFileFileInputStream::Skip(int signed_count) {
+  CHECK_GT(signed_count, 0);
+  size_t count = signed_count;
   auto avail = buffer_used_ - buffer_offset_;
   if (avail > count) {
     buffer_offset_ += count;

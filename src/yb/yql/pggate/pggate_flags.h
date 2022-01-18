@@ -26,7 +26,7 @@ DECLARE_bool(TEST_pggate_ignore_tserver_shm);
 DECLARE_int32(ysql_request_limit);
 DECLARE_uint64(ysql_prefetch_limit);
 DECLARE_double(ysql_backward_prefetch_scale_factor);
-DECLARE_int32(ysql_session_max_batch_size);
+DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(ysql_non_txn_copy);
 DECLARE_int32(ysql_max_read_restart_attempts);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);

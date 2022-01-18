@@ -53,9 +53,9 @@ DEFINE_uint64(ysql_prefetch_limit, 1024,
 DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");
 
-DEFINE_int32(ysql_session_max_batch_size, 512,
-             "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
-             "services");
+DEFINE_uint64(ysql_session_max_batch_size, 512,
+              "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
+              "services");
 
 DEFINE_bool(ysql_non_txn_copy, false,
             "Execute COPY inserts non-transactionally.");

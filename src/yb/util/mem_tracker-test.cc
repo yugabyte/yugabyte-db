@@ -315,7 +315,7 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
 
   // The root tracker's consumption and tcmalloc should agree.
   // Sleep to be sure that UpdateConsumption will take action.
-  size_t value = 0;
+  int64_t value = 0;
   ASSERT_OK(WaitFor([root, &value] {
     value = MemTracker::GetTCMallocActualHeapSizeBytes();
     return root->GetUpdatedConsumption() == value;

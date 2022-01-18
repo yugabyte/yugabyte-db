@@ -31,6 +31,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
@@ -140,7 +142,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     ASSERT_OK(client_->OpenTable(*table_name_, &table_));
 
-    for (int i = 0; i < cluster_->num_masters(); i++) {
+    for (size_t i = 0; i < cluster_->num_masters(); i++) {
       const string& master_address = cluster_->mini_master(i)->bound_rpc_addr_str();
       master_addresses_.push_back(master_address);
     }
@@ -215,9 +217,9 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Set all column ids.
     QLRSRowDescPB *rsrow_desc = req->mutable_rsrow_desc();
-    for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
-      req->mutable_column_refs()->add_ids(kFirstColumnId + i);
-      req->add_selected_exprs()->set_column_id(kFirstColumnId + i);
+    for (size_t i = 0; i < table_->InternalSchema().num_columns(); i++) {
+      req->mutable_column_refs()->add_ids(narrow_cast<int32_t>(kFirstColumnId + i));
+      req->add_selected_exprs()->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
 
       const ColumnSchema& col = table_->InternalSchema().column(i);
       QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
@@ -589,7 +591,7 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
   ASSERT_OK(StartProcessAndGetStreams(bulk_load_exec, bulk_load_argv, &out, &in,
                 &bulk_load_process));
 
-  for (int i = 0; i < mapper_output.size(); i++) {
+  for (size_t i = 0; i < mapper_output.size(); i++) {
     // Write the input line.
     ASSERT_GT(fprintf(out, "%s", mapper_output[i].c_str()), 0);
     ASSERT_EQ(0, fflush(out));
@@ -686,9 +688,9 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
 
     // Set all column ids.
     QLRSRowDescPB *rsrow_desc = ql_req->mutable_rsrow_desc();
-    for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
-      ql_req->mutable_column_refs()->add_ids(kFirstColumnId + i);
-      ql_req->add_selected_exprs()->set_column_id(kFirstColumnId + i);
+    for (size_t i = 0; i < table_->InternalSchema().num_columns(); i++) {
+      ql_req->mutable_column_refs()->add_ids(narrow_cast<int32_t>(kFirstColumnId + i));
+      ql_req->add_selected_exprs()->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
 
       const ColumnSchema& col = table_->InternalSchema().column(i);
       QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();

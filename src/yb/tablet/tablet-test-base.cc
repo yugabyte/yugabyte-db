@@ -140,7 +140,7 @@ CHECKED_STATUS TabletTestPreBase::DeleteTestRow(LocalTabletWriter* writer, int32
   return writer->Write(&req);
 }
 
-void TabletTestPreBase::VerifyTestRows(int32_t first_row, uint32_t expected_count) {
+void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count) {
   auto iter = tablet()->NewRowIterator(client_schema_);
   ASSERT_OK(iter);
 

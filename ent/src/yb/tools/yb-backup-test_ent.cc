@@ -27,7 +27,10 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/split.h"
+
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/rpc/rpc_controller.h"
@@ -934,7 +937,8 @@ class YBBackupTestNumTablets : public YBBackupTest {
   Result<bool> CheckPartitions(
       const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
       const vector<string>& expected_splits) {
-    SCHECK_EQ(tablets.size(), expected_splits.size() + 1, InvalidArgument, "");
+    SCHECK_EQ(
+        implicit_cast<size_t>(tablets.size()), expected_splits.size() + 1, InvalidArgument, "");
 
     static const string empty;
     for (int i = 0; i < tablets.size(); i++) {

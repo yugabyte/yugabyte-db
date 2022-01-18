@@ -427,7 +427,7 @@ Result<PGResultPtr> PGConn::CopyEnd() {
 }
 
 Result<char*> GetValueWithLength(PGresult* result, int row, int column, size_t size) {
-  auto len = PQgetlength(result, row, column);
+  size_t len = PQgetlength(result, row, column);
   if (len != size) {
     return STATUS_FORMAT(Corruption, "Bad column length: $0, expected: $1, row: $2, column: $3",
                          len, size, row, column);

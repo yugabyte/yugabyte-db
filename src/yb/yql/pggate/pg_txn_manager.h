@@ -124,7 +124,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
   bool read_only_ = false;
   bool enable_follower_reads_ = false;
-  int32_t follower_read_staleness_ms_ = 0;
+  uint64_t follower_read_staleness_ms_ = 0;
   bool updated_read_time_for_follower_reads_ = false;
   bool deferrable_ = false;
 

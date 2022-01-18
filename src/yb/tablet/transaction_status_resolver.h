@@ -51,7 +51,7 @@ class TransactionStatusResolver {
   // If max_transactions_per_request is zero then resolution is skipped.
   TransactionStatusResolver(
       TransactionParticipantContext* participant_context, rpc::Rpcs* rpcs,
-      size_t max_transactions_per_request,
+      int max_transactions_per_request,
       TransactionStatusResolverCallback callback);
   ~TransactionStatusResolver();
 

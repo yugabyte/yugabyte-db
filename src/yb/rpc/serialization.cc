@@ -49,7 +49,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 
-DECLARE_int32(rpc_max_message_size);
+DECLARE_uint64(rpc_max_message_size);
 
 using google::protobuf::MessageLite;
 using google::protobuf::io::CodedInputStream;
@@ -158,7 +158,7 @@ bool SkipField(uint8_t type, CodedInputStream* in) {
 
 Result<Slice> ParseString(const Slice& buf, const char* name, CodedInputStream* in) {
   uint32_t len;
-  if (!in->ReadVarint32(&len) || in->BytesUntilLimit() < len) {
+  if (!in->ReadVarint32(&len) || in->BytesUntilLimit() < implicit_cast<int>(len)) {
     return STATUS(Corruption, "Unable to decode field", Slice(name));
   }
   Slice result(buf.data() + in->CurrentPosition(), len);
@@ -214,7 +214,7 @@ CHECKED_STATUS DoParseYBMessage(const Slice& buf,
                                 Header* parsed_header,
                                 Slice* parsed_main_message) {
   CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
-  in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size*3/4);
+  SetupLimit(&in);
 
   uint32_t header_len;
   if (PREDICT_FALSE(!in.ReadVarint32(&header_len))) {

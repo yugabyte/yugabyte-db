@@ -57,8 +57,8 @@ Result<int64_t> VarInt::ToInt64() const {
   BN_ULONG value = BN_get_word(impl_.get());
   bool negative = BN_is_negative(impl_.get());
   // Casting minimal signed value to unsigned type of the same size returns its absolute value.
-  int64_t bound = negative ? std::numeric_limits<int64_t>::min()
-                           : std::numeric_limits<int64_t>::max();
+  BN_ULONG bound = negative ? std::numeric_limits<int64_t>::min()
+                            : std::numeric_limits<int64_t>::max();
 
   if (value > bound) {
     return STATUS_FORMAT(
@@ -76,7 +76,7 @@ Status VarInt::FromString(const char* cstr) {
     ++cstr;
   }
   BIGNUM* temp = nullptr;
-  int parsed = BN_dec2bn(&temp, cstr);
+  size_t parsed = BN_dec2bn(&temp, cstr);
   impl_.reset(temp);
   if (parsed == 0 || parsed != strlen(cstr)) {
     return STATUS_FORMAT(InvalidArgument, "Cannot parse varint: $0", cstr);

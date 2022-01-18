@@ -213,7 +213,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   }
 
   // Only set the over-replication section if we need to.
-  int placement_num_replicas = placement.num_replicas() > 0 ?
+  size_t placement_num_replicas = placement.num_replicas() > 0 ?
       placement.num_replicas() : FLAGS_replication_factor;
   tablet_meta.is_over_replicated = placement_num_replicas < replica_map->size();
   tablet_meta.is_under_replicated = placement_num_replicas > replica_map->size();
@@ -257,7 +257,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     for (const auto& entry : placement_to_replicas) {
       const auto& cloud_info = entry.first;
       const auto& replica_set = entry.second;
-      const auto min_num_replicas = placement_to_min_replicas[cloud_info];
+      const size_t min_num_replicas = placement_to_min_replicas[cloud_info];
       if (min_num_replicas > replica_set.size()) {
         // Placements that are under-replicated should be handled ASAP.
         tablet_meta.under_replicated_placements.insert(cloud_info);

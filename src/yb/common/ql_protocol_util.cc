@@ -113,7 +113,8 @@ bool RequireReadForExpressions(const QLWriteRequestPB& request) {
 // Note: If target columns are given this could just be e.g. a delete targeting a static column
 // which can also omit the range portion -- Analyzer will check these restrictions.
 bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema) {
-  return request.range_column_values().size() < schema.num_range_key_columns() &&
+  return implicit_cast<size_t>(request.range_column_values().size()) <
+             schema.num_range_key_columns() &&
          request.column_values().empty();
 }
 

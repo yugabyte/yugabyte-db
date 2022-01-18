@@ -1212,7 +1212,7 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   if (resp.has_replication_info()) {
     info->replication_info.emplace(resp.replication_info());
   }
-  SCHECK_GT(info->table_id.size(), 0, IllegalState, "Running against a too-old master");
+  SCHECK_GT(info->table_id.size(), 0U, IllegalState, "Running against a too-old master");
   info->colocated = resp.colocated();
 
   return Status::OK();

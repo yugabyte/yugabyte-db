@@ -50,8 +50,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLKeyspacesVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kDurableWrites, true, &row));
 
-    int repl_factor;
-    RETURN_NOT_OK(catalog_manager().GetReplicationFactor(ns->name(), &repl_factor));
+    auto repl_factor = VERIFY_RESULT(catalog_manager().GetReplicationFactor(ns->name()));
     RETURN_NOT_OK(SetColumnValue(kReplication, util::GetReplicationValue(repl_factor), &row));
   }
 

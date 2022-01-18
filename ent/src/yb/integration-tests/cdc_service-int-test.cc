@@ -396,7 +396,7 @@ Status CDCServiceTest::GetChangesWithRetries(
 }
 
 tserver::MiniTabletServer* CDCServiceTest::GetLeaderForTablet(const std::string& tablet_id) {
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     if (cluster_->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
       return cluster_->mini_tablet_server(i);
     }
@@ -902,7 +902,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     leader_mini_tserver = nullptr;
     follower_mini_tserver = nullptr;
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       std::shared_ptr<tablet::TabletPeer> tablet_peer;
       Status s = cluster_->mini_tablet_server(i)->server()->tablet_manager()->
                  GetTabletPeer(tablet_id, &tablet_peer);
@@ -1539,7 +1539,7 @@ TEST_P(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
   ASSERT_EQ(segment_sequence.size(),
             tablet_peer->log()->reader_->segments_violate_max_time_policy_->size());
 
-  for (int i = 0; i < segment_sequence.size(); i++) {
+  for (size_t i = 0; i < segment_sequence.size(); i++) {
     ASSERT_EQ(segment_sequence[i]->path(),
               (*tablet_peer->log()->reader_->segments_violate_max_time_policy_)[i]->path());
     LOG(INFO) << "Segment " << segment_sequence[i]->path() << " to be GCed";
@@ -1715,7 +1715,7 @@ TEST_P(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   ASSERT_EQ(segment_sequence.size(),
             tablet_peer->log()->reader_->segments_violate_min_space_policy_->size());
 
-  for (int i = 0; i < segment_sequence.size(); i++) {
+  for (size_t i = 0; i < segment_sequence.size(); i++) {
     ASSERT_EQ(segment_sequence[i]->path(),
               (*tablet_peer->log()->reader_->segments_violate_min_space_policy_)[i]->path());
     LOG(INFO) << "Segment " << segment_sequence[i]->path() << " to be GCed";
@@ -1901,14 +1901,14 @@ class CDCServiceTestThreeServers : public CDCServiceTest {
   virtual int tablet_count() override { return 3; }
 
   // Get the first tablet_id for which any peer is a leader.
-  void GetFirstTabletIdAndLeaderPeer(TabletId* tablet_id, int* leader_idx, int timeout_secs);
+  void GetFirstTabletIdAndLeaderPeer(TabletId* tablet_id, ssize_t* leader_idx, int timeout_secs);
 };
 
 INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestThreeServers, ::testing::Bool());
 
 // Sometimes leadership takes a while. Keep retrying until timeout_secs seconds have elapsed.
 void CDCServiceTestThreeServers::GetFirstTabletIdAndLeaderPeer(TabletId* tablet_id,
-                                                               int* leader_idx,
+                                                               ssize_t* leader_idx,
                                                                int timeout_secs) {
   std::vector<TabletId> tablet_ids;
   // Verify that we are only returning a tablet that belongs to the table created for this test.
@@ -1918,7 +1918,7 @@ void CDCServiceTestThreeServers::GetFirstTabletIdAndLeaderPeer(TabletId* tablet_
   MonoTime now = MonoTime::Now();
   MonoTime deadline = now + MonoDelta::FromSeconds(timeout_secs);
   while(now.ComesBefore(deadline) && (!tablet_id || tablet_id->empty())) {
-    for (int idx = 0; idx < cluster_->num_tablet_servers(); idx++) {
+    for (size_t idx = 0; idx < cluster_->num_tablet_servers(); idx++) {
       auto peers = cluster_->mini_tablet_server(idx)->server()->tablet_manager()->GetTabletPeers();
       ASSERT_GT(peers.size(), 0);
 
@@ -1946,7 +1946,7 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
 
   TabletId tablet_id;
   // Index of the TS that is the leader for the selected tablet_id.
-  int leader_idx = -1;
+  ssize_t leader_idx = -1;
 
   GetFirstTabletIdAndLeaderPeer(&tablet_id, &leader_idx, kGettingLeaderTimeoutSecs);
   ASSERT_FALSE(tablet_id.empty());

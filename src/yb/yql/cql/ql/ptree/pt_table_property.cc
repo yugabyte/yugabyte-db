@@ -709,13 +709,8 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
   }
 
   if (!invalid_subproperties.empty()) {
-    string list = "[";
-    for (auto i = 0; i < invalid_subproperties.size() - 1; i++) {
-      list += (invalid_subproperties[i] + ", ");
-    }
-    list += (invalid_subproperties.back() + "]");
-    return STATUS(InvalidArgument,
-                  Substitute("Properties specified $0 are not understood by $1", list, class_name));
+    return STATUS_FORMAT(InvalidArgument, "Properties specified $0 are not understood by $1",
+                         invalid_subproperties, class_name);
   }
   return Status::OK();
 }

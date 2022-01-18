@@ -160,7 +160,7 @@ class MiniCluster : public MiniClusterBase {
   // elected within kMasterLeaderElectionWaitTimeSeconds. May block until a leader Master is ready.
   Result<master::MiniMaster*> GetLeaderMiniMaster();
 
-  int LeaderMasterIdx();
+  ssize_t LeaderMasterIdx();
 
   // Returns the Master at index 'idx' for this MiniCluster.
   master::MiniMaster* mini_master(size_t idx);
@@ -344,7 +344,7 @@ YB_DEFINE_ENUM(Connectivity, (kOn)(kOff));
 CHECKED_STATUS BreakConnectivity(MiniCluster* cluster, size_t idx1, size_t idx2);
 CHECKED_STATUS SetupConnectivity(
     MiniCluster* cluster, size_t idx1, size_t idx2, Connectivity connectivity);
-Result<int> ServerWithLeaders(MiniCluster* cluster);
+Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 
 // Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter
 // for already created tablets.

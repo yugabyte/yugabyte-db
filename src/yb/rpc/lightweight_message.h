@@ -273,6 +273,8 @@ std::shared_ptr<T> SharedField(std::shared_ptr<S> ptr, T* field) {
 
 void AppendFieldTitle(const char* name, const char* suffix, bool* first, std::string* out);
 
+void SetupLimit(google::protobuf::io::CodedInputStream* in);
+
 } // namespace rpc
 } // namespace yb
 

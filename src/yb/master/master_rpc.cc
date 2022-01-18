@@ -187,7 +187,7 @@ void GetLeaderMasterRpc::SendRpc() {
   {
     std::lock_guard<simple_spinlock> l(lock_);
     pending_responses_ = size;
-    for (int i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
       auto handle = rpcs_.Prepare();
       if (handle == rpcs_.InvalidHandle()) {
         GetMasterRegistrationRpcCbForNode(i, STATUS(Aborted, "Stopping"), self, handle);
@@ -242,7 +242,7 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
 }
 
 void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
-    int idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
+    size_t idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
     rpc::Rpcs::Handle handle) {
   rpcs_.Unregister(handle);
 
