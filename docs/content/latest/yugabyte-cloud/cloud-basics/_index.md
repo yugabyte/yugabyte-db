@@ -28,7 +28,7 @@ You deploy clusters in Yugabyte Cloud using the **Create Cluster** wizard. Befor
     <a class="section-link icon-offset" href="create-clusters-overview/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Planning your cluster</div>
+        <div class="title">Plan your cluster</div>
       </div>
       <div class="body">
         Plan your production deployment.

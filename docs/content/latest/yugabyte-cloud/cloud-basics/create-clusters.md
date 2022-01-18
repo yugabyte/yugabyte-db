@@ -36,7 +36,7 @@ The **Create Cluster** wizard has the following three pages:
 
 ### Select Cluster Type
 
-Use the free cluster to get started with YugabyteDB. Although it's not suitable for production workloads, the free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
+Use a free cluster to get started with YugabyteDB. Although it's not suitable for production workloads, a free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
 
 - Single node
 - Up to 2 vCPUs and 10 GB of storage, depending on the cloud provider
@@ -66,7 +66,7 @@ Set the following options:
 - **Cluster Name**: Enter a name for the cluster.
 - **Region**: Choose the Region where the cluster will be located.
 
-If you are creating a standard (not free) cluster, set the following additional options:
+If you are creating a standard cluster, set the following additional options:
 
 - **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures:
 
@@ -74,17 +74,17 @@ If you are creating a standard (not free) cluster, set the following additional 
   - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
   - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
-- **Cluster Configuration**:
+- **Cluster Configuration** determines the size of the cluster:
 
-  - Nodes - enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
-  - vCPU/Node - enter the number of virtual CPUs per node.
-  - Disk size/Node - enter the disk size per node in GB.
+  - **Nodes** - enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
+  - **vCPU/Node** - enter the number of virtual CPUs per node.
+  - **Disk size/Node** - enter the disk size per node in GB.
 
 - **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
 
 - **Database Version**: By default, clusters are deployed using a recent build from the Stable release series. Free clusters are always deployed with an edge release (typically from the Latest release series, but occasionally a new stable release). If you want to use an edge release for a standard cluster, click **Advanced** and choose a release. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
-The cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+Cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 Standard clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure).
 
@@ -100,13 +100,13 @@ Download the credentials, and click **Create Cluster**.
 
 {{< warning title="Important" >}}
 
-Save your database credentials in a safe place. If you lose these credentials you will not be able to use the database.
+Save your database credentials in a safe place. If you lose these credentials, you won't be able to use the database.
 
 {{< /warning >}}
 
 ## Viewing the cluster
 
-After you complete the wizard, the **Clusters** page appears with the provisioning of your new cluster in progress.
+After you complete the wizard, the **Clusters** page appears, showing the provisioning of your new cluster in progress.
 
 ![Cluster being provisioned](/images/yb-cloud/cloud-cluster-provisioning.png)
 
