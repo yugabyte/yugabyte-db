@@ -29,8 +29,6 @@ namespace yb {
 namespace tools {
 namespace enterprise {
 
-class ClusterAdminClient;
-
 class ClusterAdminCli : public yb::tools::ClusterAdminCli {
   typedef yb::tools::ClusterAdminCli super;
 
