@@ -17,19 +17,27 @@ Use alerts to notify you and your team members when cluster and database resourc
 
 Alerts and notifications are configured and managed on the **Alerts** page.
 
+To monitor clusters in real time, use the Performance Metrics on the cluster [Overview and Performance](../overview/) tabs.
+
+## Features
+
 - Yugabyte Cloud sends email notifications to all cloud account members.
 
-- Alerts are only sent once for each occurrence. For example, an alert is triggered when CPU use exceeds 75% for 5 minutes; if the condition continues for 30 minutes, you will still receive only one notification.
+- When an alert is triggered, the email notification is sent once, regardless of how long the condition lasts.
+
+- When an alert is triggered, the notification is displayed on the **Notifications** page, where it remains until the condition that caused the alert is resolved. When the alert condition is resolved, the notification is dismissed automatically.
 
 - Alerts are enabled for all clusters in your cloud.
 
 - Alerts can have two severity levels: Warning or Severe.
 
-To monitor clusters in real time, use the Performance Metrics on the cluster [Overview and Performance](../overview/) tabs.
-
 ## Configure alerts
 
-Enable alerts for your cloud using the **Configurations** tab on the **Alerts** page. Only cloud admin users can configure billing alerts.
+Enable alerts for your cloud using the **Configurations** tab on the **Alerts** page.
+
+Only cloud admin users can configure billing alerts.
+
+![Cloud Alerts Configurations](/images/yb-cloud/cloud-alerts-configurations.png)
 
 To view alert details, select the alert to display the **Alert Policy Settings** sheet.
 
@@ -59,7 +67,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | Compaction Overload | Compaction |
 | YSQL Connections | No chart |
 
-Charts are avaialable on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
+You can view the metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
 
 #### Fix storage alerts
 
