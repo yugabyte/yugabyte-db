@@ -36,7 +36,8 @@ To schedule backups for a later time, or as a recurring task, see [Schedule univ
 
 To immediately back up your YugabyteDB universe YCQL data, perform the following:
 
-1. Open your universe and select **Backups**.
+1. Open your universe and select the **Backups** tab.
+
 1. Click **Create Backup** to open the **Create Backup** dialog.
 
     <br/><br/>
@@ -44,6 +45,8 @@ To immediately back up your YugabyteDB universe YCQL data, perform the following
     ![Create Backup - YCQL](/images/yp/create-backup-ycql.png)<br><br>
 
 1. Complete the fields presented in the **YCQL** tab.
+
+    Notice that the contents of the **Storage** field list depends on your existing backup storage configurations.
 
 1. Click **OK** to start the requested backup immediately.
 
