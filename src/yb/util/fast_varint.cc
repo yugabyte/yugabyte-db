@@ -332,7 +332,7 @@ CHECKED_STATUS FastDecodeUnsignedVarInt(
   }
 
   uint64_t result = 0;
-  int i = 0;
+  size_t i = 0;
   if (n_bytes == 9) {
     if (src[1] & 0x80) {
       n_bytes = 10;

@@ -1722,7 +1722,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDecAcrossHashCols) {
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
   vector<bool> seen(max_h, false);
-  for (int h = 0; h < row_block->row_count(); h++) {
+  for (size_t h = 0; h < row_block->row_count(); h++) {
     const QLRow& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
     seen[row.column(0).int32_value()] = true;
@@ -1769,7 +1769,7 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTestIncDecAcrossHashCols) {
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
   vector<bool> seen(max_h, false);
-  for (int h = 0; h < row_block->row_count(); h++) {
+  for (size_t h = 0; h < row_block->row_count(); h++) {
     const QLRow& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
     seen[row.column(0).int32_value()] = true;

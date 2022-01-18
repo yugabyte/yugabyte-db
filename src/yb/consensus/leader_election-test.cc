@@ -325,7 +325,7 @@ LeaderElectionPtr LeaderElectionTest::SetUpElectionWithGrantDenyErrorVotes(
   int num_grant_followers = num_grant - 1;
 
   // Set up mocked responses based on the params specified in the method arguments.
-  int voter_index = 0;
+  size_t voter_index = 0;
   while (voter_index < voter_uuids_.size()) {
     VoteResponsePB response;
     if (num_grant_followers > 0) {

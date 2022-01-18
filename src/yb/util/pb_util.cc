@@ -249,7 +249,7 @@ Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg) {
   return Status::OK();
 }
 
-static void TruncateString(string* s, int max_len) {
+static void TruncateString(string* s, size_t max_len) {
   if (s->size() > max_len) {
     s->resize(max_len);
     s->append("<truncated>");

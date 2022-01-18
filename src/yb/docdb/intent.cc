@@ -35,7 +35,7 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
   auto& intent_prefix = result.intent_prefix;
   intent_prefix = encoded_intent_key;
 
-  int doc_ht_size = 0;
+  size_t doc_ht_size = 0;
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(intent_prefix, &doc_ht_size));
   // There should always be 3 bytes present before teh start of the doc_ht:
   // 1. ValueType::kIntentTypeSet

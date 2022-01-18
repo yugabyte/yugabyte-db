@@ -256,8 +256,7 @@ TEST_F(MasterFailoverTest, DISABLED_TestCreateTableSync) {
     return;
   }
 
-  int leader_idx = -1;
-  ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+  auto leader_idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
 
   LOG(INFO) << "Pausing leader master";
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
@@ -280,8 +279,7 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
     return;
   }
 
-  int leader_idx = -1;
-  ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+  auto leader_idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
 
   YBTableName table_name(YQL_DATABASE_CQL, "testPauseAfterCreateTableIssued");
   LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
@@ -314,8 +312,7 @@ TEST_P(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
   // The second run will pause the master at the desired point during create index.
   for (int i = 0; i < 2; i++) {
     auto start = ToSteady(CoarseMonoClock::Now());
-    int leader_idx = -1;
-    ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+    auto leader_idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
     ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
     OpIdPB op_id;
@@ -391,9 +388,7 @@ TEST_F(MasterFailoverTest, TestDeleteTableSync) {
     return;
   }
 
-  int leader_idx = -1;
-
-  ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+  auto leader_idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
 
   YBTableName table_name(YQL_DATABASE_CQL, "test", "testDeleteTableSync");
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
@@ -421,9 +416,7 @@ TEST_F(MasterFailoverTest, TestRenameTableSync) {
     return;
   }
 
-  int leader_idx = -1;
-
-  ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
+  auto leader_idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
 
   YBTableName table_name_orig(YQL_DATABASE_CQL, "test", "testAlterTableSync");
   ASSERT_OK(CreateTable(table_name_orig, kWaitForCreate));
@@ -518,8 +511,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
   LOG(INFO) << "Blacklisted tserver#3";
 
   // Get the initial load.
-  int idx = -1;
-  ASSERT_OK(cluster_->GetLeaderMasterIndex(&idx));
+  auto idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
 
   auto proxy = cluster_->GetMasterProxy<master::MasterClusterProxy>(idx);
 
@@ -539,7 +531,7 @@ TEST_F(MasterFailoverTest, TestLoadMoveCompletion) {
   resp.Clear();
   rpc.Reset();
 
-  ASSERT_OK(cluster_->GetLeaderMasterIndex(&idx));
+  idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
 
   proxy = cluster_->GetMasterProxy<master::MasterClusterProxy>(idx);
   ASSERT_OK(proxy.GetLoadMoveCompletion(req, &resp, &rpc));

@@ -468,11 +468,11 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
       // Internally UDTs are maps with field names as keys
       QLMapValuePB *map_value = const_pb->mutable_map_value();
       auto field_values = const_pt->udtype_field_values();
-      for (int i = 0; i < field_values.size(); i++) {
+      for (size_t i = 0; i < field_values.size(); i++) {
         // Skipping unset fields.
         if (field_values[i] != nullptr) {
           QLValuePB *key_pb = map_value->add_keys();
-          key_pb->set_int16_value(i);
+          key_pb->set_int16_value(narrow_cast<int16_t>(i));
           // Expect value to be constant because CQL only allows collection of constants.
           QLValuePB *value_pb = map_value->add_values();
           RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));
@@ -532,7 +532,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
         case USER_DEFINED_TYPE: {
           // Internally UDTs are maps with field names as keys
           auto field_values = const_pt->udtype_field_values();
-          for (int i = 0; i < field_values.size(); i++) {
+          for (size_t i = 0; i < field_values.size(); i++) {
             QLValuePB *value_pb = frozen_value->add_elems();
             if (field_values[i] != nullptr) {
               // Expect value to be constant because CQL only allows collection of constants.

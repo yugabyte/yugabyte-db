@@ -796,7 +796,7 @@ if [[ "${yb_pch}" == "true" ]]; then
       case "$arg" in
         -yb-pch)
           pch_cmd+=( "-Xclang" "-emit-pch" "-fpch-instantiate-templates" "-fpch-codegen"
-                     "-fpch-debuginfo" "-c" )
+                     "-fpch-debuginfo" "-x" "c++-header" "-c" )
         ;;
         -fpch-*|-x|c++-header)
         ;;

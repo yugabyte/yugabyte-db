@@ -99,7 +99,7 @@ class DiscreteScanChoices : public ScanChoices {
       : ScanChoices(doc_spec.is_forward_scan()) {
     range_cols_scan_options_ = doc_spec.range_options();
     current_scan_target_idxs_.resize(range_cols_scan_options_->size());
-    for (int i = 0; i < range_cols_scan_options_->size(); i++) {
+    for (size_t i = 0; i < range_cols_scan_options_->size(); i++) {
       current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
     }
 
@@ -122,7 +122,7 @@ class DiscreteScanChoices : public ScanChoices {
       : ScanChoices(doc_spec.is_forward_scan()) {
     range_cols_scan_options_ = doc_spec.range_options();
     current_scan_target_idxs_.resize(range_cols_scan_options_->size());
-    for (int i = 0; i < range_cols_scan_options_->size(); i++) {
+    for (size_t i = 0; i < range_cols_scan_options_->size(); i++) {
       current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
     }
 
@@ -367,7 +367,7 @@ Status RangeBasedScanChoices::SkipTargetsUpTo(const Slice& new_target) {
   RETURN_NOT_OK(decoder.DecodeToRangeGroup());
   current_scan_target_.Reset(Slice(new_target.data(), decoder.left_input().data()));
 
-  int col_idx = 0;
+  size_t col_idx = 0;
   PrimitiveValue target_value;
   bool last_was_infinity = false;
   for (col_idx = 0; VERIFY_RESULT(decoder.HasPrimitiveValue()); col_idx++) {

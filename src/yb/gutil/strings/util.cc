@@ -31,6 +31,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"  // for string_as_array, STLAppendToString
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/numbers.h"
@@ -283,9 +284,9 @@ int GlobalReplaceSubstring(const GStringPiece& substring,
 //   numbers in indices.
 //   Order of v is *not* preserved.
 //---------------------------------------------------------------------------
-void RemoveStrings(vector<string>* v, const vector<int>& indices) {
-  assert(v);
-  assert(indices.size() <= v->size());
+void RemoveStrings(vector<string>* v, const vector<size_t>& indices) {
+  (void)DCHECK_NOTNULL(v);
+  DCHECK_LE(indices.size(), v->size());
   // go from largest index to smallest so that smaller indices aren't
   // invalidated
   for (auto lcv = indices.size(); lcv > 0;) {
@@ -296,8 +297,8 @@ void RemoveStrings(vector<string>* v, const vector<int>& indices) {
       // use LT and not LE because we should never see repeat indices
       CHECK_LT(indices[lcv-1], indices[lcv]);
 #endif
-    assert(indices[lcv] >= 0);
-    assert(indices[lcv] < v->size());
+    DCHECK_GE(indices[lcv], 0);
+    DCHECK_LT(indices[lcv], v->size());
     swap((*v)[indices[lcv]], v->back());
     v->pop_back();
   }
@@ -503,7 +504,7 @@ const char* strstr_delimited(const char* haystack,
 
     // Walk down the haystack, matching every character in the needle.
     const char* this_match = haystack;
-    int i = 0;
+    size_t i = 0;
     for (; i < needle_len; i++) {
       if (*haystack != needle[i]) {
         // We ran out of haystack or found a non-matching character.
@@ -982,7 +983,7 @@ void UniformInsertString(string* s, int interval, const char* separator) {
   string tmp;
   tmp.reserve(s->size() + num_inserts * separator_len + 1);
 
-  for (int i = 0; i < num_inserts ; ++i) {
+  for (size_t i = 0; i < num_inserts ; ++i) {
     // append this interval
     tmp.append(*s, i * interval, interval);
     // append a separator
@@ -1042,7 +1043,7 @@ void InsertString(string *const s,
 size_t FindNth(GStringPiece s, char c, size_t n) {
   size_t pos = string::npos;
 
-  for ( int i = 0; i < n; ++i ) {
+  for (size_t i = 0; i < n; ++i) {
     pos = s.find_first_of(c, pos + 1);
     if ( pos == GStringPiece::npos ) {
       break;
@@ -1064,7 +1065,7 @@ size_t ReverseFindNth(GStringPiece s, char c, size_t n) {
 
   size_t pos = s.size();
 
-  for ( int i = 0; i < n; ++i ) {
+  for (size_t i = 0; i < n; ++i) {
     // If pos == 0, we return GStringPiece::npos right away. Otherwise,
     // the following find_last_of call would take (pos - 1) as string::npos,
     // which means it would again search the entire input string.
@@ -1072,7 +1073,7 @@ size_t ReverseFindNth(GStringPiece s, char c, size_t n) {
       return static_cast<int>(GStringPiece::npos);
     }
     pos = s.find_last_of(c, pos - 1);
-    if ( pos == string::npos ) {
+    if (pos == string::npos) {
       break;
     }
   }
@@ -1127,7 +1128,7 @@ int SafeSnprintf(char *str, size_t size, const char *format, ...) {
   va_start(printargs, format);
   int ncw = vsnprintf(str, size, format, printargs);
   va_end(printargs);
-  return (ncw < size && ncw >= 0) ? ncw : 0;
+  return (ncw < narrow_cast<int>(size) && ncw >= 0) ? ncw : 0;
 }
 
 bool GetlineFromStdioFile(FILE* file, string* str, char delim) {

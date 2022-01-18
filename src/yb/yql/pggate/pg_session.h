@@ -242,7 +242,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                            const PgObjectId& relation_id,
                                            uint64_t* read_time,
                                            bool force_non_bufferable) {
-    SCHECK_GT(ops_count, 0, IllegalState, "Operation list must not be empty");
+    SCHECK_GT(ops_count, 0ULL, IllegalState, "Operation list must not be empty");
     const IsTransactionalSession transactional(VERIFY_RESULT(ShouldHandleTransactionally(**op)));
     RunHelper runner(relation_id, this, transactional);
     for (auto end = op + ops_count; op != end; ++op) {
