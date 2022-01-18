@@ -1570,7 +1570,12 @@ export default class ClusterFields extends Component {
         );
       });
 
-    const configList = cloud.authConfig.data ?? [];
+    let configList = cloud.authConfig.data ?? [];
+    //feature flagging
+    const isHCVaultEnabled = featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
+    if (!isHCVaultEnabled)
+      configList = configList.filter((config) => config.metadata.provider !== 'HASHICORP');
+    //feature flagging
     const kmsConfigList = [
       <option value="" key={`kms-option-0`}>
         Select Configuration
