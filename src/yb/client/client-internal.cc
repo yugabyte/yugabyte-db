@@ -1213,6 +1213,9 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   if (resp.has_replication_info()) {
     info->replication_info.emplace(resp.replication_info());
   }
+  if (resp.has_wal_retention_secs()) {
+    info->wal_retention_secs = resp.wal_retention_secs();
+  }
   SCHECK_GT(info->table_id.size(), 0U, IllegalState, "Running against a too-old master");
   info->colocated = resp.colocated();
 
