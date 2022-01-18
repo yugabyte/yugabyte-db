@@ -11,7 +11,7 @@ section: FAQ
 menu:
   latest:
     identifier: comparisons
-    weight: 2720
+    weight: 2710
 ---
 
 ## Distributed SQL databases
