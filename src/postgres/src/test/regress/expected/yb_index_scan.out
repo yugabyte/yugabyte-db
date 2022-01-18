@@ -753,3 +753,89 @@ select * from test where pk=25;
 ----+------+------+------+------+------+------+------+------
  25 |    2 |    2 |  777 |  223 |    2 | Bb   |    2 |  199
 (1 row)
+
+-- test index scan where the column type does not match value type
+CREATE TABLE pk_real(c0 REAL, PRIMARY KEY(c0 asc));
+INSERT INTO pk_real(c0) VALUES(0.4);
+EXPLAIN SELECT ALL pk_real.c0 FROM pk_real WHERE ((0.6)>(pk_real.c0));
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using pk_real_pkey on pk_real  (cost=0.00..4.11 rows=1 width=4)
+   Index Cond: ('0.6'::double precision > c0)
+(2 rows)
+
+SELECT ALL pk_real.c0 FROM pk_real WHERE ((0.6)>(pk_real.c0));
+ c0
+-----
+ 0.4
+(1 row)
+
+EXPLAIN SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = ANY(ARRAY[0.6, 0.4]);
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using pk_real_pkey on pk_real  (cost=0.00..4.11 rows=1 width=4)
+   Index Cond: (c0 = ANY ('{0.6,0.4}'::double precision[]))
+(2 rows)
+
+-- 0.4::FLOAT4 is not equal to 0.4::DOUBLE PRECISION
+SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = ANY(ARRAY[0.6, 0.4]);
+ c0
+----
+(0 rows)
+
+INSERT INTO pk_real(c0) VALUES(0.5);
+EXPLAIN SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = 0.5;
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using pk_real_pkey on pk_real  (cost=0.00..4.11 rows=1 width=4)
+   Index Cond: (c0 = '0.5'::double precision)
+(2 rows)
+
+-- 0.5::FLOAT4 is equal to 0.5::DOUBLE PRECISION
+SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = 0.5;
+ c0
+-----
+ 0.5
+(1 row)
+
+CREATE TABLE pk_smallint(c0 SMALLINT, PRIMARY KEY(c0 asc));
+INSERT INTO pk_smallint VALUES(123), (-123);
+EXPLAIN SELECT c0 FROM pk_smallint WHERE (65568 > c0);
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Index Scan using pk_smallint_pkey on pk_smallint  (cost=0.00..4.11 rows=1 width=2)
+   Index Cond: (65568 > c0)
+(2 rows)
+
+SELECT c0 FROM pk_smallint WHERE (65568 > c0);
+  c0
+------
+ -123
+  123
+(2 rows)
+
+EXPLAIN SELECT c0 FROM pk_smallint WHERE (c0 > -65539);
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Index Scan using pk_smallint_pkey on pk_smallint  (cost=0.00..4.11 rows=1 width=2)
+   Index Cond: (c0 > '-65539'::integer)
+(2 rows)
+
+SELECT c0 FROM pk_smallint WHERE (c0 > -65539);
+  c0
+------
+ -123
+  123
+(2 rows)
+
+EXPLAIN SELECT c0 FROM pk_smallint WHERE (c0 = ANY(ARRAY[-65539, 65568]));
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Index Scan using pk_smallint_pkey on pk_smallint  (cost=0.00..4.11 rows=1 width=2)
+   Index Cond: (c0 = ANY ('{-65539,65568}'::integer[]))
+(2 rows)
+
+SELECT c0 FROM pk_smallint WHERE (c0 = ANY(ARRAY[-65539, 65568]));
+ c0
+----
+(0 rows)
