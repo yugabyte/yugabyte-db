@@ -295,10 +295,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                CoarseTimePoint deadline,
                Initial initial,
                Waiter waiter) override EXCLUDES(mutex_) {
-    VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops_info->groups) << ", "
-                        << force_consistent_read << ", " << initial << ")";
-    TRACE_TO(trace_, "Perparing $0 ops", AsString(ops_info->groups.size()));
-    VTRACE_TO(2, trace_, "Perparing $0 ops", AsString(ops_info->groups));
+    VLOG_WITH_PREFIX(2) << "Prepare(" << force_consistent_read << ", " << initial << ", "
+                        << AsString(ops_info->groups) << ")";
+    TRACE_TO(trace_, "Preparing $0 ops", AsString(ops_info->groups.size()));
+    VTRACE_TO(2, trace_, "Preparing $0 ops", AsString(ops_info->groups));
 
     {
       UNIQUE_LOCK(lock, mutex_);
@@ -307,13 +307,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (!defer || initial) {
         Status status = CheckTransactionLocality(ops_info);
         if (!status.ok()) {
+          VLOG_WITH_PREFIX(2) << "Prepare, rejected: " << status;
           bool abort = false;
           auto state = state_.load(std::memory_order_acquire);
           if (state == TransactionState::kRunning) {
             // State will be changed to aborted in SetErrorUnlocked
             abort = true;
           }
-          SetErrorUnlocked(status);
+          SetErrorUnlocked(status, "Check transaction locality");
           lock.unlock();
           if (waiter) {
             waiter(status);
@@ -424,17 +425,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
         }
       } else {
-        if (status.IsTryAgain()) {
+        const TransactionError txn_err(status);
+        if (txn_err.value() != TransactionErrorCode::kSkipLocking) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
             abort = true;
             // State will be changed to aborted in SetError
           }
-        }
-        const TransactionError txn_err(status);
-        if (txn_err.value() != TransactionErrorCode::kSkipLocking) {
-          SetErrorUnlocked(status);
+
+          SetErrorUnlocked(status, "Flush");
         }
       }
 
@@ -502,8 +502,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       UNIQUE_LOCK(lock, mutex_);
       auto state = state_.load(std::memory_order_acquire);
       if (state != TransactionState::kRunning) {
-        LOG_IF_WITH_PREFIX(DFATAL, state != TransactionState::kAborted)
-            << "Abort of committed transaction: " << AsString(state);
+        if (state != TransactionState::kAborted) {
+          LOG_WITH_PREFIX(DFATAL)
+              << "Abort of committed transaction: " << AsString(state);
+        } else {
+          VLOG_WITH_PREFIX(2) << "Already aborted";
+        }
         return;
       }
       if (child_) {
@@ -519,6 +523,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         for(const auto& waiter : waiters) {
           waiter(aborted_status);
         }
+        VLOG_WITH_PREFIX(2) << "Aborted transaction not yet ready";
         return;
       }
     }
@@ -848,10 +853,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void DoAbortCleanup(const YBTransactionPtr& transaction, CleanupType cleanup_type)
       EXCLUDES(mutex_) {
     if (FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) {
+      VLOG_WITH_PREFIX(1) << "TEST: Disabled proactive transaction cleanup on abort";
       return;
     }
-
-    VLOG_WITH_PREFIX(1) << "Cleaning up intents";
 
     std::vector<std::string> tablet_ids;
     {
@@ -862,6 +866,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // failure. For instance in case of conflict on unique index.
         tablet_ids.push_back(tablet.first);
       }
+      VLOG_WITH_PREFIX(1) << "Cleaning up intents from: " << AsString(tablet_ids);
     }
 
     CleanupTransaction(
@@ -940,7 +945,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "Picked status tablet: " << tablet;
 
     if (!tablet.ok()) {
-      NotifyWaiters(tablet.status());
+      NotifyWaiters(tablet.status(), "Pick status tablet");
       return;
     }
 
@@ -966,7 +971,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
     if (!result.ok()) {
-      NotifyWaiters(result.status());
+      NotifyWaiters(result.status(), "Lookup tablet");
       return;
     }
 
@@ -993,7 +998,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                   metadata_.transaction_id, transaction_->shared_from_this());
   }
 
-  void NotifyWaiters(const Status& status) {
+  void NotifyWaiters(const Status& status, const char* operation) {
     std::vector<Waiter> waiters;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -1001,7 +1006,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         DCHECK(!ready_);
         ready_ = true;
       } else {
-        SetErrorUnlocked(status);
+        SetErrorUnlocked(status, operation);
       }
       waiters_.swap(waiters);
     }
@@ -1106,7 +1111,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (status.ok()) {
       if (transaction_status == TransactionStatus::CREATED) {
-        NotifyWaiters(Status::OK());
+        NotifyWaiters(Status::OK(), "Heartbeat");
       }
       std::weak_ptr<YBTransaction> weak_transaction(transaction);
       manager_->client()->messenger()->scheduler().Schedule(
@@ -1117,22 +1122,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     } else {
       auto state = state_.load(std::memory_order_acquire);
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", state: " << state;
-      if (status.IsAborted()) {
-        // Service is shutting down, no reason to retry.
-        SetError(status);
+      if (status.IsAborted() || status.IsExpired()) {
+        // IsAborted - Service is shutting down, no reason to retry.
+        // IsExpired - Transaction expired.
         if (transaction_status == TransactionStatus::CREATED) {
-          NotifyWaiters(status);
+          NotifyWaiters(status, "Heartbeat");
+        } else {
+          SetError(status, "Heartbeat");
         }
-        return;
-      }
-      if (status.IsExpired()) {
-        SetError(status);
         // If state is committed, then we should not cleanup.
-        if (state == TransactionState::kRunning) {
+        if (status.IsExpired() && state == TransactionState::kRunning) {
           DoAbortCleanup(transaction, CleanupType::kImmediate);
-        }
-        if (transaction_status == TransactionStatus::CREATED) {
-          NotifyWaiters(status);
         }
         return;
       }
@@ -1142,15 +1142,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  void SetError(const Status& status) EXCLUDES(mutex_) {
+  void SetError(const Status& status, const char* operation) EXCLUDES(mutex_) {
     std::lock_guard<std::mutex> lock(mutex_);
-    SetErrorUnlocked(status);
+    SetErrorUnlocked(status, operation);
   }
 
-  void SetErrorUnlocked(const Status& status) REQUIRES(mutex_) {
-    VLOG_WITH_PREFIX(1) << "Failed: " << status;
+  void SetErrorUnlocked(const Status& status, const char* operation) REQUIRES(mutex_) {
+    VLOG_WITH_PREFIX(1) << operation << " failed: " << status;
     if (status_.ok()) {
-      status_ = status;
+      status_ = status.CloneAndPrepend(operation);
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
   }
