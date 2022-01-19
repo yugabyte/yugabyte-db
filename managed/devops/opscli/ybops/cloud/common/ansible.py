@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import subprocess
-import sysconfig
 
 from ybops.common.exceptions import YBOpsRuntimeError
 import ybops.utils as ybutils

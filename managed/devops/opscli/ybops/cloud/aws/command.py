@@ -16,11 +16,12 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
     AwsQueryVPCMethod, AwsQuerySpotPricingMethod, AwsCreateDnsEntryMethod, AwsEditDnsEntryMethod, \
     AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod, AwsPauseInstancesMethod, \
     AwsResumeInstancesMethod, AwsCreateRootVolumesMethod, AwsReplaceRootVolumeMethod, \
-    AwsChangeInstanceTypeMethod
+    AwsChangeInstanceTypeMethod, AwsUpdateMountedDisksMethod
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
-    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod
+    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
+    AccessEditVaultMethod
 
 
 class AwsInstanceCommand(InstanceCommand):
@@ -38,6 +39,7 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(AwsTagsMethod(self))
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
+        self.add_method(AwsUpdateMountedDisksMethod(self))
         self.add_method(CronCheckMethod(self))
         self.add_method(AwsPauseInstancesMethod(self))
         self.add_method(AwsResumeInstancesMethod(self))

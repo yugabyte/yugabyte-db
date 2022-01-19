@@ -523,6 +523,7 @@ public class ApiUtils {
     }
     node.nodeIdx = idx;
     node.isYsqlServer = isYSQL;
+    node.disksAreMountedByUUID = true;
     return node;
   }
 

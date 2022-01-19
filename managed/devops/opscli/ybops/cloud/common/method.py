@@ -19,6 +19,7 @@ import string
 import sys
 import time
 
+from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
   generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
@@ -605,6 +606,28 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, ssh_options)
+
+
+class UpdateMountedDisksMethod(AbstractInstancesMethod):
+    """Superclass for updating fstab for disks, see PLAT-2547.
+    """
+
+    def __init__(self, base_command):
+        super(UpdateMountedDisksMethod, self).__init__(base_command, "update_mounted_disks")
+
+    def update_ansible_vars_with_args(self, args):
+        super(UpdateMountedDisksMethod, self).update_ansible_vars_with_args(args)
+        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+
+    def callback(self, args):
+        # Need to verify that all disks are mounted by UUUID
+        host_info = self.cloud.get_host_info(args)
+        ansible = self.cloud.setup_ansible(args)
+        self.update_ansible_vars_with_args(args)
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        ansible.playbook_args["remote_role"] = "mount_ephemeral_drives"
+        logging.debug(pprint(self.extra_vars))
+        ansible.run("remote_role.yml", self.extra_vars, host_info)
 
 
 class ChangeInstanceTypeMethod(AbstractInstancesMethod):

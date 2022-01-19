@@ -11,7 +11,7 @@
 import json
 
 from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMethod,
-                                       AbstractMethod,
+                                       AbstractMethod, UpdateMountedDisksMethod,
                                        ChangeInstanceTypeMethod, CreateInstancesMethod,
                                        CreateRootVolumesMethod, DestroyInstancesMethod,
                                        ProvisionInstancesMethod, ReplaceRootVolumeMethod)
@@ -316,3 +316,13 @@ class GcpPauseInstancesMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         self.cloud.stop_instance(args)
+
+
+class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):
+    def __init__(self, base_command):
+        super(GcpUpdateMountedDisksMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(GcpUpdateMountedDisksMethod, self).add_extra_args()
+        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
+                                 default="scratch", help="Storage type for GCP instances.")

@@ -19,7 +19,7 @@ from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstanc
     GcpAccessAddKeyMethod, GcpNetworkBootstrapMethod, GcpNetworkQueryMethod, \
     GcpNetworkCleanupMethod, GcpQueryVpcMethod, GcpCreateRootVolumesMethod, \
     GcpReplaceRootVolumeMethod, GcpChangeInstanceTypeMethod, GcpPauseInstancesMethod, \
-    GcpResumeInstancesMethod
+    GcpResumeInstancesMethod, GcpUpdateMountedDisksMethod
 
 
 class GcpInstanceCommand(InstanceCommand):
@@ -42,6 +42,7 @@ class GcpInstanceCommand(InstanceCommand):
         self.add_method(GcpChangeInstanceTypeMethod(self))
         self.add_method(GcpPauseInstancesMethod(self))
         self.add_method(GcpResumeInstancesMethod(self))
+        self.add_method(GcpUpdateMountedDisksMethod(self))
 
 
 class GcpQueryCommand(QueryCommand):

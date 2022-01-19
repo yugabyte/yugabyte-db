@@ -1826,6 +1826,7 @@ public class PlacementInfoUtil {
     nodeDetails.nodeIdx = nodeIdx;
     // We are ready to add this node.
     nodeDetails.state = NodeDetails.NodeState.ToBeAdded;
+    nodeDetails.disksAreMountedByUUID = true;
     LOG.trace(
         "Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
         nodeDetails,

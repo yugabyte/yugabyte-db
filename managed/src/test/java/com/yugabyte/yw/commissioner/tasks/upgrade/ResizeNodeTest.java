@@ -19,7 +19,6 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -28,6 +27,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.extern.slf4j.Slf4j;
@@ -178,7 +179,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    assertTasksSequence(subTasks, true, false, false);
+    assertTasksSequence(0, subTasks, true, false, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, false);
   }
@@ -220,6 +221,37 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertUniverseData(true, true, false);
   }
 
+  @Test
+  public void testRemountDrives() {
+    AtomicReference<String> nodeName = new AtomicReference<>();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            (univ) -> {
+              NodeDetails node = univ.getUniverseDetails().nodeDetailsSet.iterator().next();
+              node.disksAreMountedByUUID = false;
+              nodeName.set(node.getNodeName());
+            });
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = new ArrayList<>(taskInfo.getSubTasks());
+    List<TaskInfo> updateMounts =
+        subTasks
+            .stream()
+            .filter(t -> t.getTaskType() == TaskType.UpdateMountedDisks)
+            .collect(Collectors.toList());
+
+    assertEquals(1, updateMounts.size());
+    assertEquals(nodeName.get(), updateMounts.get(0).getTaskDetails().get("nodeName").textValue());
+    assertEquals(0, updateMounts.get(0).getPosition());
+    assertTasksSequence(1, subTasks, true, true, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(true, true);
+  }
+
   private void assertUniverseData(boolean increaseVolume, boolean changeInstance) {
     assertUniverseData(increaseVolume, changeInstance, false);
   }
@@ -248,10 +280,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   private void assertTasksSequence(
       List<TaskInfo> subTasks, boolean increaseVolume, boolean changeInstance) {
-    assertTasksSequence(subTasks, increaseVolume, changeInstance, true);
+    assertTasksSequence(0, subTasks, increaseVolume, changeInstance, true);
   }
 
   private void assertTasksSequence(
+      int startPosition,
       List<TaskInfo> subTasks,
       boolean increaseVolume,
       boolean changeInstance,
@@ -259,7 +292,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(subTasks.size(), subTasksByPosition.size());
-    int position = 0;
+    int position = startPosition;
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
     position =
         assertTasksSequence(
