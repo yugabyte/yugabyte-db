@@ -45,7 +45,7 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 ### What are the differences between free and standard clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an edge release, typically from the YugabyteDB [latest release series](../../releases/whats-new/latest-release/); occasional edge releases will be a recent stable release. You can only have one free cluster. Free clusters that are idle are deleted after three days.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an edge release, typically from the YugabyteDB [latest release series](../../releases/whats-new/latest-release/); occasional edge releases will be a recent stable release. You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-cluster-paused); after 30 days they are deleted.
 
 Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a recent release from the YugabyteDB [stable release series](../../releases/whats-new/stable-release/).
 
@@ -192,15 +192,27 @@ Applications
 
 For more details, refer to [Connect to clusters](../cloud-connect).
 
-### How is a cluster determined to be idle?
+### Why is my cluster paused?
 
-A cluster is classified as idle and paused when the following conditions are met:
+Free clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. A paused cluster can't accept and operations until it is resumed.
 
-- There has been no activity on the cluster.
+To resume using your cluster, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
 
-### How are idle free clusters deleted?
+If you do not resume your cluster, a second notification is sent after 28 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
 
-Free clusters that are idle for 3 days are deleted automatically.
+Free clusters are deleted after 30 days of inactivity. Only paused clusters are deleted.
+
+### What qualifies as activity on a cluster?
+
+Free clusters are paused after 21 days of inactivity. To keep your cluster from being paused and then deleted, you (or, where applicable, an application connected to the database) can perform any of the following actions:
+
+- Any SELECT, UPDATE, INSERT, or DELETE database operation.
+
+- Create or delete tables.
+
+- Add or remove IP allow lists.
+
+- Resume an already paused cluster.
 
 ## Backups
 
