@@ -22,6 +22,8 @@
 #ifndef YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_
 #define YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_
 
+#include <boost/uuid/uuid_generators.hpp>
+
 #include "yb/common/common.pb.h"
 #include "yb/yql/cql/ql/ql_fwd.h"
 #include "yb/yql/cql/ql/exec/exec_context.h"
@@ -96,6 +98,8 @@ class AuditLogger {
 
   // Empty string means not in a batch processing mode.
   std::string batch_id_;
+
+  boost::mt19937 prng_;
 
   // Cache of parsed gflags, to avoid re-parsing unchanged values.
   GflagsCache gflags_cache_;
