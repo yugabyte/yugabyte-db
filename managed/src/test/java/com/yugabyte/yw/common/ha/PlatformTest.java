@@ -66,6 +66,7 @@ import play.test.Helpers;
 public class PlatformTest extends FakeDBApplication {
   Customer customer;
   Users user;
+  private String authToken;
   String clusterKey;
   Application remoteApp;
   PlatformInstance localInstance;
@@ -84,7 +85,8 @@ public class PlatformTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    user = ModelFactory.testUser(customer);
+    user = ModelFactory.testUser(customer, Users.Role.SuperAdmin);
+    authToken = user.createAuthToken();
     localEBeanServer = Ebean.getDefaultServer();
     fakeApi = new FakeApi(app, localEBeanServer);
     clusterKey = createClusterKey();
@@ -143,6 +145,7 @@ public class PlatformTest extends FakeDBApplication {
         app.injector().instanceOf(PlatformReplicationManager.class);
 
     Ebean.register(localEBeanServer, true);
+
     assertTrue("sendBackup failed", replicationManager.sendBackup(remoteInstance));
 
     assertTrue(fakeDump.exists());
@@ -171,7 +174,7 @@ public class PlatformTest extends FakeDBApplication {
             .toFile();
     assertTrue(uploadedFile.exists());
     String uploadedContents = FileUtils.readFileToString(uploadedFile, Charset.defaultCharset());
-    assertTrue(FileUtils.contentEquals(backupFile, uploadedFile));
+    assertTrue("Actual:" + uploadedContents, FileUtils.contentEquals(backupFile, uploadedFile));
   }
 
   private File createFakeDump() throws IOException {
@@ -189,7 +192,6 @@ public class PlatformTest extends FakeDBApplication {
 
   private PlatformInstance createPlatformInstance(
       UUID configUUID, String remoteAcmeOrg, boolean isLocal, boolean isLeader) {
-    String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString() + "/instance";
     JsonNode body =
         Json.newObject()
