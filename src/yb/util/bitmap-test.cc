@@ -191,7 +191,7 @@ TEST(TestBitMap, TestFindBit) {
   }
 
   num_bits = sizeof(bm) * 8;
-  for (int i = 0; i < num_bits; ++i) {
+  for (size_t i = 0; i < num_bits; ++i) {
     BitmapChange(bm, i, i & 3);
   }
 

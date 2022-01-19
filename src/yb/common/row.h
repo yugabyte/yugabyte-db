@@ -253,7 +253,7 @@ inline CHECKED_STATUS RelocateIndirectDataToArena(RowType *row, ArenaType *dst_a
   const Schema* schema = row->schema();
   // For any Slice columns, copy the sliced data into the arena
   // and update the pointers
-  for (int i = 0; i < schema->num_columns(); i++) {
+  for (size_t i = 0; i < schema->num_columns(); i++) {
     typename RowType::Cell cell = row->cell(i);
     if (cell.typeinfo()->physical_type() == BINARY) {
       if (cell.is_nullable() && cell.is_null()) {

@@ -218,11 +218,11 @@ Status PgDocOp::ClonePgsqlOps(size_t op_count) {
   SCHECK(op_count > 0, InternalError, "Table must have at least one partition");
   if (pgsql_ops_.size() < op_count) {
     pgsql_ops_.resize(op_count);
-    for (int idx = 0; idx < op_count; idx++) {
-      pgsql_ops_[idx] = CloneFromTemplate();
+    for (auto& op : pgsql_ops_) {
+      op = CloneFromTemplate();
 
       // Initialize as inactive. Turn it on when setup argument for a specific partition.
-      pgsql_ops_[idx]->set_active(false);
+      op->set_active(false);
     }
 
     // Set parallism_level_ to maximum possible of operators to be executed at one time.
@@ -234,7 +234,7 @@ Status PgDocOp::ClonePgsqlOps(size_t op_count) {
 
 void PgDocOp::MoveInactiveOpsOutside() {
   // Move inactive op to the end.
-  const auto total_op_count = pgsql_ops_.size();
+  const ssize_t total_op_count = pgsql_ops_.size();
   bool has_sorting_order = !batch_row_orders_.empty();
   ssize_t left_iter = 0;
   ssize_t right_iter = total_op_count - 1;
@@ -309,7 +309,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
 
   rows_affected_count_ = 0;
   // Check for errors reported by tablet server.
-  for (int op_index = 0; op_index < active_op_count_; op_index++) {
+  for (size_t op_index = 0; op_index < active_op_count_; op_index++) {
     RETURN_NOT_OK(pg_session_->HandleResponse(*pgsql_ops_[op_index], PgObjectId()));
 
     YBPgsqlOp *pgsql_op = pgsql_ops_[op_index].get();
@@ -584,8 +584,8 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
   // Reorganize the input arguments from Postgres to prepre for permutation generation.
   const size_t hash_column_count = table_->num_hash_key_columns();
   partition_exprs_.resize(hash_column_count);
-  for (int c_idx = 0; c_idx < hash_column_count; ++c_idx) {
-    const auto& col_expr = template_op_->request().partition_column_values(c_idx);
+  for (size_t c_idx = 0; c_idx < hash_column_count; ++c_idx) {
+    const auto& col_expr = template_op_->request().partition_column_values(narrow_cast<int>(c_idx));
     if (col_expr.has_condition()) {
       for (const auto& expr : col_expr.condition().operands(1).condition().operands()) {
         partition_exprs_[c_idx].push_back(&expr);
@@ -614,7 +614,7 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
     YBPgsqlReadOp *read_op = GetReadOp(op_index);
     auto read_request = read_op->mutable_request();
     read_request->clear_partition_column_values();
-    for (int i = 0; i < hash_column_count; ++i) {
+    for (size_t i = 0; i < hash_column_count; ++i) {
       read_request->add_partition_column_values();
     }
     read_op->set_active(false);
@@ -654,7 +654,7 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
-  for (int partition = 0; partition < partition_keys.size(); partition++) {
+  for (size_t partition = 0; partition < partition_keys.size(); partition++) {
     // Construct a new YBPgsqlReadOp.
     pgsql_ops_[partition]->set_active(true);
 
@@ -690,7 +690,7 @@ Status PgDocReadOp::PopulateSamplingOps() {
             "Number of partitions and number of partition keys are not the same");
 
   // Bind requests to partitions
-  for (int partition = 0; partition < partition_keys.size(); partition++) {
+  for (size_t partition = 0; partition < partition_keys.size(); partition++) {
     // Construct a new YBPgsqlReadOp.
     pgsql_ops_[partition]->set_active(true);
 

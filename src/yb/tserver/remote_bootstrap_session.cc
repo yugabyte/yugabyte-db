@@ -58,7 +58,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 
-DECLARE_int32(rpc_max_message_size);
+DECLARE_uint64(rpc_max_message_size);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
 namespace yb {
@@ -320,14 +320,14 @@ int64_t DetermineReadLength(int64_t bytes_remaining, int64_t requested_len) {
   // spare for other stuff in the message, like headers, other protobufs, etc.
   const int32_t kSpareBytes = 4096;
   const int32_t kDiskSectorSize = 4096;
-  int32_t system_max_chunk_size =
+  auto system_max_chunk_size =
       ((FLAGS_rpc_max_message_size - kSpareBytes) / kDiskSectorSize) * kDiskSectorSize;
   CHECK_GT(system_max_chunk_size, 0) << "rpc_max_message_size is too low to transfer data: "
                                      << FLAGS_rpc_max_message_size;
 
   // The min of the {requested, system} maxes is the effective max.
-  int64_t maxlen = (requested_len > 0) ? std::min<int64_t>(requested_len, system_max_chunk_size) :
-                                        system_max_chunk_size;
+  int64_t maxlen = requested_len > 0 ? std::min<int64_t>(requested_len, system_max_chunk_size)
+                                     : system_max_chunk_size;
   return std::min(bytes_remaining, maxlen);
 }
 
@@ -455,7 +455,8 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
       info->error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
       return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
   }
-  DCHECK(info->client_maxlen == 0 || info->data.size() <= info->client_maxlen)
+  DCHECK(info->client_maxlen == 0 ||
+         info->data.size() <= implicit_cast<size_t>(info->client_maxlen))
       << "client_maxlen: " << info->client_maxlen << ", data->size(): " << info->data.size();
 
   return Status::OK();

@@ -87,7 +87,7 @@ DECLARE_bool(TEST_pause_calculator_echo_request);
 DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
 DECLARE_bool(enable_rpc_keepalive);
 DECLARE_int32(num_connections_to_server);
-DECLARE_int32(rpc_throttle_threshold_bytes);
+DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_string(vmodule);
@@ -938,7 +938,7 @@ TEST_F(TestRpc, SendingQueueMemoryUsage) {
         kEmptyMsgLengthPrefix, kMsgLengthPrefixLength, "Empty message");
     sending.emplace_back(data_ptr, tracker);
 
-    const auto heap_allocated_bytes =
+    const size_t heap_allocated_bytes =
         MemTracker::GetTCMallocCurrentAllocatedBytes() - heap_allocated_bytes_initial;
     if (heap_allocated_bytes != current.heap_allocated_bytes) {
       latest_before_realloc = current;
@@ -1034,7 +1034,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
 
   LOG(INFO) << n_calls << " calls marked as finished.";
 
-  for (int i = 0; i < controllers.size(); ++i) {
+  for (size_t i = 0; i < controllers.size(); ++i) {
     auto& controller = controllers[i];
     ASSERT_TRUE(controller->finished());
     auto s = controller->status();
@@ -1084,7 +1084,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
   latch.Wait();
   LOG(INFO) << n_calls << " calls marked as finished.";
 
-  for (int i = 0; i < controllers.size(); ++i) {
+  for (size_t i = 0; i < controllers.size(); ++i) {
     auto& controller = controllers[i];
     ASSERT_TRUE(controller->finished());
     auto s = controller->status();

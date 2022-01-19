@@ -392,7 +392,7 @@ class ClusterLoadBalancer {
   boost::circular_buffer<ActivityInfo> cbuf_activities_;
 
   // Summary of circular buffer of load balancer activity.
-  int num_idle_runs_ = 0;
+  size_t num_idle_runs_ = 0;
   std::atomic<bool> is_idle_ {true};
 
   // Check if we are able to balance global load. With the current algorithm, we only allow for

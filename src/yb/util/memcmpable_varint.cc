@@ -219,7 +219,7 @@ static int sqlite4GetVarint64(
     *pResult = (z[0]-241)*256 + z[1] + 240;
     return 2;
   }
-  if (n < z[0]-246 ) return 0;
+  if (n < z[0]-246U ) return 0;
   if (z[0] == 249) {
     *pResult = 2288 + 256*z[1] + z[2];
     return 3;

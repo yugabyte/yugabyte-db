@@ -479,7 +479,7 @@ class RaftConsensusQuorumTest : public YBTest {
     auto leader_ids = ExtractReplicateIds(leader_entries);
     auto replica_ids = ExtractReplicateIds(replica_entries);
     ASSERT_EQ(leader_ids.size(), replica_ids.size());
-    for (int i = 0; i < leader_ids.size(); i++) {
+    for (size_t i = 0; i < leader_ids.size(); i++) {
       ASSERT_EQ(leader_ids[i].ShortDebugString(),
                 replica_ids[i].ShortDebugString());
     }

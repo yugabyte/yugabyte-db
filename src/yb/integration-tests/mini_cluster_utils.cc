@@ -44,7 +44,7 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
                                                  size_t max_remaining_txns_per_tablet) {
   MonoTime deadline = MonoTime::Now() + 15s * kTimeMultiplier;
   bool has_bad = false;
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto server = cluster->mini_tablet_server(i)->server();
     std::vector<std::shared_ptr<tablet::TabletPeer>> tablets;
     auto status = Wait([server, &tablets] {

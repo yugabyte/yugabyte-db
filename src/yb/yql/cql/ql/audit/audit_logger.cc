@@ -13,11 +13,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/audit/audit_logger.h"
+#include <fstream>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional_io.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
-#include <boost/uuid/random_generator.hpp>
 
 #include "yb/rpc/connection.h"
 
@@ -470,7 +470,7 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
   if (!regex_search(operation, m, pwd_start_regex)) {
     return operation;
   }
-  auto pwd_start_idx = m.position() + m.length() - 1;
+  size_t pwd_start_idx = m.position() + m.length() - 1;
   ssize_t pwd_length = -1;
   for (auto i = pwd_start_idx + 1; i < operation.length(); ++i) {
     if (operation[i] == '\'') {
@@ -553,6 +553,10 @@ CHECKED_STATUS AddLogEntry(const LogEntry& e) {
 //
 
 AuditLogger::AuditLogger(const QLEnv& ql_env) : ql_env_(ql_env) {
+  uint32_t seed;
+  std::ifstream fin("/dev/urandom", std::ifstream::binary);
+  fin.read(reinterpret_cast<char*>(&seed), sizeof(seed));
+  prng_.seed(seed);
 }
 
 template<class Pred>
@@ -666,7 +670,7 @@ Status AuditLogger::StartBatchRequest(size_t statements_count,
   // We cannot have sub-batches as only DMLs are allowed within a batch.
   SCHECK(batch_id_.empty(), InternalError, "Batch request mode is already active!");
 
-  batch_id_ = AsString(boost::uuids::random_generator()());
+  batch_id_ = AsString(boost::uuids::random_generator_mt19937(prng_)());
 
   auto operation = Format("BatchId:[$0] - BATCH of [$1] statements", batch_id_, statements_count);
 

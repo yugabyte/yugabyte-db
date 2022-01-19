@@ -70,6 +70,7 @@ MANIFEST_FILE_NAME = 'Manifest'
 METADATA_FILE_NAME = 'SnapshotInfoPB'
 SQL_TBSP_DUMP_FILE_NAME = 'YSQLDump_tablespaces'
 SQL_DUMP_FILE_NAME = 'YSQLDump'
+SQL_DATA_DUMP_FILE_NAME = 'YSQLDump_data'
 CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
@@ -340,6 +341,10 @@ def compare_checksums_cmd(checksum_file1, checksum_file2):
 
 def get_db_name_cmd(dump_file):
     return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
+
+
+def get_grep_enums_cmd(dump_file):
+    return "egrep '^CREATE TYPE ' " + pipes.quote(dump_file) + " || [[ $? == 1 ]]"
 
 
 def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
@@ -689,7 +694,10 @@ class YBManifest:
           "use-tablespaces": true,
 
           # Parallelism level - number of worker threads.
-          "parallelism": 8
+          "parallelism": 8,
+
+          # True for pg dump based backups.
+          "pg_based_backup": false
         },
 
         # Content of the backup folders/locations.
@@ -727,7 +735,7 @@ class YBManifest:
         self.body['version'] = "0"
 
     # Data initialization methods.
-    def init(self, snapshot_bucket):
+    def init(self, snapshot_bucket, pg_based_backup):
         # Call basic initialization by default to prevent code duplication.
         self.create_by_default(self.backup.snapshot_location(snapshot_bucket))
         self.body['version'] = "1.0"
@@ -740,13 +748,15 @@ class YBManifest:
         source['k8s'] = self.backup.is_k8s()
         source['yb-database-version'] = self.backup.database_version.string
         source['yb-masters'] = self.backup.args.masters.split(",")
-        source['tables'] = self.backup.table_names_str().split(" ")
+        if not pg_based_backup:
+            source['tables'] = self.backup.table_names_str().split(" ")
 
         # The backup properties.
         properties = self.body['properties']
         properties['platform-version'] = get_yb_backup_version_string()
         properties['parallelism'] = self.backup.args.parallelism
         properties['use-tablespaces'] = self.backup.args.use_tablespaces
+        properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
 
@@ -801,6 +811,12 @@ class YBManifest:
         for loc in locations:
             for tablet_id in locations[loc]['tablet-directories']:
                 tablet_location[tablet_id] = loc
+
+    def is_pg_based_backup(self):
+        pg_based_backup = self.body['properties'].get('pg-based-backup')
+        if pg_based_backup is None:
+            pg_based_backup = False
+        return pg_based_backup
 
 
 class YBBackup:
@@ -931,6 +947,12 @@ class YBBackup:
             '--remote_ysql_shell_binary', default=DEFAULT_REMOTE_YSQL_SHELL_PATH,
             help="Path to the remote ysql shell binary")
         parser.add_argument(
+            '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
+                                                                          "pg based backup.")
+        parser.add_argument(
+            '--detect_enums', action='store_true', default=True, help="Use it to detect enums "
+                                                                      "in schema.")
+        parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
             '--ssh_user', default=DEFAULT_YB_USER, help="Username to use for the ssh connection.")
@@ -1044,18 +1066,7 @@ class YBBackup:
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
             pool = ThreadPool(self.args.parallelism)
             self.pools.append(pool)
-            tablets_by_leader_ip = []
-
-            output = self.run_yb_admin(['list_all_tablet_servers'])
-            for line in output.splitlines():
-                if LEADING_UUID_RE.match(line):
-                    fields = split_by_space(line)
-                    ip_port = fields[1]
-                    state = fields[3]
-                    (ip, port) = ip_port.split(':')
-                    if state == 'ALIVE':
-                        tablets_by_leader_ip.append(ip)
-            tserver_ips = list(tablets_by_leader_ip)
+            tserver_ips = self.get_live_tservers()
             SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
@@ -1210,9 +1221,10 @@ class YBBackup:
             output = self.run_yb_admin(['list_all_masters'])
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    (uuid, ip_port, state, role) = split_by_tab(line)
-                    (ip, port) = ip_port.split(':')
+                    fields = split_by_tab(line)
+                    (uuid, ip_port, state, role) = (fields[0], fields[1], fields[2], fields[3])
                     if state == 'ALIVE':
+                        (ip, port) = ip_port.split(':')
                         alive_master_ip = ip
                     if role == 'LEADER':
                         break
@@ -1220,21 +1232,30 @@ class YBBackup:
 
         return self.leader_master_ip
 
+    def get_live_tservers(self):
+        tserver_ips = []
+        output = self.run_yb_admin(['list_all_tablet_servers'])
+        for line in output.splitlines():
+            if LEADING_UUID_RE.match(line):
+                fields = split_by_space(line)
+                (ip_port, state) = (fields[1], fields[3])
+                if state == 'ALIVE':
+                    (ip, port) = ip_port.split(':')
+                    tserver_ips.append(ip)
+        return tserver_ips
+
     def get_live_tserver_ip(self):
         if not self.live_tserver_ip:
-            output = self.run_yb_admin(['list_all_tablet_servers'])
-            for line in output.splitlines():
-                if LEADING_UUID_RE.match(line):
-                    fields = split_by_space(line)
-                    ip_port = fields[1]
-                    state = fields[3]
-                    (ip, port) = ip_port.split(':')
-                    if state == 'ALIVE':
-                        self.live_tserver_ip = ip
-                        break
-
-        if not self.live_tserver_ip:
-            raise BackupException("Cannot get alive TS:\n{}".format(output))
+            alive_ts_ips = self.get_live_tservers()
+            if alive_ts_ips:
+                all_master_hosts = {hp.split(':')[0] for hp in self.args.masters.split(",")}
+                selected_ts_ips = all_master_hosts.intersection(alive_ts_ips)
+                # Return a first alive TS if the IP is in the list of Master IPs.
+                # Else return just the last alive TS.
+                self.live_tserver_ip =\
+                    selected_ts_ips.pop() if selected_ts_ips else alive_ts_ips[-1]
+            else:
+                raise BackupException("Cannot get alive TS: {}".format(alive_ts_ips))
 
         return self.live_tserver_ip
 
@@ -1505,6 +1526,7 @@ class YBBackup:
         region_by_ts = {}
         tablet_leaders = []
 
+        assert self.args.table
         for i in range(0, len(self.args.table)):
             # Don't call list_tablets on a parent colocated table.
             if is_parent_colocated_table_name(self.args.table[i]):
@@ -1519,8 +1541,7 @@ class YBBackup:
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
                     fields = split_by_tab(line)
-                    tablet_id = fields[0]
-                    tablet_leader_host_port = fields[2]
+                    (tablet_id, tablet_leader_host_port) = (fields[0], fields[2])
                     (ts_host, ts_port) = tablet_leader_host_port.split(":")
 
                     if ts_host not in region_by_ts:
@@ -2254,6 +2275,77 @@ class YBBackup:
                     "'Version: <number>' in the end: {}".format(output))
         return matched.group('version')
 
+    def is_enum_present(self, sql_dump_path):
+        """
+        Detects the presence of enum in schema of a YSQL database.
+        """
+        resp = self.run_cli_tool(get_grep_enums_cmd(sql_dump_path))
+        return ' AS ENUM (' in resp if resp else False
+
+    def create_metadata_files(self):
+        """
+        :return: snapshot_id and list of sql_dump files
+        """
+        snapshot_id = None
+        dump_files = []
+        pg_based_backup = self.args.pg_based_backup
+        if self.is_ysql_keyspace():
+            sql_tbsp_dump_path = os.path.join(
+                self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME) if self.args.use_tablespaces else None
+            sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
+            db_name = keyspace_name(self.args.keyspace[0])
+            ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
+                              '--schema-only', '--dbname=' + db_name, '--file=' + sql_dump_path]
+            if sql_tbsp_dump_path:
+                logging.info("[app] Creating ysql dump for tablespaces to {}".format(
+                                sql_tbsp_dump_path))
+                self.run_ysql_dumpall(['--tablespaces-only', '--file=' + sql_tbsp_dump_path])
+                dump_files.append(sql_tbsp_dump_path)
+            else:
+                ysql_dump_args.append('--no-tablespaces')
+
+            logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
+                            db_name, sql_dump_path))
+            self.run_ysql_dump(ysql_dump_args)
+
+            if not pg_based_backup and self.args.detect_enums:
+                logging.info('Detecting enum in {}'.format(sql_dump_path))
+                pg_based_backup = self.is_enum_present(sql_dump_path)
+
+            dump_files.append(sql_dump_path)
+            if pg_based_backup:
+                sql_data_dump_path = os.path.join(self.get_tmp_dir(), SQL_DATA_DUMP_FILE_NAME)
+                logging.info("[app] Performing ysql_dump based backup!")
+                self.run_ysql_dump(
+                        ['--include-yb-metadata', '--serializable-deferrable', '--data-only',
+                            '--dbname=' + db_name, '--file=' + sql_data_dump_path])
+                dump_files.append(sql_data_dump_path)
+
+        if not self.args.snapshot_id and not pg_based_backup:
+            snapshot_id = self.create_snapshot()
+            logging.info("Snapshot started with id: %s" % snapshot_id)
+            # TODO: Remove the following try-catch for compatibility to un-relax the code, after
+            #       we ensure nobody uses versions < v2.1.4 (after all move to >= v2.1.8).
+            try:
+                # With 'update_table_list=True' it runs: 'yb-admin list_snapshots SHOW_DETAILS'
+                # to get updated list of backed up namespaces and tables. Note that the last
+                # argument 'SHOW_DETAILS' is not supported in old YB versions (< v2.1.4).
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
+                                       update_table_list=True)
+            except CompatibilityException as ex:
+                logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
+                # In the compatibility mode repeat the command in old style
+                # (without the new command line argument 'SHOW_DETAILS').
+                # With 'update_table_list=False' it runs: 'yb-admin list_snapshots'.
+                self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
+                                       update_table_list=False)
+
+            if not self.args.no_snapshot_deleting:
+                logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
+                atexit.register(self.delete_created_snapshot, snapshot_id)
+
+        return (snapshot_id, dump_files)
+
     def create_and_upload_metadata_files(self, snapshot_bucket):
         """
         Generates and uploads metadata files describing the given snapshot to the target
@@ -2272,10 +2364,6 @@ class YBBackup:
 
         is_ysql = self.is_ysql_keyspace()
         if is_ysql:
-            sql_tbsp_dump_path = os.path.join(
-                self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME) if self.args.use_tablespaces else None
-            sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
-            db_name = keyspace_name(self.args.keyspace[0])
             start_version = self.get_ysql_catalog_version()
 
         stored_keyspaces = self.args.keyspace
@@ -2286,44 +2374,9 @@ class YBBackup:
         while num_retry > 0:
             num_retry = num_retry - 1
 
-            if not self.args.snapshot_id:
-                snapshot_id = self.create_snapshot()
-                logging.info("Snapshot started with id: %s" % snapshot_id)
-                # TODO: Remove the following try-catch for compatibility to un-relax the code, after
-                #       we ensure nobody uses versions < v2.1.4 (after all move to >= v2.1.8).
-                try:
-                    # With 'update_table_list=True' it runs: 'yb-admin list_snapshots SHOW_DETAILS'
-                    # to get updated list of backed up namespaces and tables. Note that the last
-                    # argument 'SHOW_DETAILS' is not supported in old YB versions (< v2.1.4).
-                    self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
-                                           update_table_list=True)
-                except CompatibilityException as ex:
-                    logging.info("Ignoring the exception in the compatibility mode: {}".format(ex))
-                    # In the compatibility mode repeat the command in old style
-                    # (without the new command line argument 'SHOW_DETAILS').
-                    # With 'update_table_list=False' it runs: 'yb-admin list_snapshots'.
-                    self.wait_for_snapshot(snapshot_id, 'creating', CREATE_SNAPSHOT_TIMEOUT_SEC,
-                                           update_table_list=False)
-
-                if not self.args.no_snapshot_deleting:
-                    logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
-                    atexit.register(self.delete_created_snapshot, snapshot_id)
+            (snapshot_id, dump_files) = self.create_metadata_files()
 
             if is_ysql:
-                ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable',
-                                  '--create', '--schema-only',
-                                  '--dbname=' + db_name, '--file=' + sql_dump_path]
-                if sql_tbsp_dump_path:
-                    logging.info("[app] Creating ysql dump for tablespaces to {}".format(
-                                 sql_tbsp_dump_path))
-                    self.run_ysql_dumpall(['--tablespaces-only', '--file=' + sql_tbsp_dump_path])
-                else:
-                    ysql_dump_args.append('--no-tablespaces')
-
-                logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
-                             db_name, sql_dump_path))
-                self.run_ysql_dump(ysql_dump_args)
-
                 final_version = self.get_ysql_catalog_version()
                 logging.info('[app] YSQL catalog versions: {} - {}'.format(
                              start_version, final_version))
@@ -2344,33 +2397,30 @@ class YBBackup:
         if num_retry == 0:
             raise BackupException("Couldn't create metafiles due to catalog changes")
 
-        metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
-        logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
-        self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path],
-                          run_ip=self.get_main_host_ip())
-
         snapshot_filepath = self.snapshot_location(snapshot_bucket)
-        self.upload_metadata_and_checksum(metadata_path,
-                                          os.path.join(snapshot_filepath, METADATA_FILE_NAME))
+        if snapshot_id:
+            metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
+            logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
+            self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path],
+                              run_ip=self.get_main_host_ip())
 
-        if is_ysql:
-            if sql_tbsp_dump_path:
-                self.upload_metadata_and_checksum(
-                    sql_tbsp_dump_path, os.path.join(snapshot_filepath, SQL_TBSP_DUMP_FILE_NAME))
-
+            self.upload_metadata_and_checksum(metadata_path,
+                                              os.path.join(snapshot_filepath, METADATA_FILE_NAME))
+        for file_path in dump_files:
             self.upload_metadata_and_checksum(
-                sql_dump_path, os.path.join(snapshot_filepath, SQL_DUMP_FILE_NAME))
+                file_path, os.path.join(snapshot_filepath, os.path.basename(file_path)))
 
         return snapshot_id
 
-    def create_and_upload_manifest(self, tablet_leaders, snapshot_bucket):
+    def create_and_upload_manifest(self, tablet_leaders, snapshot_bucket, pg_based_backup):
         """
         Generates and uploads metadata file describing the backup properties.
         :param tablet_leaders: a list of (tablet_id, tserver_ip, tserver_region) tuples
         :param snapshot_bucket: the bucket directory under which to upload the data directories
         """
-        self.manifest.init(snapshot_bucket)
-        self.manifest.init_locations(tablet_leaders, snapshot_bucket)
+        self.manifest.init(snapshot_bucket, pg_based_backup)
+        if not pg_based_backup:
+            self.manifest.init_locations(tablet_leaders, snapshot_bucket)
 
         # Create Manifest file and upload it to tmp dir on the main host.
         metadata_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
@@ -2432,28 +2482,35 @@ class YBBackup:
         self.timer.log_new_phase("Create and upload snapshot metadata")
         snapshot_id = self.create_and_upload_metadata_files(snapshot_bucket)
 
+        pg_based_backup = snapshot_id is None
         snapshot_locations = {}
         if self.args.upload:
-            self.timer.log_new_phase("Find tablet leaders")
-            tablet_leaders = self.find_tablet_leaders()
-
-            self.timer.log_new_phase("Upload snapshot directories")
-            self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_bucket)
-            self.create_and_upload_manifest(tablet_leaders, snapshot_bucket)
-
-            snapshot_filepath = self.snapshot_location(snapshot_bucket)
-            logging.info("[app] Backed up tables {} to {} successfully!".format(
-                self.table_names_str(), snapshot_filepath))
-            snapshot_locations["snapshot_url"] = snapshot_filepath
-
-            if self.per_region_backup():
-                for region in self.args.region:
-                    regional_filepath = self.snapshot_location(snapshot_bucket, region)
-                    logging.info("[app] Path for region '{}': {}".format(region, regional_filepath))
-                    snapshot_locations[region] = regional_filepath
-
             if self.args.backup_keys_source:
                 self.upload_encryption_key_file()
+
+            snapshot_filepath = self.snapshot_location(snapshot_bucket)
+            snapshot_locations["snapshot_url"] = snapshot_filepath
+
+            if pg_based_backup:
+                self.create_and_upload_manifest(None, snapshot_bucket, pg_based_backup)
+                logging.info("[app] PG based backup successful!")
+            else:
+                self.timer.log_new_phase("Find tablet leaders")
+                tablet_leaders = self.find_tablet_leaders()
+
+                self.timer.log_new_phase("Upload snapshot directories")
+                self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_bucket)
+                self.create_and_upload_manifest(tablet_leaders, snapshot_bucket, pg_based_backup)
+                logging.info("[app] Backed up tables {} to {} successfully!".format(
+                    self.table_names_str(), snapshot_filepath))
+
+                if self.per_region_backup():
+                    for region in self.args.region:
+                        regional_filepath = self.snapshot_location(snapshot_bucket, region)
+                        logging.info("[app] Path for region '{}': {}".format(
+                            region, regional_filepath))
+                        snapshot_locations[region] = regional_filepath
+
         else:
             snapshot_locations["snapshot_url"] = "UPLOAD_SKIPPED"
 
@@ -2513,6 +2570,7 @@ class YBBackup:
         else:
             self.create_remote_tmp_dir(self.get_main_host_ip())
 
+        dump_files = []
         src_manifest_path = os.path.join(self.args.backup_location, MANIFEST_FILE_NAME)
         manifest_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
         try:
@@ -2540,12 +2598,9 @@ class YBBackup:
                 self.args.backup_location, SQL_TBSP_DUMP_FILE_NAME)
             sql_tbsp_dump_path = os.path.join(self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME)
             self.download_file(src_sql_tbsp_dump_path, sql_tbsp_dump_path)
+            dump_files.append(sql_tbsp_dump_path)
         else:
             sql_tbsp_dump_path = None
-
-        src_metadata_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
-        metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
-        self.download_file(src_metadata_path, metadata_path)
 
         src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
         sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
@@ -2562,12 +2617,31 @@ class YBBackup:
                              format(src_sql_dump_path, ex))
                 sql_dump_path = None
 
-        return (metadata_path, sql_tbsp_dump_path, sql_dump_path)
+        if sql_dump_path:
+            dump_files.append(sql_dump_path)
+            if self.manifest.is_pg_based_backup():
+                src_sql_data_dump_path = os.path.join(
+                        self.args.backup_location, SQL_DATA_DUMP_FILE_NAME)
+                sql_data_dump_path = os.path.join(self.get_tmp_dir(), SQL_DATA_DUMP_FILE_NAME)
+                try:
+                    self.download_file(src_sql_data_dump_path, sql_data_dump_path)
+                except subprocess.CalledProcessError as ex:
+                    raise ex
+                dump_files.append(sql_data_dump_path)
+                logging.info('Skipping ' + METADATA_FILE_NAME + ' metadata file downloading.')
+                return (None, dump_files)
+
+        src_metadata_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
+        metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
+        self.download_file(src_metadata_path, metadata_path)
+
+        return (metadata_path, dump_files)
 
     def import_ysql_dump(self, dump_file_path):
         """
         Import the YSQL dump using the provided file.
         """
+        new_db_name = None
         if self.args.keyspace:
             cmd = get_db_name_cmd(dump_file_path)
 
@@ -2605,6 +2679,7 @@ class YBBackup:
                 self.run_ssh_cmd(cmd, self.get_main_host_ip())
 
         self.run_ysql_shell(['--echo-all', '--file=' + dump_file_path])
+        return new_db_name
 
     def import_snapshot(self, metadata_file_path):
         """
@@ -2684,11 +2759,17 @@ class YBBackup:
         tablets_by_tserver_ip = {}
         for new_id in snapshot_metadata['tablet']:
             output = self.run_yb_admin(['list_tablet_servers', new_id])
+            num_ts = 0
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    (ts_uuid, ts_ip_port, role) = split_by_tab(line)
-                    (ts_ip, ts_port) = ts_ip_port.split(':')
-                    tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
+                    fields = split_by_tab(line)
+                    (ts_ip_port, role) = (fields[1], fields[2])
+                    if role == 'LEADER' or role == 'FOLLOWER':
+                        (ts_ip, ts_port) = ts_ip_port.split(':')
+                        tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
+                        num_ts += 1
+            if num_ts == 0:
+                raise BackupException("No alive TS found for tablet {}:\n{}".format(new_id, output))
 
         return tablets_by_tserver_ip
 
@@ -2769,16 +2850,32 @@ class YBBackup:
         #  - Verify that we are restoring a keyspace/namespace (no individual tables for pitr)
 
         logging.info('[app] Restoring backup from {}'.format(self.args.backup_location))
-        (metadata_file_path, tbsp_dump_file_path, dump_file_path) = self.download_metadata_file()
+        (metadata_file_path, dump_file_paths) = self.download_metadata_file()
+        if len(dump_file_paths):
+            self.timer.log_new_phase("Create objects via YSQL dumps")
 
-        self.timer.log_new_phase("Create tables via YSQL dump files")
-        if tbsp_dump_file_path:
-            logging.info('[app] Create tablespaces from ' + tbsp_dump_file_path)
-            self.import_ysql_dump(tbsp_dump_file_path)
+        for dump_file_path in dump_file_paths:
+            dump_file = os.path.basename(dump_file_path)
+            if dump_file == SQL_TBSP_DUMP_FILE_NAME:
+                logging.info('[app] Create tablespaces from {}'.format(dump_file_path))
+                self.import_ysql_dump(dump_file_path)
+            elif dump_file == SQL_DUMP_FILE_NAME:
+                logging.info('[app] Create YSQL tables from {}'.format(dump_file_path))
+                new_db_name = self.import_ysql_dump(dump_file_path)
+            elif dump_file == SQL_DATA_DUMP_FILE_NAME:
+                # Note: YSQLDump_data must be last in the dump file list.
+                self.timer.log_new_phase("Apply complete YSQL data dump")
+                ysqlsh_args = ['--file=' + dump_file_path]
+                if new_db_name:
+                    ysqlsh_args += ['--dbname=' + new_db_name]
 
-        if dump_file_path:
-            logging.info('[app] Create tables via from ' + dump_file_path)
-            self.import_ysql_dump(dump_file_path)
+                self.run_ysql_shell(ysqlsh_args)
+
+                # Skipping Snapshot loading & restoring because
+                # PG based backup means only complete YSQL Data Dump applying.
+                logging.info('[app] Restored PG based backup successfully!')
+                print(json.dumps({"success": True}))
+                return
 
         self.timer.log_new_phase("Import snapshot")
         snapshot_metadata = self.import_snapshot(metadata_file_path)

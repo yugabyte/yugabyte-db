@@ -420,8 +420,9 @@ Status SecureRefiner::Send(OutboundDataPtr data) {
   for (const auto& buf : queue) {
     Slice slice(buf.data(), buf.size());
     for (;;) {
-      auto len = SSL_write(ssl_.get(), slice.data(), narrow_cast<int>(slice.size()));
-      if (len == slice.size()) {
+      int slice_size = narrow_cast<int>(slice.size());
+      auto len = SSL_write(ssl_.get(), slice.data(), slice_size);
+      if (len == slice_size) {
         break;
       }
       auto error = len <= 0 ? SSL_get_error(ssl_.get(), len) : SSL_ERROR_NONE;
@@ -449,8 +450,9 @@ Result<bool> SecureRefiner::WriteEncrypted(OutboundDataPtr data) {
     return data ? STATUS(NetworkError, "No pending data during write") : Result<bool>(false);
   }
   RefCntBuffer buf(pending);
-  auto len = BIO_read(bio_.get(), buf.data(), narrow_cast<int>(buf.size()));
-  LOG_IF_WITH_PREFIX(DFATAL, len != buf.size())
+  int buf_size = narrow_cast<int>(buf.size());
+  auto len = BIO_read(bio_.get(), buf.data(), buf_size);
+  LOG_IF_WITH_PREFIX(DFATAL, len != buf_size)
       << "BIO_read was not full: " << buf.size() << ", read: " << len;
   VLOG_WITH_PREFIX(4) << "Write encrypted: " << len << ", " << AsString(data);
   RETURN_NOT_OK(stream_->SendToLower(std::make_shared<SingleBufferOutboundData>(
@@ -528,7 +530,7 @@ void SecureRefiner::DecryptReceived() {
       break;
     }
     total += res;
-    if (res < iov.iov_len) {
+    if (implicit_cast<size_t>(res) < iov.iov_len) {
       break;
     }
   }
