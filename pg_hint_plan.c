@@ -216,8 +216,12 @@ static const char *HintTypeName[] = {
 	"leading",
 	"set",
 	"rows",
-	"parallel"
+	"parallel",
+	"memoize"
 };
+
+StaticAssertDecl(sizeof(HintTypeName) / sizeof(char *) == NUM_HINT_TYPE,
+				 "HintTypeName and HintType don't match");
 
 /* hint status */
 typedef enum HintStatus
