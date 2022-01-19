@@ -92,34 +92,34 @@ using System.Linq;
 
 namespace ConsoleApp.PostgreSQL
 {
-   internal class Program
-   {
-       private static void Main()
-       {
-           using (var db = new BloggingContext())
-           {
-               // Note: This sample requires the database to be created before running.
-               //Console.WriteLine($"Database path: {db.DbPath}.");
+    internal class Program
+    {
+        private static void Main()
+        {
+            using (var db = new BloggingContext())
+            {
+                // Note: This sample requires the database to be created before running.
+                // Console.WriteLine($"Database path: {db.DbPath}.");
 
-               // Create
-               Console.WriteLine("Inserting a new blog");
-               db.Add(new Blog { Url = "http://blogs.abc.com/adonet" });
-               db.SaveChanges();
+                // Create
+                Console.WriteLine("Inserting a new blog");
+                db.Add(new Blog { Url = "http://blogs.abc.com/adonet" });
+                db.SaveChanges();
 
-               // Read
+                // Read
                 Console.WriteLine("Querying for a blog");
                 var blog = db.Blogs
                     .OrderBy(b => b.BlogId)
                     .First();
                 Console.WriteLine("ID :" + blog.BlogId + "\nURL:" + blog.Url);
 
-               //Delete
+                // Delete
                 Console.WriteLine("Deleting the blog");
                 db.Remove(blog);
                 db.SaveChanges();
-           }
-       }
-   }
+            }
+        }
+    }
 }
 ```
 
