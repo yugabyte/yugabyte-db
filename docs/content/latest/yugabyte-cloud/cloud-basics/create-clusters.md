@@ -82,7 +82,7 @@ If you are creating a standard cluster, set the following additional options:
 
 - **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
 
-- **Database Version**: By default, clusters are deployed using a recent build from the Stable release series. Free clusters are always deployed with an edge release (typically from the Latest release series, but occasionally a new stable release). If you want to use an edge release for a standard cluster, click **Advanced** and choose a release. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). Free clusters are always deployed with an [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use an edge release for a standard cluster, click **Advanced** and choose a release. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 Cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
