@@ -364,6 +364,21 @@ CoarseMonoClock::time_point CoarseMonoClock::now() {
   return time_point(duration(nanos));
 }
 
+template <>
+CoarseMonoClock::Duration ClockResolution<CoarseMonoClock>() {
+#if defined(__APPLE__)
+  return std::chrono::duration_cast<CoarseMonoClock::Duration>(
+      std::chrono::steady_clock::duration(1));
+#else
+  struct timespec res;
+  if (clock_getres(CLOCK_MONOTONIC_COARSE, &res) == 0) {
+    auto resolution = std::chrono::seconds(res.tv_sec) + std::chrono::nanoseconds(res.tv_nsec);
+    return std::chrono::duration_cast<CoarseMonoClock::Duration>(resolution);
+  }
+  return CoarseMonoClock::Duration(1);
+#endif // defined(__APPLE__)
+}
+
 std::string ToString(CoarseMonoClock::TimePoint time_point) {
   return MonoDelta(time_point.time_since_epoch()).ToString();
 }
