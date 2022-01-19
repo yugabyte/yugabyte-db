@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -97,7 +97,8 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private Config globalConfig() {
     Config config =
         getConfigForScope(GLOBAL_SCOPE_UUID, "Global Runtime Config (" + GLOBAL_SCOPE_UUID + ")")
-            .withFallback(appConfig);
+            .withFallback(appConfig)
+            .resolve();
     LOG.trace("globalConfig : {}", config);
     return config;
   }
