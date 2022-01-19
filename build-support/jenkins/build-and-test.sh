@@ -611,6 +611,24 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   log "Finished building Java code (see timing information above)"
 fi
 
+# It is important to do these LTO linking steps before building the package.
+if should_use_lto; then
+  log "Using LTO. Replacing the yb-tserver binary with an LTO-enabled one."
+  log "See below for the file size and linked shared libraries."
+  (
+    set -x
+    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+        --build-root "$BUILD_ROOT" \
+        --file-regex "^.*/yb-tserver$" \
+        --lto-output-suffix="" \
+        link-whole-program
+    ls -l "$BUILD_ROOT/bin/yb-tserver"
+    ldd "$BUILD_ROOT/bin/yb-tserver"
+  )
+else
+  log "Not using LTO: YB_COMPILER_TYPE=${YB_COMPILER_TYPE}, build_type=${build_type}"
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Now that that all C++ and Java code has been built, test creating a package.
 #
@@ -724,22 +742,6 @@ set_sanitizer_runtime_options
 export YB_GZIP_PER_TEST_METHOD_LOGS=1
 export YB_GZIP_TEST_LOGS=1
 export YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS=1
-
-if should_use_lto; then
-  log "Using LTO"
-  (
-    set -x
-    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-        --build-root "$BUILD_ROOT" \
-        --file-regex "^.*/yb-tserver$" \
-        --lto-output-suffix="" \
-        link-whole-program
-    ls -l "$BUILD_ROOT/bin/yb-tserver"
-    ldd "$BUILD_ROOT/bin/yb-tserver"
-  )
-else
-  log "Not using LTO: YB_COMPILER_TYPE=${YB_COMPILER_TYPE}, build_type=${build_type}"
-fi
 
 if [[ $YB_COMPILE_ONLY != "1" ]]; then
   if spark_available; then
