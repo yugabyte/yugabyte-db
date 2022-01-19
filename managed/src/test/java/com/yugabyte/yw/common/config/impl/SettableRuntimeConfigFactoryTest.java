@@ -23,11 +23,11 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import io.ebean.Model;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import io.ebean.Model;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -42,6 +42,7 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public static final String YB_CUSTOMER_RUNTIME_ONLY_KEY = "yb.runtime.customer";
   public static final String YB_PROVIDER_RUNTIME_ONLY_KEY = "yb.runtime.provider";
   public static final String YB_UNIVERSE_RUNTIME_ONLY_KEY = "yb.runtime.universe";
+  private static final String YB_CLOUD_ENABLED_KEY = "yb.cloud.enabled";
 
   // Key not defined in any scope
   public static final String YB_NOT_PRESENT_KEY = "yb.not.present";
@@ -63,7 +64,9 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
           YB_STATIC_ONLY_KEY,
           Scope.STATIC.toString(),
           YB_OVERRIDDEN_KEY,
-          Scope.STATIC.toString());
+          Scope.STATIC.toString(),
+          YB_CLOUD_ENABLED_KEY,
+          Boolean.TRUE);
 
   // overrides in global scope:
   private static final Set<String> globalConfigSet =

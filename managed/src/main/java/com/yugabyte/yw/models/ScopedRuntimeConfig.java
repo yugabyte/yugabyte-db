@@ -107,7 +107,7 @@ public class ScopedRuntimeConfig extends Model {
 
   @Override
   public String toString() {
-    if (uuid == GLOBAL_SCOPE_UUID) {
+    if (GLOBAL_SCOPE_UUID.equals(uuid)) {
       return "ScopedRuntimeConfig(GLOBAL_SCOPE)";
     } else {
       return "ScopedRuntimeConfig{"

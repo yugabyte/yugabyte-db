@@ -2,20 +2,17 @@ package com.yugabyte.yw.controllers;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import java.util.List;
-import java.util.concurrent.CompletionStage;
-
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
-
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import java.util.List;
+import java.util.concurrent.CompletionStage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.mvc.Action;
 import play.mvc.Http.Context;
 import play.mvc.Result;
 import play.routing.Router;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class AuditAction extends Action.Simple {
 
@@ -61,7 +58,8 @@ public class AuditAction extends Action.Simple {
 
                   if (isAudited != shouldBeAudited) {
                     throw new PlatformServiceException(
-                        INTERNAL_SERVER_ERROR, " Mismatch in Audit Logging intent.");
+                        INTERNAL_SERVER_ERROR,
+                        " Mismatch in Audit Logging intent for " + ctx.request().path());
                   }
                 }
                 return result;
