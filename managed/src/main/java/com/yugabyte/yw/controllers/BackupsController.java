@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
@@ -144,6 +145,14 @@ public class BackupsController extends AuthenticatedController {
         && (taskParams.backupStorageInfoList == null
             || taskParams.backupStorageInfoList.isEmpty())) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
+    }
+
+    CustomerConfig customerConfig =
+        customerConfigService.getOrBadRequest(
+            customerUUID, taskParams.backupData.storageConfigUUID);
+    if (!customerConfig.getState().equals(ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
     }
 
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);

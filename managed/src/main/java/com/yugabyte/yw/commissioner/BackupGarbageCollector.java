@@ -2,8 +2,8 @@ package com.yugabyte.yw.commissioner;
 
 import akka.actor.ActorSystem;
 import com.amazonaws.SDKGlobalConfiguration;
+import com.cronutils.utils.VisibleForTesting;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
@@ -43,6 +44,8 @@ public class BackupGarbageCollector {
   private final TableManagerYb tableManagerYb;
 
   private final CustomerConfigService customerConfigService;
+
+  private AtomicBoolean running = new AtomicBoolean(false);
 
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
@@ -73,18 +76,51 @@ public class BackupGarbageCollector {
 
   @VisibleForTesting
   void scheduleRunner() {
+    if (!running.compareAndSet(false, true)) {
+      log.info("Previous Backup Garbage Collector still running");
+      return;
+    }
+
     log.info("Running Backup Garbage Collector");
     try {
-      Customer.getAll()
-          .forEach(
-              (customer) -> {
-                List<Backup> backupList = Backup.findAllBackupsQueuedForDeletion(customer.uuid);
-                if (backupList != null) {
-                  backupList.forEach((backup) -> deleteBackup(customer.uuid, backup.backupUUID));
-                }
-              });
+      List<Customer> customersList = Customer.getAll();
+
+      // Delete the backups associated with customer storage config which are in QueuedForDeletion
+      // state.
+      // After Deleting all associated backups we can delete the storage config.
+      customersList.forEach(
+          (customer) -> {
+            List<CustomerConfig> configList =
+                CustomerConfig.getAllStorageConfigsQueuedForDeletion(customer.uuid);
+            configList.forEach(
+                (config) -> {
+                  try {
+                    List<Backup> backupList =
+                        Backup.findAllBackupsQueuedForDeletionWithCustomerConfig(
+                            config.configUUID, customer.uuid);
+                    backupList.forEach(backup -> deleteBackup(customer.uuid, backup.backupUUID));
+                  } catch (Exception e) {
+                    log.error(
+                        "Error occured while deleting backups associated with {} storage config",
+                        config.configName);
+                  } finally {
+                    config.delete();
+                    log.info("Customer Storage config {} is deleted", config.configName);
+                  }
+                });
+          });
+
+      customersList.forEach(
+          (customer) -> {
+            List<Backup> backupList = Backup.findAllBackupsQueuedForDeletion(customer.uuid);
+            if (backupList != null) {
+              backupList.forEach((backup) -> deleteBackup(customer.uuid, backup.backupUUID));
+            }
+          });
     } catch (Exception e) {
       log.error("Error running backup garbage collector", e);
+    } finally {
+      running.set(false);
     }
   }
 

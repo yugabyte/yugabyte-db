@@ -26,16 +26,19 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
@@ -67,6 +70,8 @@ public class CreateBackup extends UniverseTaskBase {
   protected BackupTableParams params() {
     return (BackupTableParams) taskParams;
   }
+
+  @Inject CustomerConfigService customerConfigService;
 
   @Override
   public void run() {
@@ -206,6 +211,14 @@ public class CreateBackup extends UniverseTaskBase {
 
         if (tablesToBackup.isEmpty()) {
           throw new RuntimeException("Invalid Keyspace or no tables to backup");
+        }
+
+        // Check if the storage config is in active state or not.
+        CustomerConfig customerConfig =
+            customerConfigService.getOrBadRequest(
+                params().customerUuid, params().storageConfigUUID);
+        if (!customerConfig.getState().equals(ConfigState.Active)) {
+          throw new RuntimeException("Storage config cannot be used as it is not in Active state");
         }
 
         subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);

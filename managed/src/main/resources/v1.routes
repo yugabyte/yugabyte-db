@@ -71,7 +71,9 @@ DELETE  /customers/:cUUID/providers/:pUUID/instance_types/:code                c
 POST    /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.create(cUUID: java.util.UUID)
 GET     /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.list(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/configs/:configUUID                                  com.yugabyte.yw.controllers.CustomerConfigController.edit(cUUID: java.util.UUID, configUUID: java.util.UUID)
+PUT     /customers/:cUUID/configs/:configUUID/edit                             com.yugabyte.yw.controllers.CustomerConfigController.editYb(cUUID: java.util.UUID, configUUID: java.util.UUID)
 DELETE  /customers/:cUUID/configs/:configUUID                                  com.yugabyte.yw.controllers.CustomerConfigController.delete(cUUID: java.util.UUID, configUUID: java.util.UUID, isDeleteBackups:Boolean ?= false)
+DELETE  /customers/:cUUID/configs/:configUUID/delete                           com.yugabyte.yw.controllers.CustomerConfigController.deleteYb(cUUID: java.util.UUID, configUUID: java.util.UUID, isDeleteBackups:Boolean ?= false)
 
 #---------------------------------------------------------------------------------------------------
 #                       Runtime Config

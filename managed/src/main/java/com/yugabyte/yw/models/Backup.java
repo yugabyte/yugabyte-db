@@ -415,7 +415,22 @@ public class Backup extends Model {
     backupList =
         backupList
             .stream()
-            .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
+            .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
+            .collect(Collectors.toList());
+    return backupList;
+  }
+
+  public static List<Backup> findAllNonProgressBackupsWithCustomerConfig(
+      UUID customerConfigUUID, UUID customerUUID) {
+    List<Backup> backupList =
+        find.query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .notIn("state", IN_PROGRESS_STATES)
+            .findList();
+    backupList =
+        backupList
+            .stream()
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList;
