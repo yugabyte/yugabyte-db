@@ -14,6 +14,7 @@
 #ifndef YB_DOCDB_CQL_OPERATION_H
 #define YB_DOCDB_CQL_OPERATION_H
 
+#include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/typedefs.h"
 
@@ -52,14 +53,15 @@ class QLWriteOperation :
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
-  CHECKED_STATUS ApplyForJsonOperators(std::unordered_map<ColumnIdRep, QLValue>* res_map,
-                                       const QLColumnValuePB& column_value,
-                                       const DocOperationApplyData& data,
-                                       const DocPath& sub_path, const MonoDelta& ttl,
-                                       const UserTimeMicros& user_timestamp,
-                                       const ColumnSchema& column,
-                                       QLTableRow* current_row,
-                                       bool is_insert);
+  CHECKED_STATUS ApplyForJsonOperators(
+      std::unordered_map<ColumnIdRep, rapidjson::Document>* res_map,
+      const QLColumnValuePB& column_value,
+      const DocOperationApplyData& data,
+      const DocPath& sub_path, const MonoDelta& ttl,
+      const UserTimeMicros& user_timestamp,
+      const ColumnSchema& column,
+      QLTableRow* current_row,
+      bool is_insert);
 
   CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                        const QLTableRow& current_row,
