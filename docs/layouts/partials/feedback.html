@@ -5,12 +5,12 @@
       <form class="buttons" id="feedbackPositiveForm">
         <input type="hidden" id="action_type" name="action_type" value="docs-feedback-positive">
         <input type="hidden" id="action_payload_from" name="action_payload[from]" value='footer'>
-        <input type="hidden" id="action_payload_feedback_url" name="action_payload[feedback_url]" value='{{ .URL }}'>
+        <input type="hidden" id="action_payload_feedback_url" name="action_payload[feedback_url]" value='{{ .Permalink }}'>
         <button type="submit" class="button_yes small">Yes</button>
         <button class="button_no small">No</button>
       </form>
     </div>
-    
+
   <div class="widget-wrapper">
     {{ partialCached "feedback_widget" . }}
   </div>
@@ -19,13 +19,13 @@
 <script>
     document.addEventListener("DOMContentLoaded", function() {
       "use strict";
-      
+
       const widget = $('.feedback_widget');
       const caption = $('#feedback .survey .caption');
       const buttons = $('#feedback .survey .buttons');
       const widgetwrapper = $('#feedback .widget-wrapper');
       const survey = $('#feedback .survey');
-      
+
 
       $(document).on('feedback:reset', function(e) {
         widgetwrapper.removeClass('active');
@@ -39,13 +39,13 @@
               caption.html('Thanks for your feedback!');
               buttons.fadeOut(300);
               break;
-          
+
             case 'no':
               $(document).trigger('feedback:reset');
               widget.addClass('active');
               widgetwrapper.addClass('active');
               break;
-          
+
             default:
               break;
           }
@@ -55,5 +55,5 @@
         setupRegistrationForm('#feedbackPositiveForm', false);
       }
     });
-  
+
 </script>
