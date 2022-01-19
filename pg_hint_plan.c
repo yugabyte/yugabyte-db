@@ -1081,12 +1081,18 @@ HintStateDelete(HintState *hstate)
 	if (hstate->hint_str)
 		pfree(hstate->hint_str);
 
-	for (i = 0; i < hstate->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
+	for (i = 0; i < hstate->nall_hints ; i++)
 		hstate->all_hints[i]->delete_func(hstate->all_hints[i]);
 	if (hstate->all_hints)
 		pfree(hstate->all_hints);
 	if (hstate->parent_index_infos)
 		list_free(hstate->parent_index_infos);
+
+	/*
+	 * We have another few or dozen of palloced block in the struct, but don't
+	 * bother completely clean up all of them since they will be cleaned-up at
+	 * the end of this query.
+	 */
 }
 
 /*
