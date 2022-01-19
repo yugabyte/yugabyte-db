@@ -194,7 +194,7 @@ For more details, refer to [Connect to clusters](../cloud-connect).
 
 ### Why is my cluster paused?
 
-Free clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. A paused cluster can't accept and operations until it is resumed.
+Free clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. You can't perform any operations on a paused cluster until it is resumed.
 
 To resume using your cluster, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
 
