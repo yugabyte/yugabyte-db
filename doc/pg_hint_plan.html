@@ -121,7 +121,7 @@ DELETE 1
 <p>The hint table is owned by the creator user and having the default privileges at the time of creation during CREATE EXTENSION. Table hints are prioritized then comment hits.</p>
 
 <h3 id="hint-group">The types of hints</h3>
-<p>Hinting phrases are classified into six types based on what kind of object and how they can affect planning. Scaning methods, join methods, joining order, row number correction, parallel query and GUC setting. You will see the lists of hint phrases of each type in <a href="hint_list.html">Hint list</a>.</p>
+<p>Hinting phrases are classified into six types based on what kind of object and how they can affect planning. Scanning methods, join methods, joining order, row number correction, parallel query and GUC setting. You will see the lists of hint phrases of each type in <a href="hint_list.html">Hint list</a>.</p>
 
 <h4>Hints for scan methods </h4>
 <p>Scan method hints enforce specific scanning method on the target table. pg_hint_plan recognizes the target table by alias names if any. They are 'SeqScan' , 'IndexScan' and so on in this kind of hint.</p>
@@ -223,7 +223,7 @@ postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
 </pre>
 
 <h3 id="hint-GUC">GUC parameters for pg_hint_plan</h3>
-<p>GUC parameters below affect the behavior of pg_hint_planpg_hint_plan.</p>
+<p>GUC parameters below affect the behavior of pg_hint_plan.</p>
 <table>
 <thead>
 <tr>
@@ -233,7 +233,7 @@ postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
 <tr><td>pg_hint_plan.enable_hint</td>
   <td>True enables pg_hint_plan.</td><td>on</td></tr>
 <tr><td>pg_hint_plan.enable_hint_table</td>
-  <td>True enbles hinting by table. true or false.</td><td>off</td></tr>
+  <td>True enables hinting by table. true or false.</td><td>off</td></tr>
 <tr><td>pg_hint_plan.parse_messages</td>
   <td>Specifies the log level of hint parse error. Valid values are error, warning, notice, info, log, debug<n>.</td><td>INFO</td></tr>
 <tr><td>pg_hint_plan.debug_print</td>
@@ -266,7 +266,7 @@ postgres=# </pre></p>
 <p>Do CREATE EXTENSION and SET pg_hint_plan.enable_hint_tables TO on if you are planning to hint tables.</p>
 
 
-<h2 id="uninstall">Unistallation</h2>
+<h2 id="uninstall">Uninstallation</h2>
 <p>"make uninstall" in the top directory of source tree will uninstall the installed files if you installed from the source tree and it is left available. </p>
 
 <pre>
@@ -344,10 +344,10 @@ postgres$# $$ LANGUAGE plpgsql;
 <dd>The objects as the hint parameter should be enclosed by double quotes if they includes parentheses, double quotes and white spaces. The escaping rule is the same as PostgreSQL.
 </dd>
 
-<h3>Distinction between multiple occurences of a table</h3>
+<h3>Distinction between multiple occurrences of a table</h3>
 <dd>pg_hint_plan identifies the target object by using aliases if
-exists. This behavior is usable to point a specific occurence
-among multiple occurences of one table.
+exists. This behavior is usable to point a specific occurrence
+among multiple occurrences of one table.
 <pre>
 <span class="strong">postgres=# /*+ HashJoin(t1 t1) */</span>
 <span class="strong">postgres-#</span> EXPLAIN SELECT * FROM s1.t1
@@ -393,8 +393,8 @@ hint affect all the inheritance. Hints simultaneously point directly
 to children are not in effect.
 </dd>
 
-<dt>Hinting on multistatements</dt>
-<dd>One multistatement can have exactly one hint comment and the hints affects all of the individual statement in the multistatement. Notice that the seemingly multistatement on the interactive interface of psql is internally a sequence of single statements so hints affects only on the statement just following.</dd>
+<dt>Hinting on multi-statements</dt>
+<dd>One multi statement can have exactly one hint comment and the hints affects all of the individual statement in the multi statement. Notice that the seemingly multi statement on the interactive interface of psql is internally a sequence of single statements so hints affects only on the statement just following.</dd>
 
 <dt>VALUES expressions</dt>
 <dd>VALUES expressions in FROM clause are named as *VALUES* internally
@@ -471,9 +471,9 @@ from being executed in parallel.</dd>
 <p>pg_hint_plan stops parsing on any error and uses hints already parsed on the most cases. Followings are the typical errors.</p>
 <dl>
 <dt>Syntax errors </dt>
-<dd>Any syntactical errors or wrong hint names are reported as an syntax error. These errors are reported in the server log with the message level which specified by pg_hint_plan.message_level if pg_hint_plan.debug_print is on and aboves.</dd>
+<dd>Any syntactical errors or wrong hint names are reported as an syntax error. These errors are reported in the server log with the message level which specified by pg_hint_plan.message_level if pg_hint_plan.debug_print is on or above.</dd>
 <dt>Object misspecifications</dt>
-<dd>Object misspecifications results silent ingnorance of the hints. This kind of error is reported as "not used hints" in the server log by the same condition to syntax errors.</dd>
+<dd>Object misspecifications results silent ignorance of the hints. This kind of error is reported as "not used hints" in the server log by the same condition to syntax errors.</dd>
 
 <dt>Redundant or conflicting hints</dt>
 <dd>The last hint will be active when redundant hints or hints conflicting with each other. This kind of error is reported as "duplication hints" in the server log by the same condition to syntax errors.</dd>
@@ -498,7 +498,7 @@ from being executed in parallel.</dd>
 <dd>ECPG removes comments in queries written as embedded SQLs so hints cannot be passed form those queries. The only exception is that EXECUTE command passes given string unmodified. Please consider hint tables in the case.</dd>
 
 <dt>Work with pg_stat_statements</dt>
-<dd>pg_stat_statements generates a query id ignoring comments. As the result the identical queires with different hints are summarized as the same query.</dd>
+<dd>pg_stat_statements generates a query id ignoring comments. As the result the identical queries with different hints are summarized as the same query.</dd>
 
 <h2 id="requirement">Requirements</h2>
 pg_hint_plan14 1.6 requires PostgreSQL 14.

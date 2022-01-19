@@ -34,9 +34,9 @@
 <tr><td nowrap>IndexScan(table[ index...])</td>
   <td>Forces index scan on the table. Restricts to specified indexes if any. </td></tr>
 <tr><td nowrap>IndexOnlyScan(table[ index...])</td>
-  <td>Forces index only scan on the table. Rstricts to specfied indexes if any. Index scan may be used if index only scan is not available. Available for PostgreSQL 9.2 and later.</td></tr>
+  <td>Forces index only scan on the table. Restricts to specified indexes if any. Index scan may be used if index only scan is not available. Available for PostgreSQL 9.2 and later.</td></tr>
 <tr><td nowrap>BitmapScan(table[ index...])</td>
-  <td>Forces bitmap scan on the table. Restoricts to specfied indexes if any.</td></tr>
+  <td>Forces bitmap scan on the table. Restricts to specified indexes if any.</td></tr>
 <tr><td nowrap>IndexScanRegexp(table[ POSIX Regexp...])</br>IndexOnlyScanRegexp(table[ POSIX Regexp...])</br>BitmapScanRegexp(table[ POSIX Regexp...])</td>
   <td>Forces index scan or index only scan (For PostgreSQL 9.2 and later) or bitmap scan on the table. Restricts to indexes that matches the specified <a href="https://www.postgresql.org/docs/11/functions-matching.html#FUNCTIONS-POSIX-REGEXP">POSIX regular expression</a> pattern</td></tr>
 <tr><td nowrap>NoSeqScan(table)</td>
@@ -53,17 +53,17 @@
 
 <tr><td rowspan="6" nowrap>Join method</td>
   <td nowrap>NestLoop(table table[ table...])</td>
-  <td>Forces nested loop for the joins consist of the specifiled tables.</td></tr>
+  <td>Forces nested loop for the joins consist of the specified tables.</td></tr>
 <tr><td nowrap>HashJoin(table table[ table...])</td>
-  <td>Forces hash join for the joins consist of the  specifiled tables.</td></tr>
+  <td>Forces hash join for the joins consist of the  specified tables.</td></tr>
 <tr><td nowrap>MergeJoin(table table[ table...])</td>
-  <td>Forces merge join for the joins consist of the specifiled tables.</td></tr>
+  <td>Forces merge join for the joins consist of the specified tables.</td></tr>
 <tr><td nowrap>NoNestLoop(table table[ table...])</td>
-  <td>Forces not to do nested loop for the joins consist of the specifiled tables.</td></tr>
+  <td>Forces not to do nested loop for the joins consist of the specified tables.</td></tr>
 <tr><td nowrap>NoHashJoin(table table[ table...])</td>
-  <td>Forces not to do hash join for the joins consist of the specifiled tables.</td></tr>
+  <td>Forces not to do hash join for the joins consist of the specified tables.</td></tr>
 <tr><td nowrap>NoMergeJoin(table table[ table...])</td>
-  <td>Forces not to do merge join for the joins consist of the  specifiled tables.</td></tr>
+  <td>Forces not to do merge join for the joins consist of the  specified tables.</td></tr>
 
 <tr><td rowspan="2">Join order</td>
   <td nowrap>Leading(table table[ table...])</td>
@@ -80,10 +80,10 @@
 
 <tr><td>Row number correction</td>
 	<td nowrap>Rows(table table[ table...] correction)</td>
-  <td>Corrects row number of a result of the joins consist of the specfied tables. The available correction methods are absolute (#&ltn&gt), addition (+&ltn&gt), subtract (-&ltn&gt) and multiplication (*&ltn&gt). &ltn&gt should be a string that strtod() can read.</td></tr>
+  <td>Corrects row number of a result of the joins consist of the specified tables. The available correction methods are absolute (#&ltn&gt), addition (+&ltn&gt), subtract (-&ltn&gt) and multiplication (*&ltn&gt). &ltn&gt should be a string that strtod() can read.</td></tr>
 <tr><td>Parallel query configuration</td>
 	<td nowrap>Parallel(table &lt# of workers&gt [soft|hard])</td>
-  <td>Enforce or inhibit parallel execution of specfied table. &lt# of workers&gt is the desired number of parallel workers, where zero means inhibiting parallel execution. If the third parameter is soft (default), it just changes max_parallel_workers_per_gather and leave everything else to planner. Hard means enforcing the specified number of workers.</td>
+  <td>Enforce or inhibit parallel execution of specified table. &lt# of workers&gt is the desired number of parallel workers, where zero means inhibiting parallel execution. If the third parameter is soft (default), it just changes max_parallel_workers_per_gather and leave everything else to planner. Hard means enforcing the specified number of workers.</td>
 <tr><td>GUC</td>
   <td nowrap>Set(GUC-param value)</td>
   <td>Set the GUC parameter to the value while planner is running.</td></tr>
