@@ -3360,7 +3360,6 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 			   bool using_parent_hint)
 {
 	ListCell	   *cell;
-	ListCell	   *next;
 	StringInfoData	buf;
 	RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
 	Oid				relationObjectId = rte->relid;
@@ -3392,14 +3391,13 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 	if (debug_level > 0)
 		initStringInfo(&buf);
 
-	for (cell = list_head(rel->indexlist); cell; cell = next)
+	foreach (cell, rel->indexlist)
 	{
 		IndexOptInfo   *info = (IndexOptInfo *) lfirst(cell);
 		char		   *indexname = get_rel_name(info->indexoid);
 		ListCell	   *l;
 		bool			use_index = false;
 
-		next = lnext(rel->indexlist, cell);
 		foreach(l, hint->indexnames)
 		{
 			char   *hintname = (char *) lfirst(l);
@@ -3569,17 +3567,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		}
 
 		if (!use_index)
-		{
-			rel->indexlist = list_delete_cell(rel->indexlist, cell);
-
-			/*
-			 * The cells after the deleted cell have been moved towards the
-			 * list head by 1 element.  the next iteration should visit the
-			 * cell at the same address if any.
-			 */
-			if (next)
-				next = cell;
-		}
+			rel->indexlist = foreach_delete_current(rel->indexlist, cell);
 			
 		pfree(indexname);
 	}
@@ -4362,13 +4350,10 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 		{
 			if (hstate->join_hint_level[i] != NIL)
 			{
-				ListCell *next = NULL;
-				for(l = list_head(hstate->join_hint_level[i]); l; l = next)
+				foreach (l, hstate->join_hint_level[i])
 				{
 
 					JoinMethodHint *hint = (JoinMethodHint *)lfirst(l);
-
-					next = lnext(hstate->join_hint_level[i], l);
 
 					if (hint->inner_nrels == 0 &&
 						!(bms_intersect(hint->joinrelids, joinrelids) == NULL ||
@@ -4376,15 +4361,7 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 						  hint->joinrelids)))
 					{
 						hstate->join_hint_level[i] =
-							list_delete_cell(hstate->join_hint_level[i], l);
-						/*
-						 * The cells after the deleted cell have been moved
-						 * towards the list head by 1 element.  the next
-						 * iteration should visit the cell at the same address
-						 * if any.
-						 */
-						if (next)
-							next = l;
+							foreach_delete_current(hstate->join_hint_level[i], l);
 					}
 				}
 			}
