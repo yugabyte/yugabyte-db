@@ -54,6 +54,10 @@ public class NodeDetails {
   @ApiModelProperty(value = "Machine image name")
   public String machineImage;
 
+  // Indicates that disks in fstab are mounted using using uuid (not as by path).
+  @ApiModelProperty(value = "Disks are mounted by uuid")
+  public boolean disksAreMountedByUUID;
+
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.

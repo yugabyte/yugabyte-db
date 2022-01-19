@@ -1743,12 +1743,14 @@ export default class ClusterFields extends Component {
                   readOnlySelect={isFieldReadOnly}
                 />
               </span>
-              {/* this.state.gcpInstanceWithEphemeralStorage && (
-                <span className="gcp-ephemeral-storage-warning">
-                  ! Selected type is ephemeral storage, If you will pause this universe your data
-                  will get lost.
-                </span>
-              ) */}
+              {this.state.gcpInstanceWithEphemeralStorage &&
+               (featureFlags.test['pausedUniverse'] ||
+                featureFlags.released['pausedUniverse']) && (
+                  <span className="gcp-ephemeral-storage-warning">
+                    ! Selected instance type is with ephemeral storage, If you will pause this
+                    universe your data will get lost.
+                  </span>
+              )}
             </>
           );
         } else if (isInAzu) {

@@ -290,7 +290,9 @@ public enum TaskType {
 
   RunYsqlUpgrade("subtasks.RunYsqlUpgrade"),
 
-  ResizeNode("upgrade.ResizeNode");
+  ResizeNode("upgrade.ResizeNode"),
+
+  UpdateMountedDisks("subtasks.UpdateMountedDisks");
 
   private String relativeClassPath;
 

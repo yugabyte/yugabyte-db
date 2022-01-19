@@ -54,6 +54,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
@@ -90,6 +91,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -1107,6 +1109,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
       subTaskGroup.addTask(task);
     }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createUpdateMountedDisksTask(
+      NodeDetails node, String currentInstanceType, DeviceInfo currentDeviceInfo) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateMountedDisks", executor);
+    UpdateMountedDisks.Params params = new UpdateMountedDisks.Params();
+
+    params.nodeName = node.nodeName;
+    params.universeUUID = taskParams().universeUUID;
+    params.azUuid = node.azUuid;
+    params.instanceType = currentInstanceType;
+    params.deviceInfo = currentDeviceInfo;
+
+    UpdateMountedDisks updateMountedDisksTask = createTask(UpdateMountedDisks.class);
+    updateMountedDisksTask.initialize(params);
+    subTaskGroup.addTask(updateMountedDisksTask);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
