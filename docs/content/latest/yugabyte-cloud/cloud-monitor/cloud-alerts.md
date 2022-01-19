@@ -49,6 +49,8 @@ To test that you can receive email from the Yugabyte server, click **Send Test E
 
 Open notifications are listed on the **Notifications** tab on the **Alerts** page.
 
+![Cloud Alerts Notifications](/images/yb-cloud/cloud-alerts-notifications.png)
+
 When the condition that caused the alert resolves, the notification is dismissed automatically.
 
 ## Fixing alerts
