@@ -6,7 +6,7 @@ We're glad that you would like to become a Percona community member and particip
 
 You can contribute in one of the following ways:
 
-1. Reach us on our [Forums](https://forums.percona.com/) and Discord.
+1. Reach us on our [Forums](https://forums.percona.com/c/postgresql/pg-stat-monitor/69).
 2. [Submit a bug report or a feature request](#submit-a-bug-report-or-a-feature-request)
 3. [Submit a pull request (PR) with the code patch](#submit-a-pull-request)
 4. [Contribute to documentation](#contributing-to-documentation)

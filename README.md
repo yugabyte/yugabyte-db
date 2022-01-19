@@ -10,20 +10,25 @@
 
 ## Table of Contents
 
-* [Overview](#overview)
-* [Supported versions](#supported-versions)
-* [Features](#features)
-* [Documentation](#documentation)
-* [Supported platforms](#supported-platforms)
-* [Installation guidelines](#installation-guidelines)
-* [Configuration](#configuration)
-* [Setup](#setup)
-* [Building from source code](#building-from-source)
-* [How to contribute](#how-to-contribute)
-* [Report a bug](#report-a-bug)
-* [Support, discussions and forums](#support-discussions-and-forums)
-* [License](#license)
-* [Copyright notice](#copyright-notice)
+- [pg_stat_monitor: Query Performance Monitoring Tool for PostgreSQL](#pg_stat_monitor-query-performance-monitoring-tool-for-postgresql)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+    - [Supported versions](#supported-versions)
+    - [Features](#features)
+    - [Documentation](#documentation)
+    - [Supported platforms](#supported-platforms)
+    - [Installation guidelines](#installation-guidelines)
+      - [Installing from Percona repositories](#installing-from-percona-repositories)
+      - [Installing from PostgreSQL `yum` repositories](#installing-from-postgresql-yum-repositories)
+      - [Installing from PGXN](#installing-from-pgxn)
+    - [Configuration](#configuration)
+    - [Setup](#setup)
+    - [Building from source](#building-from-source)
+    - [How to contribute](#how-to-contribute)
+    - [Report a bug](#report-a-bug)
+    - [Support, discussions and forums](#support-discussions-and-forums)
+    - [License](#license)
+    - [Copyright notice](#copyright-notice)
 
 ## Overview
 
@@ -248,7 +253,7 @@ Refer to the [Submit a bug report or a feature request](https://github.com/perco
 
 ### Support, discussions and forums
 
-We welcome your feedback on your experience with `pg_stat_monitor`. Join our [technical forum](https://forums.percona.com/) or [Discord](https://discord.gg/mQEyGPkNbR) channel for help with `pg_stat_monitor` and Percona's open source software for MySQL®, [PostgreSQL](https://www.percona.com/software/postgresql-distribution), and MongoDB® databases.
+We welcome your feedback on your experience with `pg_stat_monitor`. Join our [technical forum](https://forums.percona.com/c/postgresql/pg-stat-monitor/69) for help with `pg_stat_monitor`.
 
 
 ### License
