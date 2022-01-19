@@ -45,9 +45,9 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 ### What are the differences between free and standard clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an edge release, typically from the YugabyteDB [latest release series](../../releases/whats-new/latest-release/); occasional edge releases will be a recent stable release. You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-cluster-paused); after 30 days they are deleted.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with an [edge release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-cluster-paused); after 30 days they are deleted.
 
-Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a recent release from the YugabyteDB [stable release series](../../releases/whats-new/stable-release/).
+Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
 A Yugabyte Cloud account is limited to a single free cluster; you can add as many standard clusters as you need.
 
@@ -80,11 +80,11 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 Cloud console
-: During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
+: During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
 
-Cluster (yugabyteDB) version upgrade
-: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). We will notify you of any upcoming upgrade schedule via email.
-: The database is upgraded to the latest release in the release track that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
+Cluster (YugabyteDB) version upgrade
+: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). We'll notify you in advance of any upcoming upgrade schedule via email.
+: The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
 : Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
 ## YugabyteDB
@@ -194,9 +194,9 @@ For more details, refer to [Connect to clusters](../cloud-connect).
 
 ### Why is my cluster paused?
 
-Free clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. You can't perform any operations on a paused cluster until it is resumed.
+Free clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. You need to resume the paused cluster before you can perform any operations on it.
 
-To resume using your cluster, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
+To resume your cluster, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
 
 If you don't resume your cluster, a second notification is sent after 28 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
 
@@ -212,7 +212,7 @@ Free clusters are paused after 21 days of inactivity. To keep your cluster from 
 
 - Add or remove IP allow lists.
 
-To reactivate a cluster that is already paused, you need to sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
+- If the cluster is already paused, resume the cluster by signing in to Yugabyte Cloud, selecting the cluster on the **Clusters** page, and clicking **Resume**.
 
 ## Backups
 
