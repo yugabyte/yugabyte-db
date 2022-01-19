@@ -161,6 +161,8 @@ public enum TaskType {
 
   DeleteCustomerConfig("DeleteCustomerConfig"),
 
+  DeleteCustomerStorageConfig("DeleteCustomerStorageConfig"),
+
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
