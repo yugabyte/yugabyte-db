@@ -914,6 +914,7 @@ public class TaskExecutor {
     }
 
     public synchronized void doHeartbeat() {
+      log.trace("Heartbeating task {}", getTaskUUID());
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(getTaskUUID());
       taskInfo.markAsDirty();
       taskInfo.update();
