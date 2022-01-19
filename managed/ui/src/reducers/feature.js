@@ -9,7 +9,8 @@ const initialStateFeatureInTest = {
   enableXCluster: false,
   enableGeoPartitioning: false,
   enableHCVault: false,
-  enableNodeComparisonModal: false
+  enableNodeComparisonModal: false,
+  enablePathStyleAccess: false
 };
 
 const initialStateFeatureReleased = {
@@ -21,7 +22,8 @@ const initialStateFeatureReleased = {
   enableXCluster: true,
   enableGeoPartitioning: false,
   enableHCVault: false,
-  enableNodeComparisonModal: false
+  enableNodeComparisonModal: false,
+  enablePathStyleAccess: false
 };
 
 export const FeatureFlag = (

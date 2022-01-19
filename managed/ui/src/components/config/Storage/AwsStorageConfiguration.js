@@ -24,16 +24,16 @@ class AwsStorageConfiguration extends Component {
       return true;
     }
 
-    if (iamRoleEnabled &&
-      (configName === 'AWS_ACCESS_KEY_ID' || configName === 'AWS_SECRET_ACCESS_KEY')) {
+    if (
+      iamRoleEnabled &&
+      (configName === 'AWS_ACCESS_KEY_ID' || configName === 'AWS_SECRET_ACCESS_KEY')
+    ) {
       return true;
     }
   };
 
   componentDidMount = () => {
-    const {
-      customerConfigs
-    } = this.props;
+    const { customerConfigs } = this.props;
     const s3Config = customerConfigs?.data.find((config) => config.name === 'S3');
     const config = s3Config ? s3Config.data : {};
     if (isNonEmptyObject(config) && config.IAM_INSTANCE_PROFILE === 'true') {
@@ -42,8 +42,7 @@ class AwsStorageConfiguration extends Component {
   };
 
   render() {
-    const { isEdited, iamInstanceToggle, iamRoleEnabled } = this.props;
-
+    const { isEdited, iamInstanceToggle, iamRoleEnabled, enablePathStyleAccess } = this.props;
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -179,6 +178,27 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
+          {enablePathStyleAccess && (
+            <Row className="config-provider-row">
+              <Col lg={2}>
+                <div className="form-item-custom-label">S3 Path Style Access</div>
+              </Col>
+              <Col lg={9}>
+                {['true', 'false'].map((target) => (
+                  <span className="btn-group btn-group-radio form-radio-values" key={target}>
+                    <Field
+                      name="PATH_STYLE_ACCESS"
+                      type="radio"
+                      component="input"
+                      value={target}
+                      isReadOnly={this.disableInputFields(isEdited, 'PATH_STYLE_ACCESS')}
+                    />
+                    &nbsp;{target}
+                  </span>
+                ))}
+              </Col>
+            </Row>
+          )}
         </Col>
       </Row>
     );
