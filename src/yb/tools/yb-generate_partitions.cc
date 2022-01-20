@@ -103,7 +103,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
   // Set the hash column values to compute the partition key.
   auto it = tokenizer.begin();
   int col_id = 0;
-  for (int i = 0; i < schema.num_hash_key_columns(); col_id++, it++) {
+  for (size_t i = 0; i < schema.num_hash_key_columns(); col_id++, it++) {
     if (skipped_cols.find(col_id) != skipped_cols.end()) {
       continue;
     }

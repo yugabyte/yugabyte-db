@@ -65,7 +65,7 @@ Status CreateTabletMapping(
                       producer_table_id, consumer_table_id, same_tablet_count);
   stream_entry->set_same_num_producer_consumer_tablets(same_tablet_count);
   // Create the mapping between consumer and producer tablets.
-  for (uint32_t i = 0; i < producer_table_locations.size(); i++) {
+  for (int i = 0; i < producer_table_locations.size(); i++) {
     const auto& producer = producer_table_locations.Get(i).tablet_id();
     std::string consumer;
     if (same_tablet_count) {

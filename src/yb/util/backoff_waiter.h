@@ -43,7 +43,7 @@ class GenericBackoffWaiter {
   }
 
   bool ExpiredAt(TimePoint time) const {
-    return time >= deadline_;
+    return deadline_ < time + ClockResolution<Clock>();
   }
 
   bool Wait() {

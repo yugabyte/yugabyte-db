@@ -79,7 +79,7 @@ class NetworkFailureTest : public MiniClusterTestWithClient<MiniCluster> {
 
 int64_t CountLookups(MiniCluster* cluster) {
   int64_t result = 0;
-  for (int i = 0; i != cluster->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
     auto new_leader_master = cluster->mini_master(i);
     auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateHistogram(
         &METRIC_handler_latency_yb_master_MasterClient_GetTabletLocations);
@@ -137,8 +137,8 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
 
   auto leader_master_idx = cluster_->LeaderMasterIdx();
   LOG(INFO) << "Old leader: " << leader_master_idx;
-  for (int i = 0; i != cluster_->num_masters(); ++i) {
-    if (i != leader_master_idx) {
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    if (implicit_cast<ssize_t>(i) != leader_master_idx) {
       ASSERT_OK(BreakConnectivity(cluster_.get(), leader_master_idx, i));
     }
   }

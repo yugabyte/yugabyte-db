@@ -96,7 +96,7 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
       JoinPathSegments(dest_path, kSysCatalogSnapshotRocksDbSubDir)));
 
   tserver::ExportedTabletMetadataChanges exported_tablet_metadata_changes;
-  for (int i = 0; i < initdb_metadata_changes_.size(); ++i) {
+  for (size_t i = 0; i < initdb_metadata_changes_.size(); ++i) {
     *exported_tablet_metadata_changes.add_metadata_changes() = std::move(
         initdb_metadata_changes_[i]);
   }

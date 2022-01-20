@@ -816,8 +816,9 @@ class TransactionState {
     for (const auto& tablet_id_and_state : involved_tablets_) {
       if (!tablet_id_and_state.second.all_batches_replicated) {
         expected_tablet_batches->push_back(ExpectedTabletBatches{
-            tablet_id_and_state.first,
-            tablet_id_and_state.second.required_replicated_batches});
+          .tablet = tablet_id_and_state.first,
+          .batches = tablet_id_and_state.second.required_replicated_batches
+        });
       }
     }
   }
@@ -1045,7 +1046,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
                 if (status.ok()) {
                   if (resp.aborted()) {
                     write_hybrid_times[idx] = HybridTime::kMin;
-                  } else if (resp.num_replicated_batches() ==
+                  } else if (implicit_cast<size_t>(resp.num_replicated_batches()) ==
                                  expected_tablet_batches[idx].batches) {
                     write_hybrid_times[idx] = HybridTime(resp.status_hybrid_time());
                     LOG_IF_WITH_PREFIX(DFATAL, !write_hybrid_times[idx].is_valid())

@@ -736,7 +736,7 @@ TEST_F(LogTest, TestWaitUntilAllFlushed) {
   auto read_entries = segments[0]->ReadEntries();
   ASSERT_OK(read_entries.status);
   ASSERT_EQ(read_entries.entries.size(), 2);
-  for (int i = 0; i < read_entries.entries.size(); i++) {
+  for (size_t i = 0; i < read_entries.entries.size(); i++) {
     ASSERT_TRUE(read_entries.entries[i]->has_replicate());
   }
 }
@@ -969,7 +969,7 @@ void LogTest::GenerateTestSequence(size_t seq_len,
   int64_t max_repl_index = 0;
 
   OpIdPB id = MakeOpId(1, 0);
-  for (int i = 0; i < seq_len; i++) {
+  for (size_t i = 0; i < seq_len; i++) {
     if (RandomUniformInt(0, 4, rng) == 0) {
       // Reset term - it may stay the same, or go up/down
       id.set_term(std::max(static_cast<int64_t>(1), id.term() + RandomUniformInt(0, 4, rng) - 2));
@@ -1173,7 +1173,7 @@ TEST_F(LogTest, ConcurrentAllocateSegmentAndRollOver) {
 Result<std::vector<OpId>> LogTest::AppendAndCopy(size_t num_batches, size_t num_entries_per_batch) {
   std::vector<OpId> last_op_id_before_copy;
   last_op_id_before_copy.reserve(num_batches);
-  for (auto i = 0; i < num_batches; ++i) {
+  for (size_t i = 0; i < num_batches; ++i) {
     AppendReplicateBatchToLog(
         num_entries_per_batch, i % 2 == 0 ? AppendSync::kFalse : AppendSync::kTrue);
     last_op_id_before_copy.push_back(log_->GetLatestEntryOpId());
@@ -1224,7 +1224,7 @@ TEST_F(LogTest, CopyTo) {
     ASSERT_LE(copied_segments.size(), segments.size());
 
     // Copied log segments should match log segments of the original log.
-    for (int seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
+    for (size_t seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
       auto& segment = segments[seg_idx];
       auto& segment_copy = copied_segments[seg_idx];
 
@@ -1237,7 +1237,7 @@ TEST_F(LogTest, CopyTo) {
       ASSERT_EQ(entries_copy_result.end_offset, entries_result.end_offset);
       ASSERT_EQ(entries_copy_result.entry_metadata, entries_result.entry_metadata);
       ASSERT_EQ(entries_copy_result.entries.size(), entries_result.entries.size());
-      for (int entry_idx = 0; entry_idx < entries_copy_result.entries.size(); ++entry_idx) {
+      for (size_t entry_idx = 0; entry_idx < entries_copy_result.entries.size(); ++entry_idx) {
         ASSERT_EQ(
             entries_copy_result.entries[entry_idx]->DebugString(),
             entries_result.entries[entry_idx]->DebugString());
@@ -1280,7 +1280,7 @@ TEST_F(LogTest, CopyToWithConcurrentGc) {
 
     // Make sure copied log contains a sequence of entries without gaps in index.
     int64_t last_index = -1;
-    for (int seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
+    for (size_t seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
       auto& segment_copy = copied_segments[seg_idx];
       auto entries_copy_result = segment_copy->ReadEntries();
       ASSERT_OK(entries_copy_result.status);

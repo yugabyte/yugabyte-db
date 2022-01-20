@@ -841,11 +841,11 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   }
 
   if (!leader_dist.empty()) {
-    for (int i = 0; i < leader_dist.size(); ++i) {
+    for (size_t i = 0; i < leader_dist.size(); ++i) {
       best_case.push_back(total_leader_count / leader_dist.size());
       worst_case.push_back(0);
     }
-    for (int i = 0; i < total_leader_count % leader_dist.size(); ++i) {
+    for (size_t i = 0; i < total_leader_count % leader_dist.size(); ++i) {
       ++best_case[i];
     }
     worst_case[0] = total_leader_count;
@@ -1263,7 +1263,7 @@ Status ClusterAdminClient::ListTablets(
          << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID" << endl;
   }
 
-  for (int i = 0; i < tablet_uuids.size(); i++) {
+  for (size_t i = 0; i < tablet_uuids.size(); i++) {
     const string& tablet_uuid = tablet_uuids[i];
     string leader_host_port;
     string leader_uuid;
@@ -1680,7 +1680,7 @@ Status ClusterAdminClient::FillPlacementInfo(
         + std::to_string(placement_info_split.size()));
   }
 
-  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
     std::vector<std::string> placement_block = strings::Split(placement_info_split[iter], ":",
                                                               strings::SkipEmpty());
 
@@ -1731,7 +1731,7 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
   master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
   live_replicas->set_num_replicas(replication_factor);
   // Iterate over the placement blocks of the placementInfo structure.
-  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
     std::vector<std::string> block = strings::Split(placement_info_split[iter], ".",
                                                     strings::SkipEmpty());
     if (block.size() != 3) {
@@ -1781,7 +1781,7 @@ Status ClusterAdminClient::ModifyPlacementInfo(
 
   // Iterate over the placement blocks of the placementInfo structure.
   std::unordered_map<std::string, int> placement_to_min_replicas;
-  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
     placement_to_min_replicas[placement_info_split[iter]]++;
   }
 

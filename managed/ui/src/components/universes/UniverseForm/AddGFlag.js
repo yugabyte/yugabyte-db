@@ -22,6 +22,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   const [mostUsedArr, setMostUsedFlags] = useState(null);
   const [filteredArr, setFilteredArr] = useState(null);
   const [selectedFlag, setSelectedFlag] = useState(null);
+  const [apiError, setAPIError] = useState(null);
 
   //Declarative methods
   const filterByText = (arr, text) => arr.filter((e) => e?.name?.includes(text));
@@ -54,7 +55,8 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       else setFilteredArr(flags[1]?.data);
       setLoader(false);
     } catch (e) {
-      console.error(e);
+      setAPIError(e?.error);
+      setLoader(false);
     }
   };
 
@@ -74,7 +76,8 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       else formProps.setValues(gFlagProps);
       setLoader(false);
     } catch (e) {
-      console.error(e);
+      setAPIError(e?.error);
+      setLoader(false);
     }
   };
 
@@ -264,8 +267,16 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   return (
     <div className="add-gflag-container">
       {isLoading ? (
-        <div className="loading-container">
+        <div className="center-aligned">
           <YBLoading />
+        </div>
+      ) : apiError ? (
+        <div className="center-aligned">
+          <i className="fa fa-exclamation-triangle error-icon lg-icon" />
+          <span>
+            Selected DB Version : <b>{dbVersion}</b>
+          </span>
+          <span className="error-icon"> {apiError}</span>
         </div>
       ) : (
         <Row className="row-flex">

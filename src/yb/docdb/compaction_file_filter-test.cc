@@ -97,7 +97,7 @@ rocksdb::FileMetaData CreateFile(rocksdb::UserFrontierPtr largest_frontier = nul
 std::vector<rocksdb::FileMetaData*> CreateFilePtrs(
     const std::vector<ConsensusFrontier>& frontiers) {
   auto file_ptrs = std::vector<rocksdb::FileMetaData*>(frontiers.size());
-  for (int i = 0; i < frontiers.size(); i++) {
+  for (size_t i = 0; i < frontiers.size(); i++) {
     file_ptrs[i] = new rocksdb::FileMetaData();
     *file_ptrs[i] = CreateFile(frontiers[i].Clone());
   }
@@ -124,7 +124,7 @@ void ExpirationFilterTest::TestFilterFilesAgainstResults(
     const std::vector<FilterDecision>& expected_results) {
   auto file_ptrs = CreateFilePtrs(frontiers);
   auto filter = filter_factory->CreateCompactionFileFilter(file_ptrs);
-  for(int i = 0; i < file_ptrs.size(); i++) {
+  for(size_t i = 0; i < file_ptrs.size(); i++) {
     auto result = filter->Filter(file_ptrs[i]);
     EXPECT_EQ(result, expected_results[i]);
   }

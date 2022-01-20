@@ -121,7 +121,7 @@ class RemoteBootstrapITest : public YBTest {
     if (HasFatalFailure()) {
       LOG(INFO) << "Found fatal failure";
       if (cluster_) {
-        for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
           if (!cluster_->tablet_server(i)->IsProcessAlive()) {
             LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
             continue;
@@ -222,7 +222,7 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
 void RemoteBootstrapITest::CheckCheckpointsCleared() {
   auto* env = Env::Default();
   auto deadline = MonoTime::Now() + 10s * kTimeMultiplier;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto tablet_server = cluster_->tablet_server(i);
     auto data_dir = tablet_server->GetDataDirs()[0];
     SCOPED_TRACE(Format("Index: $0", i));
@@ -413,7 +413,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -718,7 +718,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -806,7 +806,7 @@ void RemoteBootstrapITest::CreateTableAssignLeaderAndWaitForTabletServersReady(
   }
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     for (const string& tablet_id : *tablet_ids) {
       ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                               tablet_id, timeout));
@@ -1015,7 +1015,7 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -1142,7 +1142,7 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Wait until all replicas are up and running.
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }

@@ -54,7 +54,7 @@
 #include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_data_block_fsync);
-DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 METRIC_DECLARE_entity(tablet);
 
