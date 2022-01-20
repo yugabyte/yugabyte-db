@@ -14,8 +14,8 @@ import com.google.inject.Inject;
 import com.google.common.base.Joiner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import javax.inject.Singleton;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -34,6 +34,10 @@ public class ShellProcessHandler {
   public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
   @Inject play.Configuration appConfig;
+
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+
+  static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
 
   public ShellResponse run(
       List<String> command, Map<String, String> extraEnvVars, boolean logCmdOutput) {
@@ -121,11 +125,13 @@ public class ShellProcessHandler {
           response.description,
           status,
           response.durationMs);
-      if (tempOutputFile != null && tempOutputFile.exists()) {
-        tempOutputFile.delete();
-      }
-      if (tempErrorFile != null && tempErrorFile.exists()) {
-        tempErrorFile.delete();
+      if (runtimeConfigFactory.globalRuntimeConf().getBoolean(COMMAND_OUTPUT_LOGS_DELETE)) {
+        if (tempOutputFile != null && tempOutputFile.exists()) {
+          tempOutputFile.delete();
+        }
+        if (tempErrorFile != null && tempErrorFile.exists()) {
+          tempErrorFile.delete();
+        }
       }
     }
 
