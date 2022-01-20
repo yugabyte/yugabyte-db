@@ -11,26 +11,48 @@ mgmt_rtb_name="mgmt" # This is management side of the routing table
 # We will use secondary or the customer side to be the default route
 # Adding two different route tables for mgmt and secondary(customer) sides, makes it
 # scalable for future extensions and we can add more specific rules to each table
-# rather than changing default table
+# rather than changing the default table
 
 fix_ifcfg() {
   #eth0 - primary interface is ens5 and AWS setup eth0
   #eth1 - primary interface is eth0 and AWS configured secondary
   #ens6 - primary interface is ens5 and AWS messed secondary
-  ifnames="eth0 eth1 ens6"
+  # We will check for all interfaces and make sure the DEFROUTE is not set
+  # for any interface which ever order they come up(eth0 first, eth1 next or vice-versa)
+  ifnames="eth0 eth1 ens5 ens6"
   for ifname in $ifnames; do
     if_config_file="/etc/sysconfig/network-scripts/ifcfg-$ifname"
-    [ -f "${if_config_file}" ] || echo "BOOTPROTO=dhcp
-  DEVICE=$ifname
-  ONBOOT=yes
-  DEFROUTE=no
-  TYPE=Ethernet
-  USERCTL=no
-  " >"${if_config_file}"
+    if [ -f "${if_config_file}" ]; then
+      source ${if_config_file}
+      val="$DEFROUTE"
+      log "Current value of DEFROUTE for $ifname : $val"
+      case $val in
+        yes)
+            # Replace the DEFROUTE
+            log "Replacing DEFROUTE for Interface:$ifname"
+            sed -i -e 's/DEFROUTE=\"yes\"/DEFROUTE=\"no\"/g' "${if_config_file}"
+            sed -i -e 's/DEFROUTE=yes/DEFROUTE=no/g' "${if_config_file}"
+            ;;
+        no)
+            # Nothing to do
+            log "DEFROUTE=no for Interface:$ifname"
+            ;;
+        *)
+            # No entry exists, so just create the line
+            log "No entry exists for Interface:$ifname, creating"
+            echo -e "DEFROUTE=no" >> "${if_config_file}"
+            ;;
+      esac
+    else
+      echo -e "BOOTPROTO=dhcp\nDEVICE=$ifname\nONBOOT=yes\nDEFROUTE=no\nTYPE=Ethernet\nUSERCTL=no
+      " >"${if_config_file}"
+    fi
   done
 }
 
 configure_nics() {
+  #disable Network Manager for any interface
+  systemctl disable NetworkManager >> /dev/nunn 2>&1
   # Create Table for customer side
   echo "Create route table ${rtb_id}"
   egrep "^${rtb_id}" /etc/iproute2/rt_tables && {
@@ -38,13 +60,14 @@ configure_nics() {
     exit 1
   }
   echo -e "${rtb_id}\t$rtb_name" >>/etc/iproute2/rt_tables
+
   # Create Table for Mgmt side
   echo "Create route table ${mgmt_rtb_id}"
-    egrep "^${mgmt_rtb_id}" /etc/iproute2/rt_tables && {
-      echo "RTb ID mgmt_rtb_id exists, change to $((mgmt_rtb_id + 1))"
-      exit 1
-    }
-    echo -e "${mgmt_rtb_id}\t$mgmt_rtb_name" >>/etc/iproute2/rt_tables
+  egrep "^${mgmt_rtb_id}" /etc/iproute2/rt_tables && {
+    echo "RTb ID mgmt_rtb_id exists, change to $((mgmt_rtb_id + 1))"
+    exit 1
+  }
+  echo -e "${mgmt_rtb_id}\t$mgmt_rtb_name" >>/etc/iproute2/rt_tables
 
   cat - >/etc/dhcp/dhclient-up-hooks <<EOF
 #!/usr/bin/env bash
@@ -59,12 +82,13 @@ secondary_netmask="${secondary_netmask}"
 
 if [[ "$cloud" == "gcp" ]]; then
   # Re-bind variable to comply with AWS
-  new_network_number="\$target"
-  new_routers="\$gateway"
+  new_network_number="\${route_targets[1]}"
+  new_routers="\${route_targets[0]}"
+  new_subnet_mask="\$prefix"
+  log "For GCP: new_network_number=\${route_targets[1]}"
 fi
 
 log "Configure for \$new_network_number"
-
 if [ "\$new_network_number" == "\${secondary_network}" ]; then
  log "It's secondary CIDR (\${secondary_network}), update rule and route!"
  ip rule show | grep "from \${secondary_network}/\${secondary_netmask} table $rtb_name" && {
@@ -82,10 +106,10 @@ if [ "\$new_network_number" == "\${secondary_network}" ]; then
  ip route add default via \$new_routers
 else
  log "It's management CIDR !"
- ip rule show | grep "from \${$new_network_number}/\${new_subnet_mask} table $mgmt_rtb_name" && {
+ ip rule show | grep "from \${new_network_number}/\${new_subnet_mask} table $mgmt_rtb_name" && {
    log "Rule already set"
  } || {
-   ip rule add from \${$new_network_number}/\${new_subnet_mask} table $mgmt_rtb_name
+   ip rule add from \${new_network_number}/\${new_subnet_mask} table $mgmt_rtb_name
  }
  ip route show | grep "default table $mgmt_rtb_name via \$new_routers dev \$interface" && {
    log "Route already set"
@@ -157,7 +181,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "$cloud" == "aws" ]]; then
-  fix_ifcfg
-fi
+#Common for both clouds now to fix the correct interface config
+fix_ifcfg
 configure_nics
