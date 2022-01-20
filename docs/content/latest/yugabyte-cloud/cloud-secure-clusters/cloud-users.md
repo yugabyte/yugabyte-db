@@ -27,7 +27,7 @@ yugabyte=> \du
 
 ```output
                                                          List of roles
-  Role name   |                         Attributes                         |                     Member of                      
+  Role name   |                         Attributes                         |                     Member of
 --------------+------------------------------------------------------------+----------------------------------------------------
  admin        | Create role, Create DB, Bypass RLS                         | {yb_superuser}
  postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
@@ -71,5 +71,5 @@ In YCQL, there is a single Superuser called `cassandra` used during database cre
 - [Add database users](../add-users/)
 - [Manage Users and Roles in YugabyteDB](../../../secure/authorization/create-roles/)
 - [Role-based access control](../../../secure/authorization/)
-- [Pre-bundled extensions](../../../explore/ysql-language-features/extensions/)
+- [Pre-bundled extensions](../../../explore/ysql-language-features/advanced-features/extensions/)
 - [Create YSQL extensions in Yugabyte Cloud](../../cloud-clusters/add-extensions/)
