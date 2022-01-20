@@ -1372,7 +1372,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 if (!primaryClusterNodes.isEmpty()) {
                   // Override master (on primary cluster only) and tserver flags as necessary.
                   // These are idempotent operations.
-                  createGFlagsOverrideTasks(primaryClusterNodes, ServerType.MASTER);
+                  createGFlagsOverrideTasks(primaryClusterNodes, ServerType.MASTER, isShellMode);
                 }
               }
               createGFlagsOverrideTasks(nodesToBeConfigured, ServerType.TSERVER);

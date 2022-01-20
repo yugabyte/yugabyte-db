@@ -111,7 +111,8 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Set gflags for master.
-      createGFlagsOverrideTasks(ImmutableList.of(currentNode), ServerType.MASTER);
+      createGFlagsOverrideTasks(
+          ImmutableList.of(currentNode), ServerType.MASTER, true /* isShell */);
 
       // Update master configuration on the node.
       createConfigureServerTasks(
