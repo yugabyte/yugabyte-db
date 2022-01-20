@@ -1,8 +1,7 @@
 import React from 'react';
 import { Field, Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
-import { YBModal } from '../../common/forms/fields';
-import { YBFormSelect } from '../../common/forms/fields';
+import { YBModal, YBFormSelect } from '../../../common/forms/fields';
 import { userRoles } from './AddUserModal';
 
 export const EditRoleModal = ({ modalVisible, onHide, user, changeUserRole, getCustomerUsers }) => {

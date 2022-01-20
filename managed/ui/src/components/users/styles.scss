@@ -1,0 +1,45 @@
+.user-tab-logo {
+  fill: #333333;
+  margin-right: 5px;
+  font-size: medium;
+  vertical-align: middle;
+}
+
+.users-tab {
+  width: auto;
+}
+
+.users-list-container {
+  .table-actions-cell {
+    overflow: inherit;
+    height: 64px;
+
+    div {
+      overflow: inherit;
+    }
+  }
+
+  .table > tbody > tr > td {
+    vertical-align: middle;
+  }
+
+  .header {
+    margin: 15px 10px 0px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .add-user-btn {
+    width: auto;
+  }
+
+  .header-col {
+    display: flex;
+    width: 100%;
+  }
+
+  .justify-end {
+    justify-content: flex-end;
+  }
+}
