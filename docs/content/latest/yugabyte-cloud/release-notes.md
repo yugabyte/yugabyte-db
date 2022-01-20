@@ -20,7 +20,7 @@ showAsideToc: true
 #### New features
 
 - Self service Virtual Private Cloud (VPC) networking. Use VPC networks to lower network latencies and make your application and database infrastructure more secure. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Network Access** page.
-- Ability to enable pre-bundled extensions using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
+- Ability to enable pre-bundled extensions using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/advanced-features/extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
 
 ### December 2, 2021
 
@@ -117,7 +117,7 @@ The following **AWS regions** are available:
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
-- **Installing PostgreSQL Extensions** - For security reasons, the admin account used for the YugabyteDB database is not a super user. As a result, you cannot install extensions. If you need a database extension that is not [pre-bundled](../../explore/ysql-language-features/extensions/) with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or reach out on Slack.
+- **Installing PostgreSQL Extensions** - For security reasons, the admin account used for the YugabyteDB database is not a super user. As a result, you cannot install extensions. If you need a database extension that is not [pre-bundled](../../explore/ysql-language-features/advanced-features/extensions/) with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or reach out on Slack.
 
 ### Known issues in cloud shell
 

@@ -2,13 +2,14 @@
 title: Table Partitioning
 linkTitle: Table Partitioning
 description: Table Partitioning in YSQL
-headcontent: Table Partitioning in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: explore-ysql-language-features-partitioins
-    parent: explore-ysql-language-features
-    weight: 315
+    identifier: advanced-features-partitions
+    parent: advanced-features
+    weight: 225
+aliases:
+  - /latest/explore/ysql-language-features/partitions/
 isTocNested: true
 showAsideToc: true
 ---
@@ -27,7 +28,7 @@ YSQL supports the following types of partitioning:
 - List partitioning, when a table is partitioned via listing key values to appear in each partition.
 - Hash partitioning, when a table is partitioned by specifying a modulus and remainder for each partition.
 
-For supplementary information on partitioning, see [Row-Level Geo-Partitioning](../../multi-region-deployments/row-level-geo-partitioning/).
+For supplementary information on partitioning, see [Row-Level Geo-Partitioning](../../../multi-region-deployments/row-level-geo-partitioning/).
 
 ## Declarative Table Partitioning
 
