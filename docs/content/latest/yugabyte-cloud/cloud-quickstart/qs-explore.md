@@ -178,7 +178,7 @@ select * from emp
 (3 rows)
 ```
 
-Create a GIN index on a JSON document and query on the attribute list. (Feature only available in v2.11.)
+#### Create a GIN index on a JSON document and query on the attribute list (Feature only available in v2.11)
 
 1. Create the GIN index on the JSON document.
 
@@ -198,7 +198,7 @@ Create a GIN index on a JSON document and query on the attribute list. (Feature 
     explain select * from emp where other_info->'skills' @> '"SQL"';
     ```
 
-Create a text search index on the description column and query for words. (Feature only available in v2.11.)
+#### Create a text search index on the description column and query for words (Feature only available in v2.11)
 
 1. Create text search index on description column.
 
@@ -221,7 +221,7 @@ Create a text search index on the description column and query for words. (Featu
         where to_tsvector('simple',description) @@ to_tsquery('simple','responsible & services');
     ```
 
-Use arithmetic on date intervals to find employees with overlapping evaluation periods.
+#### Use arithmetic on date intervals to find employees with overlapping evaluation periods
 
 ```sql
 with emp_evaluation_period as (
@@ -275,7 +275,7 @@ update emp set sal=sal+100
 UPDATE 11
 ```
 
-Use a prepared statement with typed input to prevent SQL injection.
+#### Use a prepared statement with typed input to prevent SQL injection
 
 1. Prepare the statement.
 
@@ -324,7 +324,7 @@ Use a prepared statement with typed input to prevent SQL injection.
     DEALLOCATE
     ```
 
-Use a procedure to encapsulate transactions with error handling.
+#### Use a procedure to encapsulate transactions with error handling
 
 1. Create the procedure with the business logic.
 
@@ -384,7 +384,7 @@ Use a procedure to encapsulate transactions with error handling.
 
 ### DDL, triggers, and online index creation
 
-Record the last update time of each row automatically.
+#### Record the last update time of each row automatically
 
 1. Add a column to store the last update time.
 
@@ -477,7 +477,7 @@ Record the last update time of each row automatically.
     (4 rows)
     ```
 
-Create a new table and an index to avoid table scans and sorts.
+#### Create a new table and an index to avoid table scans and sorts
 
 1. Create a table with randomly generated rows.
 
@@ -554,7 +554,7 @@ Create a new table and an index to avoid table scans and sorts.
 ## Next steps
 
 - [Develop an application](../../cloud-develop/)
-- [Deploy production clusters](../../cloud-basics/create-clusters/)
+- [Deploy production clusters](../../cloud-basics/)
 - [Authorize access to your cluster](../../cloud-secure-clusters/add-connections/)
 - [Connect to clusters](../../cloud-connect/)
 - [Add database users](../../cloud-secure-clusters/add-users/)
