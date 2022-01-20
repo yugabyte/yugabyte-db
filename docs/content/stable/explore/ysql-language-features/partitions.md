@@ -6,7 +6,7 @@ headcontent: Table Partitioning in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
-    identifier: explore-ysql-language-features-partitioins
+    identifier: explore-ysql-language-features-partitions
     parent: explore-ysql-language-features
     weight: 315
 isTocNested: true
