@@ -1939,13 +1939,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param updater the universe updater to run
    * @return the updated universe
    */
-  protected static synchronized Universe saveUniverseDetails(
+  protected static Universe saveUniverseDetails(
       UUID universeUUID, boolean shouldIncrementVersion, UniverseUpdater updater) {
-    if (shouldIncrementVersion) {
-      incrementClusterConfigVersion(universeUUID);
+    Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
+    try {
+      if (shouldIncrementVersion) {
+        incrementClusterConfigVersion(universeUUID);
+      }
+      return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
+    } finally {
+      Universe.UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
     }
-
-    return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
   }
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {
