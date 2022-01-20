@@ -36,7 +36,6 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;

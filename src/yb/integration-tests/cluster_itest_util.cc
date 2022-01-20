@@ -1076,7 +1076,7 @@ Status WaitForNumVotersInConfigOnMaster(
 }
 
 Status WaitForNumTabletsOnTS(TServerDetails* ts,
-                             int count,
+                             size_t count,
                              const MonoDelta& timeout,
                              vector<ListTabletsResponsePB::StatusAndSchemaPB>* tablets) {
   Status s;

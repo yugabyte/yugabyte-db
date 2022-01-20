@@ -176,7 +176,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   // object's lifetime.
   MultiThreadedWriter(
       int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
-      std::atomic_bool* stop_flag, int value_size, int max_num_write_errors);
+      std::atomic_bool* stop_flag, int value_size, size_t max_num_write_errors);
 
   void Start() override;
   std::atomic<int64_t>* InsertionPoint() { return &inserted_up_to_inclusive_; }
@@ -207,7 +207,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   std::atomic<int64_t> next_key_;
   std::atomic<int64_t> inserted_up_to_inclusive_;
 
-  int max_num_write_errors_ = 0;
+  size_t max_num_write_errors_ = 0;
   std::atomic<bool>* pause_flag_ = nullptr;
 };
 

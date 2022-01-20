@@ -177,10 +177,10 @@ void TabletServerTestBase::ResetClientProxies() {
 }
 
 // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
-void TabletServerTestBase::InsertTestRowsDirect(int32_t start_row, uint32_t num_rows) {
+void TabletServerTestBase::InsertTestRowsDirect(int32_t start_row, int32_t num_rows) {
   tablet::LocalTabletWriter writer(tablet_peer_->tablet());
   QLWriteRequestPB req;
-  for (int32_t i = 0; i < num_rows; i++) {
+  for (int i = 0; i < num_rows; i++) {
     BuildTestRow(start_row + i, &req);
     CHECK_OK(writer.Write(&req));
   }
@@ -191,8 +191,8 @@ void TabletServerTestBase::InsertTestRowsDirect(int32_t start_row, uint32_t num_
 // Batch size defaults to 1.
 void TabletServerTestBase::InsertTestRowsRemote(int tid,
                                                 int32_t first_row,
-                                                uint32_t count,
-                                                uint32_t num_batches,
+                                                int32_t count,
+                                                int32_t num_batches,
                                                 TabletServerServiceProxy* proxy,
                                                 string tablet_id,
                                                 vector<uint64_t>* write_hybrid_times_collector,
@@ -264,7 +264,7 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
 
 // Delete specified test row range.
 void TabletServerTestBase::DeleteTestRowsRemote(int32_t first_row,
-                                                uint32_t count,
+                                                int32_t count,
                                                 TabletServerServiceProxy* proxy,
                                                 string tablet_id) {
   if (!proxy) {

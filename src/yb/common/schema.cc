@@ -40,6 +40,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/row.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
@@ -334,11 +335,11 @@ void Schema::ResetColumnIds(const vector<ColumnId>& ids) {
   col_ids_ = ids;
   id_to_index_.clear();
   max_col_id_ = 0;
-  for (int i = 0; i < ids.size(); ++i) {
+  for (size_t i = 0; i < ids.size(); ++i) {
     if (ids[i] > max_col_id_) {
       max_col_id_ = ids[i];
     }
-    id_to_index_.set(ids[i], i);
+    id_to_index_.set(ids[i], narrow_cast<int>(i));
   }
 }
 
@@ -393,7 +394,7 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   }
 
   // Verify that the key columns are not nullable nor static
-  for (int i = 0; i < key_columns; ++i) {
+  for (size_t i = 0; i < key_columns; ++i) {
     if (PREDICT_FALSE(cols_[i].is_nullable())) {
       return STATUS(InvalidArgument,
         "Bad schema", strings::Substitute("Nullable key columns are not "
@@ -476,18 +477,20 @@ Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& c
 }
 
 namespace {
-vector<ColumnId> DefaultColumnIds(size_t num_columns) {
+
+vector<ColumnId> DefaultColumnIds(ColumnIdRep num_columns) {
   vector<ColumnId> ids;
-  for (int32_t i = 0; i < num_columns; ++i) {
+  for (ColumnIdRep i = 0; i < num_columns; ++i) {
     ids.push_back(ColumnId(kFirstColumnId + i));
   }
   return ids;
 }
+
 }  // namespace
 
 void Schema::InitColumnIdsByDefault() {
   CHECK(!has_column_ids());
-  ResetColumnIds(DefaultColumnIds(cols_.size()));
+  ResetColumnIds(DefaultColumnIds(narrow_cast<ColumnIdRep>(cols_.size())));
 }
 
 Schema Schema::CopyWithoutColumnIds() const {
@@ -550,7 +553,7 @@ Status Schema::GetMappedReadProjection(const Schema& projection,
 string Schema::ToString() const {
   vector<string> col_strs;
   if (has_column_ids()) {
-    for (int i = 0; i < cols_.size(); ++i) {
+    for (size_t i = 0; i < cols_.size(); ++i) {
       col_strs.push_back(Format("$0:$1", col_ids_[i], cols_[i].ToString()));
     }
   } else {
@@ -683,7 +686,7 @@ void SchemaBuilder::Reset(const Schema& schema) {
   }
 
   if (col_ids_.empty()) {
-    for (int32_t i = 0; i < cols_.size(); ++i) {
+    for (ColumnIdRep i = 0; i < narrow_cast<ColumnIdRep>(cols_.size()); ++i) {
       col_ids_.push_back(ColumnId(kFirstColumnId + i));
     }
   }
@@ -753,7 +756,7 @@ Status SchemaBuilder::RemoveColumn(const string& name) {
   }
 
   col_names_.erase(it_names);
-  for (int i = 0; i < cols_.size(); ++i) {
+  for (size_t i = 0; i < cols_.size(); ++i) {
     if (name == cols_[i].name()) {
       cols_.erase(cols_.begin() + i);
       col_ids_.erase(col_ids_.begin() + i);

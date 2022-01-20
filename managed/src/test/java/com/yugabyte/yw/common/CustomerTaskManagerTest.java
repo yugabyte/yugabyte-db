@@ -53,6 +53,9 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
       CustomerTask th = createTask(targetType, targetUUID, Create);
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(th.getTaskUUID());
+      taskInfo.setTaskState(TaskInfo.State.Success);
+      taskInfo.save();
       th.markAsCompleted();
     }
 
@@ -62,13 +65,43 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testFailPendingTasks() throws Exception {
+  public void testFailPendingTasksForCompletedCustomerTask() throws Exception {
     universe = ModelFactory.createUniverse(customer.getCustomerId());
     taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
       CustomerTask th = createTask(targetType, targetUUID, Create);
+      // CustomerTask is marked completed, but TaskInfo is still in Create state.
+      th.markAsCompleted();
+    }
+
+    taskManager.failAllPendingTasks();
+    verify(taskManager, times(CustomerTask.TargetType.values().length))
+        .failPendingTask(any(), any());
+
+    List<CustomerTask> customerTasks =
+        CustomerTask.find.query().where().eq("customer_uuid", customer.uuid).findList();
+
+    // Verify tasks have been marked as failure properly
+    for (CustomerTask task : customerTasks) {
+      TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
+      assertTrue(taskInfo.getTaskState().equals(TaskInfo.State.Failure));
+    }
+  }
+
+  @Test
+  public void testFailPendingTasksForRunningTaskInfo() throws Exception {
+    universe = ModelFactory.createUniverse(customer.getCustomerId());
+    taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
+      UUID targetUUID = UUID.randomUUID();
+      if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
+      CustomerTask th = createTask(targetType, targetUUID, Create);
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(th.getTaskUUID());
+      taskInfo.setTaskState(TaskInfo.State.Running);
+      // CustomerTask is NOT marked completed, but TaskInfo is Running state.
+      taskInfo.save();
     }
 
     taskManager.failAllPendingTasks();
@@ -83,6 +116,35 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
       assertTrue(task.getCompletionTime() != null);
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
       assertTrue(taskInfo.getTaskState().equals(TaskInfo.State.Failure));
+    }
+  }
+
+  @Test
+  public void testFailPendingTasksForCompletedTaskInfo() throws Exception {
+    universe = ModelFactory.createUniverse(customer.getCustomerId());
+    taskManager = spy(Play.current().injector().instanceOf(CustomerTaskManager.class));
+    for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
+      UUID targetUUID = UUID.randomUUID();
+      if (targetType.equals(CustomerTask.TargetType.Universe)) targetUUID = universe.universeUUID;
+      CustomerTask th = createTask(targetType, targetUUID, Create);
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(th.getTaskUUID());
+      taskInfo.setTaskState(TaskInfo.State.Success);
+      // CustomerTask is NOT marked completed, but TaskInfo is Running state.
+      taskInfo.save();
+    }
+
+    taskManager.failAllPendingTasks();
+    verify(taskManager, times(CustomerTask.TargetType.values().length))
+        .failPendingTask(any(), any());
+
+    List<CustomerTask> customerTasks =
+        CustomerTask.find.query().where().eq("customer_uuid", customer.uuid).findList();
+
+    // Verify tasks have been marked as failure properly
+    for (CustomerTask task : customerTasks) {
+      assertTrue(task.getCompletionTime() != null);
+      TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
+      assertTrue(taskInfo.getTaskState().equals(TaskInfo.State.Success));
     }
   }
 }

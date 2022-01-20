@@ -38,8 +38,8 @@ TAG_FLAG(enable_multi_raft_heartbeat_batcher, experimental);
 TAG_FLAG(enable_multi_raft_heartbeat_batcher, hidden);
 
 // NOTE: For tests set this value to 1
-DEFINE_int32(multi_raft_batch_size, 1,
-            "Maximum batch size for a multi-raft consensus payload.");
+DEFINE_uint64(multi_raft_batch_size, 1,
+              "Maximum batch size for a multi-raft consensus payload.");
 TAG_FLAG(multi_raft_batch_size, experimental);
 TAG_FLAG(multi_raft_batch_size, hidden);
 

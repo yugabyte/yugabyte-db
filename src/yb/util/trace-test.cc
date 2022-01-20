@@ -147,7 +147,7 @@ int ParseAndReturnEventCount(const string& trace_json) {
   // Count how many of our events were seen. We have to filter out
   // the metadata events.
   int seen_real_events = 0;
-  for (int i = 0; i < events_json.Size(); i++) {
+  for (rapidjson::SizeType i = 0; i < events_json.Size(); i++) {
     if (events_json[i]["cat"].GetString() == string("test")) {
       seen_real_events++;
     }

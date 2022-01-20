@@ -53,7 +53,7 @@ using std::string;
 using strings::Substitute;
 
 DECLARE_int32(webserver_max_post_length_bytes);
-DECLARE_int64(webserver_compression_threshold_kb);
+DECLARE_uint64(webserver_compression_threshold_kb);
 
 namespace yb {
 
