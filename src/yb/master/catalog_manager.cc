@@ -7790,6 +7790,11 @@ Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
   RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), ysql_catalog_config_));
   l.Commit();
 
+  if (FLAGS_log_ysql_catalog_versions) {
+    LOG_WITH_FUNC(WARNING) << "set catalog version: " << new_version
+                           << " (using old protobuf method)";
+  }
+
   return new_version;
 }
 
