@@ -22,14 +22,15 @@ public final class TransactionUtil {
 
   private TransactionUtil() {}
 
+  // AttemptCount overrides the time and resets the back-off time when the max elapsed time is hit.
   public static final RetryConfig DEFAULT_RETRY_CONFIG =
       RetryConfig.builder()
-          .maxAttemptCount(5)
+          .maxAttemptCount(50)
           .backOff(
               new ExponentialBackOff.Builder()
-                  .setInitialIntervalMillis(100)
-                  .setMaxElapsedTimeMillis(5000)
-                  .setMaxIntervalMillis(1000)
+                  .setInitialIntervalMillis(10)
+                  .setMaxElapsedTimeMillis(1000)
+                  .setMaxIntervalMillis(100)
                   .setMultiplier(1.2)
                   .build())
           .build();
@@ -45,7 +46,13 @@ public final class TransactionUtil {
   private static boolean isRetryable(PersistenceException e) {
     String errMsg = e.getMessage();
     if (errMsg != null) {
-      return errMsg.contains("could not serialize access due to concurrent update");
+      if (errMsg.contains("could not serialize access due to concurrent update")) {
+        return true;
+      }
+      if (errMsg.contains(
+          "could not serialize access due to read/write dependencies among transactions")) {
+        return true;
+      }
     }
     return false;
   }
