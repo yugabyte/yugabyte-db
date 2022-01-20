@@ -1610,8 +1610,9 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
     const auto& stream_index = tablet_checkpoints_.get<StreamTag>();
     if (stream_index.find(info.stream_id) != stream_index.end()) {
       // Did not find matching tablet ID.
-      return STATUS_FORMAT(InvalidArgument, "Tablet ID $0 is not part of stream ID $1",
-                           info.tablet_id, info.stream_id);
+      // TODO: Add the split tablets in during tablet split?
+      LOG(INFO) << "Tablet ID " << info.tablet_id << " is not part of stream ID " << info.stream_id
+                << ". Repopulating tablet list for this stream.";
     }
   }
 
@@ -1623,7 +1624,11 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
     for (const auto &tablet : tablets) {
       // Add every tablet in the stream.
       ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet.tablet_id()};
-      tablet_checkpoints_.emplace(producer_info, TabletCheckpoint(), TabletCheckpoint());
+      auto it = tablet_checkpoints_.find(producer_info);
+      if (it == tablet_checkpoints_.end()) {
+        // This is a new tablet, lets add it to the map.
+        tablet_checkpoints_.emplace(producer_info, TabletCheckpoint(), TabletCheckpoint());
+      }
       // If this is the tablet that the user requested.
       if (tablet.tablet_id() == info.tablet_id) {
         found = true;
