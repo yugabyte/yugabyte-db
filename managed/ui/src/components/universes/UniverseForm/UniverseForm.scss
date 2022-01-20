@@ -566,11 +566,12 @@
   display: inline;
 }
 
-.loading-container {
+.center-aligned {
   display: flex;
   flex: 1;
   justify-content: center;
   align-items: center;
+  flex-direction: column;
 }
 
 .default-text {
@@ -627,7 +628,9 @@
   height: 100%;
   color: black;
 }
-.gflag-table {
+
+.gflag-edit-table,
+.gflag-read-table {
   width: 100%;
   padding: 10px;
   border: 1px solid #e3e3e5;
@@ -635,8 +638,12 @@
   margin-top: 10px;
 }
 
-.gflag-table .react-bs-table table td {
-  padding: 6px 6px !important;
+.gflag-edit-table .react-bs-table table td {
+  padding: 6px !important;
+}
+
+.gflag-read-table .react-bs-table table td {
+  padding: 12px 6px !important;
 }
 
 .cell-font {
@@ -672,4 +679,20 @@
 
 .mr-10 {
   margin-right: 10px;
+}
+
+.lg-icon {
+  font-size: xx-large !important;
+}
+
+.ml-10 {
+  margin-left: 10px;
+}
+
+.mt-2 {
+  margin-top: 2px;
+}
+
+.mb-2 {
+  margin-bottom: 2px;
 }
