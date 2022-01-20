@@ -8,7 +8,7 @@ aliases:
   - /latest/explore/multi-region-deployments/follower-reads-ysql/
 menu:
   latest:
-    identifier: going-beyond-sql-follower-reads-ysql
+    identifier: follower-reads-ysql
     parent: going-beyond-sql
     weight: 280
 isTocNested: true

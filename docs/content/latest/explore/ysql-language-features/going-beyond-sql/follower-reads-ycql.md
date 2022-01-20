@@ -11,7 +11,7 @@ aliases:
   - /latest/explore/multi-region-deployments/follower-reads-ycql/
 menu:
   latest:
-    identifier: going-beyond-sql-follower-reads-ycql
+    identifier: follower-reads-ycql
     parent: going-beyond-sql
     weight: 285
 isTocNested: true

@@ -5,7 +5,6 @@ linkTitle: SQL features
 description: Explore core SQL features in YSQL
 headcontent: Explore core SQL features in YSQL
 image: /images/section_icons/api/ysql.png
-aliases:
 menu:
   latest:
     identifier: explore-ysql-language-features
@@ -32,7 +31,7 @@ The following table lists the most important YSQL features which you would find 
 
 | YSQL Feature | Description |
 | :----------- | :---------- |
-| <span style="font-size:16px">[Schemas and Tables](databases-schemas-tables/)</span> | SQL shell with `ysqlsh`, users, databases, tables and schemas |
+| <span style="font-size:16px">[Schemas and Tables](databases-schemas-tables/)</span> | SQL shell with `ysqlsh`, users, databases, tables, and schemas |
 | <span style="font-size:16px">[Data Types](data-types/)</span> | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
 | <span style="font-size:16px">[DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl/)</span> | Data definition language |
 | <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
@@ -69,7 +68,3 @@ Since YugabyteDB is a distributed SQL database, YSQL has a number of features th
 | <span style="font-size:16px">[`Tablespaces`](going-beyond-sql/tablespaces)</span> | Enables pinning of data in tables and table partitions to different geographic locations |
 | <span style="font-size:16px">[`Follower Reads`](going-beyond-sql/follower-reads-ysql/)</span> | Enables more read IOPS with low latencies in YugabyteDB clusters |
 | <span style="font-size:16px">`Tablegroups`</span> | Enables colocation of multiple smaller tables into one tablet for better performance |
-
-<!--
-Read more about these [YSQL features not present in PostgreSQL](ysql-features-not-in-postgres/).
--->

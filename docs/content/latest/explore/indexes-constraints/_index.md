@@ -43,10 +43,10 @@ menu:
     <a class="section-link icon-offset" href="gin/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">General inverted indexes</div>
+        <div class="title">Generalized inverted indexes</div>
       </div>
       <div class="body">
-          Use Generalized inverted indexes in YSQL to run efficient queries.
+          Use GIN indexes in YSQL to run efficient queries.
       </div>
     </a>
   </div>

@@ -10,7 +10,6 @@ menu:
     weight: 400
 aliases:
    - /latest/explore/ysql-language-features/gin/
-
 isTocNested: true
 showAsideToc: true
 ---

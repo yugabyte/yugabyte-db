@@ -10,6 +10,8 @@ menu:
     weight: 251
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
+isTocNested: true
+showAsideToc: true
 ---
 
 The use of indexes can enhance database performance by enabling the database server to find rows faster.

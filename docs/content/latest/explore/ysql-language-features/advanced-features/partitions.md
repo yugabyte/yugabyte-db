@@ -5,7 +5,7 @@ description: Table Partitioning in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: advanced-features-partitioins
+    identifier: advanced-features-partitions
     parent: advanced-features
     weight: 225
 aliases:
