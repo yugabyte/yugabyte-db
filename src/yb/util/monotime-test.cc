@@ -219,8 +219,8 @@ TEST(TestMonoTime, ToCoarse) {
     auto converted = ToCoarse(MonoTime::Now());
     auto after = CoarseMonoClock::Now();
 
-    // Coarse mono clock has 1ms precision, so we add it to bounds.
-    const auto kPrecision = 2ms;
+    // Coarse mono clock has limited precision, so we add its resolution to bounds.
+    const auto kPrecision = ClockResolution<CoarseMonoClock>() * 2;
     ASSERT_GE(converted, before);
     ASSERT_LE(converted, after + kPrecision);
   }
