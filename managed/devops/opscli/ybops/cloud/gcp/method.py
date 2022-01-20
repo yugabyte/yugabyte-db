@@ -120,7 +120,8 @@ class GcpDestroyInstancesMethod(DestroyInstancesMethod):
         super(GcpDestroyInstancesMethod, self).__init__(base_command)
 
     def callback(self, args):
-        self.cloud.delete_instance(args)
+        filters = "((status = \"RUNNING\") OR (status = \"TERMINATED\"))"
+        self.cloud.delete_instance(args, filters=filters)
 
 
 class GcpQueryRegionsMethod(AbstractMethod):
