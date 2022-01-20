@@ -24,6 +24,7 @@
     - [Configuration](#configuration)
     - [Setup](#setup)
     - [Building from source](#building-from-source)
+    - [Uninstall `pg_stat_monitor`](#uninstall-pg_stat_monitor)
     - [How to contribute](#how-to-contribute)
     - [Report a bug](#report-a-bug)
     - [Support, discussions and forums](#support-discussions-and-forums)
@@ -237,6 +238,45 @@ cd pg_stat_monitor
 make USE_PGXS=1
 make USE_PGXS=1 install
 ```
+
+### Uninstall `pg_stat_monitor`
+
+To uninstall `pg_stat_monitor`, do the following:
+
+1. Disable statistics collection. From the `psql` terminal, run the following command:
+
+    ```sql
+    ALTER SYSTEM SET pg_stat_monitor.pgsm_enable = 0;
+    ```
+
+2. Drop `pg_stat_monitor` extension:
+
+    ```sql
+    DROP EXTENSION pg_stat_monitor;
+    ```
+
+3. Remove `pg_stat_monitor` from the `shared_preload_libraries` configuration parameter:
+
+    ```sql 
+    ALTER SYSTEM SET shared_preload_libraries = '';
+    ```
+
+    **Important**: If the `shared_preload_libraries` parameter includes other modules, specify them all for the `ALTER SYSTEM SET` command to keep using them.
+
+4. Restart the `postgresql` instance to apply the changes. The following command restarts PostgreSQL 13. Replace the version value with the one you are using. 
+
+    * On Debian and Ubuntu:
+
+    ```sh
+    sudo systemctl restart postgresql.service
+    ```
+
+    * On Red Hat Enterprise Linux and CentOS:
+
+
+    ```sh
+    sudo systemctl restart postgresql-13
+    ```
 
 ### How to contribute
 
