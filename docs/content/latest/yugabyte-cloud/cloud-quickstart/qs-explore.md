@@ -54,7 +54,7 @@ Referenced by:
 
 ### Queries, joins, aggregates, graph, and pivot
 
-Use a self-join query to list the employees earning more that their managers.
+Use a self-join query to list the employees earning more than their managers.
 
 ```sql
 select
@@ -79,7 +79,7 @@ order by employee.sal;
 (2 rows)
 ```
 
-Use Recursive CTE to show the manager hierarchy.
+Use a recursive common table expression (CTE) to show the manager hierarchy.
 
 ```sql
 with recursive emp_manager as (
@@ -103,7 +103,7 @@ select * from emp_manager;
 (5 rows)
 ```
 
-Use analytic window functions to compare hiring time interval by department.
+Use analytic window functions to compare the hiring time interval by department.
 
 ```sql
 select
@@ -140,7 +140,7 @@ select
 (14 rows)
 ```
 
-Use a crosstab pivot query to show the sum of salary per job / department.
+Use a crosstab pivot query to show the sum of salary per job by department.
 
 ```sql
 select job, dname, sum(sal)
@@ -221,7 +221,7 @@ Create a text search index on the description column and query for words. (Featu
         where to_tsvector('simple',description) @@ to_tsquery('simple','responsible & services');
     ```
 
-Use arithmetic on date intervals to find employees with overlapping evaluation period.
+Use arithmetic on date intervals to find employees with overlapping evaluation periods.
 
 ```sql
 with emp_evaluation_period as (
@@ -324,7 +324,7 @@ Use a prepared statement with typed input to prevent SQL injection.
     DEALLOCATE
     ```
 
-Use procedure to encapsulate transactions with error handling.
+Use a procedure to encapsulate transactions with error handling.
 
 1. Create the procedure with the business logic.
 
@@ -477,7 +477,7 @@ Record the last update time of each row automatically.
     (4 rows)
     ```
 
-Create a new table and an index to avoid table scan and sorts.
+Create a new table and an index to avoid table scans and sorts.
 
 1. Create a table with randomly generated rows.
 
