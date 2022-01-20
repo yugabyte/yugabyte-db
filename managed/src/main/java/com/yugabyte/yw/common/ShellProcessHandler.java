@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -36,6 +37,8 @@ public class ShellProcessHandler {
   private final play.Configuration appConfig;
   private final boolean cloudLoggingEnabled;
 
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+
   static final Pattern ANSIBLE_FAIL_PAT =
       Pattern.compile(
           "(ybops.common.exceptions.YBOpsRuntimeError: Runtime error: "
@@ -43,6 +46,7 @@ public class ShellProcessHandler {
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
+  static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
 
   @Inject
   public ShellProcessHandler(play.Configuration appConfig) {
@@ -187,11 +191,13 @@ public class ShellProcessHandler {
           response.description,
           status,
           response.durationMs);
-      if (tempOutputFile != null && tempOutputFile.exists()) {
-        tempOutputFile.delete();
-      }
-      if (tempErrorFile != null && tempErrorFile.exists()) {
-        tempErrorFile.delete();
+      if (runtimeConfigFactory.globalRuntimeConf().getBoolean(COMMAND_OUTPUT_LOGS_DELETE)) {
+        if (tempOutputFile != null && tempOutputFile.exists()) {
+          tempOutputFile.delete();
+        }
+        if (tempErrorFile != null && tempErrorFile.exists()) {
+          tempErrorFile.delete();
+        }
       }
     }
 
