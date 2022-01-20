@@ -44,6 +44,7 @@
 #include <boost/function.hpp>
 #include <glog/logging.h>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
@@ -525,6 +526,14 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   if (last_hb_response_.has_ysql_catalog_version()) {
+    if (FLAGS_log_ysql_catalog_versions) {
+      VLOG_WITH_FUNC(1) << "got master catalog version: "
+                        << last_hb_response_.ysql_catalog_version()
+                        << ", breaking version: "
+                        << (last_hb_response_.has_ysql_last_breaking_catalog_version()
+                            ? Format("$1", last_hb_response_.ysql_last_breaking_catalog_version())
+                            : "(none)");
+    }
     if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
       server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                      last_hb_response_.ysql_last_breaking_catalog_version());

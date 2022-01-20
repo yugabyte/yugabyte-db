@@ -1054,6 +1054,10 @@ bool YBCGetDisableIndexBackfill() {
   return FLAGS_ysql_disable_index_backfill;
 }
 
+bool YBCGetLogYsqlCatalogVersions() {
+  return FLAGS_log_ysql_catalog_versions;
+}
+
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }

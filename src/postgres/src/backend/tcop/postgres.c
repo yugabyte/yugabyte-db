@@ -3698,6 +3698,10 @@ static void YBRefreshCache()
 	if (yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 		yb_catalog_version_type = CATALOG_VERSION_UNSET;
 	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
+	if (YBCGetLogYsqlCatalogVersions())
+		ereport(LOG,
+				(errmsg("%s: got master catalog version: %" PRIu64,
+						__func__, catalog_master_version)));
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3713,6 +3717,10 @@ static void YBRefreshCache()
 	/* Set the new ysql cache version. */
 	yb_catalog_cache_version = catalog_master_version;
 	yb_need_cache_refresh = false;
+	if (YBCGetLogYsqlCatalogVersions())
+		ereport(LOG,
+				(errmsg("%s: set local catalog version: %" PRIu64,
+						__func__, yb_catalog_cache_version)));
 
 	finish_xact_command();
 }
@@ -3760,6 +3768,13 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	YBCPgResetCatalogReadTime();
 	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
 	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
+	if (YBCGetLogYsqlCatalogVersions())
+	{
+		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
+		ereport(elevel,
+				(errmsg("%s: got master catalog version: %" PRIu64,
+						__func__, catalog_master_version)));
+	}
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;
 
@@ -3983,7 +3998,16 @@ static void YBCheckSharedCatalogCacheVersion() {
 
 	uint64_t shared_catalog_version;
 	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-	if (yb_catalog_cache_version < shared_catalog_version)
+	const bool need_global_cache_refresh =
+		yb_catalog_cache_version < shared_catalog_version;
+	if (YBCGetLogYsqlCatalogVersions())
+	{
+		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
+		ereport(elevel,
+				(errmsg("%s: got tserver catalog version: %" PRIu64,
+						__func__, shared_catalog_version)));
+	}
+	if (need_global_cache_refresh)
 	{
 		YBRefreshCache();
 	}

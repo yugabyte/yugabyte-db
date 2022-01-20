@@ -27,6 +27,7 @@
 #include "pg_yb_utils.h"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -1024,6 +1025,10 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 		if (increment_done)
 		{
 			yb_catalog_cache_version += 1;
+			if (YBCGetLogYsqlCatalogVersions())
+				ereport(LOG,
+						(errmsg("%s: set local catalog version: %" PRIu64,
+								__func__, yb_catalog_cache_version)));
 		}
 
 		List *handles = YBGetDdlHandles();
