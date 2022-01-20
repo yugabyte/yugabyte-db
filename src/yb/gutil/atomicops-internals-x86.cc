@@ -70,14 +70,14 @@
 
 // Set the flags so that code will run correctly and conservatively
 // until InitGoogle() is called.
-struct AtomicOps_x86CPUFeatureStruct AtomicOps_Internalx86CPUFeatures = {
+struct AtomicOps_x86CPUFeatureStruct YbAtomicOps_Internalx86CPUFeatures = {
   false,          // bug can't exist before process spawns multiple threads
   false,          // no SSE2
   false,          // no cmpxchg16b
 };
 
-// Initialize the AtomicOps_Internalx86CPUFeatures struct.
-static void AtomicOps_Internalx86CPUFeaturesInit() {
+// Initialize the YbAtomicOps_Internalx86CPUFeatures struct.
+static void YbAtomicOps_Internalx86CPUFeaturesInit() {
   uint32 eax;
   uint32 ebx;
   uint32 ecx;
@@ -109,29 +109,29 @@ static void AtomicOps_Internalx86CPUFeaturesInit() {
   if (strcmp(vendor, "AuthenticAMD") == 0 &&       // AMD
       family == 15 &&
       32 <= model && model <= 63) {
-    AtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug = true;
+    YbAtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug = true;
   } else {
-    AtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug = false;
+    YbAtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug = false;
   }
 
   // edx bit 26 is SSE2 which we use to tell use whether we can use mfence
-  AtomicOps_Internalx86CPUFeatures.has_sse2 = ((edx >> 26) & 1);
+  YbAtomicOps_Internalx86CPUFeatures.has_sse2 = ((edx >> 26) & 1);
 
   // ecx bit 13 indicates whether the cmpxchg16b instruction is supported
-  AtomicOps_Internalx86CPUFeatures.has_cmpxchg16b = ((ecx >> 13) & 1);
+  YbAtomicOps_Internalx86CPUFeatures.has_cmpxchg16b = ((ecx >> 13) & 1);
 
   VLOG(1) << "vendor " << vendor <<
              "  family " << family <<
              "  model " << model <<
              "  amd_lock_mb_bug " <<
-                   AtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug <<
-             "  sse2 " << AtomicOps_Internalx86CPUFeatures.has_sse2 <<
-             "  cmpxchg16b " << AtomicOps_Internalx86CPUFeatures.has_cmpxchg16b;
+                   YbAtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug <<
+             "  sse2 " << YbAtomicOps_Internalx86CPUFeatures.has_sse2 <<
+             "  cmpxchg16b " << YbAtomicOps_Internalx86CPUFeatures.has_cmpxchg16b;
 }
 
 // AtomicOps initialisation routine for external use.
 void AtomicOps_x86CPUFeaturesInit() {
-  AtomicOps_Internalx86CPUFeaturesInit();
+  YbAtomicOps_Internalx86CPUFeaturesInit();
 }
 
 #endif

@@ -887,7 +887,7 @@ TEST_F(BootstrapTest, RandomizedInput) {
 
     BuildLog();
 
-    for (auto i = 0; i < input.entries.size(); ++i) {
+    for (size_t i = 0; i < input.entries.size(); ++i) {
       const auto& entry = input.entries[i];
       if (entry.start_new_segment_with_this_entry && i != 0) {
         ASSERT_OK(RollLog());

@@ -37,6 +37,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/consensus_queue.h"
 
 #include "yb/gutil/sysinfo.h"
 
@@ -53,6 +54,9 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
 #include "yb/util/ulimit_util.h"
+#include "yb/util/debug/trace_event.h"
+
+#include "yb/tserver/server_main_util.h"
 
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
@@ -92,53 +96,20 @@ static int MasterMain(int argc, char** argv) {
   }
 
   FLAGS_default_memory_limit_to_ram_ratio = 0.10;
-
-  const char* use_durable_wal_write_by_default_env_var =
-      getenv("YB_MASTER_DURABLE_WAL_WRITE_BY_DEFAULT");
-  if (use_durable_wal_write_by_default_env_var &&
-      strcmp(use_durable_wal_write_by_default_env_var, "0") == 0) {
-    // Allow setting this flag to false by default by specifying
-    // the environment variable YB_MASTER_DURABLE_WAL_WRITE_BY_DEFAULT=0 (for use in tests).
-    FLAGS_durable_wal_write = false;
-  } else {
-    // For masters we always want to fsync the WAL files.
-    FLAGS_durable_wal_write = true;
-  }
+  // For masters we always want to fsync the WAL files (except in testing).
+  FLAGS_durable_wal_write = true;
 
   // A multi-node Master leader should not evict failed Master followers
   // because there is no-one to assign replacement servers in order to maintain
   // the desired replication factor. (It's not turtles all the way down!)
   FLAGS_evict_failed_followers = false;
 
-  // Only write FATALs by default to stderr.
-  FLAGS_stderrthreshold = google::FATAL;
-
-  // Do not sync GLOG to disk for INFO, WARNING.
-  // ERRORs, and FATALs will still cause a sync to disk.
-  FLAGS_logbuflevel = google::GLOG_WARNING;
-  ParseCommandLineFlags(&argc, &argv, true);
-  if (argc != 1) {
-    std::cerr << "usage: " << argv[0] << std::endl;
-    return 1;
-  }
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType, argv[0]));
-  LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
-
-  MemTracker::SetTCMallocCacheMemory();
-
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(GetPrivateIpMode());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
+      MasterOptions::kServerType, &argc, &argv));
 
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
   enterprise::Master server(*opts_result);
-
-  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
-    LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
-                 << "Use remote_bootstrap_rate_limit_bytes_per_sec flag instead";
-    FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
-        FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
-  }
 
   SetDefaultInitialSysCatalogSnapshotFlags();
 

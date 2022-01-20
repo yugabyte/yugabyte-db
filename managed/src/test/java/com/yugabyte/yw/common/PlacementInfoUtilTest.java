@@ -71,8 +71,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -1922,7 +1924,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Using default region. Only AZs from the default region should have
     // replicationFactor = 1.
     PlacementInfo pi =
-        PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, r2.uuid);
+        PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, true, r2.uuid);
     assertNotNull(pi);
 
     List<PlacementAZ> placementAZs =
@@ -1938,7 +1940,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Old logic - without default region.
     // Zones from different regions are alternated - so at least one zone from both
     // r1 and r2 regions should have replicationFactor = 1.
-    pi = PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, null);
+    pi = PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, false, null);
     assertNotNull(pi);
 
     placementAZs =
@@ -2084,7 +2086,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     params.clusters = required.getUniverseDetails().clusters;
     params.nodeDetailsSet = new HashSet<>(required.getUniverseDetails().nodeDetailsSet);
 
-    PlacementInfoUtil.configureNodeEditUsingPlacementInfo(params);
+    PlacementInfoUtil.configureNodeEditUsingPlacementInfo(params, false);
 
     assertEquals(
         toBeRemoved,
@@ -2356,5 +2358,107 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertTrue(
         PlacementInfoUtil.isProviderOrRegionChange(
             universe3.getUniverseDetails().getPrimaryCluster(), universe3.getNodes()));
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    "2, r1, 1, 2, r2, 1, 2, r3, 1, 3,,",
+    "2, r1, 1, 3, r2, 2, 3, r3, 2, 5,,",
+    "2, r1, 2, 3, r2, 0, 3, r3, 0, 5, r1, Unable to place replicas. not enough nodes in zones.",
+    "4, r1, 3, 3, r2, 0, 3, r3, 0, 3, r1,",
+    "3, r1, 0, 3, r2, 3, 3, r3, 0, 3, r2,",
+    "2, r1, 0, 3, r2, 0, 3, r3, 3, 3, r3,",
+    // All zones in one region.
+    "2, r1, 1, 3, r1, 1, 3, r1, 1, 3,,",
+    "2, r1, 1, 3, r1, 1, 3, r1, 1, 3, r1,",
+  })
+  // @formatter:on
+  public void testSetPerAZRF(
+      int numNodesInAZ1,
+      String regionCodeForAZ1,
+      int expectedRFAZ1,
+      int numNodesInAZ2,
+      String regionCodeForAZ2,
+      int expectedRFAZ2,
+      int numNodesInAZ3,
+      String regionCodeForAZ3,
+      int expectedRFAZ3,
+      int numRF,
+      @Nullable String defaultRegionCode,
+      @Nullable String exceptionMessage) {
+
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer customer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Region r1 = getOrCreate(provider, regionCodeForAZ1);
+    Region r2 = getOrCreate(provider, regionCodeForAZ2);
+    Region r3 = getOrCreate(provider, regionCodeForAZ3);
+
+    AvailabilityZone az1 =
+        AvailabilityZone.createOrThrow(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 =
+        AvailabilityZone.createOrThrow(r2, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az3 =
+        AvailabilityZone.createOrThrow(r3, "PlacementAZ " + 3, "az-" + 3, "subnet-" + 3);
+
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
+    PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
+
+    getPlacementAZ(pi, r1.uuid, az1.uuid).numNodesInAZ = numNodesInAZ1;
+    getPlacementAZ(pi, r2.uuid, az2.uuid).numNodesInAZ = numNodesInAZ2;
+    getPlacementAZ(pi, r3.uuid, az3.uuid).numNodesInAZ = numNodesInAZ3;
+
+    Region defaultRegion = Region.getByCode(provider, defaultRegionCode);
+    UUID defaultRegionUUID = defaultRegion == null ? null : defaultRegion.uuid;
+
+    if (StringUtils.isEmpty(exceptionMessage)) {
+      PlacementInfoUtil.setPerAZRF(pi, numRF, defaultRegionUUID);
+    } else {
+      String errorMessage =
+          assertThrows(
+                  RuntimeException.class,
+                  () -> {
+                    PlacementInfoUtil.setPerAZRF(pi, numRF, defaultRegionUUID);
+                  })
+              .getMessage();
+      assertThat(errorMessage, RegexMatcher.matchesRegex(exceptionMessage));
+    }
+
+    assertEquals(
+        "AZ1 rf differs from expected one",
+        expectedRFAZ1,
+        getPlacementAZ(pi, r1.uuid, az1.uuid).replicationFactor);
+    assertEquals(
+        "AZ2 rf differs from expected one",
+        expectedRFAZ2,
+        getPlacementAZ(pi, r2.uuid, az2.uuid).replicationFactor);
+    assertEquals(
+        "AZ3 rf differs from expected one",
+        expectedRFAZ3,
+        getPlacementAZ(pi, r3.uuid, az3.uuid).replicationFactor);
+  }
+
+  private Region getOrCreate(Provider provider, String regionCode) {
+    Region result = Region.getByCode(provider, regionCode);
+    if (result == null) {
+      result = Region.create(provider, regionCode, regionCode, "yb-image-1");
+    }
+    return result;
+  }
+
+  private PlacementAZ getPlacementAZ(PlacementInfo pi, UUID regionUUID, UUID azUUID) {
+    for (PlacementRegion region : pi.cloudList.get(0).regionList) {
+      for (PlacementAZ az : region.azList) {
+        if (azUUID.equals(az.uuid)) {
+          return az;
+        }
+      }
+    }
+    return null;
   }
 }

@@ -44,7 +44,7 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
 
  protected:
   void TriggerTServerLeaderChange() {
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       tserver::TabletServer* ts = cluster_->mini_tablet_server(i)->server();
       ts->maintenance_manager()->Shutdown();
       tserver::TSTabletManager* tm = ts->tablet_manager();

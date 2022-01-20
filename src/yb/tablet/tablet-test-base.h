@@ -131,7 +131,7 @@ struct IntKeyTestSetup {
 
   static uint32_t GetMaxRows() {
     using CppType = typename DataTypeTraits<Type>::cpp_type;
-    auto max = std::numeric_limits<typename DataTypeTraits<Type>::cpp_type>::max();
+    uint64_t max = std::numeric_limits<CppType>::max();
     if (max > std::numeric_limits<uint32_t>::max()) {
       max = static_cast<CppType>(std::numeric_limits<uint32_t>::max());
     }
@@ -289,7 +289,7 @@ class TabletTestPreBase : public YBTabletTest {
 
   CHECKED_STATUS DeleteTestRow(LocalTabletWriter* writer, int32_t key_idx);
 
-  void VerifyTestRows(int32_t first_row, uint32_t expected_count);
+  void VerifyTestRows(int32_t first_row, int32_t expected_count);
 
   // Iterate through the full table, stringifying the resulting rows
   // into the given vector. This is only useful in tests which insert

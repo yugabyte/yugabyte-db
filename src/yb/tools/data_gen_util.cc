@@ -44,7 +44,7 @@ namespace yb {
 namespace tools {
 
 void WriteValueToColumn(const client::YBSchema& schema,
-                        int col_idx,
+                        size_t col_idx,
                         uint64_t value,
                         QLValuePB* out) {
   DataType type = schema.Column(col_idx).type()->main();
@@ -82,7 +82,7 @@ void WriteValueToColumn(const client::YBSchema& schema,
 
 void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
                         Random* random, QLWriteRequestPB* req) {
-  for (int col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
+  for (size_t col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
     // We randomly generate the inserted data, except for the first column,
     // which is always based on a monotonic "record id".
     uint64_t value;

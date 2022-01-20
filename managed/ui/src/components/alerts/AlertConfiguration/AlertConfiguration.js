@@ -84,7 +84,7 @@ export const AlertConfiguration = (props) => {
           eventKey={defaultTab}
           title={
             <span>
-              <i className="fa fa-bell-o tab-logo" aria-hidden="true"></i> Alert Creation
+              <i className="fa fa-bell-o tab-logo" aria-hidden="true"></i> Alert Policies
             </span>
           }
           unmountOnExit

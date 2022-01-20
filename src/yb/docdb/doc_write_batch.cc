@@ -152,7 +152,8 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
     const Value &value,
     LazyIterator* iter) {
   bool should_apply = true;
-  if (value.user_timestamp() != Value::kInvalidUserTimestamp) {
+  auto user_timestamp = value.user_timestamp();
+  if (user_timestamp != Value::kInvalidUserTimestamp) {
     // Seek for the older version of the key that we're about to write to. This is essentially a
     // NOOP if we've already performed the seek due to the cache.
     RETURN_NOT_OK(SeekToKeyPrefix(iter));
@@ -160,13 +161,15 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
     if ((subdoc_exists_ || current_entry_.value_type == ValueType::kTombstone) &&
         current_entry_.found_exact_key_prefix) {
       if (current_entry_.user_timestamp != Value::kInvalidUserTimestamp) {
-        should_apply = value.user_timestamp() >= current_entry_.user_timestamp;
+        should_apply = user_timestamp >= current_entry_.user_timestamp;
       } else {
         // Look at the hybrid time instead.
         const DocHybridTime& doc_hybrid_time = current_entry_.doc_hybrid_time;
         if (doc_hybrid_time.hybrid_time().is_valid()) {
-          should_apply = value.user_timestamp() >=
-              doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
+          should_apply =
+              user_timestamp >= 0 &&
+              implicit_cast<size_t>(user_timestamp) >=
+                  doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
         }
       }
     }

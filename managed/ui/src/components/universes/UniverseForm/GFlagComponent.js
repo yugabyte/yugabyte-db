@@ -68,12 +68,14 @@ export default function GFlagComponent(props) {
   const [selectedProps, setSelectedProps] = useState(null);
   const [toggleModal, setToggleModal] = useState(false);
   const [validationError, setValidationError] = useState([]);
+  const [formError, setFormError] = useState(null);
   const whenMounted = useWhenMounted();
 
   //handlers
   const handleSelectedOption = (serverProps) => {
     setSelectedProps(serverProps);
     setToggleModal(true);
+    setFormError(null);
   };
 
   const callValidation = async (flagArr) => {
@@ -106,18 +108,26 @@ export default function GFlagComponent(props) {
   };
 
   const handleFormSubmit = (values, actions) => {
-    setToggleModal(false);
     switch (values.option) {
       case FREE_TEXT: {
-        const formValues = JSON.parse(values?.flagvalue);
-        const newFlagArr = [];
-        if (Object.keys(formValues).length > 0) {
-          Object.entries(formValues).forEach(([key, val]) => {
-            const obj = { Name: key, [values?.server]: val };
-            checkExistsAndPush(obj);
-            newFlagArr.push(obj);
-          });
-          callValidation(newFlagArr);
+        try {
+          const formValues = JSON.parse(values?.flagvalue);
+          const newFlagArr = [];
+          if (Object.keys(formValues).length > 0) {
+            Object.entries(formValues).forEach(([key, val]) => {
+              const obj = { Name: key, [values?.server]: val };
+              checkExistsAndPush(obj);
+              newFlagArr.push(obj);
+            });
+            callValidation(newFlagArr);
+            setToggleModal(false);
+          }
+        } catch (e) {
+          setFormError('Fix all the errors shown below to proceed');
+          setTimeout(() => {
+            setFormError(null);
+            actions.setSubmitting(false);
+          }, 5000);
         }
         break;
       }
@@ -126,6 +136,7 @@ export default function GFlagComponent(props) {
         const obj = { Name: values?.flagname, [values?.server]: values?.flagvalue };
         checkExistsAndPush(obj);
         callValidation([obj]);
+        setToggleModal(false);
         break;
       }
 
@@ -346,6 +357,7 @@ export default function GFlagComponent(props) {
         submitLabel="Add Flag"
         formName="ADDGFlagForm"
         cancelLabel="Cancel"
+        error={formError}
         validationSchema={gflagSchema}
         showCancelButton={true}
         onHide={() => setToggleModal(false)}

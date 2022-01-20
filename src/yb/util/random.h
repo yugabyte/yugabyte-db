@@ -148,7 +148,7 @@ class Random {
   // The results are not stored in a randomized order: the order of results will
   // match their order in the input collection.
   template<class Collection, class Set, class T>
-  void ReservoirSample(const Collection& c, int k, const Set& avoid,
+  void ReservoirSample(const Collection& c, size_t k, const Set& avoid,
                        std::vector<T>* result) {
     result->clear();
     result->reserve(k);
@@ -164,7 +164,7 @@ class Random {
         continue;
       }
       // Otherwise replace existing elements with decreasing probability.
-      int j = Uniform(i);
+      auto j = Uniform(i);
       if (j < k) {
         (*result)[j] = elem;
       }

@@ -200,7 +200,7 @@ static int ReadMaxCPUIndex() {
 static void InitializeSystemInfo() {
   bool saw_mhz = false;
 
-  if (RunningOnValgrind()) {
+  if (YbRunningOnValgrind()) {
     // Valgrind may slow the progress of time artificially (--scale-time=N
     // option). We thus can't rely on CPU Mhz info stored in /sys or /proc
     // files. Thus, actually measure the cps.

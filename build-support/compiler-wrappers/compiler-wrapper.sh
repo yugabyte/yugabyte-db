@@ -276,7 +276,6 @@ fi
 
 output_file=""
 input_files=()
-library_files=()
 compiling_pch=false
 yb_pch=false
 
@@ -286,6 +285,10 @@ has_yb_c_files=false
 
 compiler_args_no_output=()
 analyzer_checkers_specified=false
+
+linking=false
+use_lld=false
+lld_linking=false
 
 while [[ $# -gt 0 ]]; do
   is_output_arg=false
@@ -335,6 +338,9 @@ while [[ $# -gt 0 ]]; do
     -analyzer-checker=*)
       analyzer_checkers_specified=true
     ;;
+    -fuse-ld=lld)
+      use_lld=true
+    ;;
   esac
   if ! "$is_output_arg"; then
     compiler_args_no_output+=( "$1" )
@@ -342,9 +348,21 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ $output_file != *.o && ${#library_files[@]} -gt 0 ]]; then
-  input_files+=( "${library_files[@]}" )
-  library_files=()
+if [[ $output_file == *.o ]]; then
+  # Compiling.
+  linking=false
+else
+  linking=true
+fi
+
+if [[ $linking == "true" && $use_lld == "true" ]]; then
+  lld_linking=true
+fi
+
+if [[ $YB_COMPILER_TYPE == clang* && $output_file == "jsonpath_gram.o" ]]; then
+  # To avoid this error:
+  # https://gist.github.com/mbautin/b943fb426bfead7388dde17ddb1b0fa7
+  compiler_args+=( -Wno-error=implicit-fallthrough )
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -362,9 +380,12 @@ if [[ $HOSTNAME == build-worker* ]]; then
   is_build_worker=true
 fi
 
+# If linking with LLVM's lld linker, do it locally.
+# See https://github.com/yugabyte/yugabyte-db/issues/11034 for more details.
 if [[ $local_build_only == "false" &&
       ${YB_REMOTE_COMPILATION:-} == "1" &&
-      $is_build_worker == "false" ]]; then
+      $is_build_worker == "false" &&
+      $lld_linking == "false" ]]; then
 
   trap remote_build_exit_handler EXIT
 
@@ -551,6 +572,12 @@ run_compiler_and_save_stderr() {
 
 # -------------------------------------------------------------------------------------------------
 # Local build
+
+if [[ $output_file =~ libyb_pgbackend*  ]]; then
+  # We record the linker command used for the libyb_pgbackend library so we can use it when
+  # producing the LTO build for yb-tserver.
+  echo "${compiler_args[*]}" >"link_cmd_${output_file}.txt"
+fi
 
 if [[ ${build_type:-} == "asan" &&
       $PWD == */postgres_build/src/backend/utils/adt &&
@@ -769,7 +796,7 @@ if [[ "${yb_pch}" == "true" ]]; then
       case "$arg" in
         -yb-pch)
           pch_cmd+=( "-Xclang" "-emit-pch" "-fpch-instantiate-templates" "-fpch-codegen"
-                     "-fpch-debuginfo" "-c" )
+                     "-fpch-debuginfo" "-x" "c++-header" "-c" )
         ;;
         -fpch-*|-x|c++-header)
         ;;

@@ -290,14 +290,13 @@ int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
 
 } // anonymous namespace
 
-Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
-                                        int max_size_bytes) {
+Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_bytes) {
   return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes);
 }
 
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                         int64_t to_op_index,
-                                        int max_size_bytes,
+                                        size_t max_size_bytes,
                                         CoarseTimePoint deadline) {
   DCHECK_GE(after_op_index, 0);
 
@@ -335,7 +334,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         up_to = to_index - 1;
       } else {
         // Read up to the next entry that's in the cache or to_index whichever is lesser.
-        up_to = std::min(iter->first - 1, static_cast<uint64_t>(to_index - 1));
+        up_to = std::min(iter->first - 1, to_index - 1);
       }
 
       l.unlock();
