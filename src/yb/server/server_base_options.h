@@ -101,6 +101,8 @@ class ServerBaseOptions {
 
   ServerBaseOptions(const ServerBaseOptions& options);
 
+  WebserverOptions& CompleteWebserverOptions();
+
  protected:
   explicit ServerBaseOptions(int default_port);
 

@@ -440,7 +440,7 @@ RpcAndWebServerBase::RpcAndWebServerBase(
     MemTrackerPtr mem_tracker,
     const scoped_refptr<server::Clock>& clock)
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
-      web_server_(new Webserver(options.webserver_opts, name_)) {
+      web_server_(new Webserver(options_.CompleteWebserverOptions(), name_)) {
   FsManagerOpts fs_opts;
   fs_opts.metric_entity = metric_entity_;
   fs_opts.parent_mem_tracker = mem_tracker_;
