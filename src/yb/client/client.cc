@@ -186,6 +186,8 @@ using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
 using yb::master::CreateTransactionStatusTableResponsePB;
+using yb::master::UpdateConsumerOnProducerSplitRequestPB;
+using yb::master::UpdateConsumerOnProducerSplitResponsePB;
 using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
@@ -1506,6 +1508,27 @@ Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
 
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
+  return Status::OK();
+}
+
+Status YBClient::UpdateConsumerOnProducerSplit(
+    const string& producer_id,
+    const CDCStreamId& stream_id,
+    const master::ProducerSplitTabletInfoPB& split_info) {
+  if (producer_id.empty()) {
+    return STATUS(InvalidArgument, "Producer id is required.");
+  }
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  UpdateConsumerOnProducerSplitRequestPB req;
+  req.set_producer_id(producer_id);
+  req.set_stream_id(stream_id);
+  req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
+
+  UpdateConsumerOnProducerSplitResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerSplit);
   return Status::OK();
 }
 

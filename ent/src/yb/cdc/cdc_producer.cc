@@ -130,6 +130,10 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
       }
       return false;
     }
+    case consensus::OperationType::SPLIT_OP: {
+      records->emplace_back(msg->hybrid_time(), index);
+      return true;  // Don't need to process any records after a SPLIT_OP.
+    }
 
     case consensus::OperationType::CHANGE_CONFIG_OP:
       FALLTHROUGH_INTENDED;
@@ -140,8 +144,6 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
     case consensus::OperationType::NO_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::SNAPSHOT_OP:
-      FALLTHROUGH_INTENDED;
-    case consensus::OperationType::SPLIT_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::TRUNCATE_OP:
       FALLTHROUGH_INTENDED;
@@ -402,6 +404,15 @@ CHECKED_STATUS PopulateTransactionRecord(const ReplicateMsgPtr& msg,
   return Status::OK();
 }
 
+CHECKED_STATUS PopulateSplitOpRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
+  SCHECK(msg->has_split_request(), InvalidArgument,
+         Format("Split op message requires split_request: $0", msg->ShortDebugString()));
+  record->set_operation(CDCRecordPB::SPLIT_OP);
+  record->set_time(msg->hybrid_time());
+  record->mutable_split_tablet_request()->CopyFrom(msg->split_request());
+  return Status::OK();
+}
+
 } // namespace
 
 Status GetChanges(const std::string& stream_id,
@@ -458,6 +469,9 @@ Status GetChanges(const std::string& stream_id,
       case consensus::OperationType::WRITE_OP:
         RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata, tablet_peer,
                                           replicate_intents, resp));
+        break;
+      case consensus::OperationType::SPLIT_OP:
+        RETURN_NOT_OK(PopulateSplitOpRecord(msg, resp->add_records()));
         break;
 
       default:

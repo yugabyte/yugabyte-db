@@ -45,6 +45,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
   CDCWriteRpc(CoarseTimePoint deadline,
               client::internal::RemoteTablet *tablet,
+              const std::shared_ptr<const client::YBTable>& table,
               client::YBClient *client,
               WriteRequestPB *req,
               WriteCDCRecordCallback callback,
@@ -57,9 +58,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
                  this,
                  this,
                  tablet,
-                 // TODO(tsplit): decide whether we need to get info about stale table partitions
-                 // here.
-                 /* table =*/ nullptr,
+                 table,
                  mutable_retrier(),
                  trace_.get()),
         callback_(std::move(callback)) {
@@ -133,12 +132,13 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
 rpc::RpcCommandPtr CreateCDCWriteRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
+    const std::shared_ptr<const client::YBTable>& table,
     client::YBClient* client,
     WriteRequestPB* req,
     WriteCDCRecordCallback callback,
     bool use_local_tserver) {
   return std::make_shared<CDCWriteRpc>(
-      deadline, tablet, client, req, std::move(callback), use_local_tserver);
+      deadline, tablet, table, client, req, std::move(callback), use_local_tserver);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

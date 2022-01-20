@@ -58,7 +58,6 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/cdc_consumer_split_driver.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_defaults.h"
@@ -71,6 +70,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
+#include "yb/master/xcluster_split_driver.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -143,7 +143,7 @@ class CatalogManager :
     public TabletSplitCandidateFilterIf,
     public TabletSplitDriverIf,
     public CatalogManagerIf,
-    public CDCConsumerSplitDriverIf {
+    public XClusterSplitDriverIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
@@ -444,8 +444,14 @@ class CatalogManager :
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 
-  CHECKED_STATUS UpdateCDCConsumerOnTabletSplit(const TableId& consumer_table_id,
-                                                const SplitTabletIds& split_tablet_ids) override {
+  CHECKED_STATUS UpdateXClusterConsumerOnTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override {
+    // Default value.
+    return Status::OK();
+  }
+
+  CHECKED_STATUS UpdateXClusterProducerOnTabletSplit(
+      const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override {
     // Default value.
     return Status::OK();
   }

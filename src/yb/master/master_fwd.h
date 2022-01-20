@@ -78,6 +78,7 @@ class TSDescriptor;
 class TSManager;
 class TabletSplitCompleteHandlerIf;
 class UDTypeInfo;
+class XClusterSplitDriverIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlTablespaceManager;

@@ -18,8 +18,8 @@
 #include "yb/gutil/port.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/cdc_consumer_split_driver.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/xcluster_split_driver.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/status_log.h"
@@ -60,10 +60,10 @@ size_t GetCandidateQueueLimit() {
 TabletSplitManager::TabletSplitManager(
     TabletSplitCandidateFilterIf* filter,
     TabletSplitDriverIf* driver,
-    CDCConsumerSplitDriverIf* cdc_consumer_split_driver):
+    XClusterSplitDriverIf* xcluster_split_driver):
     filter_(filter),
     driver_(driver),
-    cdc_consumer_split_driver_(cdc_consumer_split_driver) {}
+    xcluster_split_driver_(xcluster_split_driver) {}
 
 Status TabletSplitManager::Init() {
   process_tablet_candidates_task_.reset(new BackgroundTask(
@@ -87,19 +87,27 @@ void TabletSplitManager::RemoveFailedProcessingTabletSplit(const TabletId& table
 
 void TabletSplitManager::ProcessSplitTabletResult(
     const Status& status,
-    const TableId& consumer_table_id,
+    const TableId& split_table_id,
     const SplitTabletIds& split_tablet_ids) {
   if (!status.ok()) {
     LOG(WARNING) << "AsyncSplitTablet task failed with status: " << status;
     RemoveFailedProcessingTabletSplit(split_tablet_ids.source);
   } else {
+    // TODO(JHE) Handle failure cases here (github issue #11030).
     // Update the xCluster tablet mapping.
-    Status s = cdc_consumer_split_driver_->UpdateCDCConsumerOnTabletSplit(
-        consumer_table_id, split_tablet_ids);
+    Status s = xcluster_split_driver_->UpdateXClusterConsumerOnTabletSplit(
+        split_table_id, split_tablet_ids);
     WARN_NOT_OK(s, Format(
         "Encountered an error while updating the xCluster consumer tablet mapping. "
         "Table id: $0, Split Tablets: $1",
-        consumer_table_id, split_tablet_ids.ToString()));
+        split_table_id, split_tablet_ids.ToString()));
+    // Also process tablet splits for producer side splits.
+    s = xcluster_split_driver_->UpdateXClusterProducerOnTabletSplit(
+        split_table_id, split_tablet_ids);
+    WARN_NOT_OK(s, Format(
+        "Encountered an error while updating the xCluster producer tablet mapping. "
+        "Table id: $0, Split Tablets: $1",
+        split_table_id, split_tablet_ids.ToString()));
   }
 }
 

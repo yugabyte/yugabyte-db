@@ -466,7 +466,7 @@ Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_has
 Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
     docdb::DocKeyHash split_hash_code,
     size_t num_rows,
-  bool parent_tablet_protected_from_deletion) {
+    bool parent_tablet_protected_from_deletion) {
   auto source_tablet_id = VERIFY_RESULT(SplitSingleTablet(split_hash_code));
 
   // If the parent tablet will not be deleted, then we will expect another tablet at the end.

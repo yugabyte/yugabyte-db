@@ -542,6 +542,11 @@ class YBClient {
   CHECKED_STATUS UpdateCDCStream(const CDCStreamId& stream_id,
                                  const master::SysCDCStreamEntryPB& new_entry);
 
+  // Update consumer pollers after a producer side tablet split.
+  CHECKED_STATUS UpdateConsumerOnProducerSplit(const string& producer_id,
+                                               const TableId& table_id,
+                                               const master::ProducerSplitTabletInfoPB& split_info);
+
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
       GetTableLocationsCallback callback);

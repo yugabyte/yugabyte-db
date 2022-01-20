@@ -50,7 +50,7 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
  public:
   TabletSplitManager(TabletSplitCandidateFilterIf* filter,
                      TabletSplitDriverIf* driver,
-                     CDCConsumerSplitDriverIf* cdc_consumer_split_driver);
+                     XClusterSplitDriverIf* xcluster_split_driver);
 
   CHECKED_STATUS ProcessLiveTablet(
       const TabletInfo& tablet_info, const TabletServerId& drive_info_ts_uuid,
@@ -63,7 +63,7 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
   void RemoveFailedProcessingTabletSplit(const TabletId& tablet_id);
 
   void ProcessSplitTabletResult(const Status& status,
-                                const TableId& consumer_table_id,
+                                const TableId& split_table_id,
                                 const SplitTabletIds& split_tablet_ids);
 
  private:
@@ -71,7 +71,7 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
 
   TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;
-  CDCConsumerSplitDriverIf* cdc_consumer_split_driver_;
+  XClusterSplitDriverIf* xcluster_split_driver_;
 
   std::mutex mutex_;
   // Use a map to keep track of parent tablets we are currently splitting. We remove a parent

@@ -67,6 +67,7 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
     output_client_(CreateTwoDCOutputClient(
         cdc_consumer,
         consumer_tablet_info,
+        producer_tablet_info,
         local_client,
         rpcs,
         std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1),
