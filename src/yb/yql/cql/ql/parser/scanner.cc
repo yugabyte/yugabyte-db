@@ -536,7 +536,7 @@ const ScanKeyword& LexProcessor::ScanKeywordLookup(const char *text) {
 
   // PostgreQL Note: Apply an ASCII-only downcasing.  We must not use tolower() since it may
   // produce the wrong translation in some locales (eg, Turkish).
-  for (int i = 0; i < word_bytes; i++) {
+  for (size_t i = 0; i < word_bytes; i++) {
     char ch = text[i];
     if (ch >= 'A' && ch <= 'Z') {
       ch += 'a' - 'A';

@@ -373,7 +373,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       const int begin,
       const int end,
       const TableHandle& table,
-      const int expected_rows_mismatched) {
+      const size_t expected_rows_mismatched) {
     auto tserver = cluster_->find_tablet_server(replica);
     if (!tserver) {
       return STATUS_FORMAT(NotFound, "Tablet server for $0 not found", replica);
@@ -442,7 +442,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       EXPECT_EQ(start1, start2);
       EXPECT_EQ(end1, end2);
     }
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
       for (size_t j = 0; j != source_infos.size(); ++j) {
         tablet::TabletPeerPtr source_peer, dest_peer;
@@ -625,7 +625,7 @@ void DoStepDowns(MiniCluster* cluster) {
 }
 
 void VerifyLogIndicies(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
 
     for (const auto& peer : peers) {
@@ -726,7 +726,7 @@ TEST_F(QLTabletTest, WaitFlush) {
 
   std::vector<tablet::TabletPeerPtr> peers;
 
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto tserver_peers =
         cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(tserver_peers.size(), 1);
@@ -764,18 +764,18 @@ TEST_F(QLTabletTest, WaitFlush) {
 
 TEST_F(QLTabletTest, BoundaryValues) {
   constexpr size_t kTotalThreads = 8;
-  constexpr size_t kTotalRows = 10000;
+  constexpr int kTotalRows = 10000;
 
   TableHandle table;
   CreateTable(kTable1Name, &table, 1);
 
   std::vector<std::thread> threads;
-  std::atomic<int32_t> idx(0);
+  std::atomic<int> idx(0);
   for (size_t t = 0; t != kTotalThreads; ++t) {
     threads.emplace_back([this, &idx, &table] {
       auto session = CreateSession();
       for (;;) {
-        int32_t i = idx++;
+        auto i = idx++;
         if (i >= kTotalRows) {
           break;
         }
@@ -808,7 +808,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
   ASSERT_OK(cluster_->FlushTablets());
   std::this_thread::sleep_for(kSleepTime);
 
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(1, peers.size());
     auto& peer = *peers[0];
@@ -896,7 +896,7 @@ TEST_F(QLTabletTest, LeaderChange) {
   SetValue(session, kKey, kValue1, table);
 
   std::string leader_id;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
     auto peers = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
@@ -942,7 +942,7 @@ TEST_F(QLTabletTest, LeaderChange) {
 
   ASSERT_EQ(GetValue(session, kKey, table), kValue3);
 
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
     auto peers = server->tablet_manager()->GetTabletPeers();
     bool found = false;
@@ -1044,7 +1044,7 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
   {
     google::FlagSaver flag_saver;
 
-    auto original_rocksdb_level0_stop_writes_trigger = 48;
+    size_t original_rocksdb_level0_stop_writes_trigger = 48;
     FLAGS_sst_files_hard_limit = std::numeric_limits<uint64_t>::max() / 4;
     FLAGS_sst_files_soft_limit = FLAGS_sst_files_hard_limit;
     FLAGS_rocksdb_level0_stop_writes_trigger = 10000;
@@ -1120,7 +1120,7 @@ TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
 TEST_F(QLTabletTest, OperationMemTracking) {
   FLAGS_TEST_log_cache_skip_eviction = true;
 
-  constexpr size_t kValueSize = 64_KB;
+  constexpr ssize_t kValueSize = 64_KB;
   const auto kWaitInterval = 50ms;
 
   YBSchemaBuilder builder;
@@ -1246,7 +1246,7 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
       continue;
     }
     bool complete = false;
-    for (int i = 0; i < peers.size(); ++i) {
+    for (size_t i = 0; i < peers.size(); ++i) {
       auto peer = peers[i];
       SCOPED_TRACE(Format("Peer: $0", peer->permanent_uuid()));
       if (peer->state() != tablet::RaftGroupStatePB::RUNNING) {
@@ -1289,7 +1289,7 @@ TEST_F(QLTabletTest, HistoryCutoff) {
 
   // Check that we restore committed state after restart.
   std::array<HybridTime, 3> peer_committed;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(peers.size(), 1);
     peer_committed[i] =
@@ -1299,7 +1299,7 @@ TEST_F(QLTabletTest, HistoryCutoff) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
 
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
     for (;;) {
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
@@ -1316,7 +1316,7 @@ TEST_F(QLTabletTest, HistoryCutoff) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
 
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
   }
   ASSERT_NO_FATALS(VerifyHistoryCutoff(cluster_.get(), &committed_history_cutoff, "After restart"));
@@ -1362,7 +1362,8 @@ TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
 
   // We want some compactions to happen, so largest SST file will become large enough for its
   // approximate middle key to roughly split the whole tablet into two parts that are close in size.
-  while (tablet.TEST_db()->GetCurrentVersionDataSstFilesSize() < 20 * FLAGS_db_write_buffer_size) {
+  while (tablet.TEST_db()->GetCurrentVersionDataSstFilesSize() <
+         implicit_cast<size_t>(20 * FLAGS_db_write_buffer_size)) {
     std::this_thread::sleep_for(100ms);
   }
 
@@ -1562,9 +1563,9 @@ TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
   auto session = CreateSession();
   SetValue(session, 1, -1, table);
 
-  int leader_idx = ASSERT_RESULT(ServerWithLeaders(cluster_.get()));
+  auto leader_idx = ASSERT_RESULT(ServerWithLeaders(cluster_.get()));
   LOG(INFO) << "Leader: " << cluster_->mini_tablet_server(leader_idx)->server()->permanent_uuid();
-  int follower_idx = 1 ^ 2 ^ leader_idx;
+  auto follower_idx = 1 ^ 2 ^ leader_idx;
   LOG(INFO) << "Turning off follower: "
             << cluster_->mini_tablet_server(follower_idx)->server()->permanent_uuid();
   cluster_->mini_tablet_server(follower_idx)->Shutdown();
@@ -1599,9 +1600,9 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
     auto session = CreateSession();
     SetValue(session, 1, -1, table);
 
-    int leader_idx = ASSERT_RESULT(ServerWithLeaders(cluster_.get()));
+    auto leader_idx = ASSERT_RESULT(ServerWithLeaders(cluster_.get()));
     LOG(INFO) << "Leader: " << cluster_->mini_tablet_server(leader_idx)->server()->permanent_uuid();
-    int follower_idx = (leader_idx + 1) % cluster_->num_tablet_servers();
+    auto follower_idx = (leader_idx + 1) % cluster_->num_tablet_servers();
     auto follower = cluster_->mini_tablet_server(follower_idx)->server();
     LOG(INFO) << "Follower: "  << follower->permanent_uuid();
     auto follower_peers = follower->tablet_manager()->GetTabletPeers();

@@ -123,7 +123,7 @@ size_t PTDmlStmt::num_hash_key_columns() const {
 string PTDmlStmt::hash_key_columns() const {
   std::stringstream s;
   auto &schema = table_->schema();
-  for (int i = 0; i < schema.num_hash_key_columns(); ++i) {
+  for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
     if (i != 0) s << ", ";
     s << schema.Column(i).name();
   }
@@ -290,7 +290,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
   if (IsWriteOp()) {
     // Make sure that all hash entries are referenced in where expression.
-    for (int idx = 0; idx < num_hash_key_columns(); idx++) {
+    for (size_t idx = 0; idx < num_hash_key_columns(); idx++) {
       if (op_counters[idx].eq_count() == 0) {
         return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
@@ -299,7 +299,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
     // If writing static columns only, check that either all range key entries are referenced in the
     // where expression or none is referenced. Else, check that all range key are referenced.
-    int range_keys = 0;
+    size_t range_keys = 0;
     for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
       if (op_counters[idx].eq_count() != 0) {
         range_keys++;
@@ -331,7 +331,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   } else { // ReadOp
     // Add the hash to the where clause if the list is incomplete. Clear key_where_ops_ to do
     // whole-table scan.
-    for (int idx = 0; idx < num_hash_key_columns(); idx++) {
+    for (size_t idx = 0; idx < num_hash_key_columns(); idx++) {
       if (!key_where_ops_[idx].IsInitialized()) {
         has_incomplete_hash_ = true;
         break;

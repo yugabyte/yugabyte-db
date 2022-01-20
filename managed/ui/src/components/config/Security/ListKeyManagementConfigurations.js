@@ -102,10 +102,7 @@ export class ListKeyManagementConfigurations extends Component {
           }
           body={
             <Fragment>
-              <BootstrapTable
-                data={configs.data}
-                className="backup-list-table middle-aligned-table"
-              >
+              <BootstrapTable data={configs} className="backup-list-table middle-aligned-table">
                 <TableHeaderColumn
                   dataField="metadata"
                   dataFormat={(cell) => cell.configUUID}

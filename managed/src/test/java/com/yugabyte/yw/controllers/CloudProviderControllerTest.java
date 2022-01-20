@@ -58,6 +58,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -71,13 +72,15 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import play.libs.Json;
 import play.mvc.Result;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
 
@@ -204,6 +207,29 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(1, json.size());
     assertValues(json, "uuid", ImmutableList.of(p.uuid.toString()));
     assertValues(json, "name", ImmutableList.of(p.name));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  @Parameters({
+    "Fake Provider, aws, 0",
+    "Test Provider, aws, 1",
+    "Test Provider, null, 2",
+  })
+  public void testProviderFindByName(String name, String code, int expected) {
+    Provider.create(customer.uuid, Common.CloudType.aws, "Test Provider");
+    Provider.create(customer.uuid, Common.CloudType.gcp, "Test Provider");
+    Provider.create(customer.uuid, Common.CloudType.aws, "Another Test Provider");
+    String findUrl =
+        "/api/customers/" + customer.uuid + "/providers?name=" + URLEncoder.encode(name);
+    if (!code.equals("null")) {
+      findUrl += "&providerCode=" + URLEncoder.encode(code);
+    }
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", findUrl, user.createAuthToken());
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(expected, json.size());
     assertAuditEntry(0, customer.uuid);
   }
 

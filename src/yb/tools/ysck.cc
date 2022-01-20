@@ -475,7 +475,7 @@ bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
   return good_table;
 }
 
-bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, int table_num_replicas) {
+bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, size_t table_num_replicas) {
   vector<shared_ptr<YsckTabletReplica> > replicas = tablet->replicas();
   bool good_tablet = true;
   if (replicas.size() != table_num_replicas) {

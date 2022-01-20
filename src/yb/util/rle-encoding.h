@@ -46,6 +46,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/port.h"
 
 #include "yb/util/bit-stream-utils.inline.h" // BitWriter impl
@@ -411,7 +412,7 @@ inline void RleEncoder<T>::Put(T value, size_t run_length) {
 
   // TODO(perf): remove the loop and use the repeat_count_
   while (run_length--) {
-    if (PREDICT_TRUE(current_value_ == value)) {
+    if (PREDICT_TRUE(current_value_ == implicit_cast<uint64_t>(value))) {
       ++repeat_count_;
       if (repeat_count_ > 8) {
         // This is just a continuation of the current run, no need to buffer the

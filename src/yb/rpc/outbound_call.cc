@@ -508,7 +508,7 @@ bool OutboundCall::IsFinished() const {
   return FinishedState(state_.load(std::memory_order_acquire));
 }
 
-Result<Slice> OutboundCall::GetSidecar(int idx) const {
+Result<Slice> OutboundCall::GetSidecar(size_t idx) const {
   return call_response_.GetSidecar(idx);
 }
 
@@ -592,9 +592,9 @@ CallResponse::CallResponse()
     : parsed_(false) {
 }
 
-Result<Slice> CallResponse::GetSidecar(int idx) const {
+Result<Slice> CallResponse::GetSidecar(size_t idx) const {
   DCHECK(parsed_);
-  if (idx < 0 || idx + 1 >= sidecar_bounds_.size()) {
+  if (idx + 1 >= sidecar_bounds_.size()) {
     return STATUS_FORMAT(InvalidArgument,
         "Index $0 does not reference a valid sidecar", idx);
   }

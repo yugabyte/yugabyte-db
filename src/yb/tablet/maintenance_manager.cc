@@ -276,7 +276,7 @@ MaintenanceOp* MaintenanceManager::FindBestOp() {
   MaintenanceOp* most_mem_anchored_op = nullptr;
 
   int64_t most_logs_retained_bytes = 0;
-  int64_t most_logs_retained_bytes_ram_anchored = 0;
+  uint64_t most_logs_retained_bytes_ram_anchored = 0;
   MaintenanceOp* most_logs_retained_bytes_op = nullptr;
 
   double best_perf_improvement = 0;
