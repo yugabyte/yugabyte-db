@@ -590,6 +590,13 @@ int SSTDumpTool::Run(int argc, char** argv) {
         fprintf(stdout, "# deleted keys: %" PRIu64 "\n",
                 rocksdb::GetDeletedKeys(
                     table_properties->user_collected_properties));
+        fprintf(stdout,
+                "  User collected properties:\n"
+                "  ------------------------------\n");
+        for (const auto& prop : table_properties->user_collected_properties) {
+          fprintf(
+              stdout, "  %s: %s\n", prop.first.c_str(), Slice(prop.second).ToDebugString().c_str());
+        }
       }
     }
   }
