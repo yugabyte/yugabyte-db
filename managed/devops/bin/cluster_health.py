@@ -645,6 +645,10 @@ class NodeChecker():
         else:
             remote_cmd = "{} -h {} {} -U yugabyte {} -c \"\conninfo\"".format(
                 ysqlsh, host, port_args, '"sslmode=require"')
+        # Passing dbname template1 explicitly as ysqlsh fails to connect if
+        # yugabyte database is deleted. We assume template1 will always be there
+        # in ysqlsh.
+        remote_cmd = "{} --dbname=template1".format(remote_cmd)
 
         output = self._remote_check_output(remote_cmd).strip()
         if not (output.startswith('You are connected to database')):

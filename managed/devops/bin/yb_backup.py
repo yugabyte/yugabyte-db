@@ -1117,8 +1117,15 @@ class YBBackup:
         if self.is_k8s():
             run_at_ip = self.get_live_tserver_ip()
 
-        return self.run_tool(self.args.local_ysql_shell_binary, self.args.remote_ysql_shell_binary,
-                             self.get_ysql_dump_std_args(), cmd_line_args, run_ip=run_at_ip)
+        return self.run_tool(
+            self.args.local_ysql_shell_binary,
+            self.args.remote_ysql_shell_binary,
+            # Passing dbname template1 explicitly as ysqlsh fails to connect if
+            # yugabyte database is deleted. We assume template1 will always be there
+            # in ysqlsh.
+            self.get_ysql_dump_std_args() + ['--dbname=template1'],
+            cmd_line_args,
+            run_ip=run_at_ip)
 
     def create_snapshot(self):
         """
