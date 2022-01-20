@@ -1730,8 +1730,8 @@ Status ClusterAdminClient::ModifyPlacementInfo(
     return STATUS(
         InvalidCommand,
         "Cluster config must be a list of placement infos seperated by commas. Format: "
-        "'cloud1.region1.zone1:[min_replica_count1],cloud2.region2.zone2[min_replica_count2] ..." +
-            std::to_string(placement_info_split.size()));
+        "cloud1.region1.zone1:[min_replica_count1],cloud2.region2.zone2:[min_replica_count2] ..."
+        + std::to_string(placement_info_split.size()));
   }
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
@@ -1752,8 +1752,8 @@ Status ClusterAdminClient::ModifyPlacementInfo(
       return STATUS(
           InvalidCommand,
           "Each placement info must have at most 2 values separated by a colon. "
-          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: " +
-              placement_block);
+          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: "
+          + placement_block);
     }
 
     std::string placement_target = placement_info_min_replica_split[0];
