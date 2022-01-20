@@ -106,6 +106,15 @@ typedef struct cypher_delete
     int location;
 } cypher_delete;
 
+typedef struct cypher_union
+{
+    ExtensibleNode extensible;
+    bool all_or_distinct;
+    SetOperation op;
+    List *larg; /* lefthand argument of the unions */
+    List *rarg; /*righthand argument of the unions */
+} cypher_union;
+
 /*
  * pattern
  */

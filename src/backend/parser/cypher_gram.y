@@ -77,7 +77,7 @@
 %token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ EQ_TILDE
 
 /* keywords in alphabetical order */
-%token <keyword> ANALYZE AND AS ASC ASCENDING
+%token <keyword> ALL ANALYZE AND AS ASC ASCENDING
                  BY
                  CASE COALESCE CONTAINS CREATE
                  DELETE DESC DESCENDING DETACH DISTINCT
@@ -91,12 +91,14 @@
                  REMOVE RETURN
                  SET SKIP STARTS
                  THEN TRUE_P
+                 UNION
                  VERBOSE
                  WHEN WHERE WITH
                  XOR
 
 /* query */
-%type <list> single_query query_part_init query_part_last
+%type <node> stmt
+%type <list> single_query query_part_init query_part_last query_list
              reading_clause_list updating_clause_list_0 updating_clause_list_1
 %type <node> reading_clause updating_clause
 
@@ -147,6 +149,7 @@
 %type <list> func_name
 
 /* precedence: lowest to highest */
+%left UNION
 %left OR
 %left AND
 %left XOR
@@ -161,6 +164,9 @@
 %left '[' ']' '(' ')'
 %left '.'
 %left TYPECAST
+
+/*set operations*/
+%type <boolean> all_or_distinct
 
 %{
 //
@@ -202,7 +208,7 @@ static Node *make_function_expr(List *func_name, List *exprs, int location);
  */
 
 stmt:
-    single_query semicolon_opt
+    query_list semicolon_opt
         {
             /*
              * If there is no transition for the lookahead token and the
@@ -282,10 +288,42 @@ stmt:
         }
     ;
 
+query_list:
+    single_query
+        {
+            $$ = $1;
+        }
+    | single_query UNION all_or_distinct query_list
+        {
+            cypher_union *u = make_ag_node(cypher_union);
+
+            u->all_or_distinct = $3;
+            u->op = SETOP_UNION;
+            u->larg = $1;
+            u->rarg = $4;
+
+            $$ = list_make1((Node *) u);
+        }
+    ;
+
 semicolon_opt:
     /* empty */
     | ';'
     ;
+
+all_or_distinct:
+    ALL
+    {
+        $$ = true;
+    }
+    | DISTINCT
+    {
+        $$ = false;
+    }
+    | /*EMPTY*/
+    {
+        $$ = false;
+    }
 
 /*
  * The overall structure of single_query looks like below.
@@ -1740,8 +1778,9 @@ reserved_keyword:
  */
 
 safe_keywords:
-    AND          { $$ = pnstrdup($1, 3); }
+    ALL          { $$ = pnstrdup($1, 3); }
     | ANALYZE    { $$ = pnstrdup($1, 7); }
+    | AND        { $$ = pnstrdup($1, 3); }
     | AS         { $$ = pnstrdup($1, 2); }
     | ASC        { $$ = pnstrdup($1, 3); }
     | ASCENDING  { $$ = pnstrdup($1, 9); }
@@ -1772,6 +1811,7 @@ safe_keywords:
     | SKIP       { $$ = pnstrdup($1, 4); }
     | STARTS     { $$ = pnstrdup($1, 6); }
     | THEN       { $$ = pnstrdup($1, 4); }
+    | UNION      { $$ = pnstrdup($1, 5); }
     | WHEN       { $$ = pnstrdup($1, 4); }
     | VERBOSE    { $$ = pnstrdup($1, 7); }
     | WHERE      { $$ = pnstrdup($1, 5); }

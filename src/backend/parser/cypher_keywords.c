@@ -39,6 +39,7 @@
  * locate entries.
  */
 const ScanKeyword cypher_keywords[] = {
+    {"all", ALL, RESERVED_KEYWORD},
     {"analyze", ANALYZE, RESERVED_KEYWORD},
     {"and", AND, RESERVED_KEYWORD},
     {"as", AS, RESERVED_KEYWORD},
@@ -75,6 +76,7 @@ const ScanKeyword cypher_keywords[] = {
     {"starts", STARTS, RESERVED_KEYWORD},
     {"then", THEN, RESERVED_KEYWORD},
     {"true", TRUE_P, RESERVED_KEYWORD},
+    {"union", UNION, RESERVED_KEYWORD},
     {"verbose", VERBOSE, RESERVED_KEYWORD},
     {"when", WHEN, RESERVED_KEYWORD},
     {"where", WHERE, RESERVED_KEYWORD},

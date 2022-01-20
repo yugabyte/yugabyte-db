@@ -276,6 +276,22 @@ static Query *transform_cypher_delete(cypher_parsestate *cpstate,
 static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
                                                List *delete_item_list,
                                                Query *query);
+
+//set operators
+static Query *transform_cypher_union(cypher_parsestate *cpstate,
+                                     cypher_clause *clause);
+
+static Node * transform_cypher_union_tree(cypher_parsestate *cpstate,
+                                          cypher_clause *clause,
+                                          bool isTopLevel,
+                                          List **targetlist);
+
+Query *cypher_parse_sub_analyze_union(cypher_clause *clause,
+                                      cypher_parsestate *cpstate,
+                                      CommonTableExpr *parentCTE,
+                                      bool locked_from_parent,
+                                      bool resolve_unknowns);
+
 // transform
 #define PREV_CYPHER_CLAUSE_ALIAS "_"
 #define transform_prev_cypher_clause(cpstate, prev_clause) \
@@ -360,6 +376,10 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     {
         result = transform_cypher_sub_pattern(cpstate, clause);
     }
+    else if (is_ag_node(self, cypher_union))
+    {
+        result = transform_cypher_union(cpstate, clause);
+    }
     else
     {
         ereport(ERROR, (errmsg_internal("unexpected Node for cypher_clause")));
@@ -369,6 +389,575 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     result->canSetTag = true;
 
     return result;
+}
+
+/*
+ * Transform the UNION operator/clause. Creates a cypher_union
+ * node and the necessary information needed in the execution
+ * phase
+ */
+
+static cypher_clause *make_cypher_clause(List *stmt)
+{
+    cypher_clause *clause;
+    ListCell *lc;
+
+    /*
+     * Since the first clause in stmt is the innermost subquery, the order of
+     * the clauses is inverted.
+     */
+    clause = NULL;
+    foreach (lc, stmt)
+    {
+        cypher_clause *next;
+
+        next = palloc(sizeof(*next));
+        next->next = NULL;
+        next->self = lfirst(lc);
+        next->prev = clause;
+
+        if (clause != NULL)
+        {
+            clause->next = next;
+        }
+        clause = next;
+    }
+    return clause;
+}
+
+/*
+ * transform_cypher_union -
+ *    transforms a union tree, derived from postgresql's
+ *    transformSetOperationStmt.A lot of the general logic is similar,
+ *    with adjustments made for AGE.
+ *
+ * A union tree is just a return, but with UNION structure to it.
+ * We must transform each leaf SELECT and build up a top-level Query
+ * that contains the leaf SELECTs as subqueries in its rangetable.
+ * The tree of unions is converted into the setOperations field of
+ * the top-level Query.
+ */
+
+static Query *transform_cypher_union(cypher_parsestate *cpstate,
+                                     cypher_clause *clause)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    Query *qry = makeNode(Query);
+    int leftmostRTI;
+    Query *leftmostQuery;
+    SetOperationStmt *cypher_union_statement;
+    Node *skip = NULL; /* equivalent to postgres limitOffset */
+    Node *limit = NULL; /* equivalent to postgres limitCount */
+    Node *node;
+
+    ListCell *left_tlist, *lct, *lcm, *lcc;
+    List *targetvars, *targetnames, *sv_namespace;
+    int sv_rtable_length;
+    RangeTblEntry *jrte;
+    int tllen;
+
+    qry->commandType = CMD_SELECT;
+
+    /*
+     * Union is a node that should never have a previous node because
+     * of where it is used in the parse logic. The query parts around it
+     * are children located in larg or rarg. Something went wrong if the
+     * previous clause field is not null.
+     */
+    if (clause->prev)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("Union is a parent node, there are no previous"),
+                        parser_errposition(&cpstate->pstate, 0)));
+    }
+
+    /*
+     * Recursively transform the components of the tree.
+     */
+    cypher_union_statement = (SetOperationStmt *) transform_cypher_union_tree(cpstate,
+                                                                clause, true, NULL);
+
+    Assert(cypher_union_statement);
+    qry->setOperations = (Node *) cypher_union_statement;
+
+    /*
+     * Re-find leftmost return (now it's a sub-query in rangetable)
+     */
+    node = cypher_union_statement->larg;
+    while (node && IsA(node, SetOperationStmt))
+    {
+        node = ((SetOperationStmt *) cypher_union_statement)->larg;
+    }
+    Assert(node && IsA(node, RangeTblRef));
+    leftmostRTI = ((RangeTblRef *) node)->rtindex;
+    leftmostQuery = rt_fetch(leftmostRTI, pstate->p_rtable)->subquery;
+    Assert(leftmostQuery != NULL);
+
+    /*
+     * Generate dummy targetlist for outer query using column names of
+     * leftmost return and common datatypes/collations of topmost set
+     * operation.  Also make lists of the dummy vars and their names for use
+     * in parsing ORDER BY.
+     *
+     * Note: we use leftmostRTI as the varno of the dummy variables. It
+     * shouldn't matter too much which RT index they have, as long as they
+     * have one that corresponds to a real RT entry; else funny things may
+     * happen when the tree is mashed by rule rewriting.
+     */
+    qry->targetList = NIL;
+    targetvars = NIL;
+    targetnames = NIL;
+    left_tlist = list_head(leftmostQuery->targetList);
+
+    forthree(lct, cypher_union_statement->colTypes,
+             lcm, cypher_union_statement->colTypmods,
+             lcc, cypher_union_statement->colCollations)
+    {
+        Oid colType = lfirst_oid(lct);
+        int32 colTypmod = lfirst_int(lcm);
+        Oid colCollation = lfirst_oid(lcc);
+        TargetEntry *lefttle = (TargetEntry *) lfirst(left_tlist);
+        char *colName;
+        TargetEntry *tle;
+        Var *var;
+
+        Assert(!lefttle->resjunk);
+        colName = pstrdup(lefttle->resname);
+        var = makeVar(leftmostRTI,
+                      lefttle->resno,
+                      colType,
+                      colTypmod,
+                      colCollation,
+                      0);
+        var->location = exprLocation((Node *) lefttle->expr);
+        tle = makeTargetEntry((Expr *) var,
+                              (AttrNumber) pstate->p_next_resno++,
+                               colName,
+                               false);
+        qry->targetList = lappend(qry->targetList, tle);
+        targetvars = lappend(targetvars, var);
+        targetnames = lappend(targetnames, makeString(colName));
+        left_tlist = lnext(left_tlist);
+    }
+
+    /*
+     * As a first step towards supporting sort clauses that are expressions
+     * using the output columns, generate a namespace entry that makes the
+     * output columns visible.  A Join RTE node is handy for this, since we
+     * can easily control the Vars generated upon matches.
+     *
+     * Note: we don't yet do anything useful with such cases, but at least
+     * "ORDER BY upper(foo)" will draw the right error message rather than
+     * "foo not found".
+     */
+    sv_rtable_length = list_length(pstate->p_rtable);
+
+    jrte = addRangeTableEntryForJoin(pstate,
+                                     targetnames,
+                                     JOIN_INNER,
+                                     targetvars,
+                                     NULL,
+                                     false);
+
+    sv_namespace = pstate->p_namespace;
+    pstate->p_namespace = NIL;
+
+    /* add jrte to column namespace only */
+    addRTEtoQuery(pstate, jrte, false, false, true);
+
+    tllen = list_length(qry->targetList);
+
+    /* restore namespace, remove jrte from rtable */
+    pstate->p_namespace = sv_namespace;
+    pstate->p_rtable = list_truncate(pstate->p_rtable, sv_rtable_length);
+
+    if (tllen != list_length(qry->targetList))
+    {
+        ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("invalid UNION ORDER BY clause"),
+             errdetail("Only result column names can be used, not expressions or functions."),
+             parser_errposition(pstate,
+                                exprLocation(list_nth(qry->targetList, tllen)))));
+    }
+
+    qry->limitOffset = transform_cypher_limit(cpstate, skip,
+                                              EXPR_KIND_OFFSET, "SKIP");
+    qry->limitCount = transform_cypher_limit(cpstate, limit,
+                                              EXPR_KIND_LIMIT, "LIMIT");
+
+    qry->rtable = pstate->p_rtable;
+    qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+    qry->hasAggs = pstate->p_hasAggs;
+
+    assign_query_collations(pstate, qry);
+
+    /* this must be done after collations, for reliable comparison of exprs */
+    if (pstate->p_hasAggs ||
+        qry->groupClause || qry->groupingSets || qry->havingQual)
+    {
+        parse_check_aggregates(pstate, qry);
+    }
+
+    return qry;
+
+}
+
+/*
+ * transform_cypher_union_tree
+ *      Recursively transform leaves and internal nodes of a set-op tree,
+ *      derived from postgresql's transformSetOperationTree. A lot of
+ *      the general logic is similar, with adjustments made for AGE.
+ *
+ * In addition to returning the transformed node, if targetlist isn't NULL
+ * then we return a list of its non-resjunk TargetEntry nodes.  For a leaf
+ * set-op node these are the actual targetlist entries; otherwise they are
+ * dummy entries created to carry the type, typmod, collation, and location
+ * (for error messages) of each output column of the set-op node.  This info
+ * is needed only during the internal recursion of this function, so outside
+ * callers pass NULL for targetlist.  Note: the reason for passing the
+ * actual targetlist entries of a leaf node is so that upper levels can
+ * replace UNKNOWN Consts with properly-coerced constants.
+ */
+static Node *
+transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
+                            bool isTopLevel, List **targetlist)
+{
+    bool isLeaf;
+
+    ParseState *pstate = (ParseState *)cpstate;
+
+    if (IsA(clause, List))
+    {
+        isLeaf = true;
+    }
+    else if (is_ag_node(clause->self, cypher_union))
+    {
+        isLeaf = false;
+    }
+    else
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("Cypher union found a clause type it does not support"),
+                parser_errposition(pstate, 0)));
+    }
+
+    /* Guard against stack overflow due to overly complex set-expressions */
+    check_stack_depth();
+
+    if (isLeaf)
+    {
+        /*process leaf return */
+        Query *returnQuery;
+        char returnName[32];
+        RangeTblEntry *rte PG_USED_FOR_ASSERTS_ONLY;
+        RangeTblRef *rtr;
+        ListCell *tl;
+        cypher_clause *leaf_clause;
+
+        /*
+         * Transform SelectStmt into a Query.
+         *
+         * This works the same as RETURN transformation normally would, except
+         * that we prevent resolving unknown-type outputs as TEXT.  This does
+         * not change the subquery's semantics since if the column type
+         * matters semantically, it would have been resolved to something else
+         * anyway.  Doing this lets us resolve such outputs using
+         * select_common_type(), below.
+         *
+         * Note: previously transformed sub-queries don't affect the parsing
+         * of this sub-query, because they are not in the toplevel pstate's
+         * namespace list.
+         */
+
+        /*
+         * Convert the List * that the grammar gave us to a cypher_clause.
+         * cypher_analyze doesn't do this because the cypher_union clause
+         * is hiding it.
+         */
+        leaf_clause = make_cypher_clause((List *)clause);
+
+        returnQuery = cypher_parse_sub_analyze_union( (cypher_clause *) leaf_clause, cpstate,
+                                               NULL, false, false);
+        /*
+         * Check for bogus references to Vars on the current query level (but
+         * upper-level references are okay). Normally this can't happen
+         * because the namespace will be empty, but it could happen if we are
+         * inside a rule.
+         */
+        if (pstate->p_namespace)
+        {
+            if (contain_vars_of_level((Node *) returnQuery, 1))
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                         errmsg("UNION member statement cannot refer to other relations of same query level"),
+                         parser_errposition(pstate,
+                                            locate_var_of_level((Node *) returnQuery, 1))));
+            }
+        }
+
+        /*
+         * Extract a list of the non-junk TLEs for upper-level processing.
+         */
+        if (targetlist)
+        {
+            *targetlist = NIL;
+            foreach(tl, returnQuery->targetList)
+            {
+                TargetEntry *tle = (TargetEntry *) lfirst(tl);
+
+                if(!tle->resjunk)
+                {
+                    *targetlist = lappend(*targetlist, tle);
+                }
+            }
+        }
+
+        /*
+         * Make the leaf query be a subquery in the top-level rangetable.
+         */
+        snprintf(returnName, sizeof(returnName), "*SELECT* %d ",
+                 list_length(pstate->p_rtable) + 1);
+        rte = addRangeTableEntryForSubquery(pstate,
+                                            returnQuery,
+                                            makeAlias(returnName, NIL),
+                                            false,
+                                            false);
+
+        rtr = makeNode(RangeTblRef);
+        /* assume new rte is at end */
+        rtr->rtindex = list_length(pstate->p_rtable);
+        Assert(rte == rt_fetch(rtr->rtindex, pstate->p_rtable));
+        return (Node *) rtr;
+    }
+    else /*is not a leaf */
+    {
+        /* Process an internal node (set operation node) */
+        SetOperationStmt *op = makeNode(SetOperationStmt);
+        List *ltargetlist;
+        List *rtargetlist;
+        ListCell *ltl;
+        ListCell *rtl;
+        cypher_union *self = (cypher_union *) clause->self;
+        const char *context;
+
+        context = "UNION";
+
+        op->op = self->op;
+        op->all = self->all_or_distinct;
+
+        /*
+         * Recursively transform the left child node.
+         */
+        op->larg = transform_cypher_union_tree(cpstate ,(cypher_clause *) self->larg,
+                                               false,
+                                               &ltargetlist);
+
+        /*
+         * If we find ourselves processing a recursive CTE here something
+         * went horribly wrong. That is an SQL contruct with no parallel in
+         * cypher.
+         */
+        if (isTopLevel &&
+            pstate->p_parent_cte &&
+            pstate->p_parent_cte->cterecursive)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                    errmsg("Cypher does not support recursive CTEs"),
+                    parser_errposition(pstate, 0)));
+        }
+
+        /*
+         * Recursively transform the right child node.
+         */
+        op->rarg = transform_cypher_union_tree(cpstate, (cypher_clause *) self->rarg,
+                                               false,
+                                               &rtargetlist);
+
+        /*
+         * Verify that the two children have the same number of non-junk
+         * columns, and determine the types of the merged output columns.
+         */
+        if (list_length(ltargetlist) != list_length(rtargetlist))
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("each %s query must have the same number of columns",
+                            context),
+                     parser_errposition(pstate,
+                                        exprLocation((Node *) rtargetlist))));
+        }
+
+        if (targetlist)
+        {
+            *targetlist = NIL;
+        }
+
+        op->colTypes = NIL;
+        op->colTypmods = NIL;
+        op->colCollations = NIL;
+        op->groupClauses = NIL;
+
+        forboth(ltl, ltargetlist, rtl, rtargetlist)
+        {
+            TargetEntry *ltle = (TargetEntry *) lfirst(ltl);
+            TargetEntry *rtle = (TargetEntry *) lfirst(rtl);
+            Node *lcolnode = (Node *) ltle->expr;
+            Node *rcolnode = (Node *) rtle->expr;
+            Oid lcoltype = exprType(lcolnode);
+            Oid rcoltype = exprType(rcolnode);
+            int32 lcoltypmod = exprTypmod(lcolnode);
+            int32 rcoltypmod = exprTypmod(rcolnode);
+            Node *bestexpr;
+            int bestlocation;
+            Oid rescoltype;
+            int32 rescoltypmod;
+            Oid rescolcoll;
+
+            /* select common type, same as CASE et al */
+            rescoltype = select_common_type(pstate,
+                                            list_make2(lcolnode, rcolnode),
+                                            context,
+                                            &bestexpr);
+            bestlocation = exprLocation(bestexpr);
+            /* if same type and same typmod, use typmod; else default */
+            if (lcoltype == rcoltype && lcoltypmod == rcoltypmod)
+            {
+                rescoltypmod = lcoltypmod;
+            }
+            else
+            {
+                rescoltypmod = -1;
+            }
+
+            /*
+             * Verify the coercions are actually possible.  If not, we'd fail
+             * later anyway, but we want to fail now while we have sufficient
+             * context to produce an error cursor position.
+             *
+             * For all non-UNKNOWN-type cases, we verify coercibility but we
+             * don't modify the child's expression, for fear of changing the
+             * child query's semantics.
+             *
+             * If a child expression is an UNKNOWN-type Const or Param, we
+             * want to replace it with the coerced expression.  This can only
+             * happen when the child is a leaf set-op node.  It's safe to
+             * replace the expression because if the child query's semantics
+             * depended on the type of this output column, it'd have already
+             * coerced the UNKNOWN to something else.  We want to do this
+             * because (a) we want to verify that a Const is valid for the
+             * target type, or resolve the actual type of an UNKNOWN Param,
+             * and (b) we want to avoid unnecessary discrepancies between the
+             * output type of the child query and the resolved target type.
+             * Such a discrepancy would disable optimization in the planner.
+             *
+             * If it's some other UNKNOWN-type node, eg a Var, we do nothing
+             * (knowing that coerce_to_common_type would fail).  The planner
+             * is sometimes able to fold an UNKNOWN Var to a constant before
+             * it has to coerce the type, so failing now would just break
+             * cases that might work.
+             */
+            if (lcoltype != UNKNOWNOID)
+            {
+                lcolnode = coerce_to_common_type(pstate, lcolnode,
+                                                 rescoltype, context);
+            }
+            else if (IsA(lcolnode, Const) || IsA(lcolnode, Param))
+            {
+                lcolnode = coerce_to_common_type(pstate, lcolnode,
+                                                 rescoltype, context);
+                ltle->expr = (Expr *) lcolnode;
+            }
+
+            if (rcoltype != UNKNOWNOID)
+            {
+                rcolnode = coerce_to_common_type(pstate, rcolnode,
+                                                 rescoltype, context);
+            }
+            else if (IsA(rcolnode, Const) || IsA(rcolnode, Param))
+            {
+                rcolnode = coerce_to_common_type(pstate, rcolnode,
+                                                 rescoltype, context);
+                rtle->expr = (Expr *) rcolnode;
+            }
+
+            /*
+             * Select common collation.  A common collation is required for
+             * all set operators except UNION ALL; see SQL:2008 7.13 <query
+             * expression> Syntax Rule 15c.  (If we fail to identify a common
+             * collation for a UNION ALL column, the curCollations element
+             * will be set to InvalidOid, which may result in a runtime error
+             * if something at a higher query level wants to use the column's
+             * collation.)
+             */
+            rescolcoll = select_common_collation(pstate,
+                                                 list_make2(lcolnode, rcolnode),
+                                                 (op->op == SETOP_UNION && op->all));
+
+            /* emit results */
+            op->colTypes = lappend_oid(op->colTypes, rescoltype);
+            op->colTypmods = lappend_int(op->colTypmods, rescoltypmod);
+            op->colCollations = lappend_oid(op->colCollations, rescolcoll);
+
+            /*
+             * For all cases except UNION ALL, identify the grouping operators
+             * (and, if available, sorting operators) that will be used to
+             * eliminate duplicates.
+             */
+            if (op->op != SETOP_UNION || !op->all)
+            {
+                SortGroupClause *grpcl = makeNode(SortGroupClause);
+                Oid sortop;
+                Oid eqop;
+                bool hashable;
+                ParseCallbackState pcbstate;
+
+                setup_parser_errposition_callback(&pcbstate, pstate,
+                                                  bestlocation);
+
+                /* determine the eqop and optional sortop */
+                get_sort_group_operators(rescoltype,
+                                         false, true, false,
+                                         &sortop, &eqop, NULL,
+                                         &hashable);
+
+                cancel_parser_errposition_callback(&pcbstate);
+
+                /* we don't have a tlist yet, so can't assign sortgrouprefs */
+                grpcl->tleSortGroupRef = 0;
+                grpcl->eqop = eqop;
+                grpcl->sortop = sortop;
+                grpcl->nulls_first = false; /* OK with or without sortop */
+                grpcl->hashable = hashable;
+
+                op->groupClauses = lappend(op->groupClauses, grpcl);
+            }
+
+            /*
+             * Construct a dummy tlist entry to return.  We use a SetToDefault
+             * node for the expression, since it carries exactly the fields
+             * needed, but any other expression node type would do as well.
+             */
+            if (targetlist)
+            {
+                SetToDefault *rescolnode = makeNode(SetToDefault);
+                TargetEntry *restle;
+
+                rescolnode->typeId = rescoltype;
+                rescolnode->typeMod = rescoltypmod;
+                rescolnode->collation = rescolcoll;
+                rescolnode->location = bestlocation;
+                restle = makeTargetEntry((Expr *) rescolnode,
+                                         0, /* no need to set resno */
+                                         NULL,
+                                         false);
+                *targetlist = lappend(*targetlist, restle);
+            }
+        }
+
+        return (Node *)op;
+    }//end else (is not leaf)
 }
 
 /*
@@ -4053,6 +4642,30 @@ static Expr *add_volatile_wrapper(Expr *node)
 
     return (Expr *)makeFuncExpr(oid, AGTYPEOID, list_make1(node), InvalidOid,
                                 InvalidOid, COERCE_EXPLICIT_CALL);
+}
+
+/*
+ * from postgresql parse_sub_analyze
+ * Modified entry point for recursively analyzing a sub-statement in union.
+ */
+Query *cypher_parse_sub_analyze_union(cypher_clause *clause,
+                                cypher_parsestate *cpstate,
+                                CommonTableExpr *parentCTE,
+                                bool locked_from_parent,
+                                bool resolve_unknowns)
+{
+    cypher_parsestate *state = make_cypher_parsestate(cpstate);
+    Query *query;
+
+    state->pstate.p_parent_cte = parentCTE;
+    state->pstate.p_locked_from_parent = locked_from_parent;
+    state->pstate.p_resolve_unknowns = resolve_unknowns;
+
+    query = transform_cypher_clause(state, clause);
+
+    free_cypher_parsestate(state);
+
+    return query;
 }
 
 /*
