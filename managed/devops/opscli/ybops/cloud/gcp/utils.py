@@ -677,9 +677,9 @@ class GoogleCloudAdmin():
     def get_instances(self, zone, instance_name, get_all=False, filters=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
         if not filters:
-            filters = "(status eq RUNNING)"
+            filters = "(status = \"RUNNING\")"
         if instance_name is not None:
-            filters += " (name eq {})".format(instance_name)
+            filters += " AND (name = \"{}\")".format(instance_name)
         instances = self.compute.instances().aggregatedList(
             project=self.project,
             filter=filters,
