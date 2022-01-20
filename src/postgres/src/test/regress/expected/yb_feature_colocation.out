@@ -482,7 +482,6 @@ SELECT * FROM tab_range_nonkey2_renamed;
 ERROR:  relation "tab_range_nonkey2_renamed" does not exist
 LINE 1: SELECT * FROM tab_range_nonkey2_renamed;
                       ^
-                      ^
 -- drop non-colocated table with explicit index
 DROP TABLE tab_range_nonkey_noco2;
 SELECT * FROM tab_range_nonkey_noco2;
