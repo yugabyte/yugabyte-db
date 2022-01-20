@@ -11,6 +11,8 @@
 #include "postgres.h"
 #include "miscadmin.h"
 
+#include <inttypes.h>
+
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "catalog/catalog.h"
@@ -168,6 +170,10 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	}
 
 	int rows_affected_count = 0;
+	if (YBCGetLogYsqlCatalogVersions())
+		ereport(LOG,
+				(errmsg("%s: incrementing master catalog version (%sbreaking)",
+						__func__, is_breaking_change ? "" : "non")));
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
 	Assert(rows_affected_count == 1);
 
