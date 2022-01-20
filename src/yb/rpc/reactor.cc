@@ -561,7 +561,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     // originating address to be "public" also.
     address_bytes[3] |= conn_id.remote().address().to_v4().to_bytes()[3] & 1;
     boost::asio::ip::address_v4 outbound_address(address_bytes);
-    auto status = sock.Bind(Endpoint(outbound_address, 0));
+    auto status = sock.SetReuseAddr(true);
+    if (status.ok()) {
+      status = sock.Bind(Endpoint(outbound_address, 0));
+    }
     LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
                                               << status;
   } else if (FLAGS_local_ip_for_outbound_sockets.empty()) {
@@ -569,7 +572,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
-      auto status = sock.Bind(Endpoint(outbound_address, 0));
+      auto status = sock.SetReuseAddr(true);
+      if (status.ok()) {
+        status = sock.Bind(Endpoint(outbound_address, 0));
+      }
       LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
                                                 << status;
     }

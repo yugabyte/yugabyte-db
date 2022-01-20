@@ -54,7 +54,6 @@
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/lexical_cast.hpp>
 #include <glog/logging.h>
 #include <squeasel.h>
 
@@ -118,7 +117,7 @@ Webserver::Webserver(const WebserverOptions& opts, const std::string& server_nam
     context_(nullptr),
     server_name_(server_name) {
   string host = opts.bind_interface.empty() ? "0.0.0.0" : opts.bind_interface;
-  http_address_ = host + ":" + boost::lexical_cast<string>(opts.port);
+  http_address_ = host + ":" + std::to_string(opts.port);
 }
 
 Webserver::~Webserver() {
