@@ -327,3 +327,15 @@ INSERT INTO test1 VALUES (1, 2, 3);
 CREATE TEMP TABLE test2 as table test1;
 UPDATE test1 SET z = 2 FROM test2 WHERE test1.x = test2.x;
 SELECT * FROM test1;
+
+-- test temp table ORDER BY and WHERE clause after failed insertion into unique indexed column
+CREATE TEMP TABLE IF NOT EXISTS t1(c0 TEXT  DEFAULT '3.61.4.60' PRIMARY KEY NOT NULL, c1 DECIMAL);;
+INSERT INTO t1(c1) VALUES(0.835), (0.703);
+SELECT t1.c0 FROM t1 ORDER BY t1.c0;
+SELECT t1.c0 FROM t1 where c0 in ('3.61.4.60');
+
+-- test temp table UPDATE on unique indexed column
+CREATE temp TABLE t4(c0 DECIMAL NULL, UNIQUE(c0));
+INSERT INTO t4(c0) VALUES(0.03);
+UPDATE t4 SET c0 = (0.05) WHERE t4.c0 = 0.03;
+SELECT ALL t4.c0 FROM t4 ORDER BY t4.c0 ASC;

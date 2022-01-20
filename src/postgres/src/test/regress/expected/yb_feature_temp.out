@@ -400,3 +400,28 @@ SELECT * FROM test1;
 ---+---+---
  1 | 2 | 2
 (1 row)
+
+-- test temp table ORDER BY and WHERE clause after failed insertion into unique indexed column
+CREATE TEMP TABLE IF NOT EXISTS t1(c0 TEXT  DEFAULT '3.61.4.60' PRIMARY KEY NOT NULL, c1 DECIMAL);;
+INSERT INTO t1(c1) VALUES(0.835), (0.703);
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
+DETAIL:  Key (c0)=(3.61.4.60) already exists.
+SELECT t1.c0 FROM t1 ORDER BY t1.c0;
+ c0
+----
+(0 rows)
+
+SELECT t1.c0 FROM t1 where c0 in ('3.61.4.60');
+ c0
+----
+(0 rows)
+
+-- test temp table UPDATE on unique indexed column
+CREATE temp TABLE t4(c0 DECIMAL NULL, UNIQUE(c0));
+INSERT INTO t4(c0) VALUES(0.03);
+UPDATE t4 SET c0 = (0.05) WHERE t4.c0 = 0.03;
+SELECT ALL t4.c0 FROM t4 ORDER BY t4.c0 ASC;
+  c0
+------
+ 0.05
+(1 row)
