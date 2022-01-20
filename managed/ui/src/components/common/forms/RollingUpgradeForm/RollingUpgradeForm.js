@@ -5,7 +5,7 @@ import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
 import { Col, Alert } from 'react-bootstrap';
 import { YBModal, YBInputField, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
-import { isNonEmptyArray, get } from '../../../../utils/ObjectUtils';
+import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
@@ -100,9 +100,9 @@ export default class RollingUpgradeForm extends Component {
     const tserverGFlagList = [];
     if (isNonEmptyArray(values?.gFlags)) {
       values.gFlags.forEach((flag) => {
-        if (get(flag, 'MASTER', null))
+        if (flag?.hasOwnProperty('MASTER'))
           masterGFlagList.push({ name: flag?.Name, value: flag['MASTER'] });
-        if (get(flag, 'TSERVER', null))
+        if (flag?.hasOwnProperty('TSERVER'))
           tserverGFlagList.push({ name: flag?.Name, value: flag['TSERVER'] });
       });
     }
