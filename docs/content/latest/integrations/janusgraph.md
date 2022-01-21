@@ -3,10 +3,10 @@ title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: janusgraph
-    parent: integrations
     weight: 573
 isTocNested: true
 showAsideToc: true

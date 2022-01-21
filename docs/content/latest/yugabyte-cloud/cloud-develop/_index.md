@@ -4,10 +4,10 @@ linkTitle: Develop
 description: Get started developing applications for Yugabyte Cloud.
 headcontent: Get started developing applications for Yugabyte Cloud.
 image: /images/section_icons/index/develop.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-develop
-    parent: yugabyte-cloud
     weight: 20
 isTocNested: true
 showAsideToc: true

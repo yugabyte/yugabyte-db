@@ -4,10 +4,10 @@ linkTitle: Deploy clusters
 description: Deploy clusters in Yugabyte Cloud.
 headcontent: Deploy production-ready clusters.
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-basics
-    parent: yugabyte-cloud
     weight: 25
 isTocNested: true
 showAsideToc: true

@@ -5,9 +5,10 @@ linkTitle: Security
 description: Secure Yugabyte Platform and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
 headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
+type: page
+section: YUGABYTE PLATFORM
 menu:
   latest:
-    parent: yugabyte-platform
     identifier: security
 weight: 645
 ---

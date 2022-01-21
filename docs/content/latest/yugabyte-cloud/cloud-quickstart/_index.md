@@ -6,12 +6,12 @@ description: Get started using Yugabyte Cloud in less than five minutes.
 image: /images/section_icons/index/quick_start.png
 headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on Yugabyte Cloud.
 type: page
+section: YUGABYTE CLOUD
 aliases:
 menu:
   latest:
     identifier: cloud-quickstart
-    parent: yugabyte-cloud
-    weight: 10
+    weight: 15
 ---
 
 The quickest way to get started with YugabyteDB is to [sign up for Yugabyte Cloud](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.

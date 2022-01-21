@@ -5,10 +5,10 @@ linkTitle: Administer Yugabyte Cloud
 description: Administer Yugabyte Cloud.
 image: /images/section_icons/explore/administer.png
 headcontent: Manage your cloud users and billing and payment methods.
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-admin
-    parent: yugabyte-cloud
     weight: 600
 ---
 

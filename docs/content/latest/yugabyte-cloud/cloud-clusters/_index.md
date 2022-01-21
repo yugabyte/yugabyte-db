@@ -5,10 +5,10 @@ linkTitle: Manage clusters
 description: Manage your Yugabyte Cloud clusters.
 image: /images/section_icons/architecture/core_functions/universe.png
 headcontent: Add, delete, scale, and back up your clusters.
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-clusters
-    parent: yugabyte-cloud
     weight: 150
 ---
 

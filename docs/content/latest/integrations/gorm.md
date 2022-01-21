@@ -3,10 +3,10 @@ title: Using GORM with YugabyteDB
 linkTitle: GORM
 description: Using GORM with YugabyteDB
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: form
-    parent: integrations
     weight: 650
 isTocNested: true
 showAsideToc: true

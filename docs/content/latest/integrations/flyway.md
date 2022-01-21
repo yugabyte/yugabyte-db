@@ -3,10 +3,10 @@ title: Flyway
 linkTitle: Flyway
 description: Using Flyway with YugabyteDB
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: flyway
-    parent: integrations
     weight: 650
 isTocNested: true
 showAsideToc: true

@@ -3,10 +3,10 @@ title: KairosDB
 linkTitle: KairosDB
 description: KairosDB
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: kairosdb
-    parent: integrations
     weight: 574
 isTocNested: true
 showAsideToc: true

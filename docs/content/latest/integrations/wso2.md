@@ -3,10 +3,10 @@ title: WSO2 Identity Server
 linkTitle: WSO2 Identity Server
 description: WSO2 Identity Server
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: wso2
-    parent: integrations
     weight: 577
 isTocNested: true
 showAsideToc: true

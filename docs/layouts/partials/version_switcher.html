@@ -21,7 +21,7 @@
 {{ end }}
 {{ if gt (len (where (readDir (relURL "content/")) ".IsDir" "ne" false)) 1 }}
   {{ $versions := where (readDir (relURL "content/")) ".IsDir" "ne" false }}
-<div class="dropdown" id="version-switcher">
+  <div class="dropdown" id="version-switcher">
     <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><strong>
         {{ $currentVersion }}</strong>
     </button>

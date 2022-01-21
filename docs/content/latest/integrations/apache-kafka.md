@@ -3,10 +3,10 @@ title: Apache Kafka
 linkTitle: Apache Kafka
 description: Apache Kafka
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: apache-kafka
-    parent: integrations
     weight: 571
 isTocNested: true
 showAsideToc: true

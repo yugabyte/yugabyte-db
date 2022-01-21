@@ -2,11 +2,11 @@
 title: Using Sequelize with YugabyteDB
 linkTitle: Sequelize
 description: Using Sequelize with YugabyteDB
+section: INTEGRATIONS
 aliases:
 menu:
   latest:
     identifier: sequelize
-    parent: integrations
     weight: 650
 isTocNested: true
 showAsideToc: true
