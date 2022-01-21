@@ -4802,6 +4802,9 @@
         "instanceType" : {
           "type" : "string"
         },
+        "isYbPrebuiltAmi" : {
+          "type" : "boolean"
+        },
         "masterGFlags" : {
           "additionalProperties" : {
             "type" : "string"
