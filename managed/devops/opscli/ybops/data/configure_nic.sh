@@ -13,6 +13,11 @@ mgmt_rtb_name="mgmt" # This is management side of the routing table
 # scalable for future extensions and we can add more specific rules to each table
 # rather than changing the default table
 
+# we will continue to use the names secondary for customer side interface
+# and primary for management interface, just to be compatible with previously installed nodes
+# Though its important to know that secondary interface will become the default route
+# whichever order it came up
+
 fix_ifcfg() {
   #eth0 - primary interface is ens5 and AWS setup eth0
   #eth1 - primary interface is eth0 and AWS configured secondary
@@ -23,26 +28,19 @@ fix_ifcfg() {
   for ifname in $ifnames; do
     if_config_file="/etc/sysconfig/network-scripts/ifcfg-$ifname"
     if [ -f "${if_config_file}" ]; then
+      DEFROUTE=""
       source ${if_config_file}
-      val="$DEFROUTE"
-      log "Current value of DEFROUTE for $ifname : $val"
-      case $val in
-        yes)
-            # Replace the DEFROUTE
-            log "Replacing DEFROUTE for Interface:$ifname"
-            sed -i -e 's/DEFROUTE=\"yes\"/DEFROUTE=\"no\"/g' "${if_config_file}"
-            sed -i -e 's/DEFROUTE=yes/DEFROUTE=no/g' "${if_config_file}"
-            ;;
-        no)
-            # Nothing to do
-            log "DEFROUTE=no for Interface:$ifname"
-            ;;
-        *)
-            # No entry exists, so just create the line
-            log "No entry exists for Interface:$ifname, creating"
-            echo -e "DEFROUTE=no" >> "${if_config_file}"
-            ;;
-      esac
+      log "Current value of DEFROUTE for $ifname : ${DEFROUTE}"
+      if [ "${DEFROUTE}" != "no" ]; then
+        # It can be either yes or does not exisit, so we need to check
+        if [ "${DEFROUTE}" = "yes" ]; then
+          log "Replacing DEFROUTE for Interface:$ifname"
+          sed -i -e 's/DEFROUTE=.*/DEFROUTE=no/g' "${if_config_file}"
+        else
+          log "No entry exists for Interface:$ifname, creating"
+          echo -e "DEFROUTE=no" >> "${if_config_file}"
+        fi
+      fi
     else
       echo -e "BOOTPROTO=dhcp\nDEVICE=$ifname\nONBOOT=yes\nDEFROUTE=no\nTYPE=Ethernet\nUSERCTL=no
       " >"${if_config_file}"
@@ -52,7 +50,7 @@ fix_ifcfg() {
 
 configure_nics() {
   #disable Network Manager for any interface
-  systemctl disable NetworkManager >> /dev/nunn 2>&1
+  systemctl disable NetworkManager >> /dev/null 2>&1
   # Create Table for customer side
   echo "Create route table ${rtb_id}"
   egrep "^${rtb_id}" /etc/iproute2/rt_tables && {
@@ -64,7 +62,7 @@ configure_nics() {
   # Create Table for Mgmt side
   echo "Create route table ${mgmt_rtb_id}"
   egrep "^${mgmt_rtb_id}" /etc/iproute2/rt_tables && {
-    echo "RTb ID mgmt_rtb_id exists, change to $((mgmt_rtb_id + 1))"
+    echo "RTb ID $mgmt_rtb_id exists, change to $((mgmt_rtb_id + 1))"
     exit 1
   }
   echo -e "${mgmt_rtb_id}\t$mgmt_rtb_name" >>/etc/iproute2/rt_tables
@@ -85,8 +83,11 @@ if [[ "$cloud" == "gcp" ]]; then
   new_network_number="\${route_targets[1]}"
   new_routers="\${route_targets[0]}"
   new_subnet_mask="\$prefix"
-  log "For GCP: new_network_number=\${route_targets[1]}"
 fi
+
+log "ENV: new_network_number=\${route_targets[1]}"
+log "ENV: new_routers=\${route_targets[0]}"
+log "ENV: new_subnet_mask=\$prefix"
 
 log "Configure for \$new_network_number"
 if [ "\$new_network_number" == "\${secondary_network}" ]; then
