@@ -172,7 +172,7 @@ class ArenaList {
   template <class PB>
   void ToGoogleProtobuf(PB* out) const {
     out->Clear();
-    out->Reserve(list_.size());
+    out->Reserve(narrow_cast<int>(list_.size()));
     for (const auto& entry : *this) {
       entry.ToGoogleProtobuf(out->Add());
     }

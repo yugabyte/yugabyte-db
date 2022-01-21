@@ -71,7 +71,7 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
-DECLARE_int32(max_queued_split_candidates);
+DECLARE_uint64(max_queued_split_candidates);
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
@@ -184,14 +184,14 @@ class PgMiniTest : public PgMiniTestBase {
 
 class PgMiniSingleTServerTest : public PgMiniTest {
  public:
-  int NumTabletServers() override {
+  size_t NumTabletServers() override {
     return 1;
   }
 };
 
 class PgMiniMasterFailoverTest : public PgMiniTest {
  public:
-  int NumMasters() override {
+  size_t NumMasters() override {
     return 3;
   }
 };
@@ -886,7 +886,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
         RandomHumanReadableString(kValueSize)));
 
     return false;
-  }, 5s, "Intents cleanup", 200ms));
+  }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
@@ -2206,7 +2206,7 @@ TEST_F_EX(
 
   std::string table_id;
   GetTableIDFromTableName(table_name, &table_id);
-  int start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  auto start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
   // Insert elements into the table using a parallel thread
@@ -2227,7 +2227,7 @@ TEST_F_EX(
   StartReadWriteThreads(table_name, &thread_holder);
 
   thread_holder.WaitAndStop(200s);
-  int end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  auto end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ASSERT_GT(end_num_tablets, start_num_tablets);
   DestroyTable(table_name);
 

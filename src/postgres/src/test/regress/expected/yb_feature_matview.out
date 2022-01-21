@@ -368,7 +368,7 @@ INSERT INTO mvtest_foo SELECT * FROM mvtest_foo;
 REFRESH MATERIALIZED VIEW mvtest_mv;
 ERROR:  duplicate key value violates unique constraint "mvtest_mv_a_idx"
 REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_mv;
-ERROR:  new data for materialized view "mvtest_mv" contains duplicate rows without any null columns, or contains rows with all null values
+ERROR:  new data for materialized view "mvtest_mv" contains duplicate rows without any null columns
 DETAIL:  Row: (1,10)
 DROP TABLE mvtest_foo CASCADE;
 NOTICE:  drop cascades to materialized view mvtest_mv
@@ -548,8 +548,8 @@ INSERT INTO test_yb VALUES (null);
 CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
 CREATE UNIQUE INDEX ON mtest_yb(col);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- should fail
-ERROR:  new data for materialized view "mtest_yb" contains duplicate rows without any null columns, or contains rows with all null values
-DETAIL:  Row: ()
+ERROR:  new data for materialized view "mtest_yb" contains rows with all null values
+DETAIL:  Row: (null)
 CREATE TABLE pg_temp_foo (col int);
 INSERT INTO pg_temp_foo values (1);
 SELECT * FROM pg_temp_foo;
@@ -566,3 +566,53 @@ SELECT * from pg_temp__123;
    1
 (1 row)
 
+DROP TABLE test_yb CASCADE;
+NOTICE:  drop cascades to materialized view mtest_yb
+-- Test special characters in an attribute's name
+CREATE TABLE test_yb ("xyzID''\\b" int NOT NULL, "y" int);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX ON mtest_yb("xyzID''\\b");
+REFRESH MATERIALIZED VIEW mtest_yb;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
+DROP TABLE test_yb CASCADE;
+NOTICE:  drop cascades to materialized view mtest_yb
+-- Test with special characters in the base relation's name
+CREATE TABLE "test_YB''\\b" ("xyzid" int NOT NULL);
+INSERT INTO "test_YB''\\b" VALUES (1);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM "test_YB''\\b" WITH NO DATA;
+CREATE UNIQUE INDEX ON mtest_yb("xyzid");
+REFRESH MATERIALIZED VIEW mtest_yb;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
+DROP TABLE "test_YB''\\b" CASCADE;
+NOTICE:  drop cascades to materialized view mtest_yb
+-- Test with special characters in the matview's name
+CREATE TABLE test_yb ("xyzid" int NOT NULL);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW "mtest_YB''\\b" AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX ON mtest_YB("xyzid");
+ERROR:  relation "mtest_yb" does not exist
+REFRESH MATERIALIZED VIEW mtest_YB;
+ERROR:  relation "mtest_yb" does not exist
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_YB;
+ERROR:  relation "mtest_yb" does not exist
+DROP TABLE test_yb CASCADE;
+NOTICE:  drop cascades to materialized view "mtest_YB''\\b"
+-- Test with special characters in the unique index's name
+CREATE TABLE test_yb ("xyzid" int NOT NULL);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX "unique_IDX''\\b" ON mtest_YB("xyzid");
+REFRESH MATERIALIZED VIEW mtest_yb;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
+DROP TABLE test_yb CASCADE;
+NOTICE:  drop cascades to materialized view mtest_yb
+-- Test with unicode characters
+CREATE TABLE test_yb ("U&'\0022hi\0022'" int NOT NULL);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX unique_IDX ON mtest_YB("U&'\0022hi\0022'");
+REFRESH MATERIALIZED VIEW mtest_yb;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
+DROP TABLE test_yb CASCADE;
+NOTICE:  drop cascades to materialized view mtest_yb

@@ -60,7 +60,6 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.Master;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
@@ -723,7 +722,8 @@ public class YBClient implements AutoCloseable {
     String leaderUuid = waitAndGetLeaderMasterUUID(timeoutMs);
 
     if (leaderUuid == null) {
-      throw new RuntimeException("Timed out waiting for Master Leader.");
+      throw new RuntimeException(
+          "Timed out waiting for Master Leader after " + timeoutMs + " ms");
     }
   }
 
@@ -865,6 +865,24 @@ public class YBClient implements AutoCloseable {
 
   public interface Condition {
     boolean get() throws Exception;
+  }
+
+  private class ReplicaCountCondition implements Condition {
+    private int numReplicas;
+    private YBTable table;
+    public ReplicaCountCondition(YBTable table, int numReplicas) {
+      this.numReplicas = numReplicas;
+      this.table = table;
+    }
+    @Override
+    public boolean get() throws Exception {
+      for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
+        if (tablet.getReplicas().size() != numReplicas) {
+          return false;
+        }
+      }
+      return true;
+    }
   }
 
   private class TableDoesNotExistCondition implements Condition {
@@ -1051,6 +1069,19 @@ public class YBClient implements AutoCloseable {
     LOG.error("Returning failure after {} iterations, num errors = {}.", numIters, numErrors);
 
     return false;
+  }
+
+  /**
+  * Wait for the table to have a specific number of replicas.
+  * @param table the table to check the condition on
+  * @param numReplicas the number of replicas we expect the table to have
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the table the expected number of replicas, false otherwise
+  */
+  public boolean waitForReplicaCount(final YBTable table, final int numReplicas,
+                                     final long timeoutMs) {
+    Condition replicaCountCondition = new ReplicaCountCondition(table, numReplicas);
+    return waitForCondition(replicaCountCondition, timeoutMs);
   }
 
   /**

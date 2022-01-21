@@ -99,7 +99,7 @@ class DiscreteScanChoices : public ScanChoices {
       : ScanChoices(doc_spec.is_forward_scan()) {
     range_cols_scan_options_ = doc_spec.range_options();
     current_scan_target_idxs_.resize(range_cols_scan_options_->size());
-    for (int i = 0; i < range_cols_scan_options_->size(); i++) {
+    for (size_t i = 0; i < range_cols_scan_options_->size(); i++) {
       current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
     }
 
@@ -122,7 +122,7 @@ class DiscreteScanChoices : public ScanChoices {
       : ScanChoices(doc_spec.is_forward_scan()) {
     range_cols_scan_options_ = doc_spec.range_options();
     current_scan_target_idxs_.resize(range_cols_scan_options_->size());
-    for (int i = 0; i < range_cols_scan_options_->size(); i++) {
+    for (size_t i = 0; i < range_cols_scan_options_->size(); i++) {
       current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
     }
 
@@ -174,9 +174,9 @@ Status DiscreteScanChoices::IncrementScanTargetAtColumn(size_t start_col) {
   DCHECK_LE(start_col, current_scan_target_idxs_.size());
 
   // Increment start col, move backwards in case of overflow.
-  int col_idx = start_col;
+  ssize_t col_idx = start_col;
   for (; col_idx >= 0; col_idx--) {
-    const auto& choices = range_cols_scan_options_->at(col_idx);
+    const auto& choices = (*range_cols_scan_options_)[col_idx];
     auto& it = current_scan_target_idxs_[col_idx];
 
     if (++it != choices.end()) {
@@ -315,30 +315,13 @@ Status DiscreteScanChoices::SeekToCurrentTarget(IntentAwareIterator* db_iter) {
 
 class RangeBasedScanChoices : public ScanChoices {
  public:
-  RangeBasedScanChoices(const Schema& schema, const DocQLScanSpec& doc_spec)
+  template <class ScanSpec>
+  RangeBasedScanChoices(const Schema& schema, const ScanSpec& doc_spec)
       : ScanChoices(doc_spec.is_forward_scan()) {
     DCHECK(doc_spec.range_bounds());
     lower_.reserve(schema.num_range_key_columns());
     upper_.reserve(schema.num_range_key_columns());
-    int idx = 0;
-    for (idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
-      const ColumnId col_idx = schema.column_id(idx);
-      const auto col_sort_type = schema.column(idx).sorting_type();
-      const QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
-      const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
-      const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
-      lower_.emplace_back(lower);
-      upper_.emplace_back(upper);
-    }
-  }
-
-  RangeBasedScanChoices(const Schema& schema, const DocPgsqlScanSpec& doc_spec)
-      : ScanChoices(doc_spec.is_forward_scan()) {
-    DCHECK(doc_spec.range_bounds());
-    lower_.reserve(schema.num_range_key_columns());
-    upper_.reserve(schema.num_range_key_columns());
-    int idx = 0;
-    for (idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
+    for (auto idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
       const ColumnId col_idx = schema.column_id(idx);
       const auto col_sort_type = schema.column(idx).sorting_type();
       const QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
@@ -384,7 +367,7 @@ Status RangeBasedScanChoices::SkipTargetsUpTo(const Slice& new_target) {
   RETURN_NOT_OK(decoder.DecodeToRangeGroup());
   current_scan_target_.Reset(Slice(new_target.data(), decoder.left_input().data()));
 
-  int col_idx = 0;
+  size_t col_idx = 0;
   PrimitiveValue target_value;
   bool last_was_infinity = false;
   for (col_idx = 0; VERIFY_RESULT(decoder.HasPrimitiveValue()); col_idx++) {

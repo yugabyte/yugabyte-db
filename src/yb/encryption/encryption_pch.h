@@ -54,6 +54,17 @@
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <glog/logging.h>
+#include <google/protobuf/arena.h>
+#include <google/protobuf/arenastring.h>
+#include <google/protobuf/generated_message_table_driven.h>
+#include <google/protobuf/generated_message_util.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map_entry.h>
+#include <google/protobuf/map_field_inl.h>
+#include <google/protobuf/message.h>
+#include <google/protobuf/metadata.h>
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 
@@ -71,6 +82,7 @@
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/thread_annotations.h"
@@ -84,6 +96,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"

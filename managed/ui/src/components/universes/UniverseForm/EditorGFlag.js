@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
 import AceEditor from 'react-ace';
-
 import 'ace-builds/src-noconflict/theme-textmate';
 import 'ace-builds/src-noconflict/mode-json';
-import 'ace-builds/src-noconflict/mode-text';
-import 'ace-builds/src-min-noconflict/snippets/json';
+const ace = require('ace-builds/src-noconflict/ace');
+ace.config.set('basePath', 'https://cdn.jsdelivr.net/npm/ace-builds@1.4.3/src-noconflict/');
+ace.config.setModuleUrl(
+  'ace/mode/json_worker',
+  'https://cdn.jsdelivr.net/npm/ace-builds@1.4.3/src-noconflict/worker-json.js'
+);
 
 const editorStyle = {
   height: '700px',
-  width: '100%'
+  width: '100%',
+  marginBottom: '20px'
 };
 
 const EditorGFlag = ({ formProps, gFlagProps }) => {
@@ -31,10 +35,8 @@ const EditorGFlag = ({ formProps, gFlagProps }) => {
         fontSize={12}
         showGutter={true}
         highlightActiveLine={true}
-        enableSnippets={true}
         setOptions={{
-          showLineNumbers: true,
-          useWorker: false
+          showLineNumbers: true
         }}
         style={editorStyle}
         onChange={(val) => seteditorValue(val)}

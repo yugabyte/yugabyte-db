@@ -49,7 +49,6 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/log.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/test_consensus_context.h"
@@ -926,7 +925,7 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
     return majority_replicated_op_id_;
   }
 
-  void WaitForMajorityReplicatedIndex(int index, MonoDelta timeout = MonoDelta(30s)) {
+  void WaitForMajorityReplicatedIndex(int64_t index, MonoDelta timeout = MonoDelta(30s)) {
     ASSERT_OK(WaitFor(
         [&]() { return IsMajorityReplicated(index); },
         timeout, Format("waiting for index $0 to be replicated", index)));

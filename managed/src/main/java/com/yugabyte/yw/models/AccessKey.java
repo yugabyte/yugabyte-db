@@ -43,6 +43,7 @@ public class AccessKey extends Model {
     @ApiModelProperty public Integer nodeExporterPort = 9300;
     @ApiModelProperty public String nodeExporterUser = "prometheus";
     @ApiModelProperty public boolean skipProvisioning = false;
+    @ApiModelProperty public boolean deleteRemote = true;
   }
 
   @ApiModelProperty(required = true)

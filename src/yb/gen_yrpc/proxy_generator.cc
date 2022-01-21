@@ -94,11 +94,11 @@ void ProxyGenerator::Header(YBPrinter printer, const google::protobuf::FileDescr
       printer(
           "\n"
           "  ::yb::Status $rpc_name$(const $request$ &req, $response$ *resp,\n"
-          "                          ::yb::rpc::RpcController *controller);\n"
+          "                          ::yb::rpc::RpcController *controller) const;\n"
           "  void $rpc_name$Async(const $request$ &req,\n"
           "                       $response$ *response,\n"
           "                       ::yb::rpc::RpcController *controller,\n"
-          "                       ::yb::rpc::ResponseCallback callback);\n"
+          "                       ::yb::rpc::ResponseCallback callback) const;\n"
       );
     }
 
@@ -136,7 +136,7 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
   for (int service_idx = 0; service_idx < file->service_count(); ++service_idx) {
     const auto* service = file->service(service_idx);
     ScopedSubstituter service_subs(printer, service);
-    printer("const std::string kFull$service_name$Name = \"$full_service_name$\";\n\n");
+    printer("const std::string kFull$service_name$Name = \"$original_full_service_name$\";\n\n");
 
     printer(
         "::yb::rpc::ProxyMetricsPtr Create$service_name$Metrics("
@@ -176,7 +176,8 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
 
       printer(
           "::yb::Status $service_name$Proxy::$rpc_name$(\n"
-          "    const $request$ &req, $response$ *resp, ::yb::rpc::RpcController *controller) {\n"
+          "    const $request$ &req, $response$ *resp, ::yb::rpc::RpcController *controller) "
+              "const {\n"
           "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
           "  return proxy().SyncRequest(\n"
           "      &method, metrics<$service_method_count$>(static_cast<size_t>("
@@ -185,7 +186,7 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
           "\n"
           "void $service_name$Proxy::$rpc_name$Async(\n"
           "    const $request$ &req, $response$ *resp, ::yb::rpc::RpcController *controller,\n"
-          "    ::yb::rpc::ResponseCallback callback) {\n"
+          "    ::yb::rpc::ResponseCallback callback) const {\n"
           "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
           "  proxy().AsyncRequest(\n"
           "      &method, metrics<$service_method_count$>(static_cast<size_t>("

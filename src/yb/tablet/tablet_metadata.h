@@ -441,6 +441,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Removes all complete or unknown restorations.
   bool CleanupRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
+  bool UsePartialRangeKeyIntents() const;
+
  private:
   typedef simple_spinlock MutexType;
 

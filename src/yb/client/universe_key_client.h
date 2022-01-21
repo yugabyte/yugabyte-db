@@ -18,6 +18,9 @@
 #include <mutex>
 #include <unordered_set>
 
+#include "yb/encryption/encryption.fwd.h"
+
+#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"

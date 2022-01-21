@@ -21,6 +21,7 @@ import io.ebean.Junction;
 import io.ebean.PagedList;
 import io.ebean.Query;
 import io.ebean.common.BeanList;
+import java.lang.annotation.Annotation;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -34,10 +35,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -48,6 +52,9 @@ import play.libs.Json;
 public class CommonUtils {
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
+
+  private static final Pattern RELEASE_REGEX =
+      Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");
 
   private static final String maskRegex = "(?<!^.?).(?!.?$)";
 
@@ -456,8 +463,54 @@ public class CommonUtils {
         .collect(Collectors.toMap(Pair::getFirst, Pair::getSecond));
   }
 
+  public static boolean isReleaseEqualOrAfter(String thresholdRelease, String actualRelease) {
+    Matcher thresholdMatcher = RELEASE_REGEX.matcher(thresholdRelease);
+    Matcher actualMatcher = RELEASE_REGEX.matcher(actualRelease);
+    if (!thresholdMatcher.matches()) {
+      throw new IllegalArgumentException(
+          "Threshold release " + thresholdRelease + " does not match release pattern");
+    }
+    if (!actualMatcher.matches()) {
+      log.warn(
+          "Actual release {} does not match release pattern - handle as latest release",
+          actualRelease);
+      return true;
+    }
+    for (int i = 1; i < 5; i++) {
+      int thresholdPart = Integer.parseInt(thresholdMatcher.group(i));
+      int actualPart = Integer.parseInt(actualMatcher.group(i));
+      if (actualPart > thresholdPart) {
+        return true;
+      }
+      if (actualPart < thresholdPart) {
+        return false;
+      }
+    }
+    // Equal releases.
+    return true;
+  }
+
   @FunctionalInterface
   private interface TriFunction<A, B, C, R> {
     R apply(A a, B b, C c);
+  }
+
+  /**
+   * Finds if the annotation class is present on the given class or its super classes.
+   *
+   * @param clazz the given class.
+   * @param annotationClass the annotation class.
+   * @return the optional of annotation.
+   */
+  public static <T extends Annotation> Optional<T> isAnnotatedWith(
+      Class<?> clazz, Class<T> annotationClass) {
+    if (clazz == null) {
+      return Optional.empty();
+    }
+    T annotation = clazz.getAnnotation(annotationClass);
+    if (annotation != null) {
+      return Optional.of(annotation);
+    }
+    return isAnnotatedWith(clazz.getSuperclass(), annotationClass);
   }
 }

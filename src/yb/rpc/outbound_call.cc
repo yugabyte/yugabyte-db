@@ -216,17 +216,6 @@ void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* 
 }
 
 Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
-#if 0
-  RequestHeader header;
-  RETURN_NOT_OK(InitHeader(&header));
-  auto se = ScopeExit([&header] {
-    // Prevent header to free its RemoteMethodPB pointer incorrectly when header
-    // goes out of scope, because RemoteMethodPB is owned by the containing remote_method_.
-    header.release_remote_method();
-  });
-
-  buffer_ = VERIFY_RESULT(SerializeRequest(req.SerializedSize(), 0, header, req));
-#endif
   auto req_size = req.SerializedSize();
   size_t message_size = SerializedMessageSize(req_size, 0);
 
@@ -239,7 +228,8 @@ Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr
   size_t header_pb_len = 1 + call_id_size + serialized_remote_method.size() + 1 + timeout_ms_size;
   size_t header_size =
       kMsgLengthPrefixLength                            // Int prefix for the total length.
-      + CodedOutputStream::VarintSize32(header_pb_len)  // Varint delimiter for header PB.
+      + CodedOutputStream::VarintSize32(
+            narrow_cast<uint32_t>(header_pb_len))       // Varint delimiter for header PB.
       + header_pb_len;                                  // Length for the header PB itself.
   size_t total_size = header_size + message_size;
 
@@ -248,11 +238,11 @@ Status OutboundCall::SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr
 
   // 1. The length for the whole request, not including the 4-byte
   // length prefix.
-  NetworkByteOrder::Store32(dst, total_size - kMsgLengthPrefixLength);
+  NetworkByteOrder::Store32(dst, narrow_cast<uint32_t>(total_size - kMsgLengthPrefixLength));
   dst += sizeof(uint32_t);
 
   // 2. The varint-prefixed RequestHeader PB
-  dst = CodedOutputStream::WriteVarint32ToArray(header_pb_len, dst);
+  dst = CodedOutputStream::WriteVarint32ToArray(narrow_cast<uint32_t>(header_pb_len), dst);
   dst = Output::WriteTagToArray(RequestHeader::kCallIdFieldNumber << 3, dst);
   dst = Output::WriteVarint32ToArray(call_id_, dst);
   memcpy(dst, serialized_remote_method.data(), serialized_remote_method.size());
@@ -281,7 +271,6 @@ const ErrorStatusPB* OutboundCall::error_pb() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return error_pb_.get();
 }
-
 
 string OutboundCall::StateName(State state) {
   return RpcCallState_Name(state);
@@ -519,7 +508,7 @@ bool OutboundCall::IsFinished() const {
   return FinishedState(state_.load(std::memory_order_acquire));
 }
 
-Result<Slice> OutboundCall::GetSidecar(int idx) const {
+Result<Slice> OutboundCall::GetSidecar(size_t idx) const {
   return call_response_.GetSidecar(idx);
 }
 
@@ -559,7 +548,7 @@ Result<uint32_t> OutboundCall::TimeoutMs() const {
     if (timeout_millis <= 0) {
       return STATUS(TimedOut, "Call timed out before sending");
     }
-    return timeout_millis;
+    return narrow_cast<uint32_t>(timeout_millis);
   } else {
     return 0;
   }
@@ -603,9 +592,9 @@ CallResponse::CallResponse()
     : parsed_(false) {
 }
 
-Result<Slice> CallResponse::GetSidecar(int idx) const {
+Result<Slice> CallResponse::GetSidecar(size_t idx) const {
   DCHECK(parsed_);
-  if (idx < 0 || idx + 1 >= sidecar_bounds_.size()) {
+  if (idx + 1 >= sidecar_bounds_.size()) {
     return STATUS_FORMAT(InvalidArgument,
         "Index $0 does not reference a valid sidecar", idx);
   }

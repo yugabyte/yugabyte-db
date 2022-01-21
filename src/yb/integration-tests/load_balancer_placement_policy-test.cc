@@ -24,7 +24,7 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -63,18 +63,18 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
   }
 
   void GetLoadOnTservers(const string tablename,
-                         int num_tservers,
+                         size_t num_tservers,
                          vector<int> *const out_load_per_tserver) {
     out_load_per_tserver->clear();
-    for (int ii = 0; ii < num_tservers; ++ii) {
+    for (size_t i = 0; i < num_tservers; ++i) {
       const int count = ASSERT_RESULT(GetLoadOnTserver(
-          external_mini_cluster()->tablet_server(ii), tablename));
+          external_mini_cluster()->tablet_server(i), tablename));
       out_load_per_tserver->emplace_back(count);
     }
   }
 
   Result<uint32_t> GetLoadOnTserver(ExternalTabletServer* server, const string tablename) {
-    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
+    auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
     master::GetTableLocationsRequestPB req;
     req.mutable_table()->set_table_name(tablename);
     req.mutable_table()->mutable_namespace_()->set_name(table_name().namespace_name());
@@ -82,7 +82,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
 
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
-    RETURN_NOT_OK(proxy->GetTableLocations(req, &resp, &rpc));
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
 
     uint32_t count = 0;
     std::vector<string> replicas;
@@ -97,12 +97,6 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     LOG(INFO) << Format("For ts $0, table name $1 tablet count $2",
                         server->instance_id().permanent_uuid(), tablename, count);
     return count;
-  }
-
-  Result<std::shared_ptr<master::MasterServiceProxy>> GetMasterLeaderProxy() {
-    int idx;
-    RETURN_NOT_OK(external_mini_cluster()->GetLeaderMasterIndex(&idx));
-    return external_mini_cluster()->master_proxy(idx);
   }
 
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
@@ -125,7 +119,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
 
   void AddNewTserverToZone(
     const string& zone,
-    const int expected_num_tservers,
+    const size_t expected_num_tservers,
     const string& placement_uuid = "") {
 
     std::vector<std::string> extra_opts;
@@ -138,8 +132,8 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     }
 
     ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
-    ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(expected_num_tservers,
-      kDefaultTimeout));
+    ASSERT_OK(
+        external_mini_cluster()->WaitForTabletServerCount(expected_num_tservers, kDefaultTimeout));
   }
 
   void AddNewTserverToLocation(const string& cloud, const string& region,
@@ -224,7 +218,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
   // Add a new tserver to zone 1.
-  int num_tservers = num_tablet_servers() + 1;
+  auto num_tservers = num_tablet_servers() + 1;
   AddNewTserverToZone("z1", num_tservers);
 
   WaitForLoadBalancer();
@@ -263,7 +257,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
 
   // The table with cluster placement policy should have tablets spread across all tservers.
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     ASSERT_GT(counts_per_ts[ii], 0);
   }
 
@@ -278,7 +272,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   WaitForLoadBalancer();
 
   GetLoadOnTservers(custom_policy_table, num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     if (ii == 0 || ii == 4) {
       // The table with custom policy should have no tablets in z0, i.e. ts0 and ts4.
       ASSERT_EQ(counts_per_ts[ii], 0);
@@ -308,7 +302,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   // The table with cluster placement policy should continue to have tablets spread across all
   // tservers.
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     ASSERT_GT(counts_per_ts[ii], 0);
   }
 }
@@ -324,6 +318,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
 
   TestWorkload workload(external_mini_cluster());
   workload.set_table_name(placement_table);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -354,7 +349,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
 
   // Verify that the data inserted is still sane.
   workload.StopAndJoin();
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   // Verify that number of rows is as expected.
@@ -369,7 +364,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
   // Add 2 tservers with custom placement uuid.
-  int num_tservers = num_tablet_servers() + 1;
+  auto num_tservers = num_tablet_servers() + 1;
   const string& random_placement_uuid = "19dfa091-2b53-434f-b8dc-97280a5f8831";
   AddNewTserverToZone("z1", num_tservers, random_placement_uuid);
   AddNewTserverToZone("z2", ++num_tservers, random_placement_uuid);

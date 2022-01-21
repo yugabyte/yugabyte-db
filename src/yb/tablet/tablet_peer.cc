@@ -79,6 +79,7 @@
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
@@ -634,16 +635,16 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-void TabletPeer::WriteAsync(std::unique_ptr<WriteOperation> operation) {
+void TabletPeer::WriteAsync(std::unique_ptr<WriteQuery> query) {
   ScopedOperation preparing_token(&preparing_operations_counter_);
   auto status = CheckRunning();
   if (!status.ok()) {
-    operation->CompleteWithStatus(status);
+    query->Cancel(status);
     return;
   }
 
-  operation->set_preparing_token(std::move(preparing_token));
-  tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
+  query->operation().set_preparing_token(std::move(preparing_token));
+  tablet_->AcquireLocksAndPerformDocOperations(std::move(query));
 }
 
 Result<HybridTime> TabletPeer::ReportReadRestart() {
@@ -991,8 +992,7 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       DCHECK(replicate_msg->has_write()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
       // We use separate preparing token only on leader, so here it could be empty.
-      return std::make_unique<WriteOperation>(
-          OpId::kUnknownTerm, CoarseTimePoint::max(), this, tablet());
+      return std::make_unique<WriteOperation>(tablet());
 
     case consensus::CHANGE_METADATA_OP:
       DCHECK(replicate_msg->has_change_metadata_request()) << "CHANGE_METADATA_OP replica"
@@ -1171,7 +1171,7 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
   return info;
 }
 
-int TabletPeer::GetNumLogSegments() const {
+size_t TabletPeer::GetNumLogSegments() const {
   auto log = log_atomic_.load(std::memory_order_acquire);
   return log ? log->num_segments() : 0;
 }
@@ -1185,7 +1185,6 @@ scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
   return scoped_refptr<OperationDriver>(new OperationDriver(
       &operation_tracker_,
       consensus_.get(),
-      log_.get(),
       prepare_thread_.get(),
       tablet_->table_type()));
 }

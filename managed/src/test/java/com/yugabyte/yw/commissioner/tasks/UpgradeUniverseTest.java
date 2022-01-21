@@ -61,7 +61,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
 import io.ebean.SqlUpdate;
-import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -89,7 +88,6 @@ import org.mockito.junit.MockitoRule;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
@@ -183,8 +181,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.rootCertPath = "rootCertPath";
     customCertInfo.nodeCertPath = "nodeCertPath";
     customCertInfo.nodeKeyPath = "nodeKeyPath";
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", CERT_1_CONTENTS);
+    createTempFile("upgrade_universe_test_ca.crt", CERT_1_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -192,7 +189,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           "test",
           date,
           date,
-          TestHelper.TMP_PATH + "/ca.crt",
+          TestHelper.TMP_PATH + "/upgrade_universe_test_ca.crt",
           customCertInfo);
     } catch (IOException | NoSuchAlgorithmException e) {
     }
@@ -240,6 +237,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
     ShellResponse dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    ShellResponse successResponse = new ShellResponse();
+    successResponse.message = "YSQL successfully upgraded to the latest version";
+    when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyLong()))
+        .thenReturn(successResponse);
   }
 
   private TaskInfo submitTask(UpgradeUniverse.Params taskParams, UpgradeTaskType taskType) {
@@ -824,7 +825,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       }
 
       commonNodeTasks.addAll(
-          ImmutableList.of(TaskType.UpdateSoftwareVersion, TaskType.UniverseUpdateSucceeded));
+          ImmutableList.of(
+              TaskType.RunYsqlUpgrade,
+              TaskType.UpdateSoftwareVersion,
+              TaskType.UniverseUpdateSucceeded));
     }
     for (TaskType commonNodeTask : commonNodeTasks) {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask);
@@ -1793,8 +1797,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.rootCertPath = "rootCertPath1";
     customCertInfo.nodeCertPath = "nodeCertPath1";
     customCertInfo.nodeKeyPath = "nodeKeyPath1";
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca2.crt", CERT_1_CONTENTS);
+    createTempFile("upgrade_universe_test_ca2.crt", CERT_1_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -1802,7 +1805,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           "test2",
           date,
           date,
-          TestHelper.TMP_PATH + "/ca2.crt",
+          TestHelper.TMP_PATH + "/upgrade_universe_test_ca2.crt",
           customCertInfo);
     } catch (IOException | NoSuchAlgorithmException e) {
     }
@@ -1837,8 +1840,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.rootCertPath = "rootCertPath1";
     customCertInfo.nodeCertPath = "nodeCertPath1";
     customCertInfo.nodeKeyPath = "nodeKeyPath1";
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca2.crt", CERT_1_CONTENTS);
+    createTempFile("upgrade_universe_test_ca2.crt", CERT_1_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -1846,7 +1848,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           "test2",
           date,
           date,
-          TestHelper.TMP_PATH + "/ca2.crt",
+          TestHelper.TMP_PATH + "/upgrade_universe_test_ca2.crt",
           customCertInfo);
     } catch (IOException | NoSuchAlgorithmException e) {
     }
@@ -1881,8 +1883,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.rootCertPath = "rootCertPath1";
     customCertInfo.nodeCertPath = "nodeCertPath1";
     customCertInfo.nodeKeyPath = "nodeKeyPath1";
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca2.crt", CERT_2_CONTENTS);
+    createTempFile("upgrade_universe_test_ca2.crt", CERT_2_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -1890,7 +1891,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           "test2",
           date,
           date,
-          TestHelper.TMP_PATH + "/ca2.crt",
+          TestHelper.TMP_PATH + "/upgrade_universe_test_ca2.crt",
           customCertInfo);
     } catch (IOException | NoSuchAlgorithmException e) {
     }
@@ -1923,6 +1924,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       UUID rootCA,
       UUID clientRootCA)
       throws IOException, NoSuchAlgorithmException {
+    createTempFile("upgrade_universe_test_ca.crt", "test content");
+
     CertificateInfo.create(
         rootCA,
         defaultCustomer.uuid,
@@ -1930,7 +1933,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         new Date(),
         new Date(),
         "privateKey",
-        TestHelper.TMP_PATH + "/ca.crt",
+        TestHelper.TMP_PATH + "/upgrade_universe_test_ca.crt",
         CertificateInfo.Type.SelfSigned);
 
     if (!rootAndClientRootCASame && !rootCA.equals(clientRootCA)) {
@@ -1941,7 +1944,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           new Date(),
           new Date(),
           "privateKey",
-          TestHelper.TMP_PATH + "/ca.crt",
+          TestHelper.TMP_PATH + "/upgrade_universe_test_ca.crt",
           CertificateInfo.Type.SelfSigned);
     }
 

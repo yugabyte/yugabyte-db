@@ -19,7 +19,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -42,11 +42,11 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
 
   bool use_external_mini_cluster() override { return true; }
 
-  int num_masters() override {
+  size_t num_masters() override {
     return 3;
   }
 
-  int num_tablet_servers() override {
+  size_t num_tablet_servers() override {
     return 3;
   }
 
@@ -62,8 +62,8 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
     master::ListMastersResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
-    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
-    RETURN_NOT_OK(proxy->ListMasters(req, &resp, &rpc));
+    auto proxy = GetMasterLeaderProxy<master::MasterClusterProxy>();
+    RETURN_NOT_OK(proxy.ListMasters(req, &resp, &rpc));
 
     for (const ServerEntryPB& master : resp.masters()) {
       if (master.role() == yb::PeerRole::LEADER) {
@@ -82,8 +82,8 @@ class SysCatalogRespectAffinityTest : public YBTableTestBase {
     master::GetMasterRegistrationResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(kDefaultTimeout);
-    auto proxy = VERIFY_RESULT(GetMasterLeaderProxy());
-    RETURN_NOT_OK(proxy->GetMasterRegistration(req, &resp, &rpc));
+    auto proxy = GetMasterLeaderProxy<master::MasterClusterProxy>();
+    RETURN_NOT_OK(proxy.GetMasterRegistration(req, &resp, &rpc));
     return resp.registration().cloud_info().placement_zone();
   }
 

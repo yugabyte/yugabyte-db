@@ -529,8 +529,8 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     index_info->set_is_local(index_node->is_local());
     index_info->set_is_unique(index_node->is_unique());
     index_info->set_is_backfill_deferred(index_node->is_backfill_deferred());
-    index_info->set_hash_column_count(tnode->hash_columns().size());
-    index_info->set_range_column_count(tnode->primary_columns().size());
+    index_info->set_hash_column_count(narrow_cast<uint32_t>(tnode->hash_columns().size()));
+    index_info->set_range_column_count(narrow_cast<uint32_t>(tnode->primary_columns().size()));
     index_info->set_use_mangled_column_name(true);
 
     // List key columns of data-table being indexed.
@@ -1025,7 +1025,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     // DocDB will do LIMIT and OFFSET computation for this query.
     if (tnode->limit()) {
       // Setup request to DocDB according to the given LIMIT.
-      int32_t user_limit = query_state->select_limit() - query_state->read_count();
+      size_t user_limit = query_state->select_limit() - query_state->read_count();
       if (!req->has_limit() || user_limit <= req->limit()) {
         // Set limit and instruct DocDB to clear paging state if limit is reached.
         req->set_limit(user_limit);
@@ -1035,7 +1035,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
     if (tnode->offset()) {
       // Setup request to DocDB according to the given OFFSET.
-      int32_t user_offset = query_state->select_offset() - query_state->skip_count();
+      auto user_offset = query_state->select_offset() - query_state->skip_count();
       req->set_offset(user_offset);
       req->set_return_paging_state(true);
     }
@@ -1212,7 +1212,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
   }
 
   // Setup counters in read request to DocDB.
-  const size_t current_fetch_row_count = tnode_context->row_count();
+  const int64_t current_fetch_row_count = tnode_context->row_count();
   const int64_t total_rows_skipped = query_state->skip_count();
   const int64_t total_row_count = query_state->read_count();
 
@@ -2234,7 +2234,8 @@ bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
     case QLWriteRequestPB::QL_STMT_DELETE: {
       const Schema& schema = tnode->table()->InternalSchema();
       return (req.column_values().empty() &&
-              req.range_column_values_size() == schema.num_range_key_columns());
+              static_cast<size_t>(req.range_column_values_size()) ==
+                  schema.num_range_key_columns());
     }
   }
   return false; // Not feasible
@@ -2338,10 +2339,11 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
   // Populate a column-id to value map.
   std::unordered_map<ColumnId, const QLExpressionPB&> values;
   for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
-    values.emplace(schema.column_id(i), req.hashed_column_values(i));
+    values.emplace(schema.column_id(i), req.hashed_column_values(narrow_cast<int>(i)));
   }
   for (size_t i = 0; i < schema.num_range_key_columns(); i++) {
-    values.emplace(schema.column_id(schema.num_hash_key_columns() + i), req.range_column_values(i));
+    values.emplace(schema.column_id(schema.num_hash_key_columns() + i),
+                   req.range_column_values(narrow_cast<int>(i)));
   }
   if (is_upsert) {
     for (const auto& column_value : req.column_values()) {

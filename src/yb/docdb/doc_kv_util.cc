@@ -32,7 +32,7 @@ namespace docdb {
 
 bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_doc_key) {
   if (key.starts_with(encoded_doc_key)) {
-    const int encoded_doc_key_size = encoded_doc_key.size();
+    const auto encoded_doc_key_size = encoded_doc_key.size();
     const char* key_data = key.cdata();
     return key.size() >= encoded_doc_key_size + 2 &&
            key_data[encoded_doc_key_size] == '\0' &&
@@ -55,9 +55,7 @@ Status DecodeHybridTimeFromEndOfKey(
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
-Status CheckHybridTimeSizeAndValueType(
-    const rocksdb::Slice& key,
-    int* ht_byte_size_dest) {
+Status CheckHybridTimeSizeAndValueType(const rocksdb::Slice& key, size_t* ht_byte_size_dest) {
   RETURN_NOT_OK(
       DocHybridTime::CheckAndGetEncodedSize(key, ht_byte_size_dest));
   const size_t hybrid_time_value_type_offset = key.size() - *ht_byte_size_dest - 1;

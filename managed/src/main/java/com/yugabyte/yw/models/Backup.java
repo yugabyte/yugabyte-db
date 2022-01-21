@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -65,6 +66,12 @@ public class Backup extends Model {
 
     @EnumValue("Stopped")
     Stopped,
+
+    @EnumValue("DeleteInProgress")
+    DeleteInProgress,
+
+    @EnumValue("QueuedForDeletion")
+    QueuedForDeletion
   }
 
   @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
@@ -105,6 +112,15 @@ public class Backup extends Model {
 
   public Date getExpiry() {
     return expiry;
+  }
+
+  private void setExpiry(long timeBeforeDeleteFromPresent) {
+    this.expiry = new Date(System.currentTimeMillis() + timeBeforeDeleteFromPresent);
+  }
+
+  public void updateExpiryTime(long timeBeforeDeleteFromPresent) {
+    setExpiry(timeBeforeDeleteFromPresent);
+    save();
   }
 
   public void setBackupInfo(BackupTableParams params) {
@@ -221,6 +237,11 @@ public class Backup extends Model {
     return false;
   }
 
+  public void updateBackupInfo(BackupTableParams params) {
+    this.backupInfo = params;
+    save();
+  }
+
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {
     List<Backup> backupList =
         find.query()
@@ -231,6 +252,14 @@ public class Backup extends Model {
     return backupList
         .stream()
         .filter(backup -> backup.getBackupInfo().universeUUID.equals(universeUUID))
+        .collect(Collectors.toList());
+  }
+
+  public static List<Backup> fetchBackupToDeleteByUniverseUUID(
+      UUID customerUUID, UUID universeUUID) {
+    return fetchByUniverseUUID(customerUUID, universeUUID)
+        .stream()
+        .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
         .collect(Collectors.toList());
   }
 
@@ -245,6 +274,10 @@ public class Backup extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid customer or backup UUID");
     }
     return backup;
+  }
+
+  public static Optional<Backup> maybeGet(UUID customerUUID, UUID backupUUID) {
+    return Optional.ofNullable(get(customerUUID, backupUUID));
   }
 
   public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
@@ -278,13 +311,21 @@ public class Backup extends Model {
   }
 
   public void transitionState(BackupState newState) {
-    // We only allow state transition from InProgress to a valid state
-    // Or completed to deleted state.
-    if ((this.state == BackupState.InProgress && this.state != newState)
+    if (this.state == newState) {
+      LOG.error("Skipping state transition as no change in previous and new state");
+    } else if ((this.state == BackupState.InProgress || newState == BackupState.QueuedForDeletion)
+        || (this.state == BackupState.QueuedForDeletion && newState == BackupState.DeleteInProgress)
+        || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)) {
+      LOG.debug("New Backup API: transitioned from {} to {}", this.state, newState);
+      this.state = newState;
+      save();
+    } else if ((this.state == BackupState.InProgress && this.state != newState)
         || (this.state == BackupState.Completed && newState == BackupState.Deleted)
         || (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)
         || (this.state == BackupState.Failed && newState == BackupState.Deleted)
         || (this.state == BackupState.Failed && newState == BackupState.FailedToDelete)) {
+      LOG.debug("Old Backup API: transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();
     } else {
@@ -304,6 +345,16 @@ public class Backup extends Model {
         .findList();
   }
 
+  public static List<Backup> findAllBackupsQueuedForDeletion(UUID customerUUID) {
+    List<Backup> backupList =
+        find.query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("state", BackupState.QueuedForDeletion)
+            .findList();
+    return backupList;
+  }
+
   public static List<Backup> findAllFinishedBackupsWithCustomerConfig(UUID customerConfigUUID) {
     List<Backup> backupList =
         find.query()
@@ -313,6 +364,18 @@ public class Backup extends Model {
             .eq("state", BackupState.Completed)
             .endOr()
             .findList();
+    backupList =
+        backupList
+            .stream()
+            .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
+            .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
+            .collect(Collectors.toList());
+    return backupList;
+  }
+
+  public static List<Backup> findAllBackupsQueuedForDeletionWithCustomerConfig(
+      UUID customerConfigUUID, UUID customerUUID) {
+    List<Backup> backupList = findAllBackupsQueuedForDeletion(customerUUID);
     backupList =
         backupList
             .stream()

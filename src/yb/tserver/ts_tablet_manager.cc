@@ -69,7 +69,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
@@ -157,11 +157,11 @@ DEFINE_test_flag(double, fault_crash_in_split_before_log_flushed, 0.0,
                  "Fraction of the time when the tablet will crash immediately before flushing a "
                  "parent tablet's kSplit operation.");
 
-DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_greater_than, 0,
+DEFINE_test_flag(uint64, crash_if_remote_bootstrap_sessions_greater_than, 0,
                  "If greater than zero, this process will crash if we detect more than the "
                  "specified number of remote bootstrap sessions.");
 
-DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_per_table_greater_than, 0,
+DEFINE_test_flag(uint64, crash_if_remote_bootstrap_sessions_per_table_greater_than, 0,
                  "If greater than zero, this process will crash if for any table we exceed the "
                  "specified number of remote bootstrap sessions");
 
@@ -217,6 +217,8 @@ DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeou
 
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
+
+DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
 namespace yb {
 namespace tserver {
@@ -411,17 +413,21 @@ Status TSTabletManager::Init() {
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
   tablet_options_.listeners = server_->options().listeners;
+  if (docdb::GetRocksDBRateLimiterSharingMode() == docdb::RateLimiterSharingMode::TSERVER) {
+    tablet_options_.rate_limiter = docdb::CreateRocksDBRateLimiter();
+  }
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
   // FsManager isn't initialized until this point.
   int max_bootstrap_threads = FLAGS_num_tablets_to_open_simultaneously;
   if (max_bootstrap_threads == 0) {
-    size_t num_cpus = base::NumCPUs();
+    int num_cpus = base::NumCPUs();
     if (num_cpus <= 2) {
       max_bootstrap_threads = 2;
     } else {
-      max_bootstrap_threads = min(num_cpus - 1, fs_manager_->GetDataRootDirs().size() * 8);
+      max_bootstrap_threads = min(
+          num_cpus - 1, narrow_cast<int>(fs_manager_->GetDataRootDirs().size()) * 8);
     }
     LOG_WITH_PREFIX(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
@@ -687,7 +693,7 @@ namespace {
 
 // Creates SplitTabletsCreationMetaData for two new tablets for `tablet` splitting based on request.
 SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
-    const SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
+    const tablet::SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
   SplitTabletsCreationMetaData metas;
 
   const auto& split_partition_key = request.split_partition_key();
@@ -1422,7 +1428,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     tablet_peer->RegisterMaintenanceOps(server_->maintenance_manager());
   }
 
-  int elapsed_ms = MonoTime::Now().GetDeltaSince(start).ToMilliseconds();
+  auto elapsed_ms = MonoTime::Now().GetDeltaSince(start).ToMilliseconds();
   if (elapsed_ms > FLAGS_tablet_start_warn_threshold_ms) {
     LOG(WARNING) << kLogPrefix << "Tablet startup took " << elapsed_ms << "ms";
     if (Trace::CurrentTrace()) {
@@ -1740,7 +1746,7 @@ void TSTabletManager::UnmarkTabletBeingRemoteBootstrapped(
   tablets_being_remote_bootstrapped_per_table_[table_id].erase(tablet_id);
 }
 
-int TSTabletManager::GetNumDirtyTabletsForTests() const {
+size_t TSTabletManager::TEST_GetNumDirtyTablets() const {
   SharedLock<RWMutex> lock(mutex_);
   return dirty_tablets_.size();
 }
@@ -1869,7 +1875,7 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
   TabletIdSet tablet_ids;
-  int32_t dirty_count, report_limit;
+  size_t dirty_count, report_limit;
   {
     std::lock_guard<RWMutex> write_lock(mutex_);
     uint32_t cur_report_seq = next_report_seq_++;
@@ -1937,9 +1943,10 @@ void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_
   for (const auto& replica : to_report) {
     CreateReportedTabletPB(replica, report->add_updated_tablets());
     // Enforce a max tablet limit on reported tablets.
-    if (report->updated_tablets_size() >= report_limit) break;
+    if (implicit_cast<size_t>(report->updated_tablets_size()) >= report_limit) break;
   }
-  report->set_remaining_tablet_count(dirty_count - report->updated_tablets_size());
+  report->set_remaining_tablet_count(
+      narrow_cast<int>(dirty_count - report->updated_tablets_size()));
 }
 
 void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
@@ -1950,7 +1957,7 @@ void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
   // to block if there is a waiting writer (see KUDU-2193). So, we just make
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
-  int32_t dirty_count, report_limit;
+  size_t dirty_count, report_limit;
   {
     std::lock_guard<RWMutex> write_lock(mutex_);
     uint32_t cur_report_seq = next_report_seq_++;
@@ -1966,12 +1973,13 @@ void TSTabletManager::StartFullTabletReport(TabletReportPB* report) {
   for (const auto& replica : to_report) {
     CreateReportedTabletPB(replica, report->add_updated_tablets());
     // Enforce a max tablet limit on reported tablets.
-    if (report->updated_tablets_size() >= report_limit) break;
+    if (implicit_cast<size_t>(report->updated_tablets_size()) >= report_limit) break;
   }
-  report->set_remaining_tablet_count(dirty_count - report->updated_tablets_size());
+  report->set_remaining_tablet_count(
+      narrow_cast<int32_t>(dirty_count - report->updated_tablets_size()));
 }
 
-void TSTabletManager::MarkTabletReportAcknowledged(int32_t acked_seq,
+void TSTabletManager::MarkTabletReportAcknowledged(uint32_t acked_seq,
                                                    const TabletReportUpdatesPB& updates,
                                                    bool dirty_check) {
   std::lock_guard<RWMutex> l(mutex_);
@@ -2270,7 +2278,7 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
   // First check that the global RBS limits are respected if the flag is non-zero.
   if (PREDICT_FALSE(FLAGS_TEST_crash_if_remote_bootstrap_sessions_greater_than > 0) &&
       tablets_being_remote_bootstrapped_.size() >
-      FLAGS_TEST_crash_if_remote_bootstrap_sessions_greater_than) {
+          FLAGS_TEST_crash_if_remote_bootstrap_sessions_greater_than) {
     string tablets;
     // The purpose of limiting the number of remote bootstraps is to cap how much
     // network bandwidth all the RBS sessions use.
@@ -2280,7 +2288,7 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
     // because a few tablets are already open, and in the RUNNING state, but still
     // in the tablets_being_remote_bootstrapped_ list, we check the state of each
     // tablet before deciding if the load balancer has violated the concurrent RBS limit.
-    int count = 0;
+    size_t count = 0;
     for (const auto& tablet_id : tablets_being_remote_bootstrapped_) {
       TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, tablet_id);
       if (tablet_peer && (*tablet_peer)->state() == RaftGroupStatePB::RUNNING) {
@@ -2305,7 +2313,7 @@ void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
       tablets_being_remote_bootstrapped_per_table_[table_id].size() >
           FLAGS_TEST_crash_if_remote_bootstrap_sessions_per_table_greater_than) {
     string tablets;
-    int count = 0;
+    size_t count = 0;
     for (const auto& tablet_id : tablets_being_remote_bootstrapped_per_table_[table_id]) {
       TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, tablet_id);
       if (tablet_peer && (*tablet_peer)->state() == RaftGroupStatePB::RUNNING) {

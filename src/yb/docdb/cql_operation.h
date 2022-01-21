@@ -14,6 +14,7 @@
 #ifndef YB_DOCDB_CQL_OPERATION_H
 #define YB_DOCDB_CQL_OPERATION_H
 
+#include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/typedefs.h"
 
@@ -35,14 +36,15 @@ class QLWriteOperation :
     public DocOperationBase<DocOperationType::QL_WRITE_OPERATION, QLWriteRequestPB>,
     public DocExprExecutor {
  public:
-  QLWriteOperation(std::shared_ptr<const Schema> schema,
+  QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                   std::shared_ptr<const Schema> schema,
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContext& txn_op_context);
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
-  CHECKED_STATUS Init(QLWriteRequestPB* request, QLResponsePB* response);
+  CHECKED_STATUS Init(QLResponsePB* response);
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
@@ -51,13 +53,15 @@ class QLWriteOperation :
 
   CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
-  CHECKED_STATUS ApplyForJsonOperators(const QLColumnValuePB& column_value,
-                                       const DocOperationApplyData& data,
-                                       const DocPath& sub_path, const MonoDelta& ttl,
-                                       const UserTimeMicros& user_timestamp,
-                                       const ColumnSchema& column,
-                                       QLTableRow* current_row,
-                                       bool is_insert);
+  CHECKED_STATUS ApplyForJsonOperators(
+      std::unordered_map<ColumnIdRep, rapidjson::Document>* res_map,
+      const QLColumnValuePB& column_value,
+      const DocOperationApplyData& data,
+      const DocPath& sub_path, const MonoDelta& ttl,
+      const UserTimeMicros& user_timestamp,
+      const ColumnSchema& column,
+      QLTableRow* current_row,
+      bool is_insert);
 
   CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                        const QLTableRow& current_row,

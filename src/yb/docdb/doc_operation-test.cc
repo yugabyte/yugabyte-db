@@ -44,6 +44,7 @@
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 
 using namespace std::literals; // NOLINT
 
@@ -82,7 +83,8 @@ class DiscardUntilFileFilter : public rocksdb::CompactionFileFilter {
   // Setting last_discard_ to the kAlwaysDiscard constant will result in every
   // incoming file being filtered.
   rocksdb::FilterDecision Filter(const rocksdb::FileMetaData* file) override {
-    if (last_discard_ == kAlwaysDiscard || file->fd.GetNumber() <= last_discard_) {
+    if (last_discard_ == kAlwaysDiscard ||
+        file->fd.GetNumber() <= implicit_cast<uint64_t>(last_discard_)) {
       LOG(INFO) << "Filtering file: " << file->fd.GetNumber() << ", size: "
           << file->fd.GetBaseFileSize() << ", total file size: " << file->fd.GetTotalFileSize();
       return rocksdb::FilterDecision::kDiscard;
@@ -162,22 +164,23 @@ class DocOperationTest : public DocDBTestBase {
                        const vector<int32_t>& column_values,
                        yb::QLWriteRequestPB* ql_writereq_pb) {
     ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), column_values.size());
-    for (int i = 0; i < column_values.size(); i++) {
+    for (size_t i = 0; i < column_values.size(); i++) {
       auto column = ql_writereq_pb->add_column_values();
-      column->set_column_id(schema.num_key_columns() + i);
+      column->set_column_id(narrow_cast<int32_t>(schema.num_key_columns() + i));
       column->mutable_expr()->mutable_value()->set_int32_value(column_values[i]);
     }
   }
 
-  void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
+  void WriteQL(const QLWriteRequestPB& ql_writereq_pb, const Schema& schema,
                QLResponsePB* ql_writeresp_pb,
                const HybridTime& hybrid_time = HybridTime::kMax,
                const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
     IndexMap index_map;
-    QLWriteOperation ql_write_op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+    QLWriteOperation ql_write_op(ql_writereq_pb,
+                                 std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
                                  index_map, nullptr /* unique_index_key_schema */, txn_op_context);
-    ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
+    ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
     ASSERT_OK(ql_write_op.Apply(
@@ -239,7 +242,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     }
 
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb);
 
     if (ttl == -1) {
       AssertWithoutTTL(stmt_type);
@@ -279,7 +282,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     ql_writereq_pb.set_ttl(ttl);
     yb::QLResponsePB ql_writeresp_pb;
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
   }
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
@@ -290,7 +293,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
         stmt_type, schema, column_values, hybrid_time, txn_op_content);
     yb::QLResponsePB ql_writeresp_pb;
     // Write to docdb.
-    WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
+    WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, hybrid_time, txn_op_content);
   }
 
   QLRowBlock ReadQLRow(const Schema& schema, int32_t primary_key, const HybridTime& read_time) {
@@ -349,7 +352,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   redis_write_operation_pb.mutable_key_value()->set_type(REDIS_TYPE_STRING);
   redis_write_operation_pb.mutable_key_value()->set_hash_code(123);
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
-  RedisWriteOperation redis_write_operation(&redis_write_operation_pb);
+  RedisWriteOperation redis_write_operation(redis_write_operation_pb);
   auto doc_write_batch = MakeDocWriteBatch();
   ASSERT_OK(redis_write_operation.Apply(
       {&doc_write_batch, CoarseTimePoint::max() /* deadline */, ReadHybridTime()}));
@@ -407,7 +410,7 @@ TEST_F(DocOperationTest, TestQLWriteNulls) {
   }
 
   // Write to docdb.
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb);
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb);
 
   // Null columns are converted to tombstones.
   AssertDocDbDebugDumpStrEq(R"#(
@@ -488,7 +491,7 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
   QLAddInt32Condition(where_clause_and, 1, QL_OP_LESS_THAN_EQUAL, kDeleteRangeHigh);
   ql_writereq_pb.set_hash_code(0);
 
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb,
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb,
           HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(2000, 0),
           kNonTransactionalOperationContext);
 
@@ -782,7 +785,7 @@ class DocOperationScanTest : public DocOperationTest {
     rows_.clear();
     for (int32_t i = 0; i != kNumKeys; ++i) {
       int32_t r_key = NewInt(&rng_, &used_ints);
-      for (int32_t j = 0; j < num_rows_per_key; ++j) {
+      for (size_t j = 0; j < num_rows_per_key; ++j) {
         RowData row_data = {h_key_, r_key, NewInt(&rng_, &used_ints)};
         auto ht = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
             NewInt(&rng_, &used_ints, kMinTime, kMaxTime), 0);
@@ -1057,7 +1060,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 
   ql_writereq_pb.set_ttl(2000);
 
   // Write to docdb at the same physical time and a bumped-up logical time.
-  WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, t0prime);
+  WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, t0prime);
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> \
@@ -1232,6 +1235,8 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
 }
 
 TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
+  // Ensure that any number of files can trigger a compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
   ASSERT_OK(DisableCompactions());
   const size_t kMaxFileSize = 100_KB;
   const int kNumFilesToWrite = 20;
@@ -1248,18 +1253,21 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
   auto files = rocksdb()->GetLiveFilesMetaData();
   ASSERT_EQ(kNumFilesToWrite, files.size());
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
+
   // Files will be ordered from latest to earliest, so select the nth file from the back.
   auto last_to_discard =
       rocksdb::TableFileNameToNumber(files[files.size() - kNumFilesToExpire].name);
 
   SetMaxFileSizeForCompaction(kMaxFileSize);
 
-  // Use a filter factory that will expire every three files.
+  // Use a filter factory that will expire exactly three files.
   compaction_file_filter_factory_ =
       std::make_shared<DiscardUntilFileFilterFactory>(last_to_discard);
 
+  // Reinitialize the DB options with the file filter factory.
   ASSERT_OK(ReinitDBOptions());
 
+  // Compactions will be kicked off as part of options reinitialization.
   WaitCompactionsDone(rocksdb());
 
   files = rocksdb()->GetLiveFilesMetaData();

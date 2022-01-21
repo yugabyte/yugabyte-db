@@ -38,15 +38,73 @@ The role-based access control (RBAC) model in YSQL is a collection of privileges
 
 Roles in YSQL can represent individual users or a group of users. They encapsulate a set of privileges that can be assigned to other roles (or users). Roles are essential to implementing and administering access control on a YugabyteDB cluster. Below are some important points about roles:
 
-* Roles which have `LOGIN` privilege are users. Hence, all users are roles, but all roles are not users.
+* Roles which have `LOGIN` privilege are users. Hence, all users are roles, but not all roles are users.
 
 * Roles can be granted to other roles, making it possible to organize roles into a hierarchy.
 
 * Roles inherit the privileges of all other roles granted to them.
 
+YugabyteDB inherits a number of roles from PostgreSQL, including the `postgres` user, and adds several new roles. View the YugabyteDB-specific roles for your clusters with the following command (or use `\duS` to display all roles):
+
+```sql
+yugabyte=> \du
+```
+
+```output
+                                     List of roles
+  Role name   |                         Attributes                         | Member of
+--------------+------------------------------------------------------------+-----------
+ postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ yb_extension | Cannot login                                               | {}
+ yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+```
+
+The following table describes the default YSQL roles and users in YugabyteDB clusters.
+<!-- Portions of this table are also under Database authorization in Yugabyte cloud -->
+
+| Role | Description |
+| :--- | :---------- |
+| postgres | Superuser role created during database creation. |
+| yb_extension | Role that allows non-superuser users to create PostgreSQL extensions. |
+| yugabyte | Superuser role used during database creation, by Yugabyte support to perform maintenance operations, and for backups (using ysql_dump). |
+
+### yb_extension
+
+The `yb_extension` role allows non-superuser roles to [create extensions](../../../api/ysql/the-sql-language/statements/ddl_create_extension/). A user granted this role can create all the extensions that are bundled in YugabyteDB.
+
+Create a role `test` and grant `yb_extension` to this role.
+
+```sql
+yugabyte=# create role test;
+yugabyte=# grant yb_extension to test;
+yugabyte=# set role test;
+yugabyte=> select * from current_user;
+```
+
+```output
+ current_user
+--------------
+ test
+(1 row)
+```
+
+Create an extension as the test user and check if it's created.
+
+```sql
+yugabyte=> create extension pgcrypto;
+yugabyte=> select * from pg_extension where extname='pgcrypto';
+```
+
+```output
+ extname  | extowner | extnamespace | extrelocatable | extversion | extconfig | extcondition
+----------+----------+--------------+----------------+------------+-----------+--------------
+ pgcrypto |    16386 |         2200 | t              | 1.3        |           |
+(1 row)
+```
+
 ## Resources
 
-YSQL defines a number of specific resources, that represent underlying database objects. A resource can denote one object or a collection of objects. YSQL resources are hierarchical as described below:
+YSQL defines a number of specific resources that represent underlying database objects. A resource can represent one object or a collection of objects. YSQL resources are hierarchical as described below:
 
 * Databases and tables follow the hierarchy: `ALL DATABASES` > `DATABASE` > `TABLE`
 * ROLES are hierarchical (they can be assigned to other roles). They follow the hierarchy: `ALL ROLES` > `ROLE #1` > `ROLE #2` ...

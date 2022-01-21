@@ -64,7 +64,7 @@ void Writer(SharedState* state) {
 
 // Thread which verifies that the value in the shared state only increases.
 void Reader(SharedState* state) {
-  int prev_val = 0;
+  int64_t prev_val = 0;
   while (true) {
     SharedLock<rw_semaphore> l(state->sem);
     // The int var should only be seen to increase.

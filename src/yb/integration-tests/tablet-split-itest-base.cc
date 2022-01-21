@@ -39,8 +39,8 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -220,7 +220,7 @@ tserver::WriteRequestPB TabletSplitITestBase<MiniClusterType>::CreateInsertReque
 template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
-        const size_t num_rows, const size_t start_key) {
+        const int32_t num_rows, const int32_t start_key) {
   auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
   auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
 
@@ -257,7 +257,7 @@ Status TabletSplitITestBase<MiniClusterType>::FlushTestTable() {
 template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRowsAndFlush(
-        const size_t num_rows, const size_t start_key) {
+        const uint32_t num_rows, const int32_t start_key) {
   auto result = VERIFY_RESULT(WriteRows(num_rows, start_key));
   RETURN_NOT_OK(FlushTestTable());
   return result;
@@ -265,7 +265,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
 
 template <class MiniClusterType>
 Result<docdb::DocKeyHash> TabletSplitITestBase<MiniClusterType>::WriteRowsAndGetMiddleHashCode(
-    size_t num_rows) {
+    uint32_t num_rows) {
   auto min_max_hash_code = VERIFY_RESULT(WriteRowsAndFlush(num_rows, 1));
   const auto split_hash_code = (min_max_hash_code.first + min_max_hash_code.second) / 2;
   LOG(INFO) << "Split hash code: " << split_hash_code;
@@ -281,7 +281,7 @@ Result<scoped_refptr<master::TabletInfo>>
         master::CatalogManagerIf* catalog_mgr) {
   auto tablet_infos = catalog_mgr->GetTableInfo(this->table_->id())->GetTablets();
 
-  SCHECK_EQ(tablet_infos.size(), 1, IllegalState, "Expect test table to have only 1 tablet");
+  SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
   return tablet_infos.front();
 }
 
@@ -347,7 +347,7 @@ Result<master::TabletInfos> TabletSplitITest::GetTabletInfosForTable(const Table
   return VERIFY_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets();
 }
 
-Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(size_t num_rows) {
+Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(uint32_t num_rows) {
   CreateSingleTablet();
   const auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(num_rows));
   return SplitTabletAndValidate(split_hash_code, num_rows);
@@ -552,7 +552,7 @@ Status TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tabl
     }
   }
   SCHECK_EQ(
-      tablet_split_insert_error_count, 1, InternalError,
+      tablet_split_insert_error_count, 1U, InternalError,
       "Leader should return \"try again\" error on insert.");
   SCHECK_EQ(
       not_the_leader_insert_error_count, ts_online_count - 1, InternalError,
@@ -599,7 +599,7 @@ Status TabletSplitITest::WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelt
 }
 
 Result<int> TabletSplitITest::NumPostSplitTabletPeersFullyCompacted() {
-  size_t count = 0;
+  int count = 0;
   for (auto peer : VERIFY_RESULT(ListPostSplitChildrenTabletPeers())) {
     const auto* tablet = peer->tablet();
     if (tablet->metadata()->has_been_fully_compacted()) {
@@ -727,13 +727,13 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
           Format("Duplicate key $0 in tablet $1", key, shared_tablet->tablet_id()));
       SCHECK_GT(
           keys[key - 1]--,
-          0,
+          0U,
           InternalError,
           Format("Extra key $0 in tablet $1", key, shared_tablet->tablet_id()));
       key_replicas[key - 1].push_back(peer->LogPrefix());
     }
   }
-  for (auto key = 1; key <= num_rows; ++key) {
+  for (size_t key = 1; key <= num_rows; ++key) {
     const auto key_missing_in_replicas = keys[key - 1];
     if (key_missing_in_replicas > 0) {
       LOG(INFO) << Format("Key $0 replicas: $1", key, key_replicas[key - 1]);
@@ -778,7 +778,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
 
-  RETURN_NOT_OK(cluster_->master_proxy()->SplitTablet(req, &resp, &rpc));
+  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -786,14 +786,14 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
 }
 
 Status TabletSplitExternalMiniClusterITest::FlushTabletsOnSingleTServer(
-    int tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction) {
+    size_t tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction) {
   auto tserver = cluster_->tablet_server(tserver_idx);
   RETURN_NOT_OK(cluster_->FlushTabletsOnSingleTServer(tserver, tablet_ids, is_compaction));
   return Status::OK();
 }
 
 Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabletIds(
-    int tserver_idx) {
+    size_t tserver_idx) {
   std::set<TabletId> tablet_ids;
   auto res = VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(tserver_idx)));
   for (const auto& tablet : res) {
@@ -806,7 +806,7 @@ Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabl
 
 Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabletIds() {
   std::set<TabletId> tablet_ids;
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     if (cluster_->tablet_server(i)->IsShutdown()) {
       continue;
     }
@@ -819,7 +819,7 @@ Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabl
 }
 
 Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
-    TabletSplitExternalMiniClusterITest::ListTablets(int tserver_idx) {
+    TabletSplitExternalMiniClusterITest::ListTablets(size_t tserver_idx) {
   vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
   std::set<TabletId> tablet_ids;
   auto res = VERIFY_RESULT(cluster_->ListTablets(cluster_->tablet_server(tserver_idx)));
@@ -838,7 +838,7 @@ Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
     TabletSplitExternalMiniClusterITest::ListTablets() {
   vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
   std::set<TabletId> tablet_ids;
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     auto res = VERIFY_RESULT(ListTablets(i));
     for (const auto& tablet : res) {
       auto tablet_id = tablet.tablet_status().tablet_id();
@@ -852,12 +852,12 @@ Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
 }
 
 Status TabletSplitExternalMiniClusterITest::WaitForTabletsExcept(
-    int num_tablets, int tserver_idx, const TabletId& exclude_tablet) {
+    size_t num_tablets, size_t tserver_idx, const TabletId& exclude_tablet) {
   std::set<TabletId> tablets;
   auto status = WaitFor(
       [&]() -> Result<bool> {
         tablets = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
-        int count = 0;
+        size_t count = 0;
         for (auto& tablet_id : tablets) {
           if (tablet_id != exclude_tablet) {
             count++;
@@ -876,11 +876,11 @@ Status TabletSplitExternalMiniClusterITest::WaitForTabletsExcept(
   return status;
 }
 
-Status TabletSplitExternalMiniClusterITest::WaitForTablets(int num_tablets, int tserver_idx) {
+Status TabletSplitExternalMiniClusterITest::WaitForTablets(size_t num_tablets, size_t tserver_idx) {
   return WaitForTabletsExcept(num_tablets, tserver_idx, "");
 }
 
-Status TabletSplitExternalMiniClusterITest::WaitForTablets(int num_tablets) {
+Status TabletSplitExternalMiniClusterITest::WaitForTablets(size_t num_tablets) {
   std::set<TabletId> tablets;
   auto status = WaitFor([&]() -> Result<bool> {
     tablets = VERIFY_RESULT(GetTestTableTabletIds());
@@ -892,7 +892,7 @@ Status TabletSplitExternalMiniClusterITest::WaitForTablets(int num_tablets) {
   return status;
 }
 
-Result<TabletId> TabletSplitExternalMiniClusterITest::GetOnlyTestTabletId(int tserver_idx) {
+Result<TabletId> TabletSplitExternalMiniClusterITest::GetOnlyTestTabletId(size_t tserver_idx) {
   auto tablet_ids = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
   if (tablet_ids.size() != 1) {
     return STATUS(InternalError, "Expected one tablet");
@@ -934,7 +934,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
 
   if (change_split_boundary) {
     RETURN_NOT_OK(WriteRows(num_rows * 2, key));
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       RETURN_NOT_OK(FlushTabletsOnSingleTServer(i, {tablet_id}, false));
     }
   }

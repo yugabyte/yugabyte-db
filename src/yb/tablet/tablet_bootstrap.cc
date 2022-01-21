@@ -156,13 +156,12 @@ using consensus::OpIdToString;
 using consensus::ReplicateMsg;
 using consensus::MakeOpIdPB;
 using strings::Substitute;
-using tserver::ChangeMetadataRequestPB;
 using tserver::WriteRequestPB;
 using tserver::TabletSnapshotOpRequestPB;
 
 static string DebugInfo(const string& tablet_id,
-                        int segment_seqno,
-                        int entry_idx,
+                        uint64_t segment_seqno,
+                        size_t entry_idx,
                         const string& segment_path,
                         const LogEntryPB* entry) {
   // Truncate the debug string to a reasonable length for logging.  Otherwise, glog will truncate
@@ -211,7 +210,7 @@ struct ReplayState {
 
   // half_limit is half the limit on the number of entries added
   void AddEntriesToStrings(
-      const OpIndexToEntryMap& entries, std::vector<std::string>* strings, int half_limit) const;
+      const OpIndexToEntryMap& entries, std::vector<std::string>* strings, size_t half_limit) const;
 
   // half_limit is half the limit on the number of entries to be dumped
   void DumpReplayStateToStrings(std::vector<std::string>* strings, int half_limit) const;
@@ -315,7 +314,7 @@ void ReplayState::UpdateCommittedOpId(const OpId& id) {
 
 void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
                                       std::vector<std::string>* strings,
-                                      int half_limit) const {
+                                      size_t half_limit) const {
   const auto n = entries.size();
   const bool overflow = n > 2 * half_limit;
   size_t index = 0;
@@ -823,7 +822,7 @@ class TabletBootstrap {
   //     encountering an entry with an index lower than or equal to the index of an operation that
   //     is already present in pending_replicates.
   //   - Ignores entries that have already been flushed into regular and intents RocksDBs.
-  //   - Updates committed OpId based on the commmited OpId from the entry and calls
+  //   - Updates committed OpId based on the comsmited OpId from the entry and calls
   //     ApplyCommittedPendingReplicates.
   //   - Updates the "monotonic counter" used for assigning internal keys in YCQL arrays.
   CHECKED_STATUS HandleReplicateMessage(
@@ -956,7 +955,7 @@ class TabletBootstrap {
   }
 
   CHECKED_STATUS PlaySplitOpRequest(ReplicateMsg* replicate_msg) {
-    tserver::SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
+    SplitTabletRequestPB* const split_request = replicate_msg->mutable_split_request();
     // We might be asked to replay SPLIT_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set.
     if (split_request->tablet_id() != tablet_->tablet_id()) {
@@ -1372,8 +1371,7 @@ class TabletBootstrap {
 
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
-    WriteOperation operation(OpId::kUnknownTerm, CoarseTimePoint::max(), /* context */ nullptr);
-    *operation.AllocateRequest() = *write;
+    WriteOperation operation(tablet_.get(), write);
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
     operation.set_hybrid_time(hybrid_time);

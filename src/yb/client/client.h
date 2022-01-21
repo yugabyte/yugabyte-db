@@ -58,6 +58,9 @@
 #include "yb/gutil/port.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -713,7 +716,7 @@ class YBClient {
   void SetLatestObservedHybridTime(uint64_t ht_hybrid_time);
 
   // Given a host and port for a master, get the uuid of that process.
-  CHECKED_STATUS GetMasterUUID(const std::string& host, int16_t port, std::string* uuid);
+  CHECKED_STATUS GetMasterUUID(const std::string& host, uint16_t port, std::string* uuid);
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 

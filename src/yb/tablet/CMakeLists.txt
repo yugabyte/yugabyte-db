@@ -31,6 +31,7 @@
 #
 
 set(YB_PCH_PREFIX tablet)
+set(YB_PCH_DEP_LIBS opid_proto)
 
 set(TABLET_SRCS
   abstract_tablet.cc
@@ -66,7 +67,8 @@ set(TABLET_SRCS
   tablet_metadata.cc
   tablet_retention_policy.cc
   preparer.cc
-  ${TABLET_SRCS_EXTENSIONS})
+  write_query.cc
+  )
 
 set(TABLET_DEPS pq_utils)
 
@@ -78,6 +80,7 @@ YRPC_GENERATE(
     metadata.proto
     operations.proto
     tablet.proto
+    tablet_types.proto
   )
 set(TABLET_PROTO_LIBS
   docdb_proto

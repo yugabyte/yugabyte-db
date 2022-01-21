@@ -19,12 +19,12 @@
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/tablet-split-itest-base.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.proxy.h"
 #include "yb/tools/admin-test-base.h"
 #include "yb/tserver/mini_tablet_server.h"
 
-DECLARE_uint64(cdc_state_table_num_tablets);
+DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
@@ -50,13 +50,12 @@ class CdcTabletSplitITest : public TabletSplitITest {
 
       is_create_req.mutable_table()->set_table_name(master::kCdcStateTableName);
       is_create_req.mutable_table()->mutable_namespace_()->set_name(master::kSystemNamespaceName);
-      auto master_proxy = std::make_shared<master::MasterServiceProxy>(
-          &client_->proxy_cache(),
-          VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
+      master::MasterDdlProxy master_proxy(
+          &client_->proxy_cache(), VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
       rpc::RpcController rpc;
       rpc.set_timeout(MonoDelta::FromSeconds(30));
 
-      auto s = master_proxy->IsCreateTableDone(is_create_req, &is_create_resp, &rpc);
+      auto s = master_proxy.IsCreateTableDone(is_create_req, &is_create_resp, &rpc);
       return s.ok() && !is_create_resp.has_error() && is_create_resp.done();
     }, MonoDelta::FromSeconds(30), "Wait for cdc_state table creation to finish");
   }
@@ -126,11 +125,10 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   alter_table_req.mutable_table()->set_table_id(table_->id());
   alter_table_req.set_wal_retention_secs(1);
 
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
-      &client_->proxy_cache(),
-      ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
+  master::MasterDdlProxy master_proxy(
+      &client_->proxy_cache(), ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
   rpc.Reset();
-  ASSERT_OK(master_proxy->AlterTable(alter_table_req, &alter_table_resp, &rpc));
+  ASSERT_OK(master_proxy.AlterTable(alter_table_req, &alter_table_resp, &rpc));
 
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_snapshot_coordinator_poll_interval_ms));
 
@@ -217,7 +215,7 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   client::YBSessionPtr consumer_session = consumer_client_->NewSession();
   consumer_session->SetTimeout(60s);
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    int num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
+    auto num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
     return num_rows == kDefaultNumRows;
   }, MonoDelta::FromSeconds(60), "Wait for data to be replicated"));
 
@@ -232,7 +230,7 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    int num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
+    auto num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
     return num_rows == 2 * kDefaultNumRows;
   }, MonoDelta::FromSeconds(60), "Wait for data to be replicated"));
 }

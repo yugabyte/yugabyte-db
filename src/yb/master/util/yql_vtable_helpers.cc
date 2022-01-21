@@ -19,7 +19,7 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
@@ -75,7 +75,7 @@ bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
   return false;
 }
 
-QLValuePB GetReplicationValue(int replication_factor) {
+QLValuePB GetReplicationValue(size_t replication_factor) {
   QLValuePB value_pb;
   QLMapValuePB *map_value = value_pb.mutable_map_value();
 

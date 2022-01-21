@@ -2,7 +2,6 @@
 title: Schemas and Tables
 linkTitle: Schemas and Tables
 description: Schemas and Tables in YSQL
-headcontent: Schemas and Tables
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
@@ -274,7 +273,7 @@ Indexes:
 
 ## Schemas
 
-A schema is a named collection of tables, views, indexes, sequences, data types, operators, and functions. 
+A schema is a named collection of tables, views, indexes, sequences, data types, operators, and functions.
 
 To create the schema with name `myschema`, run the following command.
 ```sql

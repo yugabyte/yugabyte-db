@@ -100,8 +100,6 @@ inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
 class WriteOperation;
 
 using AddTableListener = std::function<Status(const TableInfo&)>;
-using DocWriteOperationCallback =
-    boost::function<void(std::unique_ptr<WriteOperation>, const Status&)>;
 
 class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
  public:
@@ -328,7 +326,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
-  void KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteOperation> operation);
+  void KeyValueBatchFromRedisWriteBatch(std::unique_ptr<WriteQuery> query);
 
   CHECKED_STATUS HandleRedisReadRequest(
       CoarseTimePoint deadline,
@@ -350,7 +348,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       QLResponsePB* response) const override;
 
   // The QL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
-  void KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> operation);
+  void KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteQuery> query);
 
   //------------------------------------------------------------------------------------------------
   // Postgres Request Processing.
@@ -368,8 +366,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
       PgsqlResponsePB* response) const override;
 
-  CHECKED_STATUS PreparePgsqlWriteOperations(WriteOperation* operation);
-  void KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteOperation> operation);
+  CHECKED_STATUS PreparePgsqlWriteOperations(WriteQuery* query);
+  void KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteQuery> query);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
@@ -485,7 +483,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
-  void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation);
+  void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> query);
 
   // Given a propopsed "history cutoff" timestamp, returns either that value, if possible, or a
   // smaller value corresponding to the oldest active reader, whichever is smaller. This ensures
@@ -685,6 +683,34 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const TxnSnapshotRestorationId& restoration_id, HybridTime restoration_hybrid_time);
   CHECKED_STATUS CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
+  bool txns_enabled() const {
+    return txns_enabled_;
+  }
+
+  client::YBClient& client() {
+    return *client_future_.get();
+  }
+
+  client::TransactionManager* transaction_manager() {
+    return transaction_manager_.get();
+  }
+
+  // Creates a new shared pointer of the object managed by metadata_cache_. This is done
+  // atomically to avoid race conditions.
+  std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
+
+  ScopedRWOperation CreateNonAbortableScopedRWOperation(
+      const CoarseTimePoint deadline = CoarseTimePoint()) const;
+
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const TransactionMetadataPB& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
+
+  const Schema* unique_index_key_schema() const {
+    return unique_index_key_schema_.get();
+  }
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -694,11 +720,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   class RegularRocksDbListener;
 
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
-
-  void StartDocWriteOperation(
-      std::unique_ptr<WriteOperation> operation,
-      ScopedRWOperation scoped_read_operation,
-      DocWriteOperationCallback callback);
 
   CHECKED_STATUS OpenKeyValueTablet();
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
@@ -712,11 +733,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const docdb::KeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
       rocksdb::WriteBatch* rocksdb_write_batch);
-
-  Result<TransactionOperationContext> CreateTransactionOperationContext(
-      const TransactionMetadataPB& transaction_metadata,
-      bool is_ysql_catalog_table,
-      const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
@@ -747,8 +763,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   ScopedRWOperation CreateAbortableScopedRWOperation(
       const CoarseTimePoint deadline = CoarseTimePoint()) const;
-  ScopedRWOperation CreateNonAbortableScopedRWOperation(
-      const CoarseTimePoint deadline = CoarseTimePoint()) const;
 
   CHECKED_STATUS DoEnableCompactions();
 
@@ -769,10 +783,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Creates a new client::YBMetaDataCache object and atomically assigns it to metadata_cache_.
   void CreateNewYBMetaDataCache();
-
-  // Creates a new shared pointer of the object managed by metadata_cache_. This is done
-  // atomically to avoid race conditions.
-  std::shared_ptr<client::YBMetaDataCache> YBMetaDataCache();
 
   void TriggerPostSplitCompactionSync();
 
@@ -913,15 +923,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
-  using IndexOps = std::vector<std::pair<
-      std::shared_ptr<client::YBqlWriteOp>, docdb::QLWriteOperation*>>;
-  void UpdateQLIndexes(std::unique_ptr<WriteOperation> operation);
-  void UpdateQLIndexesFlushed(
-      WriteOperation* op, const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
-      const IndexOps& index_ops, client::FlushStatus* flush_status);
-
-  void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);
-
   Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
 
   template <class Ids>
@@ -1026,6 +1027,9 @@ class ScopedReadOperation {
   ReadHybridTime read_time_;
   Status status_;
 };
+
+bool IsSchemaVersionCompatible(
+    uint32_t current_version, uint32_t request_version, bool compatible_with_previous_version);
 
 }  // namespace tablet
 }  // namespace yb

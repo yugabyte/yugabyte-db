@@ -13,6 +13,8 @@
 
 #include "yb/util/async_task_util.h"
 
+#include <glog/logging.h>
+
 namespace yb {
   // AsyncTaskTracker methods.
   Status AsyncTaskTracker::Start() {

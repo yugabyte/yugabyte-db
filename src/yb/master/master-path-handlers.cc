@@ -55,7 +55,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
@@ -271,9 +271,9 @@ constexpr int kMinutesPerDay = kMinutesPerHour * kHoursPerDay;
 constexpr int kSecondsPerDay = kSecondsPerHour * kHoursPerDay;
 
 string UptimeString(uint64_t seconds) {
-  int days = seconds / kSecondsPerDay;
-  int hours = (seconds / kSecondsPerHour) - (days * kHoursPerDay);
-  int mins = (seconds / kSecondsPerMinute) - (days * kMinutesPerDay) - (hours * kMinutesPerHour);
+  auto days = seconds / kSecondsPerDay;
+  auto hours = (seconds / kSecondsPerHour) - (days * kHoursPerDay);
+  auto mins = (seconds / kSecondsPerMinute) - (days * kMinutesPerDay) - (hours * kMinutesPerHour);
 
   std::ostringstream uptime_string_stream;
   uptime_string_stream << " ";
@@ -755,12 +755,11 @@ void MasterPathHandlers::HandleHealthCheck(
     jw.String(s.ToString());
     return;
   }
-  int replication_factor;
-  s = master_->catalog_manager()->GetReplicationFactor(&replication_factor);
-  if (!s.ok()) {
+  auto replication_factor = master_->catalog_manager()->GetReplicationFactor();
+  if (!replication_factor.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(replication_factor.status().ToString());
     return;
   }
 
@@ -797,7 +796,7 @@ void MasterPathHandlers::HandleHealthCheck(
     jw.EndArray();
 
     jw.String("most_recent_uptime");
-    jw.Uint(most_recent_uptime);
+    jw.Uint64(most_recent_uptime);
 
     auto time_arg = req.parsed_args.find("tserver_death_interval_msecs");
     int64 death_interval_msecs = 0;
@@ -830,7 +829,7 @@ void MasterPathHandlers::HandleHealthCheck(
       for (const auto& tablet : tablets) {
         auto replication_locations = tablet->GetReplicaLocations();
 
-        if (replication_locations->size() < replication_factor) {
+        if (replication_locations->size() < *replication_factor) {
           // These tablets don't have the required replication locations needed.
           jw.String(tablet->tablet_id());
           continue;
@@ -840,7 +839,7 @@ void MasterPathHandlers::HandleHealthCheck(
         if (dead_nodes.size() == 0) {
           continue;
         }
-        int recent_replica_count = 0;
+        size_t recent_replica_count = 0;
         for (const auto& iter : *replication_locations) {
           if (std::find_if(dead_nodes.begin(),
                            dead_nodes.end(),
@@ -852,7 +851,7 @@ void MasterPathHandlers::HandleHealthCheck(
             ++recent_replica_count;
           }
         }
-        if (recent_replica_count < replication_factor) {
+        if (recent_replica_count < *replication_factor) {
           jw.String(tablet->tablet_id());
         }
       }
@@ -872,7 +871,7 @@ void MasterPathHandlers::HandleHealthCheck(
 
 string MasterPathHandlers::GetParentTableOid(scoped_refptr<TableInfo> parent_table) {
   TableId t_id = parent_table->id();;
-  if (master_->catalog_manager()->IsColocatedParentTable(*parent_table)) {
+  if (parent_table->IsColocatedParentTable()) {
     // No YSQL parent id for colocated database parent table
     return "";
   }
@@ -916,8 +915,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       table_cat = kUserIndex;
     } else if (master_->catalog_manager()->IsUserTable(*table)) {
       table_cat = kUserTable;
-    } else if (master_->catalog_manager()->IsTablegroupParentTable(*table) ||
-               master_->catalog_manager()->IsColocatedParentTable(*table)) {
+    } else if (table->IsTablegroupParentTable() ||
+               table->IsColocatedParentTable()) {
       table_cat = kColocatedParentTable;
     } else {
       table_cat = kSystemTable;
@@ -939,8 +938,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                           EscapeForHtmlToString(keyspace));
 
     if (table->GetTableType() == PGSQL_TABLE_TYPE &&
-        !master_->catalog_manager()->IsColocatedParentTable(*table) &&
-        !master_->catalog_manager()->IsTablegroupParentTable(*table)) {
+        !table->IsColocatedParentTable() &&
+        !table->IsTablegroupParentTable()) {
       const auto result = GetPgsqlTableOid(table_uuid);
       if (result.ok()) {
         ysql_table_oid = std::to_string(*result);
@@ -961,7 +960,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                       ysql_table_oid);
 
       if (has_tablegroups) {
-        if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
+        if (table->IsColocatedUserTable()) {
           const auto parent_table = table->GetColocatedTablet()->table();
           ysql_parent_oid = GetParentTableOid(parent_table);
           display_info += Substitute("<td>$0</td>", ysql_parent_oid);
@@ -969,8 +968,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
           display_info += Substitute("<td></td>");
         }
       }
-    } else if (master_->catalog_manager()->IsTablegroupParentTable(*table) ||
-               master_->catalog_manager()->IsColocatedParentTable(*table)) {
+    } else if (table->IsTablegroupParentTable() ||
+               table->IsColocatedParentTable()) {
       // Colocated parent table.
       ysql_table_oid = GetParentTableOid(table);
 
@@ -1299,10 +1298,8 @@ Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetUnderReplicatedTablets
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  int cluster_rf;
-
-  RETURN_NOT_OK_PREPEND(master_->catalog_manager()->GetReplicationFactor(&cluster_rf),
-                        "Unable to find replication factor");
+  auto cluster_rf = VERIFY_RESULT_PREPEND(master_->catalog_manager()->GetReplicationFactor(),
+                                          "Unable to find replication factor");
 
   for (TabletInfoPtr t : nonsystem_tablets) {
     auto rm = t.get()->GetReplicaLocations();
@@ -1478,17 +1475,13 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
                           "<i class='fa fa-files-o yb-dashboard-icon' aria-hidden='true'></i>",
                           "Replication Factor ");
-  int num_replicas = 0;
-  s = master_->catalog_manager()->GetReplicationFactor(&num_replicas);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Unable to determine Replication factor.");
-    LOG(WARNING) << s.ToString();
-    *output << "<h1>" << s.ToString() << "</h1>\n";
+  auto num_replicas = master_->catalog_manager()->GetReplicationFactor();
+  if (!num_replicas.ok()) {
+    num_replicas = num_replicas.status().CloneAndPrepend("Unable to determine Replication factor.");
+    LOG(WARNING) << num_replicas.status();
   }
-  (*output) << Substitute(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
-                          num_replicas,
-                          "/cluster-config",
-                          "See full config &raquo;");
+  (*output) << Format(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
+                      num_replicas, "/cluster-config", "See full config &raquo;");
   (*output) << "  </tr>\n";
 
   // Tserver count.
@@ -2202,7 +2195,7 @@ string MasterPathHandlers::RegistrationToHtml(
 void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
-    if (master_->catalog_manager()->IsColocatedUserTable(*table)) {
+    if (table->IsColocatedUserTable()) {
       // will be taken care of by colocated parent table
       continue;
     }
@@ -2214,8 +2207,8 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       auto replication_locations = tablet->GetReplicaLocations();
 
       for (const auto& replica : *replication_locations) {
-        if (is_user_table || master_->catalog_manager()->IsColocatedParentTable(*table)
-                          || master_->catalog_manager()->IsTablegroupParentTable(*table)) {
+        if (is_user_table || table->IsColocatedParentTable()
+                          || table->IsTablegroupParentTable()) {
           if (replica.second.role == PeerRole::LEADER) {
             (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {
@@ -2239,7 +2232,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
   int count = 0;
   for (const auto& table : tables) {
     if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
-    master_->catalog_manager()->IsColocatedUserTable(*table)) {
+      table->IsColocatedUserTable()) {
       continue;
     }
 
@@ -2251,7 +2244,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
 
   for (const auto& table : tables) {
     if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
-    master_->catalog_manager()->IsColocatedUserTable(*table)) {
+        table->IsColocatedUserTable()) {
       // only display user created tables that are not colocated.
       continue;
     }

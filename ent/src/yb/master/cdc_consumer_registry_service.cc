@@ -15,8 +15,9 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/cdc_rpc_tasks.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_util.h"
-#include "yb/master/master.pb.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/client/client.h"
@@ -64,7 +65,7 @@ Status CreateTabletMapping(
                       producer_table_id, consumer_table_id, same_tablet_count);
   stream_entry->set_same_num_producer_consumer_tablets(same_tablet_count);
   // Create the mapping between consumer and producer tablets.
-  for (uint32_t i = 0; i < producer_table_locations.size(); i++) {
+  for (int i = 0; i < producer_table_locations.size(); i++) {
     const auto& producer = producer_table_locations.Get(i).tablet_id();
     std::string consumer;
     if (same_tablet_count) {
@@ -118,7 +119,7 @@ Status UpdateTableMappingOnTabletSplit(
   mutable_map->erase(split_tablet_ids.source);
   // TODO introduce a better mapping of tablets to improve locality (GH #10186).
   // For now we just distribute the producer tablets between both children.
-  for (size_t i = 0; i < producer_tablets.tablets().size(); ++i) {
+  for (int i = 0; i < producer_tablets.tablets().size(); ++i) {
     if (i % 2) {
       *(*mutable_map)[split_tablet_ids.children.first].add_tablets() = producer_tablets.tablets(i);
     } else {

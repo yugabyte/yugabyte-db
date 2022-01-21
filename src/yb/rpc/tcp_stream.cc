@@ -213,29 +213,27 @@ Status TcpStream::DoWrite() {
       context_->UpdateLastActivity();
     }
 
-    int32_t written = 0;
-    auto status = fill_result.len != 0
-        ? socket_.Writev(iov, fill_result.len, &written)
-        : Status::OK();
-    DVLOG_WITH_PREFIX(4) << "Queued writes " << queued_bytes_to_send_ << " bytes. written "
-                         << written << " . Status " << status << ", sending_.size(): "
-                         << sending_.size();
+    auto result = fill_result.len != 0
+        ? socket_.Writev(iov, fill_result.len)
+        : 0;
+    DVLOG_WITH_PREFIX(4) << "Queued writes " << queued_bytes_to_send_ << " bytes. Result "
+                         << result << ", sending_.size(): " << sending_.size();
 
-    if (PREDICT_FALSE(!status.ok())) {
-      if (!status.IsTryAgain()) {
-        YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 50) << "Send failed: " << status;
-        return status;
+    if (PREDICT_FALSE(!result.ok())) {
+      if (!result.status().IsTryAgain()) {
+        YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 50) << "Send failed: " << result.status();
+        return result.status();
       } else {
-        VLOG_WITH_PREFIX(3) << "Send temporary failed: " << status;
+        VLOG_WITH_PREFIX(3) << "Send temporary failed: " << result.status();
         return Status::OK();
       }
     }
 
     context_->UpdateLastWrite();
 
-    IncrementCounterBy(bytes_sent_counter_, written);
+    IncrementCounterBy(bytes_sent_counter_, *result);
 
-    send_position_ += written;
+    send_position_ += *result;
     while (!sending_.empty()) {
       auto& front = sending_.front();
       size_t full_size = front.bytes_size();

@@ -117,9 +117,15 @@
 #include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_dcl.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
@@ -286,9 +292,9 @@ TAG_FLAG(cluster_uuid, hidden);
 
 DECLARE_int32(yb_num_shards_per_tserver);
 
-DEFINE_uint64(transaction_table_num_tablets, 0,
-    "Number of tablets to use when creating the transaction status table."
-    "0 to use transaction_table_num_tablets_per_tserver.");
+DEFINE_int32(transaction_table_num_tablets, 0,
+             "Number of tablets to use when creating the transaction status table."
+             "0 to use transaction_table_num_tablets_per_tserver.");
 
 DEFINE_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of tablets per tablet server for transaction status table. If the value is "
@@ -296,9 +302,9 @@ DEFINE_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerT
 
 DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 
-DEFINE_uint64(metrics_snapshots_table_num_tablets, 0,
-    "Number of tablets to use when creating the metrics snapshots table."
-    "0 to use the same default num tablets as for regular tables.");
+DEFINE_int32(metrics_snapshots_table_num_tablets, 0,
+             "Number of tablets to use when creating the metrics snapshots table."
+             "0 to use the same default num tablets as for regular tables.");
 
 DEFINE_bool(disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YCQL indexes.");
@@ -364,9 +370,9 @@ DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
                  "Whether the Master should hint replica with smallest lexicographic rank for each "
                  "tablet as leader initially on tablet creation.");
 
-DEFINE_int32(tablet_split_limit_per_table, 256,
-             "Limit of the number of tablets per table for tablet splitting. Limitation is "
-             "disabled if this value is set to 0.");
+DEFINE_uint64(tablet_split_limit_per_table, 256,
+              "Limit of the number of tablets per table for tablet splitting. Limitation is "
+              "disabled if this value is set to 0.");
 
 DEFINE_double(heartbeat_safe_deadline_ratio, .20,
               "When the heartbeat deadline has this percentage of time remaining, "
@@ -503,7 +509,6 @@ using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::HandleReplacingStaleTablet;
 using tserver::TabletServerErrorPB;
-using master::MasterServiceProxy;
 using yb::pgwrapper::PgWrapper;
 using yb::server::MasterAddressesToString;
 
@@ -591,8 +596,8 @@ class IndexInfoBuilder {
       col->set_column_id(index_schema.column_id(i));
       col->set_indexed_column_id(indexed_schema.column_id(indexed_col_idx));
     }
-    index_info_.set_hash_column_count(index_schema.num_hash_key_columns());
-    index_info_.set_range_column_count(index_schema.num_range_key_columns());
+    index_info_.set_hash_column_count(narrow_cast<uint32_t>(index_schema.num_hash_key_columns()));
+    index_info_.set_range_column_count(narrow_cast<uint32_t>(index_schema.num_range_key_columns()));
 
     for (size_t i = 0; i < indexed_schema.num_hash_key_columns(); i++) {
       index_info_.add_indexed_hash_column_ids(indexed_schema.column_id(i));
@@ -698,6 +703,17 @@ void InitMasterFlags() {
     VLOG(1) << "Auto setting FLAGS_transaction_table_num_tablets_per_tserver to " << value;
     SetAtomicFlag(value, &FLAGS_transaction_table_num_tablets_per_tserver);
   }
+}
+
+Result<bool> DoesTableExist(const Result<TableInfoPtr>& result) {
+  if (result.ok()) {
+    return true;
+  }
+  if (result.status().IsNotFound()
+      && MasterError(result.status()) == MasterErrorPB::OBJECT_NOT_FOUND) {
+    return false;
+  }
+  return result.status();
 }
 
 }  // anonymous namespace
@@ -1218,6 +1234,28 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   l.Commit();
 
   return Status::OK();
+}
+
+std::vector<std::string> CatalogManager::GetMasterAddresses() {
+  std::vector<std::string> result;
+  consensus::ConsensusStatePB state;
+  auto status = GetCurrentConfig(&state);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to get current config: " << status;
+    return result;
+  }
+  for (const auto& peer : state.config().peers()) {
+    std::vector<std::string> peer_addresses;
+    for (const auto& list : {peer.last_known_private_addr(), peer.last_known_broadcast_addr()}) {
+      for (const auto& entry : list) {
+        peer_addresses.push_back(HostPort::FromPB(entry).ToString());
+      }
+    }
+    if (!peer_addresses.empty()) {
+      result.push_back(JoinStrings(peer_addresses, ","));
+    }
+  }
+  return result;
 }
 
 Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
@@ -1977,14 +2015,34 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   for (const NamespaceId& nsid : namespace_id_vec) {
     VLOG(5) << "Refreshing placement information for namespace " << nsid;
     const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(nsid));
-    Status s = sys_catalog_->ReadPgClassInfo(database_oid,
-                                             table_to_tablespace_map.get());
-    if (!s.ok()) {
+    Status table_tablespace_status = sys_catalog_->ReadPgClassInfo(database_oid,
+                                                                   table_to_tablespace_map.get());
+    if (!table_tablespace_status.ok()) {
       LOG(WARNING) << "Refreshing table->tablespace info failed for namespace "
-                   << nsid << " with error: " << s.ToString();
+                   << nsid << " with error: " << table_tablespace_status.ToString();
+    }
+
+    const bool pg_yb_tablegroup_exists = VERIFY_RESULT(DoesTableExist(FindTableById(
+      GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid))));
+
+    // no pg_yb_tablegroup means we only need to check pg_class
+    if (table_tablespace_status.ok() && !pg_yb_tablegroup_exists) {
+      VLOG(5) << "Successfully refreshed placement information for namespace " << nsid
+              << " from pg_class";
       continue;
     }
-    VLOG(5) << "Successfully refreshed placement information for namespace " << nsid;
+
+    Status tablegroup_tablespace_status = sys_catalog_->ReadTablespaceInfoFromPgYbTablegroup(
+      database_oid,
+      table_to_tablespace_map.get());
+    if (!tablegroup_tablespace_status.ok()) {
+      LOG(WARNING) << "Refreshing tablegroup->tablespace info failed for namespace "
+                  << nsid << " with error: " << tablegroup_tablespace_status.ToString();
+    }
+    if (table_tablespace_status.ok() && tablegroup_tablespace_status.ok()) {
+      VLOG(5) << "Successfully refreshed placement information for namespace " << nsid
+              << " from pg_class and pg_yb_tablegroup";
+    }
   }
 
   return table_to_tablespace_map;
@@ -2402,7 +2460,7 @@ bool CatalogManager::ShouldSplitValidCandidate(
   if (drive_info.may_have_orphaned_post_split_data) {
     return false;
   }
-  int64 size = drive_info.sst_files_size;
+  ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
     return false;
@@ -2623,7 +2681,7 @@ CHECKED_STATUS ValidateCreateTableSchema(const Schema& schema, CreateTableRespon
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
                       STATUS(InvalidArgument, "Must specify at least one key column"));
   }
-  for (int i = 0; i < schema.num_key_columns(); i++) {
+  for (size_t i = 0; i < schema.num_key_columns(); i++) {
     if (!IsTypeAllowableInKey(schema.column(i).type_info())) {
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
                         STATUS(InvalidArgument, "Invalid datatype for primary key column"));
@@ -2750,7 +2808,7 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
                 "Could not submit VerifyTransaction to thread pool");
   }
 
-  tserver::ChangeMetadataRequestPB change_req;
+  tablet::ChangeMetadataRequestPB change_req;
   change_req.set_tablet_id(kSysCatalogTabletId);
   auto& add_table = *change_req.mutable_add_table();
 
@@ -2902,7 +2960,7 @@ size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placeme
 
 namespace {
 
-int GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info) {
+size_t GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info) {
   return placement_info.num_replicas() > 0 ?
       placement_info.num_replicas() : FLAGS_replication_factor;
 }
@@ -2911,8 +2969,8 @@ Status CheckNumReplicas(const PlacementInfoPB& placement_info,
                         const TSDescriptorVector& ts_descs,
                         const vector<Partition>& partitions,
                         CreateTableResponsePB* resp) {
-  int max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
-  int num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
+  auto max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
+  auto num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
   if (num_replicas > 1 && max_tablets > 0 && partitions.size() > max_tablets) {
     std::string msg = Substitute("The requested number of tablets ($0) is over the permitted "
                                  "maximum ($1)", partitions.size(), max_tablets);
@@ -3027,7 +3085,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // checking that referenced user-defined types (if any) exist.
   {
     SharedLock lock(mutex_);
-    for (int i = 0; i < schema.num_columns(); i++) {
+    for (size_t i = 0; i < schema.num_columns(); i++) {
       for (const auto &udt_id : schema.column(i).type()->GetUserDefinedTypeIds()) {
         if (FindPtrOrNull(udtype_ids_map_, udt_id) == nullptr) {
           Status s = STATUS(InvalidArgument, "Referenced user-defined type not found");
@@ -3113,8 +3171,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // to (a new) master leader.
     const auto num_live_tservers =
         GetNumLiveTServersForPlacement(placement_info.placement_uuid());
-    num_tablets = num_live_tservers * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
-                                                   : FLAGS_yb_num_shards_per_tserver);
+    num_tablets = narrow_cast<int>(
+        num_live_tservers * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
+                                         : FLAGS_yb_num_shards_per_tserver));
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
               << num_live_tservers << " primary servers";
   }
@@ -3152,7 +3211,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
     // The vector 'partitions' contains real setup partitions, so the variable
     // should be updated.
-    num_tablets = partitions.size();
+    num_tablets = narrow_cast<int>(partitions.size());
   }
 
   TSDescriptorVector all_ts_descs;
@@ -3181,8 +3240,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
-      for (int colidx = 0; colidx < schema.num_columns(); colidx++) {
-        index_info.mutable_columns(colidx)->set_column_id(schema.column_id(colidx));
+      for (size_t colidx = 0; colidx < schema.num_columns(); colidx++) {
+        index_info.mutable_columns(narrow_cast<int>(colidx))->set_column_id(
+            schema.column_id(colidx));
       }
     }
   } else if (req.has_indexed_table_id()) {
@@ -3291,7 +3351,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // If the table is a tablegroup parent table, it creates a dummy tablet for the tablegroup
         // along with updating the catalog manager maps.
         RSTATUS_DCHECK_EQ(
-            tablets.size(), 1, InternalError,
+            tablets.size(), 1U, InternalError,
             "Only one tablet should be created for each tablegroup");
         tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
         // Update catalog manager maps for tablegroups
@@ -3316,7 +3376,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         table->AddTablet(tablet);
       } else {  // Record the tablet
         RSTATUS_DCHECK_EQ(
-            tablets.size(), 1, InternalError,
+            tablets.size(), 1U, InternalError,
             "Only one tablet should be created for each colocated database");
         tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
         colocated_tablet_ids_map_[ns->id()] = tablet_map_->find(tablets[0]->id())->second;
@@ -3464,7 +3524,8 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
   std::string matview_table_prefix = "pg_temp_";
   if (table->name().find(matview_table_prefix) == 0) {
     try {
-      table_storage_id = std::stol(table->name().substr(matview_table_prefix.length()));
+      table_storage_id = narrow_cast<uint32_t>(std::stol(
+          table->name().substr(matview_table_prefix.length())));
     }
     catch (...) {
       string msg = Substitute("Unexpected materialized view table name ($0), assuming user table",
@@ -3539,8 +3600,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                                                ValidateReplicationInfoResponsePB* resp) {
   // Verify that the total number of tablets is reasonable, relative to the number
   // of live tablet servers.
-  int num_live_tservers = ts_descs.size();
-  int num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
+  auto num_live_tservers = ts_descs.size();
+  auto num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
   Status s;
   string msg;
 
@@ -3559,7 +3620,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
 
   // Verify that placement requests are reasonable and we can satisfy the minimums.
   if (!placement_info.placement_blocks().empty()) {
-    int minimum_sum = 0;
+    size_t minimum_sum = 0;
     for (const auto& pb : placement_info.placement_blocks()) {
       minimum_sum += pb.min_num_replicas();
       if (!pb.has_cloud_info()) {
@@ -3631,17 +3692,6 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   return Status::OK();
 }
 
-Result<bool> DoesTableExist(const Result<TableInfoPtr>& result) {
-  if (result.ok()) {
-    return true;
-  }
-  if (result.status().IsNotFound()
-      && MasterError(result.status()) == MasterErrorPB::OBJECT_NOT_FOUND) {
-    return false;
-  }
-  return result.status();
-}
-
 Result<bool> CatalogManager::TableExists(
     const std::string& namespace_name, const std::string& table_name) const {
   TableIdentifierPB table_id_pb;
@@ -3680,15 +3730,14 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(rpc::RpcCont
 
   // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
   // will use the same defaults as for regular tables.
-  size_t num_tablets;
+  int num_tablets;
   if (FLAGS_transaction_table_num_tablets > 0) {
     num_tablets = FLAGS_transaction_table_num_tablets;
   } else {
-    num_tablets = GetNumLiveTServersForPlacement(cluster_config_->LockForRead()
-                                                     ->pb.replication_info()
-                                                     .live_replicas()
-                                                     .placement_uuid()) *
-                  FLAGS_transaction_table_num_tablets_per_tserver;
+    auto placement_uuid =
+        cluster_config_->LockForRead()->pb.replication_info().live_replicas().placement_uuid();
+    num_tablets = narrow_cast<int>(GetNumLiveTServersForPlacement(placement_uuid) *
+                                   FLAGS_transaction_table_num_tablets_per_tserver);
   }
   req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets);
 
@@ -4238,7 +4287,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
-  LOG_IF(WARNING, IsColocatedUserTable(*table)) << "cannot truncate a colocated table on master";
+  LOG_IF(WARNING, table->IsColocatedUserTable()) << "cannot truncate a colocated table on master";
 
   // Send a Truncate() request to each tablet in the table.
   SendTruncateTableRequest(table);
@@ -4595,7 +4644,7 @@ Status CatalogManager::DeleteTableInternal(
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
     // TODO(pitr) handle YSQL colocated tables.
-    if (IsColocatedUserTable(*table.info)) {
+    if (table.info->IsColocatedUserTable()) {
       auto call = std::make_shared<AsyncRemoveTableFromTablet>(
           master_, AsyncTaskPool(), table.info->GetColocatedTablet(), table.info);
       table.info->AddTask(call);
@@ -4622,7 +4671,7 @@ Status CatalogManager::DeleteTableInternal(
     for (auto& table_id : sys_table_ids) {
       // "sys_catalog_->DeleteYsqlSystemTable(table_id)" won't work here
       // as it only acts on the leader.
-      tserver::ChangeMetadataRequestPB change_req;
+      tablet::ChangeMetadataRequestPB change_req;
       change_req.set_tablet_id(kSysCatalogTabletId);
       change_req.set_remove_table_id(table_id);
       RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
@@ -4814,7 +4863,7 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << table->ToString() << " hide only: " << hide_only << ", all tablets done: "
       << all_tablets_done;
-  if (!all_tablets_done && !IsSystemTable(*table) && !IsColocatedUserTable(*table)) {
+  if (!all_tablets_done && !IsSystemTable(*table) && !table->IsColocatedUserTable()) {
     return TableInfo::WriteLock();
   }
 
@@ -4904,7 +4953,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 
   // Temporary fix for github issue #5290.
   // TODO: Wait till deletion completed for tablegroup parent table.
-  if (IsTablegroupParentTable(*table)) {
+  if (table->IsTablegroupParentTable()) {
     LOG(INFO) << "Servicing IsDeleteTableDone request for tablegroup parent table id "
               << req->table_id() << ": deleting. Skipping wait for DELETED state.";
     resp->set_done(true);
@@ -4917,7 +4966,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
     resp->set_done(true);
   } else {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
-              << ((!IsColocatedUserTable(*table)) ? ": deleting tablets" : "");
+              << ((!table->IsColocatedUserTable()) ? ": deleting tablets" : "");
 
     std::vector<std::shared_ptr<TSDescriptor>> descs;
     master_->ts_manager()->GetAllDescriptors(&descs);
@@ -5433,7 +5482,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
     RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
   }
 
-  if (!parent_colocated_table->colocated() || !IsColocatedParentTable(*parent_colocated_table)) {
+  if (!parent_colocated_table->colocated() || !parent_colocated_table->IsColocatedParentTable()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_TYPE,
                       STATUS(InvalidArgument, "Table provided is not a parent colocated table"));
   }
@@ -5688,8 +5737,8 @@ bool CatalogManager::IsUserCreatedTableUnlocked(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
     if (!IsSystemTable(table) && !IsSequencesSystemTable(table) &&
         GetNamespaceNameUnlocked(table.namespace_id()) != kSystemNamespaceName &&
-        !IsColocatedParentTable(table) &&
-        !IsTablegroupParentTable(table)) {
+        !table.IsColocatedParentTable() &&
+        !table.IsTablegroupParentTable()) {
       return true;
     }
   }
@@ -5718,22 +5767,9 @@ bool CatalogManager::IsColocatedParentTableId(const TableId& table_id) const {
   return table_id.find(kColocatedParentTableIdSuffix) != std::string::npos;
 }
 
-bool CatalogManager::IsColocatedParentTable(const TableInfo& table) const {
-  return IsColocatedParentTableId(table.id());
-}
-
-bool CatalogManager::IsTablegroupParentTable(const TableInfo& table) const {
-  return table.id().find(kTablegroupParentTableIdSuffix) != std::string::npos;
-}
-
-bool CatalogManager::IsColocatedUserTable(const TableInfo& table) const {
-  return table.colocated() && !IsColocatedParentTable(table)
-                           && !IsTablegroupParentTable(table);
-}
-
 bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
-  if (table.GetTableType() == PGSQL_TABLE_TYPE && !IsColocatedParentTable(table)
-                                               && !IsTablegroupParentTable(table)) {
+  if (table.GetTableType() == PGSQL_TABLE_TYPE && !table.IsColocatedParentTable()
+                                               && !table.IsTablegroupParentTable()) {
     // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
     if (!IsPgsqlId(table.namespace_id()) || !IsPgsqlId(table.id())) {
       LOG(WARNING) << "Not PGSQL IDs " << table.namespace_id() << ", " << table.id();
@@ -5775,7 +5811,7 @@ void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uu
 bool CatalogManager::ReplicaMapDiffersFromConsensusState(const scoped_refptr<TabletInfo>& tablet,
                                                          const ConsensusStatePB& cstate) {
   auto locs = tablet->GetReplicaLocations();
-  if (locs->size() != cstate.config().peers_size()) {
+  if (locs->size() != implicit_cast<size_t>(cstate.config().peers_size())) {
     return true;
   }
   for (auto iter = cstate.config().peers().begin(); iter != cstate.config().peers().end(); iter++) {
@@ -7714,10 +7750,10 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
     UDTypeInfoPB* udtype = resp->add_udtypes();
     udtype->set_id(entry.second->id());
     udtype->set_name(ltm->name());
-    for (size_t i = 0; i <= ltm->field_names_size(); i++) {
+    for (int i = 0; i <= ltm->field_names_size(); i++) {
       udtype->add_field_names(ltm->field_names(i));
     }
-    for (size_t i = 0; i <= ltm->field_types_size(); i++) {
+    for (int i = 0; i <= ltm->field_types_size(); i++) {
       udtype->add_field_types()->CopyFrom(ltm->field_types(i));
     }
 
@@ -7753,6 +7789,11 @@ Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), ysql_catalog_config_));
   l.Commit();
+
+  if (FLAGS_log_ysql_catalog_versions) {
+    LOG_WITH_FUNC(WARNING) << "set catalog version: " << new_version
+                           << " (using old protobuf method)";
+  }
 
   return new_version;
 }
@@ -8274,7 +8315,7 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<Tabl
     return STATUS(InvalidArgument, "It is not allowed to delete system tables");
   }
   // Do not delete the tablet of a colocated table.
-  if (IsColocatedUserTable(*table)) {
+  if (table->IsColocatedUserTable()) {
     return STATUS(InvalidArgument, "It is not allowed to delete tablets of the colocated tables.");
   }
   return Status::OK();
@@ -8297,10 +8338,10 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
   RETURN_NOT_OK(DeleteTabletListAndSendRequests(
       tablets, deletion_msg, retained_by_snapshot_schedules));
 
-  if (IsColocatedParentTable(*table)) {
+  if (table->IsColocatedParentTable()) {
     SharedLock lock(mutex_);
     colocated_tablet_ids_map_.erase(table->namespace_id());
-  } else if (IsTablegroupParentTable(*table)) {
+  } else if (table->IsTablegroupParentTable()) {
     // In the case of dropped database/tablegroup parent table, need to delete tablegroup info.
     SharedLock lock(mutex_);
     for (auto tgroup : tablegroup_tablet_ids_map_[table->namespace_id()]) {
@@ -8748,53 +8789,36 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     // If there was an error, abort any mutations started by the current task.
     // NOTE: Lock order should be lock_ -> table -> tablet.
     // We currently have a bunch of tablets locked and need to unlock first to ensure this holds.
-    struct TabletToRemove {
-      TableInfoPtr table;
-      TabletId tablet_id;
-      std::string partition_key_start;
-    };
-    std::vector<TabletToRemove> tablets_to_remove;
-    for (const auto& new_tablet : new_tablets) {
-      tablets_to_remove.push_back(TabletToRemove {
-        .table = new_tablet->table(),
-        .tablet_id = new_tablet->tablet_id(),
-        .partition_key_start = new_tablet->metadata().dirty().pb.partition().partition_key_start(),
-      });
+
+    std::sort(new_tablets.begin(), new_tablets.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs->table().get() < rhs->table().get();
+    });
+    {
+      std::string current_table_name;
+      TableInfoPtr current_table;
+      for (auto& tablet_to_remove : new_tablets) {
+        if (tablet_to_remove->table()->RemoveTablet(tablet_to_remove->tablet_id())) {
+          if (VLOG_IS_ON(1)) {
+            if (current_table != tablet_to_remove->table()) {
+              current_table = tablet_to_remove->table();
+              current_table_name = current_table->name();
+            }
+            LOG(INFO) << "Removed tablet " << tablet_to_remove->tablet_id() << " from table "
+                      << current_table_name;
+          }
+        }
+      }
     }
 
     unlocker_out.Abort();  // tablet.unlock
     unlocker_in.Abort();
 
-    std::sort(
-        tablets_to_remove.begin(), tablets_to_remove.end(),
-        [](const auto& lhs, const auto& rhs) {
-      return lhs.table->id() < rhs.table->id();
-    });
-    {
-      TableInfo::ReadLock lock;
-      TableInfoPtr current_table;
-      for (auto& tablet_to_remove : tablets_to_remove) {
-        if (current_table != tablet_to_remove.table) {
-          current_table = tablet_to_remove.table;
-          lock.Unlock();
-        }
-        if (current_table->RemoveTablet(tablet_to_remove.tablet_id)) {
-          if (VLOG_IS_ON(1)) {
-            if (!lock.locked()) {
-              lock = current_table->LockForRead();
-            }
-            LOG(INFO) << "Removed tablet " << tablet_to_remove.tablet_id << " from table "
-                      << lock->name();
-          }
-        }
-      }
-    }
     {
       LockGuard lock(mutex_); // lock_.lock
       auto tablet_map_checkout = tablet_map_.CheckOut();
-      for (auto& tablet_to_remove : tablets_to_remove) {
+      for (auto& tablet_to_remove : new_tablets) {
         // Potential race condition above, but it's okay if a background thread deleted this.
-        tablet_map_checkout->erase(tablet_to_remove.tablet_id);
+        tablet_map_checkout->erase(tablet_to_remove->tablet_id());
       }
     }
     return s;
@@ -8866,7 +8890,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
                                                          const TSDescriptorVector& ts_descs,
                                                          PeerMemberType member_type,
                                                          consensus::RaftConfigPB* config) {
-  int nreplicas = GetNumReplicasFromPlacementInfo(placement_info);
+  auto nreplicas = GetNumReplicasFromPlacementInfo(placement_info);
   if (ts_descs.size() < nreplicas) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "Not enough tablet servers in the requested placements. Need at least $0, have $1",
@@ -8895,7 +8919,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type);
     }
 
-    int replicas_left = nreplicas - already_selected_ts.size();
+    ssize_t replicas_left = nreplicas - already_selected_ts.size();
     DCHECK_GE(replicas_left, 0);
     if (replicas_left > 0) {
       // No need to do an extra check here, as we checked early if we have enough to cover all
@@ -8922,7 +8946,7 @@ Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacemen
   }
 
   // Fail if we don't have enough tablet servers in the areas requested.
-  const int nreplicas = placement_info.num_replicas();
+  const size_t nreplicas = placement_info.num_replicas();
   if (all_allowed_ts.size() < nreplicas) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "Not enough tablet servers in the requested placements. Need at least $0, have $1",
@@ -8945,7 +8969,7 @@ Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacemen
   }
 
   // Verify that there are sufficient TServers to satisfy min_num_replicas.
-  int num_replicas = placement_block.min_num_replicas();
+  size_t num_replicas = placement_block.min_num_replicas();
   if (allowed_ts.size() < num_replicas) {
     return STATUS_SUBSTITUTE(InvalidArgument,
           "Not enough tablet servers in $0. Need at least $1 but only have $2.",
@@ -9149,11 +9173,11 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
 }
 
 void CatalogManager::SelectReplicas(
-    const TSDescriptorVector& ts_descs, int nreplicas, consensus::RaftConfigPB* config,
+    const TSDescriptorVector& ts_descs, size_t nreplicas, consensus::RaftConfigPB* config,
     set<shared_ptr<TSDescriptor>>* already_selected_ts, PeerMemberType member_type) {
   DCHECK_LE(nreplicas, ts_descs.size());
 
-  for (int i = 0; i < nreplicas; ++i) {
+  for (size_t i = 0; i < nreplicas; ++i) {
     // We have to derefence already_selected_ts here, as the inner mechanics uses ReservoirSample,
     // which in turn accepts only a reference to the set, not a pointer. Alternatively, we could
     // have passed it in as a non-const reference, but that goes against our argument passing
@@ -9268,7 +9292,8 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
   // If the locations are cached.
   if (!locs->empty()) {
-    if (cstate.IsInitialized() && locs->size() != cstate.config().peers_size()) {
+    if (cstate.IsInitialized() &&
+            locs->size() != implicit_cast<size_t>(cstate.config().peers_size())) {
       LOG(WARNING) << "Cached tablet replicas " << locs->size() << " does not match consensus "
                    << cstate.config().peers_size();
     }
@@ -9316,9 +9341,9 @@ Status CatalogManager::GetTabletLocations(
   }
   Status s = GetTabletLocations(tablet_info, locs_pb, include_inactive);
 
-  int num_replicas = 0;
-  if (GetReplicationFactorForTablet(tablet_info, &num_replicas).ok() && num_replicas > 0 &&
-      locs_pb->replicas().size() != num_replicas) {
+  auto num_replicas = GetReplicationFactorForTablet(tablet_info);
+  if (num_replicas.ok() && *num_replicas > 0 &&
+      implicit_cast<size_t>(locs_pb->replicas().size()) != *num_replicas) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Expected replicas " << num_replicas << " but found "
         << locs_pb->replicas().size() << " for tablet " << tablet_info->id() << ": "
@@ -9504,7 +9529,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
                                      const DumpMasterStateRequestPB* req,
                                      DumpMasterStateResponsePB* resp) {
-  std::unique_ptr<MasterServiceProxy> peer_proxy;
+  std::unique_ptr<MasterClusterProxy> peer_proxy;
   Endpoint sockaddr;
   MonoTime timeout = MonoTime::Now();
   DumpMasterStateRequestPB peer_req;
@@ -9518,7 +9543,7 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
 
   for (const RaftPeerPB& peer : peers) {
     HostPort hostport = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
-    peer_proxy.reset(new MasterServiceProxy(&master_->proxy_cache(), hostport));
+    peer_proxy = std::make_unique<MasterClusterProxy>(&master_->proxy_cache(), hostport);
 
     DumpMasterStateResponsePB peer_resp;
     rpc.Reset();
@@ -9544,11 +9569,12 @@ void CatalogManager::ReportMetrics() {
   // Report metrics on how many tservers are alive.
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  const int32 num_live_servers = ts_descs.size();
-  metric_num_tablet_servers_live_->set_value(num_live_servers);
+  const auto num_live_servers = ts_descs.size();
+  metric_num_tablet_servers_live_->set_value(narrow_cast<uint32_t>(num_live_servers));
 
   master_->ts_manager()->GetAllDescriptors(&ts_descs);
-  metric_num_tablet_servers_dead_->set_value(ts_descs.size() - num_live_servers);
+  metric_num_tablet_servers_dead_->set_value(
+      narrow_cast<uint32_t>(ts_descs.size() - num_live_servers));
 }
 
 void CatalogManager::ResetMetrics() {
@@ -9619,15 +9645,15 @@ Status CatalogManager::SetClusterConfig(
   SysClusterConfigEntryPB config(req->cluster_config());
 
   if (config.has_server_blacklist()) {
-    config.mutable_server_blacklist()->set_initial_replica_load(
-        GetNumRelevantReplicas(config.server_blacklist(), false /* leaders_only */));
+    config.mutable_server_blacklist()->set_initial_replica_load(narrow_cast<int32_t>(
+        GetNumRelevantReplicas(config.server_blacklist(), false /* leaders_only */)));
     LOG(INFO) << Format("Set blacklist of total tservers: $0, with initial load: $1",
                     config.server_blacklist().hosts().size(),
                     config.server_blacklist().initial_replica_load());
   }
   if (config.has_leader_blacklist()) {
-    config.mutable_leader_blacklist()->set_initial_leader_load(
-        GetNumRelevantReplicas(config.leader_blacklist(), true /* leaders_only */));
+    config.mutable_leader_blacklist()->set_initial_leader_load(narrow_cast<int32_t>(
+        GetNumRelevantReplicas(config.leader_blacklist(), true /* leaders_only */)));
     LOG(INFO) << Format("Set leader blacklist of total tservers: $0, with initial load: $1",
                     config.leader_blacklist().hosts().size(),
                     config.leader_blacklist().initial_leader_load());
@@ -9721,33 +9747,31 @@ Status CatalogManager::SetPreferredZones(
   return Status::OK();
 }
 
-Status CatalogManager::GetReplicationFactor(int* num_replicas) {
+Result<size_t> CatalogManager::GetReplicationFactor() {
   DCHECK(cluster_config_) << "Missing cluster config for master!";
   auto l = cluster_config_->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
-  *num_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
-  return Status::OK();
+  return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
 }
 
-Status CatalogManager::GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet,
-    int* num_replicas) {
+Result<size_t> CatalogManager::GetReplicationFactorForTablet(
+    const scoped_refptr<TabletInfo>& tablet) {
   // For system tables, the set of replicas is always the set of masters.
   if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
     consensus::ConsensusStatePB master_consensus;
     RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
-    *num_replicas = master_consensus.config().peers().size();
-    return Status::OK();
+    return master_consensus.config().peers().size();
   }
   int num_live_replicas = 0, num_read_replicas = 0;
   GetExpectedNumberOfReplicas(&num_live_replicas, &num_read_replicas);
-  *num_replicas = num_live_replicas + num_read_replicas;
-  return Status::OK();
+  return num_live_replicas + num_read_replicas;
 }
 
 void CatalogManager::GetExpectedNumberOfReplicas(int* num_live_replicas, int* num_read_replicas) {
   auto l = cluster_config_->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
-  *num_live_replicas = GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+  *num_live_replicas = narrow_cast<int>(GetNumReplicasFromPlacementInfo(
+      replication_info.live_replicas()));
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas += read_replica_placement_info.num_replicas();
   }
@@ -9766,7 +9790,7 @@ Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
     TSDescriptorVector ts_descs;
     master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
 
-    if (req->expected_num_servers() > ts_descs.size()) {
+    if (implicit_cast<size_t>(req->expected_num_servers()) > ts_descs.size()) {
       Status s = STATUS_SUBSTITUTE(IllegalState,
           "Found $0, which is below the expected number of servers $1.",
           ts_descs.size(), req->expected_num_servers());

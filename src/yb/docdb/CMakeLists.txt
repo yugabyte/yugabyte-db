@@ -12,6 +12,7 @@
 #
 
 set(YB_PCH_PREFIX docdb)
+set(YB_PCH_DEP_LIBS opid_proto)
 
 # docdb_proto
 
@@ -118,7 +119,7 @@ ADD_YB_LIBRARY(yb_docdb
 # Ensure protobuf headers we depend on are generated prior to building DocDB.
 add_dependencies(
         yb_docdb_encoding
-        gen_src_yb_master_master_proto
+        gen_src_yb_master_master_types_proto
         gen_src_yb_rpc_rpc_header_proto
         gen_src_yb_tablet_metadata_proto
         gen_src_yb_tablet_tablet_proto

@@ -363,7 +363,6 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       rpc_factory.get(),
       queue.get(),
       raft_pool_token.get(),
-      log,
       multi_raft_manager);
 
   return std::make_shared<RaftConsensus>(
@@ -661,8 +660,8 @@ Result<LeaderElectionPtr> RaftConsensus::CreateElectionUnlocked(
                         << active_config.ShortDebugString();
 
   // Initialize the VoteCounter.
-  int num_voters = CountVoters(active_config);
-  int majority_size = MajoritySize(num_voters);
+  auto num_voters = CountVoters(active_config);
+  auto majority_size = MajoritySize(num_voters);
 
   // Vote for ourselves.
   if (!preelection) {
@@ -723,8 +722,8 @@ string RaftConsensus::ServersInTransitionMessage() {
   string err_msg;
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
   const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
-  int servers_in_transition = CountServersInTransition(active_config);
-  int committed_servers_in_transition = CountServersInTransition(committed_config);
+  auto servers_in_transition = CountServersInTransition(active_config);
+  auto committed_servers_in_transition = CountServersInTransition(committed_config);
   LOG(INFO) << Substitute("Active config has $0 and committed has $1 servers in transition.",
                           servers_in_transition, committed_servers_in_transition);
   if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
@@ -1640,7 +1639,7 @@ Status RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_r
     deduplicated_req->messages.emplace_back(leader_msg);
   }
 
-  if (deduplicated_req->messages.size() != rpc_req->ops_size()) {
+  if (deduplicated_req->messages.size() != implicit_cast<size_t>(rpc_req->ops_size())) {
     LOG_WITH_PREFIX(INFO) << "Deduplicated request from leader. Original: "
                           << rpc_req->preceding_id() << "->" << OpsRangeString(*rpc_req)
                           << "   Dedup: " << deduplicated_req->preceding_op_id << "->"
@@ -1738,8 +1737,8 @@ Status RaftConsensus::CheckLeaderRequestOpIdSequence(
     // We take ownership of the deduped ops.
     DCHECK_GE(deduped_req.first_message_idx, 0);
     request->mutable_ops()->ExtractSubrange(
-        deduped_req.first_message_idx,
-        deduped_req.messages.size(),
+        narrow_cast<int>(deduped_req.first_message_idx),
+        narrow_cast<int>(deduped_req.messages.size()),
         nullptr);
   }
 
@@ -2340,7 +2339,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 
   if (remaining_old_leader_lease.Initialized()) {
     response->set_remaining_leader_lease_duration_ms(
-        remaining_old_leader_lease.ToMilliseconds());
+        narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
     response->set_leader_lease_uuid(state_->old_leader_lease().holder_uuid);
   }
 
@@ -2364,7 +2363,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                                            const string& server_uuid) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-  int servers_in_transition = 0;
+  size_t servers_in_transition = 0;
   if (type == ADD_SERVER) {
     servers_in_transition = CountServersInTransition(active_config);
   } else if (type == REMOVE_SERVER) {

@@ -1,4 +1,4 @@
-/*-------------------------------------------------------------------------
+ /*-------------------------------------------------------------------------
  *
  * postgres.c
  *	  POSTGRES C Backend Interface
@@ -3698,6 +3698,10 @@ static void YBRefreshCache()
 	if (yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 		yb_catalog_version_type = CATALOG_VERSION_UNSET;
 	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
+	if (YBCGetLogYsqlCatalogVersions())
+		ereport(LOG,
+				(errmsg("%s: got master catalog version: %" PRIu64,
+						__func__, catalog_master_version)));
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3713,6 +3717,10 @@ static void YBRefreshCache()
 	/* Set the new ysql cache version. */
 	yb_catalog_cache_version = catalog_master_version;
 	yb_need_cache_refresh = false;
+	if (YBCGetLogYsqlCatalogVersions())
+		ereport(LOG,
+				(errmsg("%s: set local catalog version: %" PRIu64,
+						__func__, yb_catalog_cache_version)));
 
 	finish_xact_command();
 }
@@ -3760,6 +3768,13 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	YBCPgResetCatalogReadTime();
 	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
 	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
+	if (YBCGetLogYsqlCatalogVersions())
+	{
+		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
+		ereport(elevel,
+				(errmsg("%s: got master catalog version: %" PRIu64,
+						__func__, catalog_master_version)));
+	}
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;
 
@@ -3983,7 +3998,16 @@ static void YBCheckSharedCatalogCacheVersion() {
 
 	uint64_t shared_catalog_version;
 	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-	if (yb_catalog_cache_version < shared_catalog_version)
+	const bool need_global_cache_refresh =
+		yb_catalog_cache_version < shared_catalog_version;
+	if (YBCGetLogYsqlCatalogVersions())
+	{
+		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
+		ereport(elevel,
+				(errmsg("%s: got tserver catalog version: %" PRIu64,
+						__func__, shared_catalog_version)));
+	}
+	if (need_global_cache_refresh)
 	{
 		YBRefreshCache();
 	}
@@ -4057,7 +4081,12 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	if (YBIsDataSent())
+	// We can perform kReadRestart retries in READ COMMITTED isolation level even if data has been
+	// sent as part of the txn, but not as part of the current query. This is because we just have to
+	// retry the query and not the whole transaction.
+	if ((XactIsoLevel != XACT_READ_COMMITTED && YBIsDataSent()) ||
+			(XactIsoLevel == XACT_READ_COMMITTED && is_conflict_error && YBIsDataSent()) ||
+			(XactIsoLevel == XACT_READ_COMMITTED && is_read_restart_error && YBIsDataSentForCurrQuery()))
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, data was already sent. Txn error code=%d",
@@ -4080,6 +4109,7 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
+	// TODO(Piyush): Restart even in sub-transactions if in READ COMMITTED isolation.
 	if (IsSubTransaction()) {
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, savepoints have been used");
@@ -4401,17 +4431,23 @@ typedef void(*YBFunctor)(const void*);
 
 static void
 yb_exec_query_wrapper(MemoryContext exec_context,
-                      YBQueryRestartData* restart_data,
-                      YBFunctor functor,
-                      const void* functor_context)
+					  YBQueryRestartData* restart_data,
+					  YBFunctor functor,
+					  const void* functor_context)
 {
-	for (int attempt = 0;; ++attempt)
+	bool retry = true;
+	for (int attempt = 0; retry; ++attempt)
 	{
-		YBSaveOutputBufferPosition(!yb_is_begin_transaction(restart_data->command_tag));
+		YBSaveOutputBufferPosition(
+			!yb_is_begin_transaction(restart_data->command_tag));
 		PG_TRY();
 		{
 			(*functor)(functor_context);
-			return;
+			/*
+			 * Stop retrying if successfull. Note, break or return could not be
+			 * used here, they would prevent PG_END_TRY();
+			 */
+			retry = false;
 		}
 		PG_CATCH();
 		{

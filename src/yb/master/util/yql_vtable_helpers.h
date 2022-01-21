@@ -18,6 +18,7 @@
 
 #include "yb/common/value.pb.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/util/net/net_fwd.h"
@@ -70,7 +71,7 @@ QLValuePB GetValue(const T& t, DataType data_type) {
 
 QLValuePB GetTokensValue(size_t index, size_t node_count);
 
-QLValuePB GetReplicationValue(int replication_factor);
+QLValuePB GetReplicationValue(size_t replication_factor);
 
 bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
                                   const InetAddress& remote_endpoint);

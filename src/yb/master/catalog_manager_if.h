@@ -21,6 +21,11 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/master_admin.fwd.h"
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_cluster.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_replication.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -29,6 +34,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace google {
@@ -83,10 +89,10 @@ class CatalogManagerIf {
       std::vector<scoped_refptr<NamespaceInfo>>* namespaces,
       bool include_only_running_namespaces = false) = 0;
 
-  virtual CHECKED_STATUS GetReplicationFactor(int* num_replicas) = 0;
-  CHECKED_STATUS GetReplicationFactor(NamespaceName namespace_name, int* num_replicas) {
+  virtual Result<size_t> GetReplicationFactor() = 0;
+  Result<size_t> GetReplicationFactor(NamespaceName namespace_name) {
     // TODO ENG-282 We currently don't support per-namespace replication factor.
-    return GetReplicationFactor(num_replicas);
+    return GetReplicationFactor();
   }
 
   virtual const NodeInstancePB& NodeInstance() const = 0;
@@ -109,17 +115,11 @@ class CatalogManagerIf {
 
   virtual bool IsUserTable(const TableInfo& table) const = 0;
 
-  virtual bool IsColocatedParentTable(const TableInfo& table) const = 0;
-
   virtual bool HasTablegroups() = 0;
 
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
 
   virtual bool IsUserIndex(const TableInfo& table) const = 0;
-
-  virtual bool IsTablegroupParentTable(const TableInfo& table) const = 0;
-
-  virtual bool IsColocatedUserTable(const TableInfo& table) const = 0;
 
   virtual TableInfoPtr GetTableInfo(const TableId& table_id) = 0;
 
@@ -236,9 +236,9 @@ class CatalogManagerIf {
 
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 
-  virtual uintptr_t tablets_version() const = 0;
+  virtual intptr_t tablets_version() const = 0;
 
-  virtual uintptr_t tablet_locations_version() const = 0;
+  virtual intptr_t tablet_locations_version() const = 0;
 
   virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
 

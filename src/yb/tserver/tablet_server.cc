@@ -44,6 +44,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/universe_key_manager.h"
@@ -52,7 +53,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
@@ -75,6 +76,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
@@ -567,6 +569,10 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
     ysql_catalog_version_ = new_version;
     shared_object().SetYSQLCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
+    if (FLAGS_log_ysql_catalog_versions) {
+      LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
+                          << new_breaking_version;
+    }
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;

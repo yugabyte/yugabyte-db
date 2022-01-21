@@ -15,11 +15,13 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.PlatformServiceException;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -145,6 +147,10 @@ public class Provider extends Model {
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public String destVpcId = null;
 
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean overrideKeyValidate = false;
+
   // End Transient Properties
 
   @JsonProperty("config")
@@ -249,6 +255,24 @@ public class Provider extends Model {
    */
   public static List<Provider> getAll(UUID customerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).findList();
+  }
+
+  /**
+   * Get a list of providers filtered by name and code (if not null) for a given customer uuid
+   *
+   * @param customerUUID
+   * @param name
+   * @return
+   */
+  public static List<Provider> getAll(UUID customerUUID, String name, Common.CloudType code) {
+    ExpressionList<Provider> query = find.query().where().eq("customer_uuid", customerUUID);
+    if (name != null) {
+      query.eq("name", name);
+    }
+    if (code != null) {
+      query.eq("code", code.toString());
+    }
+    return query.findList();
   }
 
   /**

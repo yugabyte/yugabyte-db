@@ -114,7 +114,7 @@ bool IncrementCell(const ColumnSchema& col, void* cell_ptr, Arena* arena) {
 } // anonymous namespace
 
 void SetKeyToMinValues(ContiguousRow* row) {
-  for (int i = 0; i < row->schema()->num_key_columns(); i++) {
+  for (size_t i = 0; i < row->schema()->num_key_columns(); i++) {
     const ColumnSchema& col = row->schema()->column(i);
     col.type_info()->CopyMinValue(row->mutable_cell_ptr(i));
   }
@@ -124,11 +124,10 @@ bool IncrementKey(ContiguousRow* row, Arena* arena) {
   return IncrementKeyPrefix(row, row->schema()->num_key_columns(), arena);
 }
 
-bool IncrementKeyPrefix(ContiguousRow* row, int prefix_len, Arena* arena) {
-  for (int i = prefix_len - 1; i >= 0; --i) {
-    if (IncrementCell(row->schema()->column(i),
-                                row->mutable_cell_ptr(i),
-                                arena)) {
+bool IncrementKeyPrefix(ContiguousRow* row, size_t prefix_len, Arena* arena) {
+  for (size_t i = prefix_len; i > 0;) {
+    --i;
+    if (IncrementCell(row->schema()->column(i), row->mutable_cell_ptr(i), arena)) {
       return true;
     }
   }

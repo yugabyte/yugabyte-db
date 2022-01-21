@@ -99,9 +99,10 @@ class DocDBRocksDBFixture : public DocDBRocksDBUtil {
   // num_files_to_compact - number of files that should participate in the minor compaction
   // start_index - the index of the file to start with (0 = the oldest file, -1 = compact
   //               num_files_to_compact newest files).
-  void MinorCompaction(HybridTime history_cutoff, int num_files_to_compact, int start_index = -1);
+  void MinorCompaction(
+      HybridTime history_cutoff, size_t num_files_to_compact, ssize_t start_index = -1);
 
-  int NumSSTableFiles();
+  size_t NumSSTableFiles();
   StringVector SSTableFileNames();
 
   CHECKED_STATUS InitRocksDBDir() override;
@@ -178,7 +179,7 @@ class DocDBLoadGenerator {
   // Removes all snapshots taken before the given hybrid_time. This is done to test history cleanup.
   void RemoveSnapshotsBefore(HybridTime ht);
 
-  int num_divergent_old_snapshot() { return divergent_snapshot_ht_and_cleanup_ht_.size(); }
+  size_t num_divergent_old_snapshot() { return divergent_snapshot_ht_and_cleanup_ht_.size(); }
 
   std::vector<std::pair<int, int>> divergent_snapshot_ht_and_cleanup_ht() {
     return divergent_snapshot_ht_and_cleanup_ht_;

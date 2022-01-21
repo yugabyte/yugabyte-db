@@ -44,7 +44,7 @@ namespace internal {
 int SubstitutedSize(GStringPiece format,
                     const SubstituteArg* const* args_array) {
   int size = 0;
-  for (int i = 0; i < format.size(); i++) {
+  for (size_t i = 0; i < format.size(); i++) {
     if (format[i] == '$') {
       if (i+1 >= format.size()) {
         LOG(DFATAL) << "Invalid strings::Substitute() format string: \""
@@ -81,7 +81,7 @@ char* SubstituteToBuffer(GStringPiece format,
                          const SubstituteArg* const* args_array,
                          char* target) {
   CHECK_NOTNULL(target);
-  for (int i = 0; i < format.size(); i++) {
+  for (size_t i = 0; i < format.size(); i++) {
     if (format[i] == '$') {
       if (ascii_isdigit(format[i+1])) {
         const SubstituteArg* src = args_array[format[i+1] - '0'];
@@ -117,7 +117,7 @@ void SubstituteAndAppend(
   if (size == 0) return;
 
   // Build the string.
-  int original_size = output->size();
+  auto original_size = output->size();
   STLStringResizeUninitialized(output, original_size + size);
   char* target = string_as_array(output) + original_size;
 

@@ -46,6 +46,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/port.h"
 
 #include "yb/util/bit-stream-utils.inline.h" // BitWriter impl
@@ -111,7 +112,7 @@ class RleDecoder {
  public:
   // Create a decoder object. buffer/buffer_len is the decoded data.
   // bit_width is the width of each value (before encoding).
-  RleDecoder(const uint8_t* buffer, int buffer_len, int bit_width)
+  RleDecoder(const uint8_t* buffer, size_t buffer_len, int bit_width)
     : bit_reader_(buffer, buffer_len),
       bit_width_(bit_width),
       current_value_(0),
@@ -246,7 +247,7 @@ class RleEncoder {
   // when the literal run is complete. We maintain an index rather than a pointer
   // into the underlying buffer because the pointer value may become invalid if
   // the underlying buffer is resized.
-  int literal_indicator_byte_idx_;
+  ssize_t literal_indicator_byte_idx_;
 };
 
 template<typename T>
@@ -270,7 +271,7 @@ inline bool RleDecoder<T>::ReadHeader() {
       repeat_count_ = indicator_value >> 1;
       DCHECK_GT(repeat_count_, 0);
       bool result = bit_reader_.GetAligned<T>(
-          BitUtil::Ceil(bit_width_, 8), reinterpret_cast<T*>(&current_value_));
+          ceil_div(bit_width_, 8), reinterpret_cast<T*>(&current_value_));
       DCHECK(result);
     }
   }
@@ -285,7 +286,7 @@ inline bool RleDecoder<T>::Get(T* val) {
   }
 
   if (PREDICT_TRUE(repeat_count_ > 0)) {
-    *val = current_value_;
+    *val = static_cast<T>(current_value_);
     --repeat_count_;
     rewind_state_ = REWIND_RUN;
   } else {
@@ -411,7 +412,7 @@ inline void RleEncoder<T>::Put(T value, size_t run_length) {
 
   // TODO(perf): remove the loop and use the repeat_count_
   while (run_length--) {
-    if (PREDICT_TRUE(current_value_ == value)) {
+    if (PREDICT_TRUE(current_value_ == implicit_cast<uint64_t>(value))) {
       ++repeat_count_;
       if (repeat_count_ > 8) {
         // This is just a continuation of the current run, no need to buffer the
@@ -457,7 +458,7 @@ inline void RleEncoder<T>::FlushLiteralRun(bool update_indicator_byte) {
     // We only reserve one byte, to allow for streaming writes of literal values.
     // The logic makes sure we flush literal runs often enough to not overrun
     // the 1 byte.
-    int num_groups = BitUtil::Ceil(literal_count_, 8);
+    int num_groups = ceil_div(literal_count_, 8);
     int32_t indicator_value = (num_groups << 1) | 1;
     DCHECK_EQ(indicator_value & 0xFFFFFF00, 0);
     bit_writer_.buffer()->data()[literal_indicator_byte_idx_] = indicator_value;
@@ -472,7 +473,7 @@ inline void RleEncoder<T>::FlushRepeatedRun() {
   // The lsb of 0 indicates this is a repeated run
   int32_t indicator_value = repeat_count_ << 1 | 0;
   bit_writer_.PutVlqInt(indicator_value);
-  bit_writer_.PutAligned(current_value_, BitUtil::Ceil(bit_width_, 8));
+  bit_writer_.PutAligned(current_value_, ceil_div(bit_width_, 8));
   num_buffered_values_ = 0;
   repeat_count_ = 0;
 }
@@ -497,7 +498,7 @@ inline void RleEncoder<T>::FlushBufferedValues(bool done) {
   }
 
   literal_count_ += num_buffered_values_;
-  int num_groups = BitUtil::Ceil(literal_count_, 8);
+  int num_groups = ceil_div(literal_count_, 8);
   if (num_groups + 1 >= (1 << 6)) {
     // We need to start a new literal run because the indicator byte we've reserved
     // cannot store more values.

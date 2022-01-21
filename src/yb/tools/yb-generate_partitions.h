@@ -29,6 +29,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/tools/bulk_load_utils.h"
@@ -39,7 +40,6 @@ namespace yb {
 namespace tools {
 
 typedef std::map<std::string, master::TabletLocationsPB> TabletMap;
-
 
 // YBPartitionGenerator is a useful utility to look up the appropriate tablet id for a given row
 // in a table. Given a line in a csv file, it is able to compute the appropriate partitions and

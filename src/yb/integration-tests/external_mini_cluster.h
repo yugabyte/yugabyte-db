@@ -63,6 +63,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -76,10 +77,6 @@ class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
 
-namespace master {
-class MasterServiceProxy;
-}  // namespace master
-
 namespace server {
 class ServerStatusPB;
 }  // namespace server
@@ -89,10 +86,10 @@ using yb::consensus::ChangeConfigType;
 struct ExternalMiniClusterOptions {
 
   // Number of masters to start.
-  int num_masters = 1;
+  size_t num_masters = 1;
 
   // Number of TS to start.
-  int num_tablet_servers = 1;
+  size_t num_tablet_servers = 1;
 
   // Number of drives to use on TS.
   int num_drives = 1;
@@ -229,7 +226,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return the IP address that the tablet server with the given index will bind to.  If
   // options.bind_to_unique_loopback_addresses is false, this will be 127.0.0.1 Otherwise, it is
   // another IP in the local netblock.
-  std::string GetBindIpForTabletServer(int index) const;
+  std::string GetBindIpForTabletServer(size_t index) const;
 
   // Return a pointer to the running leader master. This may be NULL
   // if the cluster is not started.
@@ -242,12 +239,12 @@ class ExternalMiniCluster : public MiniClusterBase {
   //
   // NOTE: if a leader election occurs after this method is executed, the last result may not be
   // valid.
-  CHECKED_STATUS GetLeaderMasterIndex(int* idx);
+  Result<size_t> GetLeaderMasterIndex();
 
   // Return a non-leader master index
-  CHECKED_STATUS GetFirstNonLeaderMasterIndex(int* idx);
+  Result<size_t> GetFirstNonLeaderMasterIndex();
 
-  Result<int> GetTabletLeaderIndex(const std::string& tablet_id);
+  Result<size_t> GetTabletLeaderIndex(const std::string& tablet_id);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
@@ -301,16 +298,16 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS WaitForLeaderCommitTermAdvance();
 
   // This API waits for the commit indices of all the master peers to reach the target index.
-  CHECKED_STATUS WaitForMastersToCommitUpTo(int target_index);
+  CHECKED_STATUS WaitForMastersToCommitUpTo(int64_t target_index);
 
   // If this cluster is configured for a single non-distributed master, return the single master or
   // NULL if the master is not started. Exits with a CHECK failure if there are multiple masters.
   ExternalMaster* master() const;
 
   // Return master at 'idx' or NULL if the master at 'idx' has not been started.
-  ExternalMaster* master(int idx) const;
+  ExternalMaster* master(size_t idx) const;
 
-  ExternalTabletServer* tablet_server(int idx) const;
+  ExternalTabletServer* tablet_server(size_t idx) const;
 
   // Return ExternalTabletServer given its UUID. If not found, returns NULL.
   ExternalTabletServer* tablet_server_by_uuid(const std::string& uuid) const;
@@ -331,11 +328,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Get tablet server host.
   HostPort pgsql_hostport(int node_index) const;
 
-  int num_tablet_servers() const {
+  size_t num_tablet_servers() const {
     return tablet_servers_.size();
   }
 
-  int num_masters() const {
+  size_t num_masters() const {
     return masters_.size();
   }
 
@@ -347,38 +344,35 @@ class ExternalMiniCluster : public MiniClusterBase {
   }
 
   // Get the master leader consensus proxy.
-  std::shared_ptr<consensus::ConsensusServiceProxy> GetLeaderConsensusProxy();
-
-  // Get the master leader master service proxy.
-  std::shared_ptr<master::MasterServiceProxy> GetLeaderMasterProxy();
+  consensus::ConsensusServiceProxy GetLeaderConsensusProxy();
 
   // Get the given master's consensus proxy.
-  std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(ExternalDaemon* daemon);
+  consensus::ConsensusServiceProxy GetConsensusProxy(ExternalDaemon* daemon);
 
   template <class T>
-  std::shared_ptr<T> GetProxy(ExternalDaemon* daemon);
+  T GetProxy(ExternalDaemon* daemon);
 
   template <class T>
-  std::shared_ptr<T> GetTServerProxy(int i) {
+  T GetTServerProxy(size_t i) {
     return GetProxy<T>(tablet_server(i));
   }
 
   template <class T>
-  std::shared_ptr<T> GetMasterProxy(int i) {
-    return GetProxy<T>(master(i));
+  T GetMasterProxy() {
+    CHECK_EQ(masters_.size(), 1);
+    return GetMasterProxy<T>(0);
   }
 
   template <class T>
-  std::shared_ptr<T> GetLeaderMasterProxy() {
-    return GetProxy<T>(GetLeaderMaster());
+  T GetMasterProxy(size_t idx) {
+    CHECK_LT(idx, masters_.size());
+    return GetProxy<T>(master(idx));
   }
 
-  // If the cluster is configured for a single non-distributed master, return a proxy to that
-  // master. Requires that the single master is running.
-  std::shared_ptr<master::MasterServiceProxy> master_proxy();
-
-  // Returns an RPC proxy to the master at 'idx'. Requires that the master at 'idx' is running.
-  std::shared_ptr<master::MasterServiceProxy> master_proxy(int idx);
+  template <class T>
+  T GetLeaderMasterProxy() {
+    return GetProxy<T>(GetLeaderMaster());
+  }
 
   // Returns an generic proxy to the master at 'idx'. Requires that the master at 'idx' is running.
   std::shared_ptr<server::GenericServiceProxy> master_generic_proxy(int idx) const;
@@ -389,7 +383,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Wait until the number of registered tablet servers reaches the given count on at least one of
   // the running masters.  Returns Status::TimedOut if the desired count is not achieved with the
   // given timeout.
-  CHECKED_STATUS WaitForTabletServerCount(int count, const MonoDelta& timeout);
+  CHECKED_STATUS WaitForTabletServerCount(size_t count, const MonoDelta& timeout);
 
   // Runs gtest assertions that no servers have crashed.
   void AssertNoCrashes();
@@ -414,7 +408,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
 
-  CHECKED_STATUS WaitForTSToCrash(int index, const MonoDelta& timeout = MonoDelta::FromSeconds(60));
+  CHECKED_STATUS WaitForTSToCrash(
+      size_t index, const MonoDelta& timeout = MonoDelta::FromSeconds(60));
 
   // Sets the given flag on the given daemon, which must be running.
   //
@@ -475,7 +470,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::string GetClusterDataDirName() const;
 
   // Helper function to get a leader or (random) follower index
-  CHECKED_STATUS GetPeerMasterIndex(int* idx, bool is_leader);
+  Result<size_t> GetPeerMasterIndex(bool is_leader);
 
   // API to help update the cluster state (rpc ports)
   CHECKED_STATUS AddMaster(ExternalMaster* master);
@@ -512,7 +507,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // This variable is incremented every time a new master is spawned (either in shell mode or create
   // mode). Avoids reusing an index of a killed/removed master. Useful for master side logging.
-  int add_new_master_at_;
+  size_t add_new_master_at_;
 
   std::vector<scoped_refptr<ExternalMaster> > masters_;
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
@@ -709,7 +704,7 @@ class ScopedResumeExternalDaemon {
 class ExternalMaster : public ExternalDaemon {
  public:
   ExternalMaster(
-    int master_index,
+    size_t master_index,
     rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const std::string& exe,
@@ -737,7 +732,7 @@ class ExternalMaster : public ExternalDaemon {
 class ExternalTabletServer : public ExternalDaemon {
  public:
   ExternalTabletServer(
-      int tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
+      size_t tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
       const std::string& exe, const std::string& data_dir, uint16_t num_drives,
       std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
       uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,
@@ -838,8 +833,8 @@ struct MasterComparator {
 };
 
 template <class T>
-std::shared_ptr<T> ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
-  return std::make_shared<T>(proxy_cache_.get(), daemon->bound_rpc_addr());
+T ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
+  return T(proxy_cache_.get(), daemon->bound_rpc_addr());
 }
 
 CHECKED_STATUS RestartAllMasters(ExternalMiniCluster* cluster);

@@ -46,7 +46,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/master-test-util.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 
@@ -134,7 +134,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
                          ->GetTabletMetricsEntity();
       return prototype.Instantiate(metrics)->value();
     };
-    int before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+    auto before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     LOG(INFO) << "Begin calculating sys catalog rows inserted";
 
     // Add a tablet, make sure it reports itself.
@@ -151,13 +151,13 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
               locs.replicas(0).ts_info().permanent_uuid();
 
     LOG(INFO) << "Finish calculating sys catalog rows inserted";
-    int after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+    auto after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     // Check that we inserted the right number of rows for the first table:
     // - 2 for the namespace
     // - 1 for the table
     // - 3 * FLAGS_yb_num_shards_per_tserver for the tablets:
     //    PREPARING, first heartbeat, leader election heartbeat
-    int expected_rows = 2 + 1 + FLAGS_yb_num_shards_per_tserver * 3;
+    int64_t expected_rows = 2 + 1 + FLAGS_yb_num_shards_per_tserver * 3;
     EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
 
     // Add another tablet, make sure it is reported via incremental.

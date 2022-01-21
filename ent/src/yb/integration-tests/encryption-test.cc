@@ -23,7 +23,6 @@
 #include "yb/integration-tests/cluster_verifier.h"
 
 #include "yb/master/encryption_manager.h"
-#include "yb/master/master.pb.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -61,11 +60,11 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
 
   bool enable_ysql() override { return false; }
 
-  int num_tablet_servers() override {
+  size_t num_tablet_servers() override {
     return 3;
   }
 
-  int num_masters() override {
+  size_t num_masters() override {
     return 3;
   }
 
@@ -170,7 +169,7 @@ TEST_F(EncryptionTest, MasterLeaderRestart) {
   CreateAdminClient();
   ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   // Restart the tablet servers and make sure they can contact the new master leader for the key.
-  for (int i = 0; i < external_mini_cluster()->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < external_mini_cluster()->num_tablet_servers(); i++) {
     external_mini_cluster()->tablet_server(i)->Shutdown();
     CHECK_OK(external_mini_cluster()->tablet_server(i)->Restart());
     SleepFor(MonoDelta::FromSeconds(5));\
@@ -187,7 +186,7 @@ TEST_F(EncryptionTest, MasterLeaderRestart) {
 
 TEST_F(EncryptionTest, AllMastersRestart) {
   WriteWorkload(0, kNumKeys);
-  for (int i = 0; i < external_mini_cluster()->num_masters(); i++) {
+  for (size_t i = 0; i < external_mini_cluster()->num_masters(); i++) {
     external_mini_cluster()->master(i)->Shutdown();
     CHECK_OK(external_mini_cluster()->master(i)->Restart());
   }
@@ -201,7 +200,7 @@ TEST_F(EncryptionTest, AllMastersRestart) {
 
 TEST_F(EncryptionTest, RollingMasterRestart) {
   WriteWorkload(0, kNumKeys);
-  for (int i = 0; i < external_mini_cluster()->num_masters(); i++) {
+  for (size_t i = 0; i < external_mini_cluster()->num_masters(); i++) {
     external_mini_cluster()->master(i)->Shutdown();
     CHECK_OK(external_mini_cluster()->master(i)->Restart());
     ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());

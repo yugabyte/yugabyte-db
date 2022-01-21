@@ -11,6 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellResponse;
@@ -18,17 +19,10 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import play.libs.Json;
-
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import javax.inject.Inject;
-
 import java.util.List;
 import java.util.Map;
-import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 
 @Slf4j
 public class BackupTable extends AbstractTaskBase {
@@ -65,6 +59,7 @@ public class BackupTable extends AbstractTaskBase {
           for (BackupTableParams backupParams : taskParams().backupList) {
             backupParams.backupUuid = taskParams().backupUuid;
             ShellResponse response = tableManager.createBackup(backupParams);
+            processShellResponse(response);
             JsonNode jsonNode = null;
             try {
               jsonNode = Json.parse(response.message);
@@ -105,7 +100,8 @@ public class BackupTable extends AbstractTaskBase {
     } catch (Exception e) {
       log.error("Errored out with: " + e);
       backup.transitionState(Backup.BackupState.Failed);
-      throw new RuntimeException(e);
+      // Do not lose the actual exception.
+      Throwables.propagate(e);
     }
   }
 }

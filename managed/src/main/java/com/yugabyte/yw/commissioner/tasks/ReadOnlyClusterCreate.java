@@ -10,14 +10,17 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
 import javax.inject.Inject;
@@ -25,6 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 
 // Tracks the read only cluster create intent within an existing universe.
 @Slf4j
+@Abortable
+@Retryable
 public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
   @Inject
@@ -41,16 +46,26 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
-      preTaskActions();
-
-      // Set the correct node names for all to-be-added nodes.
-      setNodeNames(universe);
-
-      // Update the user intent.
-      universe = writeUserIntentToUniverse(true);
-      updateOnPremNodeUuids(universe);
+      Universe universe =
+          lockUniverseForUpdate(
+              taskParams().expectedUniverseVersion,
+              u -> {
+                if (isFirstTryForTask(taskParams())) {
+                  preTaskActions(u);
+                  // Set all the in-memory node names.
+                  setNodeNames(u);
+                  // Set non on-prem node UUIDs.
+                  setCloudNodeUuids(u);
+                  // Update on-prem node UUIDs.
+                  updateOnPremNodeUuidsOnTaskParams();
+                  // Set the prepared data to universe in-memory.
+                  setUserIntentToUniverse(u, taskParams(), true);
+                  // There is a rare possibility that this succeeds and
+                  // saving the Universe fails. It is ok because the retry
+                  // will just fail.
+                  updateTaskDetailsInDB(taskParams());
+                }
+              });
 
       // Sanity checks for clusters list validity are performed in the controller.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);
@@ -59,12 +74,11 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // There should be no masters in read only clusters.
       if (!PlacementInfoUtil.getMastersToProvision(readOnlyNodes).isEmpty()) {
         String errMsg = "Cannot have master nodes in read-only cluster.";
-        log.error(errMsg + "Nodes : " + readOnlyNodes);
+        log.error("{} Nodes: {}", errMsg, readOnlyNodes);
         throw new IllegalArgumentException(errMsg);
       }
 
-      Collection<NodeDetails> nodesToProvision =
-          PlacementInfoUtil.getNodesToProvision(readOnlyNodes);
+      Set<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(readOnlyNodes);
 
       if (nodesToProvision.isEmpty()) {
         String errMsg = "Cannot have empty nodes to provision in read-only cluster.";
@@ -72,33 +86,19 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         throw new IllegalArgumentException(errMsg);
       }
 
-      // perform preflight checks for only readonly cluster
-      performUniversePreflightChecks(Collections.singletonList(cluster));
+      // Create preflight node check tasks for on-prem nodes.
+      createPreflightNodeCheckTasks(universe, Collections.singletonList(cluster));
 
-      // Create the required number of nodes in the appropriate locations.
-      createCreateServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-      // Get all information about the nodes of the cluster. for ex., private ip address.
-      createServerInfoTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-      // Provision the nodes of the cluster so Yugabyte can be deployed.
-      createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-      // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(nodesToProvision, true /* isShell */)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      // Provision the nodes.
+      // State checking is enabled because the subtasks are not idempotent.
+      createProvisionNodeTasks(
+          universe, nodesToProvision, true /* isShell */, false /* ignore node status check */);
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
 
-      createGFlagsOverrideTasks(newTservers, ServerType.TSERVER);
-
       // Start the tservers in the clusters.
-      createStartTServersTasks(newTservers).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Wait for all tablet servers to be responsive.
-      createWaitForServersTasks(newTservers, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createStartTserverProcessTasks(newTservers);
 
       // Set the node state to live.
       createSetNodeStateTasks(newTservers, NodeDetails.NodeState.Live)

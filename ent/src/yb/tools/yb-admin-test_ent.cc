@@ -21,7 +21,6 @@
 
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 
-#include "yb/master/master.pb.h"
 #include "yb/master/master_backup.proxy.h"
 
 #include "yb/rpc/secure_stream.h"
@@ -58,16 +57,16 @@ using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
-using master::MasterBackupServiceProxy;
+using master::MasterBackupProxy;
 using master::SysCDCStreamEntryPB;
 using master::SysSnapshotEntryPB;
 using rpc::RpcController;
 
 class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
  protected:
-  Result<MasterBackupServiceProxy*> BackupServiceProxy() {
+  Result<MasterBackupProxy*> BackupServiceProxy() {
     if (!backup_service_proxy_) {
-      backup_service_proxy_.reset(new MasterBackupServiceProxy(
+      backup_service_proxy_.reset(new MasterBackupProxy(
           &client_->proxy_cache(),
           VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr())));
     }
@@ -128,7 +127,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   }
 
   Result<ListSnapshotsResponsePB> WaitForAllSnapshots(
-    MasterBackupServiceProxy* const alternate_proxy = nullptr) {
+    MasterBackupProxy* const alternate_proxy = nullptr) {
     auto proxy = alternate_proxy;
     if (!proxy) {
       proxy = VERIFY_RESULT(BackupServiceProxy());
@@ -153,7 +152,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
 
   Result<string> GetCompletedSnapshot(int num_snapshots = 1,
                                       int idx = 0,
-                                      MasterBackupServiceProxy* const proxy = nullptr) {
+                                      MasterBackupProxy* const proxy = nullptr) {
     auto resp = VERIFY_RESULT(WaitForAllSnapshots(proxy));
 
     if (resp.snapshots_size() != num_snapshots) {
@@ -199,7 +198,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   void DoTestExportImportIndexSnapshot(Transactional transactional);
 
  private:
-  std::unique_ptr<MasterBackupServiceProxy> backup_service_proxy_;
+  std::unique_ptr<MasterBackupProxy> backup_service_proxy_;
 };
 
 TEST_F(AdminCliTest, TestNonTLS) {
@@ -704,9 +703,9 @@ class XClusterAdminCliTest : public AdminCliTest {
     return Status::OK();
   }
 
-  Result<MasterBackupServiceProxy*> ProducerBackupServiceProxy() {
+  Result<MasterBackupProxy*> ProducerBackupServiceProxy() {
     if (!producer_backup_service_proxy_) {
-      producer_backup_service_proxy_.reset(new MasterBackupServiceProxy(
+      producer_backup_service_proxy_.reset(new MasterBackupProxy(
           &producer_cluster_client_->proxy_cache(),
           VERIFY_RESULT(producer_cluster_->GetLeaderMasterBoundRpcAddr())));
     }
@@ -719,7 +718,7 @@ class XClusterAdminCliTest : public AdminCliTest {
   MiniClusterOptions opts;
 
  private:
-  std::unique_ptr<MasterBackupServiceProxy> producer_backup_service_proxy_;
+  std::unique_ptr<MasterBackupProxy> producer_backup_service_proxy_;
 };
 
 TEST_F(XClusterAdminCliTest, TestSetupUniverseReplication) {

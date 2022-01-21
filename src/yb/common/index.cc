@@ -20,6 +20,8 @@
 #include "yb/common/index_column.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/result.h"
 
 using std::vector;
@@ -120,8 +122,8 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   for (const auto& column : columns_) {
     column.ToPB(pb->add_columns());
   }
-  pb->set_hash_column_count(hash_column_count_);
-  pb->set_range_column_count(range_column_count_);
+  pb->set_hash_column_count(narrow_cast<uint32_t>(hash_column_count_));
+  pb->set_range_column_count(narrow_cast<uint32_t>(range_column_count_));
   for (const auto& id : indexed_hash_column_ids_) {
     pb->add_indexed_hash_column_ids(id);
   }
@@ -219,15 +221,15 @@ bool IndexInfo::CheckColumnDependency(ColumnId column_id) const {
 
   if (where_predicate_spec_) {
     for (auto indexed_col_id : where_predicate_spec_->column_ids()) {
-      if (indexed_col_id == column_id) return true;
+      if (ColumnId(indexed_col_id) == column_id) return true;
     }
   }
 
   return false;
 }
 
-int32_t IndexInfo::FindKeyIndex(const string& key_expr_name) const {
-  for (int32_t idx = 0; idx < key_column_count(); idx++) {
+boost::optional<size_t> IndexInfo::FindKeyIndex(const string& key_expr_name) const {
+  for (size_t idx = 0; idx < key_column_count(); idx++) {
     const auto& col = columns_[idx];
     if (!col.column_name.empty() && key_expr_name.find(col.column_name) != key_expr_name.npos) {
       // Return the found key column that is referenced by the expression.
@@ -235,7 +237,7 @@ int32_t IndexInfo::FindKeyIndex(const string& key_expr_name) const {
     }
   }
 
-  return -1;
+  return boost::none;
 }
 
 std::string IndexInfo::ToString() const {

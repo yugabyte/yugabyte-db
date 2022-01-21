@@ -28,7 +28,7 @@
 #include "yb/integration-tests/redis_table_test_base.h"
 
 #include "yb/master/flush_manager.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_admin.pb.h"
 
 #include "yb/rpc/io_thread_pool.h"
 
@@ -64,11 +64,11 @@ DECLARE_bool(TEST_tserver_timeout);
 DECLARE_bool(TEST_enable_backpressure_mode_for_testing);
 DECLARE_bool(yedis_enable_flush);
 DECLARE_int32(redis_service_yb_client_timeout_millis);
-DECLARE_int32(redis_max_value_size);
-DECLARE_int32(redis_max_command_size);
+DECLARE_uint64(redis_max_value_size);
+DECLARE_uint64(redis_max_command_size);
 DECLARE_int32(redis_password_caching_duration_ms);
-DECLARE_int32(rpc_max_message_size);
-DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
 
@@ -340,7 +340,7 @@ class TestRedisService : public RedisTableTestBase {
   CHECKED_STATUS Send(const std::string& cmd);
 
   CHECKED_STATUS SendCommandAndGetResponse(
-      const string& cmd, int expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
+      const string& cmd, size_t expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
 
   size_t CountSessions(const GaugePrototype<uint64_t>& proto) {
     constexpr uint64_t kInitialValue = 0UL;
@@ -862,8 +862,7 @@ void TestRedisService::TearDown() {
 
 Status TestRedisService::Send(const std::string& cmd) {
   // Send the command.
-  int32_t bytes_written = 0;
-  EXPECT_OK(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
+  auto bytes_written = EXPECT_RESULT(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length()));
 
   EXPECT_EQ(cmd.length(), bytes_written);
 
@@ -871,19 +870,18 @@ Status TestRedisService::Send(const std::string& cmd) {
 }
 
 Status TestRedisService::SendCommandAndGetResponse(
-    const string& cmd, int expected_resp_length, int timeout_in_millis) {
+    const string& cmd, size_t expected_resp_length, int timeout_in_millis) {
   RETURN_NOT_OK(Send(cmd));
 
   // Receive the response.
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_in_millis));
-  size_t bytes_read = 0;
   resp_.resize(expected_resp_length);
   if (expected_resp_length) {
     memset(resp_.data(), 0, expected_resp_length);
   }
-  RETURN_NOT_OK(client_sock_.BlockingRecv(
-      resp_.data(), expected_resp_length, &bytes_read, deadline));
+  auto bytes_read = VERIFY_RESULT(client_sock_.BlockingRecv(
+      resp_.data(), expected_resp_length, deadline));
   resp_.resize(bytes_read);
   if (expected_resp_length != bytes_read) {
     return STATUS(

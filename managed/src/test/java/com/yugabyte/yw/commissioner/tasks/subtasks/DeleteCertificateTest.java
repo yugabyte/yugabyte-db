@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -36,12 +37,9 @@ public class DeleteCertificateTest extends FakeDBApplication {
 
   @Before
   public void setUp() throws IOException, NoSuchAlgorithmException {
-    String certificate = "certificates/ca.crt";
-    File certFile = new File(certificate);
-    certFile.getParentFile().mkdirs();
-    certFile.createNewFile();
+    String certificate = createTempFile("delete_certificate_test", "ca.crt", "test data");
 
-    certFolder = certFile.getParentFile();
+    certFolder = new File(certificate).getParentFile();
     defaultCustomer = ModelFactory.testCustomer();
     usedCertificateInfo =
         ModelFactory.createCertificateInfo(
@@ -60,9 +58,6 @@ public class DeleteCertificateTest extends FakeDBApplication {
 
   @After
   public void tearDown() {
-    if (certFolder.exists()) {
-      certFolder.delete();
-    }
     universe.delete();
     defaultCustomer.delete();
     usedCertificateInfo.delete();

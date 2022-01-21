@@ -44,6 +44,7 @@
 #include "yb/common/common_net.pb.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"

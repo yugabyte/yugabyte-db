@@ -19,8 +19,7 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 
@@ -68,7 +67,7 @@ class PlacementInfoTest : public YBTest {
 
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start(tserver_opts));
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       std::string ts_uuid = cluster_->mini_tablet_server(i)->server()->fs_manager()->uuid();
       ts_uuid_to_index_.emplace(ts_uuid, i);
     }
@@ -77,7 +76,7 @@ class PlacementInfoTest : public YBTest {
     rpc::MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new master::MasterServiceProxy(
+    proxy_.reset(new master::MasterClientProxy(
         &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr()));
 
     // Create the table.
@@ -158,7 +157,7 @@ class PlacementInfoTest : public YBTest {
 
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
-  std::unique_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<master::MasterClientProxy> proxy_;
   std::unique_ptr<rpc::Messenger> client_messenger_;
   std::map<std::string, int> ts_uuid_to_index_;
   std::unique_ptr<YBTableName> table_name_;

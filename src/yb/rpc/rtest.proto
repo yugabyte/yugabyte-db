@@ -35,9 +35,10 @@ syntax = "proto2";
 package yb.rpc_test;
 
 import "google/protobuf/any.proto";
+import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/rpc_header.proto";
 import "yb/rpc/rtest_diff_package.proto";
-import "yb/rpc/lightweight_message.proto";
+import "yb/rpc/service.proto";
 
 message AddRequestPB {
   required uint32 x = 1;
@@ -146,6 +147,21 @@ service CalculatorService {
   rpc Lightweight(LightweightRequestPB) returns (LightweightResponsePB) {
     option (yb.rpc.lightweight_method).sides = SERVICE;
   };
+}
+
+message ConcatRequestPB {
+  optional string lhs = 1;
+  optional string rhs = 2;
+}
+
+message ConcatResponsePB {
+  optional string result = 1;
+}
+
+service AbacusService {
+  option (yb.rpc.custom_service_name) = "yb.rpc_test.CalculatorService";
+
+  rpc Concat(ConcatRequestPB) returns (ConcatResponsePB);
 }
 
 enum LightweightEnum {

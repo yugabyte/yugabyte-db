@@ -54,6 +54,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
@@ -240,7 +241,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // 'seq_num' - only remove tablets unchanged since the acknowledged report sequence number.
   // 'updates' - explicitly ACK'd updates from the Master, may be a subset of request tablets.
   // 'dirty_check' - DEBUG. Confirm we've processed all dirty tablets after a full sweep.
-  void MarkTabletReportAcknowledged(int32_t seq_num,
+  void MarkTabletReportAcknowledged(uint32_t seq_num,
                                     const master::TabletReportUpdatesPB& updates,
                                     bool dirty_check = false);
 
@@ -276,7 +277,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void UnmarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
 
   // Returns the number of tablets in the "dirty" map, for use by unit tests.
-  int GetNumDirtyTabletsForTests() const;
+  size_t TEST_GetNumDirtyTablets() const;
 
   // Return the number of tablets in RUNNING or BOOTSTRAPPING state.
   int GetNumLiveTablets() const;

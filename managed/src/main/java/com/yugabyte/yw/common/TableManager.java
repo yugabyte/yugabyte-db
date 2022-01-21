@@ -100,8 +100,7 @@ public class TableManager extends DevopsBase {
         commandArgs.add(universe.getTserverHTTPAddresses());
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
-        if (userIntent.enableYSQLAuth
-            || userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
+        if (userIntent.isYSQLAuthEnabled()) {
           commandArgs.add("--ysql_enable_auth");
         }
         commandArgs.add("--ysql_port");
@@ -131,6 +130,9 @@ public class TableManager extends DevopsBase {
               commandArgs.add("ysql." + taskParams.getKeyspace());
             } else {
               commandArgs.add(taskParams.getKeyspace());
+            }
+            if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.pg_based")) {
+              commandArgs.add("--pg_based_backup");
             }
           }
         } else if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {

@@ -23,7 +23,6 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -576,7 +575,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
     req_.mutable_index_info()->CopyFrom(table_lock->pb.index_info());
   }
   auto& req_schedules = *req_.mutable_snapshot_schedules();
-  req_schedules.Reserve(snapshot_schedules.size());
+  req_schedules.Reserve(narrow_cast<int>(snapshot_schedules.size()));
   for (const auto& id : snapshot_schedules) {
     req_schedules.Add()->assign(id.AsSlice().cdata(), id.size());
   }
@@ -800,7 +799,7 @@ bool AsyncAlterTable::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
                       << tablet_->tablet_id() << " waiting for a read lock.";
 
-  tserver::ChangeMetadataRequestPB req;
+  tablet::ChangeMetadataRequestPB req;
   {
     auto l = table_->LockForRead();
     VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
@@ -842,7 +841,7 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
       << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
       << " version " << schema_version_ << " waiting for a read lock.";
 
-  tserver::ChangeMetadataRequestPB req;
+  tablet::ChangeMetadataRequestPB req;
   {
     auto l = table_->LockForRead();
     VLOG_WITH_PREFIX(1)

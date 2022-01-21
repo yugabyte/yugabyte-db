@@ -89,7 +89,7 @@ class UniverseDetail extends Component {
       }
     }
 
-    this.props.bindShortcut(['ctrl+e', 'e'], this.onEditUniverseButtonClick);
+    this.props.bindShortcut(['ctrl+e'], this.onEditUniverseButtonClick);
 
     if (this.props.location.pathname !== '/universes/create') {
       let uuid = this.props.uuid;
@@ -440,6 +440,10 @@ class UniverseDetail extends Component {
               isCommunityEdition={!!customer.INSECURE_apiToken}
               fetchCustomerTasks={this.props.fetchCustomerTasks}
               refreshUniverseData={this.getUniverseInfo}
+              abortCurrentTask={this.props.abortCurrentTask}
+              hideTaskAbortModal={this.props.hideTaskAbortModal}
+              showTaskAbortModal={this.props.showTaskAbortModal}
+              visibleModal={visibleModal}
             />
           </Tab.Pane>
         )

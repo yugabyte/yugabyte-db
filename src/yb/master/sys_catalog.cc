@@ -70,9 +70,9 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/write_operation.h"
@@ -81,6 +81,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -139,7 +140,7 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
-DEFINE_int32(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
+DEFINE_uint64(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
@@ -439,14 +440,14 @@ void SysCatalogTable::SysCatalogStateChanged(
     // been a ROLE_CHANGE, thus old_config must have exactly one peer in transition (PRE_VOTER or
     // PRE_OBSERVER) and new_config should have none.
     if (new_count == old_count) {
-      int old_config_peers_transition_count =
+      auto old_config_peers_transition_count =
           CountServersInTransition(context->change_record.old_config());
-      if ( old_config_peers_transition_count != 1) {
+      if (old_config_peers_transition_count != 1) {
         LOG(FATAL) << "Expected old config to have one server in transition (PRE_VOTER or "
                    << "PRE_OBSERVER), but found " << old_config_peers_transition_count
                    << ". Config: " << context->change_record.old_config().ShortDebugString();
       }
-      int new_config_peers_transition_count =
+      auto new_config_peers_transition_count =
           CountServersInTransition(context->change_record.new_config());
       if (new_config_peers_transition_count != 0) {
         LOG(FATAL) << "Expected new config to have no servers in transition (PRE_VOTER or "
@@ -673,14 +674,13 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   }
 
   auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation = std::make_unique<tablet::WriteOperation>(
+  auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
       tablet_peer()->tablet(), resp.get());
-  operation->set_client_request(&writer->req());
-  operation->set_completion_callback(
-      tablet::MakeLatchOperationCompletionCallback(latch, resp));
+  query->set_client_request(writer->req());
+  query->set_callback(tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
-  tablet_peer()->WriteAsync(std::move(operation));
+  tablet_peer()->WriteAsync(std::move(query));
   peer_write_count->Increment();
 
   {
@@ -924,6 +924,72 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
   return tablespace_map;
 }
 
+Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
+    const uint32_t database_oid,
+    TableToTablespaceIdMap *table_tablespace_map) {
+  TRACE_EVENT0("master", "ReadTablespaceInfoFromPgYbTablegroup");
+
+  if (!table_tablespace_map)
+    return STATUS(InternalError, "tablegroup_tablespace_map not initialized");
+
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+
+  const auto &pg_yb_tablegroup_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+  const auto& pg_tablegroup_info =
+    VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_yb_tablegroup_id));
+
+  Schema projection;
+  RETURN_NOT_OK(pg_tablegroup_info->schema->CreateProjectionByNames({"oid", "grptablespace"},
+                &projection,
+                pg_tablegroup_info->schema->num_key_columns()));
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
+                                                   {} /* read_hybrid_time */,
+                                                   pg_yb_tablegroup_id));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("grptablespace")).rep();
+
+  QLTableRow source_row;
+
+  // Loop through the pg_yb_tablegroup catalog table. Each row in this table represents
+  // a tablegroup. Populate 'table_tablespace_map' with the tablegroup id and corresponding
+  // tablespace id for each tablegroup
+
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&source_row));
+    // Fetch the tablegroup oid.
+    const auto tablegroup_oid_col = source_row.GetValue(oid_col_id);
+    if (!tablegroup_oid_col) {
+      return STATUS(Corruption, "Could not read oid column from pg_yb_tablegroup");
+    }
+    const uint32_t tablegroup_oid = tablegroup_oid_col->uint32_value();
+
+    // Fetch the tablespace oid.
+    const auto& tablespace_oid_col = source_row.GetValue(tablespace_col_id);
+    if (!tablespace_oid_col) {
+      return STATUS(Corruption, "Could not read grptablespace column from pg_yb_tablegroup");
+    }
+    const uint32_t tablespace_oid = tablespace_oid_col->uint32_value();
+
+    const TablegroupId tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
+    const TableId parent_table_id = tablegroup_id + kTablegroupParentTableIdSuffix;
+    boost::optional<TablespaceId> tablespace_id = boost::none;
+
+    // If no valid tablespace found, then this tablegroup has no placement info
+    // associated with it. Tables associated with this tablegroup will not
+    // have any custom placement policy.
+    if (tablespace_oid != kInvalidOid) {
+      tablespace_id = GetPgsqlTablespaceId(tablespace_oid);
+    }
+    VLOG(2) << "Tablegroup oid: " << tablegroup_oid << " Tablespace oid: " << tablespace_oid;
+
+    const auto& ret = table_tablespace_map->emplace(parent_table_id, tablespace_id);
+    // This map should not have already had an element associated with this
+    // tablegroup.
+    DCHECK(ret.second);
+  }
+  return Status::OK();
+}
+
 Status SysCatalogTable::ReadPgClassInfo(
     const uint32_t database_oid,
     TableToTablespaceIdMap* table_to_tablespace_map) {
@@ -1146,7 +1212,7 @@ Status SysCatalogTable::CopyPgsqlTables(
   int batch_count = 0, total_count = 0, total_bytes = 0;
   const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
   const auto* meta = tablet->metadata();
-  for (int i = 0; i < source_table_ids.size(); ++i) {
+  for (size_t i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
     auto& target_table_id = target_table_ids[i];
 

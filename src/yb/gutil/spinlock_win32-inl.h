@@ -47,9 +47,12 @@
  * This file is a Win32-specific part of spinlock_internal.cc
  */
 
+#ifndef YB_GUTIL_SPINLOCK_WIN32_INL_H
+#define YB_GUTIL_SPINLOCK_WIN32_INL_H
 
 #include <windows.h>
 
+namespace yb {
 namespace base {
 namespace internal {
 
@@ -67,3 +70,6 @@ void SpinLockWake(volatile Atomic32 *w, bool all) {
 
 } // namespace internal
 } // namespace base
+} // namespace yb
+
+#endif  // YB_GUTIL_SPINLOCK_WIN32_INL_H

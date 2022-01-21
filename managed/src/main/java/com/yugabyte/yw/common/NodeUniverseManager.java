@@ -4,6 +4,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -13,10 +14,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
+  public static final int YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = 20;
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
+  public static final String CERTS_DIR = "/yugabyte-tls-config";
+  public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
 
   @Override
   protected String getCommandType() {
@@ -41,13 +46,39 @@ public class NodeUniverseManager extends DevopsBase {
     return executeNodeAction(UniverseNodeAction.RUN_COMMAND, universe, node, actionArgs);
   }
 
+  public synchronized ShellResponse runYbAdminCommand(
+      NodeDetails node, Universe universe, String ybAdminCommand, long timeoutSec) {
+    List<String> command = new ArrayList<>();
+    command.add("/usr/bin/timeout");
+    command.add(String.valueOf(timeoutSec));
+    command.add(getYbHomeDir(node, universe) + "/master/bin/yb-admin");
+    command.add("--master_addresses");
+    command.add(universe.getMasterAddresses());
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.enableNodeToNodeEncrypt) {
+      command.add("-certs_dir_name");
+      command.add(getCertsDir(universe, node));
+    }
+    command.add("-timeout_ms");
+    command.add(String.valueOf(TimeUnit.SECONDS.toMillis(timeoutSec)));
+    command.add(ybAdminCommand);
+    return runCommand(node, universe, String.join(" ", command));
+  }
+
   public synchronized ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand) {
+    return runYsqlCommand(node, universe, dbName, ysqlCommand, YSQL_COMMAND_DEFAULT_TIMEOUT_SEC);
+  }
+
+  public synchronized ShellResponse runYsqlCommand(
+      NodeDetails node, Universe universe, String dbName, String ysqlCommand, int timeoutSec) {
     List<String> command = new ArrayList<>();
+    command.add("timeout");
+    command.add(String.valueOf(timeoutSec));
     command.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     command.add("-h");
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-    if (cluster.userIntent.enableYSQLAuth) {
+    if (cluster.userIntent.isYSQLAuthEnabled()) {
       command.add("$(dirname \"$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
     } else {
       command.add(node.cloudInfo.private_ip);
@@ -154,6 +185,13 @@ public class NodeUniverseManager extends DevopsBase {
     commandArgs.addAll(actionArgs);
     LOG.debug("Executing command: " + commandArgs);
     return shellProcessHandler.run(commandArgs, new HashMap<>(), true);
+  }
+
+  private String getCertsDir(Universe universe, NodeDetails node) {
+    if (getNodeDeploymentMode(node, universe).equals(Common.CloudType.kubernetes)) {
+      return K8S_CERTS_DIR;
+    }
+    return getYbHomeDir(node, universe) + CERTS_DIR;
   }
 
   public enum UniverseNodeAction {

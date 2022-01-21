@@ -87,9 +87,6 @@ using client::YBTableName;
 using client::YBTableType;
 
 using yb::master::GetNamespaceInfoResponsePB;
-using yb::master::IsInitDbDoneRequestPB;
-using yb::master::IsInitDbDoneResponsePB;
-using yb::master::MasterServiceProxy;
 
 using yb::tserver::TServerSharedObject;
 
@@ -993,8 +990,8 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
     return false;
   }
   std::vector<Slice> ybctids;
-  const auto reserved_size = std::min(FLAGS_ysql_session_max_batch_size,
-                                      static_cast<int32_t>(fk_reference_intent_.size() + 1));
+  const auto reserved_size = std::min<size_t>(FLAGS_ysql_session_max_batch_size,
+                                              fk_reference_intent_.size() + 1);
   ybctids.reserve(reserved_size);
   ybctids.push_back(ybctid);
   // TODO(dmitry): In case number of keys for same table > FLAGS_ysql_session_max_batch_size

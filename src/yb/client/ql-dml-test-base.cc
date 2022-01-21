@@ -29,6 +29,8 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 
 #include "yb/server/clock.h"
@@ -202,7 +204,7 @@ void CreateTable(
 
 void InitIndex(
     Transactional transactional,
-    int indexed_column_index,
+    size_t indexed_column_index,
     bool use_mangled_names,
     const TableHandle& table,
     IndexInfoPB* index_info,
@@ -247,7 +249,7 @@ void InitIndex(
     }
   }
 
-  index_info->set_range_column_count(num_range_keys);
+  index_info->set_range_column_count(narrow_cast<uint32_t>(num_range_keys));
   TableProperties table_properties;
   table_properties.SetUseMangledColumnName(use_mangled_names);
 
@@ -273,8 +275,7 @@ void CreateIndex(
   const YBTableName index_name(YQL_DATABASE_CQL, table.name().namespace_name(),
       table.name().table_name() + '_' + schema.Column(indexed_column_index).name() + "_idx");
 
-  ASSERT_OK(index->Create(index_name, table->GetPartitionCount(),
-      client, &builder, &index_info));
+  ASSERT_OK(index->Create(index_name, table->GetPartitionCount(), client, &builder, &index_info));
 }
 
 void PrepareIndex(

@@ -68,7 +68,7 @@ struct EncryptionParams {
 
   static std::unique_ptr<EncryptionParams> NewEncryptionParams();
 
-  static CHECKED_STATUS IsValidKeySize(uint32_t size);
+  static CHECKED_STATUS IsValidKeySize(size_t size);
 
   bool Equals(const EncryptionParams& other);
 };
@@ -87,11 +87,11 @@ struct UniverseKeyParams {
 // Thread local buffer for any encryption operations.
 class EncryptionBuffer {
  public:
-  void* GetBuffer(uint32_t size_needed);
+  void* GetBuffer(size_t size_needed);
   ~EncryptionBuffer();
   static EncryptionBuffer* Get();
  private:
-  uint32_t size = 0;
+  size_t size = 0;
   void* buffer = nullptr;
 };
 

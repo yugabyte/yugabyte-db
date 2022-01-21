@@ -16,6 +16,8 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -25,6 +27,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.List;
@@ -41,7 +44,11 @@ import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
 
 @Slf4j
+@Abortable
+@Retryable
 public class CreateUniverse extends UniverseDefinitionTaskBase {
+
+  private static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
 
   @Inject
   protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -81,6 +88,25 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      boolean isYCQLAuthEnabled =
+          primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth;
+      boolean isYSQLAuthEnabled =
+          primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth;
+
+      // Store the passwords in the temporary variables first.
+      // DB does not store the actual passwords.
+      if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
+        if (isFirstTryForTask(taskParams())) {
+          if (isYCQLAuthEnabled) {
+            ycqlPassword = primaryCluster.userIntent.ycqlPassword;
+          }
+          if (isYSQLAuthEnabled) {
+            ysqlPassword = primaryCluster.userIntent.ysqlPassword;
+          }
+        }
+      }
+
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       // It returns the latest state of the Universe after saving.
@@ -89,6 +115,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
               taskParams().expectedUniverseVersion,
               u -> {
                 if (isFirstTryForTask(taskParams())) {
+                  // Fetch the task params from the DB to start from fresh on retry.
+                  // Otherwise, some operations like name assignment can fail.
+                  fetchTaskDetailsFromDB();
                   // Set all the in-memory node names.
                   setNodeNames(u);
                   // Select master nodes and apply isMaster flags immediately.
@@ -106,21 +135,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                 }
               });
 
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
-      boolean isYCQLAuthEnabled =
-          primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth;
-      boolean isYSQLAuthEnabled =
-          primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth;
-
       if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
         if (isFirstTryForTask(taskParams())) {
           if (isYCQLAuthEnabled) {
-            ycqlPassword = taskParams().getPrimaryCluster().userIntent.ycqlPassword;
             taskParams().getPrimaryCluster().userIntent.ycqlPassword =
                 Util.redactString(ycqlPassword);
           }
           if (isYSQLAuthEnabled) {
-            ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
             taskParams().getPrimaryCluster().userIntent.ysqlPassword =
                 Util.redactString(ysqlPassword);
           }
@@ -143,7 +164,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // TODO this can be moved to subtasks.
       validateNodeExistence(universe);
 
-      performUniversePreflightChecks(universe.getUniverseDetails().clusters);
+      // Create preflight node check tasks for on-prem nodes.
+      createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
@@ -193,7 +215,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      if (primaryCluster.userIntent.enableYSQL) {
+      if (primaryCluster.userIntent.enableYSQL
+          && CommonUtils.isReleaseEqualOrAfter(
+              MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
         // Create read-write test table
         List<NodeDetails> tserverLiveNodes =
             universe

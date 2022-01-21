@@ -44,6 +44,7 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/util.h"
 
@@ -501,7 +502,7 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(int64_t max_entries_to_read) {
 
     // Read and validate the entry header first.
     Status s;
-    if (offset + kEntryHeaderSize < read_up_to) {
+    if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) < read_up_to) {
       s = ReadEntryHeaderAndBatch(&offset, &tmp_buf, &current_batch);
     } else {
       s = STATUS(Corruption, Substitute("Truncated log entry at offset $0", offset));
@@ -558,9 +559,9 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(int64_t max_entries_to_read) {
 
     // Number of entries to extract from the protobuf repeated field because the ownership of those
     // entries will be transferred to the caller.
-    size_t num_entries_to_extract = 0;
+    int num_entries_to_extract = 0;
 
-    for (size_t i = 0; i < current_batch.entry_size(); ++i) {
+    for (int i = 0; i < current_batch.entry_size(); ++i) {
       result.entries.emplace_back(current_batch.mutable_entry(i));
       DCHECK_NE(current_batch.mono_time(), 0);
       LogEntryMetadata entry_metadata;
@@ -628,9 +629,9 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
   // We overlap the reads by the size of the header, so that if a header
   // spans chunks, we don't miss it.
   for (;
-       offset < file_size() - kEntryHeaderSize;
+       offset < implicit_cast<int64_t>(file_size() - kEntryHeaderSize);
        offset += kChunkSize - kEntryHeaderSize) {
-    int rem = std::min<int64_t>(file_size() - offset, kChunkSize);
+    auto rem = std::min<int64_t>(file_size() - offset, kChunkSize);
     Slice chunk;
     // If encryption is enabled, need to use checkpoint file to read pre-allocated file since
     // we want to preserve all 0s.
@@ -650,7 +651,7 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
     }
 
     // Check if this chunk has a valid entry header.
-    for (int off_in_chunk = 0;
+    for (size_t off_in_chunk = 0;
          off_in_chunk < chunk.size() - kEntryHeaderSize;
          off_in_chunk++) {
       const Slice potential_header = Slice(chunk.data() + off_in_chunk, kEntryHeaderSize);
@@ -669,7 +670,7 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
 }
 
 Status ReadableLogSegment::MakeCorruptionStatus(
-    int batch_number,
+    size_t batch_number,
     int64_t batch_offset,
     std::vector<int64_t>* recent_offsets,
     const std::vector<std::unique_ptr<LogEntryPB>>& entries,
@@ -688,7 +689,7 @@ Status ReadableLogSegment::MakeCorruptionStatus(
   if (!entries.empty()) {
     err.append("; Last log entries read:");
     const int kNumEntries = 4; // Include up to the last 4 entries in the segment.
-    for (int i = std::max(0, static_cast<int>(entries.size()) - kNumEntries);
+    for (size_t i = std::max(0, static_cast<int>(entries.size()) - kNumEntries);
         i < entries.size(); i++) {
       LogEntryPB* entry = entries[i].get();
       LogEntryTypePB type = entry->type();
@@ -867,8 +868,8 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
   uint8_t header_buf[kEntryHeaderSize];
 
   // First encode the length of the message.
-  uint32_t len = data.size();
-  InlineEncodeFixed32(&header_buf[0], len);
+  auto len = data.size();
+  InlineEncodeFixed32(&header_buf[0], narrow_cast<uint32_t>(len));
 
   // Then the CRC of the message.
   uint32_t msg_crc = crc::Crc32c(data.data(), data.size());
@@ -898,7 +899,7 @@ Status WritableLogSegment::Sync() {
 LogEntryBatchPB CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs) {
   LogEntryBatchPB result;
   result.set_mono_time(RestartSafeCoarseMonoClock().Now().ToUInt64());
-  result.mutable_entry()->Reserve(msgs.size());
+  result.mutable_entry()->Reserve(narrow_cast<int>(msgs.size()));
   for (const auto& msg_ptr : msgs) {
     LogEntryPB* entry_pb = result.add_entry();
     entry_pb->set_type(log::REPLICATE);

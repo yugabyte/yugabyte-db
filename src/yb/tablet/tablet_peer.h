@@ -50,15 +50,15 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/operations/operation_tracker.h"
-#include "yb/tablet/operations/write_operation_context.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_options.h"
-#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/write_query_context.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/semaphore.h"
@@ -129,7 +129,7 @@ struct TabletOnDiskSizeInfo {
 class TabletPeer : public consensus::ConsensusContext,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext,
-                   public WriteOperationContext {
+                   public WriteQueryContext {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
@@ -197,7 +197,7 @@ class TabletPeer : public consensus::ConsensusContext,
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
   // The operation_state is deallocated after use by this function.
-  void WriteAsync(std::unique_ptr<WriteOperation> operation);
+  void WriteAsync(std::unique_ptr<WriteQuery> query);
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
 
@@ -381,7 +381,7 @@ class TabletPeer : public consensus::ConsensusContext,
   TableType table_type();
 
   // Returns the number of segments in log_.
-  int GetNumLogSegments() const;
+  size_t GetNumLogSegments() const;
 
   // Might update the can_be_deleted_.
   bool CanBeDeleted();

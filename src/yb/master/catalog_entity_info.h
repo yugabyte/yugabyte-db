@@ -33,13 +33,14 @@
 #ifndef YB_MASTER_CATALOG_ENTITY_INFO_H
 #define YB_MASTER_CATALOG_ENTITY_INFO_H
 
-#include <mutex>
 #include <shared_mutex>
+#include <mutex>
 #include <vector>
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 
+#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/tasks_tracker.h"
@@ -530,6 +531,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
   bool UsesTablespacesForPlacement() const;
+
+  bool IsColocatedParentTable() const;
+  bool IsTablegroupParentTable() const;
+  bool IsColocatedUserTable() const;
 
   // Provides the ID of the tablespace that will be used to determine
   // where the tablets for this table should be placed when the table

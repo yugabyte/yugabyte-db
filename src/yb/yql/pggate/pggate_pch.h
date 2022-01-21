@@ -68,7 +68,6 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/container/stable_vector.hpp>
 #include <boost/core/demangle.hpp>
-#include <boost/core/enable_if.hpp>
 #include <boost/function.hpp>
 #include <boost/function/function_fwd.hpp>
 #include <boost/functional/hash.hpp>
@@ -99,7 +98,6 @@
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
-#include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/unordered_map.hpp>
@@ -109,18 +107,19 @@
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
+#include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
-#include <google/protobuf/extension_set.h>
+#include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/generated_message_table_driven.h>
 #include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map_entry.h>
+#include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
-#include <google/protobuf/message_lite.h>
 #include <google/protobuf/metadata.h>
 #include <google/protobuf/repeated_field.h>
-#include <google/protobuf/stubs/port.h>
-#include <google/protobuf/util/json_util.h>
-#include <google/protobuf/wire_format_lite.h>
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/unknown_field_set.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
@@ -155,7 +154,6 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/algorithm_util.h"
@@ -193,7 +191,6 @@
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
-#include "yb/util/memory/memory_usage.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/metrics_fwd.h"
@@ -205,10 +202,10 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/object_pool.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
+#include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"
@@ -238,7 +235,6 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tostring.h"
-#include "yb/util/trace.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/uint_set.h"
 #include "yb/util/ulimit.h"
