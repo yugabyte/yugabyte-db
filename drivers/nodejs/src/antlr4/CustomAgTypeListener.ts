@@ -168,7 +168,12 @@ class CustomAgTypeListener implements AgtypeListener, ParseTreeListener {
     this.objectInsider = []
     this.prevObject = undefined
     this.lastObject = undefined
+
+    if (!this.rootObject) {
+      this.rootObject = this.lastValue
+    }
     this.lastValue = undefined
+
     return this.rootObject
   }
 
