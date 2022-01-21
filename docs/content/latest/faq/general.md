@@ -3,6 +3,7 @@ title: FAQs about YugabyteDB
 headerTitle: General FAQ
 linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
+section: FAQ
 aliases:
   - /latest/faq/product/
   - /latest/introduction/overview/
@@ -13,8 +14,7 @@ aliases:
 menu:
   latest:
     identifier: faq-general
-    parent: faq
-    weight: 2710
+    weight: 2720
 isTocNested: false
 showAsideToc: true
 ---

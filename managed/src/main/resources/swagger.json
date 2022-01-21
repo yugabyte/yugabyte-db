@@ -1372,6 +1372,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
+        },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
           "type" : "string"
@@ -2540,6 +2544,12 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "description" : {
+          "description" : "Description",
+          "maxLength" : 2147483647,
+          "minLength" : 1,
+          "type" : "string"
+        },
         "endTime" : {
           "description" : "End time",
           "format" : "date-time",
@@ -2569,7 +2579,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "alertConfigurationFilter", "createTime", "customerUUID", "endTime", "name", "startTime" ],
+      "required" : [ "alertConfigurationFilter", "createTime", "customerUUID", "description", "endTime", "name", "startTime" ],
       "type" : "object"
     },
     "MaintenanceWindowApiFilter" : {
@@ -2906,6 +2916,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
+        },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
           "type" : "string"
@@ -3116,6 +3130,10 @@
           "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
