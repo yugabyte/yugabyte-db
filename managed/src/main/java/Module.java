@@ -142,14 +142,19 @@ public class Module extends AbstractModule {
   }
 
   @Provides
-  protected OidcClient<OidcProfile, OidcConfiguration> provideOidcClient() {
+  protected OidcClient<OidcProfile, OidcConfiguration> provideOidcClient(
+      RuntimeConfigFactory runtimeConfigFactory) {
     final OidcConfiguration oidcConfiguration = new OidcConfiguration();
 
-    if (config.getString("yb.security.type", "").equals("OIDC")) {
-      oidcConfiguration.setClientId(config.getString("yb.security.clientID", ""));
-      oidcConfiguration.setSecret(config.getString("yb.security.secret", ""));
-      oidcConfiguration.setScope(config.getString("yb.security.oidcScope", ""));
-      oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI", ""));
+    if (runtimeConfigFactory.globalRuntimeConf().getString("yb.security.type").equals("OIDC")) {
+      oidcConfiguration.setClientId(
+          runtimeConfigFactory.globalRuntimeConf().getString("yb.security.clientID"));
+      oidcConfiguration.setSecret(
+          runtimeConfigFactory.globalRuntimeConf().getString("yb.security.secret"));
+      oidcConfiguration.setScope(
+          runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcScope"));
+      oidcConfiguration.setDiscoveryURI(
+          runtimeConfigFactory.globalRuntimeConf().getString("yb.security.discoveryURI"));
       oidcConfiguration.setMaxClockSkew(3600);
       oidcConfiguration.setResponseType("code");
       return new OidcClient<>(oidcConfiguration);
