@@ -37,10 +37,6 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       subTaskGroupQueue.run();
 
-      if (shouldIncrementVersion()) {
-        getUniverse().incrementVersion();
-      }
-
     } catch (Exception e) {
       setXClusterConfigStatus(XClusterConfigStatusType.Failed);
       log.error("{} hit error : {}", getName(), e.getMessage());

@@ -5,6 +5,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
