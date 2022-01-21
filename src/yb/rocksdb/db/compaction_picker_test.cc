@@ -30,6 +30,7 @@
 
 #include "yb/util/size_literals.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/util/testutil.h"
 
 using namespace yb::size_literals;
 
@@ -42,7 +43,7 @@ class CountingLogger : public Logger {
   size_t log_count;
 };
 
-class CompactionPickerTest : public testing::Test {
+class CompactionPickerTest : public RocksDBTest {
  public:
   const Comparator* ucmp_;
   InternalKeyComparatorPtr icmp_;

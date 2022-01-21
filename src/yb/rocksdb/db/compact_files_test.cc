@@ -36,7 +36,7 @@
 
 namespace rocksdb {
 
-class CompactFilesTest : public testing::Test {
+class CompactFilesTest : public RocksDBTest {
  public:
   CompactFilesTest() {
     env_ = Env::Default();

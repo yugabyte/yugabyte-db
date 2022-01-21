@@ -30,6 +30,8 @@
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
 class IntComparator : public Comparator {
@@ -56,7 +58,7 @@ class IntComparator : public Comparator {
   void FindShortSuccessor(std::string* key) const override {}
 };
 
-class FileIndexerTest : public testing::Test {
+class FileIndexerTest : public RocksDBTest {
  public:
   FileIndexerTest()
       : kNumLevels(4), files(new std::vector<FileMetaData*>[kNumLevels]) {}

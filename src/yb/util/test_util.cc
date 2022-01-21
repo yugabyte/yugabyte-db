@@ -57,6 +57,7 @@ DEFINE_int32(test_random_seed, 0, "Random seed to use for randomized tests");
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(TEST_running_test);
+DECLARE_bool(never_fsync);
 
 using std::string;
 using strings::Substitute;
@@ -109,6 +110,8 @@ void YBTest::SetUp() {
   FLAGS_enable_tracing = true;
   FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
   FLAGS_TEST_running_test = true;
+  LOG(INFO) << "Setting FLAGS_never_sync";
+  FLAGS_never_fsync = true;
   for (const char* env_var_name : {
       "ASAN_OPTIONS",
       "LSAN_OPTIONS",

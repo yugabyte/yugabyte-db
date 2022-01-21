@@ -25,9 +25,11 @@
 
 #include "yb/rocksdb/env.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
-class WriteControllerTest : public testing::Test {};
+class WriteControllerTest : public RocksDBTest {};
 
 class TimeSetEnv : public EnvWrapper {
  public:

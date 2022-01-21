@@ -654,7 +654,7 @@ class FixedOrLessPrefixTransform : public SliceTransform {
   }
 };
 
-class HarnessTest : public testing::Test {
+class HarnessTest : public RocksDBTest {
  public:
   HarnessTest()
       : ioptions_(options_),
@@ -960,7 +960,7 @@ static bool Between(uint64_t val, uint64_t low, uint64_t high) {
 }
 
 // Tests against all kinds of tables
-class TableTest : public testing::Test {
+class TableTest : public RocksDBTest {
  public:
   const InternalKeyComparatorPtr& GetPlainInternalComparator(
       const Comparator* comp) {
@@ -981,7 +981,7 @@ class TableTest : public testing::Test {
 class GeneralTableTest : public TableTest {};
 class BlockBasedTableTest : public TableTest {};
 class PlainTableTest : public TableTest {};
-class TablePropertyTest : public testing::Test {};
+class TablePropertyTest : public RocksDBTest {};
 
 // This test serves as the living tutorial for the prefix scan of user collected
 // properties.
@@ -2236,7 +2236,7 @@ TEST_F(HarnessTest, RandomizedLongDB) {
 }
 #endif  // ROCKSDB_LITE
 
-class MemTableTest : public testing::Test {};
+class MemTableTest : public RocksDBTest {};
 
 TEST_F(MemTableTest, Simple) {
   InternalKeyComparator cmp(BytewiseComparator());
@@ -2498,11 +2498,7 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
   }
 }
 
-class PrefixTest : public testing::Test {
- public:
-  PrefixTest() : testing::Test() {}
-  ~PrefixTest() {}
-};
+class PrefixTest : public RocksDBTest {};
 
 namespace {
 // A simple PrefixExtractor that only works for test PrefixAndWholeKeyTest

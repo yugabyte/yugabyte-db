@@ -35,6 +35,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/random_util.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/util/tsan_util.h"
 
 namespace rocksdb {
@@ -64,7 +65,7 @@ struct TestComparator {
   }
 };
 
-class InlineSkipTest : public testing::Test {};
+class InlineSkipTest : public RocksDBTest {};
 
 TEST_F(InlineSkipTest, Empty) {
   Arena arena;

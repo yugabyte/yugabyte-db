@@ -56,6 +56,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(never_fsync);
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -220,6 +221,8 @@ class RaftConsensusTest : public YBTest {
   }
 
   void SetUp() override {
+    YBTest::SetUp();
+
     LogOptions options;
     string test_path = GetTestPath("test-peer-root");
 

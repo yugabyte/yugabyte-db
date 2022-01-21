@@ -51,7 +51,7 @@ namespace rocksdb {
 
 static const int kValueSize = 1000;
 
-class CorruptionTest : public testing::Test {
+class CorruptionTest : public RocksDBTest {
  public:
   test::ErrorEnv env_;
   std::string dbname_;

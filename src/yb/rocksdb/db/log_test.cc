@@ -60,7 +60,8 @@ static std::string RandomSkewedString(int i, Random* rnd) {
   return BigString(NumberString(i), rnd->Skewed(17));
 }
 
-class LogTest : public ::testing::TestWithParam<int> {
+class LogTest : public RocksDBTest,
+                public ::testing::WithParamInterface<int> {
  private:
   class StringSource : public SequentialFile {
    public:

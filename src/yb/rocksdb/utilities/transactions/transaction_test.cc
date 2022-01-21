@@ -42,7 +42,7 @@ using std::string;
 
 namespace rocksdb {
 
-class TransactionTest : public testing::Test {
+class TransactionTest : public RocksDBTest {
  public:
   TransactionDB* db;
   string dbname;

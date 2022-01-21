@@ -70,7 +70,7 @@ class EnvCounter : public EnvWrapper {
   atomic<int> num_new_writable_file_;
 };
 
-class ColumnFamilyTest : public testing::Test {
+class ColumnFamilyTest : public RocksDBTest {
  public:
   ColumnFamilyTest() : rnd_(139) {
     env_ = new EnvCounter(Env::Default());

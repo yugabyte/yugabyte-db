@@ -22,9 +22,11 @@
 #include <string>
 #include <gtest/gtest.h>
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
-class HistogramTest : public testing::Test {};
+class HistogramTest : public RocksDBTest {};
 
 TEST_F(HistogramTest, BasicOperation) {
   HistogramImpl histogram;

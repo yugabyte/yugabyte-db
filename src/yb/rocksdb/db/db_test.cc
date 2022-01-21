@@ -5266,7 +5266,7 @@ class DBWriter : public DBHolder {
 /*
  * This test is not reliable enough as it heavily depends on disk behavior.
  */
-TEST_F_EX(DBTest, RateLimitingTest, testing::Test) {
+TEST_F_EX(DBTest, RateLimitingTest, RocksDBTest) {
   DBWriter dbw;
 
   // # no rate limiting, initializing

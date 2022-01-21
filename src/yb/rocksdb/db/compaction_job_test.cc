@@ -82,7 +82,7 @@ void VerifyInitializationOfCompactionJobStats(
 }  // namespace
 
 // TODO(icanadi) Make it simpler once we mock out VersionSet
-class CompactionJobTest : public testing::Test {
+class CompactionJobTest : public RocksDBTest {
  public:
   CompactionJobTest()
       : env_(Env::Default()),

@@ -26,12 +26,13 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/test_util.h"
 
 namespace rocksdb {
 
-class MemEnvTest : public testing::Test {
+class MemEnvTest : public RocksDBTest {
  public:
   Env* env_;
   const EnvOptions soptions_;

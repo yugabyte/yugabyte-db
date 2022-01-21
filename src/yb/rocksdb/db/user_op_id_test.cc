@@ -107,7 +107,7 @@ std::string WriteBatchToString(const WriteBatch& b) {
 
 } // namespace
 
-class UserOpIdTest : public testing::Test {
+class UserOpIdTest : public RocksDBTest {
  protected:
   WriteBatch CreateDummyWriteBatch() {
     WriteBatch b;

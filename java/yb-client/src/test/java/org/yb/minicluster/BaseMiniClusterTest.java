@@ -138,7 +138,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   /** To customize, override and use {@code super} call. */
   protected Map<String, String> getTServerFlags() {
-    return new TreeMap<>();
+    return new TreeMap<String, String>();
   }
 
   /** Reset per-test settings to their default values, can be overridden to customize values. */

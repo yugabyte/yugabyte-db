@@ -28,7 +28,7 @@
 
 namespace rocksdb {
 
-class MergerTest : public testing::Test {
+class MergerTest : public RocksDBTest {
  public:
   MergerTest()
       : rnd_(3), merging_iterator_(nullptr), single_iterator_(nullptr) {}

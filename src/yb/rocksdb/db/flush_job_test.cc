@@ -42,7 +42,7 @@ namespace rocksdb {
 // TODO(icanadi) Mock out everything else:
 // 1. VersionSet
 // 2. Memtable
-class FlushJobTest : public testing::Test {
+class FlushJobTest : public RocksDBTest {
  public:
   FlushJobTest()
       : env_(Env::Default()),

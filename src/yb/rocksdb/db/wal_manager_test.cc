@@ -47,7 +47,7 @@ namespace rocksdb {
 
 // TODO(icanadi) mock out VersionSet
 // TODO(icanadi) move other WalManager-specific tests from db_test here
-class WalManagerTest : public testing::Test {
+class WalManagerTest : public RocksDBTest {
  public:
   WalManagerTest()
       : env_(new MockEnv(Env::Default())),

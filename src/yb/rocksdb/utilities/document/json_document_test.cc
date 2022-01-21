@@ -67,7 +67,7 @@ void AssertField(const JSONDocument& json, const std::string& field,
 }
 }  // namespace
 
-class JSONDocumentTest : public testing::Test {
+class JSONDocumentTest : public RocksDBTest {
  public:
   JSONDocumentTest()
   : rnd_(101)

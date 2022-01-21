@@ -36,6 +36,7 @@
 
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 bool FLAGS_random_key = false;
 bool FLAGS_use_set_based_memetable = false;
@@ -76,7 +77,7 @@ std::shared_ptr<DB> OpenDb(bool read_only = false) {
     return std::shared_ptr<DB>(db);
 }
 
-class PerfContextTest : public testing::Test {};
+class PerfContextTest : public RocksDBTest {};
 
 TEST_F(PerfContextTest, SeekIntoDeletion) {
   ASSERT_OK(DestroyDB(kDbName, Options()));

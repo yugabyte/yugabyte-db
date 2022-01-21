@@ -32,7 +32,7 @@
 
 namespace rocksdb {
 
-class ReduceLevelTest : public testing::Test {
+class ReduceLevelTest : public RocksDBTest {
  public:
   ReduceLevelTest() {
     dbname_ = test::TmpDir() + "/db_reduce_levels_test";
