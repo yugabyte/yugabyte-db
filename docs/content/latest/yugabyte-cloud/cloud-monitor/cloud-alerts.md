@@ -104,13 +104,9 @@ If CPU use is continuously higher than 80%, your workload may also have exceeded
 A notification is sent if database transaction metrics exceed the threshold, as follows:
 
 - Cluster queue (RPC) overflow and/or compaction overload.
-- Cluster exceeds 200 simultaneous YSQL connections.
+<!-- Cluster exceeds 200 simultaneous YSQL connections.-->
 
 The cluster (RPC) queue size is an indicator of the incoming traffic. If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors. This can cause performance degradation.
-
-Simultaneous YSQL connections are also an indicator of incoming traffic. Spikes in connections could indicate a security incident, such as a DDoS attack.
-
-Review the applications connecting to the database and how they spawn and clean up connections. If connections are opened but never closed, you can eventually exceed the connection limit. Additionally, you may need to implement some form of connection pooling.
 
 Read and write IOPS are evenly distributed across all the nodes in a cluster. If your user base is too large for your current configuration, consider scaling the cluster to support more transactions per second and a greater number of concurrent connections.
 
