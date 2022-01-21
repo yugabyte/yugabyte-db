@@ -20,6 +20,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -162,6 +163,11 @@ public class UpgradeUniverseControllerTest extends WithApplication {
         .thenReturn(
             ReleaseManager.ReleaseMetadata.create("1.0.0")
                 .withChartPath(TMP_CHART_PATH + "/uuct_yugabyte-1.0.0-helm.tar.gz"));
+    when(mockConfig.getString("yb.security.type")).thenReturn("");
+    when(mockConfig.getString("yb.security.clientID")).thenReturn("");
+    when(mockConfig.getString("yb.security.secret")).thenReturn("");
+    when(mockConfig.getString("yb.security.oidcScope")).thenReturn("");
+    when(mockConfig.getString("yb.security.discoveryURI")).thenReturn("");
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
