@@ -30,12 +30,13 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
-class AutoRollLoggerTest : public testing::Test {
+class AutoRollLoggerTest : public RocksDBTest {
  public:
   static void InitTestDb() {
 #ifdef OS_WIN

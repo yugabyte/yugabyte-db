@@ -24,7 +24,7 @@
 
 namespace rocksdb {
 
-class CompactionIteratorTest : public testing::Test {
+class CompactionIteratorTest : public RocksDBTest {
  public:
   CompactionIteratorTest() : cmp_(BytewiseComparator()), snapshots_({}) {}
 
