@@ -58,12 +58,12 @@ const OPTIONS = [
 //server list - TO DRY THE CODE
 const SERVER_LIST = [
   {
-    serverName: MASTER,
-    label: 'Add to Master'
-  },
-  {
     serverName: TSERVER,
     label: 'Add to T-Server'
+  },
+  {
+    serverName: MASTER,
+    label: 'Add to Master'
   }
 ];
 
@@ -323,9 +323,12 @@ export default function GFlagComponent(props) {
       return (
         <div className="table-val-column">
           {isFlagExist && (
-            <Button bsClass="flag-icon-button" onClick={() => handleSelectedOption(modalProps)}>
+            <Button
+              bsClass="flag-icon-button display-inline-flex"
+              onClick={() => handleSelectedOption(modalProps)}
+            >
               <i className="fa fa-plus"></i>
-              <span className="add-label cell-font">Add value</span>
+              <span className="add-label">Add value</span>
             </Button>
           )}
           {notExists && <span className="cell-font muted-text">n/a</span>}
@@ -339,21 +342,21 @@ export default function GFlagComponent(props) {
       <div className={isReadOnly ? 'gflag-read-table' : 'gflag-edit-table'}>
         <BootstrapTable data={fields.getAll()}>
           <TableHeaderColumn width="40%" dataField="Name" dataFormat={nameFormatter} isKey>
-            FLAG NAME
-          </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="MASTER"
-            width="30%"
-            dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, MASTER)}
-          >
-            MASTER VALUE
+            <span className="header-title">FLAG NAME</span>
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="TSERVER"
             width="30%"
             dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, TSERVER)}
           >
-            T-SERVER VALUE
+            <span className="header-title">T-SERVER VALUE</span>
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="MASTER"
+            width="30%"
+            dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, MASTER)}
+          >
+            <span className="header-title">MASTER VALUE</span>
           </TableHeaderColumn>
         </BootstrapTable>
       </div>
@@ -378,12 +381,14 @@ export default function GFlagComponent(props) {
     const gflagSchema = Yup.object().shape({
       flagvalue: Yup.mixed().required('This field is required')
     });
+    const modalTitle =
+      selectedProps?.mode === CREATE ? `Add to ${selectedProps?.server}` : 'Edit Flag Value';
+    const modalLabel = selectedProps?.mode === CREATE ? 'Add Flag' : 'Confirm';
     return (
       <YBModalForm
-        title={SERVER_LIST.find((e) => e.serverName === selectedProps?.server).label}
+        title={modalTitle}
         visible={toggleModal}
-        size="large"
-        submitLabel="Add Flag"
+        submitLabel={modalLabel}
         formName="ADDGFlagForm"
         cancelLabel="Cancel"
         error={formError}
@@ -392,6 +397,8 @@ export default function GFlagComponent(props) {
         onHide={() => setToggleModal(false)}
         onFormSubmit={handleFormSubmit}
         render={(properties) => renderOption(properties)}
+        dialogClassName="gflag-modal"
+        titleClassName="pl-16"
       />
     );
   };
@@ -408,7 +415,7 @@ export default function GFlagComponent(props) {
           OPTIONS.map((option) => {
             const { optionName, ...rest } = option;
             return (
-              <DropdownButton {...rest} id={optionName} key={optionName}>
+              <DropdownButton {...rest} bsSize="small" id={optionName} key={optionName}>
                 {SERVER_LIST.map((server) => {
                   const { serverName, label } = server;
                   const serverProps = { option: optionName, server: serverName, mode: CREATE };
