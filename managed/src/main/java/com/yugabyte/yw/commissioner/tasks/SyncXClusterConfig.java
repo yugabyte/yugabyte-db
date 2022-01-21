@@ -29,10 +29,6 @@ public class SyncXClusterConfig extends XClusterConfigTaskBase {
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       subTaskGroupQueue.run();
 
-      if (shouldIncrementVersion()) {
-        getUniverse().incrementVersion();
-      }
-
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
