@@ -61,7 +61,7 @@ public class Universe extends Model {
   public static final String HELM2_LEGACY = "helm2Legacy";
 
   // This is a key lock for Universe by UUID.
-  private static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
+  public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
 
   private static void checkUniverseInCustomer(UUID universeUUID, Customer customer) {
     if (!customer.getUniverseUUIDs().contains(universeUUID)) {

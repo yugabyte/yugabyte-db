@@ -1,16 +1,17 @@
 ---
 title: Constraints
 linkTitle: Constraints
-description: Defining constraints
-headcontent: Constraints
+description: Defining constraints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: constraints
-    parent: explore-ysql-language-features
+    identifier: indexes-constraints-constraints
+    parent: explore-indexes-constraints
     weight: 275
 isTocNested: true
 showAsideToc: true
+aliases:
+   - /latest/explore/ysql-language-features/constraints/
 ---
 
 YSQL allows you to define primary and foreign keys, as well as check values based on various criteria.
