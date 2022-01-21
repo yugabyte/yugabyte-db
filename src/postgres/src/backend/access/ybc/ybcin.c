@@ -359,5 +359,6 @@ ybcinendscan(IndexScanDesc scan)
 {
 	YbScanDesc ybscan = (YbScanDesc)scan->opaque;
 	Assert(PointerIsValid(ybscan));
+	YBCPgDeleteStatement(ybscan->handle);
 	pfree(ybscan);
 }
