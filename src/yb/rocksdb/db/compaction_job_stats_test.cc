@@ -86,7 +86,7 @@ std::string Key(uint64_t key, int length) {
   return std::string(buf);
 }
 
-class CompactionJobStatsTest : public testing::Test,
+class CompactionJobStatsTest : public RocksDBTest,
                                public testing::WithParamInterface<bool> {
  public:
   std::string dbname_;

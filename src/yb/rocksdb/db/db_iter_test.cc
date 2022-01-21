@@ -31,6 +31,8 @@
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
 class TestIterator : public InternalIterator {
@@ -168,7 +170,7 @@ class TestIterator : public InternalIterator {
   std::vector<std::pair<std::string, std::string>> data_;
 };
 
-class DBIteratorTest : public testing::Test {
+class DBIteratorTest : public RocksDBTest {
  public:
   Env* env_;
 
@@ -1847,7 +1849,7 @@ TEST_F(DBIteratorTest, DBIterator12) {
   ASSERT_FALSE(db_iter->Valid());
 }
 
-class DBIterWithMergeIterTest : public testing::Test {
+class DBIterWithMergeIterTest : public RocksDBTest {
  public:
   DBIterWithMergeIterTest()
       : env_(Env::Default()), icomp_(BytewiseComparator()) {

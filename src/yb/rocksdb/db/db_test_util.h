@@ -832,7 +832,7 @@ class DBHolder {
       uint64_t* total_size = nullptr);
 };
 
-class DBTestBase : public DBHolder, public testing::Test {
+class DBTestBase : public RocksDBTest, public DBHolder {
  public:
   explicit DBTestBase(std::string path, bool encryption_enabled = false)
     : DBHolder(std::move(path), encryption_enabled)

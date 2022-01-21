@@ -157,6 +157,7 @@ DECLARE_bool(mem_tracker_logging);
 DECLARE_bool(mem_tracker_log_stack_trace);
 DECLARE_string(minicluster_daemon_id);
 DECLARE_bool(use_libbacktrace);
+DECLARE_bool(never_fsync);
 
 DEFINE_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
@@ -283,6 +284,7 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
   const auto common_extra_flags = {
       "--enable_tracing"s,
       Substitute("--memory_limit_hard_bytes=$0", kDefaultMemoryLimitHardBytes),
+      Substitute("--never_fsync=$0", FLAGS_never_fsync),
       (opts.log_to_file ? "--alsologtostderr"s : "--logtostderr"s),
       (IsTsan() ? "--rpc_slow_query_threshold_ms=20000"s :
           "--rpc_slow_query_threshold_ms=10000"s)
@@ -1166,7 +1168,7 @@ Status ExternalMiniCluster::StartMasters() {
   }
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
   vector<string> flags = opts_.extra_master_flags;
-  // Disable WAL fsync for tests
+  // Disable fsync for tests
   flags.push_back("--durable_wal_write=false");
   flags.push_back("--enable_leader_failure_detection=true");
   // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
