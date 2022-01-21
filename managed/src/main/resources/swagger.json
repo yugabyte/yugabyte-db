@@ -2831,6 +2831,12 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "description" : {
+          "description" : "Description",
+          "maxLength" : 2147483647,
+          "minLength" : 1,
+          "type" : "string"
+        },
         "endTime" : {
           "description" : "End time",
           "format" : "date-time",
@@ -2860,7 +2866,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "alertConfigurationFilter", "createTime", "customerUUID", "endTime", "name", "startTime" ],
+      "required" : [ "alertConfigurationFilter", "createTime", "customerUUID", "description", "endTime", "name", "startTime" ],
       "type" : "object"
     },
     "MaintenanceWindowApiFilter" : {
