@@ -25,13 +25,13 @@ jobs:
     compiler: clang11
     build_type: release
     architecture: aarch64
-    release_artifact: false
+    release_artifact: true
 
   - os: centos8
     compiler: clang11
     build_type: debug
     architecture: aarch64
-    release_artifact: true
+    release_artifact: false
 
   - os: centos7
     compiler: gcc5
