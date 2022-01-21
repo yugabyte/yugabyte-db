@@ -276,7 +276,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
-    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean useLdap =
         runtimeConfigFactory
             .globalRuntimeConf()
@@ -335,7 +335,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result getPlatformConfig() {
-    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     String platformConfig = "window.YB_Platform_Config = window.YB_Platform_Config || %s";
     ObjectNode responseJson = Json.newObject();
     responseJson.put("use_oauth", useOAuth);
@@ -347,7 +347,8 @@ public class SessionController extends AbstractPlatformController {
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin() {
     CommonProfile profile = getProfile();
-    String emailAttr = appConfig.getString("yb.security.oidcEmailAttribute", "");
+    String emailAttr =
+        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
     String email;
     if (emailAttr.equals("")) {
       email = profile.getEmail();
@@ -476,7 +477,7 @@ public class SessionController extends AbstractPlatformController {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
     boolean multiTenant = appConfig.getBoolean("yb.multiTenant", false);
-    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
       throw new PlatformServiceException(
