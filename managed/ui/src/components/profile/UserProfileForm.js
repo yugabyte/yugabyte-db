@@ -110,6 +110,8 @@ export default class UserProfileForm extends Component {
       ? users.filter((u) => u.uuid === loginUserId)
       : [];
 
+    const isLDAPUser = !!currentUser?.data?.ldapSpecifiedRole;
+
     const defaultTimezoneOption = { value: '', label: 'Default' };
     const initialValues = {
       name: customer.data.name || '',
@@ -209,28 +211,30 @@ export default class UserProfileForm extends Component {
                       />
                     </Col>
                   </Row>
-                  <Row>
-                    <Col sm={12}>
-                      <br />
-                      <h3>Change Password</h3>
-                      <Field
-                        name="password"
-                        type="password"
-                        component={YBFormInput}
-                        label="Password"
-                        autoComplete="new-password"
-                        placeholder="Enter New Password"
-                      />
-                      <Field
-                        name="confirmPassword"
-                        type="password"
-                        component={YBFormInput}
-                        label="Confirm Password"
-                        autoComplete="new-password"
-                        placeholder="Confirm New Password"
-                      />
-                    </Col>
-                  </Row>
+                  {!isLDAPUser && (
+                    <Row>
+                      <Col sm={12}>
+                        <br />
+                        <h3>Change Password</h3>
+                        <Field
+                          name="password"
+                          type="password"
+                          component={YBFormInput}
+                          label="Password"
+                          autoComplete="new-password"
+                          placeholder="Enter New Password"
+                        />
+                        <Field
+                          name="confirmPassword"
+                          type="password"
+                          component={YBFormInput}
+                          label="Confirm Password"
+                          autoComplete="new-password"
+                          placeholder="Confirm New Password"
+                        />
+                      </Col>
+                    </Row>
+                  )}
                 </Col>
                 <Col md={6} sm={12}>
                   <h3>API Key management</h3>
