@@ -1804,7 +1804,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Whether to increment the universe/cluster config version. Skip incrementing version if the task
-   * updating the universe metadata is create/destroy/pause/resume universe
+   * updating the universe metadata is create/destroy/pause/resume universe. Also, skip incrementing
+   * version if task must manually handle version incrementing (such as in the case of XCluster).
    *
    * @return true if we should increment the version, false otherwise
    */
@@ -1832,7 +1833,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         || taskType == TaskType.DestroyUniverse
         || taskType == TaskType.DestroyKubernetesUniverse
         || taskType == TaskType.PauseUniverse
-        || taskType == TaskType.ResumeUniverse);
+        || taskType == TaskType.ResumeUniverse
+        || taskType == TaskType.CreateXClusterConfig
+        || taskType == TaskType.EditXClusterConfig
+        || taskType == TaskType.SyncXClusterConfig
+        || taskType == TaskType.DeleteXClusterConfig);
   }
 
   // TODO: Use of synchronized in static scope! Looks suspicious.
