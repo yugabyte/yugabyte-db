@@ -60,6 +60,9 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     "1.1.1.1, MASTER",
     "1.1.1.1-b11, TSERVER",
     "1.1.1.1, TSERVER",
+    "1.1.1.1-b12-remote, TSERVER",
+    "1.1.1.1-remote, TSERVER",
+    "1.1.1.1-Remote, TSERVER"
   })
   @TestCaseName("testGetGFlagsMetadataWithValidParamsWhen " + "version:{0} serverType:{1}")
   public void testGetGFlagsMetadataWithValidParams(String version, String serverType) {
@@ -98,7 +101,8 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken()));
     AssertHelper.assertBadRequest(
-        result, "Incorrect version format. Valid formats: 1.1.1.1 or 1.1.1.1-b1");
+        result,
+        "Incorrect version format. Valid formats: 1.1.1.1, 1.1.1.1-b1 or 1.1.1.1-b12-remote");
   }
 
   @Test

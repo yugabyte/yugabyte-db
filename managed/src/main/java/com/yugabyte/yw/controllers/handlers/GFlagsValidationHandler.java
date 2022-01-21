@@ -155,11 +155,12 @@ public class GFlagsValidationHandler {
 
   /** Checks the db version format */
   private void validateVersionFormat(String version) throws PlatformServiceException {
-    Pattern pattern = Pattern.compile("^((\\d+).(\\d+).(\\d+).(\\d+)(?:-[a-z]+)?(\\d+)?)$");
+    Pattern pattern = Pattern.compile("^((\\d+).(\\d+).(\\d+).(\\d+)(?:-[a-zA-Z0-9]+)*)$");
     Matcher matcher = pattern.matcher(version);
     if (!matcher.matches()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Incorrect version format. Valid formats: 1.1.1.1 or 1.1.1.1-b1");
+          BAD_REQUEST,
+          "Incorrect version format. Valid formats: 1.1.1.1, 1.1.1.1-b1 or 1.1.1.1-b12-remote");
     }
   }
 
