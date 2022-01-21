@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -16,10 +17,10 @@ import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
-import play.data.validation.Constraints;
-
 import javax.persistence.*;
 import java.util.*;
+import play.data.validation.Constraints;
+
 
 import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
 
@@ -28,6 +29,14 @@ public class TaskInfo extends Model {
 
   private static final FetchGroup<TaskInfo> GET_SUBTASKS_FG =
       FetchGroup.of(TaskInfo.class, "uuid, subTaskGroupType, taskState");
+
+  public static final Set<State> COMPLETED_STATES =
+      Sets.immutableEnumSet(State.Success, State.Failure);
+
+  public static final Set<State> ERROR_STATES = Sets.immutableEnumSet(State.Failure);
+
+  public static final Set<State> INCOMPLETE_STATES =
+      Sets.immutableEnumSet(State.Created, State.Initializing, State.Running);
 
   /** These are the various states of the task and taskgroup. */
   public enum State {
