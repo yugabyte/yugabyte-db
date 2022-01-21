@@ -4,10 +4,10 @@ linkTitle: Yugabyte Cloud FAQ
 description: Yugabyte Cloud frequently asked questions.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-faq
-    parent: yugabyte-cloud
     weight: 900
 isTocNested: true
 showAsideToc: true

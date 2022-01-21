@@ -5,9 +5,9 @@ linkTitle: Security architecture
 description: Security architecture of Yugabyte Cloud.
 image: /images/section_icons/index/secure.png
 headcontent: Review Yugabyte Cloud's security architecture and shared responsibility model.
+section: YUGABYTE CLOUD
 menu:
   latest:
-    parent: yugabyte-cloud
     identifier: cloud-security
 weight: 800
 ---
