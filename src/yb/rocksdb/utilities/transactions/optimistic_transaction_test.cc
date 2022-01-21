@@ -27,6 +27,7 @@
 #include "yb/rocksdb/utilities/optimistic_transaction_db.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/test_util.h"
 
@@ -34,7 +35,7 @@ using std::string;
 
 namespace rocksdb {
 
-class OptimisticTransactionTest : public testing::Test {
+class OptimisticTransactionTest : public RocksDBTest {
  public:
   OptimisticTransactionDB* txn_db;
   DB* db;

@@ -26,6 +26,7 @@
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend2.h"
@@ -124,7 +125,8 @@ enum class DbTypeToUse {
 };
 
 // The class for unit-testing
-class StringAppendOperatorTest : public testing::TestWithParam<DbTypeToUse> {
+class StringAppendOperatorTest : public RocksDBTest,
+                                 public testing::WithParamInterface<DbTypeToUse> {
  public:
   StringAppendOperatorTest() {
     CHECK_OK(DestroyDB(kDbName, Options()));    // Start each test with a fresh DB

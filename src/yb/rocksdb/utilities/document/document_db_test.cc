@@ -32,7 +32,7 @@
 
 namespace rocksdb {
 
-class DocumentDBTest : public testing::Test {
+class DocumentDBTest : public RocksDBTest {
  public:
   DocumentDBTest() {
     dbname_ = test::TmpDir() + "/document_db_test";
