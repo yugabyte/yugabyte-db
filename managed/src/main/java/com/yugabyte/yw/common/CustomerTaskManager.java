@@ -26,6 +26,18 @@ public class CustomerTaskManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
 
+  private void setTaskError(TaskInfo taskInfo) {
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    JsonNode jsonNode = taskInfo.getTaskDetails();
+    if (jsonNode instanceof ObjectNode) {
+      ObjectNode details = (ObjectNode) jsonNode;
+      JsonNode errNode = details.get("errorString");
+      if (errNode == null || errNode.isNull()) {
+        details.put("errorString", "Platform restarted.");
+      }
+    }
+  }
+
   public void failPendingTask(CustomerTask customerTask, TaskInfo taskInfo) {
     try {
       // Mark each subtask as a failure if it is not completed.
@@ -33,21 +45,31 @@ public class CustomerTaskManager {
           .getIncompleteSubTasks()
           .forEach(
               subtask -> {
-                subtask.setTaskState(TaskInfo.State.Failure);
+                setTaskError(subtask);
                 subtask.save();
               });
 
-      boolean unlockUniverse = TargetType.Universe.equals(customerTask.getTarget());
-      if (customerTask.getTarget().equals(TargetType.Backup)
-          && customerTask.getType().equals(TaskType.Create)) {
-        // Make transition state false for inProgress backups
-        UUID taskUUID = taskInfo.getTaskUUID();
-        List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskUUID);
-        backupList
-            .stream()
-            .filter(backup -> backup.state.equals(Backup.BackupState.InProgress))
-            .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
-        unlockUniverse = true;
+      // Use isUniverseTarget() instead of directly comparing with Universe type because some
+      // targets like Cluster, Node are Universe targets.
+      boolean unlockUniverse = customerTask.getTarget().isUniverseTarget();
+      if (customerTask.getTarget().equals(TargetType.Backup)) {
+        // Backup is not universe target.
+        TaskType type = customerTask.getType();
+        if (TaskType.Create.equals(type)) {
+          // Make transition state false for inProgress backups
+          UUID taskUUID = taskInfo.getTaskUUID();
+          List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskUUID);
+          backupList
+              .stream()
+              .filter(backup -> backup.state.equals(Backup.BackupState.InProgress))
+              .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
+          unlockUniverse = true;
+        } else if (TaskType.Delete.equals(type)) {
+          // NOOP because Delete does not lock Universe.
+        } else if (TaskType.Restore.equals(type)) {
+          // Restore only locks the Universe but does not set backupInProgress flag.
+          unlockUniverse = true;
+        }
       }
 
       if (unlockUniverse) {
@@ -75,12 +97,7 @@ public class CustomerTaskManager {
 
       // Mark task as a failure after the universe is unlocked.
       if (TaskInfo.INCOMPLETE_STATES.contains(taskInfo.getTaskState())) {
-        taskInfo.setTaskState(TaskInfo.State.Failure);
-        JsonNode jsonNode = taskInfo.getTaskDetails();
-        if (jsonNode instanceof ObjectNode) {
-          ObjectNode details = (ObjectNode) jsonNode;
-          details.put("errorString", "Platform restarted.");
-        }
+        setTaskError(taskInfo);
         taskInfo.save();
       }
       // Mark customer task as completed.

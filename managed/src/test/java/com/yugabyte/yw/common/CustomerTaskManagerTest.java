@@ -2,7 +2,8 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -86,7 +87,8 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
-      assertTrue(taskInfo.getTaskState().equals(TaskInfo.State.Failure));
+      assertEquals("Platform restarted.", taskInfo.getTaskDetails().get("errorString").asText());
+      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     }
   }
 
@@ -113,9 +115,10 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {
-      assertTrue(task.getCompletionTime() != null);
+      assertNotNull(task.getCompletionTime());
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
-      assertTrue(taskInfo.getTaskState().equals(TaskInfo.State.Failure));
+      assertEquals("Platform restarted.", taskInfo.getTaskDetails().get("errorString").asText());
+      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     }
   }
 
@@ -142,9 +145,9 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {
-      assertTrue(task.getCompletionTime() != null);
+      assertNotNull(task.getCompletionTime());
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
-      assertTrue(taskInfo.getTaskState().equals(TaskInfo.State.Success));
+      assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     }
   }
 }
