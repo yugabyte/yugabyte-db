@@ -284,3 +284,36 @@ CREATE UNIQUE INDEX unique_IDX ON mtest_YB("U&'\0022hi\0022'");
 REFRESH MATERIALIZED VIEW mtest_yb;
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
 DROP TABLE test_yb CASCADE;
+
+-- Test with unicode characters from table
+CREATE TABLE test_yb ("xyzid" int NOT NULL);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW "mtest_YB''\\b" AS SELECT * FROM test_yb WITH NO DATA;
+CREATE UNIQUE INDEX ON "mtest_YB''\\b"("xyzid");
+REFRESH MATERIALIZED VIEW "mtest_YB''\\b";
+REFRESH MATERIALIZED VIEW CONCURRENTLY "mtest_YB''\\b";
+DROP TABLE test_yb CASCADE;
+
+-- Materialized view of a materialized view
+CREATE TABLE test_yb ("xyzid" int NOT NULL);
+INSERT INTO test_yb VALUES (1);
+CREATE MATERIALIZED VIEW "mtest_YB''\\b" AS SELECT * FROM test_yb WITH NO DATA;
+CREATE MATERIALIZED VIEW "mtest_YB''\\b\\b" AS SELECT * FROM "mtest_YB''\\b" WITH NO DATA;
+CREATE UNIQUE INDEX ON "mtest_YB''\\b\\b"("xyzid");
+REFRESH MATERIALIZED VIEW "mtest_YB''\\b";
+REFRESH MATERIALIZED VIEW "mtest_YB''\\b\\b";
+REFRESH MATERIALIZED VIEW CONCURRENTLY "mtest_YB''\\b\\b";
+DROP TABLE test_yb CASCADE;
+
+-- Materialized view of a regular view
+CREATE TABLE mvtest_t (id int NOT NULL PRIMARY KEY, type text NOT NULL, amt numeric NOT NULL);
+CREATE VIEW mvtest_tv AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type;
+CREATE MATERIALIZED VIEW mvtest_tm2 AS SELECT * FROM mvtest_tv;
+SELECT * FROM mvtest_tm2;
+DROP VIEW mvtest_tv CASCADE;
+
+-- Verify that materialized view is locked while refreshing this view
+CREATE MATERIALIZED VIEW mvtest_tm AS SELECT type, sum(amt) AS totamt FROM mvtest_t GROUP BY type;
+REFRESH MATERIALIZED VIEW mvtest_tm WITH NO DATA;
+SELECT * FROM mvtest_tm FOR SHARE;
+DROP TABLE mvtest_t CASCADE;
