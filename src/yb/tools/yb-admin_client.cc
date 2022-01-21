@@ -1768,10 +1768,11 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   std::vector<std::string> placement_info_split = strings::Split(
       placement_info, ",", strings::AllowEmpty());
   if (placement_info_split.size() < 1) {
-    return STATUS(InvalidCommand, "Cluster config must be a list of "
-    "placement infos seperated by commas. "
-    "Format: 'cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3 ..."
-    + std::to_string(placement_info_split.size()));
+    return STATUS(
+        InvalidCommand,
+        "Cluster config must be a list of placement infos seperated by commas. Format: "
+        "cloud1.region1.zone1:[min_replica_count1],cloud2.region2.zone2:[min_replica_count2] ..."
+        + std::to_string(placement_info_split.size()));
   }
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
@@ -1779,10 +1780,39 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
   live_replicas->set_num_replicas(replication_factor);
 
+  int total_min_replica_count = 0;
+
   // Iterate over the placement blocks of the placementInfo structure.
   std::unordered_map<std::string, int> placement_to_min_replicas;
-  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
-    placement_to_min_replicas[placement_info_split[iter]]++;
+  for (const auto& placement_block : placement_info_split) {
+    std::vector<std::string> placement_info_min_replica_split =
+        strings::Split(placement_block, ":", strings::AllowEmpty());
+
+    if (placement_info_min_replica_split.size() == 0 ||
+        placement_info_min_replica_split.size() > 2) {
+      return STATUS(
+          InvalidCommand,
+          "Each placement info must have at most 2 values separated by a colon. "
+          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: "
+          + placement_block);
+    }
+
+    std::string placement_target = placement_info_min_replica_split[0];
+    int placement_min_replica_count = 1;
+
+    if (placement_info_min_replica_split.size() == 2) {
+      placement_min_replica_count = VERIFY_RESULT(CheckedStoi(placement_info_min_replica_split[1]));
+    }
+
+    total_min_replica_count += placement_min_replica_count;
+    placement_to_min_replicas[placement_target] += placement_min_replica_count;
+  }
+
+  if (total_min_replica_count > replication_factor) {
+    return STATUS(
+        InvalidCommand,
+        "replication_factor should be greater than or equal to the total of replica counts "
+        "specified in placement_info.");
   }
 
   for (const auto& placement_block : placement_to_min_replicas) {
