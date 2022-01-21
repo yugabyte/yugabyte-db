@@ -6,6 +6,7 @@ import { YBLabel } from '../../common/descriptors';
 import { YBLoading } from '../../common/indicators';
 import { FlexShrink, FlexContainer } from '../../common/flexbox/YBFlexBox';
 import { fetchGFlags, fetchParticularFlag } from '../../../actions/universe';
+import clsx from 'clsx';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
@@ -98,10 +99,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   //nodes
   const valueLabel = (
-    <>
+    <FlexContainer>
       Flag Value &nbsp;
       <Badge className="gflag-badge">{gFlagProps?.server}</Badge>
-    </>
+    </FlexContainer>
   );
 
   const infoText = (
@@ -115,7 +116,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   );
 
   const documentationLink = (
-    <Row>
+    <Row className="mt-16">
       <img alt="--" src={BookOpen} width="12" />{' '}
       <a
         className="gflag-doc-link"
@@ -185,11 +186,12 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
           onValueChanged={(text) => setSearchVal(text)}
         />
       </FlexShrink>
-      <FlexShrink>
+      <FlexShrink className="button-container">
         <YBButton
-          btnText="ALL FLAGS"
+          btnText="All Flags"
           disabled={mode === EDIT}
-          btnClass={!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default'}
+          active={toggleMostUsed}
+          btnClass={clsx(!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
           onClick={() => {
             if (toggleMostUsed) {
               setSelectedFlag(null);
@@ -199,9 +201,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         />{' '}
         &nbsp;
         <YBButton
-          btnText="MOST USED"
+          btnText="Most used"
           disabled={mode === EDIT}
-          btnClass={toggleMostUsed ? 'btn btn-orange' : 'btn btn-default'}
+          active={!toggleMostUsed}
+          btnClass={clsx(toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
           onClick={() => {
             if (!toggleMostUsed) {
               setSelectedFlag(null);
@@ -250,7 +253,6 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
                   <>
                     <span className="gflag-description-title">Default Value</span>
                     <Badge className="gflag-badge">{selectedFlag?.default}</Badge>
-                    <br />
                   </>
                 )}
                 {documentationLink}
