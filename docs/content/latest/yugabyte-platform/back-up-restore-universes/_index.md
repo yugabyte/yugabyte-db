@@ -1,13 +1,14 @@
 ---
-title: Back up and restore universes
+title: Back up universes
 headerTitle: Back up and restore universes
-linkTitle: Back up and restore universes
+linkTitle: Back up universes
 description: Use Yugabyte Platform to back up and restore YugabyteDB universe data.
 image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
+type: page
+section: YUGABYTE PLATFORM
 menu:
   latest:
-    parent: yugabyte-platform
     identifier: back-up-restore-universes
 weight: 645
 ---

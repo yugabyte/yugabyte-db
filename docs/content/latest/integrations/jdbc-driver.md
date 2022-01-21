@@ -2,12 +2,12 @@
 title: Yugabyte JDBC Driver
 linkTitle: Yugabyte JDBC Driver
 description: Yugabyte JDBC Driver for YSQL
+section: INTEGRATIONS
 aliases:
   - /latest/integrations/smart-driver/
 menu:
   latest:
     identifier: jdbc-driver
-    parent: integrations
     weight: 577
 isTocNested: true
 showAsideToc: true

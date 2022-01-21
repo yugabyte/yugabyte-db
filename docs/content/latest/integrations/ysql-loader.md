@@ -3,10 +3,10 @@ title: YSQL Loader
 linkTitle: YSQL Loader
 description: YSQL Loader
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: ysql-loader
-    parent: integrations
     weight: 577
 isTocNested: true
 showAsideToc: true
