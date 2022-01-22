@@ -128,7 +128,7 @@ yb-admin \
   * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
 * *ip_addr*: The IP address of the server node.
 * *port*: The port of the server node.
-* *uuid*: The uuid for the server that is being added/removed.
+* *uuid*: The UUID for the server that is being added/removed.
 
 #### list_tablet_servers
 
