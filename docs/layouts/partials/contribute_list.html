@@ -1,0 +1,14 @@
+<div class="dropdown" id="contribute-list">
+    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownContributeButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><strong>
+        Contribute</strong>
+    </button>
+
+    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=[docs]+Title&labels=area/documentation&body=Report: {{ .Permalink }}">
+            <strong>Report Doc Issue</strong>
+        </a>
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=[docs]+Title&labels=area/documentation&body=Suggestion: {{ .Permalink }}">
+            <strong>Suggest New Content</strong>
+        </a>
+    </div>
+</div>

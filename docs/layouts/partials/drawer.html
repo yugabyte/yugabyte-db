@@ -31,6 +31,8 @@
           {{ partial "nav" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
         {{ end }}
 
+        {{ partial "contribute_list" . }}
+
         {{ if isset .Site.Params "author" }}
 
           {{ if .Site.Social }}
