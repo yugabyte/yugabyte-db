@@ -42,7 +42,7 @@ public class ConfigHelper {
       ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.");
 
   public List<String> getAWSInstancePrefixesSupported() {
-    if (runtimeConfigFactory.staticApplicationConf().getBoolean("yb.cloud.enabled")) {
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
       return CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED;
     } else if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.internal.graviton")) {
       return Stream.concat(
