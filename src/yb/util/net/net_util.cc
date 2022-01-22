@@ -553,7 +553,7 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   constexpr uint16_t kMaxPort = 30000;
   Status s;
   for (int i = 0; i < 1000; ++i) {
-    const uint16_t random_port = kMinPort + RandomUniformInt(kMinPort, kMaxPort);
+    const uint16_t random_port = RandomUniformInt(kMinPort, kMaxPort);
     VLOG(1) << "Trying to bind to port " << random_port;
 
     Endpoint sock_addr(boost::asio::ip::address_v4::loopback(), random_port);
