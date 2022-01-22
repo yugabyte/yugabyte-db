@@ -16,7 +16,7 @@ Apache AGE is:
 
 Powerful -- AGE adds graph database support to the already popular PostgreSQL database: PostgreSQL is used by organizations including Apple, Spotify, and NASA.
 Flexible -- AGE allows you to perform openCypher queries, which make complex queries much easier to write.
-Intelligent -- AGE allows you to perform graph queries that are the basis for many next level web services such as fraud & intrustion detection, master data management, product recommendations, identity and relationship management, experience personalization, knowledge management and more.
+Intelligent -- AGE allows you to perform graph queries that are the basis for many next level web services such as fraud & intrusion detection, master data management, product recommendations, identity and relationship management, experience personalization, knowledge management and more.
 
 ## Overview
 
