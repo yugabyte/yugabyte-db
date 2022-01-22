@@ -58,6 +58,12 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
+
+    if (!primaryCluster.userIntent.enableYSQL) {
+      log.info("Skipping YSQL upgrade as the universe isn't configured for YSQL.");
+      return;
+    }
+
     final String leaderMasterAddress = universe.getMasterLeaderHostText();
     NodeDetails leaderMasterNode =
         universe
