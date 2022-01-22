@@ -1071,6 +1071,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "category" : {
+          "description" : "Category of the backup",
+          "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
+          "type" : "string"
+        },
         "createTime" : {
           "format" : "date-time",
           "type" : "string"
@@ -1105,6 +1110,11 @@
         },
         "updateTime" : {
           "format" : "date-time",
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Version of the backup in a category",
+          "enum" : [ "V1", "V2" ],
           "type" : "string"
         }
       },
