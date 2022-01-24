@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -35,7 +36,6 @@ import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -67,15 +67,12 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.uuid);
 
-    String certificate = "certificates/ca.crt";
-    File certFile = new File(certificate);
-    certFile.getParentFile().mkdirs();
+    String caFile = createTempFile("destroy_universe_test", "ca.crt", "test content");
+    certFolder = new File(caFile).getParentFile();
     try {
-      certFile.createNewFile();
-      certFolder = certFile.getParentFile();
       certInfo =
           ModelFactory.createCertificateInfo(
-              defaultCustomer.getUuid(), certificate, CertificateInfo.Type.SelfSigned);
+              defaultCustomer.getUuid(), caFile, CertificateInfo.Type.SelfSigned);
     } catch (Exception e) {
 
     }
@@ -88,13 +85,6 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-  }
-
-  @After
-  public void tearDown() {
-    if (certFolder.exists()) {
-      certFolder.delete();
-    }
   }
 
   @Test

@@ -98,10 +98,9 @@ public class QueryAlerts {
     this.alertDefinitionService = alertDefinitionService;
     this.alertConfigurationService = alertConfigurationService;
     this.alertManager = alertManager;
-    this.initialize();
   }
 
-  private void initialize() {
+  public void start() {
     this.actorSystem
         .scheduler()
         .schedule(
