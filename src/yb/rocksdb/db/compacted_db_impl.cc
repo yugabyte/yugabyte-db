@@ -109,17 +109,14 @@ std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
 }
 
 Status CompactedDBImpl::Init(const Options& options) {
-  mutex_.Lock();
-  ColumnFamilyDescriptor cf(kDefaultColumnFamilyName,
-                            ColumnFamilyOptions(options));
-  Status s = Recover({ cf }, true /* read only */, false);
-  if (s.ok()) {
+  {
+    std::unique_ptr<SuperVersion> old_superversion;
+    InstrumentedMutexLock lock(&mutex_);
+    ColumnFamilyDescriptor cf(kDefaultColumnFamilyName,
+                              ColumnFamilyOptions(options));
+    RETURN_NOT_OK(Recover({ cf }, true /* read only */, false));
     cfd_ = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
-    cfd_->InstallSuperVersion(new SuperVersion(), &mutex_);
-  }
-  mutex_.Unlock();
-  if (!s.ok()) {
-    return s;
+    old_superversion = cfd_->InstallSuperVersion(new SuperVersion(), &mutex_);
   }
   version_ = cfd_->GetSuperVersion()->current;
   user_comparator_ = cfd_->user_comparator();

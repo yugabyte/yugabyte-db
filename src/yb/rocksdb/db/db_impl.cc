@@ -46,7 +46,6 @@
 
 #include <boost/container/small_vector.hpp>
 
-
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/string_util.h"
 #include "yb/util/scope_exit.h"
@@ -6004,12 +6003,22 @@ UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
 
 Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
   auto cfd = versions_->GetColumnFamilySet()->GetDefault();
+  std::unique_ptr<SuperVersion> superversion_to_free_after_unlock_because_of_install;
+  std::unique_ptr<SuperVersion> superversion_to_free_after_unlock_because_of_unref;
   InstrumentedMutexLock lock(&mutex_);
-  auto status = versions_->LogAndApply(cfd, *cfd->GetCurrentMutableCFOptions(), edit, &mutex_);
+  auto current_sv = cfd->GetSuperVersion()->Ref();
+  auto se = yb::ScopeExit([&superversion_to_free_after_unlock_because_of_unref, current_sv]() {
+    if (current_sv->Unref()) {
+      current_sv->Cleanup();
+      superversion_to_free_after_unlock_because_of_unref.reset(current_sv);
+    }
+  });
+  auto status = versions_->LogAndApply(cfd, current_sv->mutable_cf_options, edit, &mutex_);
   if (!status.ok()) {
     return status;
   }
-  cfd->InstallSuperVersion(new SuperVersion(), &mutex_);
+  superversion_to_free_after_unlock_because_of_install = cfd->InstallSuperVersion(
+      new SuperVersion(), &mutex_);
 
   return Status::OK();
 }
