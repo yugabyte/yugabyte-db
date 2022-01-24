@@ -5,8 +5,7 @@ package com.yugabyte.yw.common;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.util.UUID;
 
 public class TestHelper {
   public static String TMP_PATH = "/tmp/yugaware_tests";
@@ -19,9 +18,11 @@ public class TestHelper {
         filePath = basePath;
       }
       File tmpFile = new File(filePath, fileName);
+      tmpFile.getParentFile().mkdirs();
       fw = new FileWriter(tmpFile);
       fw.write(data);
       fw.close();
+      tmpFile.deleteOnExit();
       return tmpFile.getAbsolutePath();
     } catch (IOException ex) {
       return null;
@@ -33,7 +34,7 @@ public class TestHelper {
   }
 
   public static String createTempFile(String data) {
-    String fileName = new SimpleDateFormat("yyyyMMddhhmm").format(new Date());
+    String fileName = UUID.randomUUID().toString();
     return createTempFile(fileName, data);
   }
 }

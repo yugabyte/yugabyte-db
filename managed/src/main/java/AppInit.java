@@ -3,6 +3,7 @@
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -13,6 +14,7 @@ import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
+import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.models.Customer;
@@ -44,8 +46,10 @@ public class AppInit {
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
       TaskGarbageCollector taskGC,
+      SetUniverseKey setUniverseKey,
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
+      QueryAlerts queryAlerts,
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
       PlatformMetricsProcessor platformMetricsProcessor)
@@ -124,6 +128,9 @@ public class AppInit {
       taskGC.start();
       alertsGC.start();
 
+      setUniverseKey.start();
+
+      queryAlerts.start();
       platformMetricsProcessor.start();
 
       // Startup platform HA.
