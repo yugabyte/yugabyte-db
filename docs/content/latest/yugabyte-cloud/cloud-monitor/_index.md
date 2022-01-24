@@ -4,7 +4,7 @@ headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
 description: Set alerts and monitor your Yugabyte Cloud clusters.
 image: /images/section_icons/explore/monitoring.png
-headcontent: Monitor cluster performance and activity.
+headcontent: Set alerts and monitor cluster performance and activity.
 section: YUGABYTE CLOUD
 menu:
   latest:
