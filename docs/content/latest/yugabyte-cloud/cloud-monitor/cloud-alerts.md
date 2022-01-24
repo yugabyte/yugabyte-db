@@ -39,9 +39,9 @@ Only cloud admin users can configure billing alerts.
 
 ![Cloud Alerts Configurations](/images/yb-cloud/cloud-alerts-configurations.png)
 
-To view alert details, select the alert to display the **Alert Policy Settings** sheet.
+<!-- To view alert details, select the alert to display the **Alert Policy Settings** sheet.-->
 
-To change an alert, click the toggle in the **Status** column, or on the **Alert Policy Settings** sheet.
+To change an alert, click the toggle in the **Status** column.
 
 To test that you can receive email from the Yugabyte server, click **Send Test Email**.
 
