@@ -7,6 +7,8 @@ image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of the Yugabyte Platform and architecture.
 type: page
 section: YUGABYTE PLATFORM
+aliases:
+  - /latest/yugabyte-platform/
 menu:
   latest:
     identifier: overview-yp
