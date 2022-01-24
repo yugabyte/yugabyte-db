@@ -874,7 +874,7 @@ class YBBackup:
 
                 subprocess_result = str(subprocess.check_output(
                                          args, stderr=subprocess.STDOUT,
-                                         env=proc_env, **kwargs).decode('utf-8'))
+                                         env=proc_env, **kwargs).decode('utf-8', errors='replace'))
 
                 if self.args.verbose:
                     logging.info(
