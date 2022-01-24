@@ -15,9 +15,11 @@ isTocNested: true
 ---
 
 ## Overview
-Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
+
+Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
 
 ### Results at a glance
+
 | Warehouses| TPMC | Efficiency (approx) | Cluster Details
 -------------|-----------|------------|------------|
 10    | 127      | 98.75%   | 3 nodes of type `c5d.large` (2 vCPUs)
@@ -47,7 +49,6 @@ Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-
 {{< tip title="Tip" >}}
 You will need the IP addresses of the nodes in the cluster for the next step.
 {{< /tip>}}
-
 
 ## 2. Configure DB connection params (optional)
 
@@ -99,4 +100,3 @@ Other options like username, password, port, etc. can be changed using the confi
     {{% includeMarkdown "10000-wh/tpcc-ysql.md" /%}}
   </div>
 </div>
-
