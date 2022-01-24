@@ -57,7 +57,7 @@ std::string FormatHexForLoadTestKey(uint64_t x);
 
 class KeyIndexSet {
  public:
-  int NumElements() const;
+  size_t NumElements() const;
   void Insert(int64_t key);
   bool Contains(int64_t key) const;
   bool RemoveIfContains(int64_t key);
@@ -176,7 +176,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   // object's lifetime.
   MultiThreadedWriter(
       int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
-      std::atomic_bool* stop_flag, int value_size, int max_num_write_errors);
+      std::atomic_bool* stop_flag, int value_size, size_t max_num_write_errors);
 
   void Start() override;
   std::atomic<int64_t>* InsertionPoint() { return &inserted_up_to_inclusive_; }
@@ -184,7 +184,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   const KeyIndexSet* FailedKeys() const { return &failed_keys_; }
 
   int64_t num_writes() { return next_key_.load() - start_key_; }
-  int num_write_errors() { return failed_keys_.NumElements(); }
+  size_t num_write_errors() { return failed_keys_.NumElements(); }
   void AssertSucceeded() { ASSERT_EQ(num_write_errors(), 0); }
 
   void set_pause_flag(std::atomic<bool>* pause_flag) { pause_flag_ = pause_flag; }
@@ -207,7 +207,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   std::atomic<int64_t> next_key_;
   std::atomic<int64_t> inserted_up_to_inclusive_;
 
-  int max_num_write_errors_ = 0;
+  size_t max_num_write_errors_ = 0;
   std::atomic<bool>* pause_flag_ = nullptr;
 };
 

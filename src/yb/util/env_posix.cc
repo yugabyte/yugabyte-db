@@ -441,7 +441,7 @@ class PosixWritableFile : public WritableFile {
     DCHECK_LE(n, IOV_MAX);
 
     struct iovec iov[n];
-    size_t nbytes = 0;
+    ssize_t nbytes = 0;
 
     for (size_t i = 0; i < n; ++i) {
       const Slice& data = slices[i];
@@ -450,7 +450,7 @@ class PosixWritableFile : public WritableFile {
       nbytes += data.size();
     }
 
-    ssize_t written = writev(fd_, iov, n);
+    ssize_t written = writev(fd_, iov, narrow_cast<int>(n));
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
@@ -628,12 +628,12 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     CHECK_LE(blocks_to_write, IOV_MAX);
 
     struct iovec iov[blocks_to_write];
-    for (int j = 0; j < blocks_to_write; j++) {
+    for (size_t j = 0; j < blocks_to_write; j++) {
       iov[j].iov_base = block_ptr_vec_[j].get();
       iov[j].iov_len = block_size_;
     }
-    auto bytes_to_write = blocks_to_write * block_size_;
-    ssize_t written = pwritev(fd_, iov, blocks_to_write, next_write_offset_);
+    ssize_t bytes_to_write = blocks_to_write * block_size_;
+    ssize_t written = pwritev(fd_, iov, narrow_cast<int>(blocks_to_write), next_write_offset_);
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
@@ -677,7 +677,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
 
     if (blocks_to_write > block_ptr_vec_.size()) {
       auto nblocks = blocks_to_write - block_ptr_vec_.size();
-      for (auto i = 0; i < nblocks; i++) {
+      for (size_t i = 0; i < nblocks; i++) {
         void *temp_buf = nullptr;
         auto err = posix_memalign(&temp_buf, FLAGS_o_direct_block_alignment_bytes, block_size_);
         if (err) {
@@ -697,7 +697,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
   vector<std::shared_ptr<uint8_t>> block_ptr_vec_;
   size_t last_block_used_bytes_;
   size_t last_block_idx_;
-  int block_size_;
+  size_t block_size_;
   bool has_new_data_;
   size_t real_size_;
 };
@@ -722,7 +722,7 @@ class PosixRWFile final : public RWFile {
   virtual Status Read(uint64_t offset, size_t length,
                       Slice* result, uint8_t* scratch) const override {
     ThreadRestrictions::AssertIOAllowed();
-    int rem = length;
+    auto rem = length;
     uint8_t* dst = scratch;
     while (rem > 0) {
       ssize_t r = pread(fd_, dst, rem, offset);
@@ -754,7 +754,7 @@ class PosixRWFile final : public RWFile {
       return STATUS_IO_ERROR(filename_, err);
     }
 
-    if (PREDICT_FALSE(written != data.size())) {
+    if (PREDICT_FALSE(written != implicit_cast<ssize_t>(data.size()))) {
       return STATUS(IOError,
           Substitute("pwrite error: expected to write $0 bytes, wrote $1 bytes instead",
                      data.size(), written));
@@ -1201,11 +1201,11 @@ class PosixEnv : public Env {
 
   Status GetExecutablePath(string* path) override {
     uint32_t size = 64;
-    uint32_t len = 0;
+    size_t len = 0;
     while (true) {
       std::unique_ptr<char[]> buf(new char[size]);
 #if defined(__linux__)
-      int rc = readlink("/proc/self/exe", buf.get(), size);
+      auto rc = readlink("/proc/self/exe", buf.get(), size);
       if (rc == -1) {
         return STATUS(IOError, "Unable to determine own executable path", "", Errno(errno));
       } else if (rc >= size) {

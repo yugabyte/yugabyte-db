@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
@@ -44,7 +45,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
@@ -72,6 +75,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -572,6 +576,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to run YSQL upgrade on the universe. */
+  public TaskExecutor.SubTaskGroup createRunYsqlUpgradeTask(String ybSoftwareVersion) {
+    TaskExecutor.SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RunYsqlUpgrade");
+
+    RunYsqlUpgrade task = createTask(RunYsqlUpgrade.class);
+
+    RunYsqlUpgrade.Params params = new RunYsqlUpgrade.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.ybSoftwareVersion = ybSoftwareVersion;
+
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -1369,6 +1389,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createRestoreBackupTask(RestoreBackupParams taskParams) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("RestoreBackupYb", executor);
+
+    RestoreBackupYb task = createTask(RestoreBackupYb.class);
+    task.initialize(taskParams);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createDeleteBackupTasks(List<Backup> backups, UUID customerUUID) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteBackup", executor);
     for (Backup backup : backups) {
@@ -1400,6 +1431,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createEncryptedUniverseKeyRestoreTask(BackupTableParams params) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("RestoreUniverseKeys", executor);
     RestoreUniverseKeys task = createTask(RestoreUniverseKeys.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createEncryptedUniverseKeyRestoreTaskYb(RestoreBackupParams params) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("RestoreUniverseKeysYb", executor);
+    RestoreUniverseKeysYb task = createTask(RestoreUniverseKeysYb.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
@@ -1787,7 +1828,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Whether to increment the universe/cluster config version. Skip incrementing version if the task
-   * updating the universe metadata is create/destroy/pause/resume universe
+   * updating the universe metadata is create/destroy/pause/resume universe. Also, skip incrementing
+   * version if task must manually handle version incrementing (such as in the case of XCluster).
    *
    * @return true if we should increment the version, false otherwise
    */
@@ -1815,7 +1857,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         || taskType == TaskType.DestroyUniverse
         || taskType == TaskType.DestroyKubernetesUniverse
         || taskType == TaskType.PauseUniverse
-        || taskType == TaskType.ResumeUniverse);
+        || taskType == TaskType.ResumeUniverse
+        || taskType == TaskType.CreateXClusterConfig
+        || taskType == TaskType.EditXClusterConfig
+        || taskType == TaskType.SyncXClusterConfig
+        || taskType == TaskType.DeleteXClusterConfig);
   }
 
   // TODO: Use of synchronized in static scope! Looks suspicious.
@@ -1909,7 +1955,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           newVersion);
     } catch (Exception e) {
       log.error(
-          "Error occurred incrementing cluster config version for universe {}", universeUUID, e);
+          "Error occurred incrementing cluster config version for universe " + universeUUID, e);
       throw new RuntimeException("Error incrementing cluster config version", e);
     } finally {
       ybService.closeClient(client, hostPorts);
@@ -1922,13 +1968,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param updater the universe updater to run
    * @return the updated universe
    */
-  protected static synchronized Universe saveUniverseDetails(
+  protected static Universe saveUniverseDetails(
       UUID universeUUID, boolean shouldIncrementVersion, UniverseUpdater updater) {
-    if (shouldIncrementVersion) {
-      incrementClusterConfigVersion(universeUUID);
+    Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
+    try {
+      if (shouldIncrementVersion) {
+        incrementClusterConfigVersion(universeUUID);
+      }
+      return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
+    } finally {
+      Universe.UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
     }
-
-    return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
   }
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {

@@ -440,7 +440,7 @@ RpcAndWebServerBase::RpcAndWebServerBase(
     MemTrackerPtr mem_tracker,
     const scoped_refptr<server::Clock>& clock)
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
-      web_server_(new Webserver(options.webserver_opts, name_)) {
+      web_server_(new Webserver(options_.CompleteWebserverOptions(), name_)) {
   FsManagerOpts fs_opts;
   fs_opts.metric_entity = metric_entity_;
   fs_opts.parent_mem_tracker = mem_tracker_;
@@ -656,12 +656,12 @@ void RpcAndWebServerBase::Shutdown() {
   web_server_->Stop();
 }
 
-std::string TEST_RpcAddress(int index, Private priv) {
+std::string TEST_RpcAddress(size_t index, Private priv) {
   return Format("127.0.0.$0$1",
                 index * 2 + (priv ? 0 : 1), priv ? "" : FLAGS_TEST_public_hostname_suffix);
 }
 
-string TEST_RpcBindEndpoint(int index, uint16_t port) {
+string TEST_RpcBindEndpoint(size_t index, uint16_t port) {
   return HostPortToString(TEST_RpcAddress(index, Private::kTrue), port);
 }
 
@@ -670,11 +670,11 @@ constexpr int kMinServerIdx = 1;
 
 // We group servers by two. Servers in the same group communciate via private connection. Servers in
 // different groups communicate via public connection.
-int ServerGroupNum(int server_idx) {
+size_t ServerGroupNum(size_t server_idx) {
   return (server_idx - 1) / FLAGS_TEST_nodes_per_cloud;
 }
 
-void TEST_SetupConnectivity(rpc::Messenger* messenger, int index) {
+void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index) {
   if (!FLAGS_TEST_check_broadcast_address) {
     return;
   }

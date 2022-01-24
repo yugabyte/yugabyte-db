@@ -70,7 +70,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       [client](const CLIArguments& args) -> Status {
         EnumBitSet<ListSnapshotsFlag> flags;
 
-        for (int i = 0; i < args.size(); ++i) {
+        for (size_t i = 0; i < args.size(); ++i) {
           std::string uppercase_flag;
           ToUpperCase(args[i], &uppercase_flag);
 
@@ -268,7 +268,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         const string file_name = args[0];
         TypedNamespaceName keyspace;
-        int num_tables = 0;
+        size_t num_tables = 0;
         vector<YBTableName> tables;
 
         if (args.size() >= 2) {
@@ -279,7 +279,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
             tables.reserve(num_tables);
 
-            for (int i = 0; i < num_tables; ++i) {
+            for (size_t i = 0; i < num_tables; ++i) {
               tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[2 + i]));
             }
           }

@@ -55,6 +55,9 @@ public class TaskInfo extends Model {
 
   public static final Set<State> ERROR_STATES = Sets.immutableEnumSet(State.Failure, State.Aborted);
 
+  public static final Set<State> INCOMPLETE_STATES =
+      Sets.immutableEnumSet(State.Created, State.Initializing, State.Running, State.Abort);
+
   /** These are the various states of the task and taskgroup. */
   public enum State {
     @EnumValue("Created")
@@ -338,7 +341,10 @@ public class TaskInfo extends Model {
   public double getPercentCompleted() {
     int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getTaskUUID()).findCount();
     if (numSubtasks == 0) {
-      return 100.0;
+      if (TaskInfo.COMPLETED_STATES.contains(getTaskState())) {
+        return 100.0;
+      }
+      return 0.0;
     }
     int numSubtasksCompleted =
         TaskInfo.find

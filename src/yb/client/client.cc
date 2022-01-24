@@ -186,6 +186,8 @@ using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
 using yb::master::CreateTransactionStatusTableResponsePB;
+using yb::master::UpdateConsumerOnProducerSplitRequestPB;
+using yb::master::UpdateConsumerOnProducerSplitResponsePB;
 using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
@@ -451,7 +453,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;
   c->data_->wait_for_leader_election_on_init_ = data_->wait_for_leader_election_on_init_;
 
-  int callback_threadpool_size = data_->threadpool_size_;
+  auto callback_threadpool_size = data_->threadpool_size_;
   if (callback_threadpool_size == YBClientBuilder::Data::kUseNumReactorsAsNumThreads) {
     callback_threadpool_size = c->data_->messenger_->num_reactors();
   }
@@ -463,7 +465,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   // Not using an underscore because we sometimes get shortened thread names like "master_c" and it
   // is clearer to see "mastercb" instead.
   ThreadPoolBuilder tpb(data_->client_name_ + "cb");
-  tpb.set_max_threads(callback_threadpool_size);
+  tpb.set_max_threads(narrow_cast<int>(callback_threadpool_size));
   std::unique_ptr<ThreadPool> tp;
   RETURN_NOT_OK_PREPEND(
       tpb.Build(&tp),
@@ -1401,7 +1403,7 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
   // Setting up request.
   CreateCDCStreamRequestPB req;
   req.set_table_id(table_id);
-  req.mutable_options()->Reserve(options.size());
+  req.mutable_options()->Reserve(narrow_cast<int>(options.size()));
   for (const auto& option : options) {
     auto new_option = req.add_options();
     new_option->set_key(option.first);
@@ -1462,7 +1464,7 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
 
   // Setting up request.
   DeleteCDCStreamRequestPB req;
-  req.mutable_stream_id()->Reserve(streams.size());
+  req.mutable_stream_id()->Reserve(narrow_cast<int>(streams.size()));
   for (const auto& stream : streams) {
     req.add_stream_id(stream);
   }
@@ -1506,6 +1508,27 @@ Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
 
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
+  return Status::OK();
+}
+
+Status YBClient::UpdateConsumerOnProducerSplit(
+    const string& producer_id,
+    const CDCStreamId& stream_id,
+    const master::ProducerSplitTabletInfoPB& split_info) {
+  if (producer_id.empty()) {
+    return STATUS(InvalidArgument, "Producer id is required.");
+  }
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  UpdateConsumerOnProducerSplitRequestPB req;
+  req.set_producer_id(producer_id);
+  req.set_stream_id(stream_id);
+  req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
+
+  UpdateConsumerOnProducerSplitResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerSplit);
   return Status::OK();
 }
 
@@ -1939,9 +1962,7 @@ Status YBClient::SetMasterAddresses(const std::string& addrs) {
   return data_->SetMasterAddresses(addrs);
 }
 
-Status YBClient::GetMasterUUID(const string& host,
-                               int16_t port,
-                               string* uuid) {
+Status YBClient::GetMasterUUID(const string& host, uint16_t port, string* uuid) {
   HostPort hp(host, port);
   ServerEntryPB server;
   RETURN_NOT_OK(master::GetMasterEntryForHosts(

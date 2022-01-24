@@ -26,6 +26,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
@@ -131,6 +132,8 @@ public class SessionController extends AbstractPlatformController {
   @Inject private SessionHandler sessionHandler;
 
   @Inject private UserService userService;
+
+  @Inject private LdapUtil ldapUtil;
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
@@ -271,136 +274,9 @@ public class SessionController extends AbstractPlatformController {
     }
   }
 
-  private Users loginWithLdap(CustomerLoginFormData data) throws LdapException {
-    String ldapUrl =
-        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_url");
-    String getLdapPort =
-        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_port");
-    Integer ldapPort = Integer.parseInt(getLdapPort);
-    String ldapBaseDN =
-        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_basedn");
-    String ldapCustomerUUID =
-        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.ldap.ldap_customeruuid");
-
-    Users user =
-        authViaLDAP(
-            data.getEmail().toLowerCase(), data.getPassword(), ldapUrl, ldapPort, ldapBaseDN);
-    if (user == null) {
-      return user;
-    }
-
-    if (user.customerUUID == null) {
-      Customer cust = null;
-      if (!ldapCustomerUUID.equals("")) {
-        try {
-          UUID custUUID = UUID.fromString(ldapCustomerUUID);
-          cust = Customer.get(custUUID);
-        } catch (Exception e) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Customer UUID Specified is invalid. " + e.getMessage());
-        }
-      }
-      if (cust == null) {
-        List<Customer> allCustomers = Customer.getAll();
-        if (allCustomers.size() != 1) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Please specify ldap_customeruuid in Multi-Tenant Setup.");
-        }
-        cust = allCustomers.get(0);
-      }
-      user.setCustomerUuid(cust.uuid);
-    }
-    try {
-      user.save();
-    } catch (DuplicateKeyException e) {
-      log.info("User already exists.");
-    }
-    return user;
-  }
-
-  private Users authViaLDAP(
-      String email, String password, String ldapUrl, Integer ldapPort, String ldapBaseDN)
-      throws LdapException {
-    Users users = new Users();
-    LdapNetworkConnection connection = null;
-    try {
-      connection = new LdapNetworkConnection(ldapUrl, ldapPort);
-      String distinguishedName = ldapBaseDN + "CN=" + email;
-      try {
-        connection.bind(distinguishedName, password);
-      } catch (LdapNoSuchObjectException e) {
-        Users.deleteUser(email);
-        String errorMessage = "LDAP user " + email + " does not exist on the LDAP server";
-        throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
-      } catch (LdapAuthenticationException e) {
-        String errorMessage = "Failed with " + e.getMessage();
-        throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
-      }
-      EntryCursor cursor =
-          connection.search(distinguishedName, "(objectclass=*)", SearchScope.SUBTREE, "*");
-      while (cursor.next()) {
-        Entry entry = cursor.get();
-        Attribute parseRole = entry.get("YugabytePlatformRole");
-        String role = parseRole.getString();
-        Role roleToAssign;
-        users.setLdapSpecifiedRole(true);
-        switch (role) {
-          case "Admin":
-            roleToAssign = Role.Admin;
-            break;
-          case "SuperAdmin":
-            roleToAssign = Role.SuperAdmin;
-            break;
-          case "BackupAdmin":
-            roleToAssign = Role.BackupAdmin;
-            break;
-          case "ReadOnly":
-            roleToAssign = Role.ReadOnly;
-            break;
-          default:
-            roleToAssign = Role.ReadOnly;
-            users.setLdapSpecifiedRole(false);
-        }
-        Users oldUser = Users.find.query().where().eq("email", email).findOne();
-        if (oldUser != null && (oldUser.getRole() == roleToAssign)) {
-          return oldUser;
-        } else if (oldUser != null && (oldUser.getRole() != roleToAssign)) {
-          oldUser.setRole(roleToAssign);
-          return oldUser;
-        } else {
-          users.email = email.toLowerCase();
-          byte[] passwordLdap = new byte[16];
-          new Random().nextBytes(passwordLdap);
-          String generatedPassword = new String(passwordLdap, Charset.forName("UTF-8"));
-          users.setPassword(generatedPassword); // Password is not used.
-          users.setUserType(UserType.ldap);
-          users.creationDate = new Date();
-          users.setIsPrimary(true);
-          users.setRole(roleToAssign);
-        }
-      }
-    } catch (LdapException e) {
-      LOG.error("LDAP error while attempting to auth email {}", email);
-      LOG.debug(e.getMessage());
-      String errorMessage = "LDAP parameters are not configured correctly. " + e.getMessage();
-      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-    } catch (Exception e) {
-      LOG.error("Failed to authenticate with LDAP for email {}", email);
-      LOG.debug(e.getMessage());
-      String errorMessage = "Invalid LDAP credentials. " + e.getMessage();
-      throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
-    } finally {
-      if (connection != null) {
-        connection.unBind();
-        connection.close();
-      }
-    }
-    return users;
-  }
-
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
-    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean useLdap =
         runtimeConfigFactory
             .globalRuntimeConf()
@@ -426,7 +302,7 @@ public class SessionController extends AbstractPlatformController {
     }
     if (useLdap && user == null) {
       try {
-        user = loginWithLdap(data);
+        user = ldapUtil.loginWithLdap(data);
       } catch (LdapException e) {
         LOG.error("LDAP error {} authenticating user {}", e.getMessage(), data.getEmail());
       }
@@ -459,7 +335,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result getPlatformConfig() {
-    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     String platformConfig = "window.YB_Platform_Config = window.YB_Platform_Config || %s";
     ObjectNode responseJson = Json.newObject();
     responseJson.put("use_oauth", useOAuth);
@@ -471,7 +347,8 @@ public class SessionController extends AbstractPlatformController {
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin() {
     CommonProfile profile = getProfile();
-    String emailAttr = appConfig.getString("yb.security.oidcEmailAttribute", "");
+    String emailAttr =
+        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
     String email;
     if (emailAttr.equals("")) {
       email = profile.getEmail();
@@ -600,7 +477,7 @@ public class SessionController extends AbstractPlatformController {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
     boolean multiTenant = appConfig.getBoolean("yb.multiTenant", false);
-    boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
+    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
       throw new PlatformServiceException(

@@ -285,6 +285,8 @@ class PostgresBuilder(YbBuildToolBase):
                 ("Invalid step specified for setting env vars: must be in {}")
                 .format(BUILD_STEPS))
         is_make_step = step == 'make'
+        is_clang = self.compiler_type.startswith('clang')
+        is_gcc = self.compiler_type.startswith('gcc')
 
         self.set_env_var('YB_PG_BUILD_STEP', step)
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
@@ -303,12 +305,11 @@ class PostgresBuilder(YbBuildToolBase):
             '-Werror=int-conversion',
         ]
 
-        if self.compiler_type == 'clang':
+        if is_clang:
             additional_c_cxx_flags += [
-                '-Wno-builtin-requires-header'
+                '-Wno-builtin-requires-header',
+                '-Wno-shorten-64-to-32',
             ]
-
-        is_gcc = self.compiler_type.startswith('gcc')
 
         if is_make_step:
             additional_c_cxx_flags += [
@@ -318,7 +319,7 @@ class PostgresBuilder(YbBuildToolBase):
             ]
 
             if self.build_type == 'release':
-                if self.compiler_type == 'clang':
+                if is_clang:
                     additional_c_cxx_flags += [
                         '-Wno-error=array-bounds',
                         '-Wno-error=gnu-designator'

@@ -84,22 +84,22 @@ class TabletServerTestBase : public YBTest {
   CHECKED_STATUS WaitForTabletRunning(const char *tablet_id);
 
   void UpdateTestRowRemote(int tid,
-                           int64_t row_idx,
+                           int32_t row_idx,
                            int32_t new_val,
                            TimeSeries *ts = nullptr);
 
   void ResetClientProxies();
 
   // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
-  void InsertTestRowsDirect(int64_t start_row, uint64_t num_rows);
+  void InsertTestRowsDirect(int32_t start_row, int32_t num_rows);
 
   // Inserts 'num_rows' test rows remotely into the tablet (i.e via RPC)
   // Rows are grouped in batches of 'count'/'num_batches' size.
   // Batch size defaults to 1.
   void InsertTestRowsRemote(int tid,
-                            int64_t first_row,
-                            uint64_t count,
-                            uint64_t num_batches = -1,
+                            int32_t first_row,
+                            int32_t count,
+                            int32_t num_batches = -1,
                             TabletServerServiceProxy* proxy = nullptr,
                             string tablet_id = kTabletId,
                             std::vector<uint64_t>* write_hybrid_times_collector = nullptr,
@@ -107,8 +107,8 @@ class TabletServerTestBase : public YBTest {
                             bool string_field_defined = true);
 
   // Delete specified test row range.
-  void DeleteTestRowsRemote(int64_t first_row,
-                            uint64_t count,
+  void DeleteTestRowsRemote(int32_t first_row,
+                            int32_t count,
                             TabletServerServiceProxy* proxy = nullptr,
                             string tablet_id = kTabletId);
 
@@ -138,6 +138,7 @@ class TabletServerTestBase : public YBTest {
   std::unique_ptr<TabletServerAdminServiceProxy> admin_proxy_;
   std::unique_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
   std::unique_ptr<server::GenericServiceProxy> generic_proxy_;
+
 
   MetricRegistry ts_test_metric_registry_;
   scoped_refptr<MetricEntity> ts_test_metric_entity_;

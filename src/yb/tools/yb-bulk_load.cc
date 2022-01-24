@@ -77,7 +77,7 @@ DEFINE_string(table_name, "", "Name of the table to generate partitions for");
 DEFINE_string(namespace_name, "", "Namespace of the table");
 DEFINE_string(base_dir, "", "Base directory where we will store all the SSTable files");
 DEFINE_int64(memtable_size_bytes, 1_GB, "Amount of bytes to use for the rocksdb memtable");
-DEFINE_int32(row_batch_size, 1000, "The number of rows to batch together in each rocksdb write");
+DEFINE_uint64(row_batch_size, 1000, "The number of rows to batch together in each rocksdb write");
 DEFINE_bool(flush_batch_for_tests, false, "Option used only in tests to flush after each batch. "
     "Used to generate multiple SST files in conjuction with small row_batch_size");
 DEFINE_string(bulk_load_helper_script, "./bulk_load_helper.sh", "Relative path for bulk load helper"
@@ -271,7 +271,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   int col_id = 0;
   auto it = tokenizer.begin();
   // Process the hash keys first.
-  for (int i = 0; i < schema.num_key_columns(); it++, col_id++) {
+  for (size_t i = 0; i < schema.num_key_columns(); it++, col_id++) {
     if (skipped_cols_.find(col_id) != skipped_cols_.end()) {
       continue;
     }
@@ -291,12 +291,12 @@ Status BulkLoadTask::InsertRow(const string &row,
   }
 
   // Finally process the regular columns.
-  for (int i = schema.num_key_columns(); i < schema.num_columns(); it++, col_id++) {
+  for (auto i = schema.num_key_columns(); i < schema.num_columns(); it++, col_id++) {
     if (skipped_cols_.find(col_id) != skipped_cols_.end()) {
       continue;
     }
     QLColumnValuePB *column_value = req.add_column_values();
-    column_value->set_column_id(kFirstColumnId + i);
+    column_value->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
     if (IsNull(*it)) {
       // Use empty value for null.
       column_value->mutable_expr()->mutable_value();

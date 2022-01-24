@@ -282,7 +282,7 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   double sum_squared_deviation = 0;
   vector<int> tablet_counts;
   for (int ts_idx = 0; ts_idx < kNumServers; ts_idx++) {
-    int num_replicas = inspect_->ListTabletsOnTS(ts_idx).size();
+    auto num_replicas = inspect_->ListTabletsOnTS(ts_idx).size();
     LOG(INFO) << "TS " << ts_idx << " has " << num_replicas << " tablets";
     double deviation = static_cast<double>(num_replicas) - kMeanPerServer;
     sum_squared_deviation += deviation * deviation;
@@ -527,9 +527,9 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
   // Count the total Number of Raft Leaders in the cluster. Go through each tablet of every
   // tablet-server and sum up the leaders.
   int64_t kNumRaftLeaders = 0;
-  for (int i = 0 ; i < kNumReplicas; i++) {
+  for (size_t i = 0 ; i < kNumReplicas; i++) {
     auto tablet_ids = ASSERT_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
-    for(int ti = 0; ti < inspect_->ListTabletsOnTS(i).size(); ti++) {
+    for(size_t ti = 0; ti < inspect_->ListTabletsOnTS(i).size(); ti++) {
       const char *tabletId = tablet_ids[ti].c_str();
       kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetInt64Metric(
           &METRIC_ENTITY_tablet, tabletId, &METRIC_is_raft_leader, "value"));

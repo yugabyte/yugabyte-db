@@ -225,6 +225,13 @@ public class BackupsControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
   }
 
+  private Result editBackup(Users user, ObjectNode bodyJson, UUID backupUUID) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "PUT";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID;
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
   @Test
   public void testRestoreBackupWithInvalidUniverseUUID() {
     UUID universeUUID = UUID.randomUUID();
@@ -327,7 +334,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     // now a default for play.http.parser.maxMemoryBuffer)
     String largeKeyspace = new String(new char[keyspaceSz]).replace("\0", "#");
     bodyJson.put("keyspace", largeKeyspace);
-    bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", "s3://foo/bar");
@@ -366,7 +372,6 @@ public class BackupsControllerTest extends FakeDBApplication {
         app.config().getMemorySize("play.http.parser.maxMemoryBuffer").toBytes();
     String largeKeyspace = new String(new char[(int) (maxReqSizeInBytes)]).replace("\0", "#");
     bodyJson.put("keyspace", largeKeyspace);
-    bodyJson.put("tableName", "mock_table");
     bodyJson.put("actionType", "RESTORE");
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", "s3://foo/bar");
@@ -527,5 +532,51 @@ public class BackupsControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(
         json.get("error").asText(), "WaitFor task exceeded maxRetries! Task state is Created");
+  }
+
+  @Test
+  public void testEditBackupWithStateNotComplete() throws Exception {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
+
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testEditBackupWithNonPositiveDeletionTime() throws Exception {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", -1L);
+
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 0L);
+    result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testEditBackup() throws Exception {
+
+    defaultBackup.state = BackupState.Completed;
+    defaultBackup.update();
+    Backup backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+    // assertTrue(backup.state.equals(BackupState.Completed));
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
+
+    Result result = editBackup(defaultUser, bodyJson, defaultBackup.backupUUID);
+    backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+    long afterTimeInMillis = System.currentTimeMillis() + 86400000L;
+    long beforeTimeInMillis = System.currentTimeMillis() + 85400000L;
+
+    long expiryTimeInMillis = backup.getExpiry().getTime();
+    assertTrue(expiryTimeInMillis > beforeTimeInMillis);
+    assertTrue(afterTimeInMillis > expiryTimeInMillis);
   }
 }

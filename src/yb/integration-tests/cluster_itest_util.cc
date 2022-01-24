@@ -484,7 +484,7 @@ Status GetConsensusState(const TServerDetails* replica,
   return Status::OK();
 }
 
-Status WaitUntilCommittedConfigNumVotersIs(int config_size,
+Status WaitUntilCommittedConfigNumVotersIs(size_t config_size,
                                            const TServerDetails* replica,
                                            const std::string& tablet_id,
                                            const MonoDelta& timeout) {
@@ -492,11 +492,11 @@ Status WaitUntilCommittedConfigNumVotersIs(int config_size,
                                               consensus::PeerMemberType::VOTER);
 }
 
-Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
-                                           const TServerDetails* replica,
-                                           const std::string& tablet_id,
-                                           const MonoDelta& timeout,
-                                           consensus::PeerMemberType member_type) {
+Status WaitUntilCommittedConfigMemberTypeIs(size_t config_size,
+                                            const TServerDetails* replica,
+                                            const std::string& tablet_id,
+                                            const MonoDelta& timeout,
+                                            consensus::PeerMemberType member_type) {
   DCHECK_ONLY_NOTNULL(replica);
 
   MonoTime start = MonoTime::Now();
@@ -1076,7 +1076,7 @@ Status WaitForNumVotersInConfigOnMaster(
 }
 
 Status WaitForNumTabletsOnTS(TServerDetails* ts,
-                             int count,
+                             size_t count,
                              const MonoDelta& timeout,
                              vector<ListTabletsResponsePB::StatusAndSchemaPB>* tablets) {
   Status s;

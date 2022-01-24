@@ -120,8 +120,8 @@ bool HasReactorStartedClosing(ReactorState state) {
   return state == ReactorState::kClosing || state == ReactorState::kClosed;
 }
 
-int32_t PatchReceiveBufferSize(int32_t receive_buffer_size) {
-  return std::max<int32_t>(
+size_t PatchReceiveBufferSize(size_t receive_buffer_size) {
+  return std::max<size_t>(
       64_KB, FLAGS_rpc_read_buffer_size ? FLAGS_rpc_read_buffer_size : receive_buffer_size);
 }
 
@@ -271,8 +271,8 @@ void Reactor::ShutdownInternal() {
 
 Status Reactor::GetMetrics(ReactorMetrics *metrics) {
   return RunOnReactorThread([metrics](Reactor* reactor) {
-    metrics->num_client_connections_ = reactor->client_conns_.size();
-    metrics->num_server_connections_ = reactor->server_conns_.size();
+    metrics->num_client_connections = reactor->client_conns_.size();
+    metrics->num_server_connections = reactor->server_conns_.size();
     return Status::OK();
   }, SOURCE_LOCATION());
 }
@@ -561,7 +561,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     // originating address to be "public" also.
     address_bytes[3] |= conn_id.remote().address().to_v4().to_bytes()[3] & 1;
     boost::asio::ip::address_v4 outbound_address(address_bytes);
-    auto status = sock.Bind(Endpoint(outbound_address, 0));
+    auto status = sock.SetReuseAddr(true);
+    if (status.ok()) {
+      status = sock.Bind(Endpoint(outbound_address, 0));
+    }
     LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
                                               << status;
   } else if (FLAGS_local_ip_for_outbound_sockets.empty()) {
@@ -569,7 +572,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
-      auto status = sock.Bind(Endpoint(outbound_address, 0));
+      auto status = sock.SetReuseAddr(true);
+      if (status.ok()) {
+        status = sock.Bind(Endpoint(outbound_address, 0));
+      }
       LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
                                                 << status;
     }
@@ -900,7 +906,7 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 // ------------------------------------------------------------------------------------------------
 
 void Reactor::RegisterInboundSocket(
-    Socket *socket, int32_t receive_buffer_size, const Endpoint& remote,
+    Socket *socket, size_t receive_buffer_size, const Endpoint& remote,
     const ConnectionContextFactoryPtr& factory) {
   VLOG_WITH_PREFIX(3) << "New inbound connection to " << remote;
   receive_buffer_size = PatchReceiveBufferSize(receive_buffer_size);

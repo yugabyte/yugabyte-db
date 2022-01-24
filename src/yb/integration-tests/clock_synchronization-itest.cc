@@ -24,6 +24,9 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+// RepeatedPtrField would NOT call dtor if class is not defined, so need this include below.
+#include "yb/master/master_client.pb.h" // for TabletLocationsPB
+
 #include "yb/rpc/messenger.h"
 
 #include "yb/server/hybrid_clock.h"

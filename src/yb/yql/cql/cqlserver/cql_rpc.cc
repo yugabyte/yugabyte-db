@@ -56,7 +56,7 @@ DEFINE_int32(throttle_cql_calls_policy, kRejectPolicy,
               "Policy for throttling CQL calls. 1 - drop throttled calls. "
               "0 - respond with OVERLOADED error.");
 
-DECLARE_int32(rpc_max_message_size);
+DECLARE_uint64(rpc_max_message_size);
 
 // Max msg length for CQL.
 // Since yb_rpc limit is 255MB, we limit consensensus size to 254MB,
@@ -324,7 +324,7 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
 
 void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
-  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+  auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
           || (trace_ && trace_->must_print())
           || total_time > FLAGS_rpc_slow_query_threshold_ms)) {

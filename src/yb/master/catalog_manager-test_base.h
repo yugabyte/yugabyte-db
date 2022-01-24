@@ -16,7 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/cluster_balance_mocked.h"
@@ -59,8 +61,8 @@ inline scoped_refptr<TabletInfo> CreateTablet(
 
 void CreateTable(const vector<string> split_keys, const int num_replicas, bool setup_placement,
                  TableInfo* table, vector<scoped_refptr<TabletInfo>>* tablets) {
-  const int kNumSplits = split_keys.size();
-  for (int i = 0; i <= kNumSplits; i++) {
+  const size_t kNumSplits = split_keys.size();
+  for (size_t i = 0; i <= kNumSplits; i++) {
     const string& start_key = (i == 0) ? "" : split_keys[i - 1];
     const string& end_key = (i == kNumSplits) ? "" : split_keys[i];
     string tablet_id = strings::Substitute("tablet-$0-$1", start_key, end_key);
@@ -169,7 +171,7 @@ class TestLoadBalancerBase {
     // Generate 12 tablets total: 4 splits and 3 replicas each.
     vector<string> splits = {"a", "b", "c"};
     const int num_replicas = 3;
-    total_num_tablets_ = num_replicas * (splits.size() + 1);
+    total_num_tablets_ = narrow_cast<int>(num_replicas * (splits.size() + 1));
 
     CreateTable(splits, num_replicas, false, table.get(), &tablets);
 
@@ -968,9 +970,9 @@ class TestLoadBalancerBase {
 
     // Prepare the replicas.
     tablet::RaftGroupStatePB state = tablet::RUNNING;
-    for (int i = 0; i < tablets_.size(); ++i) {
+    for (size_t i = 0; i < tablets_.size(); ++i) {
       auto replica_map = std::make_shared<TabletReplicaMap>();
-      for (int j = 0; j < ts_descs_.size(); ++j) {
+      for (size_t j = 0; j < ts_descs_.size(); ++j) {
         TabletReplica replica;
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;
@@ -1058,9 +1060,7 @@ class TestLoadBalancerBase {
   void RemoveReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
     std::shared_ptr<TabletReplicaMap> replicas =
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
-    int before_size = replicas->size();
-    replicas->erase(ts_desc->permanent_uuid());
-    ASSERT_TRUE(before_size > replicas->size());
+    ASSERT_TRUE(replicas->erase(ts_desc->permanent_uuid()));
     tablet->SetReplicaLocations(replicas);
   }
 

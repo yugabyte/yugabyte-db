@@ -3,10 +3,10 @@ title: Metabase
 linkTitle: Metabase
 description: Metabase
 aliases:
+section: INTEGRATIONS
 menu:
   latest:
     identifier: metabase
-    parent: integrations
     weight: 576
 isTocNested: true
 showAsideToc: true

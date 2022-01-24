@@ -58,7 +58,7 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
-DECLARE_int32(max_queued_split_candidates);
+DECLARE_uint64(max_queued_split_candidates);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -173,7 +173,7 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
   std::unique_ptr<load_generator::SessionFactory> load_session_factory_;
   std::unique_ptr<load_generator::MultiThreadedWriter> writer_;
   std::unique_ptr<load_generator::MultiThreadedReader> reader_;
-  int start_num_active_tablets_;
+  size_t start_num_active_tablets_;
 };
 
 class CqlTabletSplitTestMultiMaster : public CqlTabletSplitTest {
@@ -514,8 +514,8 @@ CHECKED_STATUS RunBatchTimeSeriesTest(
   std::atomic_int num_read_errors(0);
   std::atomic_int num_write_errors(0);
 
-  Random r(/* seed */ 29383);
-  const auto num_metrics = r.Uniform(kMaxMetricsCount - kMinMetricsCount) + kMinMetricsCount;
+  std::mt19937_64 rng(/* seed */ 29383);
+  const auto num_metrics = RandomUniformInt<>(kMinMetricsCount, kMaxMetricsCount - 1, &rng);
   std::vector<std::unique_ptr<BatchTimeseriesDataSource>> data_sources;
   for (int i = 0; i < num_metrics; ++i) {
     data_sources.emplace_back(std::make_unique<BatchTimeseriesDataSource>(Format("metric-$0", i)));
@@ -544,13 +544,12 @@ CHECKED_STATUS RunBatchTimeSeriesTest(
       kTableName.table_name())));
 
   std::mutex random_mutex;
-  auto get_random_source = [&r, &random_mutex, &data_sources]() -> BatchTimeseriesDataSource* {
+  auto get_random_source = [&rng, &random_mutex, &data_sources]() -> BatchTimeseriesDataSource* {
     std::lock_guard<decltype(random_mutex)> lock(random_mutex);
-    auto index = r.Uniform(data_sources.size());
-    return data_sources.at(index).get();
+    return RandomElement(data_sources, &rng).get();
   };
 
-  auto get_value = [](int ts, std::string* value) {
+  auto get_value = [](int64_t ts, std::string* value) {
     value->clear();
     value->append(AsString(ts));
     const auto suffix_size = value->size() >= kValueSize ? 0 : kValueSize - value->size();

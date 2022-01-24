@@ -124,9 +124,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_GoodSchema) {
   b.SetPrimaryKey({ "a", "b" });
   ASSERT_EQ("OK", b.Build(&s).ToString());
 
-  vector<int> key_columns;
-  s.GetPrimaryKeyColumnIndexes(&key_columns);
-  ASSERT_EQ(vector<int>({ 0, 1 }), key_columns);
+  auto key_columns = s.GetPrimaryKeyColumnIndexes();
+  ASSERT_EQ(vector<size_t>({ 0, 1 }), key_columns);
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {

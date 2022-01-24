@@ -58,6 +58,7 @@ $ ./bin/yb-admin --help
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
+* [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)
 
 ---
 
@@ -119,7 +120,7 @@ yb-admin \
     change_master_config \
     [ ADD_SERVER|REMOVE_SERVER ] \
     <ip_addr> <port> \
-    [ 0 | 1 ]
+    [<uuid>]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -127,7 +128,7 @@ yb-admin \
   * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
 * *ip_addr*: The IP address of the server node.
 * *port*: The port of the server node.
-* `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
+* *uuid*: The UUID for the server that is being added/removed.
 
 #### list_tablet_servers
 
@@ -503,8 +504,49 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 
 Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
 
-Use this command to create custom placement policies only for YCQL tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
+Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
 {{< /note >}}
+
+#### create_transaction_table
+
+Creates a transaction status table to be used within a region. This command should always be followed by [`modify_table_placement_info`](#modify-table-placement-info) to set the placement information for the newly created transaction status table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_transaction_table \
+    <table_name>
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_name*: The name of the transaction status table to be created; this must start with `transactions_`.
+
+The transaction status table will be created as `system.<table_name>`.
+
+
+**Example**
+
+```sh
+$ ./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    create_transaction_table \
+    transactions_us_east
+```
+
+Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:7000/`) and clicking **Tables** in the navigation bar. You should see a new system table with keyspace `system` and table name `transactions_us_east`.
+
+Next, set the placement on the newly created transactions table:
+
+```sh
+$ ./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    modify_table_placement_info system transactions_us_east \
+    aws.us-east.us-east-1a,aws.us-east.us-east-1b,aws.us-east.us-east-1c 3
+```
+
+After the load balancer runs, all tablets of `system.transactions_us_east` should now be solely located within the AWS us-east region.
 
 ---
 
@@ -1008,8 +1050,8 @@ yb-admin \
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
-* *replication_factor*: The number of replicas for each tablet.
+* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, we can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, in the event that the user specifies a placement multiple times, the total count from all mentions is taken.
+* *replication_factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement_info*.
 * *placement_id*: The identifier of the primary cluster, which can be any unique string. Optional. If not set, a randomly-generated ID will be used.
 
 **Example**
@@ -1018,8 +1060,13 @@ yb-admin \
 $ ./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
-    aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
+    aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:2,aws.us-west.us-west-2c 5
 ```
+
+This will place a minimum of:
+1. 2 replicas in aws.us-west.us-west-2a
+2. 2 replicas in aws.us-west.us-west-2b
+3. 1 replica in aws.us-west.us-west-2c
 
 You can verify the new placement information by running the following `curl` command:
 
@@ -1676,3 +1723,45 @@ yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_is_load_balancer_idle
 ```
+
+---
+
+### Upgrade YSQL system catalog
+
+#### upgrade_ysql
+
+Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
+
+**Syntax**
+
+```sh
+yb-admin upgrade_ysql
+```
+
+**Example**
+
+```sh
+./bin/yb-admin upgrade_ysql
+```
+
+A successful upgrade returns the following message:
+
+```output
+YSQL successfully upgraded to the latest version
+```
+
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+
+```sh
+$ ./bin/yb-admin \
+      -timeout_ms 180000 \
+      upgrade_ysql
+```
+
+Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+
+{{< note title="Note" >}}
+Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
+{{< /note >}}
+
+Refer [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.

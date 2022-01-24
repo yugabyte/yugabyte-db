@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -25,13 +26,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -66,6 +65,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final MetricService metricService;
   protected final AlertConfigurationService alertConfigurationService;
   protected final YBClientService ybService;
+  protected final RestoreManagerYb restoreManagerYb;
   protected final TableManager tableManager;
   protected final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory platformExecutorFactory;
@@ -81,6 +81,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.metricService = baseTaskDependencies.getMetricService();
     this.alertConfigurationService = baseTaskDependencies.getAlertConfigurationService();
     this.ybService = baseTaskDependencies.getYbService();
+    this.restoreManagerYb = baseTaskDependencies.getRestoreManagerYb();
     this.tableManager = baseTaskDependencies.getTableManager();
     this.tableManagerYb = baseTaskDependencies.getTableManagerYb();
     this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
@@ -217,10 +218,5 @@ public abstract class AbstractTaskBase implements ITask {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name);
     subTaskGroup.setSubTaskExecutor(executor);
     return subTaskGroup;
-  }
-
-  @Override
-  public boolean isAbortable() {
-    return false;
   }
 }

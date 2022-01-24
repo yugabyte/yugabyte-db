@@ -67,9 +67,7 @@ ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}
                DEPS ${PGGATE_LIBS})
 
-if(${YB_PCH_ON})
-  target_precompile_headers(yb_pggate REUSE_FROM yb_pggate_util)
-endif()
+yb_use_pch(yb_pggate pggate)
 
 # Test
 add_subdirectory(test)

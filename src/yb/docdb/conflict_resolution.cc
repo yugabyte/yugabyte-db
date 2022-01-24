@@ -504,7 +504,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   // Number of transactions that are not yet resolved. After successful resolution should be 0.
   size_t remaining_transactions_;
 
-  std::atomic<int> pending_requests_{0};
+  std::atomic<size_t> pending_requests_{0};
 };
 
 struct IntentData {
@@ -1039,7 +1039,7 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
 // transaction_id_slice used in INTENT_KEY_SCHECK
 Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
   ParsedIntent result;
-  int doc_ht_size = 0;
+  size_t doc_ht_size = 0;
   result.doc_path = intent_key;
   // Intent is encoded as "DocPath + IntentType + DocHybridTime".
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(result.doc_path, &doc_ht_size));

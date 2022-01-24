@@ -841,11 +841,11 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   }
 
   if (!leader_dist.empty()) {
-    for (int i = 0; i < leader_dist.size(); ++i) {
+    for (size_t i = 0; i < leader_dist.size(); ++i) {
       best_case.push_back(total_leader_count / leader_dist.size());
       worst_case.push_back(0);
     }
-    for (int i = 0; i < total_leader_count % leader_dist.size(); ++i) {
+    for (size_t i = 0; i < total_leader_count % leader_dist.size(); ++i) {
       ++best_case[i];
     }
     worst_case[0] = total_leader_count;
@@ -936,27 +936,35 @@ Status ClusterAdminClient::DropRedisTable() {
 Status ClusterAdminClient::ChangeMasterConfig(
     const string& change_type,
     const string& peer_host,
-    int16 peer_port,
-    bool use_hostport) {
+    uint16_t peer_port,
+    const string& given_uuid) {
   CHECK(initted_);
 
-  VLOG(1) << "ChangeMasterConfig: " << change_type << " | " << peer_host << ":" << peer_port;
   consensus::ChangeConfigType cc_type;
   RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
 
   string peer_uuid;
-  if (!use_hostport) {
-      VLOG(1) << "ChangeMasterConfig: attempt to get UUID for changed host: "
-              << peer_host << ":" << peer_port;
-      RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
+  if (cc_type == consensus::ADD_SERVER) {
+    VLOG(1) << "ChangeMasterConfig: attempt to get UUID for changed host: " << peer_host << ":"
+            << peer_port;
+    RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
+    if (!given_uuid.empty() && given_uuid != peer_uuid) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Specified uuid $0. But the server has uuid $1", given_uuid, peer_uuid);
+    }
+  } else {
+    // Do not verify uuid for REMOVE_SERVER, as the server may not be accessible.
+    peer_uuid = given_uuid;
   }
+  VLOG(1) << "ChangeMasterConfig: " << change_type << " | " << peer_host << ":" << peer_port
+          << " uuid : " << peer_uuid;
 
   auto leader_uuid = VERIFY_RESULT(GetMasterLeaderUuid());
 
   // If removing the leader master, then first make it step down and that
   // starts an election and gets a new leader master.
-  auto changed_leader_addr = leader_addr_;
-  if (cc_type == consensus::REMOVE_SERVER && leader_uuid == peer_uuid) {
+  const HostPort changed_master_addr(peer_host, peer_port);
+  if (cc_type == consensus::REMOVE_SERVER && leader_addr_ == changed_master_addr) {
     VLOG(1) << "ChangeMasterConfig: request leader " << leader_addr_
             << " to step down before removal.";
     string old_leader_uuid = leader_uuid;
@@ -977,28 +985,32 @@ Status ClusterAdminClient::ChangeMasterConfig(
   consensus::ChangeConfigRequestPB req;
 
   RaftPeerPB peer_pb;
-  peer_pb.set_permanent_uuid(peer_uuid);
-  // Ignored by ChangeConfig if request != ADD_SERVER.
-  peer_pb.set_member_type(consensus::PeerMemberType::PRE_VOTER);
+  if (!peer_uuid.empty()) {
+    peer_pb.set_permanent_uuid(peer_uuid);
+  }
+
+  if (cc_type == consensus::ADD_SERVER) {
+    peer_pb.set_member_type(consensus::PeerMemberType::PRE_VOTER);
+  } else {  // REMOVE_SERVER
+    req.set_use_host(peer_uuid.empty());
+  }
   HostPortPB *peer_host_port = peer_pb.mutable_last_known_private_addr()->Add();
   peer_host_port->set_port(peer_port);
   peer_host_port->set_host(peer_host);
   req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
   req.set_type(cc_type);
-  req.set_use_host(use_hostport);
   *req.mutable_server() = peer_pb;
 
   VLOG(1) << "ChangeMasterConfig: ChangeConfig for tablet id " << yb::master::kSysCatalogTabletId
           << " to host " << leader_addr_;
-  RETURN_NOT_OK(InvokeRpc(
-    &consensus::ConsensusServiceProxy::ChangeConfig, *leader_proxy, req));
+  RETURN_NOT_OK(InvokeRpc(&consensus::ConsensusServiceProxy::ChangeConfig, *leader_proxy, req));
 
   VLOG(1) << "ChangeMasterConfig: update yb client to reflect config change.";
   if (cc_type == consensus::ADD_SERVER) {
-    RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_addr));
+    RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_master_addr));
   } else {
-    RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_leader_addr));
+    RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_master_addr));
   }
 
   return Status::OK();
@@ -1251,7 +1263,7 @@ Status ClusterAdminClient::ListTablets(
          << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID" << endl;
   }
 
-  for (int i = 0; i < tablet_uuids.size(); i++) {
+  for (size_t i = 0; i < tablet_uuids.size(); i++) {
     const string& tablet_uuid = tablet_uuids[i];
     string leader_host_port;
     string leader_uuid;
@@ -1668,7 +1680,7 @@ Status ClusterAdminClient::FillPlacementInfo(
         + std::to_string(placement_info_split.size()));
   }
 
-  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
     std::vector<std::string> placement_block = strings::Split(placement_info_split[iter], ":",
                                                               strings::SkipEmpty());
 
@@ -1719,7 +1731,7 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
   master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
   live_replicas->set_num_replicas(replication_factor);
   // Iterate over the placement blocks of the placementInfo structure.
-  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
     std::vector<std::string> block = strings::Split(placement_info_split[iter], ".",
                                                     strings::SkipEmpty());
     if (block.size() != 3) {
@@ -1756,10 +1768,11 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   std::vector<std::string> placement_info_split = strings::Split(
       placement_info, ",", strings::AllowEmpty());
   if (placement_info_split.size() < 1) {
-    return STATUS(InvalidCommand, "Cluster config must be a list of "
-    "placement infos seperated by commas. "
-    "Format: 'cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3 ..."
-    + std::to_string(placement_info_split.size()));
+    return STATUS(
+        InvalidCommand,
+        "Cluster config must be a list of placement infos seperated by commas. Format: "
+        "cloud1.region1.zone1:[min_replica_count1],cloud2.region2.zone2:[min_replica_count2] ..."
+        + std::to_string(placement_info_split.size()));
   }
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
@@ -1767,10 +1780,39 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
   live_replicas->set_num_replicas(replication_factor);
 
+  int total_min_replica_count = 0;
+
   // Iterate over the placement blocks of the placementInfo structure.
   std::unordered_map<std::string, int> placement_to_min_replicas;
-  for (int iter = 0; iter < placement_info_split.size(); iter++) {
-    placement_to_min_replicas[placement_info_split[iter]]++;
+  for (const auto& placement_block : placement_info_split) {
+    std::vector<std::string> placement_info_min_replica_split =
+        strings::Split(placement_block, ":", strings::AllowEmpty());
+
+    if (placement_info_min_replica_split.size() == 0 ||
+        placement_info_min_replica_split.size() > 2) {
+      return STATUS(
+          InvalidCommand,
+          "Each placement info must have at most 2 values separated by a colon. "
+          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: "
+          + placement_block);
+    }
+
+    std::string placement_target = placement_info_min_replica_split[0];
+    int placement_min_replica_count = 1;
+
+    if (placement_info_min_replica_split.size() == 2) {
+      placement_min_replica_count = VERIFY_RESULT(CheckedStoi(placement_info_min_replica_split[1]));
+    }
+
+    total_min_replica_count += placement_min_replica_count;
+    placement_to_min_replicas[placement_target] += placement_min_replica_count;
+  }
+
+  if (total_min_replica_count > replication_factor) {
+    return STATUS(
+        InvalidCommand,
+        "replication_factor should be greater than or equal to the total of replica counts "
+        "specified in placement_info.");
   }
 
   for (const auto& placement_block : placement_to_min_replicas) {

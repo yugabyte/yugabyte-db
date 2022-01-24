@@ -167,6 +167,7 @@ message CDCRecordPB {
     WRITE = 1;
     DELETE = 2;
     APPLY = 3;
+    SPLIT_OP = 4;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;
@@ -184,6 +185,9 @@ message CDCRecordPB {
   // If transaction_state.status is APPLYING, then partitions will contain the partition for the
   // tablet being polled.
   optional PartitionPB partition = 9;
+
+  // If operation type is a SPLIT_OP, then include the split request.
+  optional tablet.SplitTabletRequestPB split_tablet_request = 10;
 }
 
 message GetChangesResponsePB {

@@ -148,11 +148,12 @@ DEFINE_int32(num_concurrent_backfills_allowed, -1,
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
-DEFINE_int32(max_stale_read_bound_time_ms, 60000, "If we are allowed to read from followers, "
-             "specify the maximum time a follower can be behind by using the last message received "
-             "from the leader. If set to zero, a read can be served by a follower regardless of "
-             "when was the last time it received a message from the leader or how far behind this"
-             "follower is.");
+DEFINE_uint64(
+    max_stale_read_bound_time_ms, 60000,
+    "If we are allowed to read from followers, specify the maximum time a follower can be behind "
+    "by using the last message received from the leader. If set to zero, a read can be served by a "
+    "follower regardless of when was the last time it received a message from the leader or how "
+    "far behind this follower is.");
 TAG_FLAG(max_stale_read_bound_time_ms, evolving);
 TAG_FLAG(max_stale_read_bound_time_ms, runtime);
 
@@ -463,7 +464,8 @@ class WriteQueryCompletionCallback {
       SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
       rows_data.clear();
       rowblock->Serialize(ql_write_req.client(), &rows_data);
-      ql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(rows_data));
+      ql_write_resp->set_rows_data_sidecar(
+          narrow_cast<int32_t>(context_->AddRpcSidecar(rows_data)));
     }
 
     if (!query_->pgsql_write_ops()->empty()) {
@@ -481,7 +483,8 @@ class WriteQueryCompletionCallback {
           auto* pgsql_write_resp = pgsql_write_op->response();
           const faststring& result_buffer = pgsql_write_op->result_buffer();
           if (!result_buffer.empty()) {
-            pgsql_write_resp->set_rows_data_sidecar(context_->AddRpcSidecar(result_buffer));
+            pgsql_write_resp->set_rows_data_sidecar(
+                narrow_cast<int32_t>(context_->AddRpcSidecar(result_buffer)));
           }
         }
       }
@@ -1819,10 +1822,10 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
         auto safe_time_micros = tablet_peer->tablet()->mvcc_manager()->SafeTimeForFollower(
             HybridTime::kMin, CoarseTimePoint::min()).GetPhysicalValueMicros();
         auto now_micros = server_->Clock()->Now().GetPhysicalValueMicros();
-        auto follower_staleness_ms = (now_micros - safe_time_micros) / 1000;
-        if (follower_staleness_ms > FLAGS_max_stale_read_bound_time_ms) {
+        auto follower_staleness_us = now_micros - safe_time_micros;
+        if (follower_staleness_us > FLAGS_max_stale_read_bound_time_ms * 1000) {
           VLOG(1) << "Rejecting stale read with staleness "
-                     << follower_staleness_ms << " ms";
+                     << follower_staleness_us << "us";
           SetupErrorAndRespond(resp->mutable_error(), STATUS(IllegalState, "Stale follower"),
                                TabletServerErrorPB::STALE_FOLLOWER, context);
           return false;
@@ -1832,10 +1835,9 @@ bool TabletServiceImpl::DoGetTabletOrRespond(
                      << " but peer " << tablet_peer->permanent_uuid()
                      << " for tablet: " << req->tablet_id()
                      << " is not stale. Time since last update from leader: "
-                     << follower_staleness_ms;
+                     << follower_staleness_us << "us";
         } else {
-          VLOG(3) << "Reading from follower with staleness (ms): "
-                  << follower_staleness_ms;
+          VLOG(3) << "Reading from follower with staleness: " << follower_staleness_us << "us";
         }
       }
     } else {
@@ -2354,7 +2356,7 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
   if (!read_context->req->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(read_context->tablet->table_type(), TableType::REDIS_TABLE_TYPE);
-    size_t count = read_context->req->redis_batch_size();
+    auto count = read_context->req->redis_batch_size();
     std::vector<Status> rets(count);
     CountDownLatch latch(count);
     for (int idx = 0; idx < count; idx++) {
@@ -2423,7 +2425,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       if (result.restart_read_ht.is_valid()) {
         return read_context->FormRestartReadHybridTime(result.restart_read_ht);
       }
-      result.response.set_rows_data_sidecar(read_context->context.AddRpcSidecar(result.rows_data));
+      result.response.set_rows_data_sidecar(
+          narrow_cast<int32_t>(read_context->context.AddRpcSidecar(result.rows_data)));
       read_context->resp->add_ql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();
@@ -2448,7 +2451,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       if (result.restart_read_ht.is_valid()) {
         return read_context->FormRestartReadHybridTime(result.restart_read_ht);
       }
-      result.response.set_rows_data_sidecar(read_context->context.AddRpcSidecar(result.rows_data));
+      result.response.set_rows_data_sidecar(
+          narrow_cast<int32_t>(read_context->context.AddRpcSidecar(result.rows_data)));
       read_context->resp->add_pgsql_batch()->Swap(&result.response);
     }
 

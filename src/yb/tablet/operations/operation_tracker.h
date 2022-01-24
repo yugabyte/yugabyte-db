@@ -76,7 +76,7 @@ class OperationTracker {
   std::vector<scoped_refptr<OperationDriver>> GetPendingOperations() const;
 
   // Returns number of pending operations.
-  int GetNumPendingForTests() const;
+  size_t TEST_GetNumPending() const;
 
   void WaitForAllToFinish() const;
   CHECKED_STATUS WaitForAllToFinish(const MonoDelta& timeout) const;

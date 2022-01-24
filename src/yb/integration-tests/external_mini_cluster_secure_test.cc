@@ -105,7 +105,7 @@ class ExternalMiniClusterSecureAllowInsecureTest : public ExternalMiniClusterSec
 // For this test with allow insecure (i.e. not encrypted) connections.
 TEST_F_EX(ExternalMiniClusterSecureTest, InsecureCql, ExternalMiniClusterSecureAllowInsecureTest) {
   std::vector<std::string> hosts;
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     hosts.push_back(cluster_->tablet_server(i)->bind_host());
   }
 

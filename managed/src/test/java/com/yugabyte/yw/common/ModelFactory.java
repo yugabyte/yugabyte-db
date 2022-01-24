@@ -247,6 +247,18 @@ public class ModelFactory {
     params.setKeyspace("foo");
     params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
+    params.actionType = BackupTableParams.ActionType.CREATE;
+    return Backup.create(customerUUID, params);
+  }
+
+  public static Backup restoreBackup(UUID customerUUID, UUID universeUUID, UUID configUUID) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = configUUID;
+    params.universeUUID = universeUUID;
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    params.tableUUID = UUID.randomUUID();
+    params.actionType = BackupTableParams.ActionType.RESTORE;
     return Backup.create(customerUUID, params);
   }
 
@@ -480,6 +492,7 @@ public class ModelFactory {
         new MaintenanceWindow()
             .generateUUID()
             .setName("Test")
+            .setDescription("Test Description")
             .setStartTime(startDate)
             .setEndTime(endDate)
             .setCustomerUUID(customerUUID)

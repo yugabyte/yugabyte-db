@@ -528,6 +528,9 @@ int32_t YBCGetSequenceCacheMinval();
 // Retrieve value of ysql_disable_index_backfill gflag.
 bool YBCGetDisableIndexBackfill();
 
+// Retrieve value of log_ysql_catalog_versions gflag.
+bool YBCGetLogYsqlCatalogVersions();
+
 bool YBCPgIsYugaByteEnabled();
 
 // Sets the specified timeout in the rpc service.
@@ -556,7 +559,7 @@ const void* YBCPgGetThreadLocalErrMsg();
 
 void YBCPgResetCatalogReadTime();
 
-YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
 #ifdef __cplusplus
 }  // extern "C"

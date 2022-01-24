@@ -4,10 +4,10 @@ linkTitle: Deploy clusters
 description: Deploy clusters in Yugabyte Cloud.
 headcontent: Deploy production-ready clusters.
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-basics
-    parent: yugabyte-cloud
     weight: 25
 isTocNested: true
 showAsideToc: true
@@ -32,30 +32,6 @@ You deploy clusters in Yugabyte Cloud using the **Create Cluster** wizard. Befor
       </div>
       <div class="body">
         Create a new cluster in Yugabyte Cloud.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="add-connections/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
-        <div class="title">IP allow lists</div>
-      </div>
-      <div class="body">
-        Whitelist IP addresses to control who can connect to your clusters.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="add-extensions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
-        <div class="title">Create extensions</div>
-      </div>
-      <div class="body">
-        Create PostgreSQL extensions in Yugabyte Cloud clusters.
       </div>
     </a>
   </div>

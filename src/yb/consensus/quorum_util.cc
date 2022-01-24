@@ -151,22 +151,22 @@ bool RemoveFromRaftConfig(RaftConfigPB* config, const ChangeConfigRequestPB& req
   return true;
 }
 
-int CountVoters(const RaftConfigPB& config) {
+size_t CountVoters(const RaftConfigPB& config) {
   return CountMemberType(config, PeerMemberType::VOTER);
 }
 
-int CountVotersInTransition(const RaftConfigPB& config) {
+size_t CountVotersInTransition(const RaftConfigPB& config) {
   return CountMemberType(config, PeerMemberType::PRE_VOTER);
 }
 
-int CountServersInTransition(const RaftConfigPB& config, const string& ignore_uuid) {
+size_t CountServersInTransition(const RaftConfigPB& config, const string& ignore_uuid) {
   return CountMemberType(config, PeerMemberType::PRE_VOTER, ignore_uuid) +
          CountMemberType(config, PeerMemberType::PRE_OBSERVER, ignore_uuid);
 }
 
-int CountMemberType(const RaftConfigPB& config, const PeerMemberType member_type,
-                    const string& ignore_uuid) {
-  int count = 0;
+size_t CountMemberType(const RaftConfigPB& config, const PeerMemberType member_type,
+                       const string& ignore_uuid) {
+  size_t count = 0;
   for (const RaftPeerPB& peer : config.peers()) {
     if (peer.member_type() == member_type && peer.permanent_uuid() != ignore_uuid) {
       count++;
@@ -175,7 +175,7 @@ int CountMemberType(const RaftConfigPB& config, const PeerMemberType member_type
   return count;
 }
 
-int MajoritySize(int num_voters) {
+size_t MajoritySize(size_t num_voters) {
   DCHECK_GE(num_voters, 1);
   return (num_voters / 2) + 1;
 }

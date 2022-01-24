@@ -408,7 +408,7 @@ class AnyOf {
 template <typename Delimiter>
 class LimitImpl {
  public:
-  LimitImpl(Delimiter delimiter, int limit)
+  LimitImpl(Delimiter delimiter, size_t limit)
       : delimiter_(std::move(delimiter)), limit_(limit), count_(0) {}
   GStringPiece Find(GStringPiece text) {
     if (count_++ == limit_) {
@@ -419,27 +419,27 @@ class LimitImpl {
 
  private:
   Delimiter delimiter_;
-  const int limit_;
-  int count_;
+  const size_t limit_;
+  size_t count_;
 };
 
 // Overloaded Limit() function to create LimitImpl<> objects. Uses the Delimiter
 // Literal as the default if string-like objects are passed as the delimiter
 // parameter. This is similar to the overloads for Split() below.
 template <typename Delimiter>
-inline LimitImpl<Delimiter> Limit(Delimiter delim, int limit) {
+inline LimitImpl<Delimiter> Limit(Delimiter delim, size_t limit) {
   return LimitImpl<Delimiter>(delim, limit);
 }
 
-inline LimitImpl<Literal> Limit(const char* s, int limit) {
+inline LimitImpl<Literal> Limit(const char* s, size_t limit) {
   return LimitImpl<Literal>(Literal(s), limit);
 }
 
-inline LimitImpl<Literal> Limit(const string& s, int limit) {
+inline LimitImpl<Literal> Limit(const string& s, size_t limit) {
   return LimitImpl<Literal>(Literal(s), limit);
 }
 
-inline LimitImpl<Literal> Limit(GStringPiece s, int limit) {
+inline LimitImpl<Literal> Limit(GStringPiece s, size_t limit) {
   return LimitImpl<Literal>(Literal(s), limit);
 }
 
@@ -574,14 +574,14 @@ inline internal::Splitter<delimiter::Literal, Predicate> Split(
 //    that ClipStringHelper is used behind the scenes by SplitStringToLines, but
 //    probably shouldn't be exposed in the .h files.
 // ----------------------------------------------------------------------
-void ClipString(char* str, int max_len);
+void ClipString(char* str, size_t max_len);
 
 // ----------------------------------------------------------------------
 // ClipString
 //    Version of ClipString() that uses string instead of char*.
 //    NOTE: See comment above.
 // ----------------------------------------------------------------------
-void ClipString(string* full_str, int max_len);
+void ClipString(string* full_str, size_t max_len);
 
 // ----------------------------------------------------------------------
 // SplitStringToLines() Split a string into lines of maximum length
@@ -593,8 +593,8 @@ void ClipString(string* full_str, int max_len);
 // long to fit completely into 'num_lines' lines.
 // ----------------------------------------------------------------------
 void SplitStringToLines(const char* full,
-                        int max_len,
-                        int num_lines,
+                        size_t max_len,
+                        size_t num_lines,
                         vector<string>* result);
 
 // ----------------------------------------------------------------------
@@ -762,7 +762,7 @@ void SplitStringWithEscapingToSet(const string& full,
 // ----------------------------------------------------------------------
 void SplitStringIntoNPiecesAllowEmpty(const string& full,
                                       const char* delimiters,
-                                      int pieces,
+                                      size_t pieces,
                                       vector<string>* result);
 
 // ----------------------------------------------------------------------

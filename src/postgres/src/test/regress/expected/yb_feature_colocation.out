@@ -230,12 +230,16 @@ CREATE TABLE tab_range_nonkey_noco3 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (co
 CREATE INDEX idx_range4 ON tab_range_nonkey_noco3 (a);
 CREATE TABLE tab_range_nonkey5 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
+-- colocated table with unique index
+CREATE TABLE tab_nonkey2 (a INT) WITH (colocated = true);
+CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
 \dt
                  List of relations
  Schema |          Name          | Type  |  Owner
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
  public | tab_nonkey             | table | yugabyte
+ public | tab_nonkey2            | table | yugabyte
  public | tab_nonkey_noco        | table | yugabyte
  public | tab_range              | table | yugabyte
  public | tab_range_colo         | table | yugabyte
@@ -248,7 +252,7 @@ CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
  public | tab_range_nonkey_noco2 | table | yugabyte
  public | tab_range_nonkey_noco3 | table | yugabyte
  public | tab_range_range        | table | yugabyte
-(14 rows)
+(15 rows)
 
 \di
                                 List of relations
@@ -259,6 +263,7 @@ CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
  public | idx_range3                  | index | yugabyte | tab_range_nonkey_noco2
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3
  public | idx_range5                  | index | yugabyte | tab_range_nonkey5
+ public | idx_range6                  | index | yugabyte | tab_nonkey2
  public | tab_key_pkey                | index | yugabyte | tab_key
  public | tab_range_colo_pkey         | index | yugabyte | tab_range_colo
  public | tab_range_nonkey2_pkey      | index | yugabyte | tab_range_nonkey2
@@ -271,7 +276,7 @@ CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
  public | tab_range_nonkey_pkey       | index | yugabyte | tab_range_nonkey
  public | tab_range_pkey              | index | yugabyte | tab_range
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
-(17 rows)
+(18 rows)
 
 -- TRUNCATE TABLE
 -- truncate colocated table with default index
@@ -335,12 +340,43 @@ SELECT * FROM tab_range_nonkey_noco2;
 ---+---
 (0 rows)
 
+-- insert and truncate colocated table with explicit index
+INSERT INTO tab_nonkey2 VALUES (1), (2), (3);
+EXPLAIN (COSTS OFF) SELECT a FROM tab_nonkey2 ORDER BY a;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Only Scan using idx_range6 on tab_nonkey2
+(1 row)
+
+SELECT a FROM tab_nonkey2 ORDER BY a;
+ a
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+TRUNCATE TABLE tab_nonkey2;
+SELECT a FROM tab_nonkey2 ORDER BY a;
+ a
+---
+(0 rows)
+
+INSERT INTO tab_nonkey2 VALUES (2), (4);
+SELECT a FROM tab_nonkey2 ORDER BY a;
+ a
+---
+ 2
+ 4
+(2 rows)
+
 \dt
                  List of relations
  Schema |          Name          | Type  |  Owner
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
  public | tab_nonkey             | table | yugabyte
+ public | tab_nonkey2            | table | yugabyte
  public | tab_nonkey_noco        | table | yugabyte
  public | tab_range              | table | yugabyte
  public | tab_range_colo         | table | yugabyte
@@ -353,7 +389,7 @@ SELECT * FROM tab_range_nonkey_noco2;
  public | tab_range_nonkey_noco2 | table | yugabyte
  public | tab_range_nonkey_noco3 | table | yugabyte
  public | tab_range_range        | table | yugabyte
-(14 rows)
+(15 rows)
 
 \di
                                 List of relations
@@ -364,6 +400,7 @@ SELECT * FROM tab_range_nonkey_noco2;
  public | idx_range3                  | index | yugabyte | tab_range_nonkey_noco2
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3
  public | idx_range5                  | index | yugabyte | tab_range_nonkey5
+ public | idx_range6                  | index | yugabyte | tab_nonkey2
  public | tab_key_pkey                | index | yugabyte | tab_key
  public | tab_range_colo_pkey         | index | yugabyte | tab_range_colo
  public | tab_range_nonkey2_pkey      | index | yugabyte | tab_range_nonkey2
@@ -376,7 +413,7 @@ SELECT * FROM tab_range_nonkey_noco2;
  public | tab_range_nonkey_pkey       | index | yugabyte | tab_range_nonkey
  public | tab_range_pkey              | index | yugabyte | tab_range
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
-(17 rows)
+(18 rows)
 
 -- ALTER TABLE
 INSERT INTO tab_range (a) VALUES (0), (1), (2);
@@ -476,6 +513,7 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
  public | tab_nonkey             | table | yugabyte
+ public | tab_nonkey2            | table | yugabyte
  public | tab_range_colo         | table | yugabyte
  public | tab_range_nonkey       | table | yugabyte
  public | tab_range_nonkey3      | table | yugabyte
@@ -484,13 +522,14 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
  public | tab_range_nonkey_noco  | table | yugabyte
  public | tab_range_nonkey_noco3 | table | yugabyte
  public | tab_range_range        | table | yugabyte
-(10 rows)
+(11 rows)
 
 \di
                                 List of relations
  Schema |            Name             | Type  |  Owner   |         Table
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3
+ public | idx_range6                  | index | yugabyte | tab_nonkey2
  public | tab_key_pkey                | index | yugabyte | tab_key
  public | tab_range_colo_pkey         | index | yugabyte | tab_range_colo
  public | tab_range_nonkey3_pkey      | index | yugabyte | tab_range_nonkey3
@@ -500,7 +539,7 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
  public | tab_range_nonkey_noco_pkey  | index | yugabyte | tab_range_nonkey_noco
  public | tab_range_nonkey_pkey       | index | yugabyte | tab_range_nonkey
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
-(10 rows)
+(11 rows)
 
 -- drop database
 \c yugabyte

@@ -230,7 +230,7 @@ PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
       return PrimitiveValue(static_cast<int64_t>((*rng)()));
     case 1: {
       string s;
-      for (int j = 0; j < (*rng)() % 50; ++j) {
+      for (size_t j = 0; j < (*rng)() % 50; ++j) {
         s.push_back((*rng)() & 0xff);
       }
       return PrimitiveValue(s);
@@ -248,7 +248,7 @@ PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
 // Generate a vector of random primitive values.
 vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng, int max_num) {
   vector<PrimitiveValue> result;
-  for (int i = 0; i < (*rng)() % (max_num + 1); ++i) {
+  for (size_t i = 0; i < (*rng)() % (max_num + 1); ++i) {
     result.push_back(GenRandomPrimitiveValue(rng));
   }
   return result;
@@ -284,7 +284,7 @@ vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, UseHash use_ha
   result.push_back(SubDocKey(CreateMinimalDocKey(rng, use_hash), HybridTime((*rng)())));
   for (int iteration = 0; iteration < num_keys; ++iteration) {
     result.push_back(SubDocKey(GenRandomDocKey(rng, use_hash)));
-    for (int i = 0; i < (*rng)() % (kMaxNumRandomSubKeys + 1); ++i) {
+    for (size_t i = 0; i < (*rng)() % (kMaxNumRandomSubKeys + 1); ++i) {
       result.back().AppendSubKeysAndMaybeHybridTime(GenRandomPrimitiveValue(rng));
     }
     const IntraTxnWriteId write_id = static_cast<IntraTxnWriteId>(
@@ -378,7 +378,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   if (!is_deletion) {
     // Add up to (max_nesting_level_ - 1) subkeys. Combined with the document key itself, this
     // gives us the desired maximum nesting level.
-    for (int j = 0; j < random_() % max_nesting_level_; ++j) {
+    for (size_t j = 0; j < random_() % max_nesting_level_; ++j) {
       if (current_doc != nullptr && current_doc->value_type() != ValueType::kObject) {
         // We can't add any more subkeys because we've found a primitive subdocument.
         break;
@@ -520,7 +520,7 @@ void DocDBLoadGenerator::CheckIfOldestSnapshotIsStillValid(const HybridTime clea
 
 void DocDBLoadGenerator::VerifyRandomDocDbSnapshot() {
   if (!docdb_snapshots_.empty()) {
-    const int snapshot_idx = NextRandomInt(docdb_snapshots_.size());
+    const int snapshot_idx = NextRandomInt(narrow_cast<int>(docdb_snapshots_.size()));
     ASSERT_NO_FATALS(VerifySnapshot(docdb_snapshots_[snapshot_idx]));
   }
 }
@@ -602,8 +602,8 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
   if (expected_str != debug_dump_str) {
     auto expected_lines = StringSplit(expected_str, '\n');
     auto actual_lines = StringSplit(debug_dump_str, '\n');
-    vector<int> mismatch_line_numbers;
-    for (int i = 0; i < std::min(expected_lines.size(), actual_lines.size()); ++i) {
+    vector<size_t> mismatch_line_numbers;
+    for (size_t i = 0; i < std::min(expected_lines.size(), actual_lines.size()); ++i) {
       if (expected_lines[i] != actual_lines[i]) {
         mismatch_line_numbers.push_back(i + 1);
       }
@@ -613,7 +613,7 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
                << "\nActual DocDB contents:\n\n" << debug_dump_str << "\n"
                << "\nExpected # of lines: " << expected_lines.size()
                << ", actual # of lines: " << actual_lines.size()
-               << "\nLines not matching: " << yb::ToString(mismatch_line_numbers)
+               << "\nLines not matching: " << AsString(mismatch_line_numbers)
                << "\nPlease check if source files have trailing whitespace and remove it.";
 
     FAIL();
@@ -633,8 +633,8 @@ void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
 
 void DocDBRocksDBFixture::MinorCompaction(
     HybridTime history_cutoff,
-    int num_files_to_compact,
-    int start_index) {
+    size_t num_files_to_compact,
+    ssize_t start_index) {
 
   ASSERT_OK(FlushRocksDbAndWait());
   SetHistoryCutoffHybridTime(history_cutoff);
@@ -663,8 +663,9 @@ void DocDBRocksDBFixture::MinorCompaction(
       start_index = file_names.size() - num_files_to_compact;
     }
 
-    for (int i = 0; i < file_names.size(); ++i) {
-      if (start_index <= i && compaction_input_file_names.size() < num_files_to_compact) {
+    for (size_t i = 0; i < file_names.size(); ++i) {
+      if (implicit_cast<size_t>(start_index) <= i &&
+          compaction_input_file_names.size() < num_files_to_compact) {
         compaction_input_file_names.push_back(file_names[i]);
       } else {
         remaining_file_names.push_back(file_names[i]);
@@ -708,7 +709,7 @@ void DocDBRocksDBFixture::MinorCompaction(
       << "Files after compaction: " << yb::ToString(files_after_compaction);
 }
 
-int DocDBRocksDBFixture::NumSSTableFiles() {
+size_t DocDBRocksDBFixture::NumSSTableFiles() {
   rocksdb::ColumnFamilyMetaData cf_meta;
   regular_db_->GetColumnFamilyMetaData(&cf_meta);
   return cf_meta.levels[0].files.size();

@@ -208,6 +208,7 @@ set(TSERVER_SRCS
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
+  server_main_util.cc
   ${TSERVER_SRCS_EXTENSIONS})
 
 set(TSERVER_DEPS

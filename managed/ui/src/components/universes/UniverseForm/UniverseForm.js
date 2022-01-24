@@ -182,12 +182,17 @@ class UniverseForm extends Component {
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
       };
-
-      if (isNonEmptyObject(formValues[clusterType].masterGFlags)) {
-        intent['masterGFlags'] = formValues[clusterType].masterGFlags;
-      }
-      if (isNonEmptyObject(formValues[clusterType].tserverGFlags)) {
-        intent['tserverGFlags'] = formValues[clusterType].tserverGFlags;
+      if (isNonEmptyArray(formValues[clusterType]?.gFlags)) {
+        const masterArr = [];
+        const tServerArr = [];
+        formValues[clusterType].gFlags.forEach((flag) => {
+          if (flag?.hasOwnProperty('MASTER'))
+            masterArr.push({ name: flag?.Name, value: flag['MASTER'] });
+          if (flag?.hasOwnProperty('TSERVER'))
+            tServerArr.push({ name: flag?.Name, value: flag['TSERVER'] });
+        });
+        intent['masterGFlags'] = masterArr;
+        intent['tserverGFlags'] = tServerArr;
       }
       return intent;
     }
@@ -422,21 +427,18 @@ class UniverseForm extends Component {
       };
       const currentProvider = self.getCurrentProvider(formValues[clusterType].provider).code;
       if (clusterType === 'primary') {
-        clusterIntent.masterGFlags = formValues.primary.masterGFlags
-          .filter((masterFlag) => {
-            return isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value);
-          })
-          .map((masterFlag) => {
-            return { name: masterFlag.name.trim(), value: masterFlag.value.trim() };
+        const masterArr = [],
+          tServerArr = [];
+        if (isNonEmptyArray(formValues?.primary?.gFlags)) {
+          formValues.primary.gFlags.forEach((flag) => {
+            if (flag?.hasOwnProperty('MASTER'))
+              masterArr.push({ name: flag?.Name, value: flag['MASTER'] });
+            if (flag?.hasOwnProperty('TSERVER'))
+              tServerArr.push({ name: flag?.Name, value: flag['TSERVER'] });
           });
-        clusterIntent.tserverGFlags = formValues.primary.tserverGFlags
-          .filter((tserverFlag) => {
-            return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
-          })
-          .map((tserverFlag) => {
-            return { name: tserverFlag.name.trim(), value: tserverFlag.value.trim() };
-          });
-
+        }
+        clusterIntent.masterGFlags = masterArr;
+        clusterIntent.tserverGFlags = tServerArr;
         if (['aws', 'azu', 'gcp'].includes(currentProvider)) {
           clusterIntent.instanceTags = formValues.primary.instanceTags
             .filter((userTag) => {
@@ -535,15 +537,16 @@ class UniverseForm extends Component {
       ];
     }
 
-    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
-      return {
-        ...nodeDetail,
-        cloudInfo: {
-          ...nodeDetail.cloudInfo,
-          assignPublicIP: formValues['primary'].assignPublicIP
-        }
-      };
-    });
+    if (formValues['primary'])
+      submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
+        return {
+          ...nodeDetail,
+          cloudInfo: {
+            ...nodeDetail.cloudInfo,
+            assignPublicIP: formValues['primary'].assignPublicIP
+          }
+        };
+      });
 
     submitPayload.clusters = submitPayload.clusters.filter((c) => c.userIntent !== null);
     // filter clusters array if configuring(adding only) Read Replica due to server side validation
@@ -992,6 +995,7 @@ class PrimaryClusterFields extends Component {
           'primary.replicationFactor',
           'primary.numNodes',
           'primary.instanceType',
+          'primary.gFlags',
           'primary.masterGFlags',
           'primary.tserverGFlags',
           'primary.instanceTags',

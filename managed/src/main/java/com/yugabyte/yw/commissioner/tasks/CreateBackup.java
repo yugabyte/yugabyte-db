@@ -25,9 +25,12 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
@@ -35,7 +38,6 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,6 +56,7 @@ import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 
 @Slf4j
+@Abortable
 public class CreateBackup extends UniverseTaskBase {
 
   @Inject
@@ -222,7 +225,12 @@ public class CreateBackup extends UniverseTaskBase {
           //   tableBackupParams.transactionalBackup = params().transactionalBackup;
           tableBackupParams.backupType = params().backupType;
 
-          Backup backup = Backup.create(params().customerUuid, tableBackupParams);
+          Backup backup =
+              Backup.create(
+                  params().customerUuid,
+                  tableBackupParams,
+                  BackupCategory.YB_BACKUP_SCRIPT,
+                  BackupVersion.V2);
           backup.setTaskUUID(userTaskUUID);
           tableBackupParams.backupUuid = backup.backupUUID;
           log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
@@ -234,7 +242,12 @@ public class CreateBackup extends UniverseTaskBase {
           createTableBackupTaskYb(tableBackupParams)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         } else if (params().getKeyspace() != null) {
-          Backup backup = Backup.create(params().customerUuid, tableBackupParams);
+          Backup backup =
+              Backup.create(
+                  params().customerUuid,
+                  tableBackupParams,
+                  BackupCategory.YB_BACKUP_SCRIPT,
+                  BackupVersion.V2);
           backup.setTaskUUID(userTaskUUID);
           tableBackupParams.backupUuid = backup.backupUUID;
           log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);

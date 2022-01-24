@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -21,10 +22,14 @@ import static play.inject.Bindings.bind;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.TaskInfo;
@@ -40,6 +45,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.junit.Test;
@@ -57,13 +63,20 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private TaskExecutor taskExecutor;
 
+  private Config mockConfig;
+
   @Override
   protected Application provideApplication() {
+    mockConfig = mock(Config.class);
+    when(mockConfig.getString(anyString())).thenReturn("");
     return configureApplication(
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
                 .configure((Map) Helpers.inMemoryDatabase())
+                .overrides(
+                    bind(RuntimeConfigFactory.class)
+                        .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
                 .overrides(
                     bind(PlatformReplicationManager.class)
                         .toInstance(mock(PlatformReplicationManager.class)))
@@ -87,12 +100,35 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     return TaskInfo.getOrBadRequest(taskUUID);
   }
 
-  private ITask mockTaskCommon() {
+  private ITask mockTaskCommon(boolean abortable) {
     JsonNode node = mapper.createObjectNode();
-    ITask task = mock(ITask.class);
-    when(task.getName()).thenReturn("TestTask");
-    when(task.getTaskDetails()).thenReturn(node);
+    Class<? extends ITask> taskClass = abortable ? AbortableTask.class : NonAbortableTask.class;
+    ITask task = spy(app.injector().instanceOf(taskClass));
+    doReturn("TestTask").when(task).getName();
+    doReturn(node).when(task).getTaskDetails();
     return task;
+  }
+
+  @Abortable
+  static class AbortableTask extends AbstractTaskBase {
+    @Inject
+    AbortableTask(BaseTaskDependencies baseTaskDependencies) {
+      super(baseTaskDependencies);
+    }
+
+    @Override
+    public void run() {}
+  }
+
+  @Abortable(enabled = false)
+  static class NonAbortableTask extends AbstractTaskBase {
+    @Inject
+    NonAbortableTask(BaseTaskDependencies baseTaskDependencies) {
+      super(baseTaskDependencies);
+    }
+
+    @Override
+    public void run() {}
   }
 
   @Before
@@ -114,7 +150,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testTaskSubmission() throws InterruptedException {
-    ITask task = mockTaskCommon();
+    ITask task = mockTaskCommon(false);
     RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
@@ -125,7 +161,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testTaskFailure() throws InterruptedException {
-    ITask task = mockTaskCommon();
+    ITask task = mockTaskCommon(false);
     doThrow(new RuntimeException("Error occurred in task")).when(task).run();
     RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID outTaskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
@@ -139,8 +175,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testSubTaskAsyncSuccess() throws InterruptedException {
-    ITask task = mockTaskCommon();
-    ITask subTask = mockTaskCommon();
+    ITask task = mockTaskCommon(false);
+    ITask subTask = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
     doAnswer(
             inv -> {
@@ -170,8 +206,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testSubTaskAsyncFailure() throws InterruptedException {
-    ITask task = mockTaskCommon();
-    ITask subTask = mockTaskCommon();
+    ITask task = mockTaskCommon(false);
+    ITask subTask = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
     doAnswer(
             inv -> {
@@ -208,7 +244,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testSubTaskNonAbortable() throws InterruptedException {
-    ITask task = mockTaskCommon();
+    ITask task = mockTaskCommon(false);
     CountDownLatch latch = new CountDownLatch(1);
     doAnswer(
             inv -> {
@@ -230,11 +266,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testSubTaskAbort() throws InterruptedException {
-    ITask task = mockTaskCommon();
-    ITask subTask1 = mockTaskCommon();
-    ITask subTask2 = mockTaskCommon();
+    ITask task = mockTaskCommon(true);
+    ITask subTask1 = mockTaskCommon(true);
+    ITask subTask2 = mockTaskCommon(true);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
-    doReturn(true).when(task).isAbortable();
 
     doAnswer(
             inv -> {
@@ -292,9 +327,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testSubTaskAbortAtPosition() throws InterruptedException {
-    ITask task = mockTaskCommon();
-    ITask subTask1 = mockTaskCommon();
-    ITask subTask2 = mockTaskCommon();
+    ITask task = mockTaskCommon(true);
+    ITask subTask1 = mockTaskCommon(true);
+    ITask subTask2 = mockTaskCommon(true);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
     doAnswer(
             inv -> {
@@ -348,9 +383,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testRunnableTaskReset() {
-    ITask task = mockTaskCommon();
-    ITask subTask1 = mockTaskCommon();
-    ITask subTask2 = mockTaskCommon();
+    ITask task = mockTaskCommon(false);
+    ITask subTask1 = mockTaskCommon(false);
+    ITask subTask2 = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
     doAnswer(
             inv -> {

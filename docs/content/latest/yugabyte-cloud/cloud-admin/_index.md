@@ -5,10 +5,10 @@ linkTitle: Administer Yugabyte Cloud
 description: Administer Yugabyte Cloud.
 image: /images/section_icons/explore/administer.png
 headcontent: Manage your cloud users and billing and payment methods.
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-admin
-    parent: yugabyte-cloud
     weight: 600
 ---
 
@@ -78,18 +78,6 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
       </div>
       <div class="body">
         Manage your billing profile and payment methods.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-activity/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Monitor cloud activity</div>
-      </div>
-      <div class="body">
-        Audit cloud activity, including changes to clusters, billing, allow lists, and more.
       </div>
     </a>
   </div>

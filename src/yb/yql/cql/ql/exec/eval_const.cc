@@ -20,6 +20,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/escaping.h"
 
@@ -128,7 +129,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
         return exec_context_->Error(const_pt->loc(), "Invalid tiny integer/int8",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
-      const_pb->set_int8_value(value);
+      const_pb->set_int8_value(narrow_cast<int32>(value));
       break;
     }
     case InternalType::kInt16Value: {
@@ -138,7 +139,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
         return exec_context_->Error(const_pt->loc(), "Invalid small integer/int16",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
-      const_pb->set_int16_value(value);
+      const_pb->set_int16_value(narrow_cast<int32>(value));
       break;
     }
     case InternalType::kInt32Value: {
@@ -148,7 +149,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
         return exec_context_->Error(const_pt->loc(), "Invalid integer/int32",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
-      const_pb->set_int32_value(value);
+      const_pb->set_int32_value(narrow_cast<int32>(value));
       break;
     }
     case InternalType::kInt64Value: {
@@ -261,13 +262,13 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const
 
   switch (const_pt->expected_internal_type()) {
     case InternalType::kInt8Value:
-      const_pb->set_int8_value(value);
+      const_pb->set_int8_value(narrow_cast<int32>(value));
       break;
     case InternalType::kInt16Value:
-      const_pb->set_int16_value(value);
+      const_pb->set_int16_value(narrow_cast<int32>(value));
       break;
     case InternalType::kInt32Value:
-      const_pb->set_int32_value(value);
+      const_pb->set_int32_value(narrow_cast<int32>(value));
       break;
     case InternalType::kInt64Value:
       const_pb->set_int64_value(value);
@@ -467,11 +468,11 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
       // Internally UDTs are maps with field names as keys
       QLMapValuePB *map_value = const_pb->mutable_map_value();
       auto field_values = const_pt->udtype_field_values();
-      for (int i = 0; i < field_values.size(); i++) {
+      for (size_t i = 0; i < field_values.size(); i++) {
         // Skipping unset fields.
         if (field_values[i] != nullptr) {
           QLValuePB *key_pb = map_value->add_keys();
-          key_pb->set_int16_value(i);
+          key_pb->set_int16_value(narrow_cast<int16_t>(i));
           // Expect value to be constant because CQL only allows collection of constants.
           QLValuePB *value_pb = map_value->add_values();
           RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));
@@ -531,7 +532,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
         case USER_DEFINED_TYPE: {
           // Internally UDTs are maps with field names as keys
           auto field_values = const_pt->udtype_field_values();
-          for (int i = 0; i < field_values.size(); i++) {
+          for (size_t i = 0; i < field_values.size(); i++) {
             QLValuePB *value_pb = frozen_value->add_elems();
             if (field_values[i] != nullptr) {
               // Expect value to be constant because CQL only allows collection of constants.

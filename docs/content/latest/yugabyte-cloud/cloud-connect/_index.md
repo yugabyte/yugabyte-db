@@ -4,6 +4,7 @@ linkTitle: Connect to clusters
 description: Connect to clusters in Yugabyte Cloud.
 headcontent: Connect to your cluster using the cloud shell, a client shell, and from applications.
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 aliases:
   - /latest/deploy/yugabyte-cloud/connect-to-clusters/
   - /latest/yugabyte-cloud/connect-to-clusters/
@@ -11,8 +12,7 @@ aliases:
 menu:
   latest:
     identifier: cloud-connect
-    parent: yugabyte-cloud
-    weight: 30
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
@@ -59,18 +59,6 @@ Once you have connected to the database, you can add database users for other te
       </div>
       <div class="body">
         Connect applications to your Yugabyte Cloud clusters.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="add-users/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/create-roles.png" aria-hidden="true" />
-        <div class="title">Add database users</div>
-      </div>
-      <div class="body">
-        Add additional users to your databases.
       </div>
     </a>
   </div>

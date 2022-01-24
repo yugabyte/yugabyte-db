@@ -276,9 +276,8 @@ fi
 
 output_file=""
 input_files=()
-library_files=()
 compiling_pch=false
-pch_codegen=false
+yb_pch=false
 
 rpath_found=false
 num_output_files_found=0
@@ -286,6 +285,10 @@ has_yb_c_files=false
 
 compiler_args_no_output=()
 analyzer_checkers_specified=false
+
+linking=false
+use_lld=false
+lld_linking=false
 
 while [[ $# -gt 0 ]]; do
   is_output_arg=false
@@ -319,8 +322,8 @@ while [[ $# -gt 0 ]]; do
     c++-header)
       compiling_pch=true
     ;;
-    -fpch-codegen)
-      pch_codegen=true
+    -yb-pch)
+      yb_pch=true
     ;;
     -DYB_COMPILER_TYPE=*)
       compiler_type_from_cmd_line=${1#-DYB_COMPILER_TYPE=}
@@ -335,6 +338,9 @@ while [[ $# -gt 0 ]]; do
     -analyzer-checker=*)
       analyzer_checkers_specified=true
     ;;
+    -fuse-ld=lld)
+      use_lld=true
+    ;;
   esac
   if ! "$is_output_arg"; then
     compiler_args_no_output+=( "$1" )
@@ -342,9 +348,21 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ $output_file != *.o && ${#library_files[@]} -gt 0 ]]; then
-  input_files+=( "${library_files[@]}" )
-  library_files=()
+if [[ $output_file == *.o ]]; then
+  # Compiling.
+  linking=false
+else
+  linking=true
+fi
+
+if [[ $linking == "true" && $use_lld == "true" ]]; then
+  lld_linking=true
+fi
+
+if [[ $YB_COMPILER_TYPE == clang* && $output_file == "jsonpath_gram.o" ]]; then
+  # To avoid this error:
+  # https://gist.github.com/mbautin/b943fb426bfead7388dde17ddb1b0fa7
+  compiler_args+=( -Wno-error=implicit-fallthrough )
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -362,9 +380,12 @@ if [[ $HOSTNAME == build-worker* ]]; then
   is_build_worker=true
 fi
 
+# If linking with LLVM's lld linker, do it locally.
+# See https://github.com/yugabyte/yugabyte-db/issues/11034 for more details.
 if [[ $local_build_only == "false" &&
       ${YB_REMOTE_COMPILATION:-} == "1" &&
-      $is_build_worker == "false" ]]; then
+      $is_build_worker == "false" &&
+      $lld_linking == "false" ]]; then
 
   trap remote_build_exit_handler EXIT
 
@@ -551,6 +572,12 @@ run_compiler_and_save_stderr() {
 
 # -------------------------------------------------------------------------------------------------
 # Local build
+
+if [[ $output_file =~ libyb_pgbackend*  ]]; then
+  # We record the linker command used for the libyb_pgbackend library so we can use it when
+  # producing the LTO build for yb-tserver.
+  echo "${compiler_args[*]}" >"link_cmd_${output_file}.txt"
+fi
 
 if [[ ${build_type:-} == "asan" &&
       $PWD == */postgres_build/src/backend/utils/adt &&
@@ -754,7 +781,116 @@ ${cmd[*]}
 fi
   unset IFS
 
-run_compiler_and_save_stderr "${cmd[@]}"
+# When -yb-pch is specified, we use it to generate precompiled header.
+if [[ "${yb_pch}" == "true" ]]; then
+  if [[ -n $output_file ]]; then
+    pch_cmd=( "$compiler_executable" )
+    skip_next=false
+    pch_file="${output_file%.cc.o}.h.pch"
+    # Replace original args with args required for compilation.
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case "$arg" in
+        -yb-pch)
+          pch_cmd+=( "-Xclang" "-emit-pch" "-fpch-instantiate-templates" "-fpch-codegen"
+                     "-fpch-debuginfo" "-x" "c++-header" "-c" )
+        ;;
+        -fpch-*|-x|c++-header)
+        ;;
+        -MT)
+          pch_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        -o)
+          pch_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        -c)
+          skip_next=true
+        ;;
+        *)
+          pch_cmd+=("$arg")
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${pch_cmd[@]}"
+    check_compiler_exit_code
+
+    codegen_cmd=( "$compiler_executable" )
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case $arg in
+        -yb-pch)
+          skip_next=true
+        ;;
+        -c)
+          codegen_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        *)
+          codegen_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${codegen_cmd[@]}"
+  else
+    new_cmd=( "$compiler_executable" )
+    skip_next=false
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case $arg in
+        -yb-pch)
+          skip_next=true
+        ;;
+        *)
+          new_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${new_cmd[@]}"
+  fi
+else
+  if [[ -n $output_file ]]; then
+    run_compiler_and_save_stderr "${cmd[@]}"
+  else
+    # Have to patch compiler command line to make CLion happy while loading CMake project.
+    new_cmd=( "$compiler_executable" )
+    skip_next=false
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        if [[ "$arg" == "-Xclang" ]]; then
+          continue
+        fi
+
+        skip_next=false
+        if [[ "$arg" == -* ]]; then
+          new_cmd+=( "$arg" )
+        else
+          new_cmd+=( "-include" "-Xclang" "$arg" )
+        fi
+        continue
+      fi
+      case $arg in
+        -include)
+          skip_next=true
+        ;;
+        *)
+          new_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${new_cmd[@]}"
+  fi
+fi
 
 # Skip printing some command lines commonly used by CMake for detecting compiler/linker version.
 # Extra output might break the version detection.
@@ -805,48 +941,4 @@ if is_clang &&
 
   compiler_exit_code=$?
   set -e
-fi
-
-# When -fpch-codegen is used to generate .pch file.
-# We also should execute compiler for output.
-# To generate .o file, that contains all generated code.
-if "$pch_codegen"; then
-  new_cmd=( "$compiler_executable" )
-  skip_next=false
-  # Replace original args with args required for compilation.
-  for arg in "${compiler_args[@]}"
-  do
-    if "$skip_next"; then
-      skip_next=false
-      continue
-    fi
-    case "$arg" in
-      -emit-pch)
-        new_cmd+=("-include-pch" "-Xclang" "$output_file")
-      ;;
-      -fpch-*|-x|c++-header)
-      ;;
-      -MT)
-        new_cmd+=("$arg" "$output_file.o")
-        skip_next=true
-      ;;
-      -MF)
-        new_cmd+=("$arg" "$output_file.o.d")
-        skip_next=true
-      ;;
-      -o)
-        new_cmd+=("$arg" "$output_file.o")
-        skip_next=true
-      ;;
-      -c)
-        new_cmd+=("$arg" "$output_file")
-        skip_next=true
-      ;;
-      *)
-        new_cmd+=("$arg")
-      ;;
-    esac
-  done
-  run_compiler_and_save_stderr "${new_cmd[@]}"
-  check_compiler_exit_code
 fi

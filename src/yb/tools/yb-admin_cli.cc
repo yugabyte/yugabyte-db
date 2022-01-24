@@ -672,12 +672,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "change_master_config", " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <0|1>",
+      "change_master_config", " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> [<uuid>]",
       [client](const CLIArguments& args) -> Status {
-        int16 new_port = 0;
+        uint16_t new_port = 0;
         string new_host;
 
-        if (args.size() != 3 && args.size() != 4) {
+        if (args.size() < 3 || args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
@@ -689,15 +689,13 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         new_host = args[1];
         new_port = VERIFY_RESULT(CheckedStoi(args[2]));
 
-        // For REMOVE_SERVER, default to using host:port to identify server
-        // to make it easier to remove down hosts
-        bool use_hostport = (change_type == "REMOVE_SERVER");
+        string given_uuid;
         if (args.size() == 4) {
-          use_hostport = VERIFY_RESULT(CheckedStoi(args[3])) != 0;
+          given_uuid = args[3];
         }
-        RETURN_NOT_OK_PREPEND(client->ChangeMasterConfig(change_type, new_host, new_port,
-                                                         use_hostport),
-                              "Unable to change master config");
+        RETURN_NOT_OK_PREPEND(
+            client->ChangeMasterConfig(change_type, new_host, new_port, given_uuid),
+            "Unable to change master config");
         return Status::OK();
       });
 
@@ -935,7 +933,7 @@ Result<client::YBTableName> ResolveSingleTableName(ClusterAdminClientClass* clie
   return std::move(tables.front());
 }
 
-Status CheckArgumentsCount(int count, int min, int max) {
+Status CheckArgumentsCount(size_t count, size_t min, size_t max) {
   if (count < min) {
     return STATUS_FORMAT(
         InvalidArgument, "Too few arguments $0, should be in range [$1, $2]", count, min, max);
