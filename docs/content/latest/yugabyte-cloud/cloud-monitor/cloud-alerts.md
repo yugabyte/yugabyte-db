@@ -67,9 +67,14 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | Node Free Storage | Disk Usage |
 | Cluster Queues Overflow | RPC Queue Size |
 | Compaction Overload | Compaction |
-| YSQL Connections | No chart |
 
 You can view the metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
+
+{{< note title="Note" >}}
+
+If you are getting frequent cluster alerts on a free cluster, you may have reached the performance limits for free clusters. Consider upgrading to a standard cluster.
+
+{{< /note >}}
 
 #### Fix storage alerts
 
@@ -99,16 +104,29 @@ High CPU use could also indicate a problem and may require debugging by Yugabyte
 
 If CPU use is continuously higher than 80%, your workload may also have exceeded the capacity of your cluster. Consider scaling your cluster by adding vCPUs. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
-#### Fix transaction overload alerts
+#### Fix database overload alerts
 
-A notification is sent if database transaction metrics exceed the threshold, as follows:
+A notification is sent for the following database overload alert:
 
-- Cluster queue (RPC) overflow and/or compaction overload.
+- Cluster queues overflow and/or compaction overload.
 <!-- Cluster exceeds 200 simultaneous YSQL connections.-->
 
-The cluster (RPC) queue size is an indicator of the incoming traffic. If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors. This can cause performance degradation.
+This alert is triggered if any one of the following conditions occurs:
 
-Read and write IOPS are evenly distributed across all the nodes in a cluster. If your user base is too large for your current configuration, consider scaling the cluster to support more transactions per second and a greater number of concurrent connections.
+- The number of client requests that timed out while waiting in the service queue is greater than 0 for 10 minutes. This can be caused by your application generating requests (such as queries and scans) at a rate faster than the database can process them.
+- The number of client requests that were dropped because the service queue was full is greater than 0 for 10 minutes. This can be caused by your application generating requests (such as queries and scans) at a rate faster than the database can process them.
+- The number of compaction requests that were rejected is greater than 0 for 10 minutes. This can be caused by running a high INSERT/ UPDATE/ DELETE workload on a cluster that is undersized.
+
+Cluster queue overflow and compaction overload are indicators of the incoming traffic and system load. If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors. This can cause performance degradation.
+
+If your cluster is generating this alert, you may need to rate limit your queries. Look at optimizing the application generating the requests in the following ways:
+
+- Examine the application retry logic, and reduce total retry count.
+- Increase client request timeout at the driver layer.
+- Reduce query parallelism.
+- If needed, set the driver execution to "sync" rather than "async" to serialize queries.
+
+If your cluster is generating this alert and isn’t under a very large workload, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 ### Billing alerts
 
