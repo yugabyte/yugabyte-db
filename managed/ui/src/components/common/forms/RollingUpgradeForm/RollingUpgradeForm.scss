@@ -24,16 +24,16 @@
 
 .gflag-upgrade-container {
   width: 100%;
-  margin-top: 5px;
+  margin-top: 16px;
   background-color: #f7f7f7;
   border: 1px solid #e3e3e5;
   border-radius: 8px;
-  padding: 10px;
 }
 
 .gflag-upgrade--label {
   font-weight: 600;
   font-size: 13px;
+  padding: 16px;
 }
 
 .gflag-upgrade-options {
@@ -41,10 +41,16 @@
   flex: 8;
   flex-direction: column;
   border-left: 1px solid #e3e3e5;
-  padding-left: 10px;
+  padding: 16px;
 }
 
-.upgrade-option {
-  margin-right: 20px;
-  margin-bottom: 10px;
+.upgrade-radio-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.upgrade-radio-label {
+  margin: 4px 0px 0px 4px;
 }
