@@ -383,10 +383,10 @@ void TabletServerIntegrationTestBase::TearDown() {
   client_.reset();
   if (cluster_) {
     for (const auto* daemon : cluster_->master_daemons()) {
-      EXPECT_TRUE(daemon->IsShutdown() || daemon->IsProcessAlive());
+      EXPECT_TRUE(daemon->IsShutdown() || daemon->IsProcessAlive()) << "Daemon: " << daemon->id();
     }
     for (const auto* daemon : cluster_->tserver_daemons()) {
-      EXPECT_TRUE(daemon->IsShutdown() || daemon->IsProcessAlive());
+      EXPECT_TRUE(daemon->IsShutdown() || daemon->IsProcessAlive()) << "Daemon: " << daemon->id();
     }
     cluster_->Shutdown();
   }
