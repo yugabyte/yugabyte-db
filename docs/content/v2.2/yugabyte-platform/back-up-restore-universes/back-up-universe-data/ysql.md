@@ -44,3 +44,5 @@ To immediately back up your YugabyteDB universe YSQL data, follow these steps.
     - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
 
 Click **OK**. The backup begins immediately.
+
+Note that this release of Yugabyte Platform does not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
