@@ -252,8 +252,7 @@ public class CertificateControllerTest extends FakeDBApplication {
   public void testUpdateCustomCertificate() throws IOException, NoSuchAlgorithmException {
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", "test-cert");
+    createTempFile("certificate_controller_test_ca.crt", "test-cert");
     CertificateParams.CustomCertInfo emptyCustomCertInfo = null;
     CertificateInfo.create(
         certUUID,
@@ -261,7 +260,7 @@ public class CertificateControllerTest extends FakeDBApplication {
         "test",
         date,
         date,
-        TestHelper.TMP_PATH + "/ca.crt",
+        TestHelper.TMP_PATH + "/certificate_controller_test_ca.crt",
         emptyCustomCertInfo);
     CertificateParams.CustomCertInfo customCertInfo =
         CertificateInfo.get(certUUID).getCustomCertInfo();
@@ -291,15 +290,14 @@ public class CertificateControllerTest extends FakeDBApplication {
     customCertInfo.rootCertPath = "rootCertPath";
     customCertInfo.nodeCertPath = "nodeCertPath";
     customCertInfo.nodeKeyPath = "nodeKeyPath";
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", "test-cert");
+    createTempFile("certificate_controller_test_ca.crt", "test-cert");
     CertificateInfo.create(
         certUUID,
         customer.uuid,
         "test",
         date,
         date,
-        TestHelper.TMP_PATH + "/ca.crt",
+        TestHelper.TMP_PATH + "/certificate_controller_test_ca.crt",
         customCertInfo);
     customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNotNull(customCertInfo);

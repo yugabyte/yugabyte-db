@@ -4,6 +4,8 @@ import play.sbt.PlayInteractionMode
 
 import scala.sys.process.Process
 
+import Tests._
+
 useCoursier := false
 
 // ------------------------------------------------------------------------------------------------
@@ -378,10 +380,31 @@ dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-
 dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8"
 
+concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 
+val testParallelForks = SettingKey[Int]("testParallelForks",
+  "Number of parallel forked JVMs, running tests")
+testParallelForks := 4
+val testShardSize = SettingKey[Int]("testShardSize",
+  "Number of test classes, executed by each forked JVM")
+testShardSize := 30
 
+concurrentRestrictions in Global += Tags.limit(Tags.ForkedTestGroup, testParallelForks.value)
 
-javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
+def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
+  tests.sortWith(_.name < _.name).grouped(shardSize).zipWithIndex map {
+    case (tests, index) =>
+      val options = ForkOptions().withRunJVMOptions(Vector(
+        "-Xmx2g", "-XX:MaxMetaspaceSize=600m", "-XX:MetaspaceSize=200m",
+        "-Dconfig.file=src/main/resources/application.test.conf"
+      ))
+      Group("testGroup" + index, tests, SubProcess(options))
+  } toSeq
+
+Test / parallelExecution := true
+Test / fork := true
+Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSize.value )
+
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
 
 // Skip packaging javadoc for now

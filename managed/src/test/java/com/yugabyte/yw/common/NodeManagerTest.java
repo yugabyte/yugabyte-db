@@ -89,8 +89,6 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
-
-import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -422,7 +420,7 @@ public class NodeManagerTest extends FakeDBApplication {
               params.nodePrefix,
               today,
               nextYear,
-              TestHelper.TMP_PATH + "/ca.crt",
+              TestHelper.TMP_PATH + "/node_manager_test_ca.crt",
               customCertInfo);
     } else {
       UUID certUUID =
@@ -454,8 +452,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(mockConfigHelper.getGravitonInstancePrefixList()).thenReturn(ImmutableList.of("m6g."));
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", "test-cert");
+    createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 
   private Map<String, String> getExtraGflags(
@@ -2698,6 +2695,9 @@ public class NodeManagerTest extends FakeDBApplication {
     Date today = cal.getTime();
     cal.add(Calendar.YEAR, 1);
     Date nextYear = cal.getTime();
+
+    createTempFile("node_manager_test_ca.crt", "test data");
+
     if (certType == Type.SelfSigned) {
       certUUID = CertificateHelper.createRootCA("foobar", customerUUID, TestHelper.TMP_PATH);
     } else if (certType == Type.CustomCertHostPath) {
@@ -2705,13 +2705,14 @@ public class NodeManagerTest extends FakeDBApplication {
       customCertInfo.rootCertPath = "/path/to/cert.crt";
       customCertInfo.nodeCertPath = "/path/to/rootcert.crt";
       customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
+
       CertificateInfo.create(
           certUUID,
           customerUUID,
           label,
           today,
           nextYear,
-          TestHelper.TMP_PATH + "/ca.crt",
+          TestHelper.TMP_PATH + "/node_manager_test_ca.crt",
           customCertInfo);
     } else if (certType == Type.CustomServerCert) {
       CertificateInfo.create(
@@ -2721,7 +2722,7 @@ public class NodeManagerTest extends FakeDBApplication {
           today,
           nextYear,
           "privateKey",
-          TestHelper.TMP_PATH + "/ca.crt",
+          TestHelper.TMP_PATH + "/node_manager_test_ca.crt",
           Type.CustomServerCert);
     }
 
