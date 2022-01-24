@@ -60,6 +60,8 @@ import org.pac4j.play.store.PlaySessionStore;
 import play.Configuration;
 import play.Environment;
 
+import javax.persistence.PersistenceException;
+
 /**
  * This class is a Guice module that tells Guice to bind different types
  *
@@ -146,21 +148,33 @@ public class Module extends AbstractModule {
       RuntimeConfigFactory runtimeConfigFactory) {
     final OidcConfiguration oidcConfiguration = new OidcConfiguration();
 
-    if (runtimeConfigFactory.globalRuntimeConf().getString("yb.security.type").equals("OIDC")) {
-      oidcConfiguration.setClientId(
-          runtimeConfigFactory.globalRuntimeConf().getString("yb.security.clientID"));
-      oidcConfiguration.setSecret(
-          runtimeConfigFactory.globalRuntimeConf().getString("yb.security.secret"));
-      oidcConfiguration.setScope(
-          runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcScope"));
-      oidcConfiguration.setDiscoveryURI(
-          runtimeConfigFactory.globalRuntimeConf().getString("yb.security.discoveryURI"));
-      oidcConfiguration.setMaxClockSkew(3600);
-      oidcConfiguration.setResponseType("code");
-      return new OidcClient<>(oidcConfiguration);
-    } else {
-      return new OidcClient<>(oidcConfiguration);
+    try {
+      if (runtimeConfigFactory.globalRuntimeConf().getString("yb.security.type").equals("OIDC")) {
+        oidcConfiguration.setClientId(
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.clientID"));
+        oidcConfiguration.setSecret(
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.secret"));
+        oidcConfiguration.setScope(
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcScope"));
+        oidcConfiguration.setDiscoveryURI(
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.discoveryURI"));
+        oidcConfiguration.setMaxClockSkew(3600);
+        oidcConfiguration.setResponseType("code");
+        return new OidcClient<>(oidcConfiguration);
+      }
+    } catch (PersistenceException e) {
+      log.debug("Defaulting to static configuration since runtime configuration is not available.");
+      if (config.getString("yb.security.type", "").equals("OIDC")) {
+        oidcConfiguration.setClientId(config.getString("yb.security.clientID", ""));
+        oidcConfiguration.setSecret(config.getString("yb.security.secret", ""));
+        oidcConfiguration.setScope(config.getString("yb.security.oidcScope", ""));
+        oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI", ""));
+        oidcConfiguration.setMaxClockSkew(3600);
+        oidcConfiguration.setResponseType("code");
+        return new OidcClient<>(oidcConfiguration);
+      }
     }
+    return new OidcClient<>(oidcConfiguration);
   }
 
   @Provides

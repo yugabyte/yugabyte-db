@@ -23,7 +23,7 @@ You access your Yugabyte Cloud clusters via [YSQL](../../api/ysql) and [YCQL](..
 
 See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
-Yugabyte Cloud runs on top of [Yugabyte Platform](../../yugabyte-platform/).
+Yugabyte Cloud runs on top of [Yugabyte Platform](../../yugabyte-platform/overview/).
 
 ### How is Yugabyte Cloud priced?
 
