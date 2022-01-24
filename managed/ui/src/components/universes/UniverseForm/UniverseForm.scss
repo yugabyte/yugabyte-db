@@ -401,7 +401,7 @@
   height: 600px;
   width: 100%;
   flex-direction: row;
-  border: 1px solid #e3e3e5;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
   border-radius: 8px;
 }
 
@@ -413,7 +413,7 @@
 }
 
 .add-border-left {
-  border-left: 1px solid #e3e3e5;
+  border-left: 1px solid $YB_LIGHT_GRAY_BORDER;
 }
 
 .g-flag-list {
@@ -464,8 +464,8 @@
   height: fit-content;
   display: inline-flex;
   align-items: flex-start;
-  border: 1px solid #e3e3e5;
-  background: #e5edff;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  background: $YB_LIGHT_BLUE_BACKGROUND;
   border-radius: 8px;
   padding: 12px;
   font-weight: normal;
@@ -475,7 +475,7 @@
 .gflag-badge {
   height: 22px;
   width: fit-content;
-  background: #e5edff;
+  background: $YB_LIGHT_BLUE_BACKGROUND;
   border: 1px solid #e2e3e4;
   border-radius: 4px;
   font-weight: 400;
@@ -491,7 +491,7 @@
   display: flex;
   flex-direction: column;
   padding: 16px;
-  border: 1px solid #e3e3e5;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
   border-radius: 4px;
   background: $YB_BACKGROUND;
 }
@@ -500,7 +500,7 @@
   font-weight: normal;
   font-size: 13px;
   display: block;
-  color: #333333;
+  color: $YB_TEXT_BLACK;
   margin-bottom: 3px;
 }
 
@@ -518,7 +518,7 @@
   display: flex;
   flex-shrink: 1;
   flex-direction: row;
-  border-top: 1px solid #e3e3e5;
+  border-top: 1px solid $YB_LIGHT_GRAY_BORDER;
   padding: 16px 0px 0px;
 }
 
@@ -527,8 +527,8 @@
   display: flex;
   flex-direction: column;
   padding: 32px 0px;
-  background-color: #fcfcfc;
-  border-bottom: 1px solid #e3e3e5;
+  background-color: $YB_BG_WHITE_2;
+  border-bottom: 1px solid $YB_LIGHT_GRAY_BORDER;
 }
 
 .row-flex {
@@ -614,7 +614,7 @@
 }
 
 .error-val-column {
-  background-color: #fdeceb;
+  background-color: $YB_ERROR_LIGHT;
   border-radius: 8px;
   height: 36px;
   padding: 14px;
@@ -622,7 +622,7 @@
   align-items: center;
   justify-content: space-between;
   &:hover {
-    background-color: #fdeceb;
+    background-color: $YB_ERROR_LIGHT;
   }
 }
 
@@ -636,26 +636,26 @@
 }
 
 .popover-container {
-  background-color: #ffffff;
-  color: black;
+  background-color: $YB_BG_WHITE_3;
+  color: $YB_TEXT_BLACK;
   padding: 0px;
-  border: 1px solid #e3e3e5;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
   border-radius: 4px;
   z-index: 9999;
 }
 
 .popover-title {
-  background-color: #fdeceb;
+  background-color: $YB_ERROR_LIGHT;
   width: 100%;
   height: 100%;
-  color: black;
+  color: $YB_TEXT_BLACK;
 }
 
 .gflag-edit-table,
 .gflag-read-table {
   width: 100%;
   padding: 10px;
-  border: 1px solid #e3e3e5;
+  border: 1px solid $YB_LIGHT_GRAY_BORDER;
   border-radius: 8px;
   margin-top: 10px;
 }
@@ -703,7 +703,7 @@
 }
 
 .error-icon {
-  color: #e73e36;
+  color: $YB_ERROR_ICON_COLOR;
 }
 
 .muted-text {
@@ -742,7 +742,7 @@
 .button-container {
   margin-top: -2px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #e3e3e5;
+  border-bottom: 1px solid $YB_LIGHT_GRAY_BORDER;
 }
 
 .gflag-modal-body,
