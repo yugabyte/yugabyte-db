@@ -80,8 +80,8 @@ def test_add_fail_tags_success(mocked_post_processor: Postprocessor,
 
 
 def test_processing_errors(mocked_post_processor: Postprocessor,
-                           mocked_test_kvs_success: Dict[str, Any]) -> None:
-    test_kvs = mocked_test_kvs_success
+                           mocked_test_kvs_failure: Dict[str, Any]) -> None:
+    test_kvs = mocked_test_kvs_failure
     mocked_post_processor.test_log_path = '/not/a/real/file.log'
     mocked_post_processor.set_fail_tags(test_kvs)
     assert 'processing_errors' in test_kvs
