@@ -104,7 +104,9 @@ public class UpgradeUniverseControllerTest extends WithApplication {
   private static Commissioner mockCommissioner;
   private Config mockConfig;
 
-  private final String TMP_CHART_PATH = "/tmp/yugaware_tests/UpgradeUniverseControllerTest/charts";
+  private final String TMP_CHART_PATH =
+      "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
+  private final String TMP_CERTS_PATH = "/tmp/" + getClass().getSimpleName() + "/certs";
 
   String cert1Contents =
       "-----BEGIN CERTIFICATE-----\n"
@@ -155,7 +157,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
 
     when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
-    when(mockConfig.getString("yb.storage.path")).thenReturn("/tmp");
+    when(mockConfig.getString("yb.storage.path")).thenReturn("/tmp/" + getClass().getSimpleName());
     when(mockReleaseManager.getReleaseByVersion(any()))
         .thenReturn(
             ReleaseManager.ReleaseMetadata.create("1.0.0")
@@ -183,7 +185,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
 
   @After
   public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File("/tmp/certs"));
+    FileUtils.deleteDirectory(new File(TMP_CERTS_PATH));
     FileUtils.deleteDirectory(new File(TMP_CHART_PATH));
   }
 
@@ -768,8 +770,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
   public void testTlsToggleWithRootCaUpdate() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID certUUID1 = CertificateHelper.createRootCA("test cert 1", customer.uuid, "/tmp/certs");
-    UUID certUUID2 = CertificateHelper.createRootCA("test cert 2", customer.uuid, "/tmp/certs");
+    UUID certUUID1 = CertificateHelper.createRootCA("test cert 1", customer.uuid, TMP_CERTS_PATH);
+    UUID certUUID2 = CertificateHelper.createRootCA("test cert 2", customer.uuid, TMP_CERTS_PATH);
     UUID universeUUID = prepareUniverseForTlsToggle(true, true, certUUID1);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";

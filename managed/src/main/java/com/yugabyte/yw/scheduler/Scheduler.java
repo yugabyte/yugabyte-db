@@ -71,12 +71,11 @@ public class Scheduler {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.commissioner = commissioner;
-    this.initialize();
-
     LOG.info("Starting scheduling service");
   }
 
-  private void initialize() {
+  public void start() {
+    LOG.info("Starting scheduling service");
     this.actorSystem
         .scheduler()
         .schedule(

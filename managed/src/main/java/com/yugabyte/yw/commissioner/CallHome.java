@@ -19,7 +19,7 @@ import scala.concurrent.duration.Duration;
 @Singleton
 public class CallHome {
 
-  public static final Logger LOG = LoggerFactory.getLogger(CallHome.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CallHome.class);
 
   private final ActorSystem actorSystem;
 
@@ -44,17 +44,15 @@ public class CallHome {
     this.executionContext = executionContext;
     this.environment = environment;
     this.callHomeManager = callHomeManager;
+  }
 
+  public void start() {
     // We don't want to start callhome on dev environments
     if (this.environment.isDev()) {
       LOG.info("Skip callhome scheduling");
-    } else {
-      LOG.info("Initialize callhome service");
-      this.initialize();
+      return;
     }
-  }
-
-  private void initialize() {
+    LOG.info("Initialize callhome service");
     this.actorSystem
         .scheduler()
         .schedule(
@@ -66,20 +64,24 @@ public class CallHome {
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (running.get()) {
+    if (!running.compareAndSet(false, true)) {
       LOG.info("Previous scheduler still running");
       return;
     }
 
-    LOG.info("Running scheduler");
-    running.set(true);
-    for (Customer c : Customer.getAll()) {
-      try {
-        callHomeManager.sendDiagnostics(c);
-      } catch (Exception e) {
-        LOG.error("Error sending callhome for customer: " + c.uuid, e);
+    try {
+      LOG.info("Running scheduler");
+      for (Customer c : Customer.getAll()) {
+        try {
+          callHomeManager.sendDiagnostics(c);
+        } catch (Exception e) {
+          LOG.error("Error sending callhome for customer: " + c.uuid, e);
+        }
       }
+    } catch (Exception e) {
+      LOG.error("Error sending callhome", e);
+    } finally {
+      running.set(false);
     }
-    running.set(false);
   }
 }

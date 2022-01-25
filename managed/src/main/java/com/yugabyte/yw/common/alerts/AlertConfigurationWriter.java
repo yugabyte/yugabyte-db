@@ -83,10 +83,9 @@ public class AlertConfigurationWriter {
     this.swamperHelper = swamperHelper;
     this.metricQueryHelper = metricQueryHelper;
     this.configFactory = configFactory;
-    this.initialize();
   }
 
-  private void initialize() {
+  public void start() {
     int configSyncPeriodSec = configFactory.globalRuntimeConf().getInt(CONFIG_SYNC_INTERVAL_PARAM);
     if (configSyncPeriodSec < MIN_CONFIG_SYNC_INTERVAL_SEC) {
       LOG.warn(
