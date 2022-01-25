@@ -110,7 +110,6 @@ void YBTest::SetUp() {
   FLAGS_enable_tracing = true;
   FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
   FLAGS_TEST_running_test = true;
-  LOG(INFO) << "Setting FLAGS_never_sync";
   FLAGS_never_fsync = true;
   for (const char* env_var_name : {
       "ASAN_OPTIONS",
