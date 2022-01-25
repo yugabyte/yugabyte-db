@@ -242,7 +242,7 @@ class Postprocessor:
             test_kvs["extra_error_log_path"] = self.rel_extra_error_log_path
 
     def set_fail_tags(self, test_kvs: Dict[str, Any]) -> None:
-        if test_kvs.get('num_errors', 0) > 0 or test_kvs.get('num_failures', 1):
+        if test_kvs.get('num_errors', 0) > 0 or test_kvs.get('num_failures', 0) > 0:
             # Parse for fail tags
             for tag, pattern in FAIL_TAG_AND_PATTERN.items():
                 # When using zgrep, given files are uncompressed if necessary and fed to grep
@@ -256,7 +256,7 @@ class Postprocessor:
                         fail_tag = tag
                     test_kvs['fail_tags'] = test_kvs.get('fail_tags', []) + [fail_tag]
                 elif grep_command.returncode > 1:
-                    logging.warning("Error running {}: \n{}".format(
+                    logging.warning("Error running '{}': \n{}".format(
                         ' '.join(grep_command.args), grep_command.stderr.decode('utf-8'))
                     )
                     test_kvs['processing_errors'] = grep_command.stderr.decode('utf-8').split()
