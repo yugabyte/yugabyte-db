@@ -4802,9 +4802,6 @@
         "instanceType" : {
           "type" : "string"
         },
-        "isYbPrebuiltAmi" : {
-          "type" : "boolean"
-        },
         "masterGFlags" : {
           "additionalProperties" : {
             "type" : "string"
@@ -4853,6 +4850,9 @@
           "type" : "boolean"
         },
         "useTimeSync" : {
+          "type" : "boolean"
+        },
+        "ybPrebuiltAmi" : {
           "type" : "boolean"
         },
         "ybSoftwareVersion" : {
