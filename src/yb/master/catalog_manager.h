@@ -206,6 +206,25 @@ class CatalogManager :
   // This is called at the end of CreateTable if the table has transactions enabled.
   CHECKED_STATUS CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc);
 
+  // Get tablet ids of the global transaction status table.
+  CHECKED_STATUS GetGlobalTransactionStatusTablets(
+      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
+
+  // Get ids of transaction status tables matching a given placement.
+  std::vector<TableId> GetPlacementLocalTransactionStatusTables(
+      const CloudInfoPB& placement) EXCLUDES(mutex_);
+
+  // Get tablet ids of local transaction status tables matching a given placement.
+  CHECKED_STATUS GetPlacementLocalTransactionStatusTablets(
+      const CloudInfoPB& placement,
+      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
+
+  // Get tablet ids of the global transaction status table and local transaction status tables
+  // matching a given placement.
+  CHECKED_STATUS GetTransactionStatusTablets(const GetTransactionStatusTabletsRequestPB* req,
+                                             GetTransactionStatusTabletsResponsePB* resp,
+                                             rpc::RpcContext *rpc) EXCLUDES(mutex_);
+
   // Create the metrics snapshots table if needed (i.e. if it does not exist already).
   //
   // This is called at the end of CreateTable.
