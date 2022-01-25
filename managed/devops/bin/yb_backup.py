@@ -74,6 +74,7 @@ SQL_DATA_DUMP_FILE_NAME = 'YSQLDump_data'
 CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
+RESTORE_DOWNLOAD_LOOP_MAX_RETRIES = 20
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
@@ -231,7 +232,7 @@ class SequencedParallelCmd(SingleArgParallelCmd):
         -> run in parallel Thread-1: -> fn(a1, a2); fn(b1, b2)
                            Thread-2: -> fn(c1, c2); fn(d1, d2)
     """
-    def __init__(self, fn):
+    def __init__(self, fn, handle_errors=False):
         self.fn = fn
         self.args = []
         """
@@ -247,10 +248,16 @@ class SequencedParallelCmd(SingleArgParallelCmd):
             -> run -> fn(a1, a2); result = fn(b1, b2); fn(c1, c2); return result
         """
         self.result_fn_call_index = None
+        # Whether or not we will throw an error on a cmd failure, or handle it and return a
+        # tuple: ('failed-cmd', handle).
+        self.handle_errors = handle_errors
 
-    def start_command(self):
+    # Handle is returned on failed command if handle_errors=true.
+    # Example handle is a tuple of (tablet_id, tserver_ip).
+    def start_command(self, handle):
         # Start new set of argument tuples.
-        self.args.append([])
+        # Place handle at the front.
+        self.args.append([handle])
 
     def use_last_fn_result_as_command_result(self):
         # Let's remember the last fn call index to return its' result as the command result.
@@ -268,11 +275,24 @@ class SequencedParallelCmd(SingleArgParallelCmd):
     def run(self, pool):
         def internal_fn(list_of_arg_tuples):
             assert isinstance(list_of_arg_tuples, list)
+            # First entry is the handle.
+            handle = list_of_arg_tuples[0]
+            # Add empty string at beginning to keep len(results) = len(list_of_arg_tuples).
+            results = ['']
             # A list of commands: do it one by one.
-            results = []
-            for args_tuple in list_of_arg_tuples:
+            for args_tuple in list_of_arg_tuples[1:]:
                 assert isinstance(args_tuple, tuple)
-                results.append(self.fn(*args_tuple))
+                try:
+                    results.append(self.fn(*args_tuple))
+                except Exception as ex:
+                    logging.warning(
+                        "Encountered error for handle '{}' while running "
+                        "command '{}'. Error: {}".
+                        format(handle, args_tuple, ex))
+                    if (self.handle_errors):
+                        # If we handle errors, then return 'failed-cmd' with the handle.
+                        return ('failed-cmd', handle)
+                    raise ex
 
             if self.result_fn_call_index is None:
                 return results
@@ -578,6 +598,9 @@ class NfsBackupStorage(AbstractBackupStorage):
             pipes.quote(src), pipes.quote(dest))]
 
     def download_dir_cmd(self, src, dest):
+        if self.options.args.TEST_sleep_during_download_dir:
+            return ["sleep 5 && {} {} {}".format(
+                " ".join(self._command_list_prefix()), pipes.quote(src), pipes.quote(dest))]
         return self._command_list_prefix() + [src, dest]
 
     def delete_obj_cmd(self, dest):
@@ -1056,6 +1079,16 @@ class YBBackup:
             help="Regular expression for 'sed' tool to edit on fly YSQL dump file(s) during the "
                  "backup restoring. Example: \"s|OWNER TO yugabyte|OWNER TO admin|\". WARNING: "
                  "Contact support team before use! No any backward compatibility guaranties.")
+
+        """
+        Test arguments
+        - Use `argparse.SUPPRESS` to keep these arguments hidden.
+        """
+        # Adds in a sleep before the rsync command to download data during the restore. Used in
+        # tests to hit tablet move race conditions during restores.
+        parser.add_argument(
+            '--TEST_sleep_during_download_dir', required=False, action='store_true', default=False,
+            help=argparse.SUPPRESS)
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
@@ -2131,7 +2164,9 @@ class YBBackup:
 
                         assert len(snapshot_dirs) == 1
                         snapshot_dir = list(snapshot_dirs)[0] + '/'
-                        parallel_commands.start_command()
+                        # Pass in the tablet_id and tserver_ip, so if we fail then we know on which
+                        # tserver and for what tablet we failed on.
+                        parallel_commands.start_command((tablet_id, tserver_ip))
 
                         if upload:
                             self.prepare_upload_command(
@@ -2829,7 +2864,7 @@ class YBBackup:
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
         self.timer.log_new_phase("Download data")
-        parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
+        parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd, handle_errors=True)
         self.prepare_cloud_ssh_cmds(
             parallel_downloads, tserver_to_tablet_to_snapshot_dirs,
             None, snapshot_id, tablets_by_tserver_to_download,
@@ -2838,9 +2873,16 @@ class YBBackup:
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(pool)
 
-        if not self.args.disable_checksums:
-            for k in results:
-                v = results[k].strip()
+        for k in results:
+            v = results[k]
+            if isinstance(v, tuple) and v[0] == 'failed-cmd':
+                assert len(v) == 2
+                (tablet_id, tserver_ip) = v[1]
+                # In case we fail a cmd, don't mark this tablet-tserver pair as succeeded, instead
+                # we will retry in the next round of downloads.
+                tserver_to_deleted_tablets.setdefault(tserver_ip, set()).add(tablet_id)
+            elif not self.args.disable_checksums:
+                v = v.strip()
                 if v != 'correct':
                     raise BackupException('Check-sum for "{}" is {}'.format(k, v))
 
@@ -2909,7 +2951,9 @@ class YBBackup:
         # The loop must stop after a few rounds because the downloading list includes only new
         # tablets for downloading. The downloading list should become smaller with every round
         # and must become empty in the end.
-        while tablets_by_tserver_to_download:
+        num_loops = 0
+        while tablets_by_tserver_to_download and num_loops < RESTORE_DOWNLOAD_LOOP_MAX_RETRIES:
+            num_loops += 1
             logging.info('[app] Downloading tablets onto %d tservers...',
                          len(tablets_by_tserver_to_download))
 
@@ -2935,6 +2979,10 @@ class YBBackup:
             #                             = OLD_all_tablet_replicas + downloading_list
             (all_tablets_by_tserver, tablets_by_tserver_to_download) =\
                 self.identify_new_tablet_replicas(all_tablets_by_tserver, tablets_by_tserver_new)
+
+        if num_loops >= RESTORE_DOWNLOAD_LOOP_MAX_RETRIES:
+            logging.error("Exceeded max number of retries for the restore download loop ({})!".
+                          format(RESTORE_DOWNLOAD_LOOP_MAX_RETRIES))
 
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)

@@ -1256,5 +1256,28 @@ TEST_F_EX(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackupWithLB)) {
+  // Create table with a lot of tablets.
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(20), client_.get(), &table_);
+  const string& keyspace = table_.name().namespace_name();
+
+  const string backup_dir = GetTempDir("backup");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+
+  // Add in a new tserver to trigger the load balancer.
+  ASSERT_OK(cluster_->AddTabletServer());
+
+  // Start running the restore while the load balancer is balancing the load.
+  // Use the --TEST_sleep_during_download_dir param to inject a sleep before the rsync calls.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace,
+       "--TEST_sleep_during_download_dir", "restore"}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb
