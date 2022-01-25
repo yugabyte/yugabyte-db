@@ -57,7 +57,6 @@ class SequentialFileReader;
 class RocksDBTest : public ::testing::Test {
  public:
   RocksDBTest() {
-    LOG(INFO) << "SEtting FLAGS_never_fsync in rocksdb";
     FLAGS_never_fsync = true;
   }
 };

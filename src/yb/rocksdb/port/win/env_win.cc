@@ -167,7 +167,6 @@ inline int fsync(HANDLE hFile) {
   if (FLAGS_never_fsync) {
     return 0;
   }
-  LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
   if (!FlushFileBuffers(hFile)) {
     return -1;
   }
