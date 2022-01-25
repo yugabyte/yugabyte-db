@@ -60,7 +60,7 @@ To create a KMS configuration that uses AWS Key Management Service (KMS):
     - **Region** — Select the AWS region where the CMK used to generate universe keys will be located. **Note:** This does not need to match the region where the encrypted universe resides on Amazon Web Services (AWS).
     - **Customer Master Key ID** — Enter the identifier for the customer master key. If an identifier is not entered, a CMK ID will be auto-generated.
 
-5. (Optional) Click **Upload CMK Policy** to select a custom policy file. The default policy used is:
+5. Optionally, click **Upload CMK Policy** to select a custom policy file. The default policy used is:
 
     ```json
     {
@@ -92,4 +92,4 @@ To create a KMS configuration that uses AWS Key Management Service (KMS):
 
 6. Click **Save**. Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
-7. (Optional) To confirm the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+7. Optionally, to confirm the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
