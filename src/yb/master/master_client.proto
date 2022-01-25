@@ -138,6 +138,19 @@ message GetTableLocationsResponsePB {
   optional bool creating = 5;
 }
 
+message GetTransactionStatusTabletsRequestPB {
+  // Placement to use when deciding which local transaction tables should be considered.
+  // No local transaction tablets will be returned if not set.
+  optional CloudInfoPB placement = 1;
+}
+
+message GetTransactionStatusTabletsResponsePB {
+  optional MasterErrorPB error = 1;
+
+  repeated bytes global_tablet_id = 2;
+  repeated bytes placement_local_tablet_id = 3;
+}
+
 // Reserve Postgres oid
 message ReservePgsqlOidsRequestPB {
   optional bytes namespace_id = 1; // The namespace id of the Postgres database.
@@ -186,6 +199,9 @@ service MasterClient {
   rpc GetTabletLocations(GetTabletLocationsRequestPB) returns (GetTabletLocationsResponsePB);
 
   rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
+
+  rpc GetTransactionStatusTablets(GetTransactionStatusTabletsRequestPB)
+      returns (GetTransactionStatusTabletsResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);

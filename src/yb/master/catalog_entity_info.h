@@ -428,6 +428,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return GetTableType() == REDIS_TABLE_TYPE;
   }
 
+  bool IsTransactionStatusTable() const {
+    return GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
+  }
+
   // Add a tablet to this table.
   void AddTablet(const TabletInfoPtr& tablet);
 

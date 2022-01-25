@@ -174,16 +174,14 @@ bool CatalogManagerUtil::IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInf
           lhs.placement_zone() == rhs.placement_zone());
 }
 
-Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
-                                                             const CloudInfoPB& cloud_info) {
+bool CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
+                                                           const CloudInfoPB& cloud_info) {
   for (const auto& placement_block : placement_info.placement_blocks()) {
     if (IsCloudInfoEqual(placement_block.cloud_info(), cloud_info)) {
-      return Status::OK();
+      return true;
     }
   }
-  return STATUS_SUBSTITUTE(InvalidArgument, "Placement info $0 does not contain cloud info $1",
-                           placement_info.DebugString(),
-                           TSDescriptor::generate_placement_id(cloud_info));
+  return false;
 }
 
 Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
@@ -200,7 +198,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
       std::vector<std::string> placement_uuid_matches;
       for (const auto& placement_info : replication_info.read_replicas()) {
         if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(
-            placement_info, peer.cloud_info()).ok()) {
+            placement_info, peer.cloud_info())) {
           placement_uuid_matches.push_back(placement_info.placement_uuid());
         }
       }
