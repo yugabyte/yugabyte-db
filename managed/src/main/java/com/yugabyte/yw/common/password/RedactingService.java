@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.common.password;
 
-import javax.inject.Singleton;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.Configuration;
@@ -12,8 +10,8 @@ import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Singleton;
 
 @Singleton
 public class RedactingService {
