@@ -168,7 +168,9 @@ class SysCatalogTable {
   // Read the pg_class catalog table. There is a separate pg_class table in each
   // YSQL database, read the information in the pg_class table for the database
   // 'database_oid' and load this information into 'table_to_tablespace_map'.
+  // 'is_colocated' indicates whether this database is colocated or not.
   CHECKED_STATUS ReadPgClassInfo(const uint32_t database_oid,
+                                 const bool is_colocated,
                                  TableToTablespaceIdMap* table_to_tablespace_map);
 
   // Read relnamespace OID from the pg_class catalog table.
