@@ -892,6 +892,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
 
 Status SysCatalogTable::ReadPgClassInfo(
     const uint32_t database_oid,
+    const bool is_colocated_database,
     TableToTablespaceIdMap* table_to_tablespace_map) {
 
   TRACE_EVENT0("master", "ReadPgClass");
@@ -908,11 +909,20 @@ Status SysCatalogTable::ReadPgClassInfo(
   const Schema& schema = table_info->schema;
 
   Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "reltablespace", "relkind"}, &projection,
-                schema.num_key_columns()));
+  std::vector<GStringPiece> col_names = {"oid", "reltablespace", "relkind"};
+
+  if (is_colocated_database) {
+    VLOG(5) << "Scanning pg_class for colocated database oid " << database_oid;
+    col_names.emplace_back("reloptions");
+  }
+
+  RETURN_NOT_OK(schema.CreateProjectionByNames(col_names,
+                                               &projection,
+                                               schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
+
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
     projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
   {
@@ -961,6 +971,36 @@ Status SysCatalogTable::ReadPgClassInfo(
     if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I') {
       // This database object is not a table/index/partitioned table/partitioned index.
       // Skip this.
+      continue;
+    }
+
+    bool is_colocated_table = false;
+    if (is_colocated_database) {
+      // A table in a colocated database is colocated unless it opted out
+      // of colocation.
+      is_colocated_table = true;
+      const auto reloptions_col_id = VERIFY_RESULT(projection.ColumnIdByName("reloptions")).rep();
+      const auto& reloptions_col = row.GetValue(reloptions_col_id);
+      if (!reloptions_col) {
+        return STATUS(Corruption, "Could not read reloptions column from pg_class for oid " +
+            std::to_string(oid));
+      }
+      if (!reloptions_col->binary_value().empty()) {
+        vector<QLValuePB> reloptions;
+        RETURN_NOT_OK(yb::docdb::ExtractTextArrayFromQLBinaryValue(reloptions_col.value(),
+                                                                   &reloptions));
+        for (const auto& reloption : reloptions) {
+          if (reloption.string_value().compare("colocated=false") == 0) {
+            is_colocated_table = false;
+            break;
+          }
+        }
+      }
+    }
+
+    if (is_colocated_table) {
+      // This is a colocated table. This cannot have a tablespace associated with it.
+      VLOG(5) << "Table oid: " << oid << " skipped as it is colocated";
       continue;
     }
 
