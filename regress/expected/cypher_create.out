@@ -518,15 +518,16 @@ $$) as (a agtype);
 ERROR:  variable b already exists
 LINE 1: SELECT * FROM cypher('cypher_create', $$
                                                ^
--- Not a valid path
+-- A valid single vertex path
 SELECT * FROM cypher('cypher_create', $$
 	CREATE p=(a)
 	RETURN p
 $$) as (a agtype);
-ERROR:  paths consist of alternating vertices and edges.
-LINE 2:  CREATE p=(a)
-                  ^
-HINT:  paths require at least 2 vertices and 1 edge
+                                   a                                    
+------------------------------------------------------------------------
+ [{"id": 281474976710677, "label": "", "properties": {}}::vertex]::path
+(1 row)
+
 --CREATE with joins
 SELECT *
 FROM cypher('cypher_create', $$

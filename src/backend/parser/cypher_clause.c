@@ -3613,13 +3613,12 @@ transform_match_create_path_variable(cypher_parsestate *cpstate,
     List *entity_exprs = NIL;
     ListCell *lc;
 
-    if (list_length(entities) < 3)
+    if (list_length(entities) < 1)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("paths consist of alternating vertices and edges."),
-                 parser_errposition(pstate, path->location),
-                 errhint("paths require at least 2 vertices and 1 edge")));
+                 errmsg("paths require at least 1 vertex"),
+                 parser_errposition(pstate, path->location)));
     }
 
     // extract the expr for each entity
@@ -4267,13 +4266,12 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
     {
         TargetEntry *te;
 
-        if (list_length(transformed_path) < 3)
+        if (list_length(transformed_path) < 1)
         {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("paths consist of alternating vertices and edges."),
-                     parser_errposition(pstate, path->location),
-                     errhint("paths require at least 2 vertices and 1 edge")));
+                     errmsg("paths require at least 1 vertex"),
+                     parser_errposition(pstate, path->location)));
         }
 
         te = placeholder_target_entry(cpstate, path->var_name);

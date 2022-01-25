@@ -1780,20 +1780,18 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
     /* build argument values to build the object */
     nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
 
-    if (nargs < 3)
+    if (nargs < 1)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("paths consist of alternating vertices and edges"),
-                 errhint("paths require at least 2 vertices and 1 edge")));
+                 errmsg("paths require at least 1 vertex")));
     }
 
     if (nargs % 2 == 0)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("paths consist of alternating vertices and edges"),
-                 errhint("paths require an odd number of elements")));
+                 errmsg("a path is of the form: [vertex, (edge, vertex)*i] where i >= 0")));
     }
 
     /*
@@ -1935,10 +1933,20 @@ Datum make_path(List *path)
 
     result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY, NULL);
 
-    if (list_length(path) < 3 || list_length(path) % 2 != 1)
+    if (list_length(path) < 1)
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("path list is not a valid path")));
+                 errmsg("paths require at least 1 vertex")));
+    }
+
+    if (list_length(path) % 2 != 1)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("a path is of the form: [vertex, (edge, vertex)*i] where i >= 0")));
+    }
+
 
     foreach (lc, path)
     {

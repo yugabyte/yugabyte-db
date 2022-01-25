@@ -231,7 +231,7 @@ SELECT * FROM cypher('cypher_create', $$
 	CREATE (a)-[b:e_var]->()
 $$) as (a agtype);
 
--- Not a valid path
+-- A valid single vertex path
 SELECT * FROM cypher('cypher_create', $$
 	CREATE p=(a)
 	RETURN p

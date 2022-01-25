@@ -290,7 +290,7 @@ SELECT * FROM cypher('cypher_match', $$MATCH (n:e1)-[]-() RETURN n$$) AS (n agty
 SELECT * FROM cypher('cypher_match', $$MATCH (n:vmissing)-[]-() RETURN n$$) AS (n agtype);
 
 --
---Errors
+-- Path of one vertex. This should select 14
 --
 SELECT * FROM cypher('cypher_match', $$
        MATCH p=() RETURN p

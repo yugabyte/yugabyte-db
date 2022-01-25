@@ -2378,8 +2378,7 @@ SELECT _agtype_build_path(
 	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
 			  $$label$$, agtype_build_map('id', 2))
 );
-ERROR:  paths consist of alternating vertices and edges
-HINT:  paths require at least 2 vertices and 1 edge
+ERROR:  a path is of the form: [vertex, (edge, vertex)*i] where i >= 0
 SELECT _agtype_build_path(
        _agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
        _agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,
@@ -2388,8 +2387,7 @@ SELECT _agtype_build_path(
        _agtype_build_edge('1'::graphid, '4'::graphid, '5'::graphid,
                          $$label$$, agtype_build_map('id', 2))
 );
-ERROR:  paths consist of alternating vertices and edges
-HINT:  paths require an odd number of elements
+ERROR:  a path is of the form: [vertex, (edge, vertex)*i] where i >= 0
 SELECT _agtype_build_path(
 	_agtype_build_vertex('2'::graphid, $$label_name$$, agtype_build_map()),
 	_agtype_build_edge('1'::graphid, '2'::graphid, '3'::graphid,

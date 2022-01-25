@@ -528,15 +528,29 @@ ERROR:  label vmissing does not exists
 LINE 1: SELECT * FROM cypher('cypher_match', $$MATCH (n:vmissing)-[]...
                                                      ^
 --
---Errors
+-- Path of one vertex. This should select 14
 --
 SELECT * FROM cypher('cypher_match', $$
        MATCH p=() RETURN p
 $$) AS (p agtype);
-ERROR:  paths consist of alternating vertices and edges.
-LINE 2:        MATCH p=() RETURN p
-                       ^
-HINT:  paths require at least 2 vertices and 1 edge
+                                                                                        p                                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710657, "label": "", "properties": {"int_key": 1, "map_key": {"key": "value"}, "list_key": [1, 2, 3], "float_key": 3.14, "string_key": "test"}}::vertex]::path
+ [{"id": 281474976710658, "label": "", "properties": {"lst": [1, null, 3.14, "string", {"key": "value"}, []]}}::vertex]::path
+ [{"id": 844424930131969, "label": "v", "properties": {}}::vertex]::path
+ [{"id": 844424930131970, "label": "v", "properties": {"i": 0}}::vertex]::path
+ [{"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex]::path
+ [{"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex]::path
+ [{"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex]::path
+ [{"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex]::path
+ [{"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path
+ [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex]::path
+ [{"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex]::path
+ [{"id": 2251799813685249, "label": "v3", "properties": {"id": "initial"}}::vertex]::path
+ [{"id": 2251799813685250, "label": "v3", "properties": {"id": "middle"}}::vertex]::path
+ [{"id": 2251799813685251, "label": "v3", "properties": {"id": "end"}}::vertex]::path
+(14 rows)
+
 --
 -- MATCH with WHERE EXISTS(pattern)
 --
