@@ -306,7 +306,6 @@ Status PosixMmapFile::Sync() {
   if (FLAGS_never_fsync) {
     return Status::OK();
   }
-  LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
   if (fdatasync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -321,7 +320,6 @@ Status PosixMmapFile::Fsync() {
   if (FLAGS_never_fsync) {
     return Status::OK();
   }
-  LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
   if (fsync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -467,7 +465,6 @@ Status PosixWritableFile::Fsync() {
   if (FLAGS_never_fsync) {
     return Status::OK();
   }
-  LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
   if (fsync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -532,7 +529,6 @@ Status PosixDirectory::Fsync() {
   if (FLAGS_never_fsync) {
     return Status::OK();
   }
-  LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
   if (fsync(fd_) == -1) {
     return STATUS_IO_ERROR("directory", errno);
   }

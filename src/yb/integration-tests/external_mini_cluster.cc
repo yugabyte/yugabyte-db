@@ -1168,7 +1168,7 @@ Status ExternalMiniCluster::StartMasters() {
   }
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
   vector<string> flags = opts_.extra_master_flags;
-  // Disable fsync for tests
+  // Disable WAL fsync for tests
   flags.push_back("--durable_wal_write=false");
   flags.push_back("--enable_leader_failure_detection=true");
   // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
