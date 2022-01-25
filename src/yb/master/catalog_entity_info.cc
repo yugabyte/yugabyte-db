@@ -776,7 +776,8 @@ bool TableInfo::UsesTablespacesForPlacement() const {
       l->pb.has_transaction_table_tablespace_id();
   bool is_regular_pgsql_table =
       l->pb.table_type() == PGSQL_TABLE_TYPE && !IsColocatedUserTable() &&
-      l->namespace_id() != kPgSequencesDataNamespaceId;
+      l->namespace_id() != kPgSequencesDataNamespaceId &&
+      !IsColocatedParentTable();
   return is_transaction_table_using_tablespaces || is_regular_pgsql_table;
 }
 

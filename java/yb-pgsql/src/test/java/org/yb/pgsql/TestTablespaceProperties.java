@@ -111,6 +111,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   @Before
   public void setupTablespaces() throws Exception {
     try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute("DROP TABLESPACE IF EXISTS " + tablespaceName);
       setupStatement.execute(
           " CREATE TABLESPACE " + tablespaceName +
           "  WITH (replica_placement=" +
@@ -199,6 +200,36 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     // tables are placed incorrectly at creation time.
     LOG.info("Run load balancer tablespace placement tests");
     testLBTablespacePlacement();
+  }
+
+  @Test
+  public void testTablesOptOutOfColocation() throws Exception {
+    final String dbname = "testdatabase";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
+    }
+    final String colocatedTableName = "colocated_table";
+    final String nonColocatedTable = "colocation_opt_out_table";
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                                 "WITH (colocated = false) TABLESPACE testTablespace",
+                                 nonColocatedTable));
+      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT)",
+                                 colocatedTableName));
+    }
+    verifyDefaultPlacement(colocatedTableName);
+    verifyCustomPlacement(nonColocatedTable);
+
+    // Wait for tablespace info to be refreshed in load balancer.
+    Thread.sleep(5 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
+
+    // Verify that load balancer is indeed idle.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
+               MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    verifyDefaultPlacement(colocatedTableName);
+    verifyCustomPlacement(nonColocatedTable);
   }
 
   public void executeAndAssertErrorThrown(String statement, String err_msg) throws Exception{
