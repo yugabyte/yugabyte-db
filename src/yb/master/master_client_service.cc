@@ -120,6 +120,7 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
     CatalogManager,
+    (GetTransactionStatusTablets)
     (GetYsqlCatalogConfig)
     (RedisConfigSet)
     (RedisConfigGet)
