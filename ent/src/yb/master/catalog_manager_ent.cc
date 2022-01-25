@@ -1146,7 +1146,7 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   CreateTableResponsePB resp;
   req.set_name(meta.name());
   req.set_table_type(meta.table_type());
-  req.set_num_tablets(table_data->num_tablets);
+  req.set_num_tablets(narrow_cast<int32_t>(table_data->num_tablets));
   for (const auto& p : table_data->partitions) {
     *req.add_partitions() = p;
   }
@@ -2604,12 +2604,27 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
         resp->add_not_found_stream_ids(stream_id);
         LOG(WARNING) << "CDC stream does not exist: " << stream_id;
       } else {
+        auto ltm = stream->LockForRead();
+        bool active = (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE);
+        bool is_WAL = false;
+        for (const auto& option : ltm->pb.options()) {
+          if (option.key() == "record_format" && option.value() == "WAL") {
+            is_WAL = true;
+          }
+        }
+        if (!req->force_delete() && is_WAL && active) {
+          return STATUS(NotSupported,
+                        "Cannot delete an xCluster Stream in replication. "
+                        "Use 'force_delete' to override",
+                        req->ShortDebugString(),
+                        MasterError(MasterErrorPB::INVALID_REQUEST));
+        }
         streams.push_back(stream);
       }
     }
   }
 
-  if (!resp->not_found_stream_ids().empty() && !req->force()) {
+  if (!resp->not_found_stream_ids().empty() && !req->ignore_errors()) {
     string missing_streams = JoinElementsIterator(resp->not_found_stream_ids().begin(),
                                                   resp->not_found_stream_ids().end(),
                                                   ",");
@@ -2976,7 +2991,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
 
   // We assume that the list of table ids is unique.
   if (req->producer_bootstrap_ids().size() > 0 &&
-      req->producer_table_ids().size() != table_id_to_bootstrap_id.size()) {
+      implicit_cast<size_t>(req->producer_table_ids().size()) != table_id_to_bootstrap_id.size()) {
     return STATUS(InvalidArgument, "When providing bootstrap ids, "
                   "the list of tables must be unique", req->ShortDebugString(),
                   MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -3290,7 +3305,7 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
   if (!s.ok()) {
     MarkUniverseReplicationFailed(universe, s);
     std::ostringstream oss;
-    for (int i = 0; i < infos->size(); ++i) {
+    for (size_t i = 0; i < infos->size(); ++i) {
       oss << ((i == 0) ? "" : ", ") << (*infos)[i].table_id;
     }
     LOG(ERROR) << "Error getting schema for tables: [ " << oss.str() << " ]: " << s;
@@ -3507,15 +3522,19 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
 }
 
 /*
- * UpdateCDCConsumerOnTabletSplit updates the consumer -> producer tablet mapping after a local
+ * UpdateXClusterConsumerOnTabletSplit updates the consumer -> producer tablet mapping after a local
  * tablet split.
  */
-Status CatalogManager::UpdateCDCConsumerOnTabletSplit(
+Status CatalogManager::UpdateXClusterConsumerOnTabletSplit(
     const TableId& consumer_table_id,
     const SplitTabletIds& split_tablet_ids) {
   // Check if this table is consuming a stream.
   XClusterConsumerTableStreamInfoMap stream_infos =
       GetXClusterStreamInfoForConsumerTable(consumer_table_id);
+
+  if (stream_infos.empty()) {
+    return Status::OK();
+  }
 
   auto l = cluster_config_->LockForWrite();
   for (const auto& stream_info : stream_infos) {
@@ -3549,6 +3568,45 @@ Status CatalogManager::UpdateCDCConsumerOnTabletSplit(
   RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
                             "Updating cluster config in sys-catalog"));
   l.Commit();
+
+  return Status::OK();
+}
+
+Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
+    const TableId& producer_table_id,
+    const SplitTabletIds& split_tablet_ids) {
+  // First check if this table has any streams associated with it.
+  auto streams = FindCDCStreamsForTable(producer_table_id);
+
+  if (!streams.empty()) {
+    // For each stream, need to add in the children entries to the cdc_state table.
+    client::TableHandle cdc_table;
+    const client::YBTableName cdc_state_table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+    auto ybclient = master_->cdc_state_client_initializer().client();
+    if (!ybclient) {
+      return STATUS(IllegalState, "Client not initialized or shutting down");
+    }
+    RETURN_NOT_OK(cdc_table.Open(cdc_state_table_name, ybclient));
+    std::shared_ptr<client::YBSession> session = ybclient->NewSession();
+
+    for (const auto& stream : streams) {
+      for (const auto& child_tablet_id :
+           {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
+        const auto insert_op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+        auto* insert_req = insert_op->mutable_request();
+        QLAddStringHashValue(insert_req, child_tablet_id);
+        QLAddStringRangeValue(insert_req, stream->id());
+        // TODO(JHE) set the checkpoint to a different value? OpId of the SPLIT_OP itself perhaps?
+        cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, OpId().ToString());
+        // TODO(JHE) what to set the time to?
+        // cdc_table.AddTimestampColumnValue(
+        //     insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+        session->Apply(insert_op);
+      }
+    }
+    RETURN_NOT_OK(session->Flush());
+  }
 
   return Status::OK();
 }
@@ -3680,7 +3738,7 @@ Status ReturnErrorOrAddWarning(const Status& s,
                                const DeleteUniverseReplicationRequestPB* req,
                                DeleteUniverseReplicationResponsePB* resp) {
   if (!s.ok()) {
-    if (req->force()) {
+    if (req->ignore_errors()) {
       // Continue executing, save the status as a warning.
       AppStatusPB* warning = resp->add_warnings();
       StatusToPB(s, warning);
@@ -3748,7 +3806,11 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
       }
 
       DeleteCDCStreamResponsePB delete_cdc_stream_resp;
-      auto s = cdc_rpc->client()->DeleteCDCStream(streams, req->force(), &delete_cdc_stream_resp);
+      // Set force_delete=true since we are deleting active xCluster streams.
+      auto s = cdc_rpc->client()->DeleteCDCStream(streams,
+                                                  true, /* force_delete */
+                                                  req->ignore_errors(),
+                                                  &delete_cdc_stream_resp);
 
       if (delete_cdc_stream_resp.not_found_stream_ids().size() > 0) {
         std::ostringstream missing_streams;
@@ -4027,7 +4089,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         if (!result.ok()) {
           LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
         } else {
-          auto s = (*result)->client()->DeleteCDCStream(streams_to_remove);
+          auto s = (*result)->client()->DeleteCDCStream(streams_to_remove,
+                                                        true /* force_delete */);
           if (!s.ok()) {
             std::stringstream os;
             std::copy(streams_to_remove.begin(), streams_to_remove.end(),
@@ -4093,7 +4156,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       // the same check is performed by SetupUniverseReplication because
       // duplicate table ids can cause a bootstrap id entry in table_id_to_bootstrap_id
       // to be overwritten.
-      if (table_id_to_bootstrap_id.size() != req->producer_table_ids_to_add().size()) {
+      if (table_id_to_bootstrap_id.size() !=
+              implicit_cast<size_t>(req->producer_table_ids_to_add().size())) {
         return STATUS(InvalidArgument, "When providing bootstrap ids, "
                       "the list of tables must be unique", req->ShortDebugString(),
                       MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -4306,6 +4370,105 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
 
   // Not done yet.
   resp->set_done(false);
+  return Status::OK();
+}
+
+Status CatalogManager::UpdateConsumerOnProducerSplit(
+    const UpdateConsumerOnProducerSplitRequestPB* req,
+    UpdateConsumerOnProducerSplitResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "UpdateConsumerOnProducerSplit from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+
+  if (!req->has_producer_id()) {
+    return STATUS(InvalidArgument, "Producer universe ID must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+  if (!req->has_stream_id()) {
+    return STATUS(InvalidArgument, "Stream ID must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+  if (!req->has_producer_split_tablet_info()) {
+    return STATUS(InvalidArgument, "Producer split tablet info must be provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  auto l = cluster_config_->LockForWrite();
+  auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+  auto producer_entry = FindOrNull(*producer_map, req->producer_id());
+  if (!producer_entry) {
+    return STATUS_FORMAT(
+        NotFound, "Unable to find the producer entry for universe $0", req->producer_id());
+  }
+  auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), req->stream_id());
+  if (!stream_entry) {
+    return STATUS_FORMAT(
+        NotFound, "Unable to find the stream entry for universe $0, stream $1",
+        req->producer_id(), req->stream_id());
+  }
+
+  // Find the parent tablet in the tablet mapping.
+  bool found = false;
+  auto mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
+  // Also keep track if we see the split children tablets.
+  vector<string> split_child_tablet_ids{req->producer_split_tablet_info().new_tablet1_id(),
+                                        req->producer_split_tablet_info().new_tablet2_id()};
+  for (auto& consumer_tablet_to_producer_tablets : *mutable_map) {
+    auto& producer_tablets_list = consumer_tablet_to_producer_tablets.second;
+    auto producer_tablets = producer_tablets_list.mutable_tablets();
+    for (auto tablet = producer_tablets->begin(); tablet < producer_tablets->end(); ++tablet) {
+      if (*tablet == req->producer_split_tablet_info().tablet_id()) {
+        // Remove the parent tablet id.
+        producer_tablets->erase(tablet);
+        // For now we add the children tablets to the same consumer tablet.
+        // See github issue #10186 for further improvements.
+        producer_tablets_list.add_tablets(req->producer_split_tablet_info().new_tablet1_id());
+        producer_tablets_list.add_tablets(req->producer_split_tablet_info().new_tablet2_id());
+        // There should only be one copy of each producer tablet per stream, so can exit early.
+        found = true;
+        break;
+      }
+      // Check if this is one of the child split tablets.
+      auto it = std::find(split_child_tablet_ids.begin(), split_child_tablet_ids.end(), *tablet);
+      if (it != split_child_tablet_ids.end()) {
+        split_child_tablet_ids.erase(it);
+      }
+    }
+    if (found) {
+      break;
+    }
+  }
+
+  if (!found) {
+    // Did not find the source tablet, but did find the children - means that we have already
+    // processed this SPLIT_OP, so for idempotency, we can return OK.
+    if (split_child_tablet_ids.empty()) {
+      LOG(INFO) << "Already processed this tablet split: " << req->DebugString();
+      return Status::OK();
+    }
+
+    // When there are sequential SPLIT_OPs, we may try to reprocess an older SPLIT_OP. However, if
+    // one or both of those children have also already been split and processed, then we'll end up
+    // here (!found && !split_child_tablet_ids.empty()).
+    // This is alright, we can log a warning, and then continue (to not block later records).
+    LOG(WARNING)
+        << "Unable to find matching source tablet " << req->producer_split_tablet_info().tablet_id()
+        << " for universe " << req->producer_id() << " stream " << req->stream_id();
+
+    return Status::OK();
+  }
+
+  // Also make sure that we switch off of 1-1 mapping optimizations.
+  stream_entry->set_same_num_producer_consumer_tablets(false);
+
+  // Also bump the cluster_config_ version so that changes are propagated to tservers (and new
+  // pollers are created for the new tablets).
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+
+  RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config_),
+                            "Updating cluster config in sys-catalog"));
+  l.Commit();
+
   return Status::OK();
 }
 

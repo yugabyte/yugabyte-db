@@ -237,6 +237,7 @@ public class MaintenanceServiceTest extends FakeDBApplication {
     MaintenanceWindow window =
         new MaintenanceWindow()
             .setName("Test")
+            .setDescription("Test Description")
             .setStartTime(startDate)
             .setEndTime(endDate)
             .setCustomerUUID(customer.getUuid())
@@ -253,6 +254,7 @@ public class MaintenanceServiceTest extends FakeDBApplication {
     filter.setName("Replication Lag");
     assertThat(configuration.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(configuration.getName(), equalTo("Test"));
+    assertThat(configuration.getDescription(), equalTo("Test Description"));
     assertThat(configuration.getStartTime(), equalTo(startDate));
     assertThat(configuration.getEndTime(), equalTo(endDate));
     assertThat(configuration.getAlertConfigurationFilter(), equalTo(filter));

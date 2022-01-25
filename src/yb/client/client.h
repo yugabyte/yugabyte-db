@@ -518,11 +518,14 @@ class YBClient {
 
   // Delete multiple CDC streams.
   CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams,
-                                 bool force = false,
+                                 bool force_delete = false,
+                                 bool ignore_errors = false,
                                  master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
-  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
+  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id,
+                                 bool force_delete = false,
+                                 bool ignore_errors = false);
 
   void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
 
@@ -541,6 +544,11 @@ class YBClient {
   // Update a CDC stream's options.
   CHECKED_STATUS UpdateCDCStream(const CDCStreamId& stream_id,
                                  const master::SysCDCStreamEntryPB& new_entry);
+
+  // Update consumer pollers after a producer side tablet split.
+  CHECKED_STATUS UpdateConsumerOnProducerSplit(const string& producer_id,
+                                               const TableId& table_id,
+                                               const master::ProducerSplitTabletInfoPB& split_info);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,

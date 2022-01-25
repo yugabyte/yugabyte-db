@@ -102,7 +102,7 @@ class MetricsTest : public YBTest {
                          const MetricEntity::AttributeMap& expected_attrs) {
     std::stringstream output;
     PrometheusWriter writer(&output);
-    for (int i = 0; i < values.size(); ++i) {
+    for (size_t i = 0; i < values.size(); ++i) {
       gauge->set_value(values[i]);
       ASSERT_OK(gauge->WriteForPrometheus(&writer, attrs[i], MetricPrometheusOptions()));
     }
@@ -444,7 +444,7 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
   // Spot-check that some metrics were properly registered and that the JSON was properly
   // formed.
   unordered_set<string> seen_metrics;
-  for (int i = 0; i < d["metrics"].Size(); i++) {
+  for (rapidjson::SizeType i = 0; i < d["metrics"].Size(); i++) {
     InsertOrDie(&seen_metrics, d["metrics"][i]["name"].GetString());
   }
   ASSERT_TRUE(ContainsKey(seen_metrics, "threads_started"));

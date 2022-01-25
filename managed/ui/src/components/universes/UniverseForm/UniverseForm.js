@@ -10,8 +10,7 @@ import {
   isNonEmptyObject,
   isDefinedNotNull,
   isNonEmptyString,
-  isNonEmptyArray,
-  get
+  isNonEmptyArray
 } from '../../../utils/ObjectUtils';
 import { YBButton, YBModal } from '../../../components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
@@ -187,9 +186,9 @@ class UniverseForm extends Component {
         const masterArr = [];
         const tServerArr = [];
         formValues[clusterType].gFlags.forEach((flag) => {
-          if (get(flag, 'MASTER', null))
+          if (flag?.hasOwnProperty('MASTER'))
             masterArr.push({ name: flag?.Name, value: flag['MASTER'] });
-          if (get(flag, 'TSERVER', null))
+          if (flag?.hasOwnProperty('TSERVER'))
             tServerArr.push({ name: flag?.Name, value: flag['TSERVER'] });
         });
         intent['masterGFlags'] = masterArr;
@@ -432,9 +431,9 @@ class UniverseForm extends Component {
           tServerArr = [];
         if (isNonEmptyArray(formValues?.primary?.gFlags)) {
           formValues.primary.gFlags.forEach((flag) => {
-            if (get(flag, 'MASTER', null))
+            if (flag?.hasOwnProperty('MASTER'))
               masterArr.push({ name: flag?.Name, value: flag['MASTER'] });
-            if (get(flag, 'TSERVER', null))
+            if (flag?.hasOwnProperty('TSERVER'))
               tServerArr.push({ name: flag?.Name, value: flag['TSERVER'] });
           });
         }
@@ -538,15 +537,16 @@ class UniverseForm extends Component {
       ];
     }
 
-    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
-      return {
-        ...nodeDetail,
-        cloudInfo: {
-          ...nodeDetail.cloudInfo,
-          assignPublicIP: formValues['primary'].assignPublicIP
-        }
-      };
-    });
+    if (formValues['primary'])
+      submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
+        return {
+          ...nodeDetail,
+          cloudInfo: {
+            ...nodeDetail.cloudInfo,
+            assignPublicIP: formValues['primary'].assignPublicIP
+          }
+        };
+      });
 
     submitPayload.clusters = submitPayload.clusters.filter((c) => c.userIntent !== null);
     // filter clusters array if configuring(adding only) Read Replica due to server side validation

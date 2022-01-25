@@ -118,15 +118,15 @@ yb-admin \
     change_master_config \
     [ ADD_SERVER|REMOVE_SERVER ] \
     <ip_addr> <port> \
-    [ 0 | 1 ]
+    [<uuid>]
 ```
 
-* master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master server.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *ADD_SERVER | REMOVE_SERVER*: Adds or removes a new YB-Master server.
   * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
 * *ip_addr*: The IP address of the server node.
 * *port*: The port of the server node.
-* `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
+* *uuid*: The UUID for the server that is being added/removed.
 
 #### list_tablet_servers
 

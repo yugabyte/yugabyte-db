@@ -4,10 +4,10 @@ linkTitle: Yugabyte Cloud FAQ
 description: Yugabyte Cloud frequently asked questions.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-faq
-    parent: yugabyte-cloud
     weight: 900
 isTocNested: true
 showAsideToc: true
@@ -23,7 +23,7 @@ You access your Yugabyte Cloud clusters via [YSQL](../../api/ysql) and [YCQL](..
 
 See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
-Yugabyte Cloud runs on top of [Yugabyte Platform](../../yugabyte-platform/).
+Yugabyte Cloud runs on top of [Yugabyte Platform](../../yugabyte-platform/overview/).
 
 ### How is Yugabyte Cloud priced?
 

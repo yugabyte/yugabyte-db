@@ -615,11 +615,19 @@ def main() -> None:
         if args.save_thirdparty_url_to_file:
             make_parent_dir(args.save_thirdparty_url_to_file)
             write_file(thirdparty_url, args.save_thirdparty_url_to_file)
-        if args.save_llvm_url_to_file and thirdparty_release.is_linuxbrew:
+        if (args.save_llvm_url_to_file and
+                thirdparty_release.compiler_type.startswith('clang') and
+                thirdparty_release.is_linuxbrew):
             llvm_url = get_llvm_url(thirdparty_release.compiler_type)
             if llvm_url is not None:
+                logging.info(f"Download URL for the LLVM toolchain: {llvm_url}")
                 make_parent_dir(args.save_llvm_url_to_file)
                 write_file(llvm_url, args.save_llvm_url_to_file)
+            else:
+                logging.info("Could not determine LLVM URL for compiler type %s" %
+                             thirdparty_release.compiler_type)
+        else:
+            logging.info("Not a Linuxbrew URL, not saving LLVM URL to file")
 
 
 if __name__ == '__main__':

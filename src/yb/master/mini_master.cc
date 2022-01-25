@@ -52,6 +52,7 @@ DECLARE_bool(TEST_simulate_fs_create_failure);
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_nodes_per_cloud);
+DECLARE_bool(durable_wal_write);
 
 namespace yb {
 namespace master {
@@ -75,6 +76,8 @@ Status MiniMaster::Start(bool TEST_simulate_fs_create_failure) {
   CHECK(!running_);
   FLAGS_rpc_server_allow_ephemeral_ports = true;
   FLAGS_TEST_simulate_fs_create_failure = TEST_simulate_fs_create_failure;
+  // Disable WAL fsync for tests
+  FLAGS_durable_wal_write = false;
   RETURN_NOT_OK(StartOnPorts(rpc_port_, web_port_));
   return master_->WaitForCatalogManagerInit();
 }

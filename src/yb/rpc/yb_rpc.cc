@@ -40,20 +40,20 @@ using namespace yb::size_literals;
 using namespace std::literals;
 
 DECLARE_bool(rpc_dump_all_traces);
-DECLARE_int32(rpc_max_message_size);
+DECLARE_uint64(rpc_max_message_size);
 
 DEFINE_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
 
 DEFINE_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
 
-DEFINE_test_flag(int32, yb_inbound_big_calls_parse_delay_ms, false,
-    "Test flag for simulating slow parsing of inbound calls larger than "
-    "rpc_throttle_threshold_bytes");
+DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
+                 "Test flag for simulating slow parsing of inbound calls larger than "
+                 "rpc_throttle_threshold_bytes");
 
 using std::placeholders::_1;
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_int32(rpc_slow_query_threshold_ms);
-DECLARE_int32(rpc_throttle_threshold_bytes);
+DECLARE_int64(rpc_throttle_threshold_bytes);
 
 namespace yb {
 namespace rpc {
@@ -434,7 +434,7 @@ Status YBInboundCall::ParseParam(RpcCallParams* params) {
   consumption_.Add(*consumption);
 
   if (PREDICT_FALSE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms > 0 &&
-        request_data_.size() > FLAGS_rpc_throttle_threshold_bytes)) {
+          implicit_cast<ssize_t>(request_data_.size()) > FLAGS_rpc_throttle_threshold_bytes)) {
     std::this_thread::sleep_for(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms * 1ms);
   }
 

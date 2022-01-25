@@ -253,11 +253,11 @@ int MetricsSnapshotter::Thread::GetMillisUntilNextMetricsSnapshot() const {
 void MetricsSnapshotter::Thread::LogSessionErrors(const client::FlushStatus& flush_status) {
   const auto& errors = flush_status.errors;
 
-  int num_errors_to_log = 10;
+  size_t num_errors_to_log = 10;
 
   // Log only the first 10 errors.
   LOG_WITH_PREFIX(INFO) << errors.size() << " failed ops. First few errors follow";
-  int i = 0;
+  size_t i = 0;
   for (const auto& e : errors) {
     if (i == num_errors_to_log) {
       break;

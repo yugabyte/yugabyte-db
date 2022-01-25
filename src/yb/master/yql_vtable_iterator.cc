@@ -40,9 +40,8 @@ Status YQLVTableIterator::DoNextRow(const Schema& projection, QLTableRow* table_
 
   // TODO: return columns in projection only.
   QLRow& row = vtable_->row(vtable_index_);
-  for (int i = 0; i < row.schema().num_columns(); i++) {
-    table_row->AllocColumn(row.schema().column_id(i),
-                           down_cast<const QLValue&>(row.column(i)));
+  for (size_t i = 0; i < row.schema().num_columns(); i++) {
+    table_row->AllocColumn(row.schema().column_id(i), down_cast<const QLValue&>(row.column(i)));
   }
   Advance(true /* increment */);
   return Status::OK();

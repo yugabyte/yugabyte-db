@@ -5,10 +5,10 @@ linkTitle: Monitor clusters
 description: Monitor your Yugabyte Cloud clusters.
 image: /images/section_icons/explore/monitoring.png
 headcontent: Monitor cluster performance and activity.
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-monitor
-    parent: yugabyte-cloud
     weight: 100
 ---
 

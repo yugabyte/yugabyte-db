@@ -80,7 +80,7 @@ void GenerateRandomKVs(std::vector<std::string> *keys,
   }
 }
 
-class BlockTest : public testing::Test {};
+class BlockTest : public RocksDBTest {};
 
 // block test
 TEST_F(BlockTest, SimpleTest) {

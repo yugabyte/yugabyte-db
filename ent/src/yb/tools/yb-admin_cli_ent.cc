@@ -70,7 +70,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       [client](const CLIArguments& args) -> Status {
         EnumBitSet<ListSnapshotsFlag> flags;
 
-        for (int i = 0; i < args.size(); ++i) {
+        for (size_t i = 0; i < args.size(); ++i) {
           std::string uppercase_flag;
           ToUpperCase(args[i], &uppercase_flag);
 
@@ -279,7 +279,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
             tables.reserve(num_tables);
 
-            for (int i = 0; i < num_tables; ++i) {
+            for (size_t i = 0; i < num_tables; ++i) {
               tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[2 + i]));
             }
           }
@@ -427,13 +427,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_cdc_stream", " <stream_id>",
+      "delete_cdc_stream", " <stream_id> [force_delete]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const string stream_id = args[0];
-        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id),
+        bool force_delete = false;
+        if (args.size() >= 2 && args[1] == "force_delete") {
+          force_delete = true;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id, force_delete),
             Substitute("Unable to delete CDC stream id $0", stream_id));
         return Status::OK();
       });

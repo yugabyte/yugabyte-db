@@ -710,7 +710,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   cout << "Importing snapshot " << SnapshotIdToString(snapshot_info->id())
        << " (" << snapshot_info->entry().state() << ")" << endl;
 
-  int table_index = 0;
+  size_t table_index = 0;
   bool was_table_renamed = false;
   for (BackupRowEntryPB& backup_entry : *snapshot_info->mutable_backup_entries()) {
     SysRowEntry& entry = *backup_entry.mutable_entry();
@@ -1145,10 +1145,11 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id) {
+Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id, bool force_delete) {
   master::DeleteCDCStreamRequestPB req;
   master::DeleteCDCStreamResponsePB resp;
   req.add_stream_id(stream_id);
+  req.set_force_delete(force_delete);
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1278,11 +1279,12 @@ void ClusterAdminClient::CleanupEnvironmentOnSetupUniverseReplicationFailure(
   }
 }
 
-Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id, bool force) {
+Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id,
+                                                     bool ignore_errors) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
-  req.set_force(force);
+  req.set_ignore_errors(ignore_errors);
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1429,7 +1431,7 @@ Status ClusterAdminClient::BootstrapProducer(const vector<TableId>& table_ids) {
     return StatusFromPB(bootstrap_resp.error().status());
   }
 
-  if (bootstrap_resp.cdc_bootstrap_ids().size() != table_ids.size()) {
+  if (implicit_cast<size_t>(bootstrap_resp.cdc_bootstrap_ids().size()) != table_ids.size()) {
     cout << "Received invalid number of bootstrap ids: " << bootstrap_resp.ShortDebugString();
     return STATUS(InternalError, "Invalid number of bootstrap ids");
   }

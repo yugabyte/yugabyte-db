@@ -6,16 +6,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.DeleteBackupParams;
+import com.yugabyte.yw.forms.EditBackupParams;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
+import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
@@ -112,6 +117,46 @@ public class BackupsController extends AuthenticatedController {
 
     List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
     return PlatformResults.withData(backups);
+  }
+
+  @ApiOperation(
+      value = "Restore from a backup",
+      response = YBPTask.class,
+      responseContainer = "Restore")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "backup",
+          value = "Parameters of the backup to be restored",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RestoreBackupParams",
+          required = true))
+  public Result restoreBackup(UUID customerUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    Form<RestoreBackupParams> formData =
+        formFactory.getFormDataOrBadRequest(RestoreBackupParams.class);
+    RestoreBackupParams taskParams = formData.get();
+    taskParams.customerUUID = customerUUID;
+
+    UUID universeUUID = taskParams.universeUUID;
+    Universe.getOrBadRequest(universeUUID);
+    if (taskParams.backupData == null
+        && (taskParams.backupStorageInfoList == null
+            || taskParams.backupStorageInfoList.isEmpty())) {
+      throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
+    }
+
+    UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Restore,
+        taskParams.toString());
+
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(
@@ -259,6 +304,53 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      value = "Delete backups V2",
+      response = YBPTasks.class,
+      nickname = "deleteBackupsv2")
+  public Result deleteYb(UUID customerUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DeleteBackupParams deleteBackupParams = parseJsonAndValidate(DeleteBackupParams.class);
+    List<YBPTask> taskList = new ArrayList<>();
+    for (DeleteBackupInfo deleteBackupInfo : deleteBackupParams.deleteBackupInfos) {
+      UUID backupUUID = deleteBackupInfo.backupUUID;
+      Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+      if (backup == null) {
+        LOG.info("Can not delete {} backup as it is not present in the database.", backupUUID);
+      } else {
+        if (backup.state == BackupState.InProgress) {
+          LOG.info("Can not delete {} backup as it is still in progress", backupUUID);
+        } else if (backup.state == BackupState.DeleteInProgress
+            || backup.state == BackupState.QueuedForDeletion) {
+          LOG.info("Backup {} is already in queue for deletion", backupUUID);
+        } else {
+          UUID storageConfigUUID = deleteBackupInfo.storageConfigUUID;
+          if (storageConfigUUID == null) {
+            storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
+          }
+          BackupTableParams params = backup.getBackupInfo();
+          params.storageConfigUUID = storageConfigUUID;
+          backup.updateBackupInfo(params);
+          DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
+          taskParams.customerUUID = customerUUID;
+          taskParams.backupUUID = backupUUID;
+          UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
+          LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backupUUID);
+          CustomerTask.create(
+              customer,
+              backup.backupUUID,
+              taskUUID,
+              CustomerTask.TargetType.Backup,
+              CustomerTask.TaskType.Delete,
+              "Backup");
+          taskList.add(new YBPTask(taskUUID, taskParams.backupUUID));
+          auditService().createAuditEntry(ctx(), request(), taskUUID);
+        }
+      }
+    }
+    return new YBPTasks(taskList).asResult();
+  }
+
+  @ApiOperation(
       value = "Stop a backup",
       notes = "Stop an in-progress backup",
       nickname = "stopBackup")
@@ -287,6 +379,38 @@ public class BackupsController extends AuthenticatedController {
     backup.transitionState(BackupState.Stopped);
     auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.withMessage("Successfully stopped the backup process.");
+  }
+
+  @ApiOperation(
+      value = "Edit a backup",
+      notes = "Edit a backup",
+      response = Backup.class,
+      nickname = "editBackup")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "backup",
+          value = "Parameters of the backup to be edited",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.EditBackupParams",
+          required = true))
+  public Result editBackup(UUID customerUUID, UUID backupUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+    if (backup.state != Backup.BackupState.Completed) {
+      LOG.info("The backup {} you are trying to edit did not complete", backupUUID);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The backup you are trying to edit did not complete");
+    }
+
+    EditBackupParams taskParams = parseJsonAndValidate(EditBackupParams.class);
+    if (taskParams.timeBeforeDeleteFromPresentInMillis <= 0L) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot specify a non positive value to specify the expiry time");
+    }
+    backup.updateExpiryTime(taskParams.timeBeforeDeleteFromPresentInMillis);
+
+    auditService().createAuditEntry(ctx(), request());
+    return PlatformResults.withData(backup);
   }
 
   private static void waitForTask(UUID taskUUID) throws InterruptedException {

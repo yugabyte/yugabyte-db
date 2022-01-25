@@ -186,6 +186,8 @@ using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
 using yb::master::CreateTransactionStatusTableResponsePB;
+using yb::master::UpdateConsumerOnProducerSplitRequestPB;
+using yb::master::UpdateConsumerOnProducerSplitResponsePB;
 using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
@@ -1454,7 +1456,8 @@ void YBClient::GetCDCStream(const CDCStreamId& stream_id,
 }
 
 Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
-                                 bool force,
+                                 bool force_delete,
+                                 bool ignore_errors,
                                  master::DeleteCDCStreamResponsePB* ret) {
   if (streams.empty()) {
     return STATUS(InvalidArgument, "At least one stream id should be provided");
@@ -1466,7 +1469,8 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
   for (const auto& stream : streams) {
     req.add_stream_id(stream);
   }
-  req.set_force(force);
+  req.set_force_delete(force_delete);
+  req.set_ignore_errors(ignore_errors);
 
   if (ret) {
     CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*ret), DeleteCDCStream);
@@ -1478,10 +1482,13 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
   return Status::OK();
 }
 
-Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id) {
+Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id, bool force_delete,
+                                 bool ignore_errors) {
   // Setting up request.
   DeleteCDCStreamRequestPB req;
   req.add_stream_id(stream_id);
+  req.set_force_delete(force_delete);
+  req.set_ignore_errors(ignore_errors);
 
   DeleteCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, DeleteCDCStream);
@@ -1506,6 +1513,27 @@ Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
 
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
+  return Status::OK();
+}
+
+Status YBClient::UpdateConsumerOnProducerSplit(
+    const string& producer_id,
+    const CDCStreamId& stream_id,
+    const master::ProducerSplitTabletInfoPB& split_info) {
+  if (producer_id.empty()) {
+    return STATUS(InvalidArgument, "Producer id is required.");
+  }
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  UpdateConsumerOnProducerSplitRequestPB req;
+  req.set_producer_id(producer_id);
+  req.set_stream_id(stream_id);
+  req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
+
+  UpdateConsumerOnProducerSplitResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerSplit);
   return Status::OK();
 }
 

@@ -262,7 +262,7 @@ void YBPartialRow::DeallocateStringIfSet(size_t col_idx, const ColumnSchema& col
 }
 
 void YBPartialRow::DeallocateOwnedStrings() {
-  for (int i = 0; i < schema_->num_columns(); i++) {
+  for (size_t i = 0; i < schema_->num_columns(); i++) {
     DeallocateStringIfSet(i, schema_->column(i));
   }
 }
@@ -745,7 +745,7 @@ Status YBPartialRow::EncodeRowKey(string* encoded_key) const {
   // Currently, a row key must be fully specified.
   // TODO: allow specifying a prefix of the key, and automatically
   // fill the rest with minimum values.
-  for (int i = 0; i < schema_->num_key_columns(); i++) {
+  for (size_t i = 0; i < schema_->num_key_columns(); i++) {
     if (PREDICT_FALSE(!IsColumnSet(i))) {
       return STATUS(InvalidArgument, "All key columns must be set",
                                      schema_->column(i).name());
@@ -755,7 +755,7 @@ Status YBPartialRow::EncodeRowKey(string* encoded_key) const {
   encoded_key->clear();
   ContiguousRow row(schema_, row_data_);
 
-  for (int i = 0; i < schema_->num_key_columns(); i++) {
+  for (size_t i = 0; i < schema_->num_key_columns(); i++) {
     bool is_last = i == schema_->num_key_columns() - 1;
     const TypeInfo* ti = schema_->column(i).type_info();
     GetKeyEncoder<string>(ti).Encode(row.cell_ptr(i), is_last, encoded_key);
@@ -797,7 +797,7 @@ std::string YBPartialRow::ToString() const {
   ContiguousRow row(schema_, row_data_);
   std::string ret;
   bool first = true;
-  for (int i = 0; i < schema_->num_columns(); i++) {
+  for (size_t i = 0; i < schema_->num_columns(); i++) {
     if (IsColumnSet(i)) {
       if (!first) {
         ret.append(", ");

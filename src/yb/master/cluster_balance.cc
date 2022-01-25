@@ -178,7 +178,7 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
     for (const auto& path : to_ts_meta.sorted_path_load_by_leader_count) {
       auto path_list = to_ts_meta.path_to_tablets.find(path);
       if (path_list == to_ts_meta.path_to_tablets.end()) {
-        LOG(INFO) << "Found uninitialized path: " << path;
+        // No tablets on this path, so skip it.
         continue;
       }
       transform(path_list->second.begin(), path_list->second.end(), std::back_inserter(peers),
@@ -808,7 +808,8 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   }
 
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
-      get_total_over_replication() >= state_->options_->kMaxOverReplicatedTablets) {
+      get_total_over_replication() >=
+          implicit_cast<size_t>(state_->options_->kMaxOverReplicatedTablets)) {
     return STATUS_SUBSTITUTE(TryAgain,
         "Cannot add replicas. Currently have a total overreplication of $0, when max allowed is $1"
         ", overreplicated tablets: $2",
@@ -1488,7 +1489,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
     // These checks are temporary. They will be removed once we are confident that the algorithm is
     // always doing the right thing.
     SCHECK_EQ(state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
-             0,
+             0U,
              IllegalState,
              "Sending duplicate add replica task.");
     catalog_manager_->SendAddServerRequest(
@@ -1498,7 +1499,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
     if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
       SCHECK_EQ(
           state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
-          0,
+          0U,
           IllegalState,
           "Sending duplicate leader stepdown task.");
       catalog_manager_->SendLeaderStepDownRequest(
@@ -1507,7 +1508,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
     } else {
       SCHECK_EQ(
           state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
-          0,
+          0U,
           IllegalState,
           "Sending duplicate remove replica task.");
       catalog_manager_->SendRemoveServerRequest(

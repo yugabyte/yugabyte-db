@@ -76,8 +76,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
 
-  CHECKED_STATUS UpdateCDCConsumerOnTabletSplit(const TableId& consumer_table_id,
-                                                const SplitTabletIds& split_tablet_ids) override;
+  CHECKED_STATUS UpdateXClusterConsumerOnTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override;
+
+  CHECKED_STATUS UpdateXClusterProducerOnTabletSplit(
+      const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
   CHECKED_STATUS InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
                                  const std::string& master_addrs,
@@ -173,6 +176,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                                 IsSetupUniverseReplicationDoneResponsePB* resp,
                                                 rpc::RpcContext* rpc);
 
+  // On a producer side split, creates new pollers on the consumer for the new tablet children.
+  CHECKED_STATUS UpdateConsumerOnProducerSplit(const UpdateConsumerOnProducerSplitRequestPB* req,
+                                               UpdateConsumerOnProducerSplitResponsePB* resp,
+                                               rpc::RpcContext* rpc);
+
   // Find all the CDC streams that have been marked as DELETED.
   CHECKED_STATUS FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
@@ -199,8 +207,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Per table structure for external cluster snapshot importing to this cluster.
   // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
   struct ExternalTableSnapshotData {
-    ExternalTableSnapshotData() : num_tablets(0), tablet_id_map(nullptr), table_meta(nullptr) {}
-
     bool is_index() const {
       return !table_entry_pb.indexed_table_id().empty();
     }
@@ -210,16 +216,16 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     TableId new_table_id;
     SysTablesEntryPB table_entry_pb;
     std::string pg_schema_name;
-    int num_tablets;
+    size_t num_tablets = 0;
     typedef std::pair<std::string, std::string> PartitionKeys;
     typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
     typedef std::vector<PartitionPB> Partitions;
     Partitions partitions;
     PartitionToIdMap new_tablets_map;
     // Mapping: Old tablet ID -> New tablet ID.
-    google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map;
+    google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map = nullptr;
 
-    ImportSnapshotMetaResponsePB_TableMetaPB* table_meta;
+    ImportSnapshotMetaResponsePB_TableMetaPB* table_meta = nullptr;
   };
 
   // Map: old_namespace_id (key) -> new_namespace_id (value) + db_type.

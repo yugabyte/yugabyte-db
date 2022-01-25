@@ -71,7 +71,7 @@ struct GetDataPieceInfo {
 
   // Output
   std::string data;
-  int64_t data_size;
+  uint64_t data_size;
   RemoteBootstrapErrorPB::Code error_code;
 
   int64_t bytes_remaining() const {

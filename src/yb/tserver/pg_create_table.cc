@@ -24,6 +24,8 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/result.h"
@@ -218,7 +220,8 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
   for (const auto& bounds : req_.split_bounds()) {
     const auto& row = bounds.values();
     SCHECK_EQ(
-        row.size(), PrimaryKeyRangeColumnCount() - (ybbasectid_added_ ? 1 : 0),
+        implicit_cast<size_t>(row.size()),
+        PrimaryKeyRangeColumnCount() - (ybbasectid_added_ ? 1 : 0),
         IllegalState,
         "Number of split row values must be equal to number of primary key columns");
     std::vector<docdb::PrimitiveValue> range_components;
