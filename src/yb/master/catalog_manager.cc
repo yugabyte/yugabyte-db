@@ -1945,6 +1945,7 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   // namespace. To build in-memory state for all tables, process pg_class table for each
   // namespace.
   vector<NamespaceId> namespace_id_vec;
+  set<NamespaceId> colocated_namespaces;
   {
     SharedLock lock(mutex_);
     for (const auto& ns : namespace_ids_map_) {
@@ -1952,14 +1953,13 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
         continue;
       }
 
-      if (ns.second->colocated()) {
-        // Skip processing tables in colocated databases.
-        continue;
-      }
-
       if (ns.first == kPgSequencesDataNamespaceId) {
         // Skip the database created for sequences system table.
         continue;
+      }
+
+      if (ns.second->colocated()) {
+        colocated_namespaces.insert(ns.first);
       }
 
       // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
@@ -1970,9 +1970,11 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   // table for each namespace.
   auto table_to_tablespace_map = std::make_shared<TableToTablespaceIdMap>();
   for (const NamespaceId& nsid : namespace_id_vec) {
-    VLOG(5) << "Refreshing placement information for namespace " << nsid;
+    VLOG(1) << "Refreshing placement information for namespace " << nsid;
     const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(nsid));
+    const bool is_colocated_database = colocated_namespaces.count(nsid) > 0;
     Status table_tablespace_status = sys_catalog_->ReadPgClassInfo(database_oid,
+                                                                   is_colocated_database,
                                                                    table_to_tablespace_map.get());
     if (!table_tablespace_status.ok()) {
       LOG(WARNING) << "Refreshing table->tablespace info failed for namespace "
