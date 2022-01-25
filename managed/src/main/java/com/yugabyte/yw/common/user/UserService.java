@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.io.IOException;
 import java.io.InputStream;
@@ -37,7 +38,7 @@ public class UserService {
     try {
       UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
       String configFile = user.getRole().getFeaturesFile();
-      if (customer.code.equals("cloud")) {
+      if (customer.code.equals("cloud") && user.getRole() == Role.ReadOnly) {
         configFile = "cloudFeatureConfig.json";
       }
       if (configFile == null) {
