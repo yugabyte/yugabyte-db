@@ -3804,6 +3804,10 @@
           "example" : "TODO",
           "type" : "string"
         },
+        "ybPrebuiltAmi" : {
+          "description" : "Indicates whether to use YB Prebuilt AMI flow or not for the supplied AMI ID",
+          "type" : "boolean"
+        },
         "zones" : {
           "items" : {
             "$ref" : "#/definitions/AvailabilityZone"
@@ -5082,9 +5086,6 @@
           "type" : "boolean"
         },
         "useTimeSync" : {
-          "type" : "boolean"
-        },
-        "ybPrebuiltAmi" : {
           "type" : "boolean"
         },
         "ybSoftwareVersion" : {
