@@ -230,7 +230,7 @@ gflags:
     placement_zone: "us-central1-b"
 ```
 
-Copy the contents below to a file named `overrides-us-central1-b.yaml`.
+Copy the contents below to a file named `overrides-us-central1-c.yaml`.
 
 ```yaml
 isMultiAz: True
