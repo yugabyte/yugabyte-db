@@ -42,12 +42,35 @@ class EncryptedWritableFile : public WritableFileWrapper {
   ~EncryptedWritableFile() {}
 
   Status Append(const Slice& data) override {
-    if (data.size() > 0) {
-      uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(data.size()));
-      RETURN_NOT_OK(stream_->Encrypt(Size() - header_size_, data, buf));
-      RETURN_NOT_OK(WritableFileWrapper::Append(Slice(buf, data.size())));
+    if (data.empty()) {
+      return Status::OK();
     }
-    return Status::OK();
+
+    uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(data.size()));
+    RETURN_NOT_OK(stream_->Encrypt(Size() - header_size_, data, buf));
+    return WritableFileWrapper::Append(Slice(buf, data.size()));
+  }
+
+  Status AppendSlices(const Slice* slices, size_t num) override {
+    auto end = slices + num;
+    size_t total_size = 0;
+    for (auto it = slices; it != end; ++it) {
+      total_size += it->size();
+    }
+    if (total_size == 0) {
+      return Status::OK();
+    }
+
+    uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(total_size));
+    auto write_pos = buf;
+    auto offset = Size() - header_size_;
+    for (auto it = slices; it != end; ++it) {
+      RETURN_NOT_OK(stream_->Encrypt(offset, *it, write_pos));
+      write_pos += it->size();
+      offset += it->size();
+    }
+
+    return WritableFileWrapper::Append(Slice(buf, total_size));
   }
 
  private:

@@ -787,9 +787,9 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
 
     // If the size of this entry overflows the current segment, get a new one.
     if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
-      if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
+      if (active_segment_->Size() + entry_batch_bytes + kEntryHeaderSize > cur_max_segment_size_) {
         LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
-                              << "Starting new segment allocation. ";
+                              << "Starting new segment allocation.";
         RETURN_NOT_OK(AsyncAllocateSegment());
         if (!options_.async_preallocate_segments) {
           RETURN_NOT_OK(RollOver());
@@ -812,7 +812,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
     }
 
     if (metrics_) {
-      metrics_->bytes_logged->IncrementBy(entry_batch_bytes);
+      metrics_->bytes_logged->IncrementBy(active_segment_->written_offset() - start_offset);
     }
 
     // Populate the offset and sequence number for the entry batch if we did a WAL write.

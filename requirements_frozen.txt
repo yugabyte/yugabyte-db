@@ -13,7 +13,7 @@ Deprecated==1.2.13
 distro==1.6.0
 downloadutil==1.0.2
 idna==3.2
-importlib-metadata==4.10.0
+importlib-metadata==4.8.3
 iniconfig==1.1.1
 mypy==0.910
 mypy-extensions==0.4.3
@@ -43,4 +43,4 @@ typing-utils==0.1.0
 urllib3==1.26.7
 wrapt==1.12.1
 yugabyte-pycommon==1.9.15
-zipp==3.7.0
+zipp==3.6.0
