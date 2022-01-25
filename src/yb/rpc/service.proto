@@ -20,3 +20,7 @@ package yb.rpc;
 extend google.protobuf.ServiceOptions {
   string custom_service_name = 50011;
 }
+
+extend google.protobuf.MethodOptions {
+  bool trivial = 50001;
+}

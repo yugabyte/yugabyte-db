@@ -74,6 +74,8 @@ void ServiceGenerator::Header(YBPrinter printer, const google::protobuf::FileDes
     "#include \"yb/rpc/rpc_header.pb.h\"\n"
     "#include \"yb/rpc/service_if.h\"\n"
     "\n"
+    "#include \"yb/util/monotime.h\"\n"
+    "\n"
     "namespace yb {\n"
     "class MetricEntity;\n"
     "} // namespace yb\n"
@@ -106,12 +108,19 @@ void ServiceGenerator::Header(YBPrinter printer, const google::protobuf::FileDes
       const auto* method = service->method(method_idx);
       ScopedSubstituter method_subs(printer, method, rpc::RpcSides::SERVICE);
 
-      printer(
-        "  virtual void $rpc_name$(\n"
-        "      const $request$ *req,\n"
-        "      $response$ *resp,\n"
-        "      ::yb::rpc::RpcContext context) = 0;\n"
-      );
+      if (IsTrivialMethod(method)) {
+        printer(
+          "  virtual ::yb::Result<$response$> $rpc_name$(\n"
+          "      const $request$& req, ::yb::CoarseTimePoint deadline) = 0;\n"
+        );
+      } else {
+        printer(
+          "  virtual void $rpc_name$(\n"
+          "      const $request$* req,\n"
+          "      $response$* resp,\n"
+          "      ::yb::rpc::RpcContext context) = 0;\n"
+        );
+      }
     }
 
     printer(
@@ -159,6 +168,40 @@ void ServiceGenerator::Source(YBPrinter printer, const google::protobuf::FileDes
   GenerateMetricDefines(printer, file, inbound_metrics);
 
   printer("$open_namespace$\n");
+
+  std::set<std::string> error_types;
+  for (int service_idx = 0; service_idx < file->service_count(); ++service_idx) {
+    const auto* service = file->service(service_idx);
+    for (int method_idx = 0; method_idx < service->method_count(); ++method_idx) {
+      auto* method = service->method(method_idx);
+      if (IsTrivialMethod(method)) {
+        Lightweight lightweight(IsLightweightMethod(method, rpc::RpcSides::SERVICE));
+        auto resp = method->output_type();
+        std::string type;
+        for (int field_idx = 0; field_idx < resp->field_count(); ++field_idx) {
+          auto* field = resp->field(field_idx);
+          if (field->name() == "error") {
+            type = MapFieldType(field, lightweight);
+            break;
+          } else if (field->name() == "status") {
+            type = MapFieldType(field, lightweight);
+            // We don't break here, since error has greater priority than status.
+          }
+        }
+        if (!type.empty()) {
+          error_types.insert(type);
+        }
+      }
+    }
+  }
+
+  if (!error_types.empty()) {
+    for (const auto& type : error_types) {
+      printer("void SetupError(" + type + "* error, const Status& status);\n");
+    }
+    printer("\n");
+  }
+
 
   for (int service_idx = 0; service_idx < file->service_count(); ++service_idx) {
     const auto* service = file->service(service_idx);

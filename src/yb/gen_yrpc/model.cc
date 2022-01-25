@@ -22,6 +22,8 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/rpc/service.pb.h"
+
 using google::protobuf::internal::WireFormatLite;
 
 namespace yb {
@@ -85,6 +87,10 @@ bool IsLightweightMethod(const google::protobuf::MethodDescriptor* method, rpc::
     return options.sides() != rpc::RpcSides::NONE;
   }
   return options.sides() == side || options.sides() == rpc::RpcSides::BOTH;
+}
+
+bool IsTrivialMethod(const google::protobuf::MethodDescriptor* method) {
+  return method->options().GetExtension(rpc::trivial);
 }
 
 bool HasLightweightMethod(const google::protobuf::ServiceDescriptor* service, rpc::RpcSides side) {
