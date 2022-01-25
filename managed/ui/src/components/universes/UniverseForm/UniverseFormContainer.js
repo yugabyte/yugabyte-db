@@ -370,7 +370,7 @@ function mapStateToProps(state, ownProps) {
       ybSoftwareVersion: '',
       numNodes: 3,
       isMultiAZ: true,
-      instanceType: 'c5.large',
+      instanceType: 'c5.4xlarge',
       accessKeyCode: '',
       assignPublicIP: true,
       useSystemd: false,
