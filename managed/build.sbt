@@ -405,6 +405,7 @@ Test / parallelExecution := true
 Test / fork := true
 Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSize.value )
 
+javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
 
 // Skip packaging javadoc for now

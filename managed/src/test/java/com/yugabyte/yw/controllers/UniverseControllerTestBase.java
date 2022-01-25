@@ -220,13 +220,15 @@ public class UniverseControllerTestBase extends WithApplication {
     kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
     authToken = user.createAuthToken();
 
-    when(mockAppConfig.getString("yb.storage.path")).thenReturn("/tmp");
-    when(mockRuntimeConfig.getString("yb.storage.path")).thenReturn("/tmp");
+    when(mockAppConfig.getString("yb.storage.path"))
+        .thenReturn("/tmp/" + this.getClass().getSimpleName());
+    when(mockRuntimeConfig.getString("yb.storage.path"))
+        .thenReturn("/tmp/" + this.getClass().getSimpleName());
   }
 
   @After
   public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File("/tmp/certs"));
+    FileUtils.deleteDirectory(new File("/tmp/" + this.getClass().getSimpleName() + "/certs"));
   }
 
   // Change the node state to removed, for one of the nodes in the given universe uuid.
