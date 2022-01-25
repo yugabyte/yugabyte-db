@@ -408,7 +408,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // been configured to use an AMI ID which has required package installations,
     // Yugabyte release package, etc built in, as Ansible tasks corresponding to
     // these would be skipped.
-    @ApiModelProperty() public boolean isYbPrebuiltAmi = false;
+    @ApiModelProperty() public boolean ybPrebuiltAmi = false;
 
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
@@ -466,7 +466,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.useSystemd = useSystemd;
-      newUserIntent.isYbPrebuiltAmi = isYbPrebuiltAmi;
+      newUserIntent.ybPrebuiltAmi = ybPrebuiltAmi;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.assignStaticPublicIP = assignStaticPublicIP;
@@ -502,7 +502,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd
-          && isYbPrebuiltAmi == other.isYbPrebuiltAmi) {
+          && ybPrebuiltAmi == other.ybPrebuiltAmi) {
         return true;
       }
       return false;
