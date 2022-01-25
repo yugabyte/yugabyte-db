@@ -53,7 +53,7 @@ const uint64_t kBig = 1ull << 50;
 
 } // namespace
 
-class VersionEditTest : public testing::Test {};
+class VersionEditTest : public RocksDBTest {};
 
 void SetupVersionEdit(VersionEdit* edit) {
   edit->SetComparatorName("foo");

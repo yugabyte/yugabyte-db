@@ -106,8 +106,8 @@ TAG_FLAG(writable_file_use_fsync, advanced);
 #endif
 
 DEFINE_bool(never_fsync, FLAGS_never_fsync_default,
-            "Never fsync() anything to disk. This is used by certain test cases to "
-            "speed up runtime. This is very unsafe to use in production.");
+            "Never fsync() anything to disk. This is used by tests to speed up runtime and improve "
+            "stability. This is very unsafe to use in production.");
 
 TAG_FLAG(never_fsync, advanced);
 TAG_FLAG(never_fsync, unsafe);
@@ -125,6 +125,8 @@ DEFINE_test_flag(bool, simulate_fs_without_fallocate, false,
 
 DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
     "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
+
+DECLARE_bool(never_fsync);
 
 using namespace std::placeholders;
 using base::subtle::Atomic64;
@@ -198,7 +200,10 @@ class ScopedFdCloser {
 
 static Status DoSync(int fd, const string& filename) {
   ThreadRestrictions::AssertIOAllowed();
-  if (FLAGS_never_fsync) return Status::OK();
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
+  LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
   if (FLAGS_writable_file_use_fsync) {
     if (fsync(fd) < 0) {
       return STATUS_IO_ERROR(filename, errno);
@@ -393,6 +398,10 @@ class PosixWritableFile : public WritableFile {
   Status Flush(FlushMode mode) override {
     TRACE_EVENT1("io", "PosixWritableFile::Flush", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
+    if (FLAGS_never_fsync) {
+      return Status::OK();
+    }
+    LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
 #if defined(__linux__)
     int flags = SYNC_FILE_RANGE_WRITE;
     if (mode == FLUSH_SYNC) {
@@ -795,6 +804,10 @@ class PosixRWFile final : public RWFile {
   Status Flush(FlushMode mode, uint64_t offset, size_t length) override {
     TRACE_EVENT1("io", "PosixRWFile::Flush", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
+    if (FLAGS_never_fsync) {
+      return Status::OK();
+    }
+    LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
 #if defined(__linux__)
     int flags = SYNC_FILE_RANGE_WRITE;
     if (mode == FLUSH_SYNC) {
@@ -1035,6 +1048,7 @@ class PosixEnv : public Env {
     TRACE_EVENT1("io", "SyncDir", "path", dirname);
     ThreadRestrictions::AssertIOAllowed();
     if (FLAGS_never_fsync) return Status::OK();
+    LOG(FATAL) << "FLAGS_never_fsync should be set in tests";
     int dir_fd;
     if ((dir_fd = open(dirname.c_str(), O_DIRECTORY|O_RDONLY)) == -1) {
       return STATUS_IO_ERROR(dirname, errno);

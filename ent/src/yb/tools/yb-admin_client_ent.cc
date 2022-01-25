@@ -1145,10 +1145,11 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id) {
+Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id, bool force_delete) {
   master::DeleteCDCStreamRequestPB req;
   master::DeleteCDCStreamResponsePB resp;
   req.add_stream_id(stream_id);
+  req.set_force_delete(force_delete);
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1278,11 +1279,12 @@ void ClusterAdminClient::CleanupEnvironmentOnSetupUniverseReplicationFailure(
   }
 }
 
-Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id, bool force) {
+Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id,
+                                                     bool ignore_errors) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
-  req.set_force(force);
+  req.set_ignore_errors(ignore_errors);
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
