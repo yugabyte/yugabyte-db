@@ -31,13 +31,14 @@
 #include "yb/rocksdb/util/delete_scheduler.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 
 namespace rocksdb {
 
-class DeleteSchedulerTest : public testing::Test {
+class DeleteSchedulerTest : public RocksDBTest {
  public:
   DeleteSchedulerTest() : env_(Env::Default()) {
     dummy_files_dir_ = test::TmpDir(env_) + "/dummy_data_dir";

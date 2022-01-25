@@ -28,10 +28,11 @@
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/env.h"
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class FileNameTest : public testing::Test {};
+class FileNameTest : public RocksDBTest {};
 
 TEST_F(FileNameTest, Parse) {
   Slice db;

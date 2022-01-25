@@ -34,7 +34,7 @@
 
 namespace rocksdb {
 
-class MemoryTest : public testing::Test {
+class MemoryTest : public RocksDBTest {
  public:
   MemoryTest() : kDbDir(test::TmpDir() + "/memory_test"), rnd_(301) {
     assert(Env::Default()->CreateDirIfMissing(kDbDir).ok());
