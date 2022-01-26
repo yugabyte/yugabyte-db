@@ -238,7 +238,7 @@ ybplatform-sample-yugaware-0  5/5   Running            0     93s
 
 ## Helm-Based Installation
 
-In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install Yugbyte Platform using Helm:
+In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install Yugabyte Platform using Helm:
 
 - Verify that the OpenShift cluster is configured with Helm 3.4 or later by executing the following command:
 

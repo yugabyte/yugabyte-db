@@ -58,7 +58,7 @@ The Yugabyte Platform Helm chart has been tested using the following software ve
 - Ability to pull Yugabyte Platform Docker image from quay.io repository
 
 
-Before installing the YugbyteDB Admin Console, verify you have the following:
+Before installing the YugabyteDB Admin Console, verify you have the following:
 
 - A Kubernetes cluster configured with [Helm](https://helm.sh/).
 - A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to Yugabyte Platform.

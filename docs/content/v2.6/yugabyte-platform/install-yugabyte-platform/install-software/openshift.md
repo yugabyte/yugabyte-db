@@ -1,7 +1,7 @@
 ---
 title: Install Yugabyte Platform Software - OpenShift
 headerTitle: Install Yugabyte Platform Software - OpenShift
-linkTitle: Install software 
+linkTitle: Install software
 description: Install Yugabyte Platform software in your OpenShift environment
 menu:
   v2.6:
@@ -13,30 +13,24 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
-      <i class="fas fa-cloud"></i>
-      Default
-    </a>
+  <li>
+    <a href="../default/" class="nav-link">
+      <i class="fas fa-cloud"></i>Default</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link">
-      <i class="fas fa-unlink"></i>
-      Airgapped
-    </a>
+  <li>
+    <a href="../airgapped/" class="nav-link">
+      <i class="fas fa-unlink"></i>Airgapped</a>
   </li>
 
-<li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/openshift" class="nav-link active">
-      <i class="fas fa-cubes"></i> OpenShift </a>
+  <li>
+    <a href="../openshift/" class="nav-link active">
+      <i class="fas fa-cubes"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -60,16 +54,15 @@ Installing Yugabyte Platform on an OpenShift cluster using the Yugabyte Platform
 - [Accessing and configuring Yugabyte Platform](#accessing-and-configuring-yugabyte-platform)
 - Optionally, [upgrading the Yugabyte Platform instance](#upgrading-the-yugabyte-platform-instance)
 
-
 ### Installing the Operator
 
 You can install the Yugabyte Platform Operator via the OpenShift web console or command line.
 
 #### How to Use the OpenShift Web Console
 
-You can install the Yugabyte Platform Operator as follows: 
+You can install the Yugabyte Platform Operator as follows:
 
-- Login to the OpenShift Container Platform (OCP) cluster’s web console using admin credentials (for example, kube:admin).
+- Login to the OpenShift Container Platform (OCP) cluster's web console using admin credentials (for example, kube:admin).
 - Navigate to the **Operators > OperatorHub**, search for Yugabyte Platform Operator, and then open it to display details about the operator, as shown in the following illustration:
 
 ![Operator](/images/ee/openshift-operator.png)
@@ -106,8 +99,7 @@ EOF
 
 This creates a Subscription object and installs the operator in the cluster, as demonstrated by the following output:
 
-```
-# output
+```output
 subscription.operators.coreos.com/yugabyte-platform-operator-bundle created
 ```
 
@@ -117,8 +109,7 @@ To verify that the operator pods are in Running state, execute the following com
 oc get pods -n openshift-operators | grep -E '^NAME|yugabyte-platform'
 ```
 
-```
-# output
+```output
 NAME                                                         READY  STATUS  RESTARTS  AGE
 yugabyte-platform-operator-controller-manager-7485db7486-6nzxr 2/2  Running  0      5m38s
 ```
@@ -139,7 +130,7 @@ You can create an instance of Yugabyte Platform via the OpenShift web console as
 
 ![Yugabyte Platform Install Operator](/images/ee/openshift-install-yp-operator.png)
 
-- Click **Create Instance** to open the **Create YBPlatform** page. 
+- Click **Create Instance** to open the **Create YBPlatform** page.
 
 - Ensure that the **yb-platform** project is selected and review the default settings.
 
@@ -147,7 +138,7 @@ You can create an instance of Yugabyte Platform via the OpenShift web console as
 
   You can find the StorageClass by navigating to **Storage > Storage Classes** on the OpenShift Web Console as admin user.
 
-- Click **Create**. 
+- Click **Create**.
 
 Shortly, you should expect the **Status** column in the **Yugabyte Platform** tab to display **Deployed**, as shown in the following illustration:
 
@@ -162,12 +153,13 @@ Alternatively, you can create an instance of Yugabyte Platform via the command l
   ```shell
   oc new-project yb-platform
   ```
-  ```
-  # output
+
+  ```output
   Now using project "yb-platform" on server "web-console-address"
   ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
+
   ```shell
   oc get storageClass
   ```
@@ -194,8 +186,8 @@ Alternatively, you can create an instance of Yugabyte Platform via the command l
       create: false
   EOF
   ```
-  ```
-  # output
+
+  ```output
   ybplatform.yugabyte.com/ybplatform-sample created
   ```
 
@@ -204,16 +196,15 @@ Alternatively, you can create an instance of Yugabyte Platform via the command l
   ```shell
   oc get pods -n yb-platform -l app=ybplatform-sample-yugaware
   ```
-  ```
-  # output
+
+  ```output
   NAME                         READY  STATUS  RESTARTS  AGE
   Ybplatform-sample-yugaware-0  5/5   Running  0        22s
   ```
 
-
 ### Upgrading the Yugabyte Platform Instance
 
-You may choose to upgrade the Yugabyte Platform instance installed using the Operator to a new tag that you receive from Yugabyte. In the current release, you can do this by using the command line. 
+You may choose to upgrade the Yugabyte Platform instance installed using the Operator to a new tag that you receive from Yugabyte. In the current release, you can do this by using the command line.
 
 The following example shows the command you would execute to update the container image tag to 2.5.2.0-b89:
 
@@ -224,8 +215,7 @@ oc patch \
  -n yb-platform
 ```
 
-```
-# output
+```output
 ybplatform.yugabyte.com/ybplatform-sample patched
 ```
 
@@ -235,8 +225,7 @@ To verify that the pods are being updated, execute the following command:
 oc get pods -n yb-platform -l app=ybplatform-sample-yugaware -w
 ```
 
-```
-# output
+```output
 NAME                         READY  STATUS          RESTARTS  AGE
 ybplatform-sample-yugaware-0  5/5   Running            0     18m
 ybplatform-sample-yugaware-0  0/5   Terminating        0     19m
@@ -247,7 +236,7 @@ ybplatform-sample-yugaware-0  5/5   Running            0     93s
 
 ## Helm-Based Installation
 
-In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install Yugbyte Platform using Helm:
+In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install Yugabyte Platform using Helm:
 
 - Verify that the OpenShift cluster is configured with Helm 3.4 or later by executing the following command:
 
@@ -257,7 +246,7 @@ In addition to meeting the requirements described in  [Prepare the OpenShift Env
 
   The output should be similar to the following:
 
-  ```
+  ```output
   version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"
   ```
 
@@ -280,20 +269,18 @@ To create a Yugabyte Platform instance, perform the following:
   oc new-project yb-platform
   ```
 
-  ```
-  # output
+  ```output
   Now using project "yb-platform" on server "web-console-address"
   ```
 
 - Apply the Yugabyte Platform secret that you obtained from Yugabyte Support by executing the following command:
 
   ```shell
-  oc create -f yugabyte-k8s-secret.yml -n yb-platform 
+  oc create -f yugabyte-k8s-secret.yml -n yb-platform
   ```
 
-  ```
-  # output
-  secret/yugabyte-k8s-pull-secret created 
+  ```output
+  secret/yugabyte-k8s-pull-secret created
   ```
 
 - Execute the following command to add the [YugabyteDB charts](https://charts.yugabyte.com/) repository:
@@ -302,21 +289,19 @@ To create a Yugabyte Platform instance, perform the following:
   helm repo add yugabytedb https://charts.yugabyte.com
   ```
 
-  ```
-  # output
+  ```output
   "yugabytedb" has been added to your repositories
   ```
 
   To search for the available chart version, execute the following command:
 
   ```shell
-  helm search repo yugabytedb/yugaware -l 
+  helm search repo yugabytedb/yugaware -l
   ```
 
-  ```
-  # output
-  NAME              CHART VERSION  APP VERSION   DESCRIPTION                    
-  yugabytedb/yugaware   2.5.3      2.5.3.1-b10   YugaWare is YugaByte Database's...  
+  ```output
+  NAME              CHART VERSION  APP VERSION   DESCRIPTION
+  yugabytedb/yugaware   2.5.3      2.5.3.1-b10   YugaWare is YugaByte Database's...
   ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
@@ -324,7 +309,7 @@ To create a Yugabyte Platform instance, perform the following:
   ```shell
   oc get storageClass
   ```
-  
+
   If your cluster's StorageClass is not `standard`, add `--set yugaware.storageClass=<storage-class-name>` when installing the Yugabyte Platform Helm chart in the next step.
 
 - Execute the following command to install the Yugabyte Platform Helm chart:
@@ -338,7 +323,7 @@ To create a Yugabyte Platform instance, perform the following:
   Expect to see a message notifying you whether or not the deployment is successful.
 
   Note that if you are executing the preceding command as an admin user, then you can set `rbac.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
-  
+
 - Optionally, execute the following command as an admin user to create ClusterRoleBinding:
 
   ```shell
@@ -398,8 +383,7 @@ oc get machinesets \
   -ojsonpath='{range .items[*]}{.metadata.name}{", region: "}{.spec.template.spec.providerSpec.value.region}{", zone: "}{.spec.template.spec.providerSpec.value.zone}{"\n"}{end}'
 ```
 
-```
-# output
+```output
   ocp-dev4-l5ffp-worker-a, region: us-east4, zone: us-east4-a
   ocp-dev4-l5ffp-worker-b, region: us-east4, zone: us-east4-b
   ocp-dev4-l5ffp-worker-c, region: us-east4, zone: us-east4-c
@@ -434,7 +418,7 @@ You can obtain the location using the OpenShift web console as follows:
 
 Alternatively, you can obtain the information about the location via the command line.
 
-In case of the Operator-based installation of Yugabyte Platform, execute the following command: 
+In case of the Operator-based installation of Yugabyte Platform, execute the following command:
 
 ```shell
 oc get services \
@@ -443,12 +427,11 @@ oc get services \
               {.status.loadBalancer.ingress[0].hostname}{"\n"}'
 ```
 
-```
-# output
+```output
 12.34.56.78
 ```
 
-In case of the Helm-based installation, execute the following command: 
+In case of the Helm-based installation, execute the following command:
 
 ```shell
 oc get services \
@@ -457,8 +440,6 @@ oc get services \
               {.status.loadBalancer.ingress[0].hostname}{"\n"}'
 ```
 
-```
-# output
+```output
 12.34.56.78
 ```
-
