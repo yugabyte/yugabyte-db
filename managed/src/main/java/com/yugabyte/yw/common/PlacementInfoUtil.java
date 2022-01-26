@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -404,6 +405,7 @@ public class PlacementInfoUtil {
       ClusterOperationType clusterOpType,
       boolean allowGeoPartitioning) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
+    taskParams.nodesResizeAvailable = false;
 
     // Create node details set if needed.
     if (taskParams.nodeDetailsSet == null) {
@@ -498,7 +500,6 @@ public class PlacementInfoUtil {
     if (taskParams.userAZSelected && universe != null) {
       mode = ConfigureNodesMode.NEW_CONFIG_FROM_PLACEMENT_INFO;
       configureNodeStates(taskParams, universe, mode, cluster, allowGeoPartitioning);
-
       return;
     }
 
@@ -524,6 +525,21 @@ public class PlacementInfoUtil {
                 + cluster.clusterType
                 + " cluster in universe "
                 + universe.universeUUID);
+      }
+      // Checking resize restrictions (provider, instance, volume size, etc).
+      String checkResizePossible =
+          ResizeNodeParams.checkResizeIsPossible(oldCluster.userIntent, cluster.userIntent);
+
+      // Besides restrictions, resize is only available if no nodes are added/removed.
+      taskParams.nodesResizeAvailable =
+          isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
+              && checkResizePossible == null;
+
+      // If only disk size was changed (used by nodes resize) - no need to proceed
+      // (otherwise nodes set will be modified).
+      if (checkOnlyNodeResize(oldCluster, cluster)) {
+        LOG.debug("Only disk was changed");
+        return;
       }
 
       verifyEditParams(oldCluster, cluster);
@@ -932,7 +948,7 @@ public class PlacementInfoUtil {
   // are the same.
   private static boolean isSamePlacement(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
-    HashMap<UUID, AZInfo> oldAZMap = new HashMap<UUID, AZInfo>();
+    Map<UUID, AZInfo> oldAZMap = new HashMap<>();
 
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
@@ -958,6 +974,25 @@ public class PlacementInfoUtil {
     }
 
     return true;
+  }
+
+  /**
+   * Checks if only disk size was changed (used by resize feature)
+   *
+   * @param oldCluster
+   * @param newCluster
+   * @return
+   */
+  private static boolean checkOnlyNodeResize(Cluster oldCluster, Cluster newCluster) {
+    UserIntent existingIntent = oldCluster.userIntent;
+    UserIntent userIntent = newCluster.userIntent;
+    if (userIntent.deviceInfo == null || existingIntent.deviceInfo == null) {
+      return false;
+    }
+    return userIntent.equals(existingIntent)
+        && userIntent.instanceTags.equals(existingIntent.instanceTags)
+        && isSamePlacement(oldCluster.placementInfo, newCluster.placementInfo)
+        && !Objects.equals(userIntent.deviceInfo.volumeSize, existingIntent.deviceInfo.volumeSize);
   }
 
   /**
@@ -1098,7 +1133,7 @@ public class PlacementInfoUtil {
   // given placement info.
   private static LinkedHashSet<PlacementIndexes> findPlacementsOfAZUuid(
       Map<UUID, Integer> azUuids, Cluster cluster) {
-    LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
+    LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<>();
     CloudType cloudType = cluster.userIntent.providerType;
     String instanceType = cluster.userIntent.instanceType;
     for (UUID targetAZUuid : azUuids.keySet()) {
@@ -1314,7 +1349,7 @@ public class PlacementInfoUtil {
    */
   private static LinkedHashSet<PlacementIndexes> getDeltaPlacementIndices(
       PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
-    LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
+    LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes, true);
 
     for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
@@ -1464,7 +1499,7 @@ public class PlacementInfoUtil {
                 .stream()
                 .filter(n -> n.placementUuid.equals(cluster.uuid))
                 .collect(Collectors.toSet()));
-    Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
+    Set<NodeDetails> deltaNodesSet = new HashSet<>();
     int startIndex = getNextIndexToConfigure(nodes);
     int iter = 0;
     for (PlacementIndexes index : indexes) {
@@ -1528,7 +1563,7 @@ public class PlacementInfoUtil {
             node.state = NodeState.ToBeRemoved;
             LOG.trace("Removing node from removed AZ [{}].", node);
           } else if (node.state != NodeState.ToBeRemoved) {
-            LOG.trace("Removed AZ has inactive node %s. Edit Universe may fail.", node);
+            LOG.trace("Removed AZ has inactive node {}. Edit Universe may fail.", node);
           }
         }
       }
@@ -1943,7 +1978,7 @@ public class PlacementInfoUtil {
       processMastersSelection(
           masterLeader,
           zoneToNodes.get(zone),
-          allocatedMastersRgAz.getOrDefault(zone, Integer.valueOf(0)),
+          allocatedMastersRgAz.getOrDefault(zone, 0),
           result.addedMasters,
           result.removedMasters);
     }
@@ -2274,7 +2309,7 @@ public class PlacementInfoUtil {
       String nodePrefix,
       Provider provider,
       int masterRpcPort) {
-    List<String> masters = new ArrayList<String>();
+    List<String> masters = new ArrayList<>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     if (!isMultiAZ) {
@@ -2579,7 +2614,7 @@ public class PlacementInfoUtil {
   private static ObjectNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode nodeJson) {
     boolean tserverAlive = false;
     boolean masterAlive = false;
-    List<String> nodeValues = new ArrayList<String>();
+    List<String> nodeValues = new ArrayList<>();
 
     if (nodeJson.get("data") != null) {
       for (JsonNode json : nodeJson.get("data")) {

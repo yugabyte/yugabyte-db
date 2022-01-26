@@ -133,6 +133,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public String remotePackagePath = "";
 
+  // EDIT mode: Set to true if nodes could be resized without full move.
+  @ApiModelProperty public boolean nodesResizeAvailable = false;
+
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.
