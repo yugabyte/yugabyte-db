@@ -96,10 +96,16 @@ You have successfully executed a simple Java app that works with Yugabyte Cloud.
 Open the `SampleApp.java` file in the application `/src/main/java/` folder. The application has the following methods:
 
 - **main** - establishes a connection with your cluster via the topology-aware Yugabyte JDBC driver.
-- **createDatabase** - uses Postgres-compliant DDL commands to create a sample database.
+- **createDatabase** - uses PostGres-compliant DDL commands to create a sample database.
 - **selectAccounts** - queries your distributed data using the SQL `SELECT` statement.
 - **transferMoneyBetweenAccounts** - updates your data consistently with distributed transactions.
 
 ## Learn more
 
-If you have issues running this application, or to learn more about YugabyteDB, post your questions to our Slack channel, or raise a question on StackOverflow and tag the question with yugabytedb.
+[Yugabyte JDBC driver](../../../../../integrations/jdbc-driver/)
+
+[Explore additional applications](../../../../cloud-develop)
+
+[Sample Java application demonstrating load balancing](../../../../../quick-start/build-apps/java/ysql-yb-jdbc/)
+
+[Deploy clusters in Yugabyte Cloud](../../../../cloud-basics)
