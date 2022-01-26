@@ -2091,6 +2091,7 @@ static RangeTblEntry *transform_cypher_optional_match_clause(cypher_parsestate *
     List *res_colnames = NIL, *res_colvars = NIL;
     Alias *l_alias, *r_alias;
     ParseNamespaceItem *nsitem;
+    int i = 0;
 
     j->jointype = JOIN_LEFT;
 
@@ -2124,7 +2125,7 @@ static RangeTblEntry *transform_cypher_optional_match_clause(cypher_parsestate *
 
     j->rtindex = RTERangeTablePosn(pstate, rte, NULL);
 
-    for (int i = list_length(pstate->p_joinexprs) + 1; i < j->rtindex; i++)
+    for (i = list_length(pstate->p_joinexprs) + 1; i < j->rtindex; i++)
         pstate->p_joinexprs = lappend(pstate->p_joinexprs, NULL);
     pstate->p_joinexprs = lappend(pstate->p_joinexprs, j);
     Assert(list_length(pstate->p_joinexprs) == j->rtindex);
