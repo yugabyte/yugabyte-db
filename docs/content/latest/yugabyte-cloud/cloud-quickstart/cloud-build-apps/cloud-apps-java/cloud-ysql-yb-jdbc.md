@@ -32,7 +32,7 @@ This tutorial assumes the following:
 - You have a cluster deployed in Yugabte Cloud. To get started, use the [Quick start](../../../).
 - You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 - You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../../cloud-secure-clusters/add-connections/).
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
 ## Clone the application from GitHub
@@ -95,10 +95,10 @@ You have successfully executed a simple Java application that works with Yugabyt
 
 Open the `SampleApp.java` file in the application `/src/main/java/` folder. The application has the following methods:
 
-- **main** - establishes a connection with your cluster via the topology-aware Yugabyte JDBC driver.
-- **createDatabase** - uses PostGres-compliant DDL commands to create a sample database.
-- **selectAccounts** - queries your distributed data using the SQL `SELECT` statement.
-- **transferMoneyBetweenAccounts** - updates your data consistently with distributed transactions.
+- **main** establishes a connection with your cluster via the topology-aware Yugabyte JDBC driver.
+- **createDatabase** uses PostgreSQL-compliant DDL commands to create a sample database.
+- **selectAccounts** queries your distributed data using the SQL `SELECT` statement.
+- **transferMoneyBetweenAccounts** updates your data consistently with distributed transactions.
 
 ## Learn more
 

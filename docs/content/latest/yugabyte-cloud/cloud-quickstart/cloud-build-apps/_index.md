@@ -12,7 +12,7 @@ menu:
     weight: 500
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. The tutorials in this section show how to build sample applications using available drivers and ORMs. Because the YugabyteDB YSQL API is PostgreSQL-compatible and the YCQL API has roots in the Apache Cassandra CQL, many of the tutorials use third-party drivers.
+Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. The tutorials in this section show how to build sample applications using available drivers and ORMs. <!--Because the YugabyteDB YSQL API is PostgreSQL-compatible and the YCQL API has roots in the Apache Cassandra CQL, many of the tutorials use third-party drivers.-->
 
 For details about supported API client drivers (by programming language), see <a href="../../../reference/drivers">Drivers</a>.
 
