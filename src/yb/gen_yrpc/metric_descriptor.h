@@ -41,7 +41,7 @@ void GenerateMetricDefines(
 
 void GenerateMethodAssignments(
     YBPrinter printer, const google::protobuf::ServiceDescriptor* service,
-    const std::string &mutable_metric_fmt, bool method,
+    const std::string &mutable_metric_fmt, bool service_side,
     const std::vector<MetricDescriptor>& metric_descriptors);
 
 } // namespace gen_yrpc
