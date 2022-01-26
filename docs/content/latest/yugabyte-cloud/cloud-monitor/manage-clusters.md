@@ -1,4 +1,4 @@
----
+<!---
 title: Cluster nodes
 linkTitle: Cluster nodes
 description: View Yugabyte Cloud cluster nodes.
@@ -11,7 +11,7 @@ menu:
     weight: 500
 isTocNested: true
 showAsideToc: true
----
+--->
 
 Review the status of the nodes in your cluster using the **Nodes** tab. The **Nodes** tab lists the nodes in the cluster, including the name, cloud, RAM, SSTable (SST) size, and read and write operations per second, and the node status.
 
