@@ -2,12 +2,12 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -21,7 +21,6 @@ import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
@@ -54,7 +53,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
@@ -73,7 +71,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
-                .configure((Map) Helpers.inMemoryDatabase())
+                .configure(testDatabase())
                 .overrides(
                     bind(RuntimeConfigFactory.class)
                         .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
