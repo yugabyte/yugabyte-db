@@ -51,10 +51,10 @@ The application needs to establish a secure connection to your Yugabyte Cloud in
 
 2. Set the following configuration settings:
 
-    - host - the host name of your Yugabyte Cloud instance. To obtain the cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
-    - port - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
-    - dbUser and dbPassword - the username and password for the YugabyteDB database. If you are using the default database you created when deploying the cluster, these can be found in the credentials file you downloaded.
-    - sslRootCert - the full path to the cluster CA certificate
+    - **host** - the host name of your Yugabyte Cloud instance. To obtain the cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
+    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the default database you created when deploying the cluster, these can be found in the credentials file you downloaded.
+    - **sslRootCert** - the full path to the cluster CA certificate
 
 3. Save the file.
 
@@ -95,10 +95,10 @@ You have successfully executed a simple Java app that works with Yugabyte Cloud.
 
 Open the `SampleApp.java` file in the application `/src/main/java/` folder. The application has the following methods:
 
-- main - establishes a connection with your cluster via the topology-aware Yugabyte JDBC driver.
-- createDatabase - uses Postgres-compliant DDL commands to create a sample database.
-- selectAccounts - queries your distributed data using the SQL `SELECT` statement.
-- transferMoneyBetweenAccounts - updates your data consistently with distributed transactions.
+- **main** - establishes a connection with your cluster via the topology-aware Yugabyte JDBC driver.
+- **createDatabase** - uses Postgres-compliant DDL commands to create a sample database.
+- **selectAccounts** - queries your distributed data using the SQL `SELECT` statement.
+- **transferMoneyBetweenAccounts** - updates your data consistently with distributed transactions.
 
 ## Learn more
 
