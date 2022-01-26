@@ -3,7 +3,7 @@
  * wal2json.c
  * 		JSON output plugin for changeset extraction
  *
- * Copyright (c) 2013-2020, Euler Taveira de Oliveira
+ * Copyright (c) 2013-2022, Euler Taveira de Oliveira
  *
  * IDENTIFICATION
  *		contrib/wal2json/wal2json.c
