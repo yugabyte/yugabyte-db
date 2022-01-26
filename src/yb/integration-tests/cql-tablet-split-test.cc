@@ -682,15 +682,19 @@ CHECKED_STATUS RunBatchTimeSeriesTest(
 }
 
 TEST_F_EX(CqlTabletSplitTest, BatchTimeseries, CqlTabletSplitTestExt) {
-  const auto kNumSplits = 20;
+  // TODO(#10498) - Set this back to 20 once outstanding_tablet_split_limit is set back to a higher
+  // value.
+  const auto kNumSplits = 4;
   ASSERT_OK(
       RunBatchTimeSeriesTest(cluster_.get(), driver_.get(), kNumSplits, 300s * kTimeMultiplier));
 }
 
 TEST_F_EX(CqlTabletSplitTest, BatchTimeseriesRf1, CqlTabletSplitTestExtRf1) {
-  const auto kNumSplits = 20;
+  // TODO(#10498) - Set this back to 20 once outstanding_tablet_split_limit is set back to a higher
+  // value.
+  const auto kNumSplits = 4;
   ASSERT_OK(
-      RunBatchTimeSeriesTest(cluster_.get(), driver_.get(), kNumSplits, 200s * kTimeMultiplier));
+      RunBatchTimeSeriesTest(cluster_.get(), driver_.get(), kNumSplits, 300s * kTimeMultiplier));
 }
 
 }  // namespace yb
