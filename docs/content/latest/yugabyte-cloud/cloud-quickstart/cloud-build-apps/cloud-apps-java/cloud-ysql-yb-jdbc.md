@@ -89,7 +89,7 @@ name = Jessica, age = 28, country = USA, balance = 9200
 name = John, age = 28, country = Canada, balance = 9800
 ```
 
-You have successfully executed a simple Java app that works with Yugabyte Cloud.
+You have successfully executed a simple Java application that works with Yugabyte Cloud.
 
 ## Explore the application logic
 
