@@ -36,7 +36,7 @@ You can enable alerts for CPU usage and disk usage. Refer to [Cloud alerts](../c
 The following table describes the metrics available on the **Overview**.
 
 | Graph | Description | Use |
-| :---| --- | --- |
+| :---| :--- | :--- |
 | Operations/sec | The number of disk input / output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Since random reads always hit disk, you should increase IOPS capacity for this type of workload. |
 | Average Latency | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
 | CPU Usage | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
@@ -49,7 +49,7 @@ To choose the metrics to display on the **Performance** tab, click **Metrics** a
 The **Performance** tab provides the following metrics.
 
 | Graph | Description | Use |
-| :---| --- | --- |
+| :---| :--- | :--- |
 | **Overall** | | |
 | Operations/sec | The number of disk input / output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Since random reads always hit disk, you should increase IOPS capacity for this type of workload. |
 | Average Latency | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
