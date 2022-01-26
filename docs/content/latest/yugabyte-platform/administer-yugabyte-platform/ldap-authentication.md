@@ -105,4 +105,4 @@ You need to define a Yugabyte Platform-specific role for each user on your LDAP 
 
 If the role is not specified, users are created with ReadOnly privileges by default, which can be modified by the local super admin.
 
-When LDAP is set up on a Windows Active Directory (AD) server, the user is expected to have permissions to query the AD's properties from that server. If the permissions have not been granted, Yugabyte Platform defaults its role to ReadOnly, which can later be modified by the local super admin.
+When LDAP is set up on a Windows Active Directory (AD) server, the user is expected to have permissions to query the user's properties from that server. If the permissions have not been granted, Yugabyte Platform defaults its role to ReadOnly, which can later be modified by the local super admin.
