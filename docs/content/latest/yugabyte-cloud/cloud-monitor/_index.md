@@ -87,31 +87,7 @@ You access your clusters from the **Clusters** page.
       </div>
     </a>
   </div>
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cluster-tables/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">View database tables</div>
-      </div>
-      <div class="body">
-        View the tables in your databases.
-      </div>
-    </a>
-  </div>
---><!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="manage-clusters/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">View cluster nodes</div>
-      </div>
-      <div class="body">
-        Check the status of cluster nodes.
-      </div>
-    </a>
-  </div>
--->
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="monitor-activity/">
       <div class="head">
