@@ -2,8 +2,7 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
@@ -21,22 +20,20 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.persistence.PersistenceException;
 import kamon.instrumentation.play.GuiceModule;
-import org.junit.Before;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 
+@Slf4j
 public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
   private final ObjectMapper mapper = new ObjectMapper();
   private Config mockConfig;
@@ -49,7 +46,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
-                .configure((Map) Helpers.inMemoryDatabase()))
+                .configure(testDatabase()))
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
@@ -101,14 +98,22 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testTransactionRetry() {
+    testTransactionRetry("could not serialize access due to concurrent update");
+  }
+
+  @Test
+  public void testTransactionRetryH2() {
+    testTransactionRetry("Deadlock detected. The current transaction was rolled back.");
+  }
+
+  private void testTransactionRetry(String exceptionMessage) {
     AtomicInteger attemptCount = new AtomicInteger();
     int count =
         TransactionUtil.doInTxn(
             () -> {
               int c = attemptCount.incrementAndGet();
               if (c <= 2) {
-                throw new PersistenceException(
-                    "could not serialize access due to concurrent update");
+                throw new PersistenceException(exceptionMessage);
               }
             },
             TransactionUtil.DEFAULT_RETRY_CONFIG);
@@ -139,7 +144,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
                       for (TaskInfo taskInfo : tasks) {
                         TaskInfo tf = TaskInfo.get(taskInfo.getTaskUUID());
                         try {
-                          Thread.sleep(100);
+                          Thread.sleep(10);
                         } catch (InterruptedException e) {
                         }
                         tf.setTaskState(State.Running);
@@ -147,19 +152,18 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
                         tf.save();
                       }
                     },
-                    null);
+                    TransactionUtil.DEFAULT_RETRY_CONFIG);
               });
       futures.add(future);
     }
-    futures
-        .stream()
-        .forEach(
-            f -> {
-              try {
-                f.get();
-              } catch (Exception e) {
-                fail();
-              }
-            });
+    futures.forEach(
+        f -> {
+          try {
+            f.get();
+          } catch (Exception e) {
+            log.error("Failed to get future", e);
+            fail();
+          }
+        });
   }
 }

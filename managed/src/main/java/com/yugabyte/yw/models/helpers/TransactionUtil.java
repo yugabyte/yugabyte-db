@@ -53,6 +53,10 @@ public final class TransactionUtil {
           "could not serialize access due to read/write dependencies among transactions")) {
         return true;
       }
+      // This one it thrown by embedded H2 in tests
+      if (errMsg.contains("Deadlock detected. The current transaction was rolled back.")) {
+        return true;
+      }
     }
     return false;
   }
@@ -115,6 +119,7 @@ public final class TransactionUtil {
         if (isRetryable(e)) {
           // Check if next retry can be attempted.
           if (waitIfPossible(config, attemptCount + 1)) {
+            log.debug("Will retry");
             attemptCount++;
             continue;
           }
