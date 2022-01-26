@@ -24,14 +24,13 @@
 
         {{ partial "detect_version" . }}
         {{ partial "version_switcher" . }}
+        {{ partial "contribute_list" . }}
 
         {{ if $.menu }}
           {{ partial "nav" (dict "context" . "menu" $.menu) }}
         {{ else }}
           {{ partial "nav" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
         {{ end }}
-
-        {{ partial "contribute_list" . }}
 
         {{ if isset .Site.Params "author" }}
 
