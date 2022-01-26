@@ -87,7 +87,7 @@
                  LIMIT
                  MATCH
                  NOT NULL_P
-                 OR ORDER
+                 OPTIONAL OR ORDER
                  REMOVE RETURN
                  SET SKIP STARTS
                  THEN TRUE_P
@@ -111,6 +111,8 @@
 %type <node> match cypher_varlen_opt cypher_range_opt cypher_range_idx
              cypher_range_idx_opt
 %type <integer> Iconst
+%type <boolean> optional_opt
+
 /* CREATE clause */
 %type <node> create
 
@@ -713,17 +715,30 @@ with:
  */
 
 match:
-    MATCH pattern where_opt
+    optional_opt MATCH pattern where_opt
         {
             cypher_match *n;
 
             n = make_ag_node(cypher_match);
-            n->pattern = $2;
-            n->where = $3;
+            n->optional = $1;
+            n->pattern = $3;
+            n->where = $4;
 
             $$ = (Node *)n;
         }
     ;
+
+optional_opt:
+    OPTIONAL
+        {
+            $$ = true;
+        }
+    | /* EMPTY */
+        {
+            $$ = false;
+        }
+    ;
+
 
 unwind:
     UNWIND expr AS var_name
@@ -1823,6 +1838,7 @@ safe_keywords:
     | LIMIT      { $$ = pnstrdup($1, 6); }
     | MATCH      { $$ = pnstrdup($1, 6); }
     | NOT        { $$ = pnstrdup($1, 3); }
+    | OPTIONAL   { $$ = pnstrdup($1, 8); }
     | OR         { $$ = pnstrdup($1, 2); }
     | ORDER      { $$ = pnstrdup($1, 5); }
     | REMOVE     { $$ = pnstrdup($1, 6); }

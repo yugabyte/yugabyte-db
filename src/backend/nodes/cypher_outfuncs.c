@@ -129,6 +129,7 @@ void out_cypher_match(StringInfo str, const ExtensibleNode *node)
 
     WRITE_NODE_FIELD(pattern);
     WRITE_NODE_FIELD(where);
+    WRITE_BOOL_FIELD(optional);
 }
 
 // serialization function for the cypher_create ExtensibleNode.

@@ -578,6 +578,8 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
     ListCell *lc2;
     ListCell *lc3;
 
+    int attr_count = 0;
+
     pstate = make_parsestate(parent_pstate);
 
     query = makeNode(Query);
@@ -597,8 +599,18 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
     pstate->p_lateral_active = false;
     pstate->p_expr_kind = EXPR_KIND_NONE;
 
+    // ALIAS Syntax makes `RESJUNK`. So, It must be skipping.
+    foreach(lt, subquery->targetList)
+    {
+        TargetEntry *te = lfirst(lt);
+        if (!te->resjunk)
+        {
+            attr_count++;
+        }
+    }
+
     // check the number of attributes first
-    if (list_length(subquery->targetList) != rtfunc->funccolcount)
+    if (attr_count != rtfunc->funccolcount)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_DATATYPE_MISMATCH),

@@ -890,6 +890,68 @@ $$) AS (i agtype);
 (3 rows)
 
 --
+-- Optional Match
+--
+SELECT * FROM cypher('cypher_match', $$
+    CREATE (:opt_match_v {name: 'someone'})-[:opt_match_e]->(:opt_match_v {name: 'somebody'}),
+           (:opt_match_v {name: 'anybody'})-[:opt_match_e]->(:opt_match_v {name: 'nobody'})
+$$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (u:opt_match_v)
+    OPTIONAL MATCH (u)-[m]-(l)
+    RETURN u.name as u, type(m), l.name as l
+    ORDER BY u, m, l
+$$) AS (u agtype, m agtype, l agtype);
+     u      |       m       |     l      
+------------+---------------+------------
+ "someone"  | "opt_match_e" | "somebody"
+ "somebody" | "opt_match_e" | "someone"
+ "anybody"  | "opt_match_e" | "nobody"
+ "nobody"   | "opt_match_e" | "anybody"
+(4 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+    OPTIONAL MATCH (n:opt_match_v)-[r]->(p), (m:opt_match_v)-[s]->(q)
+    WHERE id(n) <> id(m)
+    RETURN n.name as n, type(r) AS r, p.name as p,
+           m.name AS m, type(s) AS s, q.name AS q
+    ORDER BY n, p, m, q
+$$) AS (n agtype, r agtype, p agtype, m agtype, s agtype, q agtype);
+     n     |       r       |     p      |     m     |       s       |     q      
+-----------+---------------+------------+-----------+---------------+------------
+ "someone" | "opt_match_e" | "somebody" | "anybody" | "opt_match_e" | "nobody"
+ "anybody" | "opt_match_e" | "nobody"   | "someone" | "opt_match_e" | "somebody"
+(2 rows)
+
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (n:opt_match_v), (m:opt_match_v)
+    WHERE id(n) <> id(m)
+    OPTIONAL MATCH (n)-[r]->(p), (m)-[s]->(q)
+    RETURN n.name AS n, type(r) AS r, p.name AS p,
+           m.name AS m, type(s) AS s, q.name AS q
+    ORDER BY n, p, m, q
+ $$) AS (n agtype, r agtype, p agtype, m agtype, s agtype, q agtype);
+     n      |       r       |     p      |     m      |       s       |     q      
+------------+---------------+------------+------------+---------------+------------
+ "someone"  | "opt_match_e" | "somebody" | "anybody"  | "opt_match_e" | "nobody"
+ "someone"  |               |            | "somebody" |               | 
+ "someone"  |               |            | "nobody"   |               | 
+ "somebody" |               |            | "someone"  |               | 
+ "somebody" |               |            | "anybody"  |               | 
+ "somebody" |               |            | "nobody"   |               | 
+ "anybody"  | "opt_match_e" | "nobody"   | "someone"  | "opt_match_e" | "somebody"
+ "anybody"  |               |            | "somebody" |               | 
+ "anybody"  |               |            | "nobody"   |               | 
+ "nobody"   |               |            | "someone"  |               | 
+ "nobody"   |               |            | "somebody" |               | 
+ "nobody"   |               |            | "anybody"  |               | 
+(12 rows)
+
+--
 -- JIRA: AGE2-544
 --
 -- Clean up
@@ -981,7 +1043,7 @@ $$) as (f agtype, t agtype);
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
-NOTICE:  drop cascades to 14 other objects
+NOTICE:  drop cascades to 16 other objects
 DETAIL:  drop cascades to table cypher_match._ag_label_vertex
 drop cascades to table cypher_match._ag_label_edge
 drop cascades to table cypher_match.v
@@ -996,6 +1058,8 @@ drop cascades to table cypher_match.self
 drop cascades to table cypher_match.duplicate
 drop cascades to table cypher_match.dup_edge
 drop cascades to table cypher_match.other_v
+drop cascades to table cypher_match.opt_match_v
+drop cascades to table cypher_match.opt_match_e
 NOTICE:  graph "cypher_match" has been dropped
  drop_graph 
 ------------

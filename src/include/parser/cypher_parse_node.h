@@ -43,6 +43,7 @@ typedef struct cypher_parsestate
      * else). It is only used by transform_cypher_item_list.
      */
     bool exprHasAgg;
+    bool p_opt_match;
 } cypher_parsestate;
 
 typedef struct errpos_ecb_state
