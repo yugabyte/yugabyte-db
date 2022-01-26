@@ -877,3 +877,17 @@ SELECT * FROM demo;
  1
  1
 (2 rows)
+
+-- Test that an attemp to drop primary key column with sequence generator
+-- does not delete the associated sequence.
+CREATE TABLE tbl_serial_primary_key (k serial PRIMARY KEY, v text);
+ALTER TABLE tbl_serial_primary_key DROP COLUMN k;
+ERROR:  cannot drop key column "k"
+INSERT INTO tbl_serial_primary_key(v) VALUES ('ABC');
+SELECT * FROM tbl_serial_primary_key;
+ k |  v
+---+-----
+ 1 | ABC
+(1 row)
+
+DROP TABLE tbl_serial_primary_key;
