@@ -439,9 +439,6 @@ DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
                  "Specifically this flag ensures that ValidateSplitCandidate always returns OK and "
                  "all tablets are considered valid candidates for splitting.");
 
-DEFINE_test_flag(bool, select_all_tablets_for_split, false,
-                 "When set to true, select all validated processed tablets for split. Specifically "
-                 "this flag ensures that ShouldSplitValidTablet always returns true.");
 DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
                  "When set, it skips checking that all the tablets of a table have enough tservers"
                  " conforming to the table placement policy during CreateTable API call.");
@@ -2342,12 +2339,14 @@ CHECKED_STATUS CatalogManager::TEST_SplitTablet(
     const TabletId& tablet_id, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
   auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
-  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
+  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key,
+      true /* select_all_tablets_for_split */);
 }
 
 Status CatalogManager::TEST_SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
-  return DoSplitTablet(source_tablet_info, split_hash_code);
+  return DoSplitTablet(source_tablet_info, split_hash_code,
+      true /* select_all_tablets_for_split */);
 }
 
 Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& table_id) {
@@ -2454,9 +2453,6 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
 
 bool CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
-  if (PREDICT_FALSE(FLAGS_TEST_select_all_tablets_for_split)) {
-    return true;
-  }
   if (drive_info.may_have_orphaned_post_split_data) {
     return false;
   }
@@ -2504,7 +2500,7 @@ bool CatalogManager::ShouldSplitValidCandidate(
 
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
-    std::string split_partition_key) {
+    std::string split_partition_key, bool select_all_tablets_for_split) {
   auto source_table_lock = source_tablet_info->table()->LockForWrite();
   auto source_tablet_lock = source_tablet_info->LockForWrite();
 
@@ -2515,7 +2511,8 @@ Status CatalogManager::DoSplitTablet(
   RETURN_NOT_OK(ValidateSplitCandidate(*source_tablet_info));
 
   auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
-  if (!ShouldSplitValidCandidate(*source_tablet_info, drive_info)) {
+  if (!select_all_tablets_for_split &&
+      !ShouldSplitValidCandidate(*source_tablet_info, drive_info)) {
     // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
     // time, a valid split candidate, but by the time the candidate was actually processed here, the
     // cluster may have changed, putting us in a new split threshold phase, and it may no longer be
@@ -2579,14 +2576,16 @@ Status CatalogManager::DoSplitTablet(
 }
 
 Status CatalogManager::DoSplitTablet(
-    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
+    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
+    bool select_all_tablets_for_split) {
   docdb::KeyBytes split_encoded_key;
   docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
       .Hash(split_hash_code, std::vector<docdb::PrimitiveValue>());
 
   const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
 
-  return DoSplitTablet(source_tablet_info, split_encoded_key.ToStringBuffer(), split_partition_key);
+  return DoSplitTablet(source_tablet_info, split_encoded_key.ToStringBuffer(), split_partition_key,
+      select_all_tablets_for_split);
 }
 
 Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id) {
@@ -2601,11 +2600,12 @@ Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& 
 
 void CatalogManager::SplitTabletWithKey(
     const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
-    const std::string& split_partition_key) {
+    const std::string& split_partition_key, const bool select_all_tablets_for_split) {
   // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
   // if it failed to submit that task. In other words, any failures here are not retriable, and
   // success indicates that an async and automatically retrying task was submitted.
-  auto s = DoSplitTablet(tablet, split_encoded_key, split_partition_key);
+  auto s = DoSplitTablet(
+      tablet, split_encoded_key, split_partition_key, select_all_tablets_for_split);
   WARN_NOT_OK(s, Format("Failed to split tablet with GetSplitKey result for tablet: $0",
                         tablet->tablet_id()));
   if (!s.ok()) {
@@ -2613,7 +2613,7 @@ void CatalogManager::SplitTabletWithKey(
   }
 }
 
-Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
+Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool select_all_tablets_for_split) {
   LOG(INFO) << "Got tablet to split: " << tablet_id;
 
   const auto tablet = VERIFY_RESULT(GetTabletInfo(tablet_id));
@@ -2622,9 +2622,11 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
           << tablet->tablet_id();
   auto call = std::make_shared<AsyncGetTabletSplitKey>(
       master_, AsyncTaskPool(), tablet,
-      [this, tablet](const Result<AsyncGetTabletSplitKey::Data>& result) {
+      [this, tablet, select_all_tablets_for_split]
+          (const Result<AsyncGetTabletSplitKey::Data>& result) {
         if (result.ok()) {
-          SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key);
+          SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key,
+              select_all_tablets_for_split);
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
           tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
@@ -2637,7 +2639,7 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
 Status CatalogManager::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc) {
   const auto source_tablet_id = req->tablet_id();
-  return SplitTablet(source_tablet_id);
+  return SplitTablet(source_tablet_id, true /* select_all_tablets_for_split */);
 }
 
 Status CatalogManager::DeleteNotServingTablet(
