@@ -1,5 +1,11 @@
 package com.yugabyte.yw.common.logging;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
+
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
@@ -13,13 +19,7 @@ import kamon.instrumentation.play.GuiceModule;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 import play.test.WithApplication;
-
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
 
 public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
   private final boolean isCloud;
@@ -43,7 +43,7 @@ public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
     when(mockConfig.getString(anyString())).thenReturn("");
 
     Config config =
-        ConfigFactory.parseMap(Helpers.inMemoryDatabase())
+        ConfigFactory.parseMap(testDatabase())
             .withValue("yb.cloud.enabled", ConfigValueFactory.fromAnyRef(isCloud))
             .withValue(
                 "akka.actor.default-dispatcher.type",
