@@ -962,7 +962,6 @@ class YBBackupTestNumTablets : public YBBackupTest {
     // For convenience, rather than create a subclass for tablet splitting tests, add tablet split
     // flags here since they shouldn't really affect non-tablet splitting tests.
     options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
-    options->extra_master_flags.push_back("--TEST_select_all_tablets_for_split=true");
     options->extra_tserver_flags.push_back("--db_block_size_bytes=1024");
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");

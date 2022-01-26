@@ -206,7 +206,7 @@ void TabletSplitManager::ProcessQueuedSplitItems() {
       return;
     }
     auto tablet_id = candidates_.front();
-    auto s = driver_->SplitTablet(tablet_id);
+    auto s = driver_->SplitTablet(tablet_id, false /* select_all_tablets_for_split */);
     WARN_NOT_OK(s, Format("Failed to trigger split for tablet_id: $0.", tablet_id));
     candidates_.pop_front();
 
