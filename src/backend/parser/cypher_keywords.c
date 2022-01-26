@@ -77,6 +77,7 @@ const ScanKeyword cypher_keywords[] = {
     {"then", THEN, RESERVED_KEYWORD},
     {"true", TRUE_P, RESERVED_KEYWORD},
     {"union", UNION, RESERVED_KEYWORD},
+    {"unwind", UNWIND, RESERVED_KEYWORD},
     {"verbose", VERBOSE, RESERVED_KEYWORD},
     {"when", WHEN, RESERVED_KEYWORD},
     {"where", WHERE, RESERVED_KEYWORD},

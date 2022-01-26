@@ -2194,3 +2194,38 @@ void uniqueify_agtype_object(agtype_value *object)
         object->val.object.num_pairs = res + 1 - object->val.object.pairs;
     }
 }
+
+char *agtype_value_type_to_string(enum agtype_value_type type)
+{
+    switch (type)
+    {
+        case AGTV_NULL:
+            return "NULL";
+        case AGTV_STRING:
+            return "string";
+        case AGTV_NUMERIC:
+            return "numeric";
+        case AGTV_INTEGER:
+            return "integer";
+        case AGTV_FLOAT:
+            return "float";
+        case AGTV_BOOL:
+            return "boolean";
+        case AGTV_VERTEX:
+            return "vertex";
+        case AGTV_EDGE:
+            return "edge";
+        case AGTV_ARRAY:
+            return "array";
+        case AGTV_OBJECT:
+            return "map";
+        case AGTV_BINARY:
+            return "binary";
+        default:
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("unknown agtype")));
+    }
+
+    return NULL;
+}

@@ -91,7 +91,7 @@
                  REMOVE RETURN
                  SET SKIP STARTS
                  THEN TRUE_P
-                 UNION
+                 UNION UNWIND
                  VERBOSE
                  WHEN WHERE WITH
                  XOR
@@ -113,6 +113,9 @@
 %type <integer> Iconst
 /* CREATE clause */
 %type <node> create
+
+/* UNWIND clause */
+%type <node> unwind
 
 /* SET and REMOVE clause */
 %type <node> set set_item remove remove_item
@@ -373,6 +376,7 @@ reading_clause_list:
 
 reading_clause:
     match
+    | unwind
     ;
 
 updating_clause_list_0:
@@ -720,6 +724,22 @@ match:
             $$ = (Node *)n;
         }
     ;
+
+unwind:
+    UNWIND expr AS var_name
+        {
+            ResTarget  *res;
+            cypher_unwind *n;
+
+            res = makeNode(ResTarget);
+            res->name = $4;
+            res->val = (Node *) $2;
+            res->location = @2;
+
+            n = make_ag_node(cypher_unwind);
+            n->target = res;
+            $$ = (Node *) n;
+        }
 
 /*
  * CREATE clause

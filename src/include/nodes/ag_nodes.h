@@ -41,6 +41,7 @@ typedef enum ag_node_tag
     cypher_set_item_t,
     cypher_delete_t,
     cypher_union_t,
+    cypher_unwind_t,
     // pattern
     cypher_path_t,
     cypher_node_t,

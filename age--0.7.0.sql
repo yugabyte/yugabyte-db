@@ -3877,6 +3877,13 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION ag_catalog.age_unnest(agtype, block_types boolean = false)
+    RETURNS SETOF agtype
+    LANGUAGE c
+    STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 --
 -- End
 --

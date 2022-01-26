@@ -9107,3 +9107,97 @@ Datum age_range(PG_FUNCTION_ARGS)
     /* convert the agtype_value to a datum to return to the caller */
     PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
 }
+
+PG_FUNCTION_INFO_V1(age_unnest);
+/*
+ * Function to convert the Array type of Agtype into each row. It is used for
+ * Cypher `UNWIND` clause, but considering the situation in which the user can
+ * directly use this function in vanilla PGSQL, put a second parameter related
+ * to this.
+ */
+Datum age_unnest(PG_FUNCTION_ARGS)
+{
+    agtype *agtype_arg = AG_GET_ARG_AGTYPE_P(0);
+    bool block_types = PG_GETARG_BOOL(1);
+    ReturnSetInfo *rsi;
+    Tuplestorestate *tuple_store;
+    TupleDesc tupdesc;
+    TupleDesc ret_tdesc;
+    MemoryContext old_cxt, tmp_cxt;
+    bool skipNested = false;
+    agtype_iterator *it;
+    agtype_value v;
+    agtype_iterator_token r;
+
+    if (!AGT_ROOT_IS_ARRAY(agtype_arg))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("cannot extract elements from an object")));
+    }
+
+    rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+
+    rsi->returnMode = SFRM_Materialize;
+
+    /* it's a simple type, so don't use get_call_result_type() */
+    tupdesc = rsi->expectedDesc;
+
+    old_cxt = MemoryContextSwitchTo(rsi->econtext->ecxt_per_query_memory);
+
+    ret_tdesc = CreateTupleDescCopy(tupdesc);
+    BlessTupleDesc(ret_tdesc);
+    tuple_store =
+            tuplestore_begin_heap(rsi->allowedModes & SFRM_Materialize_Random,
+                                  false, work_mem);
+
+    MemoryContextSwitchTo(old_cxt);
+
+    tmp_cxt = AllocSetContextCreate(CurrentMemoryContext,
+                                    "age_unnest temporary cxt",
+                                    ALLOCSET_DEFAULT_SIZES);
+
+    it = agtype_iterator_init(&agtype_arg->root);
+
+    while ((r = agtype_iterator_next(&it, &v, skipNested)) != WAGT_DONE)
+    {
+        skipNested = true;
+
+        if (r == WAGT_ELEM)
+        {
+            HeapTuple tuple;
+            Datum values[1];
+            bool nulls[1] = {false};
+            agtype *val = agtype_value_to_agtype(&v);
+
+            if (block_types && (
+                    v.type == AGTV_VERTEX || v.type == AGTV_EDGE || v.type == AGTV_PATH))
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("UNWIND clause does not support agtype %s",
+                                       agtype_value_type_to_string(v.type))));
+            }
+
+            /* use the tmp context so we can clean up after each tuple is done */
+            old_cxt = MemoryContextSwitchTo(tmp_cxt);
+
+            values[0] = PointerGetDatum(val);
+
+            tuple = heap_form_tuple(ret_tdesc, values, nulls);
+
+            tuplestore_puttuple(tuple_store, tuple);
+
+            /* clean up and switch back */
+            MemoryContextSwitchTo(old_cxt);
+            MemoryContextReset(tmp_cxt);
+        }
+    }
+
+    MemoryContextDelete(tmp_cxt);
+
+    rsi->setResult = tuple_store;
+    rsi->setDesc = ret_tdesc;
+
+    PG_RETURN_NULL();
+}

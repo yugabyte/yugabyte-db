@@ -72,6 +72,7 @@ REGRESS = scan \
           expr \
           cypher_create \
           cypher_match \
+          cypher_unwind \
           cypher_set \
           cypher_remove \
           cypher_delete \

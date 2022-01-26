@@ -41,6 +41,7 @@ void out_cypher_set_item(StringInfo str, const ExtensibleNode *node);
 void out_cypher_delete(StringInfo str, const ExtensibleNode *node);
 void out_cypher_union(StringInfo str, const ExtensibleNode *node);
 void out_cypher_union_stmt(StringInfo str, const ExtensibleNode *node);
+void out_cypher_unwind(StringInfo str, const ExtensibleNode *node);
 
 // pattern
 void out_cypher_path(StringInfo str, const ExtensibleNode *node);

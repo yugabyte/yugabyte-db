@@ -115,6 +115,12 @@ typedef struct cypher_union
     List *rarg; /*righthand argument of the unions */
 } cypher_union;
 
+typedef struct cypher_unwind
+{
+    ExtensibleNode extensible;
+    ResTarget *target;
+} cypher_unwind;
+
 /*
  * pattern
  */
