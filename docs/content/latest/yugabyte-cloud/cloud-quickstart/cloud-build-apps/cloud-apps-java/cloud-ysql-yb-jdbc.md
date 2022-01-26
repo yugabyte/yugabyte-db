@@ -88,12 +88,86 @@ You have successfully executed a simple Java application that works with Yugabyt
 
 ## Explore the application logic
 
-Open the `SampleApp.java` file in the application `/src/main/java/` folder. The application has the following methods:
+Open the `SampleApp.java` file in the application `/src/main/java/` folder to review the methods.
 
-- **main** establishes a connection with your cluster via the topology-aware Yugabyte JDBC driver.
-- **createDatabase** uses PostgreSQL-compliant DDL commands to create a sample database.
-- **selectAccounts** queries your distributed data using the SQL `SELECT` statement.
-- **transferMoneyBetweenAccounts** updates your data consistently with distributed transactions.
+### main
+
+The `main` method establishes a connection with your cluster via the topology-aware Yugabyte JDBC driver.
+
+```java
+YBClusterAwareDataSource ds = new YBClusterAwareDataSource();
+
+    ds.setUrl("jdbc:yugabytedb://" + settings.getProperty("host") + ":"
+        + settings.getProperty("port") + "/yugabyte");
+    ds.setUser(settings.getProperty("dbUser"));
+    ds.setPassword(settings.getProperty("dbPassword"));
+    
+    // Additional SSL-specific settings. See the source code for details.
+
+    Connection conn = ds.getConnection();
+```
+
+### createDatabase
+
+The `createDatabase` method uses PostgreSQL-compliant DDL commands to create a sample database.
+
+```java
+Statement stmt = conn.createStatement();
+
+    stmt.execute("CREATE TABLE IF NOT EXISTS " + TABLE_NAME +
+        "(" +
+        "id int PRIMARY KEY," +
+        "name varchar," +
+        "age int," +
+        "country varchar," +
+        "balance int" +
+        ")");
+
+    stmt.execute("INSERT INTO " + TABLE_NAME + " VALUES" +
+        "(1, 'Jessica', 28, 'USA', 10000)," +
+        "(2, 'John', 28, 'Canada', 9000)");
+```
+
+### selectAccounts
+
+The `selectAccounts` method queries your distributed data using the SQL `SELECT` statement.
+
+```java
+Statement stmt = conn.createStatement();
+
+    ResultSet rs = stmt.executeQuery("SELECT * FROM " + TABLE_NAME);
+
+    while (rs.next()) {
+        System.out.println(String.format("name = %s, age = %s, country = %s, balance = %s",
+            rs.getString(2), rs.getString(3),
+            rs.getString(4), rs.getString(5)));
+    }
+```
+
+### transferMoneyBetweenAccounts
+
+The `transferMoneyBetweenAccounts` method updates your data consistently with distributed transactions.
+
+```java
+Statement stmt = conn.createStatement();
+
+    try {
+        stmt.execute(
+            "BEGIN TRANSACTION;" +
+                "UPDATE " + TABLE_NAME + " SET balance = balance - " + amount + "" + " WHERE name = 'Jessica';" +
+                "UPDATE " + TABLE_NAME + " SET balance = balance + " + amount + "" + " WHERE name = 'John';" +
+                "COMMIT;"
+        );
+    } catch (SQLException e) {
+        if (e.getErrorCode() == 40001) {
+            // The operation aborted due to a concurrent transaction trying to modify the same set of rows.
+            // Consider adding retry logic for production-grade applications.
+            e.printStackTrace();
+        } else {
+            throw e;
+        }
+    }
+```
 
 ## Learn more
 
