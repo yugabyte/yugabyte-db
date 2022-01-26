@@ -119,7 +119,6 @@ public final class TransactionUtil {
         if (isRetryable(e)) {
           // Check if next retry can be attempted.
           if (waitIfPossible(config, attemptCount + 1)) {
-            log.debug("Will retry");
             attemptCount++;
             continue;
           }
