@@ -20,7 +20,6 @@ import com.datastax.driver.core.Row;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
 
-import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.util.Pair;
 
 import static org.yb.AssertionWrappers.assertTrue;
