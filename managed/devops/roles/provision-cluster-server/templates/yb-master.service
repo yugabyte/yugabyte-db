@@ -25,6 +25,10 @@ FinalKillSignal=SIGKILL
 # Logs
 StandardOutput=syslog
 StandardError=syslog
+# ulimit
+LimitCORE=infinity
+LimitNOFILE=1048576
+LimitNPROC=12000
 
 [Install]
 WantedBy=default.target

@@ -99,6 +99,12 @@ public class CloudBootstrap extends CloudTaskBase {
       // Required: False.
       public String customImageId;
 
+      // When this is set to true, provider will use the supplied customImageId which is expected to
+      // have required package installations,
+      // Yugabyte release package, etc built in, as Ansible tasks corresponding to these would be
+      // skipped.
+      public boolean ybPrebuiltAmi = false;
+
       // Custom SG ID to use for the YB nodes.
       // Default: created by YB.
       // Required: True for custom input, False for YW managed.
@@ -107,6 +113,7 @@ public class CloudBootstrap extends CloudTaskBase {
       public static PerRegionMetadata fromRegion(Region region) {
         PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
         perRegionMetadata.customImageId = region.ybImage;
+        perRegionMetadata.ybPrebuiltAmi = region.ybPrebuiltAmi;
         perRegionMetadata.customSecurityGroupId = region.getSecurityGroupId();
         //    perRegionMetadata.subnetId = can only be set per zone
         perRegionMetadata.vpcId = region.getVnetName();
