@@ -2034,6 +2034,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"suppress_nonpg_logs", PGC_SIGHUP, LOGGING_WHAT,
+			gettext_noop("Suppresses non-Postgres logs from appearing in the Postgres log file."),
+			NULL
+		},
+		&suppress_nonpg_logs,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

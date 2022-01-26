@@ -200,6 +200,9 @@ void InitGoogleLoggingSafe(const char* arg);
 // These properties make it attractive for us in libraries.
 void InitGoogleLoggingSafeBasic(const char* arg);
 
+// Like InitGoogleLoggingSafeBasic() but nothing will be written to stderr.
+void InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs(const char* arg);
+
 // Check if Google Logging has been initialized. Can be used e.g. to determine whether to print
 // something to stderr or log it. The implementation takes the logging mutex, so should not be used
 // in hot codepaths.
