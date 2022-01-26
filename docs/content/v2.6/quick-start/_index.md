@@ -23,7 +23,7 @@ The local cluster setup on a single host is intended for development and learnin
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install/">
+    <a class="section-link icon-offset" href="install/macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">1. Install YugabyteDB</div>
@@ -35,7 +35,7 @@ The local cluster setup on a single host is intended for development and learnin
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-local-cluster/">
+    <a class="section-link icon-offset" href="create-local-cluster/macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="title">2. Create a local cluster</div>
@@ -47,7 +47,7 @@ The local cluster setup on a single host is intended for development and learnin
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="explore/">
+    <a class="section-link icon-offset" href="explore/ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/explore_ysql.png" aria-hidden="true" />
         <div class="title">3. Explore Distributed SQL APIs</div>
