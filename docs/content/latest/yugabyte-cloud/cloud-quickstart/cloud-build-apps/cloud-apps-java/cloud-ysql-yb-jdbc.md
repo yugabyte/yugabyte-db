@@ -20,7 +20,7 @@ The following tutorial shows a simple Java application that connects to a Yugaby
 
 ### Yugabyte Cloud
 
-- You have a cluster deployed in Yugabte Cloud. To get started, use the [Quick start](../../../).
+- You have a cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../../).
 - You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 - You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../../cloud-secure-clusters/add-connections/).
 
