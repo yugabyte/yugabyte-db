@@ -13,6 +13,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -87,7 +88,7 @@ public class SessionControllerTest {
         new GuiceApplicationBuilder()
             .disable(SwaggerModule.class)
             .disable(GuiceModule.class)
-            .configure((Map) Helpers.inMemoryDatabase())
+            .configure(testDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
             .overrides(bind(Scheduler.class).toInstance(mockScheduler))
             .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
