@@ -7148,6 +7148,23 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 
 	attnum = targetatt->attnum;
 
+	/* 
+	 * In YB, a table cannot drop key columns. 
+	 * This check makes sure a consistent state after attempting to drop
+	 * key columns by preventing dropping key columns on postgres side.
+	 */
+	if (IsYBRelation(rel))
+	{
+		Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
+
+		/* Can't drop primary-key columns */
+		if (bms_is_member(attnum - YBGetFirstLowInvalidAttributeNumber(rel), pkey))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot drop key column \"%s\"",
+							colName)));
+	}
+
 	/* Can't drop a system attribute, except OID */
 	if (attnum <= 0 && attnum != ObjectIdAttributeNumber)
 		ereport(ERROR,
