@@ -16,7 +16,7 @@ Use Yugabyte Cloud alerts and monitoring to monitor cluster performance and be n
 
 ### Alerts
 
-To be automatically notified of potential problems, enable alerts for cluster, database, and billing criteria. You configure alerts from the **Alerts** page.
+To be automatically notified of potential problems, enable [alerts](cloud-alerts/) for cluster, database, and billing criteria. You configure alerts from the **Alerts** page.
 
 ### Performance monitoring
 
