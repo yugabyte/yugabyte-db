@@ -1199,9 +1199,7 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
 
 class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   std::vector<std::string> ExtraMasterFlags() override {
-    auto flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
-    flags.push_back("--TEST_select_all_tablets_for_split=true");
-    return flags;
+    return YbAdminSnapshotScheduleTest::ExtraMasterFlags();
   }
 };
 
