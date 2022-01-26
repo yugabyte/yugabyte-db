@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
@@ -9,7 +10,6 @@ import com.yugabyte.yw.models.Customer;
 import org.junit.Before;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.test.Helpers;
 import play.test.WithApplication;
 
 import org.pac4j.play.CallbackController;
@@ -41,7 +41,7 @@ public class NodeTaskBaseTest extends WithApplication {
     mockSessionStore = mock(PlayCacheSessionStore.class);
 
     return new GuiceApplicationBuilder()
-        .configure((Map) Helpers.inMemoryDatabase())
+        .configure(testDatabase())
         .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))

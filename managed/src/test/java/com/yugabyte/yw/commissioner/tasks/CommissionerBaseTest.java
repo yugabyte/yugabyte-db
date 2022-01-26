@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import com.google.common.net.HostAndPort;
 
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -115,7 +116,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockQueryAlerts = mock(QueryAlerts.class);
 
     return new GuiceApplicationBuilder()
-        .configure((Map) Helpers.inMemoryDatabase())
+        .configure(testDatabase())
         .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
         .overrides(bind(ConfigHelper.class).toInstance(mockConfigHelper))

@@ -2,17 +2,15 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.common.collect.Maps;
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
-import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.scheduler.Scheduler;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
@@ -21,7 +19,6 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.mvc.Http;
 import play.mvc.Result;
-import play.test.Helpers;
 import play.test.WithApplication;
 
 import java.util.HashMap;
@@ -69,7 +66,7 @@ public class FakeDBApplication extends WithApplication {
 
     return new GuiceApplicationBuilder()
         .configure(additionalConfiguration)
-        .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
+        .configure(testDatabase())
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
