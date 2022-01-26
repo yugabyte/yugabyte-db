@@ -270,6 +270,7 @@ POST    /customers/:cUUID/universes/:uniUUID/upgrade/certs                     c
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/tls                       com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/vm                        com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeVMImage(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/systemd                   com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeSystemd(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/resize_node                com.yugabyte.yw.controllers.UpgradeUniverseController.resizeNode(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Table Management API
 GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID)

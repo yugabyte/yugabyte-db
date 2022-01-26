@@ -45,11 +45,13 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceTypeKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -124,13 +126,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       userIntent.universeName = univName;
       userIntent.replicationFactor = replFactor;
       userIntent.numNodes = numNodes;
-      userIntent.provider = provider.code;
+      userIntent.provider = provider.uuid.toString();
       userIntent.regionList = regionList;
       userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
       userIntent.ybSoftwareVersion = "0.0.1";
       userIntent.accessKeyCode = "akc";
       userIntent.providerType = cloud;
       userIntent.preferredRegion = r1.uuid;
+      userIntent.deviceInfo = new DeviceInfo();
+      userIntent.deviceInfo.volumeSize = 100;
+      userIntent.deviceInfo.numVolumes = 1;
       Universe.saveDetails(univUuid, ApiUtils.mockUniverseUpdater(userIntent));
       universe = Universe.getOrBadRequest(univUuid);
       final Collection<NodeDetails> nodes = universe.getNodes();
@@ -1076,6 +1081,67 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Map<UUID, Integer> newAZToNum = PlacementInfoUtil.getAzUuidToNumNodes(nodes);
       assertEquals(azToNum, newAZToNum);
     }
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testNoChangesLeadToError() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+      Cluster primaryCluster = udtp.getPrimaryCluster();
+
+      PlacementInfoUtil.updateUniverseDefinition(
+          udtp, t.customer.getCustomerId(), primaryCluster.uuid, EDIT);
+    }
+  }
+
+  @Parameters({
+    "aws, 0, 10, m3.medium, true",
+    "gcp, 0, 10, m3.medium, true",
+    "aws, 0, 10, c4.medium, true",
+    "aws, 0, -10, m3.medium, false", // decrease volume
+    "aws, 1, 10, m3.medium, false", // change num of nodes
+    "azu, 0, 10, m3.medium, false", // wrong provider
+    "aws, 0, 10, fake_type, false", // unknown instance type
+    "aws, 0, 10, i3.instance, false", // forbidden instance type
+    "aws, 0, 10, c5d.instance, false", // forbidden instance type
+    "gcp, 0, 10, nvme.instance, false", // instance type with NVME volume type
+  })
+  @Test
+  public void testResizeNodeAvailable(
+      String cloudType,
+      int numOfVolumesDiff,
+      int volumeSizeDiff,
+      String instanceTypeCode,
+      boolean expected) {
+    TestData t = new TestData(CloudType.valueOf(cloudType));
+    Universe universe = t.universe;
+    UUID univUuid = t.univUuid;
+    UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+    udtp.universeUUID = univUuid;
+    Universe.saveDetails(univUuid, t.setAzUUIDs());
+    Cluster primaryCluster = udtp.getPrimaryCluster();
+    UUID providerId = UUID.fromString(primaryCluster.userIntent.provider);
+
+    if (!instanceTypeCode.startsWith("fake")) {
+      InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
+      InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+      volumeDetails.volumeType =
+          instanceTypeCode.startsWith("nvme")
+              ? InstanceType.VolumeType.NVME
+              : InstanceType.VolumeType.SSD;
+      volumeDetails.volumeSizeGB = 100;
+      volumeDetails.mountPath = "/";
+      instanceTypeDetails.volumeDetailsList = Collections.singletonList(volumeDetails);
+      InstanceType.upsert(providerId, instanceTypeCode, 1, 100d, instanceTypeDetails);
+    }
+
+    primaryCluster.userIntent.deviceInfo.volumeSize += volumeSizeDiff;
+    primaryCluster.userIntent.deviceInfo.numVolumes += numOfVolumesDiff;
+    primaryCluster.userIntent.instanceType = instanceTypeCode;
+    PlacementInfoUtil.updateUniverseDefinition(
+        udtp, t.customer.getCustomerId(), primaryCluster.uuid, EDIT);
+    assertEquals(expected, udtp.nodesResizeAvailable);
   }
 
   @Test

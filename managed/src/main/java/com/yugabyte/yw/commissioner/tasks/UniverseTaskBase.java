@@ -600,12 +600,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to persist changes by ResizeNode task */
   public SubTaskGroup createPersistResizeNodeTask(String instanceType, Integer volumeSize) {
+    return createPersistResizeNodeTask(instanceType, volumeSize, null);
+  }
+
+  /** Create a task to persist changes by ResizeNode task for specific clusters */
+  public SubTaskGroup createPersistResizeNodeTask(
+      String instanceType, Integer volumeSize, List<UUID> clusterIds) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("PersistResizeNode", executor);
     PersistResizeNode.Params params = new PersistResizeNode.Params();
 
     params.universeUUID = taskParams().universeUUID;
     params.instanceType = instanceType;
     params.volumeSize = volumeSize;
+    params.clusters = clusterIds;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
@@ -1580,7 +1587,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the created task group.
    */
   public SubTaskGroup createModifyBlackListTask(
-      List<NodeDetails> nodes, boolean isAdd, boolean isLeaderBlacklist) {
+      Collection<NodeDetails> nodes, boolean isAdd, boolean isLeaderBlacklist) {
     if (isAdd) {
       return createModifyBlackListTask(nodes, null, isLeaderBlacklist);
     }

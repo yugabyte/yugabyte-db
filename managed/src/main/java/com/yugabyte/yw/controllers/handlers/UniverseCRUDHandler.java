@@ -893,11 +893,6 @@ public class UniverseCRUDHandler {
         customerTaskType = CustomerTask.TaskType.UpgradeVMImage;
         break;
       case ResizeNode:
-        if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
-          throw new PlatformServiceException(
-              Http.Status.METHOD_NOT_ALLOWED, "Smart resizing is disabled");
-        }
-
         Common.CloudType providerType =
             universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
         if (!(providerType.equals(Common.CloudType.gcp)

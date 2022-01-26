@@ -288,7 +288,9 @@ public enum TaskType {
 
   PreflightNodeCheck("subtasks.PreflightNodeCheck"),
 
-  RunYsqlUpgrade("subtasks.RunYsqlUpgrade");
+  RunYsqlUpgrade("subtasks.RunYsqlUpgrade"),
+
+  ResizeNode("upgrade.ResizeNode");
 
   private String relativeClassPath;
 
