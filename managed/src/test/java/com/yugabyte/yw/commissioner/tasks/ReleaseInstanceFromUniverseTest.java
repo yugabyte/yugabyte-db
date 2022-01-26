@@ -186,7 +186,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testReleaseStoppedInstanceSuccess() {
-    setDefaultNodeState(NodeState.Stopped);
+    setDefaultNodeState(NodeState.Removed);
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
 

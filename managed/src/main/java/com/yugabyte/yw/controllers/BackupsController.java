@@ -201,8 +201,7 @@ public class BackupsController extends AuthenticatedController {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
           if (taskManager.isDuplicateDeleteBackupTask(customerUUID, uuid)) {
-            throw new YWServiceException(
-                BAD_REQUEST, "Task to delete same backup already exists.");
+            throw new YWServiceException(BAD_REQUEST, "Task to delete same backup already exists.");
           }
 
           DeleteBackup.Params taskParams = new DeleteBackup.Params();

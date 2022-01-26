@@ -692,13 +692,9 @@ public class UniverseTest extends FakeDBApplication {
             ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY),
             allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Stopped) {
-        assertEquals(
-            ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE, NodeActionType.QUERY),
-            allowedActions);
+        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.QUERY), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Removed) {
-        assertEquals(
-            ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE),
-            allowedActions);
+        assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
         assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
       } else {

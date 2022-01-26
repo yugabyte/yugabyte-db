@@ -56,7 +56,7 @@ public class NodeDetails {
     // Set when node is about to be set to live state.
     Starting(),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped(START, RELEASE, QUERY),
+    Stopped(START, REMOVE, QUERY),
     // Set when node is unreachable but has not been Removed from the universe.
     Unreachable(),
     // Set when a node is marked for removal. Note that we will wait to get all its data out.
@@ -64,7 +64,7 @@ public class NodeDetails {
     // Set just before sending the request to the IaaS provider to terminate this node.
     Removing(),
     // Set after the node has been removed.
-    Removed(ADD, RELEASE, DELETE),
+    Removed(ADD, RELEASE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
     Adding(DELETE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
@@ -195,7 +195,6 @@ public class NodeDetails {
     return state == NodeState.ToBeAdded
         || state == NodeState.Adding
         || state == NodeState.SoftwareInstalled
-        || state == NodeState.Removed
         || state == NodeState.Decommissioned;
   }
 
