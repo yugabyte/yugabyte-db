@@ -46,6 +46,8 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_info.h"
 
 #include "yb/common/json_util.h"
 #include "yb/common/redis_constants_common.h"
@@ -664,6 +666,27 @@ Status ClusterAdminClient::SetTabletPeerInfo(
 
   *peer_addr = HostPortFromPB(rpc_addresses.Get(0));
   *peer_uuid = peer_ts_info.permanent_uuid();
+  return Status::OK();
+}
+
+CHECKED_STATUS ClusterAdminClient::SetWalRetentionSecs(
+  const YBTableName& table_name,
+  const uint32_t wal_ret_secs) {
+  auto alterer = yb_client_->NewTableAlterer(table_name);
+  RETURN_NOT_OK(alterer->SetWalRetentionSecs(wal_ret_secs)->Alter());
+  cout << "Set table " << table_name.table_name() << " WAL retention time to " << wal_ret_secs
+       << " seconds." << endl;
+  return Status::OK();
+}
+
+CHECKED_STATUS ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
+  const auto info = VERIFY_RESULT(yb_client_->GetYBTableInfo(table_name));
+  if (!info.wal_retention_secs) {
+    cout << "WAL retention time not set for table " << table_name.table_name() << endl;
+  } else {
+    cout << "Found WAL retention time for table " << table_name.table_name() << ": "
+         << info.wal_retention_secs.get() << " seconds" << endl;
+  }
   return Status::OK();
 }
 
