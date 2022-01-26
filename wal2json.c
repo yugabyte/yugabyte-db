@@ -68,7 +68,7 @@ typedef struct
 	bool		include_pk;			/* include primary key */
 
 	bool		pretty_print;		/* pretty-print JSON? */
-	bool		write_in_chunks;	/* write in chunks? */
+	bool		write_in_chunks;	/* write in chunks? (v1) */
 
 	JsonAction	actions;			/* output only these actions */
 

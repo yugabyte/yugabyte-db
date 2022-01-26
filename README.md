@@ -110,7 +110,7 @@ Parameters
 * `include-default`: add default expression. Default is _false_.
 * `include-pk`: add _primary key_ information as _pk_. Column name and data type is included. Default is _false_.
 * `pretty-print`: add spaces and indentation to JSON structures. Default is _false_.
-* `write-in-chunks`: write after every change instead of every changeset. Default is _false_.
+* `write-in-chunks`: write after every change instead of every changeset. Only used when `format-version` is `1`. Default is _false_.
 * `include-lsn`: add _nextlsn_ to each changeset. Default is _false_.
 * `include-transaction`: emit records denoting the start and end of each transaction. Default is _true_.
 * `include-unchanged-toast` (deprecated): Don't use it. It is deprecated.
