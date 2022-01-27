@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ShellProcessHandler.COMMAND_OUTPUT_LOGS_DELETE;
+import static com.yugabyte.yw.common.ShellProcessHandler.YB_LOGS_MAX_MSG_SIZE;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -40,7 +42,6 @@ public class ShellProcessHandlerTest extends TestCase {
   @Mock Config mockConfig;
 
   static String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
-  static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
 
   @Before
   public void beforeTest() {
@@ -48,6 +49,7 @@ public class ShellProcessHandlerTest extends TestCase {
     when(appConfig.getString("yb.devops.home")).thenReturn(TMP_STORAGE_PATH);
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(mockConfig.getBoolean(COMMAND_OUTPUT_LOGS_DELETE)).thenReturn(true);
+    when(appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE)).thenReturn(2000L);
   }
 
   @After

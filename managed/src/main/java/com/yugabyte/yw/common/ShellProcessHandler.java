@@ -16,18 +16,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javax.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+
+import java.io.*;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.concurrent.TimeUnit;
-
-import com.yugabyte.yw.common.ShellResponse;
 
 @Singleton
 public class ShellProcessHandler {
@@ -38,6 +32,7 @@ public class ShellProcessHandler {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
+  static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
 
   public ShellResponse run(
       List<String> command, Map<String, String> extraEnvVars, boolean logCmdOutput) {
@@ -91,12 +86,10 @@ public class ShellProcessHandler {
       process = pb.start();
 
       waitForProcessExit(process, tempOutputFile, tempErrorFile);
-      try (FileInputStream outputInputStream = new FileInputStream(tempOutputFile);
-          InputStreamReader outputReader = new InputStreamReader(outputInputStream);
-          BufferedReader outputStream = new BufferedReader(outputReader);
-          FileInputStream errorInputStream = new FileInputStream(tempErrorFile);
-          InputStreamReader errorReader = new InputStreamReader(errorInputStream);
-          BufferedReader errorStream = new BufferedReader(errorReader)) {
+      // We will only read last 20MB of process stdout and stderr file.
+      // stdout has `data` so we wont limit that.
+      try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
+           BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         String processOutput = outputStream.lines().collect(Collectors.joining("\n")).trim();
         String processError = errorStream.lines().collect(Collectors.joining("\n")).trim();
         if (logCmdOutput) {
@@ -119,7 +112,7 @@ public class ShellProcessHandler {
         response.durationMs = System.currentTimeMillis() - startMs;
       }
       String status =
-          (0 == response.code) ? "success" : ("failure code=" + Integer.toString(response.code));
+          (0 == response.code) ? "success" : ("failure code=" + response.code);
       LOG.info(
           "Completed proc '{}' status={} [ {} ms ]",
           response.description,
@@ -136,6 +129,28 @@ public class ShellProcessHandler {
     }
 
     return response;
+  }
+
+  private long getMaxLogMsgSize() {
+    return appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE);
+  }
+
+  /**
+   * For a given file return a bufferred reader that reads only last N bytes.
+   */
+  private static BufferedReader getLastNReader(File file, long lastNBytes)
+    throws FileNotFoundException {
+    final BufferedReader reader =
+      new BufferedReader(new InputStreamReader(new FileInputStream(file)));
+    long skip = file.length() - lastNBytes;
+    if (skip > 0) {
+      try {
+        LOG.info("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
+      } catch (IOException e) {
+        LOG.warn("Unexpected exception when skipping large file", e);
+      }
+    }
+    return reader;
   }
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
