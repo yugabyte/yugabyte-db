@@ -115,7 +115,6 @@ DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_bool(TEST_disable_cleanup_split_tablet);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
-DECLARE_bool(TEST_select_all_tablets_for_split);
 DECLARE_uint64(cdc_state_table_num_tablets);
 DECLARE_int32(outstanding_tablet_split_limit);
 DECLARE_double(TEST_fail_tablet_split_probability);
@@ -187,7 +186,7 @@ CHECKED_STATUS SplitTablet(master::CatalogManager* catalog_mgr, const tablet::Ta
   tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
-  return catalog_mgr->SplitTablet(tablet_id);
+  return catalog_mgr->SplitTablet(tablet_id, true /* select_all_tablets_for_split */);
 }
 
 CHECKED_STATUS DoSplitTablet(master::CatalogManager* catalog_mgr, const tablet::Tablet& tablet) {
@@ -317,7 +316,6 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
     FLAGS_cleanup_split_tablets_interval_sec = 1;
     FLAGS_enable_automatic_tablet_splitting = false;
     FLAGS_TEST_validate_all_tablet_candidates = true;
-    FLAGS_TEST_select_all_tablets_for_split = true;
     // We set small data block size, so we don't have to write much data to have multiple blocks.
     // We need multiple blocks to be able to detect split key (see BlockBasedTable::GetMiddleKey).
     FLAGS_db_block_size_bytes = 2_KB;
@@ -1716,7 +1714,6 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_split_tablet_candidate_processing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_tablets_for_split) = false;
   }
 
  protected:

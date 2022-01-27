@@ -215,7 +215,8 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     if (rpc.GetClientDeadline() > safe_time_left) {
       for (const auto& tablet : req->tablets_for_split()) {
         VLOG(1) << "Got tablet to split: " << AsString(tablet);
-        const auto split_status = server_->catalog_manager()->SplitTablet(tablet.tablet_id());
+        const auto split_status = server_->catalog_manager()->SplitTablet(
+            tablet.tablet_id(), true /* select_all_tablets_for_split */);
         if (!split_status.ok()) {
           if (MasterError(split_status) == MasterErrorPB::REACHED_SPLIT_LIMIT) {
             YB_LOG_EVERY_N_SECS(WARNING, 60 * 60) << split_status;

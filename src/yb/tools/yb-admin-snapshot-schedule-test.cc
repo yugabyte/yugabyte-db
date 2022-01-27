@@ -155,8 +155,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     // To speed up tests.
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
-             "--enable_transactional_ddl_gc=false",
-             "--TEST_select_all_tablets_for_split=true", };
+             "--enable_transactional_ddl_gc=false"};
   }
 
   Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
