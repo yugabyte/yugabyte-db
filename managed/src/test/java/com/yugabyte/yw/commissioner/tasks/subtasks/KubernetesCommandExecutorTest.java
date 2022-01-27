@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -96,7 +97,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     return new GuiceApplicationBuilder()
         .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
-        .configure((Map) Helpers.inMemoryDatabase())
+        .configure(testDatabase())
         .overrides(bind(KubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))

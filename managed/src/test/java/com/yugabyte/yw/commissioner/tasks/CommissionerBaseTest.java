@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -33,7 +34,6 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
-import java.util.Map;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
@@ -49,7 +49,6 @@ import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
   private int maxRetryCount = 200;
@@ -133,7 +132,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
-                .configure((Map) Helpers.inMemoryDatabase())
+                .configure(testDatabase())
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
                 .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
                 .overrides(bind(ConfigHelper.class).toInstance(mockConfigHelper))

@@ -2,10 +2,10 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
 
-import com.google.common.collect.Maps;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -33,7 +33,6 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
-import play.test.Helpers;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -79,7 +78,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
     return configureApplication(
             guiceApplicationBuilder
                 .configure(additionalConfiguration)
-                .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
+                .configure(testDatabase())
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
