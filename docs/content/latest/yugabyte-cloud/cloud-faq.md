@@ -202,7 +202,7 @@ If you don't resume your cluster, a second notification is sent after 28 days of
 
 Free clusters are deleted after 30 days of inactivity. Only paused clusters are deleted.
 
-Yugabyte Cloud runs idle cluster deletion jobs run daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
+Yugabyte Cloud runs idle cluster deletion jobs daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
 
 ### How do I keep my free cluster from being paused or deleted?
 
