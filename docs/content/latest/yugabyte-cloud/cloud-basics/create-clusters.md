@@ -36,7 +36,7 @@ The **Create Cluster** wizard has the following three pages:
 
 ### Select Cluster Type
 
-Use a free cluster to get started with YugabyteDB. Although it's not suitable for production workloads, a free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
+Use a free cluster to get started with YugabyteDB. Although not suitable for production workloads, a free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
 
 - Single node
 - Up to 2 vCPUs and 10 GB of storage, depending on the cloud provider
@@ -82,7 +82,7 @@ If you are creating a standard cluster, set the following additional options:
 
 - **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-secure-clusters/cloud-vpcs/).
 
-- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). Free clusters are always deployed with an [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use an edge release for a standard cluster, click **Advanced** and choose a release. If you have arranged a custom build with Yugabyte, it will also be listed here.
+<!-- **Database Version**: By default, clusters are deployed using a [stable release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). Free clusters are always deployed with an [edge release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use an edge release for a standard cluster, click **Advanced** and choose a release. If you have arranged a custom build with Yugabyte, it will also be listed here.-->
 
 Cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
@@ -90,7 +90,7 @@ Standard clusters support both horizontal and vertical scaling; you can change t
 
 ### Database Admin Credentials
 
-The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster. (You can [add additional users](../../cloud-secure-clusters/add-users/) once the cluster is provisioned.)
+The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster. (You can [add additional users](../../cloud-secure-clusters/add-users/) after the cluster is provisioned.)
 
 ![Add Cluster Wizard - Admin Settings](/images/yb-cloud/cloud-addcluster-admin.png)
 
@@ -110,7 +110,7 @@ After you complete the wizard, the **Clusters** page appears, showing the provis
 
 ![Cluster being provisioned](/images/yb-cloud/cloud-cluster-provisioning.png)
 
-Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) tab is displayed.
+When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud with the database admin credentials you specified.
 
