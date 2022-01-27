@@ -806,7 +806,7 @@ def save_report(
             elapsed_time_sec=result.elapsed_time_sec,
             exit_code=result.exit_code,
             language=test_descriptor.language,
-            rtifact_paths=result.artifact_paths
+            artifact_paths=result.artifact_paths
         )
         test_reports_by_descriptor[test_descriptor.descriptor_str] = test_report_dict
         if test_descriptor.error_output_path and os.path.isfile(test_descriptor.error_output_path):
