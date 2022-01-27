@@ -106,8 +106,8 @@ public class HashicorpEARServiceUtil {
    */
   public static String getVaultKeyForUniverse(UUID universeUUID, UUID configUUID) {
     String keyName = "key";
-    // generate keyname using => "'key_' + "UniverseUUID + '_' + CONFIG_UUID"
-    keyName = "key_" + configUUID.toString() + "_" + universeUUID.toString();
+    // generate keyname using => "'key_' + "CONFIG_UUID"
+    keyName = "key_" + configUUID.toString(); // + "_" + universeUUID.toString();
     LOG.debug("getVaultKeyForUniverse returning {}", keyName);
     return keyName;
   }
@@ -132,7 +132,10 @@ public class HashicorpEARServiceUtil {
 
     return keyName;
   }
-  /** Deletes Vault key, this operation cannot be reverted, call only when cluster is deleted. */
+  /**
+   * Deletes Vault key, this operation cannot be reverted. Used only for TESTING, do not call in
+   * production code.
+   */
   public static boolean deleteVaultKey(UUID universeUUID, UUID configUUID, ObjectNode authConfig)
       throws Exception {
 
