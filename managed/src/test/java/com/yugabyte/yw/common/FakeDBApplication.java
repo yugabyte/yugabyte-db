@@ -2,15 +2,14 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
 
-import com.google.common.collect.Maps;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
-import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -18,7 +17,6 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,7 +33,6 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
-import play.test.Helpers;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -82,7 +79,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
     return configureApplication(
             guiceApplicationBuilder
                 .configure(additionalConfiguration)
-                .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
+                .configure(testDatabase())
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))

@@ -10,6 +10,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -164,7 +165,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
                 .withChartPath(TMP_CHART_PATH + "/uuct_yugabyte-1.0.0-helm.tar.gz"));
 
     return new GuiceApplicationBuilder()
-        .configure((Map) Helpers.inMemoryDatabase())
+        .configure(testDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(
             bind(RuntimeConfigFactory.class)
