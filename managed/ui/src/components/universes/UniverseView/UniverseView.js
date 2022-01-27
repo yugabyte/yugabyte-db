@@ -443,8 +443,8 @@ export const UniverseView = (props) => {
             dataSort
             sortFunc={(a, b, _) => universeSortFunction(a, b)}
             headerAlign="right"
-            tdStyle={{ whiteSpace: 'normal', paddingRight: '100px' }}
-            thStyle={{ paddingRight: '100px' }}
+            tdStyle={{ whiteSpace: 'normal' }}
+            thStyle={{  paddingRight: '100px'}}
             columnClassName="no-border"
           >
             Price / Month
