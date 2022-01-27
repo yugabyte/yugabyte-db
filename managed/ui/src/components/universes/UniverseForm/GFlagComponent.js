@@ -49,7 +49,7 @@ const OPTIONS = [
     title: (
       <>
         <span className="fa fa-edit" />
-        Add as Free text
+        Add as JSON
       </>
     ),
     className: 'btn btn-default'
@@ -381,8 +381,7 @@ export default function GFlagComponent(props) {
     const gflagSchema = Yup.object().shape({
       flagvalue: Yup.mixed().required('This field is required')
     });
-    const modalTitle =
-      selectedProps?.mode === CREATE ? `Add to ${selectedProps?.server}` : 'Edit Flag Value';
+    const modalTitle = selectedProps?.mode === CREATE ? selectedProps?.label : 'Edit Flag Value';
     const modalLabel = selectedProps?.mode === CREATE ? 'Add Flag' : 'Confirm';
     return (
       <YBModalForm
@@ -398,7 +397,7 @@ export default function GFlagComponent(props) {
         onFormSubmit={handleFormSubmit}
         render={(properties) => renderOption(properties)}
         dialogClassName="gflag-modal"
-        titleClassName="pl-16"
+        headerClassName="pl-16"
       />
     );
   };
@@ -418,7 +417,12 @@ export default function GFlagComponent(props) {
               <DropdownButton {...rest} bsSize="small" id={optionName} key={optionName}>
                 {SERVER_LIST.map((server) => {
                   const { serverName, label } = server;
-                  const serverProps = { option: optionName, server: serverName, mode: CREATE };
+                  const serverProps = {
+                    option: optionName,
+                    server: serverName,
+                    mode: CREATE,
+                    label
+                  };
                   return (
                     <MenuItem
                       key={optionName + '-' + serverName}

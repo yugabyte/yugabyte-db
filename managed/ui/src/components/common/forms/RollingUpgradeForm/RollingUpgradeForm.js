@@ -229,7 +229,7 @@ export default class RollingUpgradeForm extends Component {
             visible={modalVisible}
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
-            title="Flags"
+            title="G-Flags"
             size="large"
             onFormSubmit={submitAction}
             error={error}

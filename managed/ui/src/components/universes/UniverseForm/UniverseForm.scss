@@ -414,6 +414,7 @@
 
 .add-border-left {
   border-left: 1px solid $YB_LIGHT_GRAY_BORDER;
+  background-color: $YB_BG_WHITE_2;
 }
 
 .g-flag-list {
@@ -470,6 +471,7 @@
   padding: 12px;
   font-weight: normal;
   font-size: 13px;
+  margin-bottom: 16px;
 }
 
 .gflag-badge {
@@ -769,4 +771,21 @@
   font-size: 12px;
   line-height: 1.5;
   border-radius: 3px;
+}
+
+.align-end {
+  align-items: flex-end;
+}
+
+.gflag-editor-container {
+  flex-direction: column;
+  padding: 0px 8px;
+}
+
+.muted-text-2 {
+  color: $YB_DARKER_GRAY;
+}
+
+.bold-600 {
+  font-weight: 600;
 }
