@@ -13,7 +13,7 @@ menu:
 weight: 645
 ---
 
-Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pods, machines, etc., provided by IaaS), logically grouped together to form one logical distributed database. Each universe includes one or more clusters. A universe is comprised of one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
+Yugabyte Platform can create a YugabyteDB universe with many instances (virtual machines, pods, and so on, provided by IaaS), logically grouped together to form one distributed database. Each universe includes one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance.
 
 <div class="row">
 
@@ -36,7 +36,7 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
         <div class="title">Back up universe data</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to restore universe data.
+        Use Yugabyte Platform to back up universe data.
       </div>
     </a>
   </div>
