@@ -50,6 +50,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stopwatch.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -148,10 +149,11 @@ class MasterSnapshotCoordinator::Impl {
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline) {
     auto synchronizer = std::make_shared<Synchronizer>();
-    auto snapshot_id = VERIFY_RESULT(SubmitCreate(
-        entries, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid, TxnSnapshotId::Nil(),
+    auto snapshot_id = TxnSnapshotId::GenerateRandom();
+    SubmitCreate(
+        entries, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid, snapshot_id,
         leader_term,
-        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
+        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
     RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
 
     return snapshot_id;
@@ -169,6 +171,24 @@ class MasterSnapshotCoordinator::Impl {
       auto* last_snapshot = BoundingSnapshot((**it).id(), Bound::kLast);
       auto last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
                                               : HybridTime::kInvalid;
+      auto creating_snapshot_data = (**it).creating_snapshot_data();
+      if (creating_snapshot_data.snapshot_id) {
+        auto snapshot_it = snapshots_.find(creating_snapshot_data.snapshot_id);
+        if (snapshot_it != snapshots_.end()) {
+          VLOG(2) << __func__ << " for " << schedule_id << " while creating snapshot: "
+                  << (**snapshot_it).ToString();
+        } else {
+          auto passed = CoarseMonoClock::now() - creating_snapshot_data.start_time;
+          auto message = Format(
+              "$0 for $1 while creating unknown snapshot: $2 (passed $3)",
+              __func__, schedule_id, creating_snapshot_data.snapshot_id, passed);
+          if (passed > 30s) {
+            LOG(DFATAL) << message;
+          } else {
+            VLOG(2) << message;
+          }
+        }
+      }
       operation = VERIFY_RESULT((**it).ForceCreateSnapshot(last_snapshot_time));
     }
 
@@ -401,7 +421,8 @@ class MasterSnapshotCoordinator::Impl {
       SnapshotScheduleState& schedule_state = VERIFY_RESULT(
           FindSnapshotSchedule(snapshot.schedule_id()));
       LOG(INFO) << "Restore sys catalog from snapshot: " << snapshot.ToString() << ", schedule: "
-                << schedule_state.ToString() << " at " << restoration->restore_at;
+                << schedule_state.ToString() << " at " << restoration->restore_at << ", op id: "
+                << restoration->op_id;
       size_t this_idx = std::numeric_limits<size_t>::max();
       for (const auto& snapshot_schedule : schedules_) {
         if (snapshot_schedule->id() == snapshot.schedule_id()) {
@@ -419,9 +440,11 @@ class MasterSnapshotCoordinator::Impl {
         postponed_restores_.push_back(restoration);
       }
     }
-    RETURN_NOT_OK_PREPEND(
-        context_.RestoreSysCatalog(restoration.get(), operation.tablet(), complete_status),
-        "Restore sys catalog failed");
+    LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
+      RETURN_NOT_OK_PREPEND(
+          context_.RestoreSysCatalog(restoration.get(), operation.tablet(), complete_status),
+          "Restore sys catalog failed");
+    }
     return Status::OK();
   }
 
@@ -911,11 +934,16 @@ class MasterSnapshotCoordinator::Impl {
   CHECKED_STATUS ExecuteScheduleOperation(
       const SnapshotScheduleOperation& operation, int64_t leader_term,
       const std::weak_ptr<Synchronizer>& synchronizer = std::weak_ptr<Synchronizer>()) {
-    auto entries = VERIFY_RESULT(CollectEntries(operation.filter));
-    VLOG(2) << __func__ << "(" << AsString(operation) << ", " << leader_term << ")";
-    RETURN_NOT_OK(SubmitCreate(
-        entries, false, operation.schedule_id, operation.previous_snapshot_hybrid_time,
-        operation.snapshot_id, leader_term,
+    auto entries = CollectEntries(operation.filter);
+    VLOG(2) << __func__ << "(" << AsString(operation) << ", " << leader_term << "), entries: "
+            << AsString(entries);
+    if (!entries.ok()) {
+      CreateSnapshotAborted(entries.status(), operation.schedule_id, operation.snapshot_id);
+      return entries.status();
+    }
+    SubmitCreate(
+        *entries, /* imported= */ false, operation.schedule_id,
+        operation.previous_snapshot_hybrid_time, operation.snapshot_id, leader_term,
         [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id,
          synchronizer](
             const Status& status) {
@@ -926,7 +954,7 @@ class MasterSnapshotCoordinator::Impl {
           if (locked_synchronizer) {
             locked_synchronizer->StatusCB(status);
           }
-        }));
+        });
     return Status::OK();
   }
 
@@ -943,7 +971,7 @@ class MasterSnapshotCoordinator::Impl {
     (**it).SnapshotFinished(snapshot_id, status);
   }
 
-  Result<TxnSnapshotId> SubmitCreate(
+  void SubmitCreate(
       const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
       HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id, int64_t leader_term,
       tablet::OperationCompletionCallback completion_clbk) {
@@ -960,9 +988,6 @@ class MasterSnapshotCoordinator::Impl {
 
     request->set_snapshot_hybrid_time(context_.Clock()->MaxGlobalNow().ToUint64());
     request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
-    if (!snapshot_id) {
-      snapshot_id = TxnSnapshotId::GenerateRandom();
-    }
     request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
     request->set_imported(imported);
     if (schedule_id) {
@@ -977,8 +1002,6 @@ class MasterSnapshotCoordinator::Impl {
     operation->set_completion_callback(std::move(completion_clbk));
 
     context_.Submit(std::move(operation), leader_term);
-
-    return snapshot_id;
   }
 
   void SubmitDelete(const TxnSnapshotId& snapshot_id, int64_t leader_term,
@@ -1167,7 +1190,8 @@ class MasterSnapshotCoordinator::Impl {
       }
       if (!restore_sys_catalog) {
         if (phase == RestorePhase::kPostSysCatalogLoad) {
-          LOG(INFO) << "PITR: Restore tablets: " << AsString(restore_tablets);
+          LOG(INFO)
+              << "PITR: " << restoration_id << " restore tablets: " << AsString(restore_tablets);
           // New tablets could be changed between restoration point and snapshot time.
           // So we take tablets list from actual catalog state.
           restoration_ptr->InitTabletIds(restore_tablets);
@@ -1186,7 +1210,7 @@ class MasterSnapshotCoordinator::Impl {
 
     auto snapshot_id_str = snapshot_id.AsSlice().ToBuffer();
     SendMetadata send_metadata(phase == RestorePhase::kPostSysCatalogLoad);
-    LOG(INFO) << "Restore tablets: " << AsString(tablet_infos);
+    LOG(INFO) << "PITR: " << restoration_id << " restore tablets: " << AsString(tablet_infos);
     for (const auto& tablet : tablet_infos) {
       // If this tablet did not participate in snapshot, i.e. was deleted.
       // We just change hybrid hybrid time limit and clear hide state.
