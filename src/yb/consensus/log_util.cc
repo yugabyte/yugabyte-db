@@ -33,6 +33,7 @@
 #include "yb/consensus/log_util.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <utility>
 
@@ -502,7 +503,7 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(int64_t max_entries_to_read) {
 
     // Read and validate the entry header first.
     Status s;
-    if (offset + kEntryHeaderSize < read_up_to) {
+    if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) < read_up_to) {
       s = ReadEntryHeaderAndBatch(&offset, &tmp_buf, &current_batch);
     } else {
       s = STATUS(Corruption, Substitute("Truncated log entry at offset $0", offset));
@@ -629,7 +630,7 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
   // We overlap the reads by the size of the header, so that if a header
   // spans chunks, we don't miss it.
   for (;
-       offset < file_size() - kEntryHeaderSize;
+       offset < implicit_cast<int64_t>(file_size() - kEntryHeaderSize);
        offset += kChunkSize - kEntryHeaderSize) {
     auto rem = std::min<int64_t>(file_size() - offset, kChunkSize);
     Slice chunk;
@@ -651,7 +652,7 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
     }
 
     // Check if this chunk has a valid entry header.
-    for (int off_in_chunk = 0;
+    for (size_t off_in_chunk = 0;
          off_in_chunk < chunk.size() - kEntryHeaderSize;
          off_in_chunk++) {
       const Slice potential_header = Slice(chunk.data() + off_in_chunk, kEntryHeaderSize);
@@ -689,7 +690,7 @@ Status ReadableLogSegment::MakeCorruptionStatus(
   if (!entries.empty()) {
     err.append("; Last log entries read:");
     const int kNumEntries = 4; // Include up to the last 4 entries in the segment.
-    for (int i = std::max(0, static_cast<int>(entries.size()) - kNumEntries);
+    for (size_t i = std::max(0, static_cast<int>(entries.size()) - kNumEntries);
         i < entries.size(); i++) {
       LogEntryPB* entry = entries[i].get();
       LogEntryTypePB type = entry->type();
@@ -879,12 +880,14 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
   uint32_t header_crc = crc::Crc32c(&header_buf, 8);
   InlineEncodeFixed32(&header_buf[8], header_crc);
 
-  // Write the header to the file, followed by the batch data itself.
-  RETURN_NOT_OK(writable_file_->Append(Slice(header_buf, sizeof(header_buf))));
-  written_offset_ += sizeof(header_buf);
+  std::array<Slice, 2> slices = {
+      Slice(header_buf, sizeof(header_buf)),
+      Slice(data),
+  };
 
-  RETURN_NOT_OK(writable_file_->Append(data));
-  written_offset_ += data.size();
+  // Write the header to the file, followed by the batch data itself.
+  RETURN_NOT_OK(writable_file_->AppendSlices(slices.data(), slices.size()));
+  written_offset_ += sizeof(header_buf) + data.size();
 
   return Status::OK();
 }

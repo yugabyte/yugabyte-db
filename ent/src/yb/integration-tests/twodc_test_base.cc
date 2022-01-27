@@ -63,7 +63,10 @@ void TwoDCTestBase::Destroy() {
   }
 
   producer_cluster_.client_.reset();
-  producer_cluster_.client_.reset();
+  // The following call may produce heap-use-after-free error in ASAN build for TwoDCTestParams.
+  // Since cancelling all outgoing RPCs before we reset the client needs some design change, comment
+  // out the call for now.
+  // consumer_cluster_.client_.reset();
 }
 
 Status TwoDCTestBase::SetupUniverseReplication(
@@ -92,11 +95,15 @@ Status TwoDCTestBase::SetupUniverseReplication(
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  RETURN_NOT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return STATUS(IllegalState, "Failed setting up universe replication");
-  }
-  return Status::OK();
+  return WaitFor([&] () -> Result<bool> {
+    if (!master_proxy->SetupUniverseReplication(req, &resp, &rpc).ok()) {
+      return false;
+    }
+    if (resp.has_error()) {
+      return false;
+    }
+    return true;
+  }, MonoDelta::FromSeconds(30), "Setup universe replication");
 }
 
 Status TwoDCTestBase::VerifyUniverseReplication(

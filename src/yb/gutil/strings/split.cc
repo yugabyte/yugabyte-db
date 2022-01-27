@@ -1066,9 +1066,9 @@ void SplitStringToLines(const char* full,
     return;
   }
   size_t pos = 0;
-  for (int i = 0; (i < num_lines || num_lines <= 0); i++) {
+  for (size_t i = 0; (i < num_lines || num_lines <= 0); i++) {
     auto cut_at = ClipStringHelper(full+pos, max_len, (i == num_lines - 1));
-    if (cut_at == -1) {
+    if (cut_at == std::numeric_limits<size_t>::max()) {
       result->push_back(string(full+pos));
       return;
     }

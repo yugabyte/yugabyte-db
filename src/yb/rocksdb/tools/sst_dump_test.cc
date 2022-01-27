@@ -32,6 +32,7 @@
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/test_util.h"
 
@@ -111,7 +112,7 @@ void cleanup(const std::string& file_name) {
 }  // namespace
 
 // Test for sst dump tool "raw" mode
-class SSTDumpToolTest : public testing::Test {
+class SSTDumpToolTest : public RocksDBTest {
  public:
   BlockBasedTableOptions table_options_;
 

@@ -65,7 +65,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     if (schedules.Empty()) {
       return STATUS(NotFound, "Snapshot schedule not found");
     }
-    SCHECK_EQ(schedules.Size(), 1, NotFound, "Wrong schedules number");
+    SCHECK_EQ(schedules.Size(), 1U, NotFound, "Wrong schedules number");
     rapidjson::Document result;
     result.CopyFrom(schedules[0], result.GetAllocator());
     return result;
@@ -88,7 +88,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   Result<rapidjson::Document> WaitScheduleSnapshot(
-      MonoDelta duration, const std::string& id = std::string(), int num_snapshots = 1) {
+      MonoDelta duration, const std::string& id = std::string(), uint32_t num_snapshots = 1) {
     rapidjson::Document result;
     RETURN_NOT_OK(WaitFor([this, id, num_snapshots, &result]() -> Result<bool> {
       auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
@@ -132,7 +132,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
       auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations", restoration_id));
       LOG(INFO) << "Restorations: " << common::PrettyWriteRapidJsonToString(out);
       const auto& restorations = VERIFY_RESULT(Get(out, "restorations")).get().GetArray();
-      SCHECK_EQ(restorations.Size(), 1, IllegalState, "Wrong restorations number");
+      SCHECK_EQ(restorations.Size(), 1U, IllegalState, "Wrong restorations number");
       auto id = VERIFY_RESULT(Get(restorations[0], "id")).get().GetString();
       SCHECK_EQ(id, restoration_id, IllegalState, "Wrong restoration id");
       std::string state_str = VERIFY_RESULT(Get(restorations[0], "state")).get().GetString();
@@ -250,7 +250,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   CHECKED_STATUS WaitTabletsCleaned(CoarseTimePoint deadline) {
     return Wait([this, deadline]() -> Result<bool> {
       size_t alive_tablets = 0;
-      for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
         auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
         tserver::ListTabletsRequestPB req;
         tserver::ListTabletsResponsePB resp;
@@ -571,7 +571,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateTable)
   // Wait for Restore to complete.
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
     bool all_tablets_hidden = true;
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
       tserver::ListTabletsRequestPB req;
       tserver::ListTabletsResponsePB resp;
@@ -693,7 +693,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetDefault),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetDefault),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -730,7 +730,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetDefault),
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefault),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropDefault),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -773,7 +773,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefault)
   ASSERT_EQ(result_status.ok(), false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetNotNull),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlSetNotNull),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -804,7 +804,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetNotNull),
   ASSERT_EQ(res3, "");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropNotNull),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropNotNull),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -835,7 +835,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropNotNull)
   ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (3)"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAddPK),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddPK),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -867,7 +867,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAd
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'AfterPKRemoval')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAddFK),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableAddFK),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -897,7 +897,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAd
   ASSERT_OK(conn.Execute("DROP TABLE test_table"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableSetOwner),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAlterTableSetOwner),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -948,7 +948,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableSe
   ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME key TO key_new3"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddUniqueConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddUniqueConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -976,7 +976,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddUniqueCon
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'ABC')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropUniqueConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropUniqueConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1018,7 +1018,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropUniqueCo
 }
 
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddCheckConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddCheckConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1046,7 +1046,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddCheckCons
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'PQR')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropCheckConstraint),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropCheckConstraint),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1358,7 +1358,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestore, YbAdminSnapshotConsist
     KeyState state;
     ssize_t start = -1;
     ssize_t finish = -1;
-    int set_by = -1;
+    ssize_t set_by = -1;
   };
 
   std::vector<KeyData> keys;
@@ -1389,14 +1389,14 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestore, YbAdminSnapshotConsist
     }
   }
 
-  for (int key = 1; key != keys.size(); ++key) {
+  for (size_t key = 1; key != keys.size(); ++key) {
     if (keys[key].state != KeyState::kMissing || keys[key].finish == -1) {
       continue;
     }
     for (auto set_state : {KeyState::kBeforeMissing, KeyState::kAfterMissing}) {
       auto begin = set_state == KeyState::kBeforeMissing ? 0 : keys[key].finish + 1;
       auto end = set_state == KeyState::kBeforeMissing ? keys[key].start : events.size();
-      for (ssize_t i = begin; i != end; ++i) {
+      for (size_t i = begin; i != end; ++i) {
         auto& event = events[i];
         if (keys[event.key].state == KeyState::kMissing ||
             (event.finished != (set_state == KeyState::kBeforeMissing))) {
@@ -1588,9 +1588,7 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
 
 class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   std::vector<std::string> ExtraMasterFlags() override {
-    auto flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
-    flags.push_back("--TEST_select_all_tablets_for_split=true");
-    return flags;
+    return YbAdminSnapshotScheduleTest::ExtraMasterFlags();
   }
 };
 
@@ -1701,7 +1699,7 @@ class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {
   void WaitForLoadToBeBalanced(yb::MonoDelta timeout) {
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       std::vector<uint32_t> tserver_loads;
-      for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
         auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
         tserver::ListTabletsRequestPB req;
         tserver::ListTabletsResponsePB resp;

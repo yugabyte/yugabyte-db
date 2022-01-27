@@ -94,19 +94,23 @@ constexpr auto kNumTablets = 3;
 class RocksDbListener : public rocksdb::EventListener {
  public:
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo&) override {
-    IncrementValueByDb(db, &num_compactions_completed_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++num_compactions_completed_[db];
   }
 
-  int GetNumCompactionsCompleted(rocksdb::DB* db) {
-    return GetValueByDb(db, num_compactions_completed_);
+  size_t GetNumCompactionsCompleted(rocksdb::DB* db) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return num_compactions_completed_[db];
   }
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo&) override {
-    IncrementValueByDb(db, &num_flushes_completed_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++num_flushes_completed_[db];
   }
 
-  int GetNumFlushesCompleted(rocksdb::DB* db) {
-    return GetValueByDb(db, num_flushes_completed_);
+  size_t GetNumFlushesCompleted(rocksdb::DB* db) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return num_flushes_completed_[db];
   }
 
   void Reset() {
@@ -116,35 +120,12 @@ class RocksDbListener : public rocksdb::EventListener {
   }
 
  private:
-  typedef std::unordered_map<const rocksdb::DB*, int> CountByDbMap;
-
-  void IncrementValueByDb(const rocksdb::DB* db, CountByDbMap* map);
-  int GetValueByDb(const rocksdb::DB* db, const CountByDbMap& map);
+  typedef std::unordered_map<const rocksdb::DB*, size_t> CountByDbMap;
 
   std::mutex mutex_;
-  CountByDbMap num_compactions_completed_;
-  CountByDbMap num_flushes_completed_;
+  CountByDbMap num_compactions_completed_ GUARDED_BY(mutex_);
+  CountByDbMap num_flushes_completed_ GUARDED_BY(mutex_);
 };
-
-void RocksDbListener::IncrementValueByDb(const rocksdb::DB* db, CountByDbMap* map) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = map->find(db);
-  if (it == map->end()) {
-    (*map)[db] = 1;
-  } else {
-    ++(it->second);
-  }
-}
-
-int RocksDbListener::GetValueByDb(const rocksdb::DB* db, const CountByDbMap& map) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = map.find(db);
-  if (it == map.end()) {
-    return 0;
-  } else {
-    return it->second;
-  }
-}
 
 } // namespace
 
@@ -230,14 +211,13 @@ class CompactionTest : public YBTest {
     return Status::OK();
   }
 
-  CHECKED_STATUS WriteAtLeastFilesPerDb(int num_files) {
+  CHECKED_STATUS WriteAtLeastFilesPerDb(size_t num_files) {
     auto dbs = GetAllRocksDbs(cluster_.get());
     workload_->Start();
     RETURN_NOT_OK(LoggedWaitFor(
         [this, &dbs, num_files] {
             for (auto* db : dbs) {
-              if (rocksdb_listener_->GetNumFlushesCompleted(db
-              ) < num_files) {
+              if (rocksdb_listener_->GetNumFlushesCompleted(db) < num_files) {
                 return false;
               }
             }
@@ -250,13 +230,12 @@ class CompactionTest : public YBTest {
     return Status::OK();
   }
 
-  CHECKED_STATUS WaitForNumCompactionsPerDb(int num_compactions) {
+  CHECKED_STATUS WaitForNumCompactionsPerDb(size_t num_compactions) {
     auto dbs = GetAllRocksDbs(cluster_.get());
     RETURN_NOT_OK(LoggedWaitFor(
         [this, &dbs, num_compactions] {
             for (auto* db : dbs) {
-              if (rocksdb_listener_->GetNumCompactionsCompleted(db
-              ) < num_compactions) {
+              if (rocksdb_listener_->GetNumCompactionsCompleted(db) < num_compactions) {
                 return false;
               }
             }
@@ -285,8 +264,8 @@ class CompactionTest : public YBTest {
 
   void TestCompactionAfterTruncate();
   void TestCompactionWithoutFrontiers(
-      const int num_without_frontiers,
-      const int num_with_frontiers,
+      const size_t num_without_frontiers,
+      const size_t num_with_frontiers,
       const bool trigger_manual_compaction);
 
   std::unique_ptr<MiniCluster> cluster_;
@@ -314,7 +293,7 @@ void CompactionTest::TestCompactionAfterTruncate() {
       [&dbs] {
         for (auto* db : dbs) {
           if (db->GetLiveFilesMetaData().size() >
-              FLAGS_rocksdb_level0_file_num_compaction_trigger) {
+              implicit_cast<size_t>(FLAGS_rocksdb_level0_file_num_compaction_trigger)) {
             return false;
           }
         }
@@ -324,8 +303,8 @@ void CompactionTest::TestCompactionAfterTruncate() {
 }
 
 void CompactionTest::TestCompactionWithoutFrontiers(
-    const int num_without_frontiers,
-    const int num_with_frontiers,
+    const size_t num_without_frontiers,
+    const size_t num_with_frontiers,
     const bool trigger_manual_compaction) {
   // Write a number of files without frontiers
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = true;
@@ -351,8 +330,7 @@ void CompactionTest::TestCompactionWithoutFrontiers(
   ASSERT_OK(LoggedWaitFor(
       [&dbs, num_without_frontiers, num_with_frontiers] {
         for (auto* db : dbs) {
-          if (db->GetLiveFilesMetaData().size() >=
-              num_without_frontiers + num_with_frontiers) {
+          if (db->GetLiveFilesMetaData().size() >= num_without_frontiers + num_with_frontiers) {
             return false;
           }
         }
@@ -514,7 +492,7 @@ TEST_F(CompactionTestWithTTL, CompactionAfterExpiry) {
       [&dbs] {
         for (auto* db : dbs) {
           if (db->GetLiveFilesMetaData().size() >
-              FLAGS_rocksdb_level0_file_num_compaction_trigger) {
+              implicit_cast<size_t>(FLAGS_rocksdb_level0_file_num_compaction_trigger)) {
             return false;
           }
         }
@@ -571,9 +549,9 @@ class CompactionTestWithFileExpiration : public CompactionTest {
   void WriteRecordsAllExpire();
   void AssertNoFilesExpired();
   void AssertAllFilesExpired();
-  bool CheckEachDbHasExactlyNumFiles(int num_files);
-  bool CheckEachDbHasAtLeastNumFiles(int num_files);
-  bool CheckAtLeastFileExpirationsPerDb(int num_expirations);
+  bool CheckEachDbHasExactlyNumFiles(size_t num_files);
+  bool CheckEachDbHasAtLeastNumFiles(size_t num_files);
+  bool CheckAtLeastFileExpirationsPerDb(size_t num_expirations);
   int table_ttl_to_use() override {
     return kTableTTLSec;
   }
@@ -650,7 +628,7 @@ void CompactionTestWithFileExpiration::AssertNoFilesExpired() {
   ASSERT_EQ(CountFilteredSSTFiles(), 0);
 }
 
-bool CompactionTestWithFileExpiration::CheckEachDbHasExactlyNumFiles(int num_files) {
+bool CompactionTestWithFileExpiration::CheckEachDbHasExactlyNumFiles(size_t num_files) {
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto* db : dbs) {
     if (db->GetCurrentVersionNumSSTFiles() != num_files) {
@@ -660,7 +638,7 @@ bool CompactionTestWithFileExpiration::CheckEachDbHasExactlyNumFiles(int num_fil
   return true;
 }
 
-bool CompactionTestWithFileExpiration::CheckEachDbHasAtLeastNumFiles(int num_files) {
+bool CompactionTestWithFileExpiration::CheckEachDbHasAtLeastNumFiles(size_t num_files) {
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto* db : dbs) {
     if (db->GetCurrentVersionNumSSTFiles() < num_files) {
@@ -670,7 +648,7 @@ bool CompactionTestWithFileExpiration::CheckEachDbHasAtLeastNumFiles(int num_fil
   return true;
 }
 
-bool CompactionTestWithFileExpiration::CheckAtLeastFileExpirationsPerDb(int num_expirations) {
+bool CompactionTestWithFileExpiration::CheckAtLeastFileExpirationsPerDb(size_t num_expirations) {
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto db : dbs) {
     auto stats = db->GetOptions().statistics;

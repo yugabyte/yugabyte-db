@@ -61,7 +61,7 @@ public class Universe extends Model {
   public static final String HELM2_LEGACY = "helm2Legacy";
 
   // This is a key lock for Universe by UUID.
-  private static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
+  public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
 
   private static void checkUniverseInCustomer(UUID universeUUID, Customer customer) {
     if (!customer.getUniverseUUIDs().contains(universeUUID)) {
@@ -135,6 +135,7 @@ public class Universe extends Model {
   @Transient private UniverseDefinitionTaskParams universeDetails;
 
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
+    universeDetailsJson = Json.stringify(Json.toJson(details));
     universeDetails = details;
   }
 
@@ -678,7 +679,8 @@ public class Universe extends Model {
    */
   public void save(boolean incrementVersion) {
     // Update the universe details json.
-    this.universeDetailsJson = Json.stringify(Json.toJson(universeDetails));
+    this.universeDetailsJson =
+        Json.stringify(RedactingService.filterSecretFields(Json.toJson(universeDetails)));
     this.version = incrementVersion ? this.version + 1 : this.version;
     super.save();
   }

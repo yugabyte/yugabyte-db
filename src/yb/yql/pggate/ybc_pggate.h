@@ -154,6 +154,7 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
                                    YBCPgOid database_oid,
                                    YBCPgOid tablegroup_oid,
+                                   YBCPgOid tablespace_oid,
                                    YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateTablegroup(YBCPgStatement handle);
 
@@ -527,6 +528,9 @@ int32_t YBCGetSequenceCacheMinval();
 
 // Retrieve value of ysql_disable_index_backfill gflag.
 bool YBCGetDisableIndexBackfill();
+
+// Retrieve value of log_ysql_catalog_versions gflag.
+bool YBCGetLogYsqlCatalogVersions();
 
 bool YBCPgIsYugaByteEnabled();
 

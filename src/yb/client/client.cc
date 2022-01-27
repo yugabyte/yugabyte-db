@@ -124,6 +124,8 @@ using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
 using yb::master::GetTabletLocationsResponsePB;
+using yb::master::GetTransactionStatusTabletsRequestPB;
+using yb::master::GetTransactionStatusTabletsResponsePB;
 using yb::master::IsLoadBalancedRequestPB;
 using yb::master::IsLoadBalancedResponsePB;
 using yb::master::IsLoadBalancerIdleRequestPB;
@@ -186,6 +188,8 @@ using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
 using yb::master::CreateTransactionStatusTableResponsePB;
+using yb::master::UpdateConsumerOnProducerSplitRequestPB;
+using yb::master::UpdateConsumerOnProducerSplitResponsePB;
 using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
@@ -1016,12 +1020,17 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
 
 Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
-                                  const std::string& tablegroup_id) {
+                                  const std::string& tablegroup_id,
+                                  const std::string& tablespace_id) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
   req.set_namespace_id(namespace_id);
   req.set_namespace_name(namespace_name);
+
+  if (!tablespace_id.empty()) {
+    req.set_tablespace_id(tablespace_id);
+  }
 
   int attempts = 0;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
@@ -1454,7 +1463,8 @@ void YBClient::GetCDCStream(const CDCStreamId& stream_id,
 }
 
 Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
-                                 bool force,
+                                 bool force_delete,
+                                 bool ignore_errors,
                                  master::DeleteCDCStreamResponsePB* ret) {
   if (streams.empty()) {
     return STATUS(InvalidArgument, "At least one stream id should be provided");
@@ -1466,7 +1476,8 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
   for (const auto& stream : streams) {
     req.add_stream_id(stream);
   }
-  req.set_force(force);
+  req.set_force_delete(force_delete);
+  req.set_ignore_errors(ignore_errors);
 
   if (ret) {
     CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*ret), DeleteCDCStream);
@@ -1478,10 +1489,13 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
   return Status::OK();
 }
 
-Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id) {
+Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id, bool force_delete,
+                                 bool ignore_errors) {
   // Setting up request.
   DeleteCDCStreamRequestPB req;
   req.add_stream_id(stream_id);
+  req.set_force_delete(force_delete);
+  req.set_ignore_errors(ignore_errors);
 
   DeleteCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, DeleteCDCStream);
@@ -1506,6 +1520,27 @@ Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
 
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
+  return Status::OK();
+}
+
+Status YBClient::UpdateConsumerOnProducerSplit(
+    const string& producer_id,
+    const CDCStreamId& stream_id,
+    const master::ProducerSplitTabletInfoPB& split_info) {
+  if (producer_id.empty()) {
+    return STATUS(InvalidArgument, "Producer id is required.");
+  }
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  UpdateConsumerOnProducerSplitRequestPB req;
+  req.set_producer_id(producer_id);
+  req.set_stream_id(stream_id);
+  req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
+
+  UpdateConsumerOnProducerSplitResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerSplit);
   return Status::OK();
 }
 
@@ -1755,6 +1790,23 @@ Status YBClient::GetTabletLocation(const TabletId& tablet_id,
 
   *tablet_location = resp.tablet_locations(0);
   return Status::OK();
+}
+
+Result<TransactionStatusTablets> YBClient::GetTransactionStatusTablets(
+    const CloudInfoPB& placement) {
+  GetTransactionStatusTabletsRequestPB req;
+  GetTransactionStatusTabletsResponsePB resp;
+
+  req.mutable_placement()->CopyFrom(placement);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTransactionStatusTablets);
+
+  TransactionStatusTablets tablets;
+
+  MoveCollection(&resp.global_tablet_id(), &tablets.global_tablets);
+  MoveCollection(&resp.placement_local_tablet_id(), &tablets.placement_local_tablets);
+
+  return tablets;
 }
 
 Status YBClient::GetTablets(const YBTableName& table_name,

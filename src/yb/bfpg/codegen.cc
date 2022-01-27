@@ -373,7 +373,7 @@ class BFCodegen {
            << "const vector<std::function<Status(const std::vector<std::shared_ptr<PType>>&, "
            << "const std::shared_ptr<RType>&)>>" << endl
            << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncs = {" << endl;
-    for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
+    for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "Exec<PType, RType>," << endl;
     }
@@ -387,7 +387,7 @@ class BFCodegen {
            << "const vector<std::function<Status(const std::vector<PType*>&, RType*)>>"
            << endl
            << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncsRaw = {" << endl;
-    for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
+    for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "ExecRaw<PType, RType>," << endl;
     }
@@ -401,7 +401,7 @@ class BFCodegen {
            << "const vector<std::function<Status(std::vector<PType>*, RType*)>>"
            << endl
            << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncsRefAndRaw = {" << endl;
-    for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
+    for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "ExecRefAndRaw<PType, RType>," << endl;
     }

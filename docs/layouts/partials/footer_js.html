@@ -35,8 +35,13 @@
             }
             settings.headers = settings.isTocNested ? queryHeaders : "h2:visible";
             let headers = $(settings.headers);
-            headers.on("click", function() {
-              window.location.hash = this.id
+            $.each(headers, function (i, value) {
+              let a = document.createElement("a");
+              a.setAttribute("href", "#" + value.id);
+              a.className = "header-link";
+              a.innerHTML = headers[i].innerHTML;
+              headers[i].innerHTML = "";
+              headers[i].appendChild(a);
             }).addClass("clickable-header");
             // remove submenus if TOC is not nested
             if (!settings.isTocNested) {

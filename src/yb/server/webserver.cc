@@ -53,7 +53,6 @@
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/lexical_cast.hpp>
 #include <cds/init.h>
 #include <glog/logging.h>
 #include <squeasel.h>
@@ -95,9 +94,9 @@ DEFINE_int32(webserver_zlib_compression_level, 1,
 TAG_FLAG(webserver_zlib_compression_level, advanced);
 TAG_FLAG(webserver_zlib_compression_level, runtime);
 
-DEFINE_int64(webserver_compression_threshold_kb, 4,
-             "The threshold of response size above which compression is performed."
-             "Default value is 4KB");
+DEFINE_uint64(webserver_compression_threshold_kb, 4,
+              "The threshold of response size above which compression is performed."
+              "Default value is 4KB");
 TAG_FLAG(webserver_compression_threshold_kb, advanced);
 TAG_FLAG(webserver_compression_threshold_kb, runtime);
 
@@ -115,7 +114,7 @@ Webserver::Webserver(const WebserverOptions& opts, const std::string& server_nam
     context_(nullptr),
     server_name_(server_name) {
   string host = opts.bind_interface.empty() ? "0.0.0.0" : opts.bind_interface;
-  http_address_ = host + ":" + boost::lexical_cast<string>(opts.port);
+  http_address_ = host + ":" + std::to_string(opts.port);
 }
 
 Webserver::~Webserver() {

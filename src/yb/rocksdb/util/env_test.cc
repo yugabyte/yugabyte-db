@@ -66,7 +66,7 @@ std::atomic<bool> called;
 
 static const int kDelayMicros = 100000;
 
-class EnvPosixTest : public testing::Test {
+class EnvPosixTest : public RocksDBTest {
  private:
   port::Mutex mu_;
   std::string events_;

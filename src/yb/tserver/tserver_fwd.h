@@ -18,6 +18,8 @@
 #include "yb/tserver/tserver.fwd.h"
 #include "yb/tserver/tserver_service.fwd.h"
 
+#include "yb/util/strongly_typed_bool.h"
+
 namespace yb {
 namespace tserver {
 
@@ -43,6 +45,8 @@ class TabletServiceImpl;
 class TabletServerPathHandlers;
 
 enum class TabletServerServiceRpcMethodIndexes;
+
+YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
 
 } // namespace tserver
 } // namespace yb

@@ -21,6 +21,8 @@ export default class YBModalForm extends Component {
       footerAccessory,
       showCancelButton,
       className,
+      dialogClassName,
+      headerClassName,
       normalizeFooter
     } = this.props;
 
@@ -30,7 +32,13 @@ export default class YBModalForm extends Component {
     }
 
     return (
-      <Modal show={visible} onHide={onHide} bsSize={size} className={className}>
+      <Modal
+        show={visible}
+        onHide={onHide}
+        bsSize={size}
+        className={className}
+        dialogClassName={dialogClassName}
+      >
         <Formik
           initialValues={this.props.initialValues}
           validationSchema={this.props.validationSchema}
@@ -47,7 +55,7 @@ export default class YBModalForm extends Component {
                 props.handleSubmit(e);
               }}
             >
-              <Modal.Header closeButton>
+              <Modal.Header className={headerClassName} closeButton>
                 <Modal.Title>{title}</Modal.Title>
                 <div
                   className={`yb-alert-item

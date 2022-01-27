@@ -254,7 +254,10 @@ void CDCServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
                              context);
 
   vector<CDCStreamId> streams(req->stream_id().begin(), req->stream_id().end());
-  Status s = async_client_init_->client()->DeleteCDCStream(streams);
+  Status s = async_client_init_->client()->DeleteCDCStream(
+        streams,
+        (req->has_force_delete() && req->force_delete()),
+        (req->has_ignore_errors() && req->ignore_errors()));
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   context.RespondSuccess();
@@ -1349,20 +1352,25 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
   }
 
   if (update_cdc_state) {
-    auto res = GetCdcStateTable();
-    RETURN_NOT_OK(res);
-    const auto op = (*res)->NewUpdateOp();
+    auto cdc_state = VERIFY_RESULT(GetCdcStateTable());
+    const auto op = cdc_state->NewUpdateOp();
     auto* const req = op->mutable_request();
     DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
     QLAddStringHashValue(req, producer_tablet.tablet_id);
     QLAddStringRangeValue(req, producer_tablet.stream_id);
-    (*res)->AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
+
+    cdc_state->AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
     // If we have a last record hybrid time, use that for physical time. If not, it means we're
     // caught up, so the current time.
     uint64_t last_replication_time_micros = last_record_hybrid_time != 0 ?
         HybridTime(last_record_hybrid_time).GetPhysicalValueMicros() : GetCurrentTimeMicros();
-    (*res)->AddTimestampColumnValue(req, master::kCdcLastReplicationTime,
-                                                last_replication_time_micros);
+    cdc_state->AddTimestampColumnValue(req, master::kCdcLastReplicationTime,
+                                       last_replication_time_micros);
+    // Only perform the update if we have a row in cdc_state to prevent a race condition where
+    // a stream is deleted and then this logic inserts entries in cdc_state from that deleted
+    // stream.
+    auto* condition = req->mutable_if_expr()->mutable_condition();
+    condition->set_op(QL_OP_EXISTS);
     RETURN_NOT_OK(RefreshCacheOnFail(session->ApplyAndFlush(op)));
   }
 
@@ -1605,8 +1613,9 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
     const auto& stream_index = tablet_checkpoints_.get<StreamTag>();
     if (stream_index.find(info.stream_id) != stream_index.end()) {
       // Did not find matching tablet ID.
-      return STATUS_FORMAT(InvalidArgument, "Tablet ID $0 is not part of stream ID $1",
-                           info.tablet_id, info.stream_id);
+      // TODO: Add the split tablets in during tablet split?
+      LOG(INFO) << "Tablet ID " << info.tablet_id << " is not part of stream ID " << info.stream_id
+                << ". Repopulating tablet list for this stream.";
     }
   }
 
@@ -1618,7 +1627,11 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
     for (const auto &tablet : tablets) {
       // Add every tablet in the stream.
       ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet.tablet_id()};
-      tablet_checkpoints_.emplace(producer_info, TabletCheckpoint(), TabletCheckpoint());
+      auto it = tablet_checkpoints_.find(producer_info);
+      if (it == tablet_checkpoints_.end()) {
+        // This is a new tablet, lets add it to the map.
+        tablet_checkpoints_.emplace(producer_info, TabletCheckpoint(), TabletCheckpoint());
+      }
       // If this is the tablet that the user requested.
       if (tablet.tablet_id() == info.tablet_id) {
         found = true;

@@ -5,7 +5,7 @@ import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
 import { Col, Alert } from 'react-bootstrap';
 import { YBModal, YBInputField, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
-import { isNonEmptyArray, get } from '../../../../utils/ObjectUtils';
+import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
@@ -100,9 +100,9 @@ export default class RollingUpgradeForm extends Component {
     const tserverGFlagList = [];
     if (isNonEmptyArray(values?.gFlags)) {
       values.gFlags.forEach((flag) => {
-        if (get(flag, 'MASTER', null))
+        if (flag?.hasOwnProperty('MASTER'))
           masterGFlagList.push({ name: flag?.Name, value: flag['MASTER'] });
-        if (get(flag, 'TSERVER', null))
+        if (flag?.hasOwnProperty('TSERVER'))
           tserverGFlagList.push({ name: flag?.Name, value: flag['TSERVER'] });
       });
     }
@@ -229,27 +229,33 @@ export default class RollingUpgradeForm extends Component {
             visible={modalVisible}
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
-            title="Flags"
+            title="G-Flags"
             size="large"
             onFormSubmit={submitAction}
             error={error}
+            dialogClassName="gflag-modal"
           >
-            <FieldArray name="gFlags" component={GFlagComponent} dbVersion={currentVersion} />
+            <FieldArray
+              name="gFlags"
+              component={GFlagComponent}
+              dbVersion={currentVersion}
+              rerenderOnEveryChange={true}
+            />
             <FlexContainer className="gflag-upgrade-container">
-              <FlexShrink>
-                <span className="gflag-upgrade--label">G-Flag Upgrade Options</span>
+              <FlexShrink className="gflag-upgrade--label">
+                <span>G-Flag Upgrade Options</span>
               </FlexShrink>
               <div className="gflag-upgrade-options">
                 {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target) => (
-                  <span className="btn-group btn-group-radio upgrade-option" key={target}>
+                  <div className="upgrade-radio-option" key={target}>
                     <Field
                       name={'upgradeOption'}
                       type="radio"
                       component="input"
                       value={`${target}`}
-                    />{' '}
-                    {`${target}`}{' '}
-                  </span>
+                    />
+                    <span className="upgrade-radio-label">{`${target}`}</span>
+                  </div>
                 ))}
               </div>
             </FlexContainer>

@@ -91,6 +91,9 @@ SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
 EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
 
+SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS NOT null;
+EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS NOT null;
+
 SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
 EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
 
@@ -260,3 +263,24 @@ select * from test where pk=17;
 explain select * from test where pk=25;
 select * from test where pk=25;
 
+-- test index scan where the column type does not match value type
+CREATE TABLE pk_real(c0 REAL, PRIMARY KEY(c0 asc));
+INSERT INTO pk_real(c0) VALUES(0.4);
+EXPLAIN SELECT ALL pk_real.c0 FROM pk_real WHERE ((0.6)>(pk_real.c0));
+SELECT ALL pk_real.c0 FROM pk_real WHERE ((0.6)>(pk_real.c0));
+EXPLAIN SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = ANY(ARRAY[0.6, 0.4]);
+-- 0.4::FLOAT4 is not equal to 0.4::DOUBLE PRECISION
+SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = ANY(ARRAY[0.6, 0.4]);
+INSERT INTO pk_real(c0) VALUES(0.5);
+EXPLAIN SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = 0.5;
+-- 0.5::FLOAT4 is equal to 0.5::DOUBLE PRECISION
+SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = 0.5;
+
+CREATE TABLE pk_smallint(c0 SMALLINT, PRIMARY KEY(c0 asc));
+INSERT INTO pk_smallint VALUES(123), (-123);
+EXPLAIN SELECT c0 FROM pk_smallint WHERE (65568 > c0);
+SELECT c0 FROM pk_smallint WHERE (65568 > c0);
+EXPLAIN SELECT c0 FROM pk_smallint WHERE (c0 > -65539);
+SELECT c0 FROM pk_smallint WHERE (c0 > -65539);
+EXPLAIN SELECT c0 FROM pk_smallint WHERE (c0 = ANY(ARRAY[-65539, 65568]));
+SELECT c0 FROM pk_smallint WHERE (c0 = ANY(ARRAY[-65539, 65568]));

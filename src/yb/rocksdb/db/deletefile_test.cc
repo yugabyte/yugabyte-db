@@ -53,7 +53,7 @@ namespace rocksdb {
 
 YB_STRONGLY_TYPED_BOOL(StopOnMaxFilesDeleted);
 
-class DeleteFileTest : public testing::Test {
+class DeleteFileTest : public RocksDBTest {
  public:
   std::string dbname_;
   Options options_;

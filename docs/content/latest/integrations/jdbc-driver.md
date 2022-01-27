@@ -2,12 +2,12 @@
 title: Yugabyte JDBC Driver
 linkTitle: Yugabyte JDBC Driver
 description: Yugabyte JDBC Driver for YSQL
+section: INTEGRATIONS
 aliases:
   - /latest/integrations/smart-driver/
 menu:
   latest:
     identifier: jdbc-driver
-    parent: integrations
     weight: 577
 isTocNested: true
 showAsideToc: true
@@ -109,7 +109,7 @@ The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
 The following connection properties need to be added to enable load balancing:
 
 - load-balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud:region:zone`.
+- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
 
 ## Use the driver
 
@@ -129,7 +129,7 @@ To use the driver, do the following:
   To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 
   ```java
-  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1.region1:zone1,cloud1.region1.zone2";
+  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1.region1.zone1,cloud1.region1.zone2";
   DriverManager.getConnection(yburl);
   ```
 

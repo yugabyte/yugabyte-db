@@ -492,6 +492,7 @@ public class ModelFactory {
         new MaintenanceWindow()
             .generateUUID()
             .setName("Test")
+            .setDescription("Test Description")
             .setStartTime(startDate)
             .setEndTime(endDate)
             .setCustomerUUID(customerUUID)

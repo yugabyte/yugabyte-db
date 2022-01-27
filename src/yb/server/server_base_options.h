@@ -101,6 +101,8 @@ class ServerBaseOptions {
 
   ServerBaseOptions(const ServerBaseOptions& options);
 
+  WebserverOptions& CompleteWebserverOptions();
+
  protected:
   explicit ServerBaseOptions(int default_port);
 
@@ -129,6 +131,8 @@ CHECKED_STATUS DetermineMasterAddresses(
 std::string MasterAddressesToString(const MasterAddresses& addresses);
 
 Result<std::vector<Endpoint>> ResolveMasterAddresses(const MasterAddresses& master_addresses);
+
+CloudInfoPB GetPlacementFromGFlags();
 
 } // namespace server
 } // namespace yb

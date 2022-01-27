@@ -427,7 +427,8 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(100), "Create data and wal directories"));
 }
 
-TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
+// Skipping in TSAN because of an error with initdb in TSAN when ysql is enabled
+TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest)) {
   const int kNumReplicas = 3;
   string parent_table_id;
   string tablet_id;
@@ -435,6 +436,7 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
   vector<string> master_flags;
   string namespace_name = "tablegroup_test_namespace_name";
   TablegroupId tablegroup_id = "tablegroup_test_id00000000000000";
+  TablespaceId tablespace_id = "";
   string namespace_id;
 
   ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
@@ -459,7 +461,7 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
 
   // Since this is just for testing purposes, we do not bother generating a valid PgsqlTablegroupId
   ASSERT_OK(
-      client_->CreateTablegroup(namespace_name, namespace_id, tablegroup_id));
+      client_->CreateTablegroup(namespace_name, namespace_id, tablegroup_id, tablespace_id));
 
   // Now want to ensure that the newly created tablegroup shows up in the list.
   auto exists = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));
@@ -527,9 +529,9 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
   // Count the total Number of Raft Leaders in the cluster. Go through each tablet of every
   // tablet-server and sum up the leaders.
   int64_t kNumRaftLeaders = 0;
-  for (int i = 0 ; i < kNumReplicas; i++) {
+  for (size_t i = 0 ; i < kNumReplicas; i++) {
     auto tablet_ids = ASSERT_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
-    for(int ti = 0; ti < inspect_->ListTabletsOnTS(i).size(); ti++) {
+    for(size_t ti = 0; ti < inspect_->ListTabletsOnTS(i).size(); ti++) {
       const char *tabletId = tablet_ids[ti].c_str();
       kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetInt64Metric(
           &METRIC_ENTITY_tablet, tabletId, &METRIC_is_raft_leader, "value"));
