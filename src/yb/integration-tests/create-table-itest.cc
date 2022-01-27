@@ -427,7 +427,8 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(100), "Create data and wal directories"));
 }
 
-TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
+// Skipping in TSAN because of an error with initdb in TSAN when ysql is enabled
+TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest)) {
   const int kNumReplicas = 3;
   string parent_table_id;
   string tablet_id;
