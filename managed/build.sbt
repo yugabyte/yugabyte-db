@@ -164,6 +164,8 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.11.931",
   "com.cronutils" % "cron-utils" % "9.1.5",
+  "com.azure" % "azure-storage-blob" % "12.7.0",
+  "com.azure" % "azure-core" % "1.1.0",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
@@ -361,6 +363,7 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-handler" % "4.1.66.Final",
   "io.netty" % "netty-codec-http" % "4.1.66.Final",
   "io.netty" % "netty" % "3.10.6.Final",
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
   "com.cronutils" % "cron-utils" % "9.1.5",
   "com.nimbusds" % "nimbus-jose-jwt" % "9.11.3",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
@@ -372,6 +375,11 @@ libraryDependencies ++= Seq(
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
+dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
+dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
+dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8"
+
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")

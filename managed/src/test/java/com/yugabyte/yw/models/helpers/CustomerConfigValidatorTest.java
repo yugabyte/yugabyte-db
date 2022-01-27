@@ -3,19 +3,26 @@
 package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
-import static org.hamcrest.MatcherAssert.assertThat;
 
+import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_AZURE;
+import static org.junit.Assert.assertThat;
+
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerConfig.ConfigType;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
+import junitparams.converters.Nullable;
 import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -169,6 +176,39 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         thrown(
             PlatformServiceException.class,
             "errorJson: {\"data.BACKUP_LOCATION\":[\"" + expectedMessage + "\"]}"));
+  }
+
+  @Parameters({
+    "https://stoe.ws.net, fakeToken, Invalid azUriPath format: https://stoe.ws.net",
+    "http://stoe.ws.net, fakeToken, Invalid azUriPath format: http://stoe.ws.net",
+  })
+  @Test
+  public void testValidateDataContent_Storage_AZPreflightCheckValidator(
+      String containerUrl, String sasToken, @Nullable String expectedMessage) {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, containerUrl);
+    data.put(AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME, sasToken);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_AZURE, data);
+    if ((expectedMessage != null) && !expectedMessage.equals("")) {
+      assertThat(
+          () -> customerConfigValidator.validateConfig(config),
+          thrown(
+              PlatformServiceException.class,
+              "errorJson: {\""
+                  + fieldFullName(BACKUP_LOCATION_FIELDNAME)
+                  + "\":[\""
+                  + expectedMessage
+                  + "\"]}"));
+    } else {
+      customerConfigValidator.validateConfig(config);
+    }
+  }
+
+  private static String fieldFullName(String fieldName) {
+    if (StringUtils.isEmpty(fieldName)) {
+      return "data";
+    }
+    return "data." + fieldName;
   }
 
   private CustomerConfig createConfig(ConfigType type, String name, ObjectNode data) {

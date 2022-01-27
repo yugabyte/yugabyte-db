@@ -17,6 +17,8 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.models.BlobStorageException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,12 +31,14 @@ import com.google.cloud.storage.StorageException;
 import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.Schedule;
 import java.io.ByteArrayInputStream;
+import java.net.UnknownHostException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -55,7 +59,7 @@ public class CustomerConfigValidator {
 
   private static final String NAME_NFS = "NFS";
 
-  private static final String NAME_AZURE = "AZ";
+  public static final String NAME_AZURE = "AZ";
 
   private static final String[] S3_URL_SCHEMES = {"http", "https", "s3"};
 
@@ -89,6 +93,8 @@ public class CustomerConfigValidator {
 
   private final BeanValidator beanValidator;
 
+  @Inject AZUtil azUtil;
+
   public abstract static class ConfigValidator {
 
     protected final String type;
@@ -106,7 +112,7 @@ public class CustomerConfigValidator {
       }
     }
 
-    protected String fieldFullName(String fieldName) {
+    protected static String fieldFullName(String fieldName) {
       if (StringUtils.isEmpty(fieldName)) {
         return "data";
       }
@@ -154,10 +160,8 @@ public class CustomerConfigValidator {
         String s3Uri = s3UriPath;
         // Assuming bucket name will always start with s3:// otherwise that will be invalid
         if (s3UriPath.length() < 5 || !s3UriPath.startsWith("s3://")) {
-          beanValidator
-              .error()
-              .forField(fieldFullName(fieldName), "Invalid s3UriPath format: " + s3UriPath)
-              .throwError();
+          String exceptionMsg = "Invalid s3UriPath format: " + s3UriPath;
+          throwBeanValidatorError(fieldName, exceptionMsg);
         } else {
           try {
             // Disable cert checking while connecting with s3
@@ -174,27 +178,23 @@ public class CustomerConfigValidator {
             // Only the bucket has been given, with no subdir.
             if (bucketSplit.length == 1) {
               if (!s3Client.doesBucketExistV2(bucketName)) {
-                beanValidator
-                    .error()
-                    .forField(fieldFullName(fieldName), "S3 URI path " + s3Uri + " doesn't exist")
-                    .throwError();
+                String exceptionMsg = "S3 URI path " + s3Uri + " doesn't exist";
+                throwBeanValidatorError(fieldName, exceptionMsg);
               }
             } else {
               ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
               if (result.getKeyCount() == 0) {
-                beanValidator
-                    .error()
-                    .forField(fieldFullName(fieldName), "S3 URI path " + s3Uri + " doesn't exist")
-                    .throwError();
+                String exceptionMsg = "S3 URI path " + s3Uri + " doesn't exist";
+                throwBeanValidatorError(fieldName, exceptionMsg);
               }
             }
           } catch (AmazonS3Exception s3Exception) {
             String errMessage = s3Exception.getErrorMessage();
             if (errMessage.contains("Denied") || errMessage.contains("bucket"))
               errMessage += " " + s3Uri;
-            beanValidator.error().forField(fieldFullName(fieldName), errMessage).throwError();
+            throwBeanValidatorError(fieldName, errMessage);
           } catch (SdkClientException e) {
-            beanValidator.error().forField(fieldFullName(fieldName), e.getMessage()).throwError();
+            throwBeanValidatorError(fieldName, e.getMessage());
           } finally {
             // Re-enable cert checking as it applies globally
             System.setProperty(
@@ -240,10 +240,8 @@ public class CustomerConfigValidator {
     @Override
     protected void doValidate(String value) {
       if (!pattern.matcher(value).matches()) {
-        beanValidator
-            .error()
-            .forField(fieldFullName(fieldName), "Invalid field value '" + value + "'.")
-            .throwError();
+        String errorMsg = "Invalid field value '" + value + "'.";
+        throwBeanValidatorError(fieldName, errorMsg);
       }
     }
   }
@@ -269,10 +267,8 @@ public class CustomerConfigValidator {
     protected void doValidate(String value) {
       if (StringUtils.isEmpty(value)) {
         if (!emptyAllowed) {
-          beanValidator
-              .error()
-              .forField(fieldFullName(fieldName), "This field is required.")
-              .throwError();
+          String errorMsg = "This field is required.";
+          throwBeanValidatorError(fieldName, errorMsg);
         }
         return;
       }
@@ -306,10 +302,8 @@ public class CustomerConfigValidator {
       }
 
       if (!valid) {
-        beanValidator
-            .error()
-            .forField(fieldFullName(fieldName), "Invalid field value '" + value + "'.")
-            .throwError();
+        String errorMsg = "Invalid field value '" + value + "'.";
+        throwBeanValidatorError(fieldName, errorMsg);
       }
     }
   }
@@ -330,10 +324,8 @@ public class CustomerConfigValidator {
         String gsUri = gsUriPath;
         // Assuming bucket name will always start with gs:// otherwise that will be invalid
         if (gsUriPath.length() < 5 || !gsUriPath.startsWith("gs://")) {
-          beanValidator
-              .error()
-              .forField(fieldFullName(fieldName), "Invalid gsUriPath format: " + gsUriPath)
-              .throwError();
+          String exceptionMsg = "Invalid gsUriPath format: " + gsUriPath;
+          throwBeanValidatorError(fieldName, exceptionMsg);
         } else {
           gsUriPath = gsUriPath.substring(5);
           String[] bucketSplit = gsUriPath.split("/", 2);
@@ -360,19 +352,71 @@ public class CustomerConfigValidator {
                       Storage.BlobListOption.prefix(prefix),
                       Storage.BlobListOption.currentDirectory());
               if (!blobs.getValues().iterator().hasNext()) {
-                beanValidator
-                    .error()
-                    .forField(fieldFullName(fieldName), "GS Uri path " + gsUri + " doesn't exist")
-                    .throwError();
+                String exceptionMsg = "GS Uri path " + gsUri + " doesn't exist";
+                throwBeanValidatorError(fieldName, exceptionMsg);
               }
             }
           } catch (StorageException exp) {
-            beanValidator.error().forField(fieldFullName(fieldName), exp.getMessage()).throwError();
+            throwBeanValidatorError(fieldName, exp.getMessage());
           } catch (Exception e) {
-            beanValidator
-                .error()
-                .forField(fieldFullName(fieldName), "Invalid GCP Credential Json.")
-                .throwError();
+            String exceptionMsg = "Invalid GCP Credential Json.";
+            throwBeanValidatorError(fieldName, exceptionMsg);
+          }
+        }
+      }
+    }
+  }
+
+  public class ConfigAZPreflightCheckValidator extends ConfigValidator {
+
+    protected final String fieldName;
+
+    public ConfigAZPreflightCheckValidator(String type, String name, String fieldName) {
+      super(type, name);
+      this.fieldName = fieldName;
+    }
+
+    @Override
+    public void doValidate(JsonNode data) {
+      if (this.name.equals(NAME_AZURE)
+          && data.get(azUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME) != null) {
+
+        String azSasToken = data.get(azUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME).asText();
+        String azUriPath = data.get(BACKUP_LOCATION_FIELDNAME).asText();
+
+        String exceptionMsg = null;
+        // Assuming azure backup location will always start with https://
+        if (azUriPath.length() < 8 || !azUriPath.startsWith("https://")) {
+          exceptionMsg = "Invalid azUriPath format: " + azUriPath;
+          throwBeanValidatorError(fieldName, exceptionMsg);
+        } else {
+          String[] splitLocation = azUtil.getSplitLocationValue(azUriPath, false);
+          int splitLength = splitLocation.length;
+          if (splitLength < 2) {
+            // azUrl and container should be there in backup location.
+            exceptionMsg = "Invalid azUriPath format: " + azUriPath;
+            throwBeanValidatorError(fieldName, exceptionMsg);
+          }
+
+          String azUrl = "https://" + splitLocation[0];
+          String container = splitLocation[1];
+
+          try {
+            BlobContainerClient blobContainerClient =
+                createBlobContainerClient(azUrl, azSasToken, container);
+            if (!blobContainerClient.exists()) {
+              exceptionMsg = "Blob container " + container + " doesn't exist";
+              throwBeanValidatorError(fieldName, exceptionMsg);
+            }
+          } catch (BlobStorageException e) {
+            exceptionMsg = "Invalid SAS token!";
+            throwBeanValidatorError(fieldName, exceptionMsg);
+          } catch (Exception e) {
+            if (e.getCause() != null && e.getCause() instanceof UnknownHostException) {
+              exceptionMsg = "Cannot access " + azUrl;
+              throwBeanValidatorError(fieldName, exceptionMsg);
+            }
+            throw e;
           }
         }
       }
@@ -406,6 +450,8 @@ public class CustomerConfigValidator {
         new ConfigS3PreflightCheckValidator(STORAGE.name(), NAME_S3, BACKUP_LOCATION_FIELDNAME));
     validators.add(
         new ConfigGCSPreflightCheckValidator(STORAGE.name(), NAME_GCS, BACKUP_LOCATION_FIELDNAME));
+    validators.add(
+        new ConfigAZPreflightCheckValidator(STORAGE.name(), NAME_AZURE, BACKUP_LOCATION_FIELDNAME));
   }
 
   /**
@@ -526,5 +572,17 @@ public class CustomerConfigValidator {
             .withEndpointConfiguration(endpointConfiguration)
             .build();
     return client;
+  }
+
+  protected BlobContainerClient createBlobContainerClient(
+      String azUrl, String azSasToken, String container) {
+    return azUtil.createBlobContainerClient(azUrl, azSasToken, container);
+  }
+
+  private void throwBeanValidatorError(String fieldName, String exceptionMsg) {
+    beanValidator
+        .error()
+        .forField(ConfigValidator.fieldFullName(fieldName), exceptionMsg)
+        .throwError();
   }
 }
