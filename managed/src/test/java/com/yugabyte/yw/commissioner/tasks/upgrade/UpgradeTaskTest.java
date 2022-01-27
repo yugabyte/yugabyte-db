@@ -34,7 +34,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -67,7 +66,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   protected AvailabilityZone az2;
   protected AvailabilityZone az3;
 
-  protected String certContents =
+  protected String CERT_CONTENTS =
       "-----BEGIN CERTIFICATE-----\n"
           + "MIIDEjCCAfqgAwIBAgIUEdzNoxkMLrZCku6H1jQ4pUgPtpQwDQYJKoZIhvcNAQEL\n"
           + "BQAwLzERMA8GA1UECgwIWXVnYWJ5dGUxGjAYBgNVBAMMEUNBIGZvciBZdWdhYnl0\n"
@@ -116,8 +115,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     customCertInfo.rootCertPath = "rootCertPath";
     customCertInfo.nodeCertPath = "nodeCertPath";
     customCertInfo.nodeKeyPath = "nodeKeyPath";
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", certContents);
+    createTempFile("upgrade_task_test_ca.crt", CERT_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -125,7 +123,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           "test",
           date,
           date,
-          TestHelper.TMP_PATH + "/ca.crt",
+          TestHelper.TMP_PATH + "/upgrade_task_test_ca.crt",
           customCertInfo);
     } catch (IOException | NoSuchAlgorithmException ignored) {
     }
