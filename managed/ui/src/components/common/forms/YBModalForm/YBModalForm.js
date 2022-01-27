@@ -22,7 +22,7 @@ export default class YBModalForm extends Component {
       showCancelButton,
       className,
       dialogClassName,
-      titleClassName,
+      headerClassName,
       normalizeFooter
     } = this.props;
 
@@ -55,8 +55,8 @@ export default class YBModalForm extends Component {
                 props.handleSubmit(e);
               }}
             >
-              <Modal.Header closeButton>
-                <Modal.Title className={titleClassName}>{title}</Modal.Title>
+              <Modal.Header className={headerClassName} closeButton>
+                <Modal.Title>{title}</Modal.Title>
                 <div
                   className={`yb-alert-item
                     ${error ? '' : 'hide'}`}
