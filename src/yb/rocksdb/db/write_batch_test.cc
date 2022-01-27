@@ -39,6 +39,7 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
@@ -120,7 +121,7 @@ static std::string PrintContents(WriteBatch* b) {
   return state;
 }
 
-class WriteBatchTest : public testing::Test {};
+class WriteBatchTest : public RocksDBTest {};
 
 TEST_F(WriteBatchTest, Empty) {
   WriteBatch batch;

@@ -54,6 +54,7 @@
 #include "catalog/pg_subscription_rel.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "catalog/storage.h"
 #include "catalog/storage_xlog.h"
 #include "commands/tablecmds.h"
@@ -258,6 +259,7 @@ Relation
 heap_create(const char *relname,
 			Oid relnamespace,
 			Oid reltablespace,
+			Oid reltablegroup,
 			Oid relid,
 			Oid relfilenode,
 			TupleDesc tupDesc,
@@ -405,6 +407,20 @@ heap_create(const char *relname,
 	if ((IsYBRelation(rel) || !create_storage) && reltablespace != InvalidOid)
 		recordDependencyOnTablespace(RelationRelationId, relid,
 									 reltablespace);
+
+	if (IsYBRelation(rel) && reltablegroup != InvalidOid)
+	{
+		ObjectAddress myself, tablegroup;
+		myself.classId = RelationRelationId;
+		myself.objectId = relid;
+		myself.objectSubId = 0;
+
+		tablegroup.classId = YbTablegroupRelationId;
+		tablegroup.objectId = reltablegroup;
+		tablegroup.objectSubId = 0;
+
+		recordDependencyOn(&myself, &tablegroup, DEPENDENCY_NORMAL);
+	}
 
 	return rel;
 }
@@ -1151,6 +1167,7 @@ Oid
 heap_create_with_catalog(const char *relname,
 						 Oid relnamespace,
 						 Oid reltablespace,
+						 Oid reltablegroup,
 						 Oid relid,
 						 Oid reltypeid,
 						 Oid reloftypeid,
@@ -1344,6 +1361,7 @@ heap_create_with_catalog(const char *relname,
 	new_rel_desc = heap_create(relname,
 							   relnamespace,
 							   reltablespace,
+							   reltablegroup,
 							   relid,
 							   InvalidOid,
 							   tupdesc,

@@ -7,7 +7,6 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on Yugabyte Cloud.
 type: page
 section: YUGABYTE CLOUD
-aliases:
 menu:
   latest:
     identifier: cloud-quickstart

@@ -142,6 +142,12 @@ Status SetInternalSignalNumber(int signum);
 
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
+struct TransactionStatusTablets {
+  std::vector<TabletId> global_tablets;
+  std::vector<TabletId> placement_local_tablets;
+};
+
+
 // Creates a new YBClient with the desired options.
 //
 // Note that YBClients are shared amongst multiple threads and, as such,
@@ -442,7 +448,8 @@ class YBClient {
   // Create a new tablegroup.
   CHECKED_STATUS CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
-                                  const std::string& tablegroup_id);
+                                  const std::string& tablegroup_id,
+                                  const std::string& tablespace_id);
 
   // Delete a tablegroup.
   CHECKED_STATUS DeleteTablegroup(const std::string& namespace_id,
@@ -518,11 +525,14 @@ class YBClient {
 
   // Delete multiple CDC streams.
   CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams,
-                                 bool force = false,
+                                 bool force_delete = false,
+                                 bool ignore_errors = false,
                                  master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
-  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
+  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id,
+                                 bool force_delete = false,
+                                 bool ignore_errors = false);
 
   void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
 
@@ -623,6 +633,10 @@ class YBClient {
 
   CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
                                    master::TabletLocationsPB* tablet_location);
+
+  // Get a list of global transaction status tablets, and local transaction status tablets
+  // that are local to 'placement'.
+  Result<TransactionStatusTablets> GetTransactionStatusTablets(const CloudInfoPB& placement);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   CHECKED_STATUS ListMasters(

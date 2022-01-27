@@ -107,7 +107,6 @@ DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
-DECLARE_bool(TEST_select_all_tablets_for_split);
 DECLARE_uint64(outstanding_tablet_split_limit);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
@@ -808,7 +807,6 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_split_tablet_candidate_processing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_tablets_for_split) = false;
   }
 
  protected:

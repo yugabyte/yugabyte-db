@@ -229,27 +229,33 @@ export default class RollingUpgradeForm extends Component {
             visible={modalVisible}
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
-            title="Flags"
+            title="G-Flags"
             size="large"
             onFormSubmit={submitAction}
             error={error}
+            dialogClassName="gflag-modal"
           >
-            <FieldArray name="gFlags" component={GFlagComponent} dbVersion={currentVersion} />
+            <FieldArray
+              name="gFlags"
+              component={GFlagComponent}
+              dbVersion={currentVersion}
+              rerenderOnEveryChange={true}
+            />
             <FlexContainer className="gflag-upgrade-container">
-              <FlexShrink>
-                <span className="gflag-upgrade--label">G-Flag Upgrade Options</span>
+              <FlexShrink className="gflag-upgrade--label">
+                <span>G-Flag Upgrade Options</span>
               </FlexShrink>
               <div className="gflag-upgrade-options">
                 {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target) => (
-                  <span className="btn-group btn-group-radio upgrade-option" key={target}>
+                  <div className="upgrade-radio-option" key={target}>
                     <Field
                       name={'upgradeOption'}
                       type="radio"
                       component="input"
                       value={`${target}`}
-                    />{' '}
-                    {`${target}`}{' '}
-                  </span>
+                    />
+                    <span className="upgrade-radio-label">{`${target}`}</span>
+                  </div>
                 ))}
               </div>
             </FlexContainer>

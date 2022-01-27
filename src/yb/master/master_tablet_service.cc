@@ -48,30 +48,15 @@ MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Mas
     : TabletServiceImpl(server), master_(master) {
 }
 
-bool MasterTabletServiceImpl::GetTabletOrRespond(
-    const tserver::ReadRequestPB* req,
-    tserver::ReadResponsePB* resp,
-    rpc::RpcContext* context,
-    std::shared_ptr<tablet::AbstractTablet>* tablet,
-    tablet::TabletPeerPtr looked_up_tablet_peer) {
+Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabletForRead(
+  const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+  YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) {
   // Ignore looked_up_tablet_peer.
 
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, context)) {
-    return false;
-  }
+  RETURN_NOT_OK(l.first_failed_status());
 
-  const auto result = master_->catalog_manager()->GetSystemTablet(req->tablet_id());
-  if (PREDICT_FALSE(!result)) {
-    tserver::TabletServerErrorPB* error = resp->mutable_error();
-    StatusToPB(result.status(), error->mutable_status());
-    error->set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
-    context->RespondSuccess();
-    return false;
-  }
-
-  *tablet = *result;
-  return true;
+  return master_->catalog_manager()->GetSystemTablet(tablet_id);
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,

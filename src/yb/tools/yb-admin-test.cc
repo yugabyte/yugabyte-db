@@ -841,5 +841,64 @@ TEST_F(AdminCliTest, CompactSysCatalog) {
   ASSERT_OK(CallAdmin("compact_sys_catalog"));
 }
 
+// A simple smoke test to ensure it working and
+// nothing is broken by future changes.
+TEST_F(AdminCliTest, SetWalRetentionSecsTest) {
+  constexpr auto WAL_RET_TIME_SEC = 100ul;
+  constexpr auto UNEXPECTED_ARG = 911ul;
+
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  // Default table that gets created;
+  const auto& table_name = kTableName.table_name();
+  const auto& keyspace = kTableName.namespace_name();
+
+  // No WAL ret time found
+  {
+    const auto output = ASSERT_RESULT(CallAdmin("get_wal_retention_secs", keyspace, table_name));
+    ASSERT_NE(output.find("not set"), std::string::npos);
+  }
+
+  // Successfuly set WAL time and verified by the getter
+  {
+    ASSERT_OK(CallAdmin("set_wal_retention_secs", keyspace, table_name, WAL_RET_TIME_SEC));
+    const auto output = ASSERT_RESULT(CallAdmin("get_wal_retention_secs", keyspace, table_name));
+    ASSERT_TRUE(
+        output.find(std::to_string(WAL_RET_TIME_SEC)) != std::string::npos &&
+        output.find(table_name) != std::string::npos);
+  }
+
+  // Too many args in input
+  {
+    const auto output_setter =
+        CallAdmin("set_wal_retention_secs", keyspace, table_name, WAL_RET_TIME_SEC, UNEXPECTED_ARG);
+    ASSERT_FALSE(output_setter.ok());
+    ASSERT_TRUE(output_setter.status().IsRuntimeError());
+    ASSERT_TRUE(
+        output_setter.status().ToUserMessage().find("Invalid argument") != std::string::npos);
+
+    const auto output_getter =
+        CallAdmin("get_wal_retention_secs", keyspace, table_name, UNEXPECTED_ARG);
+    ASSERT_FALSE(output_getter.ok());
+    ASSERT_TRUE(output_getter.status().IsRuntimeError());
+    ASSERT_TRUE(
+        output_getter.status().ToUserMessage().find("Invalid argument") != std::string::npos);
+  }
+
+  // Outbounded arg in input
+  {
+    const auto output_setter =
+        CallAdmin("set_wal_retention_secs", keyspace, table_name, -WAL_RET_TIME_SEC);
+    ASSERT_FALSE(output_setter.ok());
+    ASSERT_TRUE(output_setter.status().IsRuntimeError());
+
+    const auto output_getter =
+        CallAdmin("get_wal_retention_secs", keyspace, table_name + "NoTable");
+    ASSERT_FALSE(output_getter.ok());
+    ASSERT_TRUE(output_getter.status().IsRuntimeError());
+  }
+}
+
 }  // namespace tools
 }  // namespace yb

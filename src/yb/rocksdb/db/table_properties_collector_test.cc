@@ -45,7 +45,7 @@
 
 namespace rocksdb {
 
-class TablePropertiesTest : public testing::Test,
+class TablePropertiesTest : public RocksDBTest,
                             public testing::WithParamInterface<bool> {
  public:
   void SetUp() override { backward_mode_ = GetParam(); }

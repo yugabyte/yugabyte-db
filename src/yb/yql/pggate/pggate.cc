@@ -532,9 +532,10 @@ void PgApiImpl::InvalidateTableCache(const PgObjectId& table_id) {
 Status PgApiImpl::NewCreateTablegroup(const char *database_name,
                                       const PgOid database_oid,
                                       const PgOid tablegroup_oid,
+                                      const PgOid tablespace_oid,
                                       PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTablegroup>(pg_session_, database_name,
-                                                   database_oid, tablegroup_oid);
+                                                   database_oid, tablegroup_oid, tablespace_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -865,6 +866,8 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
       return down_cast<PgDropTable*>(handle)->Exec();
     case StmtOp::STMT_DROP_INDEX:
       return down_cast<PgDropIndex*>(handle)->Exec();
+    case StmtOp::STMT_DROP_TABLEGROUP:
+      return down_cast<PgDropTablegroup*>(handle)->Exec();
 
     default:
       break;
