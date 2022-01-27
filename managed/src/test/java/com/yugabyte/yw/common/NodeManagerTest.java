@@ -80,6 +80,7 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -205,6 +206,10 @@ public class NodeManagerTest extends FakeDBApplication {
     params.azUuid = testData.zone.uuid;
     params.instanceType = testData.node.getInstanceTypeCode();
     params.nodeName = testData.node.getNodeName();
+    Iterator<NodeDetails> iter = universe.getNodes().iterator();
+    if (iter.hasNext()) {
+      params.nodeUuid = iter.next().nodeUuid;
+    }
     params.universeUUID = universe.universeUUID;
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     params.currentClusterType = ClusterType.PRIMARY;
@@ -938,10 +943,13 @@ public class NodeManagerTest extends FakeDBApplication {
 
         break;
       case Destroy:
+        AnsibleDestroyServer.Params destroyParams = (AnsibleDestroyServer.Params) params;
         expectedCommand.add("--instance_type");
-        expectedCommand.add(instanceTypeCode);
+        expectedCommand.add(destroyParams.instanceType);
         expectedCommand.add("--node_ip");
-        expectedCommand.add("1.1.1.1");
+        expectedCommand.add(destroyParams.nodeIP);
+        expectedCommand.add("--node_uuid");
+        expectedCommand.add(destroyParams.nodeUuid.toString());
         break;
       case Tags:
         InstanceActions.Params tagsParams = (InstanceActions.Params) params;
@@ -2221,14 +2229,13 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testDestroyNodeCommand() {
     for (TestData t : testData) {
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
-      buildValidParams(t, params, createUniverse());
+      params.nodeIP = "1.1.1.1";
       buildValidParams(
           t,
           params,
           Universe.saveDetails(
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
-      params.nodeIP = "1.1.1.1";
-
+      assertNotNull(params.nodeUuid);
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
