@@ -325,6 +325,8 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
             action="store_true",
             default=False,
             help="Delete the static public ip.")
+        self.parser.add_argument("--node_uuid", default=None,
+                                 help="The uuid of the instance to delete.")
 
     def callback(self, args):
         self.update_ansible_vars_with_args(args)

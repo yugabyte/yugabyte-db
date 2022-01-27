@@ -467,6 +467,7 @@ public class ApiUtils {
     NodeDetails node = new NodeDetails();
     // TODO: Set nodeName to null for ToBeAdded state
     node.nodeName = "host-n" + idx;
+    node.nodeUuid = UUID.randomUUID();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.cloud = cloud;
     node.cloudInfo.az = zone;
