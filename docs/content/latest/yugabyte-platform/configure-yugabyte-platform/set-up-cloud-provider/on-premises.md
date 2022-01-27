@@ -87,8 +87,6 @@ To provision on-premises nodes with YugabyteDB, Yugabyte Platform requires SSH a
 
 If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually Provision Nodes](#manually-provision-nodes).
 
-You need to add the `yugabyte` user, since Yugabyte Platform requires this user to have SSH access to the configuration and access to the universe.
-
 #### SSH Port
 
 Provide the port number of SSH client connections. 
@@ -175,7 +173,7 @@ To provision your nodes manually, you have the following two options:
 
 * If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#running-the-pre-provisioning-script).
 
-* If the SSH user does not have anyvsudo privileges, you need to [set up the database nodes manually](#set-up-database-nodes-manually).
+* If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](#set-up-database-nodes-manually).
 
 #### Running the pre-provisioning script
 
@@ -268,7 +266,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     ```
 
     
-    Then, run the following command:
+    <br>Then, run the following command:
 
     ```sh
     $ sudo chronyc makestep   # (force instant sync to NTP server)
@@ -281,6 +279,8 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     $ sudo passwd yugabyte   # (add a password to the yugabyte user)
     $ sudo su - yugabyte   # (change to yugabyte user for convenient execution of next steps)
     ```
+
+    <br>Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
    
