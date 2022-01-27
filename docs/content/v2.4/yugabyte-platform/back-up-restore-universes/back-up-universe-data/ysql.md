@@ -49,5 +49,3 @@ Click **OK**. The requested backup begins immediately.
 
 If the universe has encrypted at rest enabled, data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted.
 A universe key metadata file, containing key references, is also backed up.
-
-Note that this release of Yugabyte Platform does not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
