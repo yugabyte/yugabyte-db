@@ -676,8 +676,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           } catch (Exception ex) {
             log.warn("On-prem node {} doesn't have a linked instance ", node.nodeName);
           }
+          continue;
         }
-        continue;
+        if (node.nodeUuid == null) {
+          // No other way to identify the node.
+          continue;
+        }
       }
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
@@ -686,6 +690,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.azUuid = node.azUuid;
       // Add the node name.
       params.nodeName = node.nodeName;
+      // Add the node UUID.
+      params.nodeUuid = node.nodeUuid;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Flag to be set where errors during Ansible Destroy Server will be ignored.
