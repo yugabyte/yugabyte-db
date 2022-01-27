@@ -119,7 +119,7 @@ The Yugabyte Cloud SLA, terms of service, acceptable use policy, and more can be
 
 The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page displays the current uptime status of Yugabyte Cloud and the [Yugabyte Support Portal](https://support.yugabyte.com/).
 
-The status page also provides notices of scheduled maintenace and current and past incidents.
+The status page also provides notices of scheduled maintenance and current and past incidents.
 
 Subscribe to the status page by clicking **Subscribe to Updates**. Email notifications are sent when incidents are created, updated, and resolved.
 
@@ -129,7 +129,7 @@ Subscribe to the status page by clicking **Subscribe to Updates**. Email notific
 
 Your data is processed at the Yugabyte Cloud account level, and each cloud account is a single tenant, meaning it runs its components for only one customer. Clusters in your cloud are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
 
-Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure, and provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
+Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure. Yugabyte Cloud also provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
 
 Yugabyte Cloud uses a shared responsibility model for cloud security. For more information on Yugabyte Cloud security, refer to [Security architecture](../cloud-security/).
 
@@ -139,7 +139,7 @@ Yugabyte Cloud uses a shared responsibility model for cloud security. For more i
 
 From the cloud console you can create single region clusters that can be deployed across multiple and single availability zones.
 
-The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failues and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
+The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
 
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
 - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
@@ -232,7 +232,7 @@ Yugabyte Cloud runs full backups, not incremental.
 
 Backups are retained in the same region as the cluster.
 
-Backups for AWS clusters are encrypted using AWS S3’s server-side encryption and backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
+Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
 
 Currently, Yugabyte Cloud does not support backups of free clusters.
 
