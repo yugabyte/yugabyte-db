@@ -39,11 +39,11 @@ jobs:
     compiler: gcc9
     build_type: debug
 
-  - os: macos
+  - os: mac11.6
     compiler: clang
     build_type: debug
 
-  - os: macos
+  - os: mac11.6
     compiler: clang
     build_type: release
 
