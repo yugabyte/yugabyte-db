@@ -664,12 +664,11 @@ ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum
 		if (IsSearchArray(key->sk_flags))
 		{
 			/*
-			 * Expect equal strategy here (i.e. IN .. or = ANY(..) conditions,
+			 * Only allow equal strategy here (i.e. IN .. or = ANY(..) conditions,
 			 * NOT IN will generate <> which is not a supported LSM/BTREE
 			 * operator, so it should not get to this point.
 			 */
-			Assert(key->sk_strategy == BTEqualStrategyNumber);
-			return is_primary_key;
+			return key->sk_strategy == BTEqualStrategyNumber && is_primary_key;
 		}
 		/* No other operators are supported. */
 		return false;

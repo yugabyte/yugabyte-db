@@ -270,3 +270,24 @@ EXPLAIN SELECT c0 FROM pk_smallint WHERE (c0 > -65539);
 SELECT c0 FROM pk_smallint WHERE (c0 > -65539);
 EXPLAIN SELECT c0 FROM pk_smallint WHERE (c0 = ANY(ARRAY[-65539, 65568]));
 SELECT c0 FROM pk_smallint WHERE (c0 = ANY(ARRAY[-65539, 65568]));
+
+-- test any/some/all
+create TABLE pk_int(c0 int, primary key(c0 ASC));
+INSERT INTO pk_int VALUES (1), (2), (3), (4);
+SELECT * FROM pk_int WHERE c0 IN (3, 4);
+SELECT * FROM pk_int WHERE c0 NOT IN (3, 4);
+SELECT * FROM pk_int WHERE c0 < ANY(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 <= ANY(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 = ANY(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 >= ANY(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 > ANY(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 < SOME(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 <= SOME(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 = SOME(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 >= SOME(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 > SOME(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 < ALL(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 <= ALL(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 = ALL(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 >= ALL(ARRAY[3, 4]);
+SELECT * FROM pk_int WHERE c0 > ALL(ARRAY[3, 4]);
