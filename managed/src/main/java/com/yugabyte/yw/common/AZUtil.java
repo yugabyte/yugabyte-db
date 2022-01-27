@@ -25,11 +25,11 @@ import com.azure.storage.blob.models.ListBlobsOptions;
 @Singleton
 @Slf4j
 public class AZUtil {
-  private static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
-  private static final String AZURE_STORAGE_BACKUP_LOCATION = "BACKUP_LOCATION";
+  public static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
+  public static final String AZURE_STORAGE_BACKUP_LOCATION = "BACKUP_LOCATION";
   private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
 
-  private static String[] getSplitLocationValue(String backupLocation, Boolean isConfigLocation) {
+  public static String[] getSplitLocationValue(String backupLocation, Boolean isConfigLocation) {
     backupLocation = backupLocation.substring(8);
     Integer splitValue = isConfigLocation ? 2 : 3;
     String[] split = backupLocation.split("/", splitValue);
@@ -82,7 +82,7 @@ public class AZUtil {
     return true;
   }
 
-  private static BlobContainerClient createBlobContainerClient(
+  public static BlobContainerClient createBlobContainerClient(
       String azureUrl, String sasToken, String container) {
     BlobContainerClient blobContainerClient =
         new BlobContainerClientBuilder()

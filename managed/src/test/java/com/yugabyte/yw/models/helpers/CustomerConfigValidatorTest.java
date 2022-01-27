@@ -12,6 +12,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.AWS_SECRET_
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.GCS_CREDENTIALS_JSON_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_GCS;
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_S3;
+import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.fieldFullName;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +23,8 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.models.BlobStorageException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -30,6 +33,7 @@ import com.google.api.gax.paging.Page;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.Storage.BlobListOption;
+import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -325,6 +329,42 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     }
   }
 
+  @Parameters({
+    "https://stoe.ws.net/container, fakeToken, null, false, true",
+    "https://stoe.ws.net, fakeToken, Invalid azUriPath format: https://stoe.ws.net, false, true",
+    "http://stoe.ws.net, fakeToken, Invalid azUriPath format: http://stoe.ws.net, false, true",
+    "https://storagetestazure.windows.net/container, tttt, Invalid SAS token!, true, true",
+    "https://stoe.ws.net/container1, tttt, Blob container container1 doesn't exist, false, false",
+  })
+  @Test
+  public void testValidateDataContent_Storage_AZPreflightCheckValidator(
+      String containerUrl,
+      String sasToken,
+      @Nullable String expectedMessage,
+      boolean refuseCredentials,
+      boolean isContainerExist) {
+    ((LocalCustomerConfigValidator) customerConfigValidator).setRefuseKeys(refuseCredentials);
+    when(((LocalCustomerConfigValidator) customerConfigValidator).blobContainerClient.exists())
+        .thenReturn(isContainerExist);
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, containerUrl);
+    data.put(AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME, sasToken);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_AZURE, data);
+    if ((expectedMessage != null) && !expectedMessage.equals("")) {
+      assertThat(
+          () -> customerConfigValidator.validateConfig(config),
+          thrown(
+              PlatformServiceException.class,
+              "errorJson: {\""
+                  + fieldFullName(BACKUP_LOCATION_FIELDNAME)
+                  + "\":[\""
+                  + expectedMessage
+                  + "\"]}"));
+    } else {
+      customerConfigValidator.validateConfig(config);
+    }
+  }
+
   private CustomerConfig createConfig(ConfigType type, String name, ObjectNode data) {
     return new CustomerConfig()
         .setCustomerUUID(UUID.randomUUID())
@@ -349,6 +389,10 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     private final AmazonS3Client s3Client = mock(AmazonS3Client.class);
 
     private final Storage gcpStorage = mock(Storage.class);
+
+    public final BlobContainerClient blobContainerClient = mock(BlobContainerClient.class);
+
+    private final BlobStorageException blobStorageException = mock(BlobStorageException.class);
 
     private boolean refuseKeys = false;
 
@@ -417,6 +461,15 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         throw new IOException("Invalid GCP Credential Json.");
       }
       return gcpStorage;
+    }
+
+    @Override
+    protected BlobContainerClient createBlobContainerClient(
+        String azUrl, String azSasToken, String container) {
+      if (refuseKeys) {
+        throw blobStorageException;
+      }
+      return blobContainerClient;
     }
 
     public void setRefuseKeys(boolean value) {
