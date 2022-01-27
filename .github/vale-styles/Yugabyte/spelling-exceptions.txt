@@ -469,6 +469,7 @@ proxying
 pseudocode
 pseudonymized
 pseudonymizer
+psql
 Puma
 pytest
 Python
@@ -824,6 +825,8 @@ Worldline
 Xcode
 Xeon
 YouTrack
+ycqlsh
+ysqlsh
 ytt
 Yubico
 Yugabyte
