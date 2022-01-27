@@ -2700,6 +2700,9 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
       }
       leader_lease_status = state_->GetLeaderLeaseStatusUnlocked(&remaining_old_leader_lease);
     }
+    if (leader_lease_status == LeaderLeaseStatus::HAS_LEASE) {
+      return Status::OK();
+    }
     CoarseTimePoint now = CoarseMonoClock::now();
     if (now > deadline) {
       return STATUS_FORMAT(

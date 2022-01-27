@@ -508,7 +508,17 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     request->set_propagated_hybrid_time(now_ht.ToUint64());
 
     // NOTE: committed_op_id may be overwritten later.
-    queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
+    // In our system committed_op_id means that this operation was also applied.
+    // If we have operation that applied significant time, followers would not know that this
+    // operation is committed until it is applied in the leader.
+    // To address this issue we use majority_replicated_op_id, that is updated before apply.
+    // But we could use it only when its term matches current term, see Fig.8 in Raft paper.
+    if (queue_state_.majority_replicated_op_id.index > queue_state_.committed_op_id.index &&
+        queue_state_.majority_replicated_op_id.term == queue_state_.current_term) {
+      queue_state_.majority_replicated_op_id.ToPB(request->mutable_committed_op_id());
+    } else {
+      queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
+    }
 
     request->set_caller_term(queue_state_.current_term);
     unreachable_time =
