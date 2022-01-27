@@ -67,7 +67,9 @@ To enable LDAP authentication for Yugabyte Platform login, you need to perform a
   --data-raw '[LDAP DN]'
   ```
 
-  <br>Replace `[LDAP DN]` with the actual value.
+  <br>Replace `[LDAP DN]` with the actual value, as per the following example: <br>
+
+  `,DC=yugabyte,DC=com`
 
 - Prefix to the common name (CN) of the user `yb.security.ldap.ldap_dn_prefix`, as follows:
 
@@ -79,7 +81,11 @@ To enable LDAP authentication for Yugabyte Platform login, you need to perform a
   --data-raw '[LDAP DN PREFIX]'
   ```
 
-  <br>Replace `[LDAP DN PREFIX]` with the actual value.
+  <br>Replace `[LDAP DN PREFIX]` with the actual value, as per the following example: <br>
+
+  `CN=`
+
+  <br>Note that Yugabyte Platform combines `ldap_basedn` and `ldap_dn_prefix` with the username provided during login to query the LDAP server. `ldap_basedn` and `ldap_dn_prefix` should be set accordingly.
 
 - The universally unique identifier (UUID) `yb.security.ldap.ldap_customeruuid`,  if you have a multi-tenant setup, as follows:
 
@@ -91,7 +97,7 @@ To enable LDAP authentication for Yugabyte Platform login, you need to perform a
   --data-raw '[UUID]'
   ```
 
-  <br>Replace `[UUID]` with the actual value.
+  <br>Replace `[UUID]` with the actual value.<br>
 
   If the UUID is not specified, then single-tenant is assumed by Yugabyte Platform.
 
