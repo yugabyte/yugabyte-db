@@ -54,6 +54,8 @@
 #include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
 
+DECLARE_bool(never_fsync);
+
 namespace rocksdb {
 
 // A wrapper for fadvise, if the platform doesn't support fadvise,
@@ -301,6 +303,9 @@ Status PosixMmapFile::Close() {
 Status PosixMmapFile::Flush() { return Status::OK(); }
 
 Status PosixMmapFile::Sync() {
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (fdatasync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -312,6 +317,9 @@ Status PosixMmapFile::Sync() {
  * Flush data as well as metadata to stable storage.
  */
 Status PosixMmapFile::Fsync() {
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (fsync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -454,6 +462,9 @@ Status PosixWritableFile::Sync() {
 }
 
 Status PosixWritableFile::Fsync() {
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (fsync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -515,6 +526,9 @@ size_t PosixWritableFile::GetUniqueId(char* id) const {
 PosixDirectory::~PosixDirectory() { close(fd_); }
 
 Status PosixDirectory::Fsync() {
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (fsync(fd_) == -1) {
     return STATUS_IO_ERROR("directory", errno);
   }

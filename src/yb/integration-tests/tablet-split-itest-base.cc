@@ -66,7 +66,6 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(replication_factor);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_do_not_start_election_test_only);
-DECLARE_bool(TEST_select_all_tablets_for_split);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 
@@ -134,7 +133,7 @@ Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& 
   tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
-  return catalog_mgr->SplitTablet(tablet_id);
+  return catalog_mgr->SplitTablet(tablet_id, true /* select_all_tablets_for_split */);
 }
 
 Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
@@ -325,7 +324,6 @@ void TabletSplitITest::SetUp() {
   FLAGS_cleanup_split_tablets_interval_sec = 1;
   FLAGS_enable_automatic_tablet_splitting = false;
   FLAGS_TEST_validate_all_tablet_candidates = true;
-  FLAGS_TEST_select_all_tablets_for_split = true;
   FLAGS_db_block_size_bytes = kDbBlockSizeBytes;
   // We set other block sizes to be small for following test reasons:
   // 1) To have more granular change of SST file size depending on number of rows written.
@@ -466,7 +464,7 @@ Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_has
 Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
     docdb::DocKeyHash split_hash_code,
     size_t num_rows,
-  bool parent_tablet_protected_from_deletion) {
+    bool parent_tablet_protected_from_deletion) {
   auto source_tablet_id = VERIFY_RESULT(SplitSingleTablet(split_hash_code));
 
   // If the parent tablet will not be deleted, then we will expect another tablet at the end.
@@ -930,7 +928,6 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
 
   RETURN_NOT_OK(RestartAllMasters(cluster_.get()));
   RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "0.0"));
-  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_select_all_tablets_for_split", "true"));
 
   if (change_split_boundary) {
     RETURN_NOT_OK(WriteRows(num_rows * 2, key));

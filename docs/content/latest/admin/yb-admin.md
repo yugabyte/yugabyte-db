@@ -128,7 +128,7 @@ yb-admin \
   * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
 * *ip_addr*: The IP address of the server node.
 * *port*: The port of the server node.
-* *uuid*: The uuid for the server that is being added/removed.
+* *uuid*: The UUID for the server that is being added/removed.
 
 #### list_tablet_servers
 
@@ -1050,8 +1050,8 @@ yb-admin \
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
-* *replication_factor*: The number of replicas for each tablet.
+* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, we can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, in the event that the user specifies a placement multiple times, the total count from all mentions is taken.
+* *replication_factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement_info*.
 * *placement_id*: The identifier of the primary cluster, which can be any unique string. Optional. If not set, a randomly-generated ID will be used.
 
 **Example**
@@ -1060,8 +1060,13 @@ yb-admin \
 $ ./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
-    aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
+    aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:2,aws.us-west.us-west-2c 5
 ```
+
+This will place a minimum of:
+1. 2 replicas in aws.us-west.us-west-2a
+2. 2 replicas in aws.us-west.us-west-2b
+3. 1 replica in aws.us-west.us-west-2c
 
 You can verify the new placement information by running the following `curl` command:
 

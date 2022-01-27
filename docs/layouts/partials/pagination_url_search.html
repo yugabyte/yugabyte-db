@@ -1,8 +1,8 @@
 {{ with $.context}}
   {{ .Scratch.Set "neededPrevLinkBuffer" false }}
-  {{ $url := .URL }}
+  {{ $url := .Permalink }}
   {{ $level := (cond (isset $ "level") $.level 1) }}
-  {{ $urlLevel := len (split (trim .URL "/") "/") }}
+  {{ $urlLevel := len (split (trim .Permalink "/") "/") }}
   {{ $context := $.context }}
   {{ $iterator := print "neededLinkCurrentIndex" $level }}
   {{ .Scratch.Set $iterator false }}

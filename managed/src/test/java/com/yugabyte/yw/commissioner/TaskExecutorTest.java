@@ -2,12 +2,13 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -20,12 +21,14 @@ import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.TaskInfo;
@@ -50,7 +53,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
@@ -59,13 +61,20 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private TaskExecutor taskExecutor;
 
+  private Config mockConfig;
+
   @Override
   protected Application provideApplication() {
+    mockConfig = mock(Config.class);
+    when(mockConfig.getString(anyString())).thenReturn("");
     return configureApplication(
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
-                .configure((Map) Helpers.inMemoryDatabase())
+                .configure(testDatabase())
+                .overrides(
+                    bind(RuntimeConfigFactory.class)
+                        .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
                 .overrides(
                     bind(PlatformReplicationManager.class)
                         .toInstance(mock(PlatformReplicationManager.class)))

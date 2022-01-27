@@ -270,7 +270,7 @@ class TwoStrComparator : public Comparator {
 };
 }  // namespace
 
-class ComparatorDBTest : public testing::Test {
+class ComparatorDBTest : public RocksDBTest {
  private:
   std::string dbname_;
   Env* env_;

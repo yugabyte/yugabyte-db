@@ -3,6 +3,7 @@ title: FAQs about YugabyteDB
 headerTitle: General FAQ
 linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
+section: FAQ
 aliases:
   - /latest/faq/product/
   - /latest/introduction/overview/
@@ -13,8 +14,7 @@ aliases:
 menu:
   latest:
     identifier: faq-general
-    parent: faq
-    weight: 2710
+    weight: 2720
 isTocNested: false
 showAsideToc: true
 ---
@@ -287,9 +287,9 @@ Please follow the steps in the [vulnerability disclosure policy](/latest/secure/
 
 [YugabyteDB](../../quick-start/) is the 100% open source core database. It is the best choice for the startup organizations with strong technical operations expertise looking to deploy to production with traditional DevOps tools.
 
-[Yugabyte Platform](../../yugabyte-platform/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
+[Yugabyte Platform](../../yugabyte-platform/overview/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
 
-[Yugabyte Cloud](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
+[Yugabyte Cloud](../../yugabyte-cloud/cloud-quickstart/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
 
 For a more detailed comparison between the above, see [Adopt YugabyteDB Your Way
 ](https://www.yugabyte.com/platform/#compare-editions).

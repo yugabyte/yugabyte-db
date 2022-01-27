@@ -34,6 +34,7 @@ google::protobuf::internal::WireFormatLite::WireType WireType(
 size_t FixedSize(const google::protobuf::FieldDescriptor* field);
 std::string MakeLightweightName(const std::string& input);
 bool IsLightweightMethod(const google::protobuf::MethodDescriptor* method, rpc::RpcSides side);
+bool IsTrivialMethod(const google::protobuf::MethodDescriptor* method);
 bool HasLightweightMethod(const google::protobuf::ServiceDescriptor* service, rpc::RpcSides side);
 bool HasLightweightMethod(const google::protobuf::FileDescriptor* file, rpc::RpcSides side);
 std::string ReplaceNamespaceDelimiters(const std::string& arg_full_name);

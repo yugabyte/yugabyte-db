@@ -382,8 +382,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
 
   // Now there are 2 tservers with custom placement_uuid and 3 tservers with default placement_uuid.
   // Modify the cluster config to have new placement_uuid matching the new tservers.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
-    "c.r.z0,c.r.z1,c.r.z2", 2, random_placement_uuid));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z1,c.r.z2", 2, random_placement_uuid));
 
   // Change the table placement policy and verify that the change reflected.
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(

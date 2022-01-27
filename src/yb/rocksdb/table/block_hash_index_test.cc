@@ -29,6 +29,8 @@
 #include "yb/rocksdb/table/block_hash_index.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
 typedef std::map<std::string, std::string> Data;
@@ -65,7 +67,7 @@ class MapIterator : public InternalIterator {
   Data::const_iterator pos_;
 };
 
-class BlockTest : public testing::Test {};
+class BlockTest : public RocksDBTest {};
 
 TEST_F(BlockTest, BasicTest) {
   const size_t keys_per_block = 4;

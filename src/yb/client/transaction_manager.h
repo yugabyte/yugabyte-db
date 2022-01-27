@@ -61,7 +61,7 @@ class TransactionManager {
 
   void UpdateClock(HybridTime time);
 
-  bool LocalTransactionsPossible();
+  bool PlacementLocalTransactionsPossible();
 
   uint64_t GetLoadedStatusTabletsVersion();
 

@@ -24,8 +24,10 @@ CREATE TABLEGROUP owned_by3;
 DROP TABLEGROUP owned_by3;
 CREATE TABLEGROUP owned_by1_created_by3 OWNER user_1;
 -- However these should fail.
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLEGROUP supergroup;
 DROP TABLEGROUP owned_by1;
+\set VERBOSITY default
 
 --
 -- Operations with user_2
@@ -42,7 +44,9 @@ CREATE TABLE a(i text) TABLEGROUP owned_by2;
 --
 \c test_tablegroup user_1
 -- These will fail
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLEGROUP owned_by2;
+\set VERBOSITY default
 CREATE TABLEGROUP owned_by1_created_by1;
 -- However these should succed
 DROP TABLEGROUP owned_by1;

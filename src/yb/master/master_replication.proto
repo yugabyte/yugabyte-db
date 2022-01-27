@@ -54,7 +54,8 @@ message CreateCDCStreamResponsePB {
 
 message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
-  optional bool force = 2 [default = false];
+  optional bool ignore_errors = 2 [default = false];
+  optional bool force_delete = 3 [default = false];
 }
 
 message DeleteCDCStreamResponsePB {
@@ -107,7 +108,7 @@ message SetupUniverseReplicationResponsePB {
 
 message DeleteUniverseReplicationRequestPB {
   optional string producer_id = 1;
-  optional bool force = 2 [default = false];
+  optional bool ignore_errors = 2 [default = false];
 }
 
 message DeleteUniverseReplicationResponsePB {
@@ -162,6 +163,28 @@ message IsSetupUniverseReplicationDoneResponsePB {
   optional AppStatusPB replication_error = 3;
 }
 
+message ProducerSplitTabletInfoPB {
+  required bytes tablet_id = 1;
+
+  required bytes new_tablet1_id = 2;
+
+  required bytes new_tablet2_id = 3;
+
+  required bytes split_partition_key = 4;
+
+  required bytes split_encoded_key = 5;
+}
+
+message UpdateConsumerOnProducerSplitRequestPB {
+  optional string producer_id = 1;
+  optional string stream_id = 2;
+  optional ProducerSplitTabletInfoPB producer_split_tablet_info = 3;
+}
+
+message UpdateConsumerOnProducerSplitResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -188,4 +211,7 @@ service MasterReplication {
       returns (GetUniverseReplicationResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
+  rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
+      returns (UpdateConsumerOnProducerSplitResponsePB);
+
 }

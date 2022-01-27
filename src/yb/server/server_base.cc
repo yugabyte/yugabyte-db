@@ -80,6 +80,7 @@
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
 
@@ -440,7 +441,7 @@ RpcAndWebServerBase::RpcAndWebServerBase(
     MemTrackerPtr mem_tracker,
     const scoped_refptr<server::Clock>& clock)
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
-      web_server_(new Webserver(options.webserver_opts, name_)) {
+      web_server_(new Webserver(options_.CompleteWebserverOptions(), name_)) {
   FsManagerOpts fs_opts;
   fs_opts.metric_entity = metric_entity_;
   fs_opts.parent_mem_tracker = mem_tracker_;
@@ -573,10 +574,11 @@ string RpcAndWebServerBase::GetEasterEggMessage() const {
 
 string RpcAndWebServerBase::FooterHtml() const {
   return Substitute("<pre class='message'><i class=\"fa-lg fa fa-gift\" aria-hidden=\"true\"></i>"
-                    " $0</pre><pre>$1\nserver uuid $2</pre>",
+                    " $0</pre><pre>$1\nserver uuid $2 local time $3</pre>",
                     GetEasterEggMessage(),
                     VersionInfo::GetShortVersionString(),
-                    instance_pb_->permanent_uuid());
+                    instance_pb_->permanent_uuid(),
+                    Timestamp(GetCurrentTimeMicros()).ToHumanReadableTime());
 }
 
 void RpcAndWebServerBase::DisplayIconTile(std::stringstream* output, const string icon,
