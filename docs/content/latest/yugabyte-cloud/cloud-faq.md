@@ -93,7 +93,7 @@ Cluster (YugabyteDB) version upgrade
 
 Free clusters are provisioned with an **edge** release, most often from the YugabyteDB [latest release](../../releases/whats-new/latest-release/) series; it may also be a recent stable release.
 
-By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/whats-new/stable-release/) series. You can choose the edge track when you create the cluster.
+By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/whats-new/stable-release/) series. <!--You can choose the edge track when you create the cluster.-->
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either edge or stable).
 
