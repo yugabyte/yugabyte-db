@@ -321,7 +321,7 @@ class AwsCloud(AbstractCloud):
         return self.get_host_info_specific_args(region, search_pattern, get_all, private_ip)
 
     def get_host_info_specific_args(self, region, search_pattern, get_all=False,
-                                    private_ip=None, filters=None):
+                                    private_ip=None, filters=None, node_uuid=None):
         if not filters:
             filters = [
                 {
@@ -341,7 +341,11 @@ class AwsCloud(AbstractCloud):
                 "Name": "tag:Name",
                 "Values": [search_pattern]
             })
-
+        if node_uuid:
+            filters.append({
+                "Name": "tag:node-uuid",
+                "Values": [node_uuid]
+            })
         instances = []
         for _, client in self._get_clients(region=region).items():
             instances.extend(list(client.instances.filter(Filters=filters)))
