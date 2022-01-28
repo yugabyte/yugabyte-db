@@ -18,6 +18,8 @@ The following tutorial shows a simple Java application that connects to a Yugaby
 
 ## Prerequisites
 
+This tutorial requires the following.
+
 ### Yugabyte Cloud
 
 - You have a cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../../).
@@ -43,7 +45,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 1. Open the `app.properties` file located in the application `src/main/resources/` folder.
 
-2. Set the following configuration settings:
+2. Set the following configuration parameters:
 
     - **host** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
     - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
@@ -67,7 +69,7 @@ To start the application, run the following command.
 java -cp target/yugabyte-simple-java-app-1.0-SNAPSHOT.jar SampleApp
 ```
 
-If you are running the application on a free or single node cluster, the driver will display a warning that the load balance failed and will fall back to a regular connection.
+If you are running the application on a free or single node cluster, the driver displays a warning that the load balance failed and will fall back to a regular connection.
 
 You should then see output similar to the following:
 
@@ -97,14 +99,14 @@ The `main` method establishes a connection with your cluster via the topology-aw
 ```java
 YBClusterAwareDataSource ds = new YBClusterAwareDataSource();
 
-    ds.setUrl("jdbc:yugabytedb://" + settings.getProperty("host") + ":"
-        + settings.getProperty("port") + "/yugabyte");
-    ds.setUser(settings.getProperty("dbUser"));
-    ds.setPassword(settings.getProperty("dbPassword"));
-    
-    // Additional SSL-specific settings. See the source code for details.
+ds.setUrl("jdbc:yugabytedb://" + settings.getProperty("host") + ":"
+    + settings.getProperty("port") + "/yugabyte");
+ds.setUser(settings.getProperty("dbUser"));
+ds.setPassword(settings.getProperty("dbPassword"));
 
-    Connection conn = ds.getConnection();
+// Additional SSL-specific settings. See the source code for details.
+
+Connection conn = ds.getConnection();
 ```
 
 ### createDatabase
@@ -114,18 +116,18 @@ The `createDatabase` method uses PostgreSQL-compliant DDL commands to create a s
 ```java
 Statement stmt = conn.createStatement();
 
-    stmt.execute("CREATE TABLE IF NOT EXISTS " + TABLE_NAME +
-        "(" +
-        "id int PRIMARY KEY," +
-        "name varchar," +
-        "age int," +
-        "country varchar," +
-        "balance int" +
-        ")");
+stmt.execute("CREATE TABLE IF NOT EXISTS " + TABLE_NAME +
+    "(" +
+    "id int PRIMARY KEY," +
+    "name varchar," +
+    "age int," +
+    "country varchar," +
+    "balance int" +
+    ")");
 
-    stmt.execute("INSERT INTO " + TABLE_NAME + " VALUES" +
-        "(1, 'Jessica', 28, 'USA', 10000)," +
-        "(2, 'John', 28, 'Canada', 9000)");
+stmt.execute("INSERT INTO " + TABLE_NAME + " VALUES" +
+    "(1, 'Jessica', 28, 'USA', 10000)," +
+    "(2, 'John', 28, 'Canada', 9000)");
 ```
 
 ### selectAccounts
@@ -135,13 +137,13 @@ The `selectAccounts` method queries your distributed data using the SQL `SELECT`
 ```java
 Statement stmt = conn.createStatement();
 
-    ResultSet rs = stmt.executeQuery("SELECT * FROM " + TABLE_NAME);
+ResultSet rs = stmt.executeQuery("SELECT * FROM " + TABLE_NAME);
 
-    while (rs.next()) {
-        System.out.println(String.format("name = %s, age = %s, country = %s, balance = %s",
-            rs.getString(2), rs.getString(3),
-            rs.getString(4), rs.getString(5)));
-    }
+while (rs.next()) {
+    System.out.println(String.format("name = %s, age = %s, country = %s, balance = %s",
+        rs.getString(2), rs.getString(3),
+        rs.getString(4), rs.getString(5)));
+}
 ```
 
 ### transferMoneyBetweenAccounts
@@ -151,22 +153,22 @@ The `transferMoneyBetweenAccounts` method updates your data consistently with di
 ```java
 Statement stmt = conn.createStatement();
 
-    try {
-        stmt.execute(
-            "BEGIN TRANSACTION;" +
-                "UPDATE " + TABLE_NAME + " SET balance = balance - " + amount + "" + " WHERE name = 'Jessica';" +
-                "UPDATE " + TABLE_NAME + " SET balance = balance + " + amount + "" + " WHERE name = 'John';" +
-                "COMMIT;"
-        );
-    } catch (SQLException e) {
-        if (e.getErrorCode() == 40001) {
-            // The operation aborted due to a concurrent transaction trying to modify the same set of rows.
-            // Consider adding retry logic for production-grade applications.
-            e.printStackTrace();
-        } else {
-            throw e;
-        }
+try {
+    stmt.execute(
+        "BEGIN TRANSACTION;" +
+            "UPDATE " + TABLE_NAME + " SET balance = balance - " + amount + "" + " WHERE name = 'Jessica';" +
+            "UPDATE " + TABLE_NAME + " SET balance = balance + " + amount + "" + " WHERE name = 'John';" +
+            "COMMIT;"
+    );
+} catch (SQLException e) {
+    if (e.getErrorCode() == 40001) {
+        // The operation aborted due to a concurrent transaction trying to modify the same set of rows.
+        // Consider adding retry logic for production-grade applications.
+        e.printStackTrace();
+    } else {
+        throw e;
     }
+}
 ```
 
 ## Learn more
