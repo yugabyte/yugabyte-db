@@ -96,6 +96,10 @@ TAG_FLAG(enable_transaction_snapshots, hidden);
 TAG_FLAG(enable_transaction_snapshots, advanced);
 TAG_FLAG(enable_transaction_snapshots, runtime);
 
+DEFINE_bool(allow_consecutive_restore, true,
+            "Is it allowed to restore to a time before the last restoration was done.");
+TAG_FLAG(allow_consecutive_restore, runtime);
+
 namespace yb {
 
 using rpc::RpcContext;
