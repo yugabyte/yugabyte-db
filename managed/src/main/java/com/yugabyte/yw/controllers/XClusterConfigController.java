@@ -97,7 +97,7 @@ public class XClusterConfigController extends AuthenticatedController {
     Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
     Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
     checkConfigDoesNotAlreadyExist(
-        createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
+        createFormData.name, createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
 
     // Create xCluster config object
     XClusterConfig xClusterConfig =
@@ -326,19 +326,22 @@ public class XClusterConfigController extends AuthenticatedController {
     return formData;
   }
 
-  private void checkConfigDoesNotAlreadyExist(UUID sourceUniverseUUID, UUID targetUniverseUUID) {
+  private void checkConfigDoesNotAlreadyExist(
+      String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     // check if config specified in form exists or not (based on shouldExist)
-    List<XClusterConfig> xClusterConfig =
-        XClusterConfig.getBetweenUniverses(sourceUniverseUUID, targetUniverseUUID);
+    XClusterConfig xClusterConfig =
+        XClusterConfig.getByNameSourceTarget(name, sourceUniverseUUID, targetUniverseUUID);
 
-    if (xClusterConfig.size() > 0) {
+    if (xClusterConfig != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "xCluster config between source universe "
               + sourceUniverseUUID
               + " and target universe "
               + targetUniverseUUID
-              + " already exists.");
+              + " with name '"
+              + name
+              + "' already exists.");
     }
   }
 
