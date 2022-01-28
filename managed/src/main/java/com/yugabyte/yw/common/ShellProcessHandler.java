@@ -145,7 +145,7 @@ public class ShellProcessHandler {
     long skip = file.length() - lastNBytes;
     if (skip > 0) {
       try {
-        LOG.info("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
+        LOG.warn("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
       } catch (IOException e) {
         LOG.warn("Unexpected exception when skipping large file", e);
       }
