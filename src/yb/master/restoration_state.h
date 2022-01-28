@@ -40,6 +40,10 @@ class RestorationState : public StateWithTablets {
     return complete_time_;
   }
 
+  const SnapshotScheduleId& schedule_id() const {
+    return schedule_id_;
+  }
+
   void set_complete_time(HybridTime value) {
     complete_time_ = value;
   }
@@ -53,6 +57,7 @@ class RestorationState : public StateWithTablets {
 
   const TxnSnapshotRestorationId restoration_id_;
   const TxnSnapshotId snapshot_id_;
+  const SnapshotScheduleId schedule_id_;
   HybridTime complete_time_;
 };
 

@@ -121,6 +121,10 @@ TAG_FLAG(enable_transaction_snapshots, runtime);
 DEFINE_test_flag(bool, disable_cdc_state_insert_on_setup, false,
                  "Disable inserting new entries into cdc state as part of the setup flow.");
 
+DEFINE_bool(allow_consecutive_restore, true,
+            "Is it allowed to restore to a time before the last restoration was done.");
+TAG_FLAG(allow_consecutive_restore, runtime);
+
 namespace yb {
 
 using rpc::RpcContext;

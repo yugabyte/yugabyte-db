@@ -71,6 +71,10 @@ class SnapshotScheduleState {
     return options_;
   }
 
+  SnapshotScheduleOptionsPB& mutable_options() {
+    return options_;
+  }
+
   AsyncTaskTracker& CleanupTracker() {
     return cleanup_tracker_;
   }
