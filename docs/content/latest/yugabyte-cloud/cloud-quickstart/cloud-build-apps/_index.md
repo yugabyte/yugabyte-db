@@ -12,13 +12,13 @@ menu:
     weight: 500
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. The tutorials in this section show how to build sample applications using available drivers and ORMs. <!--Because the YugabyteDB YSQL API is PostgreSQL-compatible and the YCQL API has roots in the Apache Cassandra CQL, many of the tutorials use third-party drivers.-->
+Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. The tutorials in this section show how to connect applications to Yugabyte Cloud clusters using available drivers and ORMs. <!--Because the YugabyteDB YSQL API is PostgreSQL-compatible and the YCQL API has roots in the Apache Cassandra CQL, many of the tutorials use third-party drivers.-->
 
 For details about supported API client drivers (by programming language), see <a href="../../../reference/drivers">Drivers</a>.
 
-To build applications for Yugabyte Cloud, you will need the following:
+To run these applications with Yugabyte Cloud, you will need the following:
 
-- A cluster deployed in Yugabte Cloud. To get started, use the [Quick start](../../).
+- A cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../).
 - The cluster CA certificate installed on your machine. Refer to [Download your cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 - Your computer added to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../../cloud-secure-clusters/add-connections/).
 
@@ -33,7 +33,7 @@ To build applications for Yugabyte Cloud, you will need the following:
       <div class="title">Java</div>
     </div>
     <div class="body">
-      Build applications using Java.
+      Java application that connects to a YugabyteDB cluster using the Yugabyte JDBC driver.
     </div>
   </a>
   </div>
