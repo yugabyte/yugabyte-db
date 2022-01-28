@@ -5405,6 +5405,62 @@
       },
       "type" : "object"
     },
+    "XClusterConfigGetResp" : {
+      "description" : "xcluster get response",
+      "properties" : {
+        "createTime" : {
+          "description" : "Create time",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "lag" : {
+          "description" : "Lag metric data",
+          "type" : "object"
+        },
+        "modifyTime" : {
+          "description" : "Modify time",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Name",
+          "type" : "string"
+        },
+        "sourceUniverseUUID" : {
+          "description" : "Source Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "status" : {
+          "description" : "Status",
+          "enum" : [ "Init", "Running", "Updating", "Paused", "Failed" ],
+          "type" : "string"
+        },
+        "tables" : {
+          "description" : "Source Universe table IDs",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "targetUniverseUUID" : {
+          "description" : "Target Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "xclusterConfig" : {
+          "$ref" : "#/definitions/XClusterConfig"
+        }
+      },
+      "required" : [ "lag", "xclusterConfig" ],
+      "type" : "object"
+    },
     "YBPError" : {
       "description" : "Generic error response from the Yugabyte Platform API",
       "properties" : {
@@ -11267,7 +11323,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/XClusterConfig"
+              "$ref" : "#/definitions/XClusterConfigGetResp"
             }
           }
         },
