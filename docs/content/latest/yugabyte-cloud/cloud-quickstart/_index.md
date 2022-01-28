@@ -69,7 +69,7 @@ Get started with YugabyteDB on Yugabyte Cloud in a few steps:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="qs-explore/">
+    <a class="section-link icon-offset" href="cloud-build-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
         <div class="title">Build an application</div>
