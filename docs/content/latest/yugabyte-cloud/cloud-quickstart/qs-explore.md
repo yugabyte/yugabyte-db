@@ -541,7 +541,7 @@ UPDATE 11
     (6 rows)
     ```
 
-1. Clean up the table for this execise.
+1. Clean up the table for this exercise.
 
     ```sql
     drop table if exists demo;
