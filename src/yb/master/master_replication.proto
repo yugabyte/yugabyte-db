@@ -24,8 +24,9 @@ import "yb/rpc/service.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
-  optional bytes table_id = 2;
+  repeated bytes table_id = 2;
   repeated CDCStreamOptionsPB options = 3;
+  optional bytes namespace_id = 4;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -44,6 +45,7 @@ message CreateCDCStreamRequestPB {
   optional string table_id = 1;
   repeated CDCStreamOptionsPB options = 3;
   optional SysCDCStreamEntryPB.State initial_state = 4;
+  optional string db_stream_id = 5;
 }
 
 message CreateCDCStreamResponsePB {
@@ -64,8 +66,15 @@ message DeleteCDCStreamResponsePB {
   repeated bytes not_found_stream_ids = 2;
 }
 
+enum IdTypePB {
+  TABLE_ID = 1;
+  NAMESPACE_ID = 2;
+}
+
 message ListCDCStreamsRequestPB {
   optional string table_id = 1;
+  optional string namespace_id = 2;
+  optional IdTypePB id_type = 3 [default = TABLE_ID];
 }
 
 message ListCDCStreamsResponsePB {
@@ -82,6 +91,21 @@ message GetCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   optional CDCStreamInfoPB stream = 2;
+}
+
+message GetCDCDBStreamInfoRequestPB {
+  optional bytes db_stream_id = 1;
+}
+
+message GetCDCDBStreamInfoResponsePB {
+  message TableInfo {
+    optional bytes stream_id = 1;
+    optional bytes table_id = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated TableInfo table_info = 2;
+  optional bytes namespace_id = 3;
 }
 
 message UpdateCDCStreamRequestPB {
@@ -196,6 +220,7 @@ service MasterReplication {
   rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
+  rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
   rpc UpdateCDCStream (UpdateCDCStreamRequestPB)
       returns (UpdateCDCStreamResponsePB);
 

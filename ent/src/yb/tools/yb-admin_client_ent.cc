@@ -1118,11 +1118,37 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
   return Status::OK();
 }
 
+Status ClusterAdminClient::CreateCDCSDKDBStream(const TypedNamespaceName& ns) {
+  HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
+  auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
+
+  cdc::CreateCDCStreamRequestPB req;
+  cdc::CreateCDCStreamResponsePB resp;
+
+  req.set_namespace_name(ns.name);
+  req.set_record_type(cdc::CDCRecordType::CHANGE);
+  req.set_record_format(cdc::CDCRecordFormat::PROTO);
+  req.set_source_type(cdc::CDCRequestSource::CDCSDK);
+  req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error creating stream: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC Stream ID: " << resp.db_stream_id() << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   master::CreateCDCStreamRequestPB req;
   master::CreateCDCStreamResponsePB resp;
   req.set_table_id(table_id);
-  req.mutable_options()->Reserve(2);
+  req.mutable_options()->Reserve(3);
 
   auto record_type_option = req.add_options();
   record_type_option->set_key(cdc::kRecordType);
@@ -1131,6 +1157,10 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   auto record_format_option = req.add_options();
   record_format_option->set_key(cdc::kRecordFormat);
   record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::JSON));
+
+  auto source_type_option = req.add_options();
+  source_type_option->set_key(cdc::kSourceType);
+  source_type_option->set_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1142,6 +1172,24 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   }
 
   cout << "CDC Stream ID: " << resp.stream_id() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteCDCSDKDBStream(const std::string& db_stream_id) {
+  master::DeleteCDCStreamRequestPB req;
+  master::DeleteCDCStreamResponsePB resp;
+  req.add_stream_id(db_stream_id);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+      RETURN_NOT_OK(master_replication_proxy_->DeleteCDCStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error deleting stream: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Successfully deleted Change Data Stream ID: " << db_stream_id << endl;
   return Status::OK();
 }
 
@@ -1167,6 +1215,7 @@ Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id, bool fo
 Status ClusterAdminClient::ListCDCStreams(const TableId& table_id) {
   master::ListCDCStreamsRequestPB req;
   master::ListCDCStreamsResponsePB resp;
+  req.set_id_type(yb::master::IdTypePB::TABLE_ID);
   if (!table_id.empty()) {
     req.set_table_id(table_id);
   }
@@ -1181,6 +1230,51 @@ Status ClusterAdminClient::ListCDCStreams(const TableId& table_id) {
   }
 
   cout << "CDC Streams: \r\n" << resp.DebugString();
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListCDCSDKStreams(const std::string& namespace_name) {
+  master::ListCDCStreamsRequestPB req;
+  master::ListCDCStreamsResponsePB resp;
+  req.set_id_type(yb::master::IdTypePB::NAMESPACE_ID);
+
+  if (!namespace_name.empty()) {
+    cout << "Filtering out DB streams for the namespace: " << namespace_name << "\n\n";
+    master::GetNamespaceInfoResponsePB namespace_info_resp;
+    RETURN_NOT_OK(yb_client_->GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL,
+                                               &namespace_info_resp));
+    req.set_namespace_id(namespace_info_resp.namespace_().id());
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->ListCDCStreams(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting CDC stream list: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC Streams: \r\n" << resp.DebugString();
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
+  master::GetCDCDBStreamInfoRequestPB req;
+  master::GetCDCDBStreamInfoResponsePB resp;
+  req.set_db_stream_id(db_stream_id);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetCDCDBStreamInfo(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting info corresponding to CDC db stream : " <<
+    resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC DB Stream Info: \r\n" << resp.DebugString();
   return Status::OK();
 }
 

@@ -54,9 +54,16 @@
     if (PREDICT_FALSE(!s.ok())) return (to_return);  \
   } while (0);
 
+// Return the given status by adding the error code if it is not OK.
+#define YB_RETURN_NOT_OK_SET_CODE(s, code) do { \
+    auto&& _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) return MoveStatus(_s).CloneAndAddErrorCode(code); \
+  } while (false)
+
 #define RETURN_NOT_OK           YB_RETURN_NOT_OK
 #define RETURN_NOT_OK_PREPEND   YB_RETURN_NOT_OK_PREPEND
 #define RETURN_NOT_OK_RET       YB_RETURN_NOT_OK_RET
+#define RETURN_NOT_OK_SET_CODE  YB_RETURN_NOT_OK_SET_CODE
 
 extern "C" {
 
