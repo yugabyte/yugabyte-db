@@ -30,8 +30,12 @@ struct TableDescription {
 // CowObject managed access.
 struct PersistentCDCStreamInfo : public Persistent<
     SysCDCStreamEntryPB, SysRowEntryType::CDC_STREAM> {
-  const TableId& table_id() const {
+  const google::protobuf::RepeatedPtrField<std::string>& table_id() const {
     return pb.table_id();
+  }
+
+  const NamespaceId& namespace_id() const {
+    return pb.namespace_id();
   }
 
   bool started_deleting() const {
@@ -59,7 +63,9 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const CDCStreamId& id() const override { return stream_id_; }
 
-  const TableId& table_id() const;
+  const google::protobuf::RepeatedPtrField<std::string>& table_id() const;
+
+  const NamespaceId& namespace_id() const;
 
   std::string ToString() const override;
 

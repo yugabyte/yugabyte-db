@@ -292,14 +292,15 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   std::string ToString() const override {
+      int job_id_value = job_id_.Load();
       return yb::Format(
           "{ compact db: $0 is_manual: $1 serial_no: $2 job_id: $3}", db_impl_->GetName(),
           manual_compaction_ != nullptr, SerialNo(),
-          (job_id_ != kNoJobId) ? std::to_string(job_id_) : "None");
+          ((job_id_value == kNoJobId) ? "None" : std::to_string(job_id_value)));
   }
 
   void SetJobID(JobContext* job_context) {
-    job_id_ = job_context->job_id;
+    job_id_.Store(job_context->job_id);
   }
 
   bool UpdatePriority() override {
@@ -356,7 +357,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   std::unique_ptr<Compaction> compaction_holder_;
   Compaction* compaction_;
   int priority_;
-  int job_id_ = kNoJobId;
+  yb::AtomicInt<int> job_id_{kNoJobId};
 };
 
 class DBImpl::FlushTask : public ThreadPoolTask {
@@ -3333,7 +3334,7 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
-  if(compaction_task) {
+  if (compaction_task) {
     compaction_task->SetJobID(&job_context);
   }
   InstrumentedMutexLock l(&mutex_);
