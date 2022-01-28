@@ -165,6 +165,21 @@ public class TestPrepareExecute extends BaseCQLTest {
     LOG.info("End test");
   }
 
+  @Test
+  public void testExecuteWithUnknownSystemTableAndUnknownField() throws Exception {
+    LOG.info("Begin test");
+
+    // Prepare statement.
+    PreparedStatement stmt =
+      session.prepare("select * from system.unknown_table where unknown_field = ?;");
+
+    // Execute the prepared statement. Expect empty row set.
+    ResultSet rs = session.execute(stmt.bind());
+    assertNull(rs.one());
+
+    LOG.info("End test");
+  }
+
   private void testPreparedDDL(String stmt) {
     session.execute(session.prepare(stmt).bind());
   }
