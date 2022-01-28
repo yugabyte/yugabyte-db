@@ -68,6 +68,8 @@ DEFINE_bool(schedule_snapshot_rpcs_out_of_band, false,
             " background thread.");
 TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
 
+DECLARE_bool(allow_consecutive_restore);
+
 namespace yb {
 namespace master {
 
@@ -1105,6 +1107,27 @@ class MasterSnapshotCoordinator::Impl {
     last_restorations_update_ht_ = context_.Clock()->Now();
     restoration->set_complete_time(last_restorations_update_ht_);
 
+    LOG(INFO) << "Setting restore complete time to " << last_restorations_update_ht_;
+
+    if (restoration->schedule_id()) {
+      auto schedule = FindSnapshotSchedule(restoration->schedule_id());
+      if (schedule.ok()) {
+        docdb::KeyValueWriteBatchPB write_batch;
+        schedule->mutable_options().add_restoration_times(
+            last_restorations_update_ht_.ToUint64());
+        Status s = schedule->StoreToWriteBatch(&write_batch);
+        if (s.ok()) {
+          SubmitWrite(std::move(write_batch), leader_term, &context_);
+        } else {
+          LOG(INFO) << "Unable to prepare write batch for schedule "
+                    << schedule->id();
+        }
+      } else {
+        LOG(INFO) << "Snapshot Schedule with id " << restoration->schedule_id()
+                  << " not found";
+      }
+    }
+
     if (FLAGS_TEST_skip_sending_restore_finished) {
       return;
     }
@@ -1180,6 +1203,32 @@ class MasterSnapshotCoordinator::Impl {
                       MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
       }
       restore_sys_catalog = phase == RestorePhase::kInitial && !snapshot.schedule_id().IsNil();
+      if (!FLAGS_allow_consecutive_restore && restore_sys_catalog) {
+        SnapshotScheduleState& schedule =
+            VERIFY_RESULT(FindSnapshotSchedule(snapshot.schedule_id()));
+
+        // Find the latest restore.
+        HybridTime latest_restore_ht = HybridTime::kMin;
+        for (const auto& restoration_ht : schedule.options().restoration_times()) {
+          if (HybridTime::FromPB(restoration_ht) > latest_restore_ht) {
+            latest_restore_ht = HybridTime::FromPB(restoration_ht);
+          }
+        }
+        LOG(INFO) << "Last successful restoration completed at "
+                  << latest_restore_ht;
+
+        if (restore_at <= latest_restore_ht) {
+          LOG(INFO) << "Restore with id " << restoration_id << " not supported "
+                    << "because it is consecutive. Attempting to restore to "
+                    << restore_at << " while last successful restoration completed at "
+                    << latest_restore_ht;
+          return STATUS_FORMAT(NotSupported,
+                               "Cannot restore before the previous restoration time. "
+                                  "A Restoration was performed at $0 and the requested "
+                                  "restoration is for $1 which is before the last restoration.",
+                               latest_restore_ht, restore_at);
+        }
+      }
       RestorationState* restoration_ptr;
       if (phase == RestorePhase::kInitial) {
         auto restoration = std::make_unique<RestorationState>(&context_, restoration_id, &snapshot);
@@ -1226,6 +1275,15 @@ class MasterSnapshotCoordinator::Impl {
       }
 
       context_.ScheduleTabletSnapshotOp(task);
+    }
+
+    // For empty tablet list, finish the restore.
+    if (tablet_infos.empty()) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      RestorationState* restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
+      if (restoration_ptr) {
+        FinishRestoration(restoration_ptr, leader_term);
+      }
     }
 
     return Status::OK();
