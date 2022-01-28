@@ -20,7 +20,7 @@ showAsideToc: true
 #### New features
 
 - Support for [alerts](../cloud-monitor/cloud-alerts/) to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues. Configure alerts and view notifications on the **Alerts** page. When an alert triggers, Yugabyte Cloud sends an email notification and displays a notification on the **Notifications** tab. When the alert condition resolves, the notification dismisses automatically. Alerts are enabled for all clusters in your cloud.
-- Free clusters are now [paused](../cloud-faq/#why-is-my-free-cluster-paused) after 21 days of inactivity. Yugabyte Cloud sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../cloud-faq/#what-qualifies-as-activity-on-a-cluster). Free clusters are deleted after 30 days of inactivity.
+- Free clusters are now [paused](../cloud-faq/#why-is-my-free-cluster-paused) after 21 days of inactivity. Yugabyte Cloud sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../cloud-faq/#what-qualifies-as-activity-on-a-cluster) Free clusters are deleted after 30 days of inactivity.
 - Ability to see the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB that your cluster is running on.
 
 ### December 16, 2021
