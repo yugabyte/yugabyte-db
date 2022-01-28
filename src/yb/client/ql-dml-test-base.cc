@@ -27,6 +27,7 @@
 
 #include "yb/common/ql_name.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
@@ -202,6 +203,52 @@ void CreateTable(
   ASSERT_OK(table->Create(table_name, num_tablets, client, &builder));
 }
 
+void BuildSchema(Partitioning partitioning, Schema* schema) {
+  switch (partitioning) {
+    case Partitioning::kHash:
+      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, false, true),
+                         ColumnSchema(kValueColumn, INT32) }, 1);
+      return;
+    case Partitioning::kRange:
+      *schema = Schema({ ColumnSchema(kKeyColumn, INT32),
+                         ColumnSchema(kValueColumn, INT32) }, 1);
+      return;
+  }
+  FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);
+}
+
+CHECKED_STATUS CreateTable(
+    const Schema& schema, int num_tablets, YBClient* client,
+    TableHandle* table, const YBTableName& table_name) {
+  RETURN_NOT_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                                   table_name.namespace_type()));
+
+  // Simple create for hash partitioning.
+  if (schema.num_range_key_columns() == 0) {
+    return table->Create(table_name, num_tablets, YBSchema(schema), client);
+  }
+
+  // Prepare range keys names.
+  std::vector<std::string> range_columns;
+  range_columns.reserve(schema.num_range_key_columns());
+  for (size_t i = 0; i < schema.num_key_columns(); ++i) {
+    if (schema.is_range_column(i)) {
+      range_columns.push_back(schema.columns()[i].name());
+    }
+  }
+
+  // Create table with range partitioning.
+  YBSchema table_schema(schema);
+  std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+  RETURN_NOT_OK(table_creator->table_name(table_name)
+      .schema(&table_schema)
+      .set_range_partition_columns(range_columns)
+      .num_tablets(num_tablets)
+      .Create());
+
+  return table->Open(table_name, client);
+}
+
 void InitIndex(
     Transactional transactional,
     size_t indexed_column_index,
@@ -315,7 +362,11 @@ Result<YBqlWriteOpPtr> WriteRow(
   const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
   const auto op = table->NewWriteOp(stmt_type);
   auto* const req = op->mutable_request();
-  QLAddInt32HashValue(req, key);
+  if (table->table()->partition_schema().IsHashPartitioning()) {
+    QLAddInt32HashValue(req, key);
+  } else {
+    QLAddInt32RangeValue(req, key);
+  }
   if (op_type != WriteOpType::DELETE) {
     table->AddInt32ColumnValue(req, kValueColumn, value);
   }
@@ -405,6 +456,11 @@ Result<std::map<int32_t, int32_t>> SelectAllRows(
 template <class MiniClusterType>
 void KeyValueTableTest<MiniClusterType>::CreateTable(Transactional transactional) {
   kv_table_test::CreateTable(transactional, NumTablets(), client_.get(), &table_);
+}
+
+template <class MiniClusterType>
+CHECKED_STATUS KeyValueTableTest<MiniClusterType>::CreateTable(const Schema& schema) {
+  return kv_table_test::CreateTable(schema, NumTablets(), client_.get(), &table_);
 }
 
 template <class MiniClusterType>
