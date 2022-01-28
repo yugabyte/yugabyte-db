@@ -66,10 +66,10 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
 
     Set<Pair<UUID, String>> foundXClusterConfigs = new HashSet<>();
 
-    Map<String, ProducerEntryPB> sourceUniverseMap =
+    Map<String, ProducerEntryPB> replicationGroups =
         config.getConsumerRegistry().getProducerMapMap();
 
-    sourceUniverseMap.forEach(
+    replicationGroups.forEach(
         (replicationId, value) -> {
           String[] uuidAndName = replicationId.split("_", 2);
           if (uuidAndName.length != 2) {
