@@ -82,7 +82,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   auto stream = make_scoped_refptr<CDCStreamInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
   {
     auto l = stream->LockForWrite();
-    l.mutable_data()->pb.set_table_id("test_table");
+    l.mutable_data()->pb.add_table_id("test_table");
     // Add the CDC stream.
     ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, stream));
     l.Commit();
