@@ -20,6 +20,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.h"
 
@@ -135,6 +136,14 @@ template <class MiniClusterType>
 void TransactionTestBase<MiniClusterType>::CreateTable() {
   KeyValueTableTest<MiniClusterType>::CreateTable(
       Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL));
+}
+
+template <class MiniClusterType>
+CHECKED_STATUS TransactionTestBase<MiniClusterType>::CreateTable(const Schema& schema) {
+  Schema new_schema { schema };
+  new_schema.mutable_table_properties()->SetTransactional(
+      GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
+  return KeyValueTableTest<MiniClusterType>::CreateTable(new_schema);
 }
 
 template <class MiniClusterType>

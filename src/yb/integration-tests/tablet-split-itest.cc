@@ -21,6 +21,7 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -34,6 +35,7 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/util.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/redis_table_test_base.h"
@@ -76,6 +78,7 @@
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;  // NOLINT
+using namespace yb::client::kv_table_test; // NOLINT
 
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
@@ -1943,12 +1946,115 @@ TEST_F_EX(
   DontVerifyClusterBeforeNextTearDown();
 }
 
+class TabletSplitSystemRecordsITest :
+    public TabletSplitSingleServerITest,
+    public testing::WithParamInterface<Partitioning> {
+ protected:
+  void SetUp() override {
+    TabletSplitSingleServerITest::SetUp();
+    SetNumTablets(1);
+
+    // Disable automatic tablet splitting.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    // Disable automatic compactions.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
+    // Disable manual compations from flushes.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  }
+
+  CHECKED_STATUS VerifySplitKeyError(yb::tablet::TabletPtr tablet) {
+    SCHECK_NOTNULL(tablet.get());
+
+    // Get middle key directly from in-memory tablet and check correct message has been returned.
+    auto middle_key = tablet->GetEncodedMiddleSplitKey();
+    SCHECK_EQ(middle_key.ok(), false, IllegalState, "Valid split key is not expected.");
+    const auto key_message = middle_key.status().message();
+    const auto is_expected_key_message =
+        strnstr(key_message.cdata(), "got internal record", key_message.size()) != nullptr;
+    SCHECK_EQ(is_expected_key_message, true, IllegalState,
+              Format("Unexepected error message: $0", middle_key.status().ToString()));
+    LOG(INFO) << "System record middle key result: " << middle_key.status().ToString();
+
+    // Test that tablet GetSplitKey RPC returns the same message.
+    auto response = VERIFY_RESULT(GetSplitKey(tablet->tablet_id()));
+    SCHECK_EQ(response.has_error(), true, IllegalState,
+              "GetSplitKey RPC unexpectedly succeeded.");
+    const Status op_status = StatusFromPB(response.error().status());
+    SCHECK_EQ(op_status.ToString(), middle_key.status().ToString(), IllegalState,
+              Format("Unexpected error message: $0", op_status.ToString()));
+    LOG(INFO) << "System record get split key result: " << op_status.ToString();
+
+    return Status::OK();
+  }
+};
+
+TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
+  // The idea of the test is to generate data with kNumTxns ApplyTransactionState records following
+  // by 2 * kNumRows user records (very small number). This can be achieved by the following steps:
+  //   1) pause ApplyIntentsTasks to keep ApplyTransactionState records
+  //   2) run kNumTxns transaction with the same keys
+  //   3) run manual compaction to collapse all user records to the latest transaciton content
+  //   4) at this step there are kNumTxns internal records followed by 2 * kNumRows user records
+
+  // Selecting a small period for history cutoff to force compacting records with the same keys.
+  constexpr auto kHistoryRetentionSec = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec)
+      = kHistoryRetentionSec;
+
+  // This flag shoudn't be less than 2, setting it to 1 may cause RemoveIntentsTask to become stuck.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 2;
+
+  // Force intents to not apply in ApplyIntentsTask.
+  // Note: transactions are still partly applied via tablet::UpdateTxnOperation::DoReplicated(),
+  // but ApplyTransactionState will not be removed from SST during compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 1;
+
+  // This combination of txns number and user rows is enough to generate suitable number of
+  // internal records to make middle key point to one of the ApplyTransactionState records.
+  // Also this will prevent spawning logs with long operation timeout warnings.
+  constexpr auto kNumTxns = 50;
+  constexpr auto kNumRows = 3;
+
+  Schema schema;
+  BuildSchema(GetParam(), &schema);
+  ASSERT_OK(CreateTable(schema));
+  auto peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
+  auto tablet = peer->shared_tablet();
+  auto partition_schema = tablet->metadata()->partition_schema();
+  LOG(INFO) << "System records partitioning: "
+            << "hash = "  << partition_schema->IsHashPartitioning() << ", "
+            << "range = " << partition_schema->IsRangePartitioning();
+
+  for (auto i = 0; i < kNumTxns; ++i) {
+    ASSERT_OK(WriteRows(&table_, kNumRows, 1, kNumRows * i));
+  }
+
+  // Sleep for kHistoryRetentionSec + delta to make sure all the records with the same keys
+  // will be compacted. Taking into account FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms
+  // is set, this leads to a warning for too long ScopedRWOperation (see ProcessApply routine).
+  std::this_thread::sleep_for(std::chrono::seconds(kHistoryRetentionSec + 1));
+
+  // Force manual compaction
+  ASSERT_OK(FlushTestTable());
+  ASSERT_OK(tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(LoggedWaitFor(
+      [peer]() -> Result<bool> {
+        return peer->tablet_metadata()->has_been_fully_compacted();
+      },
+      15s * kTimeMultiplier,
+      "Wait for tablet manual compaction to be completed for peer: " + peer->tablet_id()));
+
+  ASSERT_OK(VerifySplitKeyError(tablet));
+}
+
 namespace {
 
 PB_ENUM_FORMATTERS(IsolationLevel);
 
-std::string TestParamToString(const testing::TestParamInfo<IsolationLevel>& isolation_level) {
-  return ToString(isolation_level.param);
+template <typename T>
+std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
+  return ToString(param_info.param);
 }
 
 } // namespace
@@ -1957,6 +2063,12 @@ INSTANTIATE_TEST_CASE_P(
     TabletSplitITest,
     TabletSplitITestWithIsolationLevel,
     ::testing::ValuesIn(GetAllPbEnumValues<IsolationLevel>()),
-    TestParamToString);
+    TestParamToString<IsolationLevel>);
+
+INSTANTIATE_TEST_CASE_P(
+    TabletSplitSingleServerITest,
+    TabletSplitSystemRecordsITest,
+    ::testing::ValuesIn(List(static_cast<Partitioning*>(nullptr))),
+    TestParamToString<Partitioning>);
 
 }  // namespace yb
