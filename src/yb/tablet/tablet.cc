@@ -3424,22 +3424,51 @@ const std::string& Tablet::tablet_id() const {
 }
 
 Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
+  auto error_prefix = [this]() {
+    return Format(
+        "Failed to detect middle key for tablet $0 (key_bounds: $1 - $2)",
+        tablet_id(),
+        Slice(key_bounds_.lower).ToDebugHexString(),
+        Slice(key_bounds_.upper).ToDebugHexString());
+  };
+
   // TODO(tsplit): should take key_bounds_ into account.
   auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey());
+
+  // In some rare cases middle key can point to a special internal record which is not visible
+  // for a user, but tablet splitting routines expect the specific structure for partition keys
+  // that does not match the struct of the internally used records. Moreover, it is expected
+  // to have two child tablets with alive user records after the splitting, but the split
+  // by the internal record will lead to a case when one tablet will consist of internal records
+  // only and these records will be compacted out at some point making an empty tablet.
+  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeValueType(middle_key[0])))) {
+    return STATUS_FORMAT(
+        IllegalState, "$0: got internal record \"$1\"",
+        error_prefix(), Slice(middle_key).ToDebugHexString());
+  }
+
   const auto key_part = metadata()->partition_schema()->IsHashPartitioning()
                             ? docdb::DocKeyPart::kUpToHashCode
                             : docdb::DocKeyPart::kWholeDocKey;
   const auto split_key_size = VERIFY_RESULT(DocKey::EncodedSize(middle_key, key_part));
+  if (PREDICT_FALSE(split_key_size == 0)) {
+    // Using this verification just to have a more sensible message. The below verification will
+    // not pass with split_key_size == 0 also, but its message is not accurate enough. This failure
+    // may happen when a key cannot be decoded with key_part inside DocKey::EncodedSize and the key
+    // still valid for any reason (e.g. gettining non-hash key for hash partitioning).
+    return STATUS_FORMAT(
+        IllegalState, "$0: got unexpected key \"$1\"",
+        error_prefix(), Slice(middle_key).ToDebugHexString());
+  }
+
   middle_key.resize(split_key_size);
   const Slice middle_key_slice(middle_key);
   if (middle_key_slice.compare(key_bounds_.lower) <= 0 ||
       (!key_bounds_.upper.empty() && middle_key_slice.compare(key_bounds_.upper) >= 0)) {
     return STATUS_FORMAT(
         IllegalState,
-        "Failed to detect middle key (got \"$0\") for tablet $1 (key_bounds: $2 - $3), this can "
-        "happen if post-split tablet wasn't fully compacted after split",
-        middle_key_slice.ToDebugHexString(), tablet_id(),
-        Slice(key_bounds_.lower).ToDebugHexString(), Slice(key_bounds_.upper).ToDebugHexString());
+        "$0: got \"$1\". This can happen if post-split tablet wasn't fully compacted after split",
+        error_prefix(), middle_key_slice.ToDebugHexString());
   }
   return middle_key;
 }
