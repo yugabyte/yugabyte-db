@@ -58,6 +58,10 @@ class SnapshotScheduleState {
     return options_;
   }
 
+  SnapshotScheduleOptionsPB& mutable_options() {
+    return options_;
+  }
+
   bool deleted() const;
 
   void PrepareOperations(

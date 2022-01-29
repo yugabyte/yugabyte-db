@@ -35,6 +35,10 @@ class RestorationState : public StateWithTablets {
     return snapshot_id_;
   }
 
+  const SnapshotScheduleId& schedule_id() const {
+    return schedule_id_;
+  }
+
   CHECKED_STATUS ToPB(RestorationInfoPB* out);
 
   TabletInfos PrepareOperations();
@@ -44,6 +48,7 @@ class RestorationState : public StateWithTablets {
 
   TxnSnapshotRestorationId restoration_id_;
   TxnSnapshotId snapshot_id_;
+  SnapshotScheduleId schedule_id_;
 };
 
 } // namespace master
