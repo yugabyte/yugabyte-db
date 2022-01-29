@@ -50,7 +50,7 @@ The **Create Cluster** wizard has the following three pages:
 
 ### Select Cluster Type
 
-![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster1-type.png)
+![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster-paid1.png)
 
 Select **Yugabyte Cloud** and click **Next** to display the **Cluster Settings** page.
 

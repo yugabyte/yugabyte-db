@@ -52,7 +52,7 @@ Select **Yugabyte Cloud Free** and click **Next** to display the **Cluster Setti
 
 ### Cluster Settings
 
-![Add Cluster Wizard - Cluster Settings](/images/yb-cloud/cloud-addcluster-paid2.png)
+![Add Cluster Wizard - Cluster Settings](/images/yb-cloud/cloud-addcluster-free2.png)
 
 Set the following options:
 
