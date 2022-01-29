@@ -439,9 +439,6 @@ DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
                  "Specifically this flag ensures that ValidateSplitCandidate always returns OK and "
                  "all tablets are considered valid candidates for splitting.");
 
-DEFINE_test_flag(bool, select_all_tablets_for_split, false,
-                 "When set to true, select all validated processed tablets for split. Specifically "
-                 "this flag ensures that ShouldSplitValidTablet always returns true.");
 DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
                  "When set, it skips checking that all the tablets of a table have enough tservers"
                  " conforming to the table placement policy during CreateTable API call.");
@@ -2342,12 +2339,14 @@ CHECKED_STATUS CatalogManager::TEST_SplitTablet(
     const TabletId& tablet_id, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
   auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
-  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key);
+  return DoSplitTablet(source_tablet_info, split_encoded_key, split_partition_key,
+      true /* select_all_tablets_for_split */);
 }
 
 Status CatalogManager::TEST_SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
-  return DoSplitTablet(source_tablet_info, split_hash_code);
+  return DoSplitTablet(source_tablet_info, split_hash_code,
+      true /* select_all_tablets_for_split */);
 }
 
 Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& table_id) {
@@ -2454,9 +2453,6 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
 
 bool CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
-  if (PREDICT_FALSE(FLAGS_TEST_select_all_tablets_for_split)) {
-    return true;
-  }
   if (drive_info.may_have_orphaned_post_split_data) {
     return false;
   }
@@ -2504,7 +2500,7 @@ bool CatalogManager::ShouldSplitValidCandidate(
 
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
-    std::string split_partition_key) {
+    std::string split_partition_key, bool select_all_tablets_for_split) {
   auto source_table_lock = source_tablet_info->table()->LockForWrite();
   auto source_tablet_lock = source_tablet_info->LockForWrite();
 
@@ -2515,7 +2511,8 @@ Status CatalogManager::DoSplitTablet(
   RETURN_NOT_OK(ValidateSplitCandidate(*source_tablet_info));
 
   auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
-  if (!ShouldSplitValidCandidate(*source_tablet_info, drive_info)) {
+  if (!select_all_tablets_for_split &&
+      !ShouldSplitValidCandidate(*source_tablet_info, drive_info)) {
     // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
     // time, a valid split candidate, but by the time the candidate was actually processed here, the
     // cluster may have changed, putting us in a new split threshold phase, and it may no longer be
@@ -2579,14 +2576,16 @@ Status CatalogManager::DoSplitTablet(
 }
 
 Status CatalogManager::DoSplitTablet(
-    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) {
+    const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
+    bool select_all_tablets_for_split) {
   docdb::KeyBytes split_encoded_key;
   docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
       .Hash(split_hash_code, std::vector<docdb::PrimitiveValue>());
 
   const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
 
-  return DoSplitTablet(source_tablet_info, split_encoded_key.ToStringBuffer(), split_partition_key);
+  return DoSplitTablet(source_tablet_info, split_encoded_key.ToStringBuffer(), split_partition_key,
+      select_all_tablets_for_split);
 }
 
 Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id) {
@@ -2601,11 +2600,12 @@ Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& 
 
 void CatalogManager::SplitTabletWithKey(
     const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
-    const std::string& split_partition_key) {
+    const std::string& split_partition_key, const bool select_all_tablets_for_split) {
   // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
   // if it failed to submit that task. In other words, any failures here are not retriable, and
   // success indicates that an async and automatically retrying task was submitted.
-  auto s = DoSplitTablet(tablet, split_encoded_key, split_partition_key);
+  auto s = DoSplitTablet(
+      tablet, split_encoded_key, split_partition_key, select_all_tablets_for_split);
   WARN_NOT_OK(s, Format("Failed to split tablet with GetSplitKey result for tablet: $0",
                         tablet->tablet_id()));
   if (!s.ok()) {
@@ -2613,7 +2613,7 @@ void CatalogManager::SplitTabletWithKey(
   }
 }
 
-Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
+Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool select_all_tablets_for_split) {
   LOG(INFO) << "Got tablet to split: " << tablet_id;
 
   const auto tablet = VERIFY_RESULT(GetTabletInfo(tablet_id));
@@ -2622,9 +2622,11 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
           << tablet->tablet_id();
   auto call = std::make_shared<AsyncGetTabletSplitKey>(
       master_, AsyncTaskPool(), tablet,
-      [this, tablet](const Result<AsyncGetTabletSplitKey::Data>& result) {
+      [this, tablet, select_all_tablets_for_split]
+          (const Result<AsyncGetTabletSplitKey::Data>& result) {
         if (result.ok()) {
-          SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key);
+          SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key,
+              select_all_tablets_for_split);
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
           tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
@@ -2637,7 +2639,7 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
 Status CatalogManager::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc) {
   const auto source_tablet_id = req->tablet_id();
-  return SplitTablet(source_tablet_id);
+  return SplitTablet(source_tablet_id, true /* select_all_tablets_for_split */);
 }
 
 Status CatalogManager::DeleteNotServingTablet(
@@ -3761,6 +3763,110 @@ CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::R
     return Status::OK();
   }
   return s;
+}
+
+CHECKED_STATUS CatalogManager::GetGlobalTransactionStatusTablets(
+    GetTransactionStatusTabletsResponsePB* resp) {
+  TableIdentifierPB global_txn_table_identifier;
+  global_txn_table_identifier.set_table_name(kGlobalTransactionsTableName);
+  global_txn_table_identifier.mutable_namespace_()->set_name(kSystemNamespaceName);
+  scoped_refptr<TableInfo> global_txn_table = VERIFY_RESULT(FindTable(global_txn_table_identifier));
+
+  RETURN_NOT_OK(WaitForCreateTableToFinish(global_txn_table->id()));
+
+  auto l = global_txn_table->LockForRead();
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+
+  for (const auto& tablet : global_txn_table->GetTablets()) {
+    TabletLocationsPB locs_pb;
+    RETURN_NOT_OK(BuildLocationsForTablet(tablet, &locs_pb));
+    resp->add_global_tablet_id(tablet->tablet_id());
+  }
+
+  return Status::OK();
+}
+
+std::vector<TableId> CatalogManager::GetPlacementLocalTransactionStatusTables(
+    const CloudInfoPB& placement) {
+  std::vector<TableId> same_placement_transaction_tables;
+
+  SharedLock lock(mutex_);
+  for (const auto& entry : *table_ids_map_) {
+    auto& table_info = *entry.second;
+
+    if (table_info.namespace_id() != kSystemNamespaceId) {
+      continue;
+    }
+
+    if (!table_info.IsTransactionStatusTable()) {
+      continue;
+    }
+
+    auto lock = table_info.LockForRead();
+
+    if (!lock->visible_to_client()) {
+      continue;
+    }
+
+    if (!StringStartsWithOrEquals(lock->name(), kTransactionTablePrefix)) {
+      continue;
+    }
+
+    const auto& cloud_info = lock->pb.replication_info();
+    if (IsReplicationInfoSet(cloud_info)) {
+      const auto& replicas = cloud_info.live_replicas();
+      if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(replicas, placement)) {
+        same_placement_transaction_tables.push_back(entry.first);
+      }
+    }
+  }
+
+  return same_placement_transaction_tables;
+}
+
+CHECKED_STATUS CatalogManager::GetPlacementLocalTransactionStatusTablets(
+    const CloudInfoPB& placement,
+    GetTransactionStatusTabletsResponsePB* resp) {
+  auto same_placement_transaction_tables = GetPlacementLocalTransactionStatusTables(placement);
+
+  if (!same_placement_transaction_tables.empty()) {
+    for (const auto& table_id : same_placement_transaction_tables) {
+      RETURN_NOT_OK(WaitForCreateTableToFinish(table_id));
+    }
+
+    SharedLock lock(mutex_);
+    for (const auto& table_id : same_placement_transaction_tables) {
+      if (!table_ids_map_->count(table_id)) {
+        Status s = STATUS_FORMAT(
+            NotFound, "Transaction table with id $0 does not exist", table_id);
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+      }
+
+      auto& table_info = *table_ids_map_->at(table_id);
+      auto lock = table_info.LockForRead();
+      for (const auto& tablet : table_info.GetTablets()) {
+        TabletLocationsPB locs_pb;
+        RETURN_NOT_OK(BuildLocationsForTablet(tablet, &locs_pb));
+        resp->add_placement_local_tablet_id(tablet->tablet_id());
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS CatalogManager::GetTransactionStatusTablets(
+    const GetTransactionStatusTabletsRequestPB* req,
+    GetTransactionStatusTabletsResponsePB* resp,
+    rpc::RpcContext *rpc) {
+
+  RETURN_NOT_OK(GetGlobalTransactionStatusTablets(resp));
+
+  if (req->has_placement()) {
+    RETURN_NOT_OK(GetPlacementLocalTransactionStatusTablets(req->placement(), resp));
+  }
+
+  return Status::OK();
 }
 
 Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc) {
@@ -6402,6 +6508,7 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   ctreq.mutable_namespace_()->set_id(req->namespace_id());
   ctreq.set_table_type(PGSQL_TABLE_TYPE);
   ctreq.set_tablegroup_id(req->id());
+  ctreq.set_tablespace_id(req->tablespace_id());
 
   YBSchemaBuilder schemaBuilder;
   schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
@@ -9724,11 +9831,11 @@ Status CatalogManager::SetPreferredZones(
   auto replication_info = l.mutable_data()->pb.mutable_replication_info();
   replication_info->clear_affinitized_leaders();
 
-  Status s;
   for (const auto& cloud_info : req->preferred_zones()) {
-    s = CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(replication_info->live_replicas(),
-                                                              cloud_info);
-    if (!s.ok()) {
+    const auto& placement_info = replication_info->live_replicas();
+    if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
+      Status s = STATUS_FORMAT(InvalidArgument, "Placement info $0 does not contain cloud info $1",
+                               placement_info, TSDescriptor::generate_placement_id(cloud_info));
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
     }
     *replication_info->add_affinitized_leaders() = cloud_info;
@@ -9738,7 +9845,7 @@ Status CatalogManager::SetPreferredZones(
 
   LOG(INFO) << "Updating cluster config to " << l.mutable_data()->pb.version();
 
-  s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
+  Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
   }

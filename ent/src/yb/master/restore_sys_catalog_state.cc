@@ -682,8 +682,8 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
       RETURN_NOT_OK(existing_state.Next());
     }
 
-    if (num_updates + num_inserts + num_deletes != 0) {
-      LOG(INFO) << "PITR: Pg system table: " << *table.name << ", updates: " << num_updates
+    if (num_updates + num_inserts + num_deletes != 0 || VLOG_IS_ON(3)) {
+      LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", updates: " << num_updates
                 << ", inserts: " << num_inserts << ", deletes: " << num_deletes;
     }
   }

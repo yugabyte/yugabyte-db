@@ -104,7 +104,8 @@ class PgCreateTablegroup : public PgDdl {
   PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
                      const char *database_name,
                      const PgOid database_oid,
-                     const PgOid tablegroup_oid);
+                     const PgOid tablegroup_oid,
+                     const PgOid tablespace_oid);
   virtual ~PgCreateTablegroup();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLEGROUP; }

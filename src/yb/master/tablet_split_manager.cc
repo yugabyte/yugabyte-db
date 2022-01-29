@@ -40,7 +40,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DEFINE_test_flag(bool, disable_split_tablet_candidate_processing, false,
                  "When true, do not process split tablet candidates.");
 
-DEFINE_uint64(outstanding_tablet_split_limit, 5,
+DEFINE_uint64(outstanding_tablet_split_limit, 1,
               "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
               "value is set to 0.");
 
@@ -206,7 +206,7 @@ void TabletSplitManager::ProcessQueuedSplitItems() {
       return;
     }
     auto tablet_id = candidates_.front();
-    auto s = driver_->SplitTablet(tablet_id);
+    auto s = driver_->SplitTablet(tablet_id, false /* select_all_tablets_for_split */);
     WARN_NOT_OK(s, Format("Failed to trigger split for tablet_id: $0.", tablet_id));
     candidates_.pop_front();
 

@@ -7,8 +7,6 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on Yugabyte Cloud.
 type: page
 section: YUGABYTE CLOUD
-aliases:
-  - /latest/yugabyte-cloud/
 menu:
   latest:
     identifier: cloud-quickstart
@@ -64,6 +62,18 @@ Get started with YugabyteDB on Yugabyte Cloud in a few steps:
       </div>
       <div class="body">
         Explore YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-build-apps/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <div class="title">Build an application</div>
+      </div>
+      <div class="body">
+        Build an application in the programming language of your choice.
       </div>
     </a>
   </div>

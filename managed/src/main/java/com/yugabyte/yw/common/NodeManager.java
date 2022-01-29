@@ -15,6 +15,7 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -68,9 +69,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1498,7 +1498,14 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
           }
           AnsibleDestroyServer.Params taskParam = (AnsibleDestroyServer.Params) nodeTaskParam;
+          if (taskParam.nodeUuid == null && Strings.isNullOrEmpty(taskParam.nodeIP)) {
+            throw new IllegalArgumentException("At least one of node UUID or IP must be specified");
+          }
           commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          if (taskParam.nodeUuid != null) {
+            commandArgs.add("--node_uuid");
+            commandArgs.add(taskParam.nodeUuid.toString());
+          }
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1738,8 +1745,10 @@ public class NodeManager extends DevopsBase {
   private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");
     commandArgs.add(instanceType);
-    commandArgs.add("--node_ip");
-    commandArgs.add(nodeIP);
+    if (!Strings.isNullOrEmpty(nodeIP)) {
+      commandArgs.add("--node_ip");
+      commandArgs.add(nodeIP);
+    }
     return commandArgs;
   }
 

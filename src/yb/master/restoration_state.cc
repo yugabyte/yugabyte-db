@@ -43,7 +43,8 @@ RestorationState::RestorationState(
     SnapshotState* snapshot)
     : StateWithTablets(context, SysSnapshotEntryPB::RESTORING,
                        MakeRestorationStateLogPrefix(restoration_id, snapshot)),
-      restoration_id_(restoration_id), snapshot_id_(snapshot->id()) {
+      restoration_id_(restoration_id), snapshot_id_(snapshot->id()),
+      schedule_id_(snapshot->schedule_id()) {
   InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
 }
 

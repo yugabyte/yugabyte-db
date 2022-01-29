@@ -28,6 +28,7 @@ using namespace std::literals;
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_transaction_sealing);
 DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_write_rejection_percentage);
 DECLARE_int64(transaction_rpc_timeout_ms);
 
@@ -90,6 +91,9 @@ TEST_F(SealTxnTest, NumBatches) {
 }
 
 TEST_F(SealTxnTest, NumBatchesWithRestart) {
+  // Restarting whole cluster could result in expired transaction, that is not expected by the test.
+  // Increase transaction timeout to avoid such kind of failures.
+  FLAGS_transaction_max_missed_heartbeat_periods = 50;
   TestNumBatches(/* restart= */ true);
 }
 

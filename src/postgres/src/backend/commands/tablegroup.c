@@ -94,8 +94,8 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	bool		nulls[Natts_pg_yb_tablegroup];
 	HeapTuple	tuple;
 	Oid			tablegroupoid;
-	Oid			ownerId;
-	Oid			tablespaceId;
+	Oid			owneroid;
+	Oid			tablespaceoid;
 	Acl		   *grpacl = NULL;
 
 	if (!YbTablegroupCatalogExists)
@@ -132,16 +132,16 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 					 		stmt->tablegroupname)));
 
 	if (stmt->owner)
-		ownerId = get_rolespec_oid(stmt->owner, false);
+		owneroid = get_rolespec_oid(stmt->owner, false);
 	else
-		ownerId = GetUserId();
+		owneroid = GetUserId();
 
 	if (stmt->tablespacename)
-		tablespaceId = get_tablespace_oid(stmt->tablespacename, false);
+		tablespaceoid = get_tablespace_oid(stmt->tablespacename, false);
 	else
-		tablespaceId = GetDefaultTablespace(RELPERSISTENCE_PERMANENT);
+		tablespaceoid = GetDefaultTablespace(RELPERSISTENCE_PERMANENT);
 
-	if (tablespaceId == GLOBALTABLESPACE_OID)
+	if (tablespaceoid == GLOBALTABLESPACE_OID)
 		/* In all cases disallow placing user relations in pg_global */
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -156,17 +156,17 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 
 	values[Anum_pg_yb_tablegroup_grpname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablegroupname));
-	values[Anum_pg_yb_tablegroup_grpowner - 1] = ObjectIdGetDatum(ownerId);
+	values[Anum_pg_yb_tablegroup_grpowner - 1] = ObjectIdGetDatum(owneroid);
 
 	/* Get default permissions and set up grpacl */
-	grpacl = get_user_default_acl(OBJECT_YBTABLEGROUP, ownerId, InvalidOid);
+	grpacl = get_user_default_acl(OBJECT_YBTABLEGROUP, owneroid, InvalidOid);
 	if (grpacl != NULL)
 		values[Anum_pg_yb_tablegroup_grpacl - 1] = PointerGetDatum(grpacl);
 	else
 		nulls[Anum_pg_yb_tablegroup_grpacl - 1] = true;
 
 	/* Set tablegroup tablespace oid */
-	values[Anum_pg_yb_tablegroup_grptablespace - 1] = tablespaceId;
+	values[Anum_pg_yb_tablegroup_grptablespace - 1] = tablespaceoid;
 
 	/* Generate new proposed grpoptions (text array) */
 	/* For now no grpoptions. Will be part of Interleaved/Copartitioned */
@@ -181,13 +181,13 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateTablegroup(tablegroupoid);
+		YBCCreateTablegroup(tablegroupoid, tablespaceoid);
 	}
 
-	if (tablespaceId != InvalidOid)
+	if (tablespaceoid != InvalidOid)
 		recordDependencyOnTablespace(YbTablegroupRelationId, tablegroupoid,
-									 tablespaceId);
-	recordDependencyOnOwner(YbTablegroupRelationId, tablegroupoid, ownerId);
+									 tablespaceoid);
+	recordDependencyOnOwner(YbTablegroupRelationId, tablegroupoid, owneroid);
 
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(rel, NoLock);

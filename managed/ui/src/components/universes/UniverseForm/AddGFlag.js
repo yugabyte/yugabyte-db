@@ -101,7 +101,9 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   const valueLabel = (
     <FlexContainer>
       Flag Value &nbsp;
-      <Badge className="gflag-badge">{gFlagProps?.server}</Badge>
+      <Badge className="gflag-badge">
+        {gFlagProps?.server === 'MASTER' ? 'Master' : 'T-Server'}
+      </Badge>
     </FlexContainer>
   );
 
