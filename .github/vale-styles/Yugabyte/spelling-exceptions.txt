@@ -254,6 +254,7 @@ Haml
 hardcode
 hardcoded
 hardcodes
+Hashicorp
 Haswell
 heatmap
 heatmaps
