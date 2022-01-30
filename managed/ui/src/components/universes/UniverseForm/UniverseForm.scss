@@ -561,7 +561,9 @@
 }
 
 .more-icon {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
 }
 
 .table-val-column:hover > .icons > .more-icon {
@@ -631,6 +633,7 @@
 .icons {
   flex-direction: row;
   display: flex;
+  flex-shrink: 0;
 }
 
 .error-val-column:hover > .icons > .flag-icons {
@@ -685,6 +688,9 @@
   font-style: normal;
   font-weight: normal;
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .header-title {

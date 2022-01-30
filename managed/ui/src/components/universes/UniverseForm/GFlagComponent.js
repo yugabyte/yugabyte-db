@@ -195,8 +195,8 @@ export default function GFlagComponent(props) {
     if (isReadOnly) return <span className="cell-font">{cell}</span>;
     return (
       <div className={clsx('name-container', flagDoesNotExists && 'error-val-column')}>
-        <span className="cell-font">{cell}</span>
-        <FlexContainer className="icons" direction="row">
+        <div className="cell-font">{cell}</div>
+        <div className="icons">
           <div className="flag-icons">
             <OverlayTrigger
               placement="top"
@@ -214,7 +214,7 @@ export default function GFlagComponent(props) {
           </div>
           {flagDoesNotExists &&
             errorPopover('Incorrect flag name', 'Flag name is incorrect. Remove Flag')}
-        </FlexContainer>
+        </div>
       </div>
     );
   };
@@ -260,8 +260,8 @@ export default function GFlagComponent(props) {
 
       return (
         <div className={clsx('table-val-column', isError && 'error-val-column')}>
-          <span className="cell-font">{`${cell}`}</span>
-          <FlexContainer className="icons" direction="row">
+          <div className="cell-font">{`${cell}`}</div>
+          <div className="icons">
             <div className="more-icon">
               <Button bsClass="flag-icon-button" onClick={() => handleSelectedOption(modalProps)}>
                 <i className="fa fa-ellipsis-h"></i>
@@ -312,7 +312,7 @@ export default function GFlagComponent(props) {
                   ? eInfo[server]?.error
                   : `This Flag does not belong to ${server}. Remove Flag`
               )}
-          </FlexContainer>
+          </div>
         </div>
       );
     } else {
