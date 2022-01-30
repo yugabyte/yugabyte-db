@@ -109,6 +109,12 @@ export const DELETE_CUSTOMER_CONFIG_RESPONSE = 'DELETE_CUSTOMER_CONFIG_RESPONSE'
 export const FETCH_CUSTOMER_CONFIGS = 'FETCH_CUSTOMER_CONFIGS';
 export const FETCH_CUSTOMER_CONFIGS_RESPONSE = 'FETCH_CUSTOMER_CONFIGS_RESPONSE';
 
+export const FETCH_RUNTIME_CONFIGS = 'FETCH_RUNTIME_CONFIGS';
+export const FETCH_RUNTIME_CONFIGS_RESPONSE = 'FETCH_RUNTIME_CONFIGS_RESPONSE';
+
+export const SET_RUNTIME_CONFIG = 'SET_RUNTIME_CONFIG';
+export const SET_RUNTIME_CONFIG_RESPONSE = 'SET_RUNTIME_CONFIG_RESPONSE';
+
 export const INVALID_CUSTOMER_TOKEN = 'INVALID_CUSTOMER_TOKEN';
 export const RESET_TOKEN_ERROR = 'RESET_TOKEN_ERROR';
 
@@ -831,6 +837,47 @@ export function fetchCustomerConfigs() {
 export function fetchCustomerConfigsResponse(response) {
   return {
     type: FETCH_CUSTOMER_CONFIGS_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchRunTimeConfigs(scope = '00000000-0000-0000-0000-000000000000') {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}`);
+  return {
+    type: FETCH_RUNTIME_CONFIGS,
+    payload: request
+  };
+}
+
+export function fetchRunTimeConfigsResponse(response) {
+  return {
+    type: FETCH_RUNTIME_CONFIGS_RESPONSE,
+    payload: response
+  };
+}
+
+export function setRunTimeConfig({ key, value, scope = '00000000-0000-0000-0000-000000000000' }) {
+  const cUUID = localStorage.getItem('customerId');
+  const headers = {
+    'Content-Type': 'text/plain'
+  };
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`,
+    value,
+    {
+      headers
+    }
+  );
+  return {
+    type: SET_RUNTIME_CONFIG,
+    payload: request
+  };
+}
+
+export function setRunTimeConfigResponse(response) {
+  return {
+    type: SET_RUNTIME_CONFIG_RESPONSE,
     payload: response
   };
 }
