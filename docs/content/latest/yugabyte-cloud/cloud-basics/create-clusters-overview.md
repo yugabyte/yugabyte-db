@@ -44,7 +44,7 @@ Although you can't change the cluster fault tolerance after the cluster is creat
 - For Node level, you can add or remove nodes in increments of 1.
 - For Availability zone level, you can add or remove nodes in increments of 3.
 
-For production clusters, Availability Zone Level is recommended.
+For production clusters, Availability zone level is recommended.
 
 For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. Single-node clusters can't be scaled.
 
