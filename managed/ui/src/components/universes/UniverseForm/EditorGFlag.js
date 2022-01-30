@@ -36,7 +36,7 @@ const EditorGFlag = ({ formProps, gFlagProps }) => {
         <img alt="--" src={Bulb} width="24" />
         &nbsp; &nbsp;
         <span className="bold-600">Make sure to use valid JSON formating: &nbsp;</span>{' '}
-        <span className="muted-text-2">{`{" FlagName" : "Value" , "FlagName" : "Value"}`}</span>
+        <span className="muted-text-2">{`{ "FlagName" : "Value" , "FlagName" : "Value" }`}</span>
       </FlexShrink>
       <AceEditor
         mode="json"
