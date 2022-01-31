@@ -430,23 +430,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
    Index Cond: ((h = 1) AND (r IS NULL))
 (2 rows)
 
-SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS NOT null;
- h | r | v
----+---+---
- 1 | 5 | 5
- 1 | 4 | 4
- 1 | 3 | 3
- 1 | 2 | 2
- 1 | 1 | 1
-(5 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS NOT null;
-                    QUERY PLAN
----------------------------------------------------
- Index Scan using sc_desc_nl_h_r_idx on sc_desc_nl
-   Index Cond: ((h = 1) AND (r IS NOT NULL))
-(2 rows)
-
 SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
  h | r | v
 ---+---+---
