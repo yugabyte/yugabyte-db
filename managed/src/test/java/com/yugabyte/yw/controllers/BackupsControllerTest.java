@@ -11,7 +11,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -53,12 +52,17 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import play.libs.Json;
 import play.mvc.Result;
 
+@RunWith(JUnitParamsRunner.class)
 public class BackupsControllerTest extends FakeDBApplication {
 
   private Universe defaultUniverse;
@@ -218,11 +222,25 @@ public class BackupsControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
+  private Result deleteBackupYb(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "DELETE";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/delete_backups";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
   private Result stopBackup(Users user, UUID backupUUID) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID + "/stop";
     return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+  }
+
+  private Result editBackup(Users user, ObjectNode bodyJson, UUID backupUUID) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "PUT";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/backups/" + backupUUID;
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
   @Test
@@ -437,6 +455,90 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Parameters({"Failed", "Skipped", "FailedToDelete", "Stopped", "Completed"})
+  @TestCaseName("testDeleteBackupYbWithValidStateWhenState:{0} ")
+  public void testDeleteBackupYbWithValidState(BackupState state) {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(state);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    ObjectNode resultNode = Json.newObject();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.backupUUID);
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  @Parameters({"InProgress", "DeleteInProgress", "QueuedForDeletion"})
+  @TestCaseName("testDeleteBackupYbWithInvalidStateWhenState:{0}")
+  public void testDeleteBackupYbWithInvalidState(BackupState state) {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(state);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    ObjectNode resultNode = Json.newObject();
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(json.get("taskUUID").size(), 0);
+  }
+
+  @Test
+  public void testDeleteBackupYbWithCustomCustomerStorageConfig() {
+    UUID invalidStorageConfigUUID = UUID.randomUUID();
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = invalidStorageConfigUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode resultNode = Json.newObject();
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      deleteBackupObject.put("storageConfigUUID", customerConfig.configUUID.toString());
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.backupUUID);
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
+    backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
+    assertEquals(customerConfig.configUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  @Test
   public void testDeleteBackupDuplicateTask() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST600");
     BackupTableParams bp = new BackupTableParams();
@@ -525,5 +627,51 @@ public class BackupsControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(
         json.get("error").asText(), "WaitFor task exceeded maxRetries! Task state is Created");
+  }
+
+  @Test
+  public void testEditBackupWithStateNotComplete() throws Exception {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
+
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testEditBackupWithNonPositiveDeletionTime() throws Exception {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", -1L);
+
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 0L);
+    result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testEditBackup() throws Exception {
+
+    defaultBackup.state = BackupState.Completed;
+    defaultBackup.update();
+    Backup backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+    // assertTrue(backup.state.equals(BackupState.Completed));
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
+
+    Result result = editBackup(defaultUser, bodyJson, defaultBackup.backupUUID);
+    backup = Backup.getOrBadRequest(defaultCustomer.uuid, defaultBackup.backupUUID);
+    long afterTimeInMillis = System.currentTimeMillis() + 86400000L;
+    long beforeTimeInMillis = System.currentTimeMillis() + 85400000L;
+
+    long expiryTimeInMillis = backup.getExpiry().getTime();
+    assertTrue(expiryTimeInMillis > beforeTimeInMillis);
+    assertTrue(afterTimeInMillis > expiryTimeInMillis);
   }
 }

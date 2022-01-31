@@ -5,10 +5,11 @@ linkTitle: Configure Yugabyte Platform
 description: Configure Yugabyte Platform.
 image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure Yugabyte Platform.
+type: page
+section: YUGABYTE PLATFORM
 menu:
   latest:
     identifier: configure-yugabyte-platform
-    parent: yugabyte-platform
     weight: 642
 ---
 

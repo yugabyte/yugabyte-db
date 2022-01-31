@@ -151,6 +151,16 @@ const char *YBGetCurrentZone()
 	return getenv("FLAGS_placement_zone");
 }
 
+const char *YBGetCurrentUUID()
+{
+	return getenv("FLAGS_placement_uuid");
+}
+
+const char *YBGetCurrentMetricNodeName()
+{
+	return getenv("FLAGS_metric_node_name");
+}
+
 int YBGetMaxClockSkewUsec() {
 	const int kDefaultClockSkewUsec = 500 * 1000;  // from physical_time.cc
 	const char *clock_skew_str = getenv("FLAGS_max_clock_skew_usec");

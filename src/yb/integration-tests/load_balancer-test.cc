@@ -141,7 +141,7 @@ TEST_F(LoadBalancerTest, PendingLeaderStepdownRegressTest) {
   }, kDefaultTimeout, "AreLeadersOnPreferredOnly"));
 
   // Allow for multiple leader moves per table.
-  for (int i = 0; i < num_masters(); ++i) {
+  for (size_t i = 0; i < num_masters(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "load_balancer_max_concurrent_moves", "10"));
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
@@ -152,7 +152,7 @@ TEST_F(LoadBalancerTest, PendingLeaderStepdownRegressTest) {
   }
   // Add stepdown delay of 2 * catalog_manager_bg_task_wait_ms.
   // This ensures that we will have pending stepdown tasks during a subsequent LB run.
-  for (int i = 0; i < num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->tablet_server(i),
                                               "TEST_leader_stepdown_delay_ms",
                                               std::to_string(2 * test_bg_task_wait_ms)));

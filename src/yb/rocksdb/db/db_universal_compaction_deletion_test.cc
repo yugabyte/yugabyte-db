@@ -12,6 +12,7 @@
 //
 
 #include "yb/rocksdb/db/db_test_util.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/path_util.h"
 #include "yb/util/test_macros.h"

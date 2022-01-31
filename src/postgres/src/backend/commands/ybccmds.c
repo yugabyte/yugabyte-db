@@ -128,13 +128,13 @@ YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_o
 /* ------------------------------------------------------------------------- */
 /*  Tablegroup Functions. */
 void
-YBCCreateTablegroup(Oid grpoid)
+YBCCreateTablegroup(Oid grp_oid, Oid tablespace_oid)
 {
 	YBCPgStatement handle;
 	char *db_name = get_database_name(MyDatabaseId);
 
 	HandleYBStatus(YBCPgNewCreateTablegroup(db_name, MyDatabaseId,
-											grpoid, &handle));
+											grp_oid, tablespace_oid, &handle));
 	HandleYBStatus(YBCPgExecCreateTablegroup(handle));
 }
 
@@ -144,7 +144,7 @@ YBCDropTablegroup(Oid grpoid)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
-	HandleYBStatus(YBCPgExecDropTablegroup(handle));
+	YBSaveDdlHandle(handle);
 }
 
 
@@ -732,20 +732,20 @@ YBCTruncateTable(Relation rel) {
 		if (indexId == rel->rd_pkindex)
 			continue;
 
-		/* Determine if table is colocated */
+		/* Determine if index is colocated */
 		if (MyDatabaseColocated)
 			HandleYBStatus(YBCPgIsTableColocated(databaseId,
-												 relationId,
-												 &colocated));
+												indexId,
+												&colocated));
 
 		tablegroupId = InvalidOid;
 		if (YbTablegroupCatalogExists)
 			tablegroupId = get_tablegroup_oid_by_table_oid(indexId);
 		if (colocated || tablegroupId != InvalidOid)
 		{
-			/* Create table-level tombstone for colocated tables / tables in tablegroups */
+			/* Create index-level tombstone for colocated indexes / indexes in tablegroups */
 			HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
-													 relationId,
+													 indexId,
 													 false,
 													 &handle));
 			HandleYBStatus(YBCPgDmlBindTable(handle));
@@ -1197,7 +1197,7 @@ YBCDropIndex(Oid relationId)
 									 &not_found);
 	}
 
-	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
+	/* Create table-level tombstone for colocated indexes / indexes in a tablegroup */
 	Oid tablegroupId = InvalidOid;
 	if (YbTablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);

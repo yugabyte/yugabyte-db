@@ -219,6 +219,14 @@ def validate_daemon_type(daemon_type):
 
 
 def get_binary_name_for_daemon_type(daemon_type):
+    binary_name = None
+    # Allow the user to use binaries of their choice for yb-master and/or yb-tserver.
+    if daemon_type == DAEMON_TYPE_MASTER:
+        binary_name = os.getenv('YB_CTL_MASTER_DAEMON_FILE_NAME')
+    elif daemon_type == DAEMON_TYPE_TSERVER:
+        binary_name = os.getenv('YB_CTL_TSERVER_DAEMON_FILE_NAME')
+    if binary_name is not None:
+        return binary_name
     return "yb-{}".format(daemon_type)
 
 
@@ -318,8 +326,8 @@ def is_yugabyte_db_installation_dir(top_dir):
         return False
     return has_rel_paths(
         top_dir, [
-            'bin/yb-master',
-            'bin/yb-tserver',
+            'bin/' + get_binary_name_for_daemon_type(DAEMON_TYPE_MASTER),
+            'bin/' + get_binary_name_for_daemon_type(DAEMON_TYPE_TSERVER),
             'postgres/bin/postgres'
         ])
 
@@ -1225,8 +1233,8 @@ class ClusterControl:
         # Regex to get process based on daemon type and bind address. Note the explicit space after
         # rpc_bind_addresses: This is to be able to distinguish between bind addresses with the
         # same prefix like 127.0.0.1, 127.0.0.11, 127.0.0.12.
-        return "yb-{} .* --rpc_bind_addresses {} ".format(
-            daemon_id.daemon_type,
+        return "{} .* --rpc_bind_addresses {} ".format(
+            get_binary_name_for_daemon_type(daemon_id.daemon_type),
             self.options.get_ip_address(daemon_id))
 
     def get_pid(self, daemon_id):

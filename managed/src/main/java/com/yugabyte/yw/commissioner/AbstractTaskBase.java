@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -64,6 +65,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final MetricService metricService;
   protected final AlertConfigurationService alertConfigurationService;
   protected final YBClientService ybService;
+  protected final RestoreManagerYb restoreManagerYb;
   protected final TableManager tableManager;
   protected final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory platformExecutorFactory;
@@ -79,6 +81,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.metricService = baseTaskDependencies.getMetricService();
     this.alertConfigurationService = baseTaskDependencies.getAlertConfigurationService();
     this.ybService = baseTaskDependencies.getYbService();
+    this.restoreManagerYb = baseTaskDependencies.getRestoreManagerYb();
     this.tableManager = baseTaskDependencies.getTableManager();
     this.tableManagerYb = baseTaskDependencies.getTableManagerYb();
     this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();

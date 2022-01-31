@@ -631,6 +631,7 @@ helpSQL(const char *topic, unsigned short int pager)
 							QL_HELP[i].cmd,
 							_(QL_HELP[i].help),
 							buffer.data);
+					termPQExpBuffer(&buffer);
 					/* If we have an exact match, exit.  Fixes \h SELECT */
 					if (pg_strcasecmp(topic, QL_HELP[i].cmd) == 0)
 						break;

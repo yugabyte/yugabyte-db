@@ -79,7 +79,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   // Writes `num_rows` rows into test table using `CreateInsertRequest`.
   // Returns a pair with min and max hash code written.
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRows(
-      uint32_t num_rows = 2000, int32_t start_key = 1);
+      int32_t num_rows = 2000, int32_t start_key = 1);
 
   CHECKED_STATUS FlushTestTable();
 
@@ -203,26 +203,26 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
   CHECKED_STATUS FlushTabletsOnSingleTServer(
-      int tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction);
+      size_t tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction);
 
-  Result<std::set<TabletId>> GetTestTableTabletIds(int tserver_idx);
+  Result<std::set<TabletId>> GetTestTableTabletIds(size_t tserver_idx);
 
   Result<std::set<TabletId>> GetTestTableTabletIds();
 
-  Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(int tserver_idx);
+  Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(size_t tserver_idx);
 
   Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets();
 
   CHECKED_STATUS WaitForTabletsExcept(
-      int num_tablets, int tserver_idx, const TabletId& exclude_tablet);
+      size_t num_tablets, size_t tserver_idx, const TabletId& exclude_tablet);
 
-  CHECKED_STATUS WaitForTablets(int num_tablets, int tserver_idx);
+  CHECKED_STATUS WaitForTablets(size_t num_tablets, size_t tserver_idx);
 
-  CHECKED_STATUS WaitForTablets(int num_tablets);
+  CHECKED_STATUS WaitForTablets(size_t num_tablets);
 
   CHECKED_STATUS SplitTabletCrashMaster(bool change_split_boundary, string* split_partition_key);
 
-  Result<TabletId> GetOnlyTestTabletId(int tserver_idx);
+  Result<TabletId> GetOnlyTestTabletId(size_t tserver_idx);
 
   Result<TabletId> GetOnlyTestTabletId();
 };

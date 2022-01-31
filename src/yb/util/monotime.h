@@ -276,6 +276,14 @@ class CoarseMonoClock {
   static TimePoint Now() { return now(); }
 };
 
+template <class Clock>
+typename Clock::duration ClockResolution() {
+  return typename Clock::duration(1);
+}
+
+template <>
+CoarseMonoClock::Duration ClockResolution<CoarseMonoClock>();
+
 typedef CoarseMonoClock::TimePoint CoarseTimePoint;
 typedef CoarseMonoClock::Duration CoarseDuration;
 

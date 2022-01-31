@@ -375,7 +375,6 @@ typedef enum NodeTag
 	T_DeallocateStmt,
 	T_DeclareCursorStmt,
 	T_CreateTableGroupStmt,
-	T_DropTableGroupStmt,
 	T_CreateTableSpaceStmt,
 	T_DropTableSpaceStmt,
 	T_AlterObjectDependsStmt,

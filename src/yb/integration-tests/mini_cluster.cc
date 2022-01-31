@@ -205,7 +205,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
         "tservers: $1", extra_tserver_options.size(), options_.num_tablet_servers);
   }
 
-  for (int i = 0; i < options_.num_tablet_servers; i++) {
+  for (size_t i = 0; i < options_.num_tablet_servers; i++) {
     if (!extra_tserver_options.empty()) {
       RETURN_NOT_OK_PREPEND(AddTabletServer(extra_tserver_options[i]),
                             Substitute("Error adding TS $0", i));
@@ -245,7 +245,7 @@ Status MiniCluster::StartMasters() {
     }
   });
 
-  for (int i = 0; i < options_.num_masters; i++) {
+  for (size_t i = 0; i < options_.num_masters; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(
         options_.master_env, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i], i);
     auto status = mini_masters_[i]->StartDistributedMaster(master_rpc_ports_);
@@ -428,11 +428,11 @@ string MiniCluster::GetTserverHTTPAddresses() const {
   return peer_addrs;
 }
 
-int MiniCluster::LeaderMasterIdx() {
+ssize_t MiniCluster::LeaderMasterIdx() {
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < kMasterLeaderElectionWaitTimeSeconds) {
-    for (int i = 0; i < mini_masters_.size(); i++) {
+    for (size_t i = 0; i < mini_masters_.size(); i++) {
       MiniMaster* master = mini_master(i);
       if (master->master() == nullptr || master->master()->IsShutdown()) {
         continue;
@@ -687,7 +687,7 @@ server::SkewedClockDeltaChanger JumpClock(
 std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew) {
   std::vector<server::SkewedClockDeltaChanger> delta_changers;
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     delta_changers.push_back(JumpClock(cluster->mini_tablet_server(i)->server(), i * clock_skew));
   }
   return delta_changers;
@@ -699,17 +699,17 @@ std::vector<server::SkewedClockDeltaChanger> JumpClocks(
   auto num_masters = cluster->num_masters();
   auto num_tservers = cluster->num_tablet_servers();
   delta_changers.reserve(num_masters + num_tservers);
-  for (int i = 0; i != num_masters; ++i) {
+  for (size_t i = 0; i != num_masters; ++i) {
     delta_changers.push_back(JumpClock(cluster->mini_master(i)->master(), delta));
   }
-  for (int i = 0; i != num_tservers; ++i) {
+  for (size_t i = 0; i != num_tservers; ++i) {
     delta_changers.push_back(JumpClock(cluster->mini_tablet_server(i)->server(), delta));
   }
   return delta_changers;
 }
 
 void StepDownAllTablets(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     for (const auto& peer : cluster->GetTabletPeers(i)) {
       consensus::LeaderStepDownRequestPB req;
       req.set_tablet_id(peer->tablet_id());
@@ -774,7 +774,7 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter) {
   std::vector<tablet::TabletPeerPtr> result;
 
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto server = cluster->mini_tablet_server(i)->server();
     if (!server) { // Server is shut down.
       continue;
@@ -870,7 +870,7 @@ Status WaitUntilTabletHasLeader(
 
 CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
   return WaitFor([cluster] {
-    for (int i = 0; i != cluster->num_masters(); ++i) {
+    for (size_t i = 0; i != cluster->num_masters(); ++i) {
       auto tablet_peer = cluster->mini_master(i)->tablet_peer();
       if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
         return true;
@@ -1042,7 +1042,7 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
 }
 
 MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id) {
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto server = cluster->mini_tablet_server(i);
     if (!server->server()) { // Server is shut down.
       continue;
@@ -1056,13 +1056,13 @@ MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_
 }
 
 void ShutdownAllTServers(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     cluster->mini_tablet_server(i)->Shutdown();
   }
 }
 
 Status StartAllTServers(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     RETURN_NOT_OK(cluster->mini_tablet_server(i)->Start());
   }
 
@@ -1070,13 +1070,13 @@ Status StartAllTServers(MiniCluster* cluster) {
 }
 
 void ShutdownAllMasters(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
     cluster->mini_master(i)->Shutdown();
   }
 }
 
 Status StartAllMasters(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
     RETURN_NOT_OK(cluster->mini_master(i)->Start());
   }
 
@@ -1121,8 +1121,8 @@ Status BreakConnectivity(MiniCluster* cluster, size_t idx1, size_t idx2) {
   return SetupConnectivity(cluster, idx1, idx2, Connectivity::kOff);
 }
 
-Result<int> ServerWithLeaders(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+Result<size_t> ServerWithLeaders(MiniCluster* cluster) {
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto* server = cluster->mini_tablet_server(i)->server();
     if (!server) {
       continue;

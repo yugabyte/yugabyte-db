@@ -158,7 +158,7 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-json" % "2.6.14",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
-  "com.h2database" % "h2" % "1.4.200" % Test,
+  "com.h2database" % "h2" % "2.1.210" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
   "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
@@ -376,7 +376,6 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-codec-http" % "4.1.71.Final",
   "io.netty" % "netty" % "3.10.6.Final",
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
-  "com.nimbusds" % "nimbus-jose-jwt" % "9.11.3",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26"
 )

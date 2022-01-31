@@ -240,6 +240,19 @@ public class ModelFactory {
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
+  public static CustomerConfig createAZStorageConfig(Customer customer, String configName) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"AZ\","
+                + " \"type\": \"STORAGE\","
+                + " \"data\":"
+                + " {\"BACKUP_LOCATION\": \"https://foo.blob.core.windows.net/azurecontainer\","
+                + " \"AZURE_STORAGE_SAS_TOKEN\": \"AZ-TOKEN\"}}");
+    return CustomerConfig.createWithFormData(customer.uuid, formData);
+  }
+
   public static Backup createBackup(UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
@@ -492,6 +505,7 @@ public class ModelFactory {
         new MaintenanceWindow()
             .generateUUID()
             .setName("Test")
+            .setDescription("Test Description")
             .setStartTime(startDate)
             .setEndTime(endDate)
             .setCustomerUUID(customerUUID)

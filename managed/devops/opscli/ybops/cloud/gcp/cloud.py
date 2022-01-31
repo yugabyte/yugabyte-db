@@ -115,7 +115,7 @@ class GcpCloud(AbstractCloud):
 
     def stop_instance(self, args):
         instance = self.get_admin().get_instances(args.zone, args.search_pattern,
-                                                  filters="(status eq RUNNING)")
+                                                  filters="(status = \"RUNNING\")")
         if not instance:
             logging.error("Host {} does not exist or not running".format(args.search_pattern))
             return
@@ -123,16 +123,23 @@ class GcpCloud(AbstractCloud):
 
     def start_instance(self, args, ssh_port):
         instance = self.get_admin().get_instances(args.zone, args.search_pattern,
-                                                  filters="(status eq TERMINATED)")
+                                                  filters="(status = \"TERMINATED\")")
         if not instance:
             logging.error("Host {} does not exist or not stopped".format(args.search_pattern))
             return
         self.admin.start_instance(instance['zone'], instance['name'])
         self.wait_for_ssh_port(instance['private_ip'], instance['name'], ssh_port)
 
-    def delete_instance(self, args):
-        host_info = self.get_host_info(args)
-        if args.node_ip is None or host_info['private_ip'] != args.node_ip:
+    def delete_instance(self, args, filters=None):
+        host_info = self.get_host_info(args, filters=filters)
+        if host_info is None:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+        if args.node_ip is None:
+            if args.node_uuid is None or host_info['node_uuid'] != args.node_uuid:
+                logging.error("Host {} UUID does not match.".format(args.search_pattern))
+                return
+        elif host_info['private_ip'] != args.node_ip:
             logging.error("Host {} IP does not match.".format(args.search_pattern))
             return
         self.get_admin().delete_instance(
@@ -300,7 +307,7 @@ class GcpCloud(AbstractCloud):
             dest_vpc_id, host_vpc_id, per_region_meta=self.get_per_region_meta(args)).cleanup()
         return {"success": "VPC deleted."}
 
-    def get_host_info(self, args, get_all=False):
+    def get_host_info(self, args, get_all=False, filters=None):
         """Override to call the respective GCP specific API for returning hosts by name.
 
         Required fields in args:
@@ -309,7 +316,7 @@ class GcpCloud(AbstractCloud):
         """
         zone = args.zone
         search_pattern = args.search_pattern
-        return self.get_admin().get_instances(zone, search_pattern, get_all)
+        return self.get_admin().get_instances(zone, search_pattern, get_all, filters=filters)
 
     def get_device_names(self, args):
         # Boot disk is also a persistent disk, so add persistent disks starting at index 1

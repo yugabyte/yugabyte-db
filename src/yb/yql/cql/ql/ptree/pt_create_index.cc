@@ -117,7 +117,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // to the primary key of the index table to make the non-unique values unique. For unique index,
   // they should be added as non-primary-key columns.
   const YBSchema& schema = table_->schema();
-  for (int idx = 0; idx < schema.num_key_columns(); idx++) {
+  for (size_t idx = 0; idx < schema.num_key_columns(); idx++) {
     // Not adding key-column schema.columns(idx) to the INDEX metadata if it is already referred to
     // by one of the index-columns.
     const MCString key_name(schema.Column(idx).name().c_str(), sem_context->PTempMem());

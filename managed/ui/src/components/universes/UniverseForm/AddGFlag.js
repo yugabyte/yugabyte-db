@@ -6,6 +6,7 @@ import { YBLabel } from '../../common/descriptors';
 import { YBLoading } from '../../common/indicators';
 import { FlexShrink, FlexContainer } from '../../common/flexbox/YBFlexBox';
 import { fetchGFlags, fetchParticularFlag } from '../../../actions/universe';
+import clsx from 'clsx';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
@@ -22,6 +23,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   const [mostUsedArr, setMostUsedFlags] = useState(null);
   const [filteredArr, setFilteredArr] = useState(null);
   const [selectedFlag, setSelectedFlag] = useState(null);
+  const [apiError, setAPIError] = useState(null);
 
   //Declarative methods
   const filterByText = (arr, text) => arr.filter((e) => e?.name?.includes(text));
@@ -54,7 +56,8 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       else setFilteredArr(flags[1]?.data);
       setLoader(false);
     } catch (e) {
-      console.error(e);
+      setAPIError(e?.error);
+      setLoader(false);
     }
   };
 
@@ -74,7 +77,8 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       else formProps.setValues(gFlagProps);
       setLoader(false);
     } catch (e) {
-      console.error(e);
+      setAPIError(e?.error);
+      setLoader(false);
     }
   };
 
@@ -95,10 +99,12 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   //nodes
   const valueLabel = (
-    <>
+    <FlexContainer>
       Flag Value &nbsp;
-      <Badge className="gflag-badge">{gFlagProps?.server}</Badge>
-    </>
+      <Badge className="gflag-badge">
+        {gFlagProps?.server === 'MASTER' ? 'Master' : 'T-Server'}
+      </Badge>
+    </FlexContainer>
   );
 
   const infoText = (
@@ -112,7 +118,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   );
 
   const documentationLink = (
-    <Row>
+    <Row className="mt-16">
       <img alt="--" src={BookOpen} width="12" />{' '}
       <a
         className="gflag-doc-link"
@@ -182,11 +188,12 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
           onValueChanged={(text) => setSearchVal(text)}
         />
       </FlexShrink>
-      <FlexShrink>
+      <FlexShrink className="button-container">
         <YBButton
-          btnText="ALL FLAGS"
+          btnText="All Flags"
           disabled={mode === EDIT}
-          btnClass={!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default'}
+          active={toggleMostUsed}
+          btnClass={clsx(!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
           onClick={() => {
             if (toggleMostUsed) {
               setSelectedFlag(null);
@@ -196,9 +203,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         />{' '}
         &nbsp;
         <YBButton
-          btnText="MOST USED"
+          btnText="Most used"
           disabled={mode === EDIT}
-          btnClass={toggleMostUsed ? 'btn btn-orange' : 'btn btn-default'}
+          active={!toggleMostUsed}
+          btnClass={clsx(toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
           onClick={() => {
             if (!toggleMostUsed) {
               setSelectedFlag(null);
@@ -247,7 +255,6 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
                   <>
                     <span className="gflag-description-title">Default Value</span>
                     <Badge className="gflag-badge">{selectedFlag?.default}</Badge>
-                    <br />
                   </>
                 )}
                 {documentationLink}
@@ -264,8 +271,16 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   return (
     <div className="add-gflag-container">
       {isLoading ? (
-        <div className="loading-container">
+        <div className="center-aligned">
           <YBLoading />
+        </div>
+      ) : apiError ? (
+        <div className="center-aligned">
+          <i className="fa fa-exclamation-triangle error-icon lg-icon" />
+          <span>
+            Selected DB Version : <b>{dbVersion}</b>
+          </span>
+          <span className="error-icon"> {apiError}</span>
         </div>
       ) : (
         <Row className="row-flex">

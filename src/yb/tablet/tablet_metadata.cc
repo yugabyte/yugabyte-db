@@ -561,7 +561,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
 
-      SCHECK_EQ(superblock.split_child_tablet_ids().size(), split_child_tablet_ids_.size(),
+      SCHECK_EQ(implicit_cast<size_t>(superblock.split_child_tablet_ids().size()),
+                split_child_tablet_ids_.size(),
                 Corruption, "Expected exact number of child tablet ids");
       for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
         split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(narrow_cast<int>(i));

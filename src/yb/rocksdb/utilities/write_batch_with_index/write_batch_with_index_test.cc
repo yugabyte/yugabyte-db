@@ -30,6 +30,7 @@
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
 
@@ -89,7 +90,7 @@ struct TestHandler : public WriteBatch::Handler {
 };
 }  // anonymous namespace
 
-class WriteBatchWithIndexTest : public testing::Test {};
+class WriteBatchWithIndexTest : public RocksDBTest {};
 
 void TestValueAsSecondaryIndexHelper(std::vector<Entry> entries,
                                      WriteBatchWithIndex* batch) {

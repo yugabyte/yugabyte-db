@@ -71,7 +71,7 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
-DECLARE_int32(max_queued_split_candidates);
+DECLARE_uint64(max_queued_split_candidates);
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
@@ -439,6 +439,16 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
 
   auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithoutTransaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto status = conn.Execute(
+      "SELECT tmplinline FROM pg_catalog.pg_pltemplate WHERE tmplname !~ tmplhandler FOR SHARE");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(),
+                      "Read request with row mark types must be part of a transaction");
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
@@ -886,7 +896,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
         RandomHumanReadableString(kValueSize)));
 
     return false;
-  }, 5s, "Intents cleanup", 200ms));
+  }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {

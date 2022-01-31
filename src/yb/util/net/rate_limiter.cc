@@ -18,7 +18,7 @@
 using namespace yb::size_literals;
 
 DEFINE_int32(rate_limiter_min_size, 32_KB, "Minimum size for each transmission request");
-DEFINE_int32(rate_limiter_min_rate, 1000, "Minimum transmission rate in bytes/sec");
+DEFINE_uint64(rate_limiter_min_rate, 1000, "Minimum transmission rate in bytes/sec");
 
 namespace yb {
 

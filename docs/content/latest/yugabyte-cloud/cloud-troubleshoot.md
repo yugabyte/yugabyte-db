@@ -4,10 +4,10 @@ linkTitle: Troubleshoot
 description: Troubleshoot issues in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-troubleshoot
-    parent: yugabyte-cloud
     weight: 850
 isTocNested: true
 showAsideToc: true
@@ -28,6 +28,12 @@ ysqlsh: could not connect to server: Operation timed out
 If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-secure-clusters/add-connections/). If your IP address has changed, add the new IP address.
 
 If you have a VPC configured, add one or more IP addresses from the peered VPC to the cluster [IP allow list](../cloud-secure-clusters/add-connections/).
+
+### Connection closed in cloud shell
+
+If you are connected to a cluster in cloud shell and the message Connection Closed appears.
+
+Cloud shell has a hard limit of 15 minutes for connections. Close the cloud shell window and [launch a new cloud shell session](../cloud-connect/connect-cloud-shell/).
 
 ### SSL off
 

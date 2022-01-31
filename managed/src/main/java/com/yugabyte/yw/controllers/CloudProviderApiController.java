@@ -47,8 +47,9 @@ public class CloudProviderApiController extends AuthenticatedController {
       response = Provider.class,
       responseContainer = "List",
       nickname = "getListOfProviders")
-  public Result list(UUID customerUUID) {
-    return PlatformResults.withData(Provider.getAll(customerUUID));
+  public Result list(UUID customerUUID, String name, String code) {
+    CloudType providerCode = code == null ? null : CloudType.valueOf(code);
+    return PlatformResults.withData(Provider.getAll(customerUUID, name, providerCode));
   }
 
   @ApiOperation(

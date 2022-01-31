@@ -5,9 +5,10 @@ linkTitle: Install Yugabyte Platform
 description: Install Yugabyte Platform and prepare universe nodes.
 image: /images/section_icons/quick_start/install.png
 headcontent: Install Yugabyte Platform to begin creating and managing deployments.
+type: page
+section: YUGABYTE PLATFORM
 menu:
   latest:
-    parent: yugabyte-platform
     identifier: install-yugabyte-platform
 weight: 641
 isTocNested: true

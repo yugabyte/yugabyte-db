@@ -4,10 +4,10 @@ linkTitle: Deploy clusters
 description: Deploy clusters in Yugabyte Cloud.
 headcontent: Deploy production-ready clusters.
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-basics
-    parent: yugabyte-cloud
     weight: 25
 isTocNested: true
 showAsideToc: true
@@ -25,6 +25,18 @@ You deploy clusters in Yugabyte Cloud using the **Create Cluster** wizard. Befor
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="create-clusters-overview/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
+        <div class="title">Plan your cluster</div>
+      </div>
+      <div class="body">
+        Plan your production deployment.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="create-clusters/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
@@ -36,28 +48,4 @@ You deploy clusters in Yugabyte Cloud using the **Create Cluster** wizard. Befor
     </a>
   </div>
 
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="vpc-peers/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">VPC peering</div>
-      </div>
-      <div class="body">
-        Add VPC peers to allow applications running on other cloud instances to communicate with your Yugabyte Cloud clusters.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="endpoints/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Manage Endpoints</div>
-      </div>
-      <div class="body">
-        Manage the endpoints for connecting to clusters.
-      </div>
-    </a>
-  </div>
--->
 </div>

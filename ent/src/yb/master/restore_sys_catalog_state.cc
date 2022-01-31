@@ -643,7 +643,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
           docdb::SubDocKey sub_doc_key;
           RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
               restoring_state.key(), docdb::HybridTimeRequired::kFalse));
-          SCHECK_EQ(sub_doc_key.subkeys().size(), 1, Corruption, "Wrong number of subdoc keys");
+          SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
           if (sub_doc_key.subkeys()[0].value_type() == docdb::ValueType::kColumnId) {
             auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
             const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_version_schema.column_by_id(
@@ -682,8 +682,8 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
       RETURN_NOT_OK(existing_state.Next());
     }
 
-    if (num_updates + num_inserts + num_deletes != 0) {
-      LOG(INFO) << "PITR: Pg system table: " << *table.name << ", updates: " << num_updates
+    if (num_updates + num_inserts + num_deletes != 0 || VLOG_IS_ON(3)) {
+      LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", updates: " << num_updates
                 << ", inserts: " << num_inserts << ", deletes: " << num_deletes;
     }
   }

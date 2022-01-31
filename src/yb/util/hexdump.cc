@@ -71,7 +71,7 @@ std::string HexDump(const Slice &slice) {
       output.append("     ");
     }
 
-    for (int i = 0; i < line_len; i++) {
+    for (size_t i = 0; i < line_len; i++) {
       char c = line_p[i];
       if (isprint(c)) {
         output.push_back(c);
