@@ -161,6 +161,11 @@ class CompactionIterator {
   // is in or beyond the last file checked during the previous call
   std::vector<size_t> level_ptrs_;
   CompactionIteratorStats iter_stats_;
+
+  // Stores the disjoint live ranges of this tablet in user keyspace. Ranges at the back are
+  // lexicographically first. Ranges are popped off the back of the stack as our iteration passes
+  // them.
+  std::vector<std::pair<Slice, Slice>> live_key_ranges_stack_;
 };
 }  // namespace rocksdb
 

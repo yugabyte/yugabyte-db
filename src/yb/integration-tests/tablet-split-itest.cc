@@ -112,6 +112,8 @@ DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_int32(replication_factor);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -773,6 +775,27 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
   ASSERT_EQ(rows_count, kNumRows);
 }
 
+TEST_F(TabletSplitITest, SplitSingleTabletLongTransactions) {
+  constexpr auto kNumRows = 1000;
+  constexpr auto kNumApplyLargeTxnBatches = 10;
+  FLAGS_txn_max_apply_batch_records = kNumRows / kNumApplyLargeTxnBatches;
+  FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms = 1;
+
+  // Write enough rows to trigger the large transaction apply path with kNumApplyLargeTxnBatches
+  // batches. Wait for post split compaction and validate data before returning.
+  ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
+
+  // At this point, post split compaction has happened, and no apply intent task iterations have
+  // run. If post-split compaction has improperly handled ApplyTransactionState present in
+  // regulardb, e.g. by deleting it, then upon restart, one or both of the new child subtablets will
+  // lose all unapplied data.
+  ASSERT_OK(cluster_->RestartSync());
+
+  // If we did not lose any large transaction apply data during post-split compaction, then we
+  // should have all rows present in the database.
+  EXPECT_OK(CheckRowsCount(kNumRows));
+}
+
 class TabletSplitYedisTableTest : public integration_tests::RedisTableTestBase {
  protected:
   int num_tablets() override { return 1; }
@@ -808,6 +831,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_split_tablet_candidate_processing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
   }
 
  protected:
@@ -910,8 +934,6 @@ TEST_F(AutomaticTabletSplitITest, TabletSplitHasClusterReplicationInfo) {
   // Disable manual compations from flushes
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 1;
-  // Allow 5 outstanding tablet splits.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
 
   std::vector<string> clouds = {"cloud1_split", "cloud2_split", "cloud3_split", "cloud4_split"};
   std::vector<string> regions = {"rack1_split", "rack2_split", "rack3_split", "rack4_split"};
