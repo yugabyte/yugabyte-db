@@ -110,6 +110,8 @@ DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_int32(replication_factor);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_bool(TEST_pause_tserver_get_split_key);
 DECLARE_bool(TEST_reject_delete_not_serving_tablet_rpc);
 
@@ -771,6 +773,27 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
   ASSERT_EQ(rows_count, kNumRows);
 }
 
+TEST_F(TabletSplitITest, SplitSingleTabletLongTransactions) {
+  constexpr auto kNumRows = 1000;
+  constexpr auto kNumApplyLargeTxnBatches = 10;
+  FLAGS_txn_max_apply_batch_records = kNumRows / kNumApplyLargeTxnBatches;
+  FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms = 1;
+
+  // Write enough rows to trigger the large transaction apply path with kNumApplyLargeTxnBatches
+  // batches. Wait for post split compaction and validate data before returning.
+  ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
+
+  // At this point, post split compaction has happened, and no apply intent task iterations have
+  // run. If post-split compaction has improperly handled ApplyTransactionState present in
+  // regulardb, e.g. by deleting it, then upon restart, one or both of the new child subtablets will
+  // lose all unapplied data.
+  ASSERT_OK(cluster_->RestartSync());
+
+  // If we did not lose any large transaction apply data during post-split compaction, then we
+  // should have all rows present in the database.
+  EXPECT_OK(CheckRowsCount(kNumRows));
+}
+
 class TabletSplitYedisTableTest : public integration_tests::RedisTableTestBase {
  protected:
   int num_tablets() override { return 1; }
@@ -804,6 +827,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
   }
 
  protected:

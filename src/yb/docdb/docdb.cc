@@ -83,8 +83,7 @@ DEFINE_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
-// TODO(#10163) -- Revert this flag to it's previous value once #10163 is resolved.
-DEFINE_int32(txn_max_apply_batch_records, std::numeric_limits<int32>::max(),
+DEFINE_int32(txn_max_apply_batch_records, 100000,
              "Max number of apply records allowed in single RocksDB batch. "
              "When a transaction's data in one tablet does not fit into specified number of "
              "records, it will be applied using multiple RocksDB write batches.");
