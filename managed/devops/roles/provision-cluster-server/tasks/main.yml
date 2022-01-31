@@ -23,6 +23,7 @@
                           (ansible_distribution_major_version > '7')))) | bool }}"
     ntp_service_name: "{{ 'ntpd' if ((ansible_distribution != 'Debian') and \
                       (ansible_distribution != 'Ubuntu')) else 'ntp' }}"
+  tags: yb-prebuilt-ami
 
 - block:
   - name: Install NTP
@@ -56,6 +57,7 @@
       state: restarted
 
   when: "{{ not should_setup_chrony and not air_gap and cloud_type != 'onprem' }}"
+  tags: yb-prebuilt-ami
 
 - block:
   - name: Uninstall NTP if available
@@ -68,6 +70,7 @@
       name: ntp
       state: absent
   when: should_setup_chrony and not air_gap
+  tags: yb-prebuilt-ami
 
 - block:
   - name: Install and Configure chrony
@@ -86,18 +89,21 @@
     become_method: sudo
     shell: chronyc makestep
   when: should_setup_chrony
+  tags: yb-prebuilt-ami
 
 - name: Provision | Set swappiness off
   sysctl:
     name: vm.swappiness
     value: 0
     state: present
+  tags: yb-prebuilt-ami
 
 - name: Provision | Create core dump kernel pattern
   sysctl:
     name: kernel.core_pattern
     value: "{{ yb_home_dir }}/cores/core_%e.%p"
     state: present
+  tags: yb-prebuilt-ami
 
 - name: Provision | Ensure proper permissions for mount paths.
   file:
@@ -110,6 +116,7 @@
 - include_tasks: "setup-cgroup.yml"
   # setting up cgroup on YB DB nodes requires installing additional packages from external repos.
   when: not air_gap and pg_max_mem_mb > 0
+  tags: yb-prebuilt-ami
 
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations
@@ -120,6 +127,7 @@
     state: present
     mode: 0440
     validate: 'visudo -cf %s'
+  tags: yb-prebuilt-ami
 
 - block:
   # Give yugabyte user sudo access to start/stop/restart master and tserver
@@ -263,3 +271,4 @@
       line: Unattended-Upgrade::Automatic-Reboot "false";
     when: unattendedupgrade_file.stat.exists
   when: ansible_distribution == "Ubuntu"
+  tags: yb-prebuilt-ami
