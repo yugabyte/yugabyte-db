@@ -19,6 +19,7 @@
         (dnf install -y python36 && alternatives --set python /usr/bin/python3) ||
         (echo "Python already installed or not CentOS 8")
       when: install_python is defined
+      tags: yb-prebuilt-ami
 
 - name: "Pre-provisioning tasks"
   hosts: "{{ yb_ansible_host }}"
@@ -59,10 +60,12 @@
           name: python-minimal
           state: present
       when: ansible_distribution == "Ubuntu"
+      tags: yb-prebuilt-ami
     # have to save this in another var since it won't play well with overriding
     # ansible_ssh_pipelining in the task below
     - set_fact:
         disable_requiretty: "{{ ansible_ssh_pipelining }}"
+      tags: yb-prebuilt-ami
 
     - name: disable requiretty in /etc/sudoers
       lineinfile:
@@ -75,6 +78,7 @@
       vars:
         ansible_ssh_pipelining: no
       when: disable_requiretty
+      tags: yb-prebuilt-ami
     # https://cloud.google.com/compute/docs/troubleshooting/known-issues#known_issues_for_linux_vm_instances
     - name: Fix google-cloud yum repo settings for GCP VM
       replace:
@@ -82,8 +86,10 @@
         regexp: 'repo_gpgcheck=1'
         replace: 'repo_gpgcheck=0'
       when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
+      tags: yb-prebuilt-ami
     - name: Gather package facts
       package_facts:
+      tags: yb-prebuilt-ami
     # Needed to register custom SSH port with SELinux
     - name: Install policycoreutils-python on CentOS 7
       module_defaults:
@@ -95,14 +101,17 @@
       when: >
         'policycoreutils-python' not in ansible_facts.packages and
         ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+      tags: yb-prebuilt-ami
     - name: Accept target in firewalld on Oracle Linux
       raw: sudo firewall-cmd --set-target=ACCEPT --permanent && sudo systemctl restart firewalld
       when: ansible_distribution == 'OracleLinux'
+      tags: yb-prebuilt-ami
     # Registering custom SSH port with SELinux sometimes fails without this
     - name: clean dnf
       shell:
         cmd: sudo dnf clean all
       when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+      tags: yb-prebuilt-ami
     - name: install latest version of selinux-policy
       shell:
         cmd: sudo dnf reinstall --refresh -y selinux-policy
@@ -110,3 +119,4 @@
       until: result.rc == 0
       retries: 10
       when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+      tags: yb-prebuilt-ami
