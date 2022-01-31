@@ -120,16 +120,26 @@ The `createDatabase` method uses PostgreSQL-compliant DDL commands to create a s
 ```go
 Statement stmt = conn.createStatement();
 
+stmt := `DROP TABLE IF EXISTS DemoAccount`
+_, err := db.Exec(stmt)
+checkIfError(err)
+
 stmt = `CREATE TABLE DemoAccount (
-                    id int PRIMARY KEY,
-                    name varchar,
-                    age int,
-                    country varchar,
-                    balance int)`
+                      id int PRIMARY KEY,
+                      name varchar,
+                      age int,
+                      country varchar,
+                      balance int)`
+
+_, err = db.Exec(stmt)
+checkIfError(err)
 
 stmt = `INSERT INTO DemoAccount VALUES
-            (1, 'Jessica', 28, 'USA', 10000),
-            (2, 'John', 28, 'Canada', 9000)`
+              (1, 'Jessica', 28, 'USA', 10000),
+              (2, 'John', 28, 'Canada', 9000)`
+
+_, err = db.Exec(stmt)
+checkIfError(err)
 ```
 
 ### selectAccounts
@@ -151,18 +161,27 @@ for rows.Next() {
 
     fmt.Printf("name = %s, age = %v, country = %s, balance = %v\n",
         name, age, country, balance)
+}
 ```
 
 ### transferMoneyBetweenAccounts
 
-The `transferMoneyBetweenAccounts` method updates your data.
+The `transferMoneyBetweenAccounts` method updates your data consistently with distributed transactions.
 
 ```go
+tx, err := db.Begin()
+checkIfError(err)
+
 _, err = tx.Exec(`UPDATE DemoAccount SET balance = balance - $1 WHERE name = 'Jessica'`, amount)
 if checkIfTxAborted(err) {
     return
 }
 _, err = tx.Exec(`UPDATE DemoAccount SET balance = balance + $1 WHERE name = 'John'`, amount)
+if checkIfTxAborted(err) {
+    return
+}
+
+err = tx.Commit()
 if checkIfTxAborted(err) {
     return
 }
