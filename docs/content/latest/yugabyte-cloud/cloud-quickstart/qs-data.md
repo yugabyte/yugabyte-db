@@ -182,6 +182,8 @@ To create a database (`yb_demo`), do the following:
 
 More sample datasets are available for you to use to explore YugabyteDB. Refer to [Sample datasets](../../../sample-data/).
 
+To add additional users to your database, refer to [Add database users](../../cloud-secure-clusters/add-users/).
+
 ## Next step
 
 [Explore distributed SQL](../qs-explore)

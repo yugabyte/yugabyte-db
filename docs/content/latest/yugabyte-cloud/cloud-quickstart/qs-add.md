@@ -47,6 +47,10 @@ Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/)
 
 [Differences between free and standard clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters)
 
+[Deploy production clusters](../../cloud-basics/)
+
+[Authorize access to your cluster](../../cloud-secure-clusters/add-connections/)
+
 ## Next step
 
 [Connect to your cluster](../qs-connect/) using the Cloud Shell.
