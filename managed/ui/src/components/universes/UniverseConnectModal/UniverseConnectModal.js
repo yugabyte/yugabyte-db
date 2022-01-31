@@ -161,9 +161,9 @@ class UniverseConnectModal extends Component {
       const connectIp = this.state.connectIp || '127.0.0.1';
       const jdbcConnection = `jdbc:postgresql://${connectIp}:${ysqlRpcPort}/yugabyte`;
       
-      const jdbcTLSConnection = `${jdbcConnection} --sslmode=require`;
+      const jdbcTLSConnection = `${jdbcConnection}?sslmode=require`;
       const ysqlConnection = 'bin/ysqlsh';
-      const ySqlTLSConnection = `${ysqlConnection} --sslmode=require`;
+      const ySqlTLSConnection = `${ysqlConnection} sslmode=require`;
       const ycqlConnection = 'bin/ycqlsh';
       const yCqlTLSConnection = `SSL_CERTFILE=<path to ca.crt> ycqlsh --ssl 172.151.37.101 9042`;
 
