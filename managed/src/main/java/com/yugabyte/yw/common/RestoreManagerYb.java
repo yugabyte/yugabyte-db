@@ -148,6 +148,13 @@ public class RestoreManagerYb extends DevopsBase {
         commandArgs.add("--restore_time");
         commandArgs.add(restoreTimeStampMicroUnix);
       }
+      if (restoreBackupParams.newOwner != null) {
+        commandArgs.add("--edit_ysql_dump_sed_reg_exp");
+        commandArgs.add(
+            String.format(
+                "s|OWNER TO %s|OWNER TO %s|",
+                restoreBackupParams.oldOwner, restoreBackupParams.newOwner));
+      }
     }
 
     addCommonCommandArgs(

@@ -214,6 +214,13 @@ public class TableManager extends DevopsBase {
             commandArgs.add("--restore_time");
             commandArgs.add(restoreTimeStampMicroUnix);
           }
+          if (backupTableParams.newOwner != null) {
+            commandArgs.add("--edit_ysql_dump_sed_reg_exp");
+            commandArgs.add(
+                String.format(
+                    "s|OWNER TO %s|OWNER TO %s|",
+                    backupTableParams.oldOwner, backupTableParams.newOwner));
+          }
         }
         if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)
             && !customerConfig.name.toLowerCase().equals("nfs")) {

@@ -102,6 +102,12 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Is tablespaces information included")
   public Boolean useTablespaces = false;
 
+  @ApiModelProperty(value = "User name of the current tables owner")
+  public String oldOwner = "yugabyte";
+
+  @ApiModelProperty(value = "User name of the new tables owner")
+  public String newOwner = null;
+
   @JsonIgnore
   public Set<String> getTableNames() {
     Set<String> tableNames = new HashSet<>();
