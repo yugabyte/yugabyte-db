@@ -23,7 +23,8 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
@@ -44,6 +45,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
@@ -56,6 +58,11 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
+
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.ServiceList;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
@@ -64,7 +71,7 @@ import play.test.Helpers;
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   private static final String CERTS_DIR = "/tmp/yugaware_tests/kcet_certs";
 
-  KubernetesManager kubernetesManager;
+  ShellKubernetesManager kubernetesManager;
   Provider defaultProvider;
   Universe defaultUniverse;
   Region defaultRegion;
@@ -90,7 +97,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Override
   protected Application provideApplication() {
-    kubernetesManager = mock(KubernetesManager.class);
+    kubernetesManager = mock(ShellKubernetesManager.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
@@ -98,7 +105,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(testDatabase())
-        .overrides(bind(KubernetesManager.class).toInstance(kubernetesManager))
+        .overrides(bind(ShellKubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
@@ -1058,8 +1065,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     }
     defaultAZ.updateConfig(azConfig);
 
-    ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message =
+    String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\","
             + " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
@@ -1090,7 +1096,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             + " \"metadata\": {\"namespace\": \""
             + namespace
             + "\"}}]}";
-    when(kubernetesManager.getPodInfos(any(), any(), any())).thenReturn(shellResponse);
+    List<Pod> podList = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(kubernetesManager.getPodInfos(any(), any(), any())).thenReturn(podList);
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.POD_INFO,
@@ -1176,12 +1183,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
             + " \"metadata\": {\"namespace\": \"%1$s\"}}]}";
-    ShellResponse shellResponse1 = ShellResponse.create(0, String.format(podInfosMessage, ns1));
-    when(kubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(ns1))).thenReturn(shellResponse1);
-    ShellResponse shellResponse2 = ShellResponse.create(0, String.format(podInfosMessage, ns2));
-    when(kubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(ns2))).thenReturn(shellResponse2);
-    ShellResponse shellResponse3 = ShellResponse.create(0, String.format(podInfosMessage, ns3));
-    when(kubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(ns3))).thenReturn(shellResponse3);
+    List<Pod> pods1 =
+        TestUtils.deserialize(String.format(podInfosMessage, ns1), PodList.class).getItems();
+    when(kubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(ns1))).thenReturn(pods1);
+    List<Pod> pods2 =
+        TestUtils.deserialize(String.format(podInfosMessage, ns2), PodList.class).getItems();
+    when(kubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(ns2))).thenReturn(pods2);
+    List<Pod> pods3 =
+        TestUtils.deserialize(String.format(podInfosMessage, ns3), PodList.class).getItems();
+    when(kubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(ns3))).thenReturn(pods3);
 
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.POD_INFO, pi);
@@ -1226,11 +1236,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallLegacy() throws IOException {
-    ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message =
+    String servicesString =
         "{\"items\": [{\"metadata\": {\"name\": \"test\"}, \"spec\": {\"clusterIP\": \"None\","
             + "\"type\":\"clusterIP\"}}]}";
-    when(kubernetesManager.getServices(any(), any(), any())).thenReturn(shellResponse);
+    List<Service> services = TestUtils.deserialize(servicesString, ServiceList.class).getItems();
+    when(kubernetesManager.getServices(any(), any(), any())).thenReturn(services);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString()));
     assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);

@@ -29,6 +29,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -52,6 +53,10 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
+
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.PodStatus;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -67,13 +72,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private Map<String, String> config = new HashMap<>();
 
   private void setup() {
-    ShellResponse responseEmpty = new ShellResponse();
-    ShellResponse responsePod = new ShellResponse();
-    when(mockKubernetesManager.helmUpgrade(any(), any(), any(), any(), any()))
-        .thenReturn(responseEmpty);
-    responsePod.message =
-        "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
-    when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
+    String statusString = "{ \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}";
+    PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
+    when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(status);
 
     YBClient mockClient = mock(YBClient.class);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
@@ -288,8 +289,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
 
     // After changing to 5 tservers.
-    ShellResponse responsePods = new ShellResponse();
-    responsePods.message =
+    String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
@@ -320,7 +320,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
@@ -369,8 +370,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
-    ShellResponse responsePods = new ShellResponse();
-    responsePods.message =
+    String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
@@ -386,7 +386,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
@@ -439,8 +440,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
-    ShellResponse responsePods = new ShellResponse();
-    responsePods.message =
+    String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
@@ -461,7 +461,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             + " \"metadata\": {\"namespace\": \""
             + NODE_PREFIX
             + "\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(responsePods);
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;

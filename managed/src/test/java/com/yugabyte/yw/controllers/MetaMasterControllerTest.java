@@ -35,7 +35,10 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -153,10 +156,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceFailure() {
     Universe universe = getKubernetesUniverse(false);
-    ShellResponse re = new ShellResponse();
-    re.code = -1;
-    re.message = "Unknown Error!";
-    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+        .thenReturn(null);
 
     endpointPort.forEach(
         (key, value) -> {
@@ -184,10 +185,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIP() {
     Universe universe = getKubernetesUniverse(false);
-    ShellResponse re = new ShellResponse();
-    re.code = 0;
-    re.message = "12.13.14.15||";
-    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+        .thenReturn("12.13.14.15");
 
     endpointPortYSQL.forEach(
         (key, value) -> {
@@ -211,10 +210,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIPMultiCluster() {
     Universe universe = getKubernetesUniverse(true);
-    ShellResponse re = new ShellResponse();
-    re.code = 0;
-    re.message = "12.13.14.15||";
-    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+        .thenReturn("12.13.14.15");
 
     endpointPort.forEach(
         (key, value) -> {
@@ -239,10 +236,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIP() {
     Universe universe = getKubernetesUniverse(false);
-    ShellResponse re = new ShellResponse();
-    re.code = 0;
-    re.message = "12.13.14.15|56.78.90.1|";
-    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+        .thenReturn("56.78.90.1");
 
     endpointPort.forEach(
         (key, value) -> {
@@ -266,10 +261,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerHostname() {
     Universe universe = getKubernetesUniverse(false);
-    ShellResponse re = new ShellResponse();
-    re.code = 0;
-    re.message = "12.13.14.15||loadbalancer.hostname";
-    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+        .thenReturn("loadbalancer.hostname");
 
     endpointPort.forEach(
         (key, value) -> {
@@ -293,10 +286,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIpAndHostname() {
     Universe universe = getKubernetesUniverse(false);
-    ShellResponse re = new ShellResponse();
-    re.code = 0;
-    re.message = "12.13.14.15|56.78.90.1|loadbalancer.hostname";
-    when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
+    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+        .thenReturn("loadbalancer.hostname");
 
     endpointPort.forEach(
         (key, value) -> {

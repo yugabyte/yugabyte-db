@@ -21,7 +21,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -73,7 +73,7 @@ public class UniverseCRUDHandler {
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject KubernetesManager kubernetesManager;
+  @Inject KubernetesManagerFactory kubernetesManagerFactory;
   @Inject PasswordPolicyService passwordPolicyService;
 
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
@@ -1226,7 +1226,7 @@ public class UniverseCRUDHandler {
 
   private void checkHelmChartExists(String ybSoftwareVersion) {
     try {
-      kubernetesManager.getHelmPackagePath(ybSoftwareVersion);
+      kubernetesManagerFactory.getManager().getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }

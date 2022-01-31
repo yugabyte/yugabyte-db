@@ -20,7 +20,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -68,7 +68,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected DnsManager mockDnsManager;
   protected TableManager mockTableManager;
   protected CloudQueryHelper mockCloudQueryHelper;
-  protected KubernetesManager mockKubernetesManager;
+  protected ShellKubernetesManager mockKubernetesManager;
   protected SwamperHelper mockSwamperHelper;
   protected CallHome mockCallHome;
   protected CallbackController mockCallbackController;
@@ -135,7 +135,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockDnsManager = mock(DnsManager.class);
     mockCloudQueryHelper = mock(CloudQueryHelper.class);
     mockTableManager = mock(TableManager.class);
-    mockKubernetesManager = mock(KubernetesManager.class);
+    mockKubernetesManager = mock(ShellKubernetesManager.class);
     mockSwamperHelper = mock(SwamperHelper.class);
     mockCallHome = mock(CallHome.class);
     mockCallbackController = mock(CallbackController.class);
@@ -161,7 +161,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
                 .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
                 .overrides(bind(TableManager.class).toInstance(mockTableManager))
-                .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+                .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
