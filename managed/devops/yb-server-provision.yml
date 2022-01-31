@@ -7,7 +7,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 - name: Validate server type
-  hosts: localhost
+  hosts: "{{ yb_prebuilt_ami_host | default('localhost') }}"
   gather_facts: no
   tasks:
     - assert:
@@ -18,7 +18,7 @@
 
 # This is required to set locale to avoid bash warning message on GCP Ubuntu
 - name: Install Locale on GCP Ubuntu
-  hosts: "{{ instance_search_pattern }}"
+  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
   gather_facts: yes
   pre_tasks:
     - name: Install Locale and generate en_US.UTF-8
@@ -30,7 +30,7 @@
 - name: Provision server
   become: yes
   become_method: sudo
-  hosts: "{{ instance_search_pattern }}"
+  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
   roles:
     - "provision-{{ server_type }}"
   vars_files:
