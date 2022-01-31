@@ -477,9 +477,11 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 	 * `non_distributed_txn` when closing issue #4906.
 	 */
 	const bool is_backfill = (backfill_write_time != NULL);
+	const bool is_non_distributed_txn_write =
+		is_backfill || (!IsSystemRelation(index) && yb_disable_transactional_writes);
 	HandleYBStatus(YBCPgNewInsert(dboid,
 								  relid,
-								  is_backfill /* is_single_row_txn */,
+								  is_non_distributed_txn_write,
 								  &insert_stmt));
 
 	callback(insert_stmt, indexstate, index, values, isnull,
