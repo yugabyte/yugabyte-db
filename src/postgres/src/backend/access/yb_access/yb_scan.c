@@ -619,13 +619,6 @@ static bool IsSearchNull(int sk_flags) {
 }
 
 /*
- * Is this a not null search (c IS NOT NULL) -- same as inequality cond for DocDB.
- */
-static bool IsSearchNotNull(int sk_flags) {
-	return sk_flags == SK_SEARCHNOTNULL;
-}
-
-/*
  * Is this an array search (c = ANY(..) or c IN ..).
  */
 static bool IsSearchArray(int sk_flags) {
@@ -934,8 +927,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 		{
 			case InvalidStrategy:
 				/* Should be ensured during planning. */
-				Assert(IsSearchNull(ybScan->key[i].sk_flags) ||
-					   IsSearchNotNull(ybScan->key[i].sk_flags));
+				Assert(IsSearchNull(ybScan->key[i].sk_flags));
 				/* fallthrough  -- treating IS NULL as (DocDB) = (null) */
 				switch_fallthrough();
 			case BTEqualStrategyNumber:
@@ -1007,8 +999,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 			case BTEqualStrategyNumber:
 				/* Bind the scan keys */
 				if (IsBasicOpSearch(ybScan->key[i].sk_flags) ||
-					IsSearchNull(ybScan->key[i].sk_flags) ||
-					IsSearchNotNull(ybScan->key[i].sk_flags))
+					IsSearchNull(ybScan->key[i].sk_flags))
 				{
 					/* Either c = NULL or c IS NULL. */
 					bool is_null = (ybScan->key[i].sk_flags & SK_ISNULL) == SK_ISNULL;
