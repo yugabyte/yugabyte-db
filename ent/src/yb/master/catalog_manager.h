@@ -187,6 +187,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     return snapshot_coordinator_;
   }
 
+  size_t GetNumLiveTServersForActiveCluster() override;
+
  private:
   friend class SnapshotLoader;
   friend class ClusterLoadBalancer;

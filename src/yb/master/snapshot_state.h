@@ -25,6 +25,11 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
+#include "yb/util/async_task_util.h"
+
+DECLARE_int64(max_concurrent_snapshot_rpcs);
+DECLARE_int64(max_concurrent_snapshot_rpcs_per_tserver);
+
 namespace yb {
 namespace master {
 
@@ -48,7 +53,8 @@ class SnapshotState : public StateWithTablets {
  public:
   SnapshotState(
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
-      const tserver::TabletSnapshotOpRequestPB& request);
+      const tserver::TabletSnapshotOpRequestPB& request,
+      uint64_t throttle_limit = std::numeric_limits<int>::max());
 
   SnapshotState(
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
@@ -72,6 +78,10 @@ class SnapshotState : public StateWithTablets {
 
   int version() const {
     return version_;
+  }
+
+  AsyncTaskThrottler& Throttler() {
+    return throttler_;
   }
 
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
@@ -101,6 +111,7 @@ class SnapshotState : public StateWithTablets {
   SnapshotScheduleId schedule_id_;
   int64_t version_;
   bool delete_started_ = false;
+  AsyncTaskThrottler throttler_;
 };
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(

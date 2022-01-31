@@ -4210,6 +4210,14 @@ void CatalogManager::SysCatalogLoaded(int64_t term) {
   return snapshot_coordinator_.SysCatalogLoaded(term);
 }
 
-} // namespace enterprise
+size_t CatalogManager::GetNumLiveTServersForActiveCluster() {
+  SharedLock lock(blacklist_mutex_);
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, placement_uuid(),
+                                                        blacklistState.tservers_);
+  return ts_descs.size();
+}
+
+}  // namespace enterprise
 }  // namespace master
 }  // namespace yb

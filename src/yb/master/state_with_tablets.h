@@ -106,10 +106,9 @@ class StateWithTablets {
         // Could exit here, because we have already iterated over all non-running operations.
         break;
       }
-      bool should_run = it->state == initial_state_;
+      bool should_run = it->state == initial_state_ && functor(*it);
       if (should_run) {
         VLOG(4) << "Prepare operation for " << it->ToString();
-        functor(*it);
 
         // Here we modify indexed value, so iterator could be advanced to the next element.
         // Taking next before modify.
@@ -138,6 +137,10 @@ class StateWithTablets {
 
   virtual CHECKED_STATUS CheckDoneStatus(const Status& status) {
     return status;
+  }
+
+  bool Empty() {
+    return tablets().empty();
   }
 
  protected:
