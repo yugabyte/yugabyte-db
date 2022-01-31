@@ -319,7 +319,7 @@ There are two ways to install PostGIS on macOS:
 * Or, install with Homebrew:
 
     ```sh
-    $ brew install postgres && brew install postgis
+    $ brew install postgres postgis
     ```
 
 #### Ubuntu
