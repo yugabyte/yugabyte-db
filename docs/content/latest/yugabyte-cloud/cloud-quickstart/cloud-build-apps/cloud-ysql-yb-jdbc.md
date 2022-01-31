@@ -7,14 +7,14 @@ menu:
   latest:
     parent: cloud-build-apps
     name: Java
-    identifier: cloud-java-1
-    weight: 550
+    identifier: cloud-java
+    weight: 100
 type: page
 isTocNested: true
 showAsideToc: true
 ---
 
-The following tutorial shows a simple Java application that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../../../../../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Java.
+The following tutorial shows a basic [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Java.
 
 ## Prerequisites
 
@@ -22,9 +22,9 @@ This tutorial requires the following.
 
 ### Yugabyte Cloud
 
-- You have a cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../../).
-- You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
-- You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../../cloud-secure-clusters/add-connections/).
+- You have a cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../).
+- You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+- You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../cloud-secure-clusters/add-connections/).
 
 ### Other packages
 
@@ -50,7 +50,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
     - **host** - the host name of your YugabyteDB cluster. To obtain a Yugabyte Cloud cluster host name, sign in to Yugabyte Cloud, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
     - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
     - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the default database you created when deploying a cluster in Yugabyte Cloud, these can be found in the credentials file you downloaded.
-    - **sslMode** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+    - **sslMode** - the SSL mode to use. Yugabyte Cloud [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
     - **sslRootCert** - the full path to the Yugabyte Cloud cluster CA certificate.
 
 3. Save the file.
@@ -86,7 +86,7 @@ name = Jessica, age = 28, country = USA, balance = 9200
 name = John, age = 28, country = Canada, balance = 9800
 ```
 
-You have successfully executed a simple Java application that works with Yugabyte Cloud.
+You have successfully executed a basic Java application that works with Yugabyte Cloud.
 
 ## Explore the application logic
 
@@ -173,12 +173,12 @@ try {
 
 ## Learn more
 
-[Yugabyte JDBC driver](../../../../../integrations/jdbc-driver/)
+[Yugabyte JDBC driver](../../../../integrations/jdbc-driver/)
 
-[Explore additional applications](../../../../cloud-develop)
+[Explore additional applications](../../../cloud-develop)
 
-[Sample Java application demonstrating load balancing](../../../../../quick-start/build-apps/java/ysql-yb-jdbc/)
+[Sample Java application demonstrating load balancing](../../../../quick-start/build-apps/java/ysql-yb-jdbc/)
 
-[Deploy clusters in Yugabyte Cloud](../../../../cloud-basics)
+[Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 
-[Connect to applications in Yugabyte Cloud](../../../../cloud-connect/connect-applications/)
+[Connect to applications in Yugabyte Cloud](../../../cloud-connect/connect-applications/)

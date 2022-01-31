@@ -25,7 +25,7 @@ For details about supported API client drivers (by programming language), see <a
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-  <a class="section-link icon-offset" href="cloud-apps-java/cloud-ysql-yb-jdbc/">
+  <a class="section-link icon-offset" href="cloud-ysql-yb-jdbc/">
     <div class="head">
       <div class="icon">
         <i class="icon-java"></i>
@@ -34,6 +34,20 @@ For details about supported API client drivers (by programming language), see <a
     </div>
     <div class="body">
       Java application that connects to a YugabyteDB cluster using the Yugabyte JDBC driver.
+    </div>
+  </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <a class="section-link icon-offset" href="cloud-ysql-go/">
+    <div class="head">
+      <div class="icon">
+        <i class="icon-java"></i>
+      </div>
+      <div class="title">Go</div>
+    </div>
+    <div class="body">
+      Go application that connects to a YugabyteDB cluster using the Go PostgreSQL driver.
     </div>
   </a>
   </div>
