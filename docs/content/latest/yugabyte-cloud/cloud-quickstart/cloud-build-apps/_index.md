@@ -42,7 +42,7 @@ For details about supported API client drivers (by programming language), see <a
   <a class="section-link icon-offset" href="cloud-ysql-go/">
     <div class="head">
       <div class="icon">
-        <i class="icon-java"></i>
+        <i class="icon-go"></i>
       </div>
       <div class="title">Go</div>
     </div>
