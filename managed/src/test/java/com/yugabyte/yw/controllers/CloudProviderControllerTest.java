@@ -45,6 +45,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -75,6 +76,9 @@ import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeList;
+import io.fabric8.kubernetes.api.model.Secret;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import play.libs.Json;
@@ -500,7 +504,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
             + "{\"topology.kubernetes.io/region\": \"region-3\", \"topology.kubernetes.io/zone\": \"r3-az1\"}, "
             + "\"name\": \"node-3\"}}"
             + "]}";
-    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(Util.convertStringToJson(nodeInfos));
+    List<Node> nodes = TestUtils.deserialize(nodeInfos, NodeList.class).getItems();
+    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(nodes);
 
     String secretContent =
         "{\"metadata\": {"
@@ -517,8 +522,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       when(mockKubernetesManager.getSecret(null, pullSecretName, null))
           .thenThrow(new RuntimeException(msg));
     } else {
-      when(mockKubernetesManager.getSecret(null, pullSecretName, null))
-          .thenReturn(Util.convertStringToJson(secretContent));
+      Secret secret = TestUtils.deserialize(secretContent, Secret.class);
+      when(mockKubernetesManager.getSecret(null, pullSecretName, null)).thenReturn(secret);
     }
 
     Result result = getKubernetesSuggestedConfig();
@@ -528,17 +533,18 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     if (noPullSecret) {
       assertTrue(Json.fromJson(json.path("config"), Map.class).isEmpty());
     } else {
-      String parsedSecret =
+      String parsedSecretString =
           "{\"metadata\":{"
               + "\"annotations\":{},"
               + "\"name\":\""
               + pullSecretName
               + "\"},"
               + "\"data\":{\".dockerconfigjson\":\"sec-key\"}}";
+      Secret parsedSecret = TestUtils.deserialize(parsedSecretString, Secret.class);
 
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName);
       assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_NAME", pullSecretName);
-      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_CONTENT", parsedSecret);
+      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_CONTENT", parsedSecret.toString());
     }
 
     assertValues(
@@ -557,7 +563,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
             + "{\"metadata\": {\"name\": \"node-2\"}}, "
             + "{\"metadata\": {\"name\": \"node-3\"}}"
             + "]}";
-    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(Util.convertStringToJson(nodeInfos));
+    List<Node> nodes = TestUtils.deserialize(nodeInfos, NodeList.class).getItems();
+    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(nodes);
 
     Result result = assertPlatformException(() -> getKubernetesSuggestedConfig());
     assertInternalServerError(result, "No region and zone information found.");
