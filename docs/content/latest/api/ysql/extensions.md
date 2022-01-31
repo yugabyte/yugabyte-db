@@ -335,7 +335,7 @@ sudo apt-get install postgresql-11 postgresql-11-postgis-3
 Get the YUM repository from the [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then, use `yum` or `dnf` to install:
 
 ```sh
-sudo yum install postgresql11-server postgis31_11
+sudo yum install postgresql11-server postgis31_11 postgis31_11-client
 ```
 
 {{< note title="Note" >}}
