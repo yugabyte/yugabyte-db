@@ -7,7 +7,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -35,16 +35,16 @@ import play.mvc.Http.Status;
 public class UpgradeUniverseHandler {
 
   private final Commissioner commissioner;
-  private final KubernetesManager kubernetesManager;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
   private final RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject
   public UpgradeUniverseHandler(
       Commissioner commissioner,
-      KubernetesManager kubernetesManager,
+      KubernetesManagerFactory kubernetesManagerFactory,
       RuntimeConfigFactory runtimeConfigFactory) {
     this.commissioner = commissioner;
-    this.kubernetesManager = kubernetesManager;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
@@ -337,7 +337,7 @@ public class UpgradeUniverseHandler {
 
   private void checkHelmChartExists(String ybSoftwareVersion) {
     try {
-      kubernetesManager.getHelmPackagePath(ybSoftwareVersion);
+      kubernetesManagerFactory.getManager().getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {
       throw new PlatformServiceException(Status.BAD_REQUEST, e.getMessage());
     }

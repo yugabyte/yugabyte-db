@@ -21,6 +21,8 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformInstanceClientFactory;
@@ -114,7 +116,6 @@ public class Module extends AbstractModule {
       bind(TemplateManager.class).asEagerSingleton();
       bind(ExtraMigrationManager.class).asEagerSingleton();
       bind(AWSInitializer.class).asEagerSingleton();
-      bind(KubernetesManager.class).asEagerSingleton();
       bind(CallHome.class).asEagerSingleton();
       bind(Scheduler.class).asEagerSingleton();
       bind(HealthChecker.class).asEagerSingleton();
@@ -136,6 +137,8 @@ public class Module extends AbstractModule {
       bind(GFlagsValidation.class).asEagerSingleton();
       bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class);
       bind(TaskExecutor.class).asEagerSingleton();
+      bind(ShellKubernetesManager.class).asEagerSingleton();
+      bind(NativeKubernetesManager.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));
