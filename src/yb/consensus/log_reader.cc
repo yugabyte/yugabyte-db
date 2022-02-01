@@ -398,7 +398,7 @@ Status LogReader::ReadReplicatesInRange(
     const int64_t up_to,
     int64_t max_bytes_to_read,
     ReplicateMsgs* replicates,
-    uint32_t *starting_op_segment_seq_num,
+    int64_t *starting_op_segment_seq_num,
     yb::SchemaPB* modified_schema,
     uint32_t *modified_schema_version,
     CoarseTimePoint deadline) const {

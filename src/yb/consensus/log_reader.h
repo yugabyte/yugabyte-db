@@ -115,7 +115,7 @@ class LogReader {
       const int64_t up_to,
       int64_t max_bytes_to_read,
       consensus::ReplicateMsgs* replicates,
-      uint32_t *starting_op_segment_seq_num,
+      int64_t *starting_op_segment_seq_num,
       yb::SchemaPB* modified_schema,
       uint32_t *schema_version,
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
