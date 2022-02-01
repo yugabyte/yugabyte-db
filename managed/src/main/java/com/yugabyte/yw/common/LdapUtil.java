@@ -31,6 +31,7 @@ import static play.mvc.Http.Status.*;
 public class LdapUtil {
 
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
+  public static final String windowsAdUserDoesNotExistErrorCode = "data 2030";
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
@@ -83,6 +84,12 @@ public class LdapUtil {
     return user;
   }
 
+  private void deleteUserAndThrowException(String email) {
+    Users.deleteUser(email);
+    String errorMessage = "LDAP user " + email + " does not exist on the LDAP server";
+    throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+  }
+
   private Users authViaLDAP(
       String email,
       String password,
@@ -100,10 +107,13 @@ public class LdapUtil {
       try {
         connection.bind(distinguishedName, password);
       } catch (LdapNoSuchObjectException e) {
-        Users.deleteUser(email);
-        String errorMessage = "LDAP user " + email + " does not exist on the LDAP server";
-        throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+        log.error(e.getMessage());
+        deleteUserAndThrowException(email);
       } catch (LdapAuthenticationException e) {
+        log.error(e.getMessage());
+        if (e.getMessage().contains(windowsAdUserDoesNotExistErrorCode)) {
+          deleteUserAndThrowException(email);
+        }
         String errorMessage = "Failed with " + e.getMessage();
         throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
       }
@@ -119,7 +129,7 @@ public class LdapUtil {
       } catch (Exception e) {
         log.debug(
             String.format(
-                "LDAP query failed with {} Defaulting to ReadOnly role.", e.getMessage()));
+                "LDAP query failed with {} Defaulting to ReadOnly role. %s", e.getMessage()));
       }
       Users.Role roleToAssign;
       users.setLdapSpecifiedRole(true);
