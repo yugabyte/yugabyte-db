@@ -14,21 +14,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following tutorial shows a basic [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](../../../../reference/drivers/ysql-client-drivers/#go-postgresql-driver-pq) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Go.
+The following tutorial shows a small [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](../../../../reference/drivers/ysql-client-drivers/#go-postgresql-driver-pq) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Go.
 
 ## Prerequisites
 
-This tutorial requires the following.
+In addition to [Go (tested with version 1.17.6)](https://go.dev/dl/), this tutorial requires the following.
 
 ### Yugabyte Cloud
 
 - You have a cluster deployed in Yugabyte Cloud. To get started, use the [Quick start](../../).
 - You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 - You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../cloud-secure-clusters/add-connections/).
-
-### Other packages
-
-- [Go version 1.17.6](https://go.dev/dl/) or later is installed. (Earlier versions should work as well.)
 
 ## Clone the application from GitHub
 
@@ -68,13 +64,13 @@ Import the Go PostgreSQL driver.
 $ go get github.com/lib/pq
 ```
 
-To start the application, run the following command.
+Start the application.
 
 ```sh
-go run sample-app.go
+$ go run sample-app.go
 ```
 
-You should then see output similar to the following:
+You should see output similar to the following:
 
 ```output
 >>>> Successfully connected to YugabyteDB!

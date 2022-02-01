@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following tutorial shows a basic [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Java.
+The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Java.
 
 ## Prerequisites
 
@@ -57,21 +57,21 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 ## Build and run the application
 
-To build the application, run the following command.
+First build the application.
 
 ```sh
 $ mvn clean package
 ```
 
-To start the application, run the following command.
+Start the application.
 
 ```sh
-java -cp target/yugabyte-simple-java-app-1.0-SNAPSHOT.jar SampleApp
+$ java -cp target/yugabyte-simple-java-app-1.0-SNAPSHOT.jar SampleApp
 ```
 
 If you are running the application on a free or single node cluster, the driver displays a warning that the load balance failed and will fall back to a regular connection.
 
-You should then see output similar to the following:
+You should see output similar to the following:
 
 ```output
 >>>> Successfully connected to YugabyteDB!
