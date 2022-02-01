@@ -317,3 +317,40 @@ CREATE MATERIALIZED VIEW mvtest_tm AS SELECT type, sum(amt) AS totamt FROM mvtes
 REFRESH MATERIALIZED VIEW mvtest_tm WITH NO DATA;
 SELECT * FROM mvtest_tm FOR SHARE;
 DROP TABLE mvtest_t CASCADE;
+
+-- Materialized view with GIN Indexes
+create table mvtest_t3 (id int NOT NULL PRIMARY KEY, a integer[] not null);
+INSERT INTO mvtest_t3 VALUES
+(1, ARRAY[1, 2, 3, 4, 5]),
+(2, ARRAY[1, 2, 3, 4, 5]),
+(3, ARRAY[1, 2, 3, 4, 5]),
+(4, ARRAY[1, 2, 3, 4, 5]);
+create index on mvtest_t3 using ybgin (a);
+CREATE MATERIALIZED VIEW mvtest_tv5 AS SELECT a[1], sum(id) FROM mvtest_t3 GROUP BY a[1];
+select * from mvtest_tv5;
+CREATE MATERIALIZED VIEW mvtest_tv6 AS SELECT * FROM mvtest_t3;
+create index on mvtest_tv6 using ybgin (a);
+select a[1] from mvtest_tv6;
+
+CREATE TABLE arrays (a int[], k serial PRIMARY KEY);
+CREATE INDEX NONCONCURRENTLY ON arrays USING ybgin (a);
+INSERT INTO arrays VALUES
+('{1,1,6}'),
+('{1,6,1}'),
+('{2,3,6}'),
+('{2,5,8}'),
+('{null}'),
+('{}'),
+(null);
+INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
+CREATE MATERIALIZED VIEW mvtest_tv7 AS SELECT * FROM arrays;
+explain select * from mvtest_tv7 where a @> '{6}';
+CREATE INDEX NONCONCURRENTLY ON mvtest_tv7 using ybgin (a);
+explain select * from mvtest_tv7 where a @> '{6}';
+select * from mvtest_tv7 where a @> '{6}' order by k;
+INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
+INSERT INTO arrays VALUES
+('{6,6,6}'),
+('{7,6,7}');
+refresh materialized view mvtest_tv7;
+select * from mvtest_tv7 where a @> '{6}' order by k;
