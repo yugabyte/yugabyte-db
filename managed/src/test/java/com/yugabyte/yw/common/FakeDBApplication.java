@@ -38,7 +38,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
   public CallHome mockCallHome = mock(CallHome.class);
   public ApiHelper mockApiHelper = mock(ApiHelper.class);
-  public KubernetesManager mockKubernetesManager = mock(KubernetesManager.class);
+  public ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
   public EncryptionAtRestManager mockEARManager = mock(EncryptionAtRestManager.class);
   public SetUniverseKey mockSetUniverseKey = mock(SetUniverseKey.class);
   public CallbackController mockCallbackController = mock(CallbackController.class);
@@ -89,7 +89,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(Executors.class).toInstance(mockExecutors))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
-                .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+                .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))

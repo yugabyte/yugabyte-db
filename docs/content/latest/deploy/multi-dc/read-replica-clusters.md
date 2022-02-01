@@ -34,7 +34,7 @@ You can deploy a read replica cluster that asynchronously replicates data with a
 2. Define the primary cluster placement using the [`yb-admin modify_placement_info`](../../../admin/yb-admin/#modify-placement-info) command, as follows:
 
     ```sh
-    ./bin/yb-admin modify_placement_info <placement_info> <replication_factor> [placement_uuid]
+    ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 modify_placement_info <placement_info> <replication_factor> [placement_uuid]
     ```
 
     - *placement_info*: Comma-separated list of availability zones using the format `<cloud1.region1.zone1>,<cloud2.region2.zone2>, ...`
@@ -44,7 +44,7 @@ You can deploy a read replica cluster that asynchronously replicates data with a
 3. Define the read replica placement using the [`yb-admin add_read_replica_placement_info`](../../../admin/yb-admin/#add-read-replica-placement-info) command, as follows:
 
     ```sh
-    ./bin/yb-admin add_read_replica_placement_info <placement_info> <replication_factor> [placement_uuid]
+    ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 add_read_replica_placement_info <placement_info> <replication_factor> [placement_uuid]
     ```
 
     - *placement_info*: Comma-separated list of availability zones, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone_2>,...` These read replica availability zones must be uniquely different from the primary availability zones defined in step 2. If you want to use the same cloud, region, and availability zone as a primary cluster, one option is to suffix the zone with `_rr` (for read replica): for example, `c1.r1.z1` vs `c1.r1.z1_rr`.
@@ -58,7 +58,7 @@ You can deploy a read replica cluster that asynchronously replicates data with a
    - [--placement_zone *placement_zone*](../../../reference/configuration/yb-tserver/#placement-zone)
    - [--placement_uuid *live_id*](../../../reference/configuration/yb-tserver/#placement-uuid)
 
-   The placements should match the information in step 2. You do not need to add these configuration flags to your `yb-master` configurations.
+   <br>The placements should match the information in step 2. You do not need to add these configuration flags to your `yb-master` configurations.
 
 5. Start the read replica `yb-tserver` services, including the following configuration flags:
 
@@ -67,6 +67,6 @@ You can deploy a read replica cluster that asynchronously replicates data with a
    - [--placement_zone *placement_zone*](../../../reference/configuration/yb-tserver/#placement-zone)
    - [--placement_uuid *read_replica_id*](../../../reference/configuration/yb-tserver/#placement-uuid)
 
-    The placements should match the information in step 3.
+    <br>The placements should match the information in step 3.
 
 The primary cluster should begin asynchronous replication with the read replica cluster.
