@@ -150,7 +150,6 @@ typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabl
 typedef std::function<void(const Result<std::vector<internal::RemoteTabletPtr>>&)>
         LookupTabletRangeCallback;
 typedef std::function<void(const Result<CDCStreamId>&)> CreateCDCStreamCallback;
-
 class AsyncClientInitialiser;
 
 } // namespace client

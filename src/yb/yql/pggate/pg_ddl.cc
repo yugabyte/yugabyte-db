@@ -204,6 +204,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
 Status PgCreateTable::AddColumnImpl(const char *attr_name,
                                     int attr_num,
                                     int attr_ybtype,
+                                    int pg_type_oid,
                                     bool is_hash,
                                     bool is_range,
                                     SortingType sorting_type) {
@@ -214,6 +215,7 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
   column.set_is_hash(is_hash);
   column.set_is_range(is_range);
   column.set_sorting_type(sorting_type);
+  column.set_attr_pgoid(pg_type_oid);
   return Status::OK();
 }
 
@@ -343,7 +345,7 @@ Status PgAlterTable::AddColumn(const char *name,
   col.set_attr_name(name);
   col.set_attr_ybtype(attr_type->yb_type);
   col.set_attr_num(order);
-
+  col.set_attr_pgoid(attr_type->type_oid);
   return Status::OK();
 }
 

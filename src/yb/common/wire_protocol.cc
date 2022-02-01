@@ -389,6 +389,7 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   pb->set_is_counter(col_schema.is_counter());
   pb->set_order(col_schema.order());
   pb->set_sorting_type(col_schema.sorting_type());
+  pb->set_pg_type_oid(col_schema.pg_type_oid());
   // We only need to process the *hash* primary key here. The regular primary key is set by the
   // conversion for SchemaPB. The reason is that ColumnSchema and ColumnSchemaPB are not matching
   // 1 to 1 as ColumnSchema doesn't have "is_key" field. That was Kudu's code, and we keep it that
@@ -405,7 +406,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(), pb.order(),
-                      SortingType(pb.sorting_type()));
+                      SortingType(pb.sorting_type()), pb.pg_type_oid());
 }
 
 CHECKED_STATUS ColumnPBsToColumnTuple(

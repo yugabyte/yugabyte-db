@@ -14,18 +14,47 @@
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
+import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.GetChangesResponsePB;
+import org.yb.util.Pair;
 
 @InterfaceAudience.Public
 public class GetChangesResponse extends YRpcResponse {
   private final GetChangesResponsePB resp;
 
-  GetChangesResponse(long ellapsedMillis, String uuid, GetChangesResponsePB resp) {
+  private byte[] key;
+  private int writeId;
+
+  GetChangesResponse(long ellapsedMillis, String uuid,
+                     GetChangesResponsePB resp, byte[] key, int writeId) {
     super(ellapsedMillis, uuid);
+    this.key = key;
+    this.writeId = writeId;
     this.resp = resp;
   }
 
   public GetChangesResponsePB getResp() {
     return resp;
   }
+
+  public byte[] getKey() {
+    return key;
+  }
+
+  public int getWriteId() {
+    return writeId;
+  }
+
+  public long getTerm() {
+    return getResp().getCdcSdkCheckpoint().getTerm();
+  }
+
+  public long getIndex() {
+    return getResp().getCdcSdkCheckpoint().getIndex();
+  }
+
+  public long getSnapshotTime() {
+    return getResp().getCdcSdkCheckpoint().getSnapshotTime();
+  }
+
 }

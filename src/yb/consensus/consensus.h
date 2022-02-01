@@ -305,6 +305,8 @@ class Consensus {
 
   virtual yb::OpId GetLastCommittedOpId() = 0;
 
+  virtual yb::OpId GetLastCDCedOpId() = 0;
+
   virtual yb::OpId GetLastAppliedOpId() = 0;
 
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's

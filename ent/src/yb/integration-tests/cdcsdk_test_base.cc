@@ -15,13 +15,11 @@
 #include <string>
 
 #include "yb/cdc/cdc_service.h"
-
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master-test-util.h"

@@ -16,5 +16,8 @@ package org.yb.cdc;
 import org.yb.client.YBTable;
 
 public interface OutputClient {
-  public void applyChange(YBTable table, CdcService.CDCRecordPB changeRecord) throws Exception;
+  public void applyChange(YBTable table,
+                          CdcService.CDCSDKProtoRecordPB changeRecord) throws Exception;
+  public void applyChange(YBTable table,
+                          CdcService.CDCSDKRecordPB changeRecord) throws Exception;
 }

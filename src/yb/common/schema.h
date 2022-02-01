@@ -148,7 +148,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified)
+               SortingType sorting_type = SortingType::kNotSpecified,
+               int32_t pg_type_oid = 0 /*kInvalidOid*/)
       : name_(std::move(name)),
         type_(type),
         is_nullable_(is_nullable),
@@ -156,7 +157,8 @@ class ColumnSchema {
         is_static_(is_static),
         is_counter_(is_counter),
         order_(order),
-        sorting_type_(sorting_type) {
+        sorting_type_(sorting_type),
+        pg_type_oid_(pg_type_oid) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
@@ -167,7 +169,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified);
+               SortingType sorting_type = SortingType::kNotSpecified,
+               int32_t pg_type_oid = 0 /*kInvalidOid*/);
 
   const std::shared_ptr<QLType>& type() const {
     return type_;
@@ -197,6 +200,10 @@ class ColumnSchema {
 
   int32_t order() const {
     return order_;
+  }
+
+  int32_t pg_type_oid() const {
+    return pg_type_oid_;
   }
 
   SortingType sorting_type() const {
@@ -286,6 +293,7 @@ class ColumnSchema {
   bool is_counter_;
   int32_t order_;
   SortingType sorting_type_;
+  int32_t pg_type_oid_;
 };
 
 class ContiguousRow;

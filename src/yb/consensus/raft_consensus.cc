@@ -3173,6 +3173,10 @@ yb::OpId RaftConsensus::GetLastCommittedOpId() {
   return state_->GetCommittedOpIdUnlocked();
 }
 
+yb::OpId RaftConsensus::GetLastCDCedOpId() {
+  return queue_->GetCDCConsumerOpIdForIntentRemoval();
+}
+
 yb::OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();

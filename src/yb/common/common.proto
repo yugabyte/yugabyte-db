@@ -93,6 +93,7 @@ message ColumnSchemaPB {
   optional bool is_counter = 8 [default = false];
   optional int32 order = 12 [default = 0];
   optional uint32 sorting_type = 9 [default = 0];
+  optional uint32 pg_type_oid = 14 [default = 0];
   // Reserved for deprecated read_default_value and write_default_value fields.
   reserved 10, 11;
   // The JSON attribute was mistakenly placed here, but it is not used.
@@ -517,3 +518,18 @@ message DeletePlanPB {
   optional string filter = 4;
   optional int32 output_width = 5;
 }
+
+//message DatumMessagePB {
+//  optional string column_name = 1;
+//  optional int64 column_type = 2;
+//  oneof datum {
+//    int32 datum_int32 = 3;
+//    int64 datum_int64 = 4;
+//    float datum_float = 5;
+//    double datum_double = 6;
+//    bool datum_bool = 7;
+//    string datum_string = 8;
+//    bytes datum_bytes = 9;
+//    bool datum_missing = 10;
+//  }
+//}

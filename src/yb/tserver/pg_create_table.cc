@@ -176,6 +176,7 @@ Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
     range_columns_.emplace_back(req.attr_name());
   }
   col->SetSortingType(sorting_type);
+  col->PgTypeOid(req.attr_pgoid());
   return Status::OK();
 }
 

@@ -208,7 +208,7 @@ void ValidateRle(const vector<T>& values, int bit_width,
   faststring buffer;
   RleEncoder<T> encoder(&buffer, bit_width);
 
-  for (const auto& value : values) {
+  for (const auto value : values) {
     encoder.Put(value);
   }
   int encoded_len = encoder.Flush();

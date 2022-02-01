@@ -68,9 +68,10 @@ ColumnSchema::ColumnSchema(std::string name,
                            bool is_static,
                            bool is_counter,
                            int32_t order,
-                           SortingType sorting_type)
+                           SortingType sorting_type,
+                           int32_t pg_type_oid)
     : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                   order, sorting_type) {
+                   order, sorting_type, pg_type_oid) {
 }
 
 const TypeInfo* ColumnSchema::type_info() const {

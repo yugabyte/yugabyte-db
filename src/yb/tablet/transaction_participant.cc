@@ -387,8 +387,18 @@ class TransactionParticipant::Impl
         break;
       }
       const auto& id = front.transaction_id;
+      RemoveIntentsData checkpoint;
       auto it = transactions_.find(id);
+
       if (it != transactions_.end() && !(**it).ProcessingApply()) {
+        OpId op_id = (**it).GetOpId();
+        participant_context_.GetLastCDCedData(&checkpoint);
+        VLOG_WITH_PREFIX(2) << "Cleaning tx opid is " << op_id.ToString()
+                            << " checkpoint opid is " << checkpoint.op_id.ToString();
+
+        if (checkpoint.op_id < op_id) {
+          break;
+        }
         (**it).ScheduleRemoveIntents(*it);
         RemoveTransaction(it, front.reason, min_running_notifier);
       }
@@ -563,6 +573,7 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = LockAndFind(
         data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (lock_and_iterator.found()) {
+      lock_and_iterator.transaction().SetOpId(data.op_id);
       if (!apply_state.active()) {
         RemoveUnlocked(lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else {
@@ -1124,9 +1135,18 @@ class TransactionParticipant::Impl
   bool RemoveUnlocked(
       const Transactions::iterator& it, RemoveReason reason,
       MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
-    if (running_requests_.empty()) {
+    TransactionId txn_id = (**it).id();
+    RemoveIntentsData checkpoint;
+    auto itr = transactions_.find(txn_id);
+    OpId op_id = (**itr).GetOpId();
+    participant_context_.GetLastCDCedData(&checkpoint);
+
+    VLOG_WITH_PREFIX(2) << "Cleaning tx, data opid is " << op_id.ToString()
+              << " checkpoint opid is " << checkpoint.op_id.ToString();
+
+    if (running_requests_.empty() &&
+        (op_id < checkpoint.op_id)) {
       (**it).ScheduleRemoveIntents(*it);
-      TransactionId txn_id = (**it).id();
       RemoveTransaction(it, reason, min_running_notifier);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
                           << ", left: " << transactions_.size();
