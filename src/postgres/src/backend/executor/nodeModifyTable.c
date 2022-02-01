@@ -3008,7 +3008,14 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 				 * initial scan to populate the ybctid, so there is no junk
 				 * attribute to extract.
 				 */
-				junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
+				if (IsYBRelation(mtstate->resultRelInfo->ri_RelationDesc))
+				{
+					junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
+				}
+				else
+				{
+					junk_filter_needed = true;
+				}
 				break;
 			default:
 				elog(ERROR, "unknown operation");
