@@ -980,24 +980,10 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
 
   ProducerTabletInfo producer_tablet;
   CDCStreamId stream_id = req->stream_id();
-//  auto session = client()->NewSession();
-//  CoarseTimePoint deadline = context.GetClientDeadline();
-//  if (deadline == CoarseTimePoint::max()) { // Not specified by user.
-//    deadline = CoarseMonoClock::now() + async_client_init_->client()->default_rpc_timeout();
-//  }
-//  session->SetDeadline(deadline);
+
   auto session = client()->NewSession();
   CoarseTimePoint deadline = GetDeadline(context, client());
   session->SetDeadline(deadline);
-
-//  if (req->has_db_stream_id()) {
-////    ProducerTabletInfo producer_db_tablet{"" /* UUID */, req->db_stream_id(), req->tablet_id()};
-////    auto rslt = GetCdcStreamId(producer_db_tablet, session);
-////    RPC_CHECK_AND_RETURN_ERROR(
-////        rslt.ok(), rslt.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-//
-//    //stream_id = *rslt;
-//  }
 
   // Check that requested tablet_id is part of the CDC stream.
   producer_tablet = {"" /* UUID */, stream_id, req->tablet_id()};
