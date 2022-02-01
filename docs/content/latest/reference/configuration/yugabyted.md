@@ -196,6 +196,33 @@ Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
 
 -----
 
+### destroy
+
+Use the `yugabyted destroy` command to delete a cluster.
+
+#### Syntax
+
+```sh
+Usage: yugabyted destroy [-h] [--config CONFIG] [--data_dir DATA_DIR]
+                                [--base_dir BASE_DIR]
+```
+
+#### Flags
+
+-h, --help
+: Print the command line help and exit.
+
+--config *config-file*
+: The path to the configuration file of the yugabyted server that needs to be destroyed.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server that needs to be destroyed.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server that needs to be destroyed.
+
+-----
+
 ### status
 
 Use the `yugabyted status` command to check the status.
