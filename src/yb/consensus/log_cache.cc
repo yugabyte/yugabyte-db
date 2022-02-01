@@ -304,7 +304,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                << ", to_op_index: " << to_op_index
                                << ", max_size_bytes: " << max_size_bytes;
   ReadOpsResult result;
-  long starting_op_segment_seq_num;
+  uint32_t starting_op_segment_seq_num;
   result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
 
   std::unique_lock<simple_spinlock> l(lock_);

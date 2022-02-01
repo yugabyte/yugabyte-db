@@ -980,7 +980,7 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
 
     // Check that first log was garbage collected, so remote bootstrap will be required.
     consensus::ReplicateMsgs replicates;
-    long starting_op_segment_seq_num;
+    uint32_t starting_op_segment_seq_num;
     yb::SchemaPB schema;
     uint32_t schema_version;
     return !leaders.front()->log()->GetLogReader()->ReadReplicatesInRange(

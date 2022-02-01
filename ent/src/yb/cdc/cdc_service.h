@@ -15,7 +15,6 @@
 
 #include <memory>
 
-#include "yb/common/schema.h"
 #include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_metrics.h"
 #include "yb/cdc/cdc_producer.h"

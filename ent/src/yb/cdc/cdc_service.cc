@@ -240,15 +240,18 @@ class CDCServiceImpl::Impl {
     async_client_init_->Start();
   }
 
-  void UpdateCDCStateMetadata(const ProducerTabletInfo& producer_tablet, const std::string& timestamp,
-                              const Schema& schema, const OpId& opid) {
-      std::lock_guard<decltype(mutex_)> l(mutex_);
-      auto it = cdc_state_metadata_.find(producer_tablet);
-      if (it != cdc_state_metadata_.end()) {
-        it->commit_timestamp = timestamp;
-        it->current_schema= schema;
-        it->last_streamed_op_id = opid;
-      }
+  void UpdateCDCStateMetadata(
+      const ProducerTabletInfo& producer_tablet,
+      const std::string& timestamp,
+      const Schema& schema,
+      const OpId& opid) {
+    std::lock_guard<decltype(mutex_)> l(mutex_);
+    auto it = cdc_state_metadata_.find(producer_tablet);
+    if (it != cdc_state_metadata_.end()) {
+      it->commit_timestamp = timestamp;
+      it->current_schema = schema;
+      it->last_streamed_op_id = opid;
+    }
   }
 
   void GetOrAddSchema(const ProducerTabletInfo& producer_tablet, Schema* schema) {
@@ -1101,7 +1104,8 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
         &msgs_holder, resp, (record.record_format == PROTO), &commit_timestamp, &cached_schema,
         &last_streamed_op_id, &last_readable_index, get_changes_deadline);
 
-    impl_->UpdateCDCStateMetadata(producer_tablet, commit_timestamp, cached_schema, last_streamed_op_id);
+    impl_->UpdateCDCStateMetadata(
+        producer_tablet, commit_timestamp, cached_schema, last_streamed_op_id);
   }
 
   RPC_STATUS_RETURN_ERROR(
