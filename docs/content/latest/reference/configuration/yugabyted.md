@@ -164,8 +164,8 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 
 --initial_scripts_dir *initial-scripts-dir*
 : The directory from where yugabyted reads initialization scripts.
-: The format will be: For YSQL - `.sql`, For YCQL - `.cql`.
-: Initialization scripts will be executed in sorted name order.
+: Script format - YSQL `.sql`, YCQL `.cql`.
+: Initialization scripts are executed in sorted name order.
 
 -----
 
@@ -307,17 +307,12 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 
 ### connect
 
-Use the `yugabyted connect` command to connect to the cluster with `ysqlsh` or `ycqlsh` CLI.
+Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh) or [ycqlsh](../../../admin/ycqlsh).
 
 #### Syntax
 
 ```sh
 Usage: yugabyted connect [-h] {ycql,ysql} ...
-
-Commands:
-  {ycql,ysql}
-    ycql       Use YCQL through the CLI.
-    ysql       Use YSQL through the CLI.
 ```
 
 #### Flags
@@ -326,10 +321,10 @@ Commands:
 : Print the command line help and exit.
 
 --ysql
-: Connect with `ysqlsh` CLI.
+: Connect with ysqlsh.
 
 --ycql
-: Connect with `ycqlsh` CLI.
+: Connect with ycqlsh.
 
 -----
 
@@ -446,9 +441,9 @@ Create a single-node cluster with a given base dir and listen address. Note the 
 bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=127.0.0.1
 ```
 
-### Pass additional flags to tserver
+### Pass additional flags to YB-TServer
 
-Create a single-node cluster and set additional flags to the yb-tserver process.
+Create a single-node cluster and set additional flags for the YB-TServer process.
 
 ```sh
 bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
