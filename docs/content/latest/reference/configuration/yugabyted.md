@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To simplify managing YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) servers. yugabyted also provides a UI similar to the Yugabyte Platform UI, with a data placement map and metrics dashboard.
+YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) servers. yugabyted also provides a UI similar to the Yugabyte Platform UI, with a data placement map and metrics dashboard.
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
@@ -105,7 +105,7 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : The directory where yugabyted stores data. Must be an absolute path.
 
 --base_dir *base-directory*
-: The directory where yugabyted stores data, conf and logs. Must be an absolute path.
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
 
 --log_dir *log-directory*
 : The directory to store yugabyted logs. Must be an absolute path.
