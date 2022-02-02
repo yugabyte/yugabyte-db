@@ -370,10 +370,6 @@ DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
                  "Whether the Master should hint replica with smallest lexicographic rank for each "
                  "tablet as leader initially on tablet creation.");
 
-DEFINE_int32(tablet_split_limit_per_table, 256,
-             "Limit of the number of tablets per table for tablet splitting. Limitation is "
-             "disabled if this value is set to 0.");
-
 DEFINE_double(heartbeat_safe_deadline_ratio, .20,
               "When the heartbeat deadline has this percentage of time remaining, "
               "the master should halt tablet report processing so it can respond in time.");
@@ -436,24 +432,14 @@ TAG_FLAG(blacklist_progress_initial_delay_secs, runtime);
 
 DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
                  "When set to true, consider any tablet a valid candidate for splitting. "
-                 "Specifically this flag ensures that ValidateSplitCandidate always returns OK and "
-                 "all tablets are considered valid candidates for splitting.");
+                 "Specifically this flag ensures that ValidateSplitCandidateTable and "
+                 "ValidateSplitCandidateTablet always return OK and all tablets are considered "
+                 "valid candidates for splitting.");
 
 DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
                  "When set, it skips checking that all the tablets of a table have enough tservers"
                  " conforming to the table placement policy during CreateTable API call.");
 TAG_FLAG(TEST_skip_placement_validation_createtable_api, runtime);
-
-DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
-            "When set, it enables automatic tablet splitting of tables covered by "
-            "Point In Time Restore schedules.");
-TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
-
-DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
-            "When set, it enables automatic tablet splitting for tables that are part of an "
-            "xCluster replication setup");
-TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
-TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
 
 DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
                  "Slows down the alter table rpc's send and response handler so that the TServer "
@@ -823,8 +809,6 @@ Status CatalogManager::Init() {
     universe_key_client_->GetUniverseKeyRegistryAsync();
     RETURN_NOT_OK(EnableBgTasks());
   }
-
-  RETURN_NOT_OK_PREPEND(tablet_split_manager_.Init(), "Failed to initialize tablet split manager.");
 
   // Cache the server registration even for shell mode masters. See
   // https://github.com/yugabyte/yugabyte-db/issues/8065.
@@ -1708,8 +1692,6 @@ bool CatalogManager::StartShutdown() {
     sys_catalog_->StartShutdown();
   }
 
-  tablet_split_manager_.Shutdown();
-
   return true;
 }
 
@@ -2340,76 +2322,6 @@ Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& ta
   return Status::OK();
 }
 
-Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
-  if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
-    return Status::OK();
-  }
-  const TableInfo& table = *tablet_info.table().get();
-  // Check if this tablet is covered by an PITR schedule.
-  if (!FLAGS_enable_tablet_split_of_pitr_tables &&
-      VERIFY_RESULT(IsTablePartOfSomeSnapshotSchedule(table))) {
-    VLOG(1) << Substitute("Tablet splitting is not supported for tables that are a part of"
-                          " some active PITR schedule, tablet_id: $0",
-                          tablet_info.tablet_id());
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " some active PITR schedule, tablet_id: $0",
-        tablet_info.tablet_id());
-  }
-  // Check if this tablet is part of a cdc stream.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
-      IsCdcEnabled(table)) {
-    VLOG(1) << Substitute("Tablet splitting is not supported for tables that are a part of"
-                          " a CDC stream, tablet_id: $0",
-                          tablet_info.tablet_id());
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a CDC stream, tablet_id: $0",
-        tablet_info.tablet_id());
-  }
-  if (tablet_info.table()->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for transaction status tables, tablet_id: $0",
-        tablet_info.tablet_id());
-  }
-  if (tablet_info.colocated()) {
-    return STATUS_FORMAT(
-        NotSupported, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
-        tablet_info.tablet_id());
-  }
-  {
-    auto tablet_state = tablet_info.LockForRead()->pb.state();
-    if (tablet_state != SysTabletsEntryPB::RUNNING) {
-      return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::TABLET_NOT_RUNNING),
-                              "Tablet is not in running state: $0",
-                              tablet_state);
-    }
-  }
-  if (tablet_info.table()->GetTableType() == REDIS_TABLE_TYPE) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for YEDIS tables, tablet_id: $0",
-        tablet_info.tablet_id());
-  }
-  if (FLAGS_tablet_split_limit_per_table != 0 &&
-      tablet_info.table()->NumPartitions() >= FLAGS_tablet_split_limit_per_table) {
-    // TODO(tsplit): Avoid tablet server of scanning tablets for the tables that already
-    //  reached the split limit of tablet #6220
-    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::REACHED_SPLIT_LIMIT),
-                            "Too many tablets for the table, table_id: $0, limit: $1",
-                            tablet_info.table()->id(), FLAGS_tablet_split_limit_per_table);
-  }
-  if (tablet_info.table()->IsBackfilling()) {
-    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
-                            "Backfill operation in progress, table_id: $0",
-                            tablet_info.table()->id());
-  }
-  return Status::OK();
-}
-
 Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
     const TabletInfo& tablet_info) const {
   auto table = tablet_info.table();
@@ -2486,7 +2398,8 @@ Status CatalogManager::DoSplitTablet(
   // ensure a backfill does not happen before we modify catalog metadata to include new subtablets.
   // This process adds new subtablets in the CREATING state, which if encountered by backfill code
   // will block the backfill process.
-  RETURN_NOT_OK(ValidateSplitCandidate(*source_tablet_info));
+  RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(*source_tablet_info->table()));
+  RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTablet(*source_tablet_info));
 
   auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
   if (!select_all_tablets_for_split &&
@@ -2586,9 +2499,6 @@ void CatalogManager::SplitTabletWithKey(
       tablet, split_encoded_key, split_partition_key, select_all_tablets_for_split);
   WARN_NOT_OK(s, Format("Failed to split tablet with GetSplitKey result for tablet: $0",
                         tablet->tablet_id()));
-  if (!s.ok()) {
-    tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
-  }
 }
 
 Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool select_all_tablets_for_split) {
@@ -2607,7 +2517,6 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool select_all_ta
               select_all_tablets_for_split);
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
-          tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
         }
       });
   tablet->table()->AddTask(call);
@@ -10368,9 +10277,6 @@ void CatalogManager::ProcessTabletStorageMetadata(
         storage_metadata.uncompressed_sst_file_size(),
         storage_metadata.may_have_orphaned_post_split_data()};
   tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
-  WARN_NOT_OK(
-        tablet_split_manager_.ProcessLiveTablet(*tablet, ts_uuid, drive_info),
-        "Failed to process tablet split candidate.");
 }
 
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {

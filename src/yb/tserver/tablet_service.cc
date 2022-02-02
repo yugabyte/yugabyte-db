@@ -86,6 +86,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
@@ -249,6 +250,9 @@ DEFINE_test_flag(bool, disable_post_split_tablet_rbs_check, false,
 
 DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
                  "Probability of failing in TabletServiceAdminImpl::SplitTablet.");
+
+DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
+                 "Pause before processing a GetSplitKey request.");
 
 DECLARE_int32(heartbeat_interval_ms);
 
@@ -3022,6 +3026,7 @@ void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
 
 void TabletServiceImpl::GetSplitKey(
     const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_tserver_get_split_key);
   PerformAtLeader(req, resp, &context,
       [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;

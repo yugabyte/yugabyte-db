@@ -219,7 +219,7 @@ tserver::WriteRequestPB TabletSplitITestBase<MiniClusterType>::CreateInsertReque
 template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
-        const size_t num_rows, const size_t start_key) {
+        client::TableHandle* table, const uint32_t num_rows, const int32_t start_key) {
   auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
   auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
 
@@ -227,9 +227,13 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
 
   auto txn = this->CreateTransaction();
   auto session = this->CreateSession();
-  for (auto i = start_key; i < start_key + num_rows; ++i) {
+  for (int32_t i = start_key; i < start_key + static_cast<int32_t>(num_rows); ++i) {
     client::YBqlWriteOpPtr op = VERIFY_RESULT(
-        this->WriteRow(session, i /* key */, i /* value */, client::WriteOpType::INSERT));
+        client::kv_table_test::WriteRow(table,
+                                        session,
+                                        i /* key */,
+                                        i /* value */,
+                                        client::WriteOpType::INSERT));
     const auto hash_code = op->GetHashCode();
     min_hash_code = std::min(min_hash_code, hash_code);
     max_hash_code = std::max(max_hash_code, hash_code);
@@ -750,7 +754,6 @@ void TabletSplitExternalMiniClusterITest::SetFlags() {
   TabletSplitITestBase<ExternalMiniCluster>::SetFlags();
   for (const auto& master_flag : {
             "--enable_automatic_tablet_splitting=false",
-            "--TEST_disable_split_tablet_candidate_processing=true",
             "--tablet_split_low_phase_shard_count_per_node=-1",
             "--tablet_split_high_phase_shard_count_per_node=-1",
             "--tablet_split_low_phase_size_threshold_bytes=-1",

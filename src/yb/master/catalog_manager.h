@@ -496,6 +496,8 @@ class CatalogManager :
 
   ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
 
+  TabletSplitManager* tablet_split_manager() override { return &tablet_split_manager_; }
+
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
@@ -836,8 +838,6 @@ class CatalogManager :
       const TabletDriveStorageMetadataPB& storage_metadata);
 
   void CheckTableDeleted(const TableInfoPtr& table) override;
-
-  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) override;
 
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
@@ -1324,12 +1324,12 @@ class CatalogManager :
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
 
-  virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
+  virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override {
     // Default value.
     return false;
   }
 
-  virtual bool IsCdcEnabled(const TableInfo& table_info) const {
+  virtual bool IsCdcEnabled(const TableInfo& table_info) const override {
     // Default value.
     return false;
   }
