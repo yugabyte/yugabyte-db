@@ -979,7 +979,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
                              context);
 
   ProducerTabletInfo producer_tablet;
-  CDCStreamId stream_id = req->stream_id();
+  CDCStreamId stream_id = req->has_db_stream_id() ? req->db_stream_id() : req->stream_id();
 
   auto session = client()->NewSession();
   CoarseTimePoint deadline = GetDeadline(context, client());
