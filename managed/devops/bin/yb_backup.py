@@ -27,6 +27,7 @@ import sys
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
 from multiprocessing.pool import ThreadPool
+from contextlib import contextmanager
 
 import os
 import re
@@ -86,6 +87,14 @@ DEFAULT_YB_USER = 'yugabyte'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 DEFAULT_TS_WEB_PORT = 9000
+
+
+@contextmanager
+def terminating(thing):
+    try:
+        yield thing
+    finally:
+        thing.terminate()
 
 
 class BackupException(Exception):
@@ -802,7 +811,7 @@ class YBBackup:
 
         if self.args.storage_type == 'nfs':
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
-            with ThreadPool(self.args.parallelism) as pool:
+            with terminating(ThreadPool(self.args.parallelism)) as pool:
                 self.pools.append(pool)
                 tablets_by_leader_ip = []
 
@@ -1467,7 +1476,7 @@ class YBBackup:
         :param snapshot_id: self-explanatory
         :param snapshot_filepath: the top-level directory under which to upload the data directories
         """
-        with ThreadPool(self.args.parallelism) as pool:
+        with terminating(ThreadPool(self.args.parallelism)) as pool:
             self.pools.append(pool)
 
             tablets_by_leader_ip = {}
@@ -2239,7 +2248,7 @@ class YBBackup:
 
     def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_to_download,
                                       snapshot_id, table_ids):
-        with ThreadPool(self.args.parallelism) as pool:
+        with terminating(ThreadPool(self.args.parallelism)) as pool:
             self.pools.append(pool)
             tserver_ips = list(tablets_by_tserver_to_download.keys())
             data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
@@ -2456,7 +2465,7 @@ class YBBackup:
 if __name__ == "__main__":
     # Registers the signal handlers.
     yb_backup = YBBackup()
-    with ThreadPool(1) as pool:
+    with terminating(ThreadPool(1)) as pool:
         try:
             # Main thread cannot be blocked to handle signals.
             future = pool.apply_async(yb_backup.run)
