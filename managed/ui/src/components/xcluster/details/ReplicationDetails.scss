@@ -63,6 +63,17 @@
         border: 1px solid #e8e8e8;
       }
     }
+
+    .lag-status-graph {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      white-space: nowrap;
+      .lag-text,
+      .lag-value {
+        margin-left: 5px;
+      }
+    }
   }
 
   .noLeftPadding {
