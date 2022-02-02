@@ -2093,9 +2093,10 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::str
   }
 
   // Look up stream in sys catalog.
-  ObjectId object_id;
+  std::vector<ObjectId> object_ids;
+  NamespaceId ns_id;
   std::unordered_map<std::string, std::string> options;
-  RETURN_NOT_OK(client()->GetCDCStream(stream_id, &object_id, &options));
+  RETURN_NOT_OK(client()->GetCDCStream(stream_id, &ns_id, &object_ids, &options));
 
   auto stream_metadata = std::make_shared<StreamMetadata>();
   for (const auto& option : options) {
@@ -2112,9 +2113,12 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::str
       SCHECK(CDCCheckpointType_Parse(option.second, &stream_metadata->checkpoint_type),
              IllegalState, "CDC record format parsing error");
     } else if (option.first == cdc::kIdType && option.second == cdc::kNamespaceId) {
-      stream_metadata->ns_id = object_id;
+      stream_metadata->ns_id = ns_id;
+      stream_metadata->table_ids.insert(
+          stream_metadata->table_ids.end(), object_ids.begin(), object_ids.end());
     } else if (option.first == cdc::kIdType && option.second == cdc::kTableId) {
-      stream_metadata->table_ids.push_back(object_id);
+      stream_metadata->table_ids.insert(
+          stream_metadata->table_ids.end(), object_ids.begin(), object_ids.end());
     } else {
       LOG(WARNING) << "Unsupported CDC option: " << option.first;
     }

@@ -57,6 +57,7 @@ struct Record {
   bool isWrite;   // true if WRITE record
 };
 
+// todo (Vaibhav): this test file needs to be revisited once complete CDC support for YCQL lands
 class CDCSDKServiceTest : public TransactionTestBase<MiniCluster>,
                           public testing::WithParamInterface<bool /* enable_intents */> {
  protected:
@@ -165,8 +166,8 @@ void prepare_change_req(GetChangesRequestPB* change_req, const CDCStreamId strea
      thus effectively checking that the records are coming in order too
  */
 
-// Insert a single row outside an explicit transaction
-// Expected records: 3 (DDL, INSERT, DDL)
+// Insert a single row outside an explicit transaction.
+// Expected records: 3 (DDL, INSERT, DDL).
 TEST_P(CDCSDKServiceTest, SingleShardInsertWithAutoCommit) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -218,8 +219,8 @@ TEST_P(CDCSDKServiceTest, SingleShardInsertWithAutoCommit) {
   }
 }
 
-// Begin transaction, insert a single row, commit
-// Expected records: 4 (DDL, INSERT, WRITE, DDL)
+// Begin transaction, insert a single row, commit.
+// Expected records: 4 (DDL, INSERT, WRITE, DDL).
 TEST_P(CDCSDKServiceTest, InsertSingleRow) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -260,7 +261,7 @@ TEST_P(CDCSDKServiceTest, InsertSingleRow) {
     ASSERT_FALSE(change_resp.has_error());
 
     // Record size is expected to be 4 -- 1 HEADER DATA, 1 WRITE_OP, 1 UPDATE_TRANSACTION_OP
-    // and 1 CHANGE_METADATA_OP
+    // and 1 CHANGE_METADATA_OP.
     ASSERT_EQ(change_resp.cdc_sdk_records_size(), 3);
 
     int recordSize = change_resp.cdc_sdk_records_size();
@@ -277,8 +278,8 @@ TEST_P(CDCSDKServiceTest, InsertSingleRow) {
   }
 }
 
-// Insert 4 rows outside an explicit transaction
-// Expected records: 6 (DDL, 4_INSERT, DDL)
+// Insert 4 rows outside an explicit transaction.
+// Expected records: 6 (DDL, 4_INSERT, DDL).
 TEST_P(CDCSDKServiceTest, SingleShardInsert4Rows) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -338,8 +339,8 @@ TEST_P(CDCSDKServiceTest, SingleShardInsert4Rows) {
   }
 }
 
-// Begin transaction, insert 4 rows one by one, commit
-// Expected records: 7 (DDL, 4_INSERT, WRITE, DDL)
+// Begin transaction, insert 4 rows one by one, commit.
+// Expected records: 7 (DDL, 4_INSERT, WRITE, DDL).
 TEST_P(CDCSDKServiceTest, Insert4Rows) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -403,8 +404,8 @@ TEST_P(CDCSDKServiceTest, Insert4Rows) {
   }
 }
 
-// Write a single row, update its value outside an explicit transaction
-// Expected records: 4 (DDL, INSERT, UPDATE, DDL)
+// Write a single row, update its value outside an explicit transaction.
+// Expected records: 4 (DDL, INSERT, UPDATE, DDL).
 TEST_P(CDCSDKServiceTest, SingleShardUpdateWithAutoCommit) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -459,8 +460,8 @@ TEST_P(CDCSDKServiceTest, SingleShardUpdateWithAutoCommit) {
   }
 }
 
-// Begin transaction, insert one row, update the inserted row
-// Expected records: 6 (DDL, INSERT, WRITE, UPDATE, WRITE, DDL)
+// Begin transaction, insert one row, update the inserted row.
+// Expected records: 6 (DDL, INSERT, WRITE, UPDATE, WRITE, DDL).
 TEST_P(CDCSDKServiceTest, UpdateInsertedRow) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -523,8 +524,8 @@ TEST_P(CDCSDKServiceTest, UpdateInsertedRow) {
   }
 }
 
-// Begin transaction, insert 3 rows, commit, update 2 of them
-// Expected records: 9 (DDL, 3_INSERT, WRITE, 2_UPDATE, WRITE, DDL)
+// Begin transaction, insert 3 rows, commit, update 2 of them.
+// Expected records: 9 (DDL, 3_INSERT, WRITE, 2_UPDATE, WRITE, DDL).
 TEST_P(CDCSDKServiceTest, UpdateMultipleRows) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -596,8 +597,8 @@ TEST_P(CDCSDKServiceTest, UpdateMultipleRows) {
   }
 }
 
-// Insert 3 rows, update all of them outside an explicit transaction
-// Expected records: 8 (DDL, 3_INSERT, 3_UPDATE, DDL)
+// Insert 3 rows, update all of them outside an explicit transaction.
+// Expected records: 8 (DDL, 3_INSERT, 3_UPDATE, DDL).
 TEST_P(CDCSDKServiceTest, SingleShardUpdateRows) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -663,8 +664,8 @@ TEST_P(CDCSDKServiceTest, SingleShardUpdateRows) {
   }
 }
 
-// Write a single row, delete it outside an explicit transaction
-// Expected records: 4 (DDL, INSERT, DELETE, DDL)
+// Write a single row, delete it outside an explicit transaction.
+// Expected records: 4 (DDL, INSERT, DELETE, DDL).
 TEST_P(CDCSDKServiceTest, SingleShardDeleteWithAutoCommit) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -720,8 +721,8 @@ TEST_P(CDCSDKServiceTest, SingleShardDeleteWithAutoCommit) {
 }
 
 // Begin transaction, Begin transaction, insert one row, commit, begin new transaction,
-// delete inserted row, commit
-// Expected records: 6 (DDL. INSERT, WRITE, DELETE, WRITE, DDL)
+// delete inserted row, commit.
+// Expected records: 6 (DDL. INSERT, WRITE, DELETE, WRITE, DDL).
 TEST_P(CDCSDKServiceTest, DeleteInsertedRow) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
@@ -785,8 +786,8 @@ TEST_P(CDCSDKServiceTest, DeleteInsertedRow) {
   }
 }
 
-// Begin transaction, perform some operations and abort the transaction
-// Expected records: 1 (DDL)
+// Begin transaction, perform some operations and abort the transaction.
+// Expected records: 1 (DDL).
 TEST_P(CDCSDKServiceTest, AbortAllWriteOperations) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(
