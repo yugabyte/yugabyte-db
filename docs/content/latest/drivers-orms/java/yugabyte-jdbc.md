@@ -39,43 +39,9 @@ This page provides details for getting started with `YugabyteDB JDBC Driver` for
 [Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
 Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
 
-## Quick Start
-
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/latest/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
-
-## Download the Driver Dependency
-
-YugabyteDB JDBC Driver is available as maven dependency. Download the driver by adding the following dependency entries in the java project.
+## Step 1: Add the YugabyteDB JDBC Driver Dependency
 
 ### Maven Dependency
-
-To get the driver and HikariPool from Maven, add the following dependencies to the Maven project:
-
-```xml
-<dependency>
-  <groupId>com.yugabyte</groupId>
-  <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.3.0</version>
-</dependency>
-
-<!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
-<dependency>
-  <groupId>com.zaxxer</groupId>
-  <artifactId>HikariCP</artifactId>
-  <version>4.0.3</version>
-</dependency>
-```
-
-### Gradle Dependency
-
-To get the driver and HikariPool, add the following dependencies to the Gradle project:
-
-```java
-// https://mvnrepository.com/artifact/org.postgresql/postgresql
-implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
-implementation 'com.zaxxer:HikariCP:4.0.3'
-```
-#### Add the YugabyteDB JDBC Driver Dependency
 
 If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your `pom.xml` of your project.
 
@@ -94,6 +60,8 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 </dependency>
 ```
 
+### Gradle Dependency
+
 If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
 ```java
@@ -101,15 +69,9 @@ implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
-### Create a YugabyteDB Cluster
+## Step 2: Connect to your Cluster
 
-You can also setup a standalone YugabyteDB cluster by following the [install YugabyteDB Steps](/latest/quick-start/install/macos).
-
-Alternatively, Set up a Free tier Cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/). The free cluster provides a fully functioning YugabyteDB cluster deployed to the cloud region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing the Java Applications with YugabyteDB database. Complete the steps for [creating a free tier cluster](latest/yugabyte-cloud/cloud-quickstart/qs-add/).
-
-### Connect to your Cluster
-
-After seeting up the dependenices, we implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
+After setting up the dependenices, we implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
 
 We will setup the driver properties for pass in the credentials and SSL Certs for connecting to your cluster. Java Apps can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database will be part of `java.sql.*` package.
 
@@ -146,7 +108,7 @@ Connection conn = DriverManager.getConnection(yburl);
 
 If you have created Free tier cluster on [Yugabyte Anywhere](https://www.yugabyte.com/cloud/), [Follow the steps](/latest/yugabyte-cloud/cloud-connect/connect-applications/) to download the Credentials and SSL Root certificate.
 
-### Query the YugabyteDB Cluster from Your Application
+## Step 3: Query the YugabyteDB Cluster from Your Application
 
 Next, Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the sample code below in order to setup a YugbyteDB Tables and query the Table contents from the java client. Ensure you replace the connection string `yburl` with credentials of your cluster and SSL certs if required.
 
@@ -237,7 +199,7 @@ implementation 'org.hibernate:hibernate-core:5.4.19.Final'
 implementation 'org.hibernate:hibernate-annotations:3.5.6-Final'
 ```
 
-### Implementing ORM mapping for YugabyteDB
+## Step 4: Implementing ORM mapping for YugabyteDB
 
 Create a file called `Employee.java` in the base package directory of your project and add the following code for a class that includes the following fields, setters and getters,
 
@@ -364,8 +326,11 @@ Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John',
 Query returned: name=John, age=35, language: Java
 ```
 
-## Next Steps
-
 ## Further Reading
 
 To learn more about the driver, you can read the [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
+
+## Next Steps
+
+- Learn how to build Java Application using [Hibernate ORM](hibernate).
+- Learn how to [develop Spring Boot Applications using YugabyteDB JDBC Driver](/latest/integrations/spring-framework/sdyb/).
