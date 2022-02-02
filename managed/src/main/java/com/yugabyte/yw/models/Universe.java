@@ -9,8 +9,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -522,6 +522,10 @@ public class Universe extends Model {
     return getMasterAddresses(false);
   }
 
+  public String getMasterAddresses(boolean mastersQueryable) {
+    return getMasterAddresses(mastersQueryable, false);
+  }
+
   /**
    * Returns a comma separated list of <privateIp:masterRpcPort> for all nodes that have the
    * isMaster flag set to true in this cluster.
@@ -530,12 +534,12 @@ public class Universe extends Model {
    * @return a comma separated string of master 'host:port' or, if masters are not queryable, an
    *     empty string.
    */
-  public String getMasterAddresses(boolean mastersQueryable) {
+  public String getMasterAddresses(boolean mastersQueryable, boolean getSecondary) {
     List<NodeDetails> masters = getMasters();
     if (mastersQueryable && !verifyMastersAreQueryable(masters)) {
       return "";
     }
-    return getHostPortsString(masters, ServerType.MASTER, PortType.RPC);
+    return getHostPortsString(masters, ServerType.MASTER, PortType.RPC, getSecondary);
   }
 
   /**
@@ -626,12 +630,23 @@ public class Universe extends Model {
     return port;
   }
 
-  // Helper API to create the based on the server type.
   private String getHostPortsString(
       List<NodeDetails> serverNodes, ServerType type, PortType portType) {
+    return getHostPortsString(serverNodes, type, portType, false);
+  }
+
+  // Helper API to create the based on the server type.
+  private String getHostPortsString(
+      List<NodeDetails> serverNodes, ServerType type, PortType portType, boolean getSecondary) {
     StringBuilder servers = new StringBuilder();
     for (NodeDetails node : serverNodes) {
-      if (node.cloudInfo.private_ip != null) {
+      String nodeIp =
+          getSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
+      // In case the secondary IP is null, just re-assign to primary.
+      if (nodeIp == null || nodeIp.equals("null")) {
+        nodeIp = node.cloudInfo.private_ip;
+      }
+      if (nodeIp != null) {
         int port = 0;
         switch (type) {
           case YQLSERVER:
@@ -666,7 +681,7 @@ public class Universe extends Model {
         if (servers.length() != 0) {
           servers.append(",");
         }
-        servers.append(node.cloudInfo.private_ip).append(":").append(port);
+        servers.append(nodeIp).append(":").append(port);
       }
     }
     return servers.toString();

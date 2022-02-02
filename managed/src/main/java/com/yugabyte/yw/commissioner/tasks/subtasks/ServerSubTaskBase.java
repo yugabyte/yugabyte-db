@@ -47,8 +47,12 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
   }
 
   public String getMasterAddresses() {
+    return getMasterAddresses(false);
+  }
+
+  public String getMasterAddresses(boolean getSecondary) {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    return universe.getMasterAddresses();
+    return universe.getMasterAddresses(false /* mastersQueryable */, getSecondary);
   }
 
   public HostAndPort getHostPort() {
