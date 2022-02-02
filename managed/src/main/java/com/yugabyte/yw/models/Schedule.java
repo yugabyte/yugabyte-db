@@ -167,6 +167,19 @@ public class Schedule extends Model {
     resetSchedule();
   }
 
+  @Column(nullable = false)
+  @ApiModelProperty(value = "Running state of the schedule")
+  private boolean runningState = false;
+
+  public boolean getRunningState() {
+    return this.runningState;
+  }
+
+  public void setRunningState(boolean state) {
+    this.runningState = state;
+    save();
+  }
+
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
   public static Schedule create(
