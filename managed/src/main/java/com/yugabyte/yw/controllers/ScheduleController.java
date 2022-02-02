@@ -10,11 +10,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
-import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.models.ScheduleTask;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -96,6 +96,8 @@ public class ScheduleController extends AuthenticatedController {
       } else if (params.frequency != null && params.cronExpression != null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Both schedule frequency and cron expression cannot be provided");
+      } else if (schedule.getStatus().equals(State.Active) && schedule.getRunningState()) {
+        throw new PlatformServiceException(CONFLICT, "Cannot edit schedule as it is running.");
       } else if (params.frequency != null) {
         if (params.frequency < MIN_SCHEDULE_DURATION_IN_MILLIS) {
           throw new PlatformServiceException(BAD_REQUEST, "Min schedule duration is 1 hour");
@@ -128,5 +130,22 @@ public class ScheduleController extends AuthenticatedController {
     }
     auditService().createAuditEntry(ctx(), request());
     return PlatformResults.withData(schedule);
+  }
+
+  @ApiOperation(
+      value = "Delete a schedule V2",
+      response = PlatformResults.YBPSuccess.class,
+      nickname = "deleteScheduleV2")
+  public Result deleteYb(UUID customerUUID, UUID scheduleUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    if (schedule.getStatus().equals(State.Active) && schedule.getRunningState()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot delete schedule as it is running.");
+    }
+    schedule.stopSchedule();
+    ScheduleTask.getAllTasks(scheduleUUID).forEach((scheduleTask) -> scheduleTask.delete());
+    schedule.delete();
+    auditService().createAuditEntry(ctx(), request());
+    return YBPSuccess.empty();
   }
 }

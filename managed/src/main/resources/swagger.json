@@ -4321,6 +4321,10 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "runningState" : {
+          "description" : "Running state of the schedule",
+          "type" : "boolean"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
           "format" : "uuid",
@@ -9195,6 +9199,38 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit a backup schedule",
+        "tags" : [ "Backup schedule management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/schedules/{sUUID}/delete" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteScheduleV2",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a schedule V2",
         "tags" : [ "Backup schedule management" ]
       }
     },

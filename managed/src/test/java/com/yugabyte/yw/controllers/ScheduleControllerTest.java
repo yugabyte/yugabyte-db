@@ -8,7 +8,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
@@ -17,15 +16,16 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.EditBackupParams;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -38,6 +38,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private Users defaultUser;
   private Schedule defaultSchedule;
+  private BackupTableParams backupTableParams;
 
   @Before
   public void setUp() {
@@ -45,7 +46,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
 
-    BackupTableParams backupTableParams = new BackupTableParams();
+    backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
     backupTableParams.storageConfigUUID = customerConfig.configUUID;
@@ -67,6 +68,13 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String method = "DELETE";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
 
+    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+  }
+
+  private Result deleteScheduleYb(UUID scheduleUUID, UUID customerUUID) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "DELETE";
+    String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID + "/delete";
     return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
   }
 
@@ -243,5 +251,65 @@ public class ScheduleControllerTest extends FakeDBApplication {
             () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
     assertBadRequest(
         result, "State paused is an internal state and cannot be specified by the user");
+  }
+
+  @Test
+  public void testDeleteValidScheduleHavingTaskYb() {
+    Schedule schedule =
+        Schedule.create(
+            defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000, null);
+    UUID randomTaskUUID = UUID.randomUUID();
+    ScheduleTask.create(randomTaskUUID, schedule.scheduleUUID);
+    Result r = deleteScheduleYb(schedule.scheduleUUID, defaultCustomer.uuid);
+    assertOk(r);
+    assertPlatformException(
+        () -> Schedule.getOrBadRequest(defaultCustomer.uuid, schedule.scheduleUUID));
+    List<ScheduleTask> scheduleTaskList = ScheduleTask.getAllTasks(schedule.scheduleUUID);
+    assertEquals(0, scheduleTaskList.size());
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteValidYb() {
+    Schedule schedule =
+        Schedule.create(
+            defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000, null);
+    Result r = deleteScheduleYb(schedule.scheduleUUID, defaultCustomer.uuid);
+    assertOk(r);
+    assertPlatformException(
+        () -> Schedule.getOrBadRequest(defaultCustomer.uuid, schedule.scheduleUUID));
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteInvalidCustomerUUIDYb() {
+    UUID invalidCustomerUUID = UUID.randomUUID();
+    Result r = deleteScheduleYb(defaultSchedule.scheduleUUID, invalidCustomerUUID);
+    assertEquals(FORBIDDEN, r.status());
+    String resultString = contentAsString(r);
+    assertEquals(resultString, "Unable To Authenticate User");
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteInvalidScheduleUUIDYb() {
+    UUID invalidScheduleUUID = UUID.randomUUID();
+    Result result =
+        assertPlatformException(() -> deleteScheduleYb(invalidScheduleUUID, defaultCustomer.uuid));
+    assertBadRequest(result, "Invalid Schedule UUID: " + invalidScheduleUUID);
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteRunningSchedule() {
+    Schedule schedule =
+        Schedule.create(
+            defaultCustomer.uuid, backupTableParams, TaskType.BackupUniverse, 1000, null);
+    schedule.setRunningState(true);
+    Result result =
+        assertPlatformException(
+            () -> deleteScheduleYb(schedule.scheduleUUID, defaultCustomer.uuid));
+    assertBadRequest(result, "Cannot delete schedule as it is running.");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 }
