@@ -24,6 +24,8 @@
 
 #include "yb/rpc/tasks_pool.h"
 
+#include "yb/server/server_base_options.h"
+
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -36,19 +38,12 @@ DEFINE_uint64(transaction_manager_workers_limit, 50,
 DEFINE_uint64(transaction_manager_queue_limit, 500,
               "Max number of tasks used by transaction manager");
 
-DECLARE_string(placement_cloud);
-DECLARE_string(placement_region);
-DECLARE_string(placement_zone);
-
 namespace yb {
 namespace client {
 
 namespace {
 
-const YBTableName kGlobalTransactionTableName(
-    YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-
-// Cache of tablet ids of the global transaction table and any local transaction tables with
+// Cache of tablet ids of the global transaction table and any transaction tables with
 // the same placement.
 class TransactionTableState {
  public:
@@ -68,7 +63,7 @@ class TransactionTableState {
     if (PickStatusTabletId(tablets, callback)) {
       return;
     }
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << "No local transaction status tablet found";
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << "No placement local transaction status tablet found";
     callback(RandomElement(tablets));
   }
 
@@ -86,21 +81,19 @@ class TransactionTableState {
     return initialized_.load();
   }
 
-  void UpdateStatusTablets(int new_version,
-                           std::vector<TabletId>&& global_tablets,
-                           std::vector<TabletId>&& local_tablets) EXCLUDES(mutex_) {
+  void UpdateStatusTablets(uint64_t new_version,
+                           TransactionStatusTablets&& tablets) EXCLUDES(mutex_) {
     std::lock_guard<yb::RWMutex> lock(mutex_);
     if (status_tablets_version_ < new_version) {
-      global_tablets_ = global_tablets;
-      local_tablets_ = local_tablets;
-      has_local_tablets_.store(!local_tablets.empty());
+      tablets_ = std::move(tablets);
+      has_placement_local_tablets_.store(!tablets_.placement_local_tablets.empty());
       status_tablets_version_ = new_version;
       initialized_.store(true);
     }
   }
 
-  bool HasAnyLocalStatusTablets() {
-    return has_local_tablets_.load();
+  bool HasAnyPlacementLocalStatusTablets() {
+    return has_placement_local_tablets_.load();
   }
 
   uint64_t GetStatusTabletsVersion() EXCLUDES(mutex_) {
@@ -135,14 +128,14 @@ class TransactionTableState {
 
   const std::vector<TabletId>& PickTabletList(TransactionLocality locality)
       REQUIRES_SHARED(mutex_) {
-    if (local_tablets_.empty()) {
-      return global_tablets_;
+    if (tablets_.placement_local_tablets.empty()) {
+      return tablets_.global_tablets;
     }
     switch (locality) {
       case TransactionLocality::GLOBAL:
-        return global_tablets_;
+        return tablets_.global_tablets;
       case TransactionLocality::LOCAL:
-        return local_tablets_;
+        return tablets_.placement_local_tablets;
     }
     FATAL_INVALID_ENUM_VALUE(TransactionLocality, locality);
   }
@@ -153,8 +146,8 @@ class TransactionTableState {
   // is assumed to have at least one entry in it if this is true.
   std::atomic<bool> initialized_{false};
 
-  // Set to true if there are any local transaction tablets.
-  std::atomic<bool> has_local_tablets_{false};
+  // Set to true if there are any placement local transaction tablets.
+  std::atomic<bool> has_placement_local_tablets_{false};
 
   // Locks the hash/version/tablet lists. A read lock is acquired when picking
   // tablets, and a write lock is acquired when updating tablet lists.
@@ -163,8 +156,7 @@ class TransactionTableState {
   uint64_t txn_table_versions_hash_ GUARDED_BY(mutex_) = 0;
   uint64_t status_tablets_version_ GUARDED_BY(mutex_) = 0;
 
-  std::vector<TabletId> global_tablets_ GUARDED_BY(mutex_);
-  std::vector<TabletId> local_tablets_ GUARDED_BY(mutex_);
+  TransactionStatusTablets tablets_ GUARDED_BY(mutex_);
 };
 
 // Loads transaction tablets list to cache.
@@ -181,25 +173,17 @@ class LoadStatusTabletsTask {
 
   void Run() {
     // TODO(dtxn) async
-    // TODO These should be consolidated into one RPC call (#10536).
-    auto global_tablets_result = GetGlobalTransactionTableTablets();
-    if (!global_tablets_result) {
-      YB_LOG_EVERY_N_SECS(ERROR, 1) << "Failed to get tablets of global txn status table: "
-                                    << global_tablets_result.status();
-      callback_(global_tablets_result.status());
-      return;
-    }
-    auto local_tablets_result = GetLocalTransactionTableTablets();
-    if (!local_tablets_result) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Failed to get tablets of local txn status tables: "
-                                      << local_tablets_result.status();
-      callback_(local_tablets_result.status());
+    auto tablets = GetTransactionStatusTablets();
+    if (!tablets.ok()) {
+      YB_LOG_EVERY_N_SECS(ERROR, 1) << "Failed to get tablets of txn status tables: "
+                                    << tablets.status();
+      if (callback_) {
+        callback_(tablets.status());
+      }
       return;
     }
 
-    table_state_->UpdateStatusTablets(version_,
-                                      std::move(*global_tablets_result),
-                                      std::move(*local_tablets_result));
+    table_state_->UpdateStatusTablets(version_, std::move(*tablets));
 
     if (callback_) {
       table_state_->InvokeCallback(callback_, locality_);
@@ -215,77 +199,9 @@ class LoadStatusTabletsTask {
   }
 
  private:
-  Result<std::vector<TabletId>> GetGlobalTransactionTableTablets() {
-    std::vector<TabletId> tablets;
-    if (!FetchGlobalTransactionTableTablets(&tablets).ok()) {
-      // Tablets for txn status table are not ready yet.
-      // Wait for table creation completion and try again.
-      RETURN_NOT_OK(client_->WaitForCreateTableToFinish(kGlobalTransactionTableName));
-      RETURN_NOT_OK(FetchGlobalTransactionTableTablets(&tablets));
-    }
-    SCHECK(!tablets.empty(), IllegalState, Format(
-        "No tablets in table $0", kGlobalTransactionTableName));
-    return std::move(tablets);
-  }
-
-  CHECKED_STATUS FetchGlobalTransactionTableTablets(std::vector<TabletId>* tablets) {
-    return client_->GetTablets(kGlobalTransactionTableName,
-                               0 /* max_tablets */,
-                               tablets,
-                               nullptr /* ranges */,
-                               nullptr /* locations */,
-                               RequireTabletsRunning::kTrue);
-  }
-
-  Result<std::vector<TabletId>> GetLocalTransactionTableTablets() {
-    std::vector<TabletId> tablets;
-    RETURN_NOT_OK(FetchLocalTransactionTableTablets(&tablets));
-    return std::move(tablets);
-  }
-
-  CHECKED_STATUS FetchLocalTransactionTableTablets(std::vector<TabletId>* tablets) {
-    const auto& table_names = CHECK_RESULT(client_->ListTables(
-        kTransactionTablePrefix, true /* exclude_ysql */));
-    const auto local_ts = client_->GetLocalTabletServer();
-    if (!local_ts) {
-      return Status::OK();
-    }
-    const auto& this_pb = local_ts->cloud_info();
-    std::shared_ptr<client::YBTable> table;
-    for (const auto& table_name : table_names) {
-      if (!StringStartsWithOrEquals(table_name.table_name(), kTransactionTablePrefix)) {
-        continue;
-      }
-      RETURN_NOT_OK(client_->OpenTable(table_name, &table));
-      if (!table->replication_info()) {
-        continue;
-      }
-      const auto& replicas = table->replication_info().get().live_replicas();
-
-      bool contains_this = false;
-      int num_placement_blocks = replicas.placement_blocks_size();
-      for (int i = 0; i < num_placement_blocks; ++i) {
-        auto pb = replicas.placement_blocks(i).cloud_info();
-        if (pb.placement_cloud() == this_pb.placement_cloud() &&
-            pb.placement_region() == this_pb.placement_region() &&
-            pb.placement_zone() == this_pb.placement_zone()) {
-          contains_this = true;
-          break;
-        }
-      }
-      if (!contains_this) {
-        continue;
-      }
-      std::vector<TabletId> table_tablets;
-      RETURN_NOT_OK(client_->GetTablets(table_name,
-                                        0 /* max_tablets */,
-                                        &table_tablets,
-                                        nullptr /* ranges */,
-                                        nullptr /* locations */,
-                                        RequireTabletsRunning::kTrue));
-      std::move(table_tablets.begin(), table_tablets.end(), std::back_inserter(*tablets));
-    }
-    return Status::OK();
+  Result<TransactionStatusTablets> GetTransactionStatusTablets() {
+    CloudInfoPB this_pb = yb::server::GetPlacementFromGFlags();
+    return client_->GetTransactionStatusTablets(this_pb);
   }
 
   YBClient* client_;
@@ -415,8 +331,8 @@ class TransactionManager::Impl {
     thread_pool_.Shutdown();
   }
 
-  bool LocalTransactionsPossible() {
-    return table_state_.HasAnyLocalStatusTablets();
+  bool PlacementLocalTransactionsPossible() {
+    return table_state_.HasAnyPlacementLocalStatusTablets();
   }
 
   uint64_t GetLoadedStatusTabletsVersion() {
@@ -480,8 +396,8 @@ void TransactionManager::UpdateClock(HybridTime time) {
   impl_->UpdateClock(time);
 }
 
-bool TransactionManager::LocalTransactionsPossible() {
-  return impl_->LocalTransactionsPossible();
+bool TransactionManager::PlacementLocalTransactionsPossible() {
+  return impl_->PlacementLocalTransactionsPossible();
 }
 
 uint64_t TransactionManager::GetLoadedStatusTabletsVersion() {

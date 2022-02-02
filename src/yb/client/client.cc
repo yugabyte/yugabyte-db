@@ -124,6 +124,8 @@ using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
 using yb::master::GetTabletLocationsResponsePB;
+using yb::master::GetTransactionStatusTabletsRequestPB;
+using yb::master::GetTransactionStatusTabletsResponsePB;
 using yb::master::IsLoadBalancedRequestPB;
 using yb::master::IsLoadBalancedResponsePB;
 using yb::master::IsLoadBalancerIdleRequestPB;
@@ -1755,6 +1757,23 @@ Status YBClient::GetTabletLocation(const TabletId& tablet_id,
 
   *tablet_location = resp.tablet_locations(0);
   return Status::OK();
+}
+
+Result<TransactionStatusTablets> YBClient::GetTransactionStatusTablets(
+    const CloudInfoPB& placement) {
+  GetTransactionStatusTabletsRequestPB req;
+  GetTransactionStatusTabletsResponsePB resp;
+
+  req.mutable_placement()->CopyFrom(placement);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTransactionStatusTablets);
+
+  TransactionStatusTablets tablets;
+
+  MoveCollection(&resp.global_tablet_id(), &tablets.global_tablets);
+  MoveCollection(&resp.placement_local_tablet_id(), &tablets.placement_local_tablets);
+
+  return tablets;
 }
 
 Status YBClient::GetTablets(const YBTableName& table_name,

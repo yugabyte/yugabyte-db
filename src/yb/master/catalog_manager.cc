@@ -3741,6 +3741,110 @@ CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::R
   return s;
 }
 
+CHECKED_STATUS CatalogManager::GetGlobalTransactionStatusTablets(
+    GetTransactionStatusTabletsResponsePB* resp) {
+  TableIdentifierPB global_txn_table_identifier;
+  global_txn_table_identifier.set_table_name(kGlobalTransactionsTableName);
+  global_txn_table_identifier.mutable_namespace_()->set_name(kSystemNamespaceName);
+  scoped_refptr<TableInfo> global_txn_table = VERIFY_RESULT(FindTable(global_txn_table_identifier));
+
+  RETURN_NOT_OK(WaitForCreateTableToFinish(global_txn_table->id()));
+
+  auto l = global_txn_table->LockForRead();
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+
+  for (const auto& tablet : global_txn_table->GetTablets()) {
+    TabletLocationsPB locs_pb;
+    RETURN_NOT_OK(BuildLocationsForTablet(tablet, &locs_pb));
+    resp->add_global_tablet_id(tablet->tablet_id());
+  }
+
+  return Status::OK();
+}
+
+std::vector<TableId> CatalogManager::GetPlacementLocalTransactionStatusTables(
+    const CloudInfoPB& placement) {
+  std::vector<TableId> same_placement_transaction_tables;
+
+  SharedLock lock(mutex_);
+  for (const auto& entry : *table_ids_map_) {
+    auto& table_info = *entry.second;
+
+    if (table_info.namespace_id() != kSystemNamespaceId) {
+      continue;
+    }
+
+    if (!table_info.IsTransactionStatusTable()) {
+      continue;
+    }
+
+    auto lock = table_info.LockForRead();
+
+    if (!lock->visible_to_client()) {
+      continue;
+    }
+
+    if (!StringStartsWithOrEquals(lock->name(), kTransactionTablePrefix)) {
+      continue;
+    }
+
+    const auto& cloud_info = lock->pb.replication_info();
+    if (IsReplicationInfoSet(cloud_info)) {
+      const auto& replicas = cloud_info.live_replicas();
+      if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(replicas, placement)) {
+        same_placement_transaction_tables.push_back(entry.first);
+      }
+    }
+  }
+
+  return same_placement_transaction_tables;
+}
+
+CHECKED_STATUS CatalogManager::GetPlacementLocalTransactionStatusTablets(
+    const CloudInfoPB& placement,
+    GetTransactionStatusTabletsResponsePB* resp) {
+  auto same_placement_transaction_tables = GetPlacementLocalTransactionStatusTables(placement);
+
+  if (!same_placement_transaction_tables.empty()) {
+    for (const auto& table_id : same_placement_transaction_tables) {
+      RETURN_NOT_OK(WaitForCreateTableToFinish(table_id));
+    }
+
+    SharedLock lock(mutex_);
+    for (const auto& table_id : same_placement_transaction_tables) {
+      if (!table_ids_map_->count(table_id)) {
+        Status s = STATUS_FORMAT(
+            NotFound, "Transaction table with id $0 does not exist", table_id);
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+      }
+
+      auto& table_info = *table_ids_map_->at(table_id);
+      auto lock = table_info.LockForRead();
+      for (const auto& tablet : table_info.GetTablets()) {
+        TabletLocationsPB locs_pb;
+        RETURN_NOT_OK(BuildLocationsForTablet(tablet, &locs_pb));
+        resp->add_placement_local_tablet_id(tablet->tablet_id());
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS CatalogManager::GetTransactionStatusTablets(
+    const GetTransactionStatusTabletsRequestPB* req,
+    GetTransactionStatusTabletsResponsePB* resp,
+    rpc::RpcContext *rpc) {
+
+  RETURN_NOT_OK(GetGlobalTransactionStatusTablets(resp));
+
+  if (req->has_placement()) {
+    RETURN_NOT_OK(GetPlacementLocalTransactionStatusTablets(req->placement(), resp));
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc) {
   if (VERIFY_RESULT(TableExists(kSystemNamespaceName, kMetricsSnapshotsTableName))) {
     return Status::OK();
@@ -9711,11 +9815,11 @@ Status CatalogManager::SetPreferredZones(
   auto replication_info = l.mutable_data()->pb.mutable_replication_info();
   replication_info->clear_affinitized_leaders();
 
-  Status s;
   for (const auto& cloud_info : req->preferred_zones()) {
-    s = CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(replication_info->live_replicas(),
-                                                              cloud_info);
-    if (!s.ok()) {
+    const auto& placement_info = replication_info->live_replicas();
+    if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
+      Status s = STATUS_FORMAT(InvalidArgument, "Placement info $0 does not contain cloud info $1",
+                               placement_info, TSDescriptor::generate_placement_id(cloud_info));
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
     }
     *replication_info->add_affinitized_leaders() = cloud_info;
@@ -9725,7 +9829,7 @@ Status CatalogManager::SetPreferredZones(
 
   LOG(INFO) << "Updating cluster config to " << l.mutable_data()->pb.version();
 
-  s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
+  Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
   }
