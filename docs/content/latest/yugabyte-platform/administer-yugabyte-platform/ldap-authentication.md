@@ -107,7 +107,7 @@ For additional information, see [Update a configuration key](https://yugabyte.st
 
 ## Define the Yugabyte Platform Role
 
-You need to define a Yugabyte Platform-specific role for each user on your LDAP server by setting the `YugabytePlatformRole` annotation. The value set for this annotation is read during the Yugabyte Platform login. Note that if the value is modified on the LDAP server, the change is propagated to Yugabyte Platform and automatically updated during login. Password updates are also automatically handled.
+You need to define a Yugabyte Platform-specific role for each user on your LDAP server by setting the `yugabytePlatformRole` annotation. The value set for this annotation is read during the Yugabyte Platform login. Note that if the value is modified on the LDAP server, the change is propagated to Yugabyte Platform and automatically updated during login. Password updates are also automatically handled.
 
 If the role is not specified, users are created with ReadOnly privileges by default, which can be modified by the local super admin.
 
