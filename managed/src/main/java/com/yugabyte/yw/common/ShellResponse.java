@@ -4,7 +4,9 @@ import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 
 public class ShellResponse {
-  public int code = 0;
+  public static final int ERROR_CODE_SUCCESS = 0;
+
+  public int code = ERROR_CODE_SUCCESS;
   public String message = null;
   public long durationMs = 0;
   public String description = null;
