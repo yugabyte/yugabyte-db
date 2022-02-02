@@ -57,8 +57,6 @@ DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(process_split_tablet_candidates_interval_msec);
-DECLARE_uint64(max_queued_split_candidates);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -66,7 +64,6 @@ DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 
 DECLARE_double(TEST_simulate_lookup_partition_list_mismatch_probability);
-DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
 DECLARE_bool(TEST_reject_delete_not_serving_tablet_rpc);
 
 namespace yb {
@@ -111,8 +108,6 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
     // Setting this very low will just cause to include metrics in every heartbeat, no overhead on
     // setting it lower than FLAGS_heartbeat_interval_ms.
     FLAGS_tserver_heartbeat_metrics_interval_ms = 1;
-    // Split as soon as we get tablet to split on master.
-    FLAGS_process_split_tablet_candidates_interval_msec = 1;
     FLAGS_heartbeat_interval_ms = 1000;
 
     // Reduce cleanup waiting time, so tests are completed faster.
@@ -120,7 +115,6 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
 
     FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
     FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
-    FLAGS_max_queued_split_candidates = 10;
     FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
     FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
     FLAGS_tablet_force_split_threshold_bytes = 64_KB;
@@ -460,8 +454,6 @@ class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
     master_flags.push_back("--tablet_split_high_phase_size_threshold_bytes=0");
     master_flags.push_back("--tablet_split_low_phase_shard_count_per_node=0");
     master_flags.push_back("--tablet_split_high_phase_shard_count_per_node=0");
-    // Split as soon as we get tablet to split on master.
-    master_flags.push_back("--process_split_tablet_candidates_interval_msec=1");
     master_flags.push_back(Format("--tablet_force_split_threshold_bytes=$0", kSplitThreshold));
 
     auto& tserver_flags = mini_cluster_opt_.extra_tserver_flags;

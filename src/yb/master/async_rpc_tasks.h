@@ -296,9 +296,10 @@ class AsyncTabletLeaderTask : public RetryingTSRpcTask {
 
   std::string description() const override;
 
+  TabletId tablet_id() const override;
+
  protected:
   TabletServerId permanent_uuid() const;
-  TabletId tablet_id() const override;
 
   scoped_refptr<TabletInfo> tablet_;
 };

@@ -58,10 +58,10 @@ class YsqlTablespaceManager {
     const TablespaceId& tablespace_id);
 
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
-      const scoped_refptr<const TableInfo>& table);
+      const scoped_refptr<const TableInfo>& table) const;
 
   Result<boost::optional<ReplicationInfoPB>> GetTableReplicationInfo(
-    const scoped_refptr<const TableInfo>& table);
+    const scoped_refptr<const TableInfo>& table) const;
 
   // Indicates whether we need to wait for the next run of the tablespace background task to know
   // the tablespace information for a table.
@@ -70,7 +70,7 @@ class YsqlTablespaceManager {
  private:
   // By default we have 2 tablespaces in the system, pg_default and pg_global. Indicates whether
   // there are any other user created custom tablespaces in the database.
-  bool ContainsCustomTablespaces();
+  bool ContainsCustomTablespaces() const;
 
  private:
   // Map to provide the replication info associated with a tablespace.
