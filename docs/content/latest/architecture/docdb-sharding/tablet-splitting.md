@@ -121,7 +121,7 @@ CREATE TABLE customers (
     phone character varying(24),
     fax character varying(24),
     PRIMARY KEY (customer_id ASC)
-) SPLIT AT ((1000), (2000), (3000), ... );
+) SPLIT AT VALUES ((1000), (2000), (3000), ... );
 ```
 
 For YSQL API details, see:
