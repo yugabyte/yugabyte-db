@@ -202,7 +202,7 @@ For more details, refer to [Inactive free clusters](../cloud-basics/create-clust
 
 Free clusters are paused after 21 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
 
-If your cluster is paused, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
+To keep a paused cluster from being deleted, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
 
 ### What qualifies as activity on a cluster?
 
