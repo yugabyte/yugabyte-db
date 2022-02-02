@@ -507,6 +507,7 @@ Result<yb::OpId> LogReader::LookupOpId(int64_t op_index) const {
 }
 
 Result<int64_t> LogReader::LookupHeader(int64_t op_index) const {
+  std::lock_guard<simple_spinlock> lock(lock_);
   LogIndexEntry index_entry;
   Status st = log_index_->GetEntry(op_index, &index_entry);
   if (st.IsNotFound()) {
