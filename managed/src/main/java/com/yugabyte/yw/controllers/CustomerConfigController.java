@@ -13,11 +13,12 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerTask.TargetType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
+import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -43,6 +44,8 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @Inject Commissioner commissioner;
+
+  @Inject CustomerConfigValidator configValidator;
 
   @ApiOperation(
       value = "Create a customer configuration",
@@ -110,6 +113,46 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      value = "Delete a customer configuration V2",
+      response = YBPTask.class,
+      nickname = "deleteCustomerConfigV2")
+  public Result deleteYb(UUID customerUUID, UUID configUUID, boolean isDeleteBackups) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    CustomerConfig customerConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
+    if (customerConfig.type == CustomerConfig.ConfigType.STORAGE) {
+      Boolean backupsInProgress = Backup.findIfBackupsRunningWithCustomerConfig(configUUID);
+      if (backupsInProgress) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Backup task associated with Configuration "
+                + configUUID.toString()
+                + " is in progress.");
+      }
+      DeleteCustomerStorageConfig.Params taskParams = new DeleteCustomerStorageConfig.Params();
+      taskParams.customerUUID = customerUUID;
+      taskParams.configUUID = configUUID;
+      taskParams.isDeleteBackups = isDeleteBackups;
+      UUID taskUUID = commissioner.submit(TaskType.DeleteCustomerStorageConfig, taskParams);
+      LOG.info(
+          "Saved task uuid {} in customer tasks for Customer Configuration {}.",
+          taskUUID,
+          configUUID);
+      CustomerTask.create(
+          customer,
+          configUUID,
+          taskUUID,
+          CustomerTask.TargetType.CustomerConfiguration,
+          CustomerTask.TaskType.Delete,
+          customerConfig.configName);
+      auditService().createAuditEntry(ctx(), request());
+      return new YBPTask(taskUUID, configUUID).asResult();
+    }
+    customerConfigService.delete(customerUUID, configUUID);
+    auditService().createAuditEntry(ctx(), request());
+    return YBPSuccess.withMessage("Config " + configUUID + " is queued for deletion");
+  }
+
+  @ApiOperation(
       value = "List all customer configurations",
       response = CustomerConfigUI.class,
       responseContainer = "List",
@@ -138,6 +181,36 @@ public class CustomerConfigController extends AuthenticatedController {
     CustomerConfig existingConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
     CustomerConfig unmaskedConfig = CommonUtils.unmaskObject(existingConfig, customerConfig);
 
+    customerConfigService.edit(unmaskedConfig);
+
+    auditService().createAuditEntry(ctx(), request());
+    return PlatformResults.withData(unmaskedConfig);
+  }
+
+  @ApiOperation(
+      value = "Update a customer configuration V2",
+      response = CustomerConfig.class,
+      nickname = "getCustomerConfig")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Config",
+        value = "Configuration data to be updated",
+        required = true,
+        dataType = "Object",
+        paramType = "body")
+  })
+  public Result editYb(UUID customerUUID, UUID configUUID) {
+
+    CustomerConfig existingConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
+    if (existingConfig.getState().equals(ConfigState.QueuedForDeletion)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot edit config as it is queued for deletion.");
+    }
+
+    CustomerConfig customerConfig = parseJson(CustomerConfig.class);
+    customerConfig.setConfigUUID(configUUID);
+    customerConfig.setCustomerUUID(customerUUID);
+    CustomerConfig unmaskedConfig = CommonUtils.unmaskObject(existingConfig, customerConfig);
     customerConfigService.edit(unmaskedConfig);
 
     auditService().createAuditEntry(ctx(), request());

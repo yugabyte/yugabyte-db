@@ -69,41 +69,6 @@ export default class UserProfileForm extends Component {
 
     showOrRedirect(customer.data.features, 'main.profile');
 
-    const validationSchema = Yup.object().shape({
-      name: Yup.string().required('Enter name'),
-
-      // Regex below matches either the default value 'admin' or a generic email address
-      email: Yup.string()
-        .matches(
-          /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
-          'This is not a valid email or value'
-        )
-        .required('Enter email'),
-
-      code: Yup.string()
-        .required('Enter Environment name')
-        .max(5, 'Environment name can be only 5 characters long'),
-
-      password: Yup.string()
-        .notRequired()
-        .min(
-          minPasswordLength,
-          `Password is too short - must be ${minPasswordLength} characters minimum.`
-        )
-        .matches(
-          /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
-          `Password must contain at least ${passwordValidationInfo?.minDigits} digit
-          , ${passwordValidationInfo?.minUppercase} capital
-          , ${passwordValidationInfo?.minLowercase} lowercase
-          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`
-        )
-        .oneOf([Yup.ref('confirmPassword')], "Passwords don't match"),
-
-      confirmPassword: Yup.string()
-        .notRequired()
-        .oneOf([Yup.ref('password')], "Passwords don't match")
-    });
-
     // Filter users for userUUID set during login
     const loginUserId = localStorage.getItem('userId');
     const getCurrentUser = isNonEmptyArray(users)
@@ -133,6 +98,43 @@ export default class UserProfileForm extends Component {
         value: timezone,
         label: this.formatTimezoneLabel(timezone)
       });
+    });
+
+    const validationSchema = Yup.object().shape({
+      name: Yup.string().required('Enter name'),
+
+      // Regex below matches either the default value 'admin' or a generic email address
+      email: isLDAPUser
+        ? Yup.string().required('Enter Email or Username')
+        : Yup.string()
+            .matches(
+              /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
+              'This is not a valid email or value'
+            )
+            .required('Enter email'),
+
+      code: Yup.string()
+        .required('Enter Environment name')
+        .max(5, 'Environment name can be only 5 characters long'),
+
+      password: Yup.string()
+        .notRequired()
+        .min(
+          minPasswordLength,
+          `Password is too short - must be ${minPasswordLength} characters minimum.`
+        )
+        .matches(
+          /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
+          `Password must contain at least ${passwordValidationInfo?.minDigits} digit
+          , ${passwordValidationInfo?.minUppercase} capital
+          , ${passwordValidationInfo?.minLowercase} lowercase
+          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`
+        )
+        .oneOf([Yup.ref('confirmPassword')], "Passwords don't match"),
+
+      confirmPassword: Yup.string()
+        .notRequired()
+        .oneOf([Yup.ref('password')], "Passwords don't match")
     });
 
     return (
@@ -190,9 +192,9 @@ export default class UserProfileForm extends Component {
                         name="email"
                         readOnly={true}
                         type="text"
-                        label="Email"
+                        label="Email or Username"
                         component={YBFormInput}
-                        placeholder="Email Address"
+                        placeholder="Email or Username"
                       />
                       <Field
                         name="code"

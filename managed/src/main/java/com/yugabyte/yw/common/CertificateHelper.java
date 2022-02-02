@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -44,6 +41,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.DERSequence;
@@ -76,6 +74,9 @@ import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 /** Helper class for Certificates */
 public class CertificateHelper {
@@ -190,7 +191,8 @@ public class CertificateHelper {
       Date certStart,
       Date certExpiry,
       String certFileName,
-      String certKeyName) {
+      String certKeyName,
+      Map<String, Integer> subjectAltNames) {
     LOG.info(
         "Creating signed certificate signed by root CA {} and user {} at path {}",
         rootCA,
@@ -262,13 +264,24 @@ public class CertificateHelper {
           clientCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
       clientCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
 
+      List<GeneralName> altNames = new ArrayList<>();
       InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
-      if (ipAddressValidator.isValid(username)) {
-        List<GeneralName> altNames = new ArrayList<>();
-        altNames.add(new GeneralName(GeneralName.iPAddress, username));
-        GeneralNames subjectAltNames =
-            GeneralNames.getInstance(new DERSequence(altNames.toArray(new GeneralName[] {})));
-        clientCertBuilder.addExtension(Extension.subjectAlternativeName, false, subjectAltNames);
+      if (subjectAltNames != null) {
+        for (Map.Entry<String, Integer> entry : subjectAltNames.entrySet()) {
+          if (entry.getValue() == GeneralName.iPAddress) {
+            // If IP address is invalid, throw error.
+            if (!ipAddressValidator.isValid(entry.getKey())) {
+              throw new IllegalArgumentException(
+                  String.format("IP %s invalid for SAN entry.", entry.getKey()));
+            }
+          }
+          altNames.add(new GeneralName(entry.getValue(), entry.getKey()));
+        }
+        if (!altNames.isEmpty()) {
+          GeneralNames generalNames =
+              GeneralNames.getInstance(new DERSequence(altNames.toArray(new GeneralName[] {})));
+          clientCertBuilder.addExtension(Extension.subjectAlternativeName, false, generalNames);
+        }
       }
 
       X509CertificateHolder clientCertHolder = clientCertBuilder.build(csrContentSigner);
@@ -330,7 +343,7 @@ public class CertificateHelper {
   public static CertificateDetails createClientCertificate(
       UUID rootCA, String storagePath, String username, Date certStart, Date certExpiry) {
     return createSignedCertificate(
-        rootCA, storagePath, username, certStart, certExpiry, CLIENT_CERT, CLIENT_KEY);
+        rootCA, storagePath, username, certStart, certExpiry, CLIENT_CERT, CLIENT_KEY, null);
   }
 
   public static CertificateDetails createServerCertificate(
@@ -340,9 +353,17 @@ public class CertificateHelper {
       Date certStart,
       Date certExpiry,
       String certFileName,
-      String certKeyName) {
+      String certKeyName,
+      Map<String, Integer> subjectAltNames) {
     return createSignedCertificate(
-        rootCA, storagePath, username, certStart, certExpiry, certFileName, certKeyName);
+        rootCA,
+        storagePath,
+        username,
+        certStart,
+        certExpiry,
+        certFileName,
+        certKeyName,
+        subjectAltNames);
   }
 
   public static UUID uploadRootCA(
