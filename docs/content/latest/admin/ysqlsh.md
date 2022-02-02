@@ -280,11 +280,25 @@ Show help about `ysqlsh` and exit. The optional *topic* parameter (defaulting to
 
 ### Connecting to a database
 
-`ysqlsh` is a regular YugabyteDB client application. In order to connect to a database you need to know the name of your target database, the host name and port number of the server, and what user name you want to connect as. `ysqlsh` can be told about those parameters using command-line options, namely `-d`, `-h`, `-p`, and `-U` respectively. If an argument is found that does not belong to any option it will be interpreted as the database name (or the user name, if the database name is already given). Not all of these options are required; there are useful defaults. If you omit the host name, `ysqlsh` will connect to the compiled-in default of `127.0.0.1` or  a Unix-domain socket to a server on the local host, or using TCP/IP to localhost on machines that don't have Unix-domain sockets. The default port number is compiled-in as `5433`. Because the database server uses the same default, you will not have to specify the port in most cases. The default username is compiled-in as `yugabyte`, as is the default database name.
+{{< note title="Yugabyte Cloud" >}}
+
+For information on connecting to a Yugabyte Cloud cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
+
+{{< /note >}}
+
+To connect to a database, you need the following information:
+
+- the name of your target database
+- the host name and port number of the server
+- the user name you want to connect as
+
+You provide these parameters using the `-d`, `-h`, `-p`, and `-U` flags.
+
+Not all of these options are required; there are useful defaults. If you omit the host name, `ysqlsh` will connect to the compiled-in default of `127.0.0.1` or a Unix-domain socket to a server on the local host, or using TCP/IP to localhost on machines that don't have Unix-domain sockets. The default port number is compiled-in as `5433`. Because the database server uses the same default, you will not have to specify the port in most cases. The default username is compiled-in as `yugabyte`, as is the default database name. If an argument is found that does not belong to any option, it is interpreted as the database name (or the user name, if the database name is already given).
 
 {{< note title="Note" >}}
 
-Note that you cannot just connect to any database under any user name. Your database administrator should have informed you about your access rights.
+You can't just connect to any database under any user name. Your database administrator should have informed you of your access rights.
 
 {{< /note >}}
 
@@ -337,7 +351,7 @@ Anything you enter in `ysqlsh` that begins with an unquoted backslash is a meta-
 
 {{< note title="Cloud shell" >}}
 
-For security reasons, cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
+For security reasons, the Yugabyte Cloud cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
 
 {{< /note >}}
 

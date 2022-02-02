@@ -27,9 +27,9 @@ For security reasons, cloud shell has the following limitations:
 - Sessions are limited to 15 minutes. If your session disconnects, close the browser tab and start a new session.
 - Cloud shell only has access to a subset of ysqlsh [meta-commands](#ysqlsh-meta-commands-in-cloud-shell).
 
-{{< tip title="Cloud shell limitations" >}}
+{{< tip title="Cloud shell known issues" >}}
 
-Cloud shell is updated regularly. Check the [known issues list](../../release-notes/#known-issues-in-cloud-shell) in the release notes for the most-current list of limitations and known issues.
+Cloud shell is updated regularly. Check the [known issues list](../../release-notes/#known-issues-in-cloud-shell) in the release notes for the most-current list of known issues.
 
 {{< /tip >}}
 
