@@ -9,6 +9,8 @@ import {
   resetMetrics
 } from '../../../actions/graph';
 import {
+  fetchUniverseInfo,
+  fetchUniverseInfoResponse,
   getMasterLeader,
   getMasterLeaderResponse,
   resetMasterLeader
@@ -36,6 +38,11 @@ const mapDispatchToProps = (dispatch) => {
 
     resetMasterLeader: () => {
       dispatch(resetMasterLeader());
+    },
+    fetchCurrentUniverse: (universeUUID) => {
+      return dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+        dispatch(fetchUniverseInfoResponse(response.payload));
+      });
     }
   };
 };

@@ -54,6 +54,8 @@ export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
 };
 
 const ALERT_NAME = 'Replication Lag';
+
+
 export const GetConfiguredThreshold = ({
   currentUniverseUUID
 }: {
@@ -63,7 +65,6 @@ export const GetConfiguredThreshold = ({
     name: ALERT_NAME,
     targetUuid: currentUniverseUUID
   };
-
   const { data: metricsData, isFetching } = useQuery(
     ['getConfiguredThreshold', configurationFilter],
     () => getAlertConfigurations(configurationFilter)
@@ -85,11 +86,11 @@ export const GetCurrentLag = ({
   replicationUUID: string;
   sourceUniverseUUID: string;
 }) => {
+  
   const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
     ['universe', sourceUniverseUUID],
     () => getUniverseInfo(sourceUniverseUUID)
   );
-
   const nodePrefix = universeInfo?.data?.universeDetails.nodePrefix;
 
   const { data: metricsData, isFetching } = useQuery(
@@ -99,9 +100,17 @@ export const GetCurrentLag = ({
       enabled: !currentUniverseLoading,
       refetchInterval: 20 * 1000
     }
-  );
+    );
+    const configurationFilter = {
+      name: ALERT_NAME,
+      targetUuid: sourceUniverseUUID
+    };
+    const { data: configuredThreshold, isLoading: threshholdLoading } = useQuery(
+      ['getConfiguredThreshold', configurationFilter],
+      () => getAlertConfigurations(configurationFilter)
+    );
 
-  if (isFetching || currentUniverseLoading) {
+  if (isFetching || currentUniverseLoading || threshholdLoading) {
     return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
   }
 
@@ -111,9 +120,10 @@ export const GetCurrentLag = ({
   ) {
     return <span>-</span>;
   }
+  let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
 
-  const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[1]?.y[0];
-  return <span>{latestLag || '-'}</span>;
+  const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[1]?.y.pop();
+  return <span className={`replication-lag-value ${maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'}`}>{latestLag || '-'}</span>;
 };
 
 export const GetCurrentLagForTable = ({

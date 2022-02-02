@@ -15,6 +15,14 @@
     color: #ff9933;
   }
 }
+.replication-lag-value{
+  &.above-threshold {
+    color: #f00000;
+  }
+  &.below-threshold {
+    color: green;
+  }
+}
 
 .yb-spinner {
   color: $YB_ORANGE;
