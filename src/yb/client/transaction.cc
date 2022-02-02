@@ -250,6 +250,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       other->read_point_.MoveFrom(&read_point_);
       other->read_point_.Restart();
       other->metadata_.isolation = metadata_.isolation;
+      // TODO(Piyush): Do we need the below? If yes, prove with a test case and add it.
+      // other->metadata_.priority = metadata_.priority;
       if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
         other->metadata_.start_time = other->read_point_.GetReadTime().read;
       } else {
@@ -426,7 +428,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
       } else {
         const TransactionError txn_err(status);
-        if (txn_err.value() != TransactionErrorCode::kSkipLocking) {
+        // We don't abort the txn in case of a kSkipLocking error to make further progress.
+        // READ COMMITTED isolation retries errors of kConflict and kReadRestart by restarting
+        // statements instead of the whole txn and hence should avoid aborting the txn in this case
+        // too.
+        bool avoid_abort =
+            (txn_err.value() == TransactionErrorCode::kSkipLocking) ||
+            (metadata_.isolation == IsolationLevel::READ_COMMITTED &&
+              (txn_err.value() == TransactionErrorCode::kReadRestartRequired ||
+                txn_err.value() == TransactionErrorCode::kConflict));
+        if (!avoid_abort) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
@@ -741,7 +752,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   void SetReadTimeIfNeeded(bool do_it) {
     if (!read_point_.GetReadTime() && do_it &&
-        metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+        (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
+         metadata_.isolation == IsolationLevel::READ_COMMITTED)) {
       read_point_.SetCurrentReadTime();
     }
   }

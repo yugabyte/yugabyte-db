@@ -14,14 +14,14 @@ teardown
 }
 
 session "s1"
-setup		{ BEGIN; }
+setup		{ BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ; }
 step "s1a"	{ SELECT * FROM queue; -- this is just to ensure we have picked the read point}
 step "s1b"	{ SELECT * FROM queue ORDER BY id FOR UPDATE LIMIT 1; }
 step "s1c"	{ COMMIT; }
 
 
 session "s2"
-setup		{ BEGIN; }
+setup		{ BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ; }
 step "s2a"	{ SELECT * FROM queue; -- this is just to ensure we have picked the read point}
 step "s2b"	{ UPDATE queue set status='OLD' WHERE id=1; }
 step "s2c"	{ COMMIT; }

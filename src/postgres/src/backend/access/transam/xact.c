@@ -795,6 +795,14 @@ GetCurrentTransactionNestLevel(void)
 	return s->nestingLevel;
 }
 
+const char*
+GetCurrentTransactionName(void)
+{
+	TransactionState s = CurrentTransactionState;
+
+	return s->name;
+}
+
 
 /*
  *	TransactionIdIsCurrentTransactionId
@@ -1905,17 +1913,20 @@ YBInitializeTransaction(void)
 	if (YBTransactionsEnabled())
 	{
 		HandleYBStatus(YBCPgBeginTransaction());
-		HandleYBStatus(YBCPgSetTransactionIsolationLevel(XactIsoLevel));
+
+		int	pg_isolation_level = XactIsoLevel;
+
+		if (pg_isolation_level == XACT_READ_UNCOMMITTED)
+			pg_isolation_level = XACT_READ_COMMITTED;
+
+		if ((pg_isolation_level == XACT_READ_COMMITTED) && !IsYBReadCommitted())
+			pg_isolation_level = XACT_REPEATABLE_READ;
+
+		HandleYBStatus(YBCPgSetTransactionIsolationLevel(pg_isolation_level));
 		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
 	}
-}
-
-void
-YBMaybeResetTransactionReadPoint(void)
-{
-	HandleYBStatus(YBCPgMaybeResetTransactionReadPoint());
 }
 
 /*
@@ -2906,8 +2917,7 @@ StartTransactionCommand(void)
 			 *
 			 * For READ COMMITTED isolation, we want to reset the read point to current ht time so that
 			 * the query works on a newer snapshot that will include all txns committed before this
-			 * command. There is an exception when we don't pick a new read point: in case we reach here
-			 * as part of a read restart retry, we just have to use the restart read point.
+			 * command.
 			 *
 			 * Read restart handling per statement
 			 * -----------------------------------
@@ -2919,19 +2929,37 @@ StartTransactionCommand(void)
 			 * records with ht after the chosen read ht and is unsure if the records were committed before
 			 * the client issued read (as per real time), a kReadRestart will be received by postgres.
 			 *
-			 * Read restart retries are handled transparently for every statement in the txn. In case
-			 * we reach here and see that the read point exists and was restarted recently as part of a
-			 * retry, we don't pick a new read point using current time.
+			 * Read restart retries are handled transparently for every statement in the txn in
+			 * yb_attempt_to_restart_on_error().
 			 */
-			if (YBTransactionsEnabled() && IsYBReadCommitted()) {
+			if (YBTransactionsEnabled() && IsYBReadCommitted())
+			{
 				/*
 				 * Reset field ybDataSentForCurrQuery (indicates whether any data was sent as part of the
 				 * current query). This helps track if automatic restart of a query is possible in
 				 * READ COMMITTED isolation level.
 				 */
 				s->ybDataSentForCurrQuery = false;
-				elog(DEBUG2, "Maybe resetting read point for statement in Read Committed txn");
-				YBMaybeResetTransactionReadPoint();
+				HandleYBStatus(YBCPgResetTransactionReadPoint());
+				elog(DEBUG2, "Resetting read point for statement in Read Committed txn");
+
+				/*
+				 * Create a new internal sub txn before any execution. This aids in rolling back any changes
+				 * before restarting the statement.
+				 *
+				 * We don't rely on the name of the internal sub transaction for rolling back to it in
+				 * yb_attempt_to_restart_on_error(). We just assert that the name of the current sub txn
+				 * matches before calling RollbackAndReleaseCurrentSubTransaction() to restart the
+				 * statement.
+				 *
+				 * Instead of calling BeginInternalSubTransaction(), we have copy-pasted necessary logic
+				 * into a new function since BeginInternalSubTransaction() again calls
+				 * CommitTransactionCommand() and StartTransactionCommand() which will result in recursion.
+				 * We could have solved the recursion problem by plumbing a flag to skip calling
+				 * BeginInternalSubTransaction() again, but it is simpler and less error-prone to just copy
+				 * the minimal required logic.
+				 */
+				BeginInternalSubTransactionForReadCommittedStatement();
 			}
 
 			break;
@@ -4476,6 +4504,40 @@ BeginInternalSubTransaction(const char *name)
 }
 
 /*
+ * BeginInternalSubTransactionForReadCommittedStatement
+ *		This is similar to BeginInternalSubTransaction() but doesn't call CommitTransactionCommand()
+ *    and StartTransactionCommand(). It is okay to not call those since this method is called only
+ *    in 2 specific cases (i.e., when starting a new statement in an already existing txn in
+ *    READ COMMITED mode, or when rolling back to the internal sub txn while restarting a
+ *    statement) and both cases satisfy the following property -
+ *      CurrentTransactionState->blockState is TBLOCK_INPROGRESS, TBLOCK_IMPLICIT_INPROGRESS or
+ *			TBLOCK_SUBINPROGRESS.
+ */
+void
+BeginInternalSubTransactionForReadCommittedStatement() {
+	YBFlushBufferedOperations();
+	TransactionState s = CurrentTransactionState;
+
+	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
+				 s->blockState == TBLOCK_IMPLICIT_INPROGRESS ||
+				 s->blockState == TBLOCK_INPROGRESS);
+
+	if (IsInParallelMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
+				errmsg("cannot start subtransactions during a parallel operation")));
+
+	/* Normal subtransaction start */
+	PushTransaction();
+	s = CurrentTransactionState;	/* changed by push */
+
+	s->name = MemoryContextStrdup(TopTransactionContext, YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME);
+
+	StartSubTransaction();
+	s->blockState = TBLOCK_SUBINPROGRESS;
+}
+
+/*
  * ReleaseCurrentSubTransaction
  *
  * RELEASE (ie, commit) the innermost subtransaction, regardless of its
@@ -5162,6 +5224,7 @@ PushTransaction(void)
 	GetUserIdAndSecContext(&s->prevUser, &s->prevSecContext);
 	s->prevXactReadOnly = XactReadOnly;
 	s->parallelModeLevel = 0;
+	s->ybDataSentForCurrQuery = p->ybDataSentForCurrQuery;
 
 	CurrentTransactionState = s;
 	YBUpdateActiveSubTransaction(CurrentTransactionState);

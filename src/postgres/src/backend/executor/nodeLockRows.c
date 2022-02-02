@@ -250,14 +250,14 @@ lnext:
 
 			case HeapTupleUpdated:
 				/*
-				 * TODO(Piyush): Right now in YB, READ COMMITTED isolation level maps to REPEATABLE READ and
-				 * hence we should error out always. Once we implement READ COMMITTED in YB, we will have to
-				 * add EvalQualPlan related handling specific to YB.
+				 * TODO(Piyush): If handling using EvalPlanQual for READ COMMITTED in future, replace true
+				 * with IsolationUsesXactSnapshot().
 				 */
-				if (true) // Replace with IsolationUsesXactSnapshot() once we truly support READ COMMITTED.
+				if (true)
 					ereport(ERROR,
 							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-							errmsg("could not serialize access due to concurrent update")));
+							errmsg("could not serialize access due to concurrent update"),
+							yb_txn_errcode(YBCGetTxnConflictErrorCode())));
 				if (ItemPointerIndicatesMovedPartitions(&hufd.ctid))
 					ereport(ERROR,
 							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),

@@ -21,6 +21,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
+#include "yb/client/transaction.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
@@ -37,6 +38,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb {
 namespace pggate {
@@ -104,7 +106,6 @@ class RowIdentifier {
 };
 
 YB_STRONGLY_TYPED_BOOL(IsTransactionalSession);
-YB_STRONGLY_TYPED_BOOL(IsPessimisticLockRequired);
 YB_STRONGLY_TYPED_BOOL(IsReadOnlyOperation);
 YB_STRONGLY_TYPED_BOOL(IsCatalogOperation);
 
@@ -212,6 +213,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS FlushBufferedOperations();
   // Drop all pending buffered operations. Buffering mode remain unchanged.
   void DropBufferedOperations();
+
+  PgIsolationLevel GetIsolationLevel();
 
   // Run (apply + flush) the given operation to read and write database content.
   // Template is used here to handle all kind of derived operations
@@ -373,7 +376,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<client::YBSession*> GetSession(
       IsTransactionalSession transactional,
       IsReadOnlyOperation read_only_op,
-      IsPessimisticLockRequired pessimistic_lock_required = IsPessimisticLockRequired::kFalse,
+      TxnPriorityRequirement txn_priority_requirement,
       IsCatalogOperation is_catalog_op = IsCatalogOperation::kFalse);
 
   // Flush buffered write operations from the given buffer.
