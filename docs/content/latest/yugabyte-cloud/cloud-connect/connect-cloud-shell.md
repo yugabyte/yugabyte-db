@@ -22,10 +22,10 @@ You have the option of using the following command line interfaces (CLIs) in the
 
 ## Limitations
 
-For security reasons, cloud shell has the following limitations:
+Cloud shell has the following security limitations:
 
 - Sessions are limited to 15 minutes. If your session disconnects, close the browser tab and start a new session.
-- Cloud shell only has access to a subset of ysqlsh [meta-commands](#ysqlsh-meta-commands-in-cloud-shell).
+- You can only use a subset of ysqlsh [meta-commands](#ysqlsh-meta-commands-in-cloud-shell).
 
 {{< tip title="Cloud shell known issues" >}}
 
@@ -47,7 +47,7 @@ To connect to a cluster via Cloud Shell:
 
 1. Select the API to use (YSQL or YCQL) and click **Confirm**.
 
-    The shell is displayed in a separate browser page. Cloud shell can take up to 30 seconds to be ready.
+    The shell displays in a separate browser page. Cloud shell can take up to 30 seconds to be ready.
 
 1. Enter the password for the user you specified.
 
@@ -68,13 +68,13 @@ Use HELP for help.
 admin@ycqlsh:yugabyte> 
 ```
 
-If you enter an incorrect password, the cloud shell session is terminated immediately and you must start a new session.
+If you enter an incorrect password, the cloud shell session terminates immediately and you must start a new session.
 
-Once connected, one or more entries for the cloud shell session are added to the cluster IP allow list. After the session is closed, these are cleaned up automatically within five minutes.
+Once connected, Yugabyte Cloud adds one or more entries for the cloud shell session to the cluster IP allow list. After the session is closed, these are cleaned up automatically within five minutes.
 
 ## ysqlsh meta-commands in cloud shell
 
-For security reasons, cloud shell only has access to a subset of ysqlsh [meta-commands](../../../admin/ysqlsh/#meta-commands). With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
+For security reasons, you can only use a subset of ysqlsh [meta-commands](../../../admin/ysqlsh/#meta-commands) in cloud shell. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
 
 The following table lists common meta-commands that can be used in cloud shell.
 
@@ -89,7 +89,7 @@ The following table lists common meta-commands that can be used in cloud shell.
 | \di | Display indexes. |
 | \dn | Display schemas. |
 | \dT | Display data types. |
-| \sv [view name] | Show a views definition. |
+| \sv [view name] | Show a view definition. |
 | \x [ on \| off \| auto ] | Toggle the expanded display. Used for viewing tables with many columns. Can be toggled on or off, or set to auto. |
 | \set | List all internal variables. |
 | \set [Name] [Value] | Set new internal variable. |
