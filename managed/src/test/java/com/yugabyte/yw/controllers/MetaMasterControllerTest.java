@@ -101,9 +101,9 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     MetaMasterController.MastersList masterList =
         Json.fromJson(jsonNode, MetaMasterController.MastersList.class);
     Set<String> masterNodeNames = new HashSet<>();
-    masterNodeNames.add("host-n1");
-    masterNodeNames.add("host-n2");
-    masterNodeNames.add("host-n3");
+    masterNodeNames.add("10.0.0.1");
+    masterNodeNames.add("10.0.0.2");
+    masterNodeNames.add("10.0.0.3");
     for (MetaMasterController.MasterNode node : masterList.masters) {
       assertTrue(masterNodeNames.contains(node.cloudInfo.private_ip));
     }
@@ -164,7 +164,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
           String expectedHostString =
               String.join(
                   ",",
-                  ImmutableList.of("host-n1:" + value, "host-n2:" + value, "host-n3:" + value));
+                  ImmutableList.of("10.0.0.1:" + value, "10.0.0.2:" + value, "10.0.0.3:" + value));
 
           Result r =
               route(
@@ -396,7 +396,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                     + u1.universeUUID
                     + "/ysqlservers"));
     assertRestResult(r, true, OK);
-    assertEquals("host-n1:5433,host-n2:5433,host-n3:5433", Json.parse(contentAsString(r)).asText());
+    assertEquals(
+        "10.0.0.1:5433,10.0.0.2:5433,10.0.0.3:5433", Json.parse(contentAsString(r)).asText());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 }
