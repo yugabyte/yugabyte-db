@@ -38,6 +38,7 @@
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/tablet_split_manager.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/mutex.h"
@@ -167,6 +168,13 @@ void CatalogManagerBgTasks::Run() {
           catalog_manager_->load_balance_policy_->RunLoadBalancer();
         }
       }
+
+      TableInfoMap table_info_map;
+      {
+        CatalogManager::SharedLock lock(catalog_manager_->mutex_);
+        table_info_map = *catalog_manager_->table_ids_map_;
+      }
+      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map);
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();

@@ -239,6 +239,8 @@ class CatalogManagerIf {
 
   virtual ClusterLoadBalancer* load_balancer() = 0;
 
+  virtual TabletSplitManager* tablet_split_manager() = 0;
+
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 
   virtual intptr_t tablets_version() const = 0;
