@@ -68,7 +68,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
 
   private void createDummyReleases(
       List<String> versions, boolean multipleRepos, boolean inDockerPath) {
-    createDummyReleases(versions, multipleRepos, inDockerPath, true, true);
+    createDummyReleases(versions, multipleRepos, inDockerPath, true, true, false);
   }
 
   private void createDummyReleases(
@@ -77,6 +77,17 @@ public class ReleaseManagerTest extends FakeDBApplication {
       boolean inDockerPath,
       boolean hasEnterpriseStr,
       boolean withHelmChart) {
+    createDummyReleases(
+        versions, multipleRepos, inDockerPath, hasEnterpriseStr, withHelmChart, false);
+  }
+
+  private void createDummyReleases(
+      List<String> versions,
+      boolean multipleRepos,
+      boolean inDockerPath,
+      boolean hasEnterpriseStr,
+      boolean withHelmChart,
+      boolean withAarch) {
     versions.forEach(
         (version) -> {
           String versionPath = String.format("%s/%s", TMP_STORAGE_PATH, version);
@@ -94,6 +105,12 @@ public class ReleaseManagerTest extends FakeDBApplication {
           if (withHelmChart) {
             createTempFile(
                 versionPath, "yugabyte-" + version + "-helm.tar.gz", "Sample helm chart data");
+          }
+          if (withAarch) {
+            createTempFile(
+                versionPath,
+                "yugabyte-" + eeStr + version + "-centos-aarch64.tar.gz",
+                "Sample data");
           }
         });
   }
@@ -145,7 +162,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
     assertEquals(3, releases.size());
     releases.forEach(
         (version, release) -> {
-          assertTrue(versions.contains(version));
+          assertTrue(versions.contains(release.imageTag));
           assertNotNull(release.filePath);
           assertNotNull(release.chartPath);
         });
@@ -160,7 +177,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
     assertEquals(3, releases.size());
     releases.forEach(
         (version, release) -> {
-          assertTrue(versions.contains(version));
+          assertTrue(versions.contains(release.imageTag));
           assertNotNull(release.filePath);
           assertNotNull(release.chartPath);
         });
@@ -187,7 +204,6 @@ public class ReleaseManagerTest extends FakeDBApplication {
         (version, expectedRelease) -> {
           assertTrue(actual.containsKey(version));
           ReleaseManager.ReleaseMetadata actualRelease = actual.get(version);
-          assertEquals(version, actualRelease.imageTag);
           assertEquals(expectedRelease.imageTag, actualRelease.imageTag);
           assertEquals(expectedRelease.state, actualRelease.state);
           assertEquals(expectedRelease.filePath, actualRelease.filePath);
@@ -210,7 +226,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .loadConfigToDB(configType.capture(), releaseMap.capture());
     Map expectedMap =
         ImmutableMap.of(
-            "0.0.1",
+            "0.0.1-x86_64",
             ReleaseManager.ReleaseMetadata.create("0.0.1")
                 .withFilePath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz")
                 .withChartPath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-0.0.1-helm.tar.gz"));
@@ -232,7 +248,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .loadConfigToDB(configType.capture(), releaseMap.capture());
     Map expectedMap =
         ImmutableMap.of(
-            "0.0.1",
+            "0.0.1-x86_64",
             ReleaseManager.ReleaseMetadata.create("0.0.1")
                 .withFilePath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz")
                 .withChartPath(""));
@@ -259,17 +275,17 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .loadConfigToDB(configType.capture(), releaseMap.capture());
     Map expectedMap =
         ImmutableMap.of(
-            "0.0.1",
+            "0.0.1-x86_64",
                 ReleaseManager.ReleaseMetadata.create("0.0.1")
                     .withFilePath(
                         TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz")
                     .withChartPath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-0.0.1-helm.tar.gz"),
-            "0.0.2-b2",
+            "0.0.2-b2-x86_64",
                 ReleaseManager.ReleaseMetadata.create("0.0.2-b2")
                     .withFilePath(
                         TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-ee-0.0.2-b2-centos-x86_64.tar.gz")
                     .withChartPath(TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-helm.tar.gz"),
-            "0.0.3-b3",
+            "0.0.3-b3-x86_64",
                 ReleaseManager.ReleaseMetadata.create("0.0.3-b3")
                     .withFilePath(
                         TMP_STORAGE_PATH + "/0.0.3-b3/yugabyte-0.0.3-b3-centos-x86_64.tar.gz")
@@ -296,7 +312,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .loadConfigToDB(configType.capture(), releaseMap.capture());
     Map expectedMap =
         ImmutableMap.of(
-            "0.0.2-b2",
+            "0.0.2-b2-x86_64",
             ReleaseManager.ReleaseMetadata.create("0.0.2-b2")
                 .withFilePath(
                     TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-ee-0.0.2-b2-centos-x86_64.tar.gz")
@@ -312,6 +328,32 @@ public class ReleaseManagerTest extends FakeDBApplication {
     } catch (RuntimeException re) {
       assertEquals("Unable to look up release files in foo", re.getMessage());
     }
+  }
+
+  @Test
+  public void testLoadReleasesWithAarchPath() {
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    List<String> versions = ImmutableList.of("0.0.1");
+    createDummyReleases(versions, false, false, true, true, true);
+    releaseManager.importLocalReleases();
+
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.1-x86_64",
+            ReleaseManager.ReleaseMetadata.create("0.0.1")
+                .withFilePath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz")
+                .withChartPath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-0.0.1-helm.tar.gz"),
+            "0.0.1-aarch64",
+            ReleaseManager.ReleaseMetadata.create("0.0.1")
+                .withFilePath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-aarch64.tar.gz")
+                .withChartPath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-0.0.1-helm.tar.gz"));
+    assertReleases(expectedMap, releaseMap.getValue());
   }
 
   @Test
