@@ -1396,8 +1396,12 @@ Status PgApiImpl::RestartTransaction() {
   return pg_txn_manager_->RestartTransaction();
 }
 
-Status PgApiImpl::MaybeResetTransactionReadPoint() {
-  return pg_txn_manager_->MaybeResetTransactionReadPoint();
+Status PgApiImpl::ResetTransactionReadPoint() {
+  return pg_txn_manager_->ResetTransactionReadPoint();
+}
+
+Status PgApiImpl::RestartReadPoint() {
+  return pg_txn_manager_->RestartReadPoint();
 }
 
 Status PgApiImpl::CommitTransaction() {

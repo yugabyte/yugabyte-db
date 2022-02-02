@@ -19,6 +19,7 @@
 #include <mutex>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/async_initializer.h"
 #include "yb/common/clock.h"
@@ -63,10 +64,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   CHECKED_STATUS BeginTransaction();
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
-  CHECKED_STATUS MaybeResetTransactionReadPoint();
+  CHECKED_STATUS ResetTransactionReadPoint();
+  CHECKED_STATUS RestartReadPoint();
   CHECKED_STATUS CommitTransaction();
   void AbortTransaction();
   CHECKED_STATUS SetIsolationLevel(int isolation);
+  PgIsolationLevel GetIsolationLevel();
   CHECKED_STATUS SetReadOnly(bool read_only);
   CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
   CHECKED_STATUS SetDeferrable(bool deferrable);
@@ -79,8 +82,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::shared_future<Result<TransactionMetadata>> GetDdlTxnMetadata() const;
 
-  CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op,
-                                                  bool needs_pessimistic_locking = false);
+  CHECKED_STATUS BeginWriteTransactionIfNecessary(
+      bool read_only_op, TxnPriorityRequirement txn_priority_requirement);
 
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
 
@@ -93,7 +96,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldUseFollowerReads() const { return updated_read_time_for_follower_reads_; }
 
  private:
-  YB_STRONGLY_TYPED_BOOL(NeedsPessimisticLocking);
+  YB_STRONGLY_TYPED_BOOL(NeedsHigherPriorityTxn);
   YB_STRONGLY_TYPED_BOOL(SavePriority);
 
   client::TransactionManager* GetOrCreateTransactionManager();
@@ -102,7 +105,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status UpdateReadTimeForFollowerReadsIfRequired();
   Status RecreateTransaction(SavePriority save_priority);
 
-  uint64_t GetPriority(NeedsPessimisticLocking needs_pessimistic_locking);
+  uint64_t GetPriority(TxnPriorityRequirement txn_priority_requirement);
 
   std::string TxnStateDebugStr() const;
 

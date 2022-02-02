@@ -902,8 +902,12 @@ YBCStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }
 
-YBCStatus YBCPgMaybeResetTransactionReadPoint() {
-  return ToYBCStatus(pgapi->MaybeResetTransactionReadPoint());
+YBCStatus YBCPgResetTransactionReadPoint() {
+  return ToYBCStatus(pgapi->ResetTransactionReadPoint());
+}
+
+YBCStatus YBCPgRestartReadPoint() {
+  return ToYBCStatus(pgapi->RestartReadPoint());
 }
 
 YBCStatus YBCPgCommitTransaction() {

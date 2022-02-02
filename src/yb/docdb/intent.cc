@@ -129,6 +129,7 @@ IntentTypeSet GetStrongIntentTypeSet(
   }
 
   switch (level) {
+    case IsolationLevel::READ_COMMITTED:
     case IsolationLevel::SNAPSHOT_ISOLATION:
       return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
     case IsolationLevel::SERIALIZABLE_ISOLATION:

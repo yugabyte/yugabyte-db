@@ -255,6 +255,10 @@ bool YBCIsTxnSkipLockingError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kSkipLocking);
 }
 
+uint16_t YBCGetTxnConflictErrorCode() {
+  return to_underlying(TransactionErrorCode::kConflict);
+}
+
 YBCStatus YBCInit(const char* argv0,
                   YBCPAllocFn palloc_fn,
                   YBCCStringToTextWithLenFn cstring_to_text_with_len_fn) {

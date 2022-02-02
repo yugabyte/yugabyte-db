@@ -274,6 +274,8 @@ CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
   switch (isolation_level) {
     case IsolationLevel::NON_TRANSACTIONAL:
       return Status::OK();
+    case IsolationLevel::READ_COMMITTED:
+      return Execute("START TRANSACTION ISOLATION LEVEL READ COMMITTED");
     case IsolationLevel::SNAPSHOT_ISOLATION:
       return Execute("START TRANSACTION ISOLATION LEVEL REPEATABLE READ");
     case IsolationLevel::SERIALIZABLE_ISOLATION:
