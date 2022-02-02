@@ -335,6 +335,12 @@ While C-style block comments are passed to the server for processing and removal
 
 Anything you enter in `ysqlsh` that begins with an unquoted backslash is a meta-command that is processed by `ysqlsh` itself. These commands make `ysqlsh` more useful for administration or scripting. Meta-commands are often called slash or backslash commands.
 
+{{< note title="Cloud shell" >}}
+
+For security reasons, cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
+
+{{< /note >}}
+
 The format of a `ysqlsh` command is the backslash (`\`), followed immediately by a command verb, then any arguments. The arguments are separated from the command verb and each other by any number of whitespace characters.
 
 To include whitespace in an argument you can quote it with single quotes (`' '`). To include a single quote in an argument, write two single quotes in single-quoted text (`' ... '' ...'`). Anything contained in single quotes is furthermore subject to C-like substitutions for `\n` (new line), `\t` (tab), `\b` (backspace), `\r` (carriage return), `\f` (form feed), `\digits` (octal), and `\xdigits` (hexadecimal). A backslash preceding any other character in single-quoted text quotes that single character, whatever it is.
@@ -348,33 +354,6 @@ Some commands take an SQL identifier (such as a table name) as argument. These a
 Parsing for arguments stops at the end of the line, or when another unquoted backslash is found. An unquoted backslash is taken as the beginning of a new meta-command. The special sequence `\\` (two backslashes) marks the end of arguments and continues parsing SQL commands, if any. That way SQL statements and `ysqlsh` commands can be freely mixed on a line. But in any case, the arguments of a meta-command cannot continue beyond the end of the line.
 
 Many of the meta-commands act on the current query buffer. This buffer holds whatever SQL statement text has been typed but not yet sent to the server for execution. This will include previous input lines as well as any text appearing before the meta-command on the same line.
-
-### Meta-commands in cloud shell
-
-For security reasons, cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
-
-The following table lists common meta-commands that can be used in cloud shell.
-
-| Command | Description |
-| :--- | :--- |
-| \c [database name] | Connect to a database. For example, `\c yb_demo`. |
-| \l | List all databases. |
-| \d | Display tables, views, and sequences. |
-| \dt | Display tables. |
-| \dv | Display views. |
-| \dm | Display materialized views. |
-| \di | Display indexes. |
-| \dn | Display schemas. |
-| \dT | Display data types. |
-| \sv [view name] | Show a views definition. |
-| \x [ on \| off \| auto ] | Toggle the expanded display. This is useful when viewing tables with many columns. Can be toggled on or off, or set to auto. |
-| \set | List all internal variables. |
-| \set [Name] [Value] | Set new internal variable. |
-| \unset [Name] | Delete internal variable. |
-| \timing | Toggles timing on queries. |
-| \echo [message] | Print the message to the console. |
-| \i [filename] | Execute commands from a file in the /share directory only. For example, `\i share/chinook_ddl.sql`. |
-| \q | Exits ysqlsh. |
 
 ### Reference
 

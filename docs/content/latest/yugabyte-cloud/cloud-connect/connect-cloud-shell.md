@@ -20,6 +20,19 @@ You have the option of using the following command line interfaces (CLIs) in the
 - [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql).
 - [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql).
 
+## Limitations
+
+For security reasons, cloud shell has the following limitations:
+
+- Sessions are limited to 15 minutes. If your session disconnects, close the browser tab and start a new session.
+- Cloud shell only has access to a subset of ysqlsh [meta-commands](#ysqlsh-meta-commands-in-cloud-shell).
+
+{{< tip title="Cloud shell limitations" >}}
+
+Cloud shell is updated regularly. Check the [known issues list](../../release-notes/#known-issues-in-cloud-shell) in the release notes for the most-current list of limitations and known issues.
+
+{{< /tip >}}
+
 ## Connect via Cloud Shell
 
 To connect to a cluster via Cloud Shell:
@@ -59,17 +72,38 @@ If you enter an incorrect password, the cloud shell session is terminated immedi
 
 Once connected, one or more entries for the cloud shell session are added to the cluster IP allow list. After the session is closed, these are cleaned up automatically within five minutes.
 
-{{< tip title="Cloud shell limitations" >}}
+## ysqlsh meta-commands in cloud shell
 
-Cloud shell is updated regularly. Check the [known issues list](../../release-notes/#known-issues-in-cloud-shell) in the release notes for the most-current list of limitations and known issues.
+For security reasons, cloud shell only has access to a subset of ysqlsh [meta-commands](../../../admin/ysqlsh/#meta-commands). With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
 
-{{< /tip >}}
+The following table lists common meta-commands that can be used in cloud shell.
+
+| Command | Description |
+| :--- | :--- |
+| \c [database name] | Connect to a database. For example, `\c yb_demo`. |
+| \l | List all databases. |
+| \d | Display tables, views, and sequences. |
+| \dt | Display tables. |
+| \dv | Display views. |
+| \dm | Display materialized views. |
+| \di | Display indexes. |
+| \dn | Display schemas. |
+| \dT | Display data types. |
+| \sv [view name] | Show a views definition. |
+| \x [ on \| off \| auto ] | Toggle the expanded display. Used for viewing tables with many columns. Can be toggled on or off, or set to auto. |
+| \set | List all internal variables. |
+| \set [Name] [Value] | Set new internal variable. |
+| \unset [Name] | Delete internal variable. |
+| \timing | Toggles timing on queries. |
+| \echo [message] | Print the message to the console. |
+| \i [filename] | Execute commands from a file in the /share directory only. For example, `\i share/chinook_ddl.sql`. |
+| \q | Exits ysqlsh. |
 
 ## Related information
 
 - [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
 - [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.
-- [ysqlsh](../../../admin/ysqlsh/) — Overview of the CLI, syntax, and commands.
+- [ysqlsh](../../../admin/ysqlsh/) — Overview of the CLI, syntax, and meta-commands.
 - [ycqlsh](../../../admin/ycqlsh/) — Overview of the CLI, syntax, and commands.
 
 ## Next steps
