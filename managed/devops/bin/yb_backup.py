@@ -2392,8 +2392,9 @@ class YBBackup:
                 self.identify_new_tablet_replicas(all_tablets_by_tserver, tablets_by_tserver_new)
 
         if num_loops >= RESTORE_DOWNLOAD_LOOP_MAX_RETRIES:
-            logging.error("Exceeded max number of retries for the restore download loop ({})!".
-                          format(RESTORE_DOWNLOAD_LOOP_MAX_RETRIES))
+            raise BackupException(
+                "Exceeded max number of retries for the restore download loop ({})!".
+                format(RESTORE_DOWNLOAD_LOOP_MAX_RETRIES))
 
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
