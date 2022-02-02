@@ -194,15 +194,9 @@ For more details, refer to [Connect to clusters](../cloud-connect).
 
 ### Why is my free cluster paused?
 
-Free clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster). When a cluster is paused, you receive an email notification. You need to resume the paused cluster before you can perform any operations on it.
+Free clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
-To resume your cluster, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
-
-If you don't resume your cluster, a second notification is sent after 28 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
-
-Free clusters are deleted after 30 days of inactivity. Only paused clusters are deleted.
-
-Yugabyte Cloud runs idle cluster deletion jobs daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
+For more details, refer to [Inactive free clusters](../cloud-basics/create-clusters-free/#inactive-free-clusters).
 
 ### How do I keep my free cluster from being paused or deleted?
 

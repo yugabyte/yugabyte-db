@@ -26,14 +26,6 @@ Your free cluster includes the following:
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack](https://www.yugabyte.com/slack).
 
-## Limitations
-
-- Limit of one free cluster per account.
-- Free clusters can't be scaled.
-- No support for VPC networking.
-- No backups.
-- Free clusters that are inactive for 21 days are [paused](../../cloud-faq/#why-is-my-free-cluster-paused); after 30 days they are deleted.
-
 ## Creating a free cluster
 
 To create a free cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
@@ -85,6 +77,29 @@ After you complete the wizard, the **Clusters** page appears, showing the provis
 When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud with the database admin credentials you specified.
+
+## Inactive free clusters
+
+Free clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. You need to resume the paused cluster before you can perform any operations on it. If you don't resume your cluster, a second notification is sent after 28 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
+
+To resume your cluster, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
+
+Free clusters are deleted after 30 days of inactivity. Only paused clusters are deleted. Yugabyte Cloud runs idle cluster deletion jobs daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
+
+To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
+
+- Any SELECT, UPDATE, INSERT, or DELETE database operation.
+
+- Create or delete tables.
+
+- Add or remove IP allow lists.
+
+## Limitations
+
+- Limit of one free cluster per account.
+- Free clusters can't be scaled.
+- Free clusters are secured by limiting network access using IP allow lists. VPC networking is not supported.
+- No backups.
 
 ## Next steps
 
