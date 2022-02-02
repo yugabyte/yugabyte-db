@@ -64,7 +64,7 @@ After you created the required tables, you can set up asynchronous replication a
     ```
 
 
-The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table. 
+The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table.
 
 Also, be sure to specify all master addresses for source and target universes in the command.
 
@@ -101,6 +101,23 @@ Once you have set up replication, load data into the source universe as follows:
 - For bidirectional replication, repeat the preceding step in the yugabyte-target universe.
 
 When completed, proceed to [Verifying Replication](#verifying-replication).
+
+## Setting Up Replication with TLS
+
+### Source and Target Universes have the Same Certificates
+
+If both universes use the same certificates, run the same `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command as above, but also include the [`-certs_dir_name`](../../../admin/yb-admin#syntax) flag. Setting that to the target universe's certificate directory will make replication use those certificates for connecting to both universes.
+
+### Source and Target Universes have Different Certificates
+
+When both universes use different certificates, we need to store the certificates for the producer universe on the target universe. Each node on the target universe will have a parent directory (determined by the `certs_for_cdc_dir` gflag), under which there will be sub-directories for each source universe, which each contain their respective source universe's certificates.
+
+1. Ensure that `use_node_to_node_encryption` is set to `true` on all nodes (source and target).
+2. For each master and tserver on the target universe, set the gflag `certs_for_cdc_dir` to the parent directory where you will store all the producer certs for replication.
+3. Fetch all of the certificates that the source universe uses.
+4. Copy these certificates to each node on the target. They need to be copied to a directory named: `<certs_for_cdc_dir>/<producer_cluster_id>`.
+  - For example, if we previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's id is `00000000-1111-2222-3333-444444444444`, then we would need to save all the source universe's certificates to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/*`.
+5. Finally, setup replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the *target universe's* certificates (this should be different from the directory used in the previous steps).
 
 ## Verifying Replication
 
