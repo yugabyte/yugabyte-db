@@ -1,7 +1,7 @@
 ---
 title: Create a standard cluster
 linkTitle: Create a standard cluster
-description: Create production clusters in Yugabyte Cloud.
+description: Deploy production clusters in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:

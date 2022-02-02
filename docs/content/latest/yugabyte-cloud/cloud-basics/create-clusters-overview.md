@@ -56,13 +56,13 @@ By default, access to clusters is restricted to IP addresses that you specify in
 
 ## YugabyteDB version
 
-By default, clusters are created using a recent release from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB.
+By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB.
 
-<!--You can choose to create your database using an edge release for development and testing. Edge releases are typically taken from the [latest release series](../../../releases/versioning/#latest-releases) of YugabyteDB, though they can also include a recently released stable release.-->
+You can choose to deploy your cluster using an edge release for development and testing. Edge releases are typically taken from the [latest release series](../../../releases/versioning/#latest-releases) of YugabyteDB, though they can also include a recently released stable release.
 
-For production deployments, if you need a feature from an edge release (that isn't yet available in a stable release), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) before you create your cluster.
+If you need a feature from an edge release (that isn't yet available in a stable release) for a production deployment, contact {{<support-cloud>}} before you create your cluster.
 
-<!--Once you choose a release track (edge or stable), database upgrades will continue to take releases from the track you chose.-->
+Yugabyte automatically upgrades the database with releases from the track (stable or edge) that you selected when deploying the cluster.
 
 For more information on YugabyteDB versions used in Yugabyte Cloud, refer to [What version of YugabyteDB does my cluster run on?](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)
 
@@ -74,7 +74,7 @@ Cluster per-hour charges include free allowances for disk storage, backup storag
 
 Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
 
-If you're interested in evaluating Yugabyte Cloud for production use and would like trial credits to conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+If you're interested in evaluating Yugabyte Cloud for production use and would like trial credits to conduct a proof-of-concept (POC), contact {{<support-cloud>}}.
 
 ## Next steps
 
