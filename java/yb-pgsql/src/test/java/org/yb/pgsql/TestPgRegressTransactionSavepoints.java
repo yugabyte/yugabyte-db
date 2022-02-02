@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import java.util.Collections;
 import java.util.Map;
 
 import org.junit.Test;
@@ -41,6 +42,14 @@ public class TestPgRegressTransactionSavepoints extends BasePgSQLTest {
 
   @Test
   public void testPgRegressTransaction() throws Exception {
+    runPgRegressTest("yb_transaction_savepoints_schedule");
+  }
+
+  @Test
+  public void testPgRegressTransactionWithReadCommitted() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("TEST_inject_sleep_before_applying_intents_ms",
+                                                     "100"));
     runPgRegressTest("yb_transaction_savepoints_schedule");
   }
 }
