@@ -11,15 +11,16 @@
 // under the License.
 
 #include "yb/cdc/cdc_producer.h"
+
 #include "yb/cdc/cdc_common_util.h"
-#include "yb/docdb/docdb_util.h"
-#include "yb/docdb/doc_key.h"
+
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_expr.h"
 
+#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/doc_key.h"
+
 DEFINE_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
-
-
 
 namespace yb {
 namespace cdc {
