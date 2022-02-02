@@ -505,8 +505,13 @@ class ControlScript(object):
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        certs_dir = self.configs.saved_data.get("certs_dir")
         if join_ip:
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+        if not certs_dir:
+            certs_dir = os.path.join(os.path.expanduser("~"),".yugabytedb","tls",advertise_ip)
+        if not os.path.isdir(certs_dir):
+            os.makedirs(certs_dir) 
         tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
 
         common_gflags = [
@@ -548,6 +553,12 @@ class ControlScript(object):
                 ["--{}".format(flag) for flag in \
                     self.configs.saved_data.get("master_flags").split(",")])
 
+        if json.loads(self.configs.saved_data.get("secure")):
+            yb_master_cmd.extend(["--certs_dir={}".format(certs_dir),
+                "--allow_insecure_connections=true",
+                "--use_node_to_node_encryption=true",
+                ])
+
         yb_tserver_cmd = [find_binary_location("yb-tserver")] + common_gflags + \
             [
                 "--{}={}".format(TS_MASTER_ADDRS_FLAG, master_addresses),
@@ -578,6 +589,12 @@ class ControlScript(object):
 
         if self.configs.saved_data.get("use_cassandra_authentication"):
             yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
+
+        if json.loads(self.configs.saved_data.get("secure")):
+            yb_tserver_cmd.extend(["--certs_dir={}".format(certs_dir),
+                "--allow_insecure_connections=true",
+                "--use_node_to_node_encryption=true",
+                ])
 
         yw_cmd = [
             os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
@@ -1415,6 +1432,12 @@ class ControlScript(object):
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
                      "Default true.".format(SCRIPT_NAME))
             cur_parser.add_argument(
+                "--secure", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                help="Runs {} in secure SSL mode. "
+                     "Default true".format(SCRIPT_NAME))
+            cur_parser.add_argument(
+                "--certs_dir", help="Directory to store certificates for SSL connection.")
+            cur_parser.add_argument(
                 "--callhome", choices=BOOL_CHOICES, metavar="BOOL",
                 help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
                      "Default true.")
@@ -1538,6 +1561,7 @@ class Configs(object):
         self.saved_data = {
             "data_dir": os.path.join(base_dir, "data"),
             "log_dir": os.path.join(base_dir, "logs"),
+            "certs_dir": "",
             "master_rpc_port": DEFAULT_MASTER_RPC_PORT,
             "tserver_rpc_port": DEFAULT_TSERVER_RPC_PORT,
             "master_webserver_port": DEFAULT_MASTER_WEBSERVER_PORT,
@@ -1552,6 +1576,7 @@ class Configs(object):
             "master_uuid": str(uuid.uuid4()).replace("-", ""),
             "polling_interval": "5",
             "callhome": DEFAULT_CALLHOME,
+            "secure": "",
             "master_flags": "",
             "tserver_flags": "",
             "join": "",
