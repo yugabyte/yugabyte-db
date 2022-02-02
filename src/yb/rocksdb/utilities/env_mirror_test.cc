@@ -24,9 +24,11 @@
 #include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
-class EnvMirrorTest : public testing::Test {
+class EnvMirrorTest : public RocksDBTest {
  public:
   Env* default_;
   MockEnv* a_, *b_;

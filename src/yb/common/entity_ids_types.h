@@ -27,6 +27,7 @@ using UDTypeName = std::string;
 using RoleName = std::string;
 
 using NamespaceId = std::string;
+using ObjectId = std::string;
 using TableId = std::string;
 using UDTypeId = std::string;
 using CDCStreamId = std::string;

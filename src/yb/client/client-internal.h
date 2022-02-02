@@ -276,6 +276,12 @@ class YBClient::Data {
                        CoarseTimePoint deadline,
                        StatusCallback callback);
 
+  void GetCDCDBStreamInfo(YBClient *client,
+    const std::string &db_stream_id,
+    std::shared_ptr<std::vector<pair<std::string, std::string>>> db_stream_info,
+    CoarseTimePoint deadline,
+    StdStatusCallback callback);
+
   void GetCDCStream(YBClient* client,
                     const CDCStreamId& stream_id,
                     std::shared_ptr<TableId> table_id,

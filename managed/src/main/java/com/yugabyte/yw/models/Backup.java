@@ -8,6 +8,7 @@ import static java.lang.Math.abs;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -73,6 +74,26 @@ public class Backup extends Model {
     @EnumValue("QueuedForDeletion")
     QueuedForDeletion
   }
+
+  public enum BackupCategory {
+    @EnumValue("YB_BACKUP_SCRIPT")
+    YB_BACKUP_SCRIPT,
+
+    @EnumValue("YB_CONTROLLER")
+    YB_CONTROLLER
+  }
+
+  public enum BackupVersion {
+    @EnumValue("V1")
+    V1,
+
+    @EnumValue("V2")
+    V2
+  }
+
+  public static final Set<BackupState> IN_PROGRESS_STATES =
+      Sets.immutableEnumSet(
+          BackupState.InProgress, BackupState.QueuedForDeletion, BackupState.DeleteInProgress);
 
   @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
   @Id
@@ -143,6 +164,14 @@ public class Backup extends Model {
     return updateTime;
   }
 
+  @ApiModelProperty(value = "Category of the backup")
+  @Column(nullable = false)
+  public BackupCategory category = BackupCategory.YB_BACKUP_SCRIPT;
+
+  @ApiModelProperty(value = "Version of the backup in a category")
+  @Column(nullable = false)
+  public BackupVersion version = BackupVersion.V1;
+
   public static final Finder<UUID, Backup> find = new Finder<UUID, Backup>(Backup.class) {};
 
   // For creating new backup we would set the storage location based on
@@ -195,11 +224,14 @@ public class Backup extends Model {
     }
   }
 
-  public static Backup create(UUID customerUUID, BackupTableParams params) {
+  public static Backup create(
+      UUID customerUUID, BackupTableParams params, BackupCategory category, BackupVersion version) {
     Backup backup = new Backup();
     backup.backupUUID = UUID.randomUUID();
     backup.customerUUID = customerUUID;
     backup.state = BackupState.InProgress;
+    backup.category = category;
+    backup.version = version;
     if (params.scheduleUUID != null) {
       backup.scheduleUUID = params.scheduleUUID;
     }
@@ -220,6 +252,10 @@ public class Backup extends Model {
     backup.setBackupInfo(params);
     backup.save();
     return backup;
+  }
+
+  public static Backup create(UUID customerUUID, BackupTableParams params) {
+    return create(customerUUID, params, BackupCategory.YB_BACKUP_SCRIPT, BackupVersion.V1);
   }
 
   // We need to set the taskUUID right after commissioner task is submitted.

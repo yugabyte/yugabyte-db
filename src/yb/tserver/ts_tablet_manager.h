@@ -348,7 +348,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   typedef std::unordered_set<TabletId> TabletIdUnorderedSet;
 
   // Maps directory to set of tablets (IDs) using that directory.
-  typedef std::unordered_map<std::string, TabletIdUnorderedSet> TabletIdSetByDirectoryMap;
+  typedef std::map<std::string, TabletIdUnorderedSet> TabletIdSetByDirectoryMap;
 
   // This is a map that takes a table id and maps it to a map of directory and
   // set of tablets using that directory.

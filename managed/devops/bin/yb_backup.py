@@ -74,6 +74,7 @@ SQL_DATA_DUMP_FILE_NAME = 'YSQLDump_data'
 CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
+RESTORE_DOWNLOAD_LOOP_MAX_RETRIES = 20
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
@@ -231,7 +232,7 @@ class SequencedParallelCmd(SingleArgParallelCmd):
         -> run in parallel Thread-1: -> fn(a1, a2); fn(b1, b2)
                            Thread-2: -> fn(c1, c2); fn(d1, d2)
     """
-    def __init__(self, fn):
+    def __init__(self, fn, handle_errors=False):
         self.fn = fn
         self.args = []
         """
@@ -247,10 +248,16 @@ class SequencedParallelCmd(SingleArgParallelCmd):
             -> run -> fn(a1, a2); result = fn(b1, b2); fn(c1, c2); return result
         """
         self.result_fn_call_index = None
+        # Whether or not we will throw an error on a cmd failure, or handle it and return a
+        # tuple: ('failed-cmd', handle).
+        self.handle_errors = handle_errors
 
-    def start_command(self):
+    # Handle is returned on failed command if handle_errors=true.
+    # Example handle is a tuple of (tablet_id, tserver_ip).
+    def start_command(self, handle):
         # Start new set of argument tuples.
-        self.args.append([])
+        # Place handle at the front.
+        self.args.append([handle])
 
     def use_last_fn_result_as_command_result(self):
         # Let's remember the last fn call index to return its' result as the command result.
@@ -268,11 +275,24 @@ class SequencedParallelCmd(SingleArgParallelCmd):
     def run(self, pool):
         def internal_fn(list_of_arg_tuples):
             assert isinstance(list_of_arg_tuples, list)
+            # First entry is the handle.
+            handle = list_of_arg_tuples[0]
+            # Add empty string at beginning to keep len(results) = len(list_of_arg_tuples).
+            results = ['']
             # A list of commands: do it one by one.
-            results = []
-            for args_tuple in list_of_arg_tuples:
+            for args_tuple in list_of_arg_tuples[1:]:
                 assert isinstance(args_tuple, tuple)
-                results.append(self.fn(*args_tuple))
+                try:
+                    results.append(self.fn(*args_tuple))
+                except Exception as ex:
+                    logging.warning(
+                        "Encountered error for handle '{}' while running "
+                        "command '{}'. Error: {}".
+                        format(handle, args_tuple, ex))
+                    if (self.handle_errors):
+                        # If we handle errors, then return 'failed-cmd' with the handle.
+                        return ('failed-cmd', handle)
+                    raise ex
 
             if self.result_fn_call_index is None:
                 return results
@@ -578,6 +598,9 @@ class NfsBackupStorage(AbstractBackupStorage):
             pipes.quote(src), pipes.quote(dest))]
 
     def download_dir_cmd(self, src, dest):
+        if self.options.args.TEST_sleep_during_download_dir:
+            return ["sleep 5 && {} {} {}".format(
+                " ".join(self._command_list_prefix()), pipes.quote(src), pipes.quote(dest))]
         return self._command_list_prefix() + [src, dest]
 
     def delete_obj_cmd(self, dest):
@@ -874,7 +897,7 @@ class YBBackup:
 
                 subprocess_result = str(subprocess.check_output(
                                          args, stderr=subprocess.STDOUT,
-                                         env=proc_env, **kwargs).decode('utf-8'))
+                                         env=proc_env, **kwargs).decode('utf-8', errors='replace'))
 
                 if self.args.verbose:
                     logging.info(
@@ -1056,6 +1079,16 @@ class YBBackup:
             help="Regular expression for 'sed' tool to edit on fly YSQL dump file(s) during the "
                  "backup restoring. Example: \"s|OWNER TO yugabyte|OWNER TO admin|\". WARNING: "
                  "Contact support team before use! No any backward compatibility guaranties.")
+
+        """
+        Test arguments
+        - Use `argparse.SUPPRESS` to keep these arguments hidden.
+        """
+        # Adds in a sleep before the rsync command to download data during the restore. Used in
+        # tests to hit tablet move race conditions during restores.
+        parser.add_argument(
+            '--TEST_sleep_during_download_dir', required=False, action='store_true', default=False,
+            help=argparse.SUPPRESS)
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
@@ -1066,7 +1099,18 @@ class YBBackup:
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
             pool = ThreadPool(self.args.parallelism)
             self.pools.append(pool)
-            tserver_ips = self.get_live_tservers()
+            tablets_by_leader_ip = []
+
+            output = self.run_yb_admin(['list_all_tablet_servers'])
+            for line in output.splitlines():
+                if LEADING_UUID_RE.match(line):
+                    fields = split_by_space(line)
+                    ip_port = fields[1]
+                    state = fields[3]
+                    (ip, port) = ip_port.split(':')
+                    if state == 'ALIVE':
+                        tablets_by_leader_ip.append(ip)
+            tserver_ips = list(tablets_by_leader_ip)
             SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
@@ -1088,10 +1132,17 @@ class YBBackup:
                                      'access_token = ' + '\n')
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 host_base = os.getenv('AWS_HOST_BASE')
+                path_style_access = True if os.getenv('PATH_STYLE_ACCESS',
+                                                      "false") == "true" else False
                 if host_base:
-                    host_base_cfg = 'host_base = {0}\n' \
-                                    'host_bucket = {1}.{0}\n'.format(
-                                        host_base, self.args.backup_location)
+                    if path_style_access:
+                        host_base_cfg = 'host_base = {0}\n' \
+                                        'host_bucket = {1}\n'.format(
+                                            host_base, self.args.backup_location)
+                    else:
+                        host_base_cfg = 'host_base = {0}\n' \
+                                        'host_bucket = {1}.{0}\n'.format(
+                                            host_base, self.args.backup_location)
                 else:
                     host_base_cfg = ''
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
@@ -1221,10 +1272,9 @@ class YBBackup:
             output = self.run_yb_admin(['list_all_masters'])
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    fields = split_by_tab(line)
-                    (uuid, ip_port, state, role) = (fields[0], fields[1], fields[2], fields[3])
+                    (uuid, ip_port, state, role) = split_by_tab(line)
+                    (ip, port) = ip_port.split(':')
                     if state == 'ALIVE':
-                        (ip, port) = ip_port.split(':')
                         alive_master_ip = ip
                     if role == 'LEADER':
                         break
@@ -1232,30 +1282,21 @@ class YBBackup:
 
         return self.leader_master_ip
 
-    def get_live_tservers(self):
-        tserver_ips = []
-        output = self.run_yb_admin(['list_all_tablet_servers'])
-        for line in output.splitlines():
-            if LEADING_UUID_RE.match(line):
-                fields = split_by_space(line)
-                (ip_port, state) = (fields[1], fields[3])
-                if state == 'ALIVE':
-                    (ip, port) = ip_port.split(':')
-                    tserver_ips.append(ip)
-        return tserver_ips
-
     def get_live_tserver_ip(self):
         if not self.live_tserver_ip:
-            alive_ts_ips = self.get_live_tservers()
-            if alive_ts_ips:
-                all_master_hosts = {hp.split(':')[0] for hp in self.args.masters.split(",")}
-                selected_ts_ips = all_master_hosts.intersection(alive_ts_ips)
-                # Return a first alive TS if the IP is in the list of Master IPs.
-                # Else return just the last alive TS.
-                self.live_tserver_ip =\
-                    selected_ts_ips.pop() if selected_ts_ips else alive_ts_ips[-1]
-            else:
-                raise BackupException("Cannot get alive TS: {}".format(alive_ts_ips))
+            output = self.run_yb_admin(['list_all_tablet_servers'])
+            for line in output.splitlines():
+                if LEADING_UUID_RE.match(line):
+                    fields = split_by_space(line)
+                    ip_port = fields[1]
+                    state = fields[3]
+                    (ip, port) = ip_port.split(':')
+                    if state == 'ALIVE':
+                        self.live_tserver_ip = ip
+                        break
+
+        if not self.live_tserver_ip:
+            raise BackupException("Cannot get alive TS:\n{}".format(output))
 
         return self.live_tserver_ip
 
@@ -1385,8 +1426,15 @@ class YBBackup:
         if self.is_k8s():
             run_at_ip = self.get_live_tserver_ip()
 
-        return self.run_tool(self.args.local_ysql_shell_binary, self.args.remote_ysql_shell_binary,
-                             self.get_ysql_dump_std_args(), cmd_line_args, run_ip=run_at_ip)
+        return self.run_tool(
+            self.args.local_ysql_shell_binary,
+            self.args.remote_ysql_shell_binary,
+            # Passing dbname template1 explicitly as ysqlsh fails to connect if
+            # yugabyte database is deleted. We assume template1 will always be there
+            # in ysqlsh.
+            self.get_ysql_dump_std_args() + ['--dbname=template1'],
+            cmd_line_args,
+            run_ip=run_at_ip)
 
     def create_snapshot(self):
         """
@@ -1541,7 +1589,8 @@ class YBBackup:
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
                     fields = split_by_tab(line)
-                    (tablet_id, tablet_leader_host_port) = (fields[0], fields[2])
+                    tablet_id = fields[0]
+                    tablet_leader_host_port = fields[2]
                     (ts_host, ts_port) = tablet_leader_host_port.split(":")
 
                     if ts_host not in region_by_ts:
@@ -2117,7 +2166,9 @@ class YBBackup:
 
                         assert len(snapshot_dirs) == 1
                         snapshot_dir = list(snapshot_dirs)[0] + '/'
-                        parallel_commands.start_command()
+                        # Pass in the tablet_id and tserver_ip, so if we fail then we know on which
+                        # tserver and for what tablet we failed on.
+                        parallel_commands.start_command((tablet_id, tserver_ip))
 
                         if upload:
                             self.prepare_upload_command(
@@ -2759,17 +2810,11 @@ class YBBackup:
         tablets_by_tserver_ip = {}
         for new_id in snapshot_metadata['tablet']:
             output = self.run_yb_admin(['list_tablet_servers', new_id])
-            num_ts = 0
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    fields = split_by_tab(line)
-                    (ts_ip_port, role) = (fields[1], fields[2])
-                    if role == 'LEADER' or role == 'FOLLOWER':
-                        (ts_ip, ts_port) = ts_ip_port.split(':')
-                        tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
-                        num_ts += 1
-            if num_ts == 0:
-                raise BackupException("No alive TS found for tablet {}:\n{}".format(new_id, output))
+                    (ts_uuid, ts_ip_port, role) = split_by_tab(line)
+                    (ts_ip, ts_port) = ts_ip_port.split(':')
+                    tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
 
         return tablets_by_tserver_ip
 
@@ -2815,7 +2860,7 @@ class YBBackup:
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
         self.timer.log_new_phase("Download data")
-        parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
+        parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd, handle_errors=True)
         self.prepare_cloud_ssh_cmds(
             parallel_downloads, tserver_to_tablet_to_snapshot_dirs,
             None, snapshot_id, tablets_by_tserver_to_download,
@@ -2824,9 +2869,16 @@ class YBBackup:
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(pool)
 
-        if not self.args.disable_checksums:
-            for k in results:
-                v = results[k].strip()
+        for k in results:
+            v = results[k]
+            if isinstance(v, tuple) and v[0] == 'failed-cmd':
+                assert len(v) == 2
+                (tablet_id, tserver_ip) = v[1]
+                # In case we fail a cmd, don't mark this tablet-tserver pair as succeeded, instead
+                # we will retry in the next round of downloads.
+                tserver_to_deleted_tablets.setdefault(tserver_ip, set()).add(tablet_id)
+            elif not self.args.disable_checksums:
+                v = v.strip()
                 if v != 'correct':
                     raise BackupException('Check-sum for "{}" is {}'.format(k, v))
 
@@ -2895,7 +2947,9 @@ class YBBackup:
         # The loop must stop after a few rounds because the downloading list includes only new
         # tablets for downloading. The downloading list should become smaller with every round
         # and must become empty in the end.
-        while tablets_by_tserver_to_download:
+        num_loops = 0
+        while tablets_by_tserver_to_download and num_loops < RESTORE_DOWNLOAD_LOOP_MAX_RETRIES:
+            num_loops += 1
             logging.info('[app] Downloading tablets onto %d tservers...',
                          len(tablets_by_tserver_to_download))
 
@@ -2921,6 +2975,10 @@ class YBBackup:
             #                             = OLD_all_tablet_replicas + downloading_list
             (all_tablets_by_tserver, tablets_by_tserver_to_download) =\
                 self.identify_new_tablet_replicas(all_tablets_by_tserver, tablets_by_tserver_new)
+
+        if num_loops >= RESTORE_DOWNLOAD_LOOP_MAX_RETRIES:
+            logging.error("Exceeded max number of retries for the restore download loop ({})!".
+                          format(RESTORE_DOWNLOAD_LOOP_MAX_RETRIES))
 
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)

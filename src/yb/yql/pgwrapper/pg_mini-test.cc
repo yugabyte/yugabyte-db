@@ -441,6 +441,16 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   ASSERT_EQ(value, "hello");
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithoutTransaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto status = conn.Execute(
+      "SELECT tmplinline FROM pg_catalog.pg_pltemplate WHERE tmplname !~ tmplhandler FOR SHARE");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(),
+                      "Read request with row mark types must be part of a transaction");
+}
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
   constexpr int kKeys = 100;
   auto conn = ASSERT_RESULT(Connect());

@@ -36,6 +36,7 @@
 #include <cctype>
 
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/utilities/redis/redis_lists.h"
 
@@ -43,7 +44,7 @@
 
 namespace rocksdb {
 
-class RedisListsTest : public testing::Test {
+class RedisListsTest : public RocksDBTest {
  public:
   static const string kDefaultDbName;
   static Options options;

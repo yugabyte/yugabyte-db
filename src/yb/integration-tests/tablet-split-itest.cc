@@ -107,12 +107,13 @@ DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
 DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
-DECLARE_bool(TEST_select_all_tablets_for_split);
 DECLARE_uint64(outstanding_tablet_split_limit);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_int32(replication_factor);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -186,6 +187,7 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
 
 TEST_F(TabletSplitITest, TestInitiatesCompactionAfterSplit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
   constexpr auto kNumRows = kDefaultNumRows;
 
   CreateSingleTablet();
@@ -773,6 +775,27 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
   ASSERT_EQ(rows_count, kNumRows);
 }
 
+TEST_F(TabletSplitITest, SplitSingleTabletLongTransactions) {
+  constexpr auto kNumRows = 1000;
+  constexpr auto kNumApplyLargeTxnBatches = 10;
+  FLAGS_txn_max_apply_batch_records = kNumRows / kNumApplyLargeTxnBatches;
+  FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms = 1;
+
+  // Write enough rows to trigger the large transaction apply path with kNumApplyLargeTxnBatches
+  // batches. Wait for post split compaction and validate data before returning.
+  ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
+
+  // At this point, post split compaction has happened, and no apply intent task iterations have
+  // run. If post-split compaction has improperly handled ApplyTransactionState present in
+  // regulardb, e.g. by deleting it, then upon restart, one or both of the new child subtablets will
+  // lose all unapplied data.
+  ASSERT_OK(cluster_->RestartSync());
+
+  // If we did not lose any large transaction apply data during post-split compaction, then we
+  // should have all rows present in the database.
+  EXPECT_OK(CheckRowsCount(kNumRows));
+}
+
 class TabletSplitYedisTableTest : public integration_tests::RedisTableTestBase {
  protected:
   int num_tablets() override { return 1; }
@@ -808,7 +831,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_split_tablet_candidate_processing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_tablets_for_split) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
   }
 
  protected:
@@ -973,6 +996,7 @@ TEST_F(AutomaticTabletSplitITest, TabletSplitHasClusterReplicationInfo) {
 TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompacted) {
   constexpr auto kNumRowsPerBatch = 1000;
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 100_KB;
   // Disable post split compaction
@@ -1045,6 +1069,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompac
 TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMovesToNextPhase) {
   constexpr int kNumRowsPerBatch = 1000;
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 50_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 100_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;

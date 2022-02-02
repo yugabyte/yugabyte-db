@@ -223,6 +223,7 @@ class PgApiImpl {
   CHECKED_STATUS NewCreateTablegroup(const char *database_name,
                                      const PgOid database_oid,
                                      const PgOid tablegroup_oid,
+                                     const PgOid tablespace_oid,
                                      PgStatement **handle);
 
   CHECKED_STATUS ExecCreateTablegroup(PgStatement *handle);

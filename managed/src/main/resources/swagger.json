@@ -1071,6 +1071,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "category" : {
+          "description" : "Category of the backup",
+          "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
+          "type" : "string"
+        },
         "createTime" : {
           "format" : "date-time",
           "type" : "string"
@@ -1105,6 +1110,11 @@
         },
         "updateTime" : {
           "format" : "date-time",
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Version of the backup in a category",
+          "enum" : [ "V1", "V2" ],
           "type" : "string"
         }
       },
@@ -1371,6 +1381,10 @@
           "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -2540,6 +2554,12 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "description" : {
+          "description" : "Description",
+          "maxLength" : 2147483647,
+          "minLength" : 1,
+          "type" : "string"
+        },
         "endTime" : {
           "description" : "End time",
           "format" : "date-time",
@@ -2569,7 +2589,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "alertConfigurationFilter", "createTime", "customerUUID", "endTime", "name", "startTime" ],
+      "required" : [ "alertConfigurationFilter", "createTime", "customerUUID", "description", "endTime", "name", "startTime" ],
       "type" : "object"
     },
     "MaintenanceWindowApiFilter" : {
@@ -2906,6 +2926,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
+        },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
           "type" : "string"
@@ -3116,6 +3140,10 @@
           "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
@@ -3775,6 +3803,10 @@
           "description" : "The AMI to be used in this region.",
           "example" : "TODO",
           "type" : "string"
+        },
+        "ybPrebuiltAmi" : {
+          "description" : "Indicates whether to use YB Prebuilt AMI flow or not for the supplied AMI ID",
+          "type" : "boolean"
         },
         "zones" : {
           "items" : {
@@ -5371,6 +5403,62 @@
           "uniqueItems" : true
         }
       },
+      "type" : "object"
+    },
+    "XClusterConfigGetResp" : {
+      "description" : "xcluster get response",
+      "properties" : {
+        "createTime" : {
+          "description" : "Create time",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "lag" : {
+          "description" : "Lag metric data",
+          "type" : "object"
+        },
+        "modifyTime" : {
+          "description" : "Modify time",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Name",
+          "type" : "string"
+        },
+        "sourceUniverseUUID" : {
+          "description" : "Source Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "status" : {
+          "description" : "Status",
+          "enum" : [ "Init", "Running", "Updating", "Paused", "Failed" ],
+          "type" : "string"
+        },
+        "tables" : {
+          "description" : "Source Universe table IDs",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "targetUniverseUUID" : {
+          "description" : "Target Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "xclusterConfig" : {
+          "$ref" : "#/definitions/XClusterConfig"
+        }
+      },
+      "required" : [ "lag", "xclusterConfig" ],
       "type" : "object"
     },
     "YBPError" : {
@@ -11235,7 +11323,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/XClusterConfig"
+              "$ref" : "#/definitions/XClusterConfigGetResp"
             }
           }
         },

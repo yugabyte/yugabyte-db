@@ -745,26 +745,41 @@ export function downloadLogs(universeUUID, nodeName) {
 }
 
 //G-Flags
-export function fetchGFlags(dbVersion, params) {
-  const request = axios.get(`${ROOT_URL}/metadata/version/${dbVersion}/list_gflags`, {
-    params
-  });
-  return request;
-}
-
-export function fetchParticularFlag(dbVersion, params) {
-  const request = axios.get(`${ROOT_URL}/metadata/version/${dbVersion}/gflag`, {
-    params
-  });
-  return request;
-}
-
-export function validateGFlags(dbVersion, payload) {
-  const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
-  if (apiToken && apiToken !== '') {
-    axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
+export async function fetchGFlags(dbVersion, params) {
+  try {
+    const request = await axios.get(`${ROOT_URL}/metadata/version/${dbVersion}/list_gflags`, {
+      params
+    });
+    return request;
+  } catch (e) {
+    throw e.response.data;
   }
-  axios.defaults.headers.common['Csrf-Token'] = Cookies.get('csrfCookie');
-  const request = axios.post(`${ROOT_URL}/metadata/version/${dbVersion}/validate_gflags`, payload);
-  return request;
+}
+
+export async function fetchParticularFlag(dbVersion, params) {
+  try {
+    const request = await axios.get(`${ROOT_URL}/metadata/version/${dbVersion}/gflag`, {
+      params
+    });
+    return request;
+  } catch (e) {
+    throw e.response.data;
+  }
+}
+
+export async function validateGFlags(dbVersion, payload) {
+  try {
+    const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+    if (apiToken && apiToken !== '') {
+      axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
+    }
+    axios.defaults.headers.common['Csrf-Token'] = Cookies.get('csrfCookie');
+    const request = await axios.post(
+      `${ROOT_URL}/metadata/version/${dbVersion}/validate_gflags`,
+      payload
+    );
+    return request;
+  } catch (e) {
+    throw e.response.data;
+  }
 }

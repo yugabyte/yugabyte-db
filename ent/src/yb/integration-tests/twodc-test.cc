@@ -331,7 +331,7 @@ TEST_P(TwoDCTest, SetupUniverseReplication) {
     master::ListCDCStreamsResponsePB stream_resp;
     ASSERT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
-    ASSERT_EQ(stream_resp.streams(0).table_id(), producer_tables[i]->id());
+    ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables[i]->id());
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
@@ -770,7 +770,7 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   master::ListCDCStreamsResponsePB stream_resp;
   ASSERT_OK(GetCDCStreamForTable(tables[0]->id(), &stream_resp));
   ASSERT_EQ(stream_resp.streams_size(), 1);
-  ASSERT_EQ(stream_resp.streams(0).table_id(), tables[0]->id());
+  ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), tables[0]->id());
   auto stream_id = stream_resp.streams(0).stream_id();
 
   // Find the tablet id for the stream.
@@ -1659,7 +1659,7 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   master::ListCDCStreamsResponsePB stream_resp;
   ASSERT_OK(GetCDCStreamForTable(tables[0]->id(), &stream_resp));
   ASSERT_EQ(stream_resp.streams_size(), 1);
-  ASSERT_EQ(stream_resp.streams(0).table_id(), tables[0]->id());
+  ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), tables[0]->id());
   auto stream_id = stream_resp.streams(0).stream_id();
 
   rpc::RpcController rpc;
@@ -1670,6 +1670,7 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   master::DeleteCDCStreamRequestPB delete_cdc_stream_req;
   master::DeleteCDCStreamResponsePB delete_cdc_stream_resp;
   delete_cdc_stream_req.add_stream_id(stream_id);
+  delete_cdc_stream_req.set_force_delete(true);
 
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   ASSERT_OK(producer_proxy->DeleteCDCStream(
@@ -1684,7 +1685,7 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   master::DeleteUniverseReplicationRequestPB delete_universe_req;
   master::DeleteUniverseReplicationResponsePB delete_universe_resp;
   delete_universe_req.set_producer_id(kUniverseId);
-  delete_universe_req.set_force(false);
+  delete_universe_req.set_ignore_errors(false);
   ASSERT_OK(
       master_proxy->DeleteUniverseReplication(delete_universe_req, &delete_universe_resp, &rpc));
   // Ensure that the error message describes the missing stream and related table.
@@ -1698,7 +1699,7 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   // Force the delete.
   rpc.Reset();
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  delete_universe_req.set_force(true);
+  delete_universe_req.set_ignore_errors(true);
   ASSERT_OK(
       master_proxy->DeleteUniverseReplication(delete_universe_req, &delete_universe_resp, &rpc));
 

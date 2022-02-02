@@ -4,10 +4,10 @@ linkTitle: What's new
 description: Yugabyte Cloud release notes and known issues.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+section: YUGABYTE CLOUD
 menu:
   latest:
     identifier: cloud-release
-    parent: yugabyte-cloud
     weight: 950
 isTocNested: true
 showAsideToc: true
@@ -15,20 +15,28 @@ showAsideToc: true
 
 ## Releases
 
+### January 27, 2021
+
+#### New features
+
+- Support for [alerts](../cloud-monitor/cloud-alerts/) to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues. Configure alerts and view notifications on the **Alerts** page. When an alert triggers, Yugabyte Cloud sends an email notification and displays a notification on the **Notifications** tab. When the alert condition resolves, the notification dismisses automatically. Alerts are enabled for all clusters in your cloud.
+- Free clusters are now [paused](../cloud-faq/#why-is-my-free-cluster-paused) after 21 days of inactivity. Yugabyte Cloud sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../cloud-faq/#what-qualifies-as-activity-on-a-cluster) Free clusters are deleted after 30 days of inactivity.
+- Ability to see the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB that your cluster is running on.
+
 ### December 16, 2021
 
 #### New features
 
-- Self service Virtual Private Cloud (VPC) networking. Use VPC networks to lower network latencies and make your application and database infrastructure more secure. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Network Access** page.
-- Ability to enable pre-bundled extensions using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
+- Self service [Virtual Private Cloud (VPC) networking](../cloud-secure-clusters/cloud-vpcs/). Use VPC networks to lower network latencies and make your application and database infrastructure more secure. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Network Access** page.
+- Ability to [enable pre-bundled extensions](../cloud-clusters/add-extensions/) using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/advanced-features/extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).)
 
 ### December 2, 2021
 
 #### New features
 
-- Additional performance metrics. The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
-- Ability to review running queries using the **Live Queries** on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
-- Ability to review slow YSQL queries using the **YSQL Slow Queries** on the cluster **Performance** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
+- Additional [performance metrics](../cloud-monitor/overview/). The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
+- Ability to review running queries using the [Live Queries](../cloud-monitor/cloud-queries-live/) on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
+- Ability to review slow YSQL queries using the [YSQL Slow Queries](../cloud-monitor/cloud-queries-slow/) on the cluster **Performance** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
 
 #### Database
 
@@ -117,7 +125,7 @@ The following **AWS regions** are available:
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
-- **Installing PostgreSQL Extensions** - For security reasons, the admin account used for the YugabyteDB database is not a super user. As a result, you cannot install extensions. If you need a database extension that is not [pre-bundled](../../explore/ysql-language-features/extensions/) with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or reach out on Slack.
+- **Installing PostgreSQL Extensions** - For security reasons, the admin account used for the YugabyteDB database is not a super user. As a result, you cannot install extensions. If you need a database extension that is not [pre-bundled](../../explore/ysql-language-features/advanced-features/extensions/) with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or reach out on Slack.
 
 ### Known issues in cloud shell
 

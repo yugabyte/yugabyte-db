@@ -21,6 +21,8 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformInstanceClientFactory;
@@ -59,6 +61,8 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Configuration;
 import play.Environment;
+
+import javax.persistence.PersistenceException;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -112,7 +116,6 @@ public class Module extends AbstractModule {
       bind(TemplateManager.class).asEagerSingleton();
       bind(ExtraMigrationManager.class).asEagerSingleton();
       bind(AWSInitializer.class).asEagerSingleton();
-      bind(KubernetesManager.class).asEagerSingleton();
       bind(CallHome.class).asEagerSingleton();
       bind(Scheduler.class).asEagerSingleton();
       bind(HealthChecker.class).asEagerSingleton();
@@ -134,6 +137,8 @@ public class Module extends AbstractModule {
       bind(GFlagsValidation.class).asEagerSingleton();
       bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class);
       bind(TaskExecutor.class).asEagerSingleton();
+      bind(ShellKubernetesManager.class).asEagerSingleton();
+      bind(NativeKubernetesManager.class).asEagerSingleton();
 
       final CallbackController callbackController = new CallbackController();
       callbackController.setDefaultUrl(config.getString("yb.url", ""));
@@ -142,20 +147,37 @@ public class Module extends AbstractModule {
   }
 
   @Provides
-  protected OidcClient<OidcProfile, OidcConfiguration> provideOidcClient() {
+  protected OidcClient<OidcProfile, OidcConfiguration> provideOidcClient(
+      RuntimeConfigFactory runtimeConfigFactory) {
     final OidcConfiguration oidcConfiguration = new OidcConfiguration();
 
-    if (config.getString("yb.security.type", "").equals("OIDC")) {
-      oidcConfiguration.setClientId(config.getString("yb.security.clientID", ""));
-      oidcConfiguration.setSecret(config.getString("yb.security.secret", ""));
-      oidcConfiguration.setScope(config.getString("yb.security.oidcScope", ""));
-      oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI", ""));
-      oidcConfiguration.setMaxClockSkew(3600);
-      oidcConfiguration.setResponseType("code");
-      return new OidcClient<>(oidcConfiguration);
-    } else {
-      return new OidcClient<>(oidcConfiguration);
+    try {
+      if (runtimeConfigFactory.globalRuntimeConf().getString("yb.security.type").equals("OIDC")) {
+        oidcConfiguration.setClientId(
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.clientID"));
+        oidcConfiguration.setSecret(
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.secret"));
+        oidcConfiguration.setScope(
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcScope"));
+        oidcConfiguration.setDiscoveryURI(
+            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.discoveryURI"));
+        oidcConfiguration.setMaxClockSkew(3600);
+        oidcConfiguration.setResponseType("code");
+        return new OidcClient<>(oidcConfiguration);
+      }
+    } catch (PersistenceException e) {
+      log.debug("Defaulting to static configuration since runtime configuration is not available.");
+      if (config.getString("yb.security.type", "").equals("OIDC")) {
+        oidcConfiguration.setClientId(config.getString("yb.security.clientID", ""));
+        oidcConfiguration.setSecret(config.getString("yb.security.secret", ""));
+        oidcConfiguration.setScope(config.getString("yb.security.oidcScope", ""));
+        oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI", ""));
+        oidcConfiguration.setMaxClockSkew(3600);
+        oidcConfiguration.setResponseType("code");
+        return new OidcClient<>(oidcConfiguration);
+      }
     }
+    return new OidcClient<>(oidcConfiguration);
   }
 
   @Provides

@@ -30,6 +30,10 @@ dd {
   margin-inline-start: 40px;
 }
 
+.links {
+  display: inline;
+}
+
 .article {
   flex: 1;
   min-width: 0;
@@ -1391,4 +1395,11 @@ table code {
       }
     }
   }
+}
+
+.header-link {
+  text-decoration: inherit !important;
+  border-bottom: inherit !important;
+  color: inherit !important;
+  font-weight: inherit !important;
 }

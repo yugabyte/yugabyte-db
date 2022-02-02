@@ -220,10 +220,6 @@ yb_demo=# SELECT source,
 (1 row)
 ```
 
-## Next steps
+## Next step
 
-- [Develop an application](../../cloud-develop/)
-- [Deploy production clusters](../../cloud-basics/create-clusters/)
-- [Authorize access to your cluster](../../cloud-secure-clusters/add-connections/)
-- [Connect to clusters](../../cloud-connect/)
-- [Add database users](../../cloud-secure-clusters/add-users/)
+[Build an application](../cloud-build-apps/)

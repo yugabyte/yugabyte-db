@@ -76,8 +76,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
 
-  CHECKED_STATUS UpdateCDCConsumerOnTabletSplit(const TableId& consumer_table_id,
-                                                const SplitTabletIds& split_tablet_ids) override;
+  CHECKED_STATUS UpdateXClusterConsumerOnTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override;
+
+  CHECKED_STATUS UpdateXClusterProducerOnTabletSplit(
+      const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
   CHECKED_STATUS InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
                                  const std::string& master_addrs,
@@ -115,13 +118,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  rpc::RpcContext* rpc);
 
   // Delete the specified CDCStream.
-  CHECKED_STATUS DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+      CHECKED_STATUS DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
                                  DeleteCDCStreamResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
   // List CDC streams (optionally, for a given table).
   CHECKED_STATUS ListCDCStreams(const ListCDCStreamsRequestPB* req,
                                 ListCDCStreamsResponsePB* resp) override;
+
+  // Fetch CDC stream info corresponding to a db stream id
+  CHECKED_STATUS GetCDCDBStreamInfo(const GetCDCDBStreamInfoRequestPB* req,
+                                    GetCDCDBStreamInfoResponsePB* resp) override;
 
   // Get CDC stream.
   CHECKED_STATUS GetCDCStream(const GetCDCStreamRequestPB* req,
@@ -172,6 +179,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS IsSetupUniverseReplicationDone(const IsSetupUniverseReplicationDoneRequestPB* req,
                                                 IsSetupUniverseReplicationDoneResponsePB* resp,
                                                 rpc::RpcContext* rpc);
+
+  // On a producer side split, creates new pollers on the consumer for the new tablet children.
+  CHECKED_STATUS UpdateConsumerOnProducerSplit(const UpdateConsumerOnProducerSplitRequestPB* req,
+                                               UpdateConsumerOnProducerSplitResponsePB* resp,
+                                               rpc::RpcContext* rpc);
 
   // Find all the CDC streams that have been marked as DELETED.
   CHECKED_STATUS FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);

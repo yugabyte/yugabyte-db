@@ -27,10 +27,11 @@
 
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class MockEnvTest : public testing::Test {
+class MockEnvTest : public RocksDBTest {
  public:
   MockEnv* env_;
   const EnvOptions soptions_;

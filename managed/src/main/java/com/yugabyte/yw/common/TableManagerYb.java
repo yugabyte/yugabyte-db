@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.DELETE;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -22,7 +23,6 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,7 +37,6 @@ public class TableManagerYb extends DevopsBase {
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
-  private static final String BACKUP_LOCATION = "BACKUP_LOCATION";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -225,7 +224,7 @@ public class TableManagerYb extends DevopsBase {
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION).asText());
+      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");

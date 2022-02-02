@@ -5,6 +5,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -65,10 +66,10 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
 
     Set<Pair<UUID, String>> foundXClusterConfigs = new HashSet<>();
 
-    Map<String, ProducerEntryPB> sourceUniverseMap =
+    Map<String, ProducerEntryPB> replicationGroups =
         config.getConsumerRegistry().getProducerMapMap();
 
-    sourceUniverseMap.forEach(
+    replicationGroups.forEach(
         (replicationId, value) -> {
           String[] uuidAndName = replicationId.split("_", 2);
           if (uuidAndName.length != 2) {

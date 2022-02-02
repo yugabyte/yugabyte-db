@@ -68,6 +68,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -110,6 +111,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
@@ -679,8 +681,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           } catch (Exception ex) {
             log.warn("On-prem node {} doesn't have a linked instance ", node.nodeName);
           }
+          continue;
         }
-        continue;
+        if (node.nodeUuid == null) {
+          // No other way to identify the node.
+          continue;
+        }
       }
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
@@ -689,6 +695,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.azUuid = node.azUuid;
       // Add the node name.
       params.nodeName = node.nodeName;
+      // Add the node UUID.
+      params.nodeUuid = node.nodeUuid;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Flag to be set where errors during Ansible Destroy Server will be ignored.
@@ -1707,7 +1715,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // Perform preflight checks on the given node.
-  public String performPreflightCheck(Cluster cluster, NodeDetails currentNode) {
+  public String performPreflightCheck(
+      Cluster cluster,
+      NodeDetails currentNode,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA) {
     if (cluster.userIntent.providerType != com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
       return null;
     }
@@ -1717,6 +1729,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     preflightTaskParams.deviceInfo = userIntent.deviceInfo;
     preflightTaskParams.azUuid = currentNode.azUuid;
     preflightTaskParams.universeUUID = taskParams().universeUUID;
+    preflightTaskParams.rootCA = rootCA;
+    preflightTaskParams.clientRootCA = clientRootCA;
     UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
         preflightTaskParams.communicationPorts, currentNode);
     preflightTaskParams.extraDependencies.installNodeExporter =
@@ -1828,7 +1842,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Whether to increment the universe/cluster config version. Skip incrementing version if the task
-   * updating the universe metadata is create/destroy/pause/resume universe
+   * updating the universe metadata is create/destroy/pause/resume universe. Also, skip incrementing
+   * version if task must manually handle version incrementing (such as in the case of XCluster).
    *
    * @return true if we should increment the version, false otherwise
    */
@@ -1856,7 +1871,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         || taskType == TaskType.DestroyUniverse
         || taskType == TaskType.DestroyKubernetesUniverse
         || taskType == TaskType.PauseUniverse
-        || taskType == TaskType.ResumeUniverse);
+        || taskType == TaskType.ResumeUniverse
+        || taskType == TaskType.CreateXClusterConfig
+        || taskType == TaskType.EditXClusterConfig
+        || taskType == TaskType.SyncXClusterConfig
+        || taskType == TaskType.DeleteXClusterConfig);
   }
 
   // TODO: Use of synchronized in static scope! Looks suspicious.
@@ -1963,13 +1982,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param updater the universe updater to run
    * @return the updated universe
    */
-  protected static synchronized Universe saveUniverseDetails(
+  protected static Universe saveUniverseDetails(
       UUID universeUUID, boolean shouldIncrementVersion, UniverseUpdater updater) {
-    if (shouldIncrementVersion) {
-      incrementClusterConfigVersion(universeUUID);
+    Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
+    try {
+      if (shouldIncrementVersion) {
+        incrementClusterConfigVersion(universeUUID);
+      }
+      return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
+    } finally {
+      Universe.UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
     }
-
-    return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
   }
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {
