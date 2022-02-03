@@ -17,8 +17,10 @@ After [creating a free cluster](../qs-add/), the easiest way to connect to it is
 
 The cloud shell allows you to connect to and interact with your Yugabyte Cloud cluster from your browser. You have the option of using the following CLIs in the cloud shell:
 
-- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql) 
+- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql)
 - [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql)
+
+Cloud shell has a 15 minute connection limit. If your session expires, close your browser tab and connect again.
 
 ## Connect to your cluster using the cloud shell
 

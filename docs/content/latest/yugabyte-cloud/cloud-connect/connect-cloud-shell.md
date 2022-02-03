@@ -20,6 +20,8 @@ You have the option of using the following command line interfaces (CLIs) in the
 - [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql).
 - [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql).
 
+Cloud shell has a 15 minute connection limit. If your session expires, close your browser tab and connect again.
+
 ## Connect via Cloud Shell
 
 To connect to a cluster via Cloud Shell:
