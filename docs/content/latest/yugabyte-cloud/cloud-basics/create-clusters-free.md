@@ -54,7 +54,7 @@ Set the following options:
 
 ### Database Admin Credentials
 
-The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster. (You can [add additional users](../../cloud-secure-clusters/add-users/) after the cluster is provisioned.)
+The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster. (You can [add more users](../../cloud-secure-clusters/add-users/) after the cluster is provisioned.)
 
 ![Add Cluster Wizard - Admin Settings](/images/yb-cloud/cloud-addcluster-admin.png)
 
@@ -64,7 +64,7 @@ Download the credentials, and click **Create Cluster**.
 
 {{< warning title="Important" >}}
 
-Save your database credentials in a safe place. If you lose these credentials, you won't be able to use the database.
+Save your database credentials. If you lose them, you won't be able to use the database.
 
 {{< /warning >}}
 
