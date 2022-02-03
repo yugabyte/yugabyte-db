@@ -346,10 +346,6 @@ def get_db_name_cmd(dump_file):
     return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
 
 
-def get_grep_enums_cmd(dump_file):
-    return "egrep '^CREATE TYPE ' " + pipes.quote(dump_file) + " || [[ $? == 1 ]]"
-
-
 def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
     return "sed -i '{}' {}".format(reg_exp, pipes.quote(dump_file))
 
@@ -968,9 +964,6 @@ class YBBackup:
         parser.add_argument(
             '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
                                                                           "pg based backup.")
-        parser.add_argument(
-            '--detect_enums', action='store_true', default=True, help="Use it to detect enums "
-                                                                      "in schema.")
         parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
@@ -2357,13 +2350,6 @@ class YBBackup:
                     "'Version: <number>' in the end: {}".format(output))
         return matched.group('version')
 
-    def is_enum_present(self, sql_dump_path):
-        """
-        Detects the presence of enum in schema of a YSQL database.
-        """
-        resp = self.run_cli_tool(get_grep_enums_cmd(sql_dump_path))
-        return ' AS ENUM (' in resp if resp else False
-
     def create_metadata_files(self):
         """
         :return: snapshot_id and list of sql_dump files
@@ -2389,10 +2375,6 @@ class YBBackup:
             logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
                             db_name, sql_dump_path))
             self.run_ysql_dump(ysql_dump_args)
-
-            if not pg_based_backup and self.args.detect_enums:
-                logging.info('Detecting enum in {}'.format(sql_dump_path))
-                pg_based_backup = self.is_enum_present(sql_dump_path)
 
             dump_files.append(sql_dump_path)
             if pg_based_backup:

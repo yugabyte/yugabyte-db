@@ -488,7 +488,7 @@ GetNewOidWithIndex(Relation relation, Oid indexId, AttrNumber oidcolumn)
 	 * assign.  Hitting this assert means there's some path where we failed to
 	 * ensure that a type OID is determined by commands in the dump script.
 	 */
-	Assert(!IsBinaryUpgrade || RelationGetRelid(relation) != TypeRelationId);
+	Assert(!IsBinaryUpgrade || yb_binary_restore || RelationGetRelid(relation) != TypeRelationId);
 
 	/* Generate new OIDs until we find one not in the table */
 	do
@@ -527,7 +527,7 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 	 * relfilenode assignments during a binary-upgrade run should be
 	 * determined by commands in the dump script.
 	 */
-	Assert(!IsBinaryUpgrade);
+	Assert(!IsBinaryUpgrade || yb_binary_restore);
 
 	/* This logic should match RelationInitPhysicalAddr */
 	rnode.node.spcNode = reltablespace ? reltablespace : MyDatabaseTableSpace;

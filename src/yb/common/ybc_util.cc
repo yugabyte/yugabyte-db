@@ -45,6 +45,8 @@ bool yb_format_funcs_include_yb_metadata = false;
 
 bool yb_force_global_transaction = false;
 
+bool yb_binary_restore = false;
+
 namespace yb {
 
 namespace {
