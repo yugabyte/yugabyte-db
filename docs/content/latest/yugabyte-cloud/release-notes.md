@@ -19,9 +19,13 @@ showAsideToc: true
 
 #### New features
 
-- Ability to select the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating standard clusters(../cloud-basics/create-clusters/)].
+- Ability to select the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating standard clusters](../cloud-basics/create-clusters/).
 - Automated notifications of upcoming database upgrades. The notification email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
-- [Amazon EC2 T3 instance types](https://aws.amazon.com/ec2/instance-types/t3/) for new free clusters on AWS.
+
+#### Infrastructure
+
+- Instance type for new free clusters on AWS updated to [EC2 T3.small](https://aws.amazon.com/ec2/instance-types/t3/). Existing free clusters retain their EC2 T2.small instance type for their lifetime.
+- Instance type for new standard clusters on GCP updated to [n2-standard](https://cloud.google.com/compute/docs/general-purpose-machines#n2_machines).
 
 #### Database
 
