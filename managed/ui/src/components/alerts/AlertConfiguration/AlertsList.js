@@ -145,11 +145,14 @@ export const AlertsList = (props) => {
     updateAlertConfig,
     sendTestAlert
   } = props;
+  const [sizePerPage, setSizePerPage] = useState(10);
   const [options, setOptions] = useState({
     noDataText: 'Loading...',
     defaultSortName: 'name',
-    defaultSortOrder: 'asc'
+    defaultSortOrder: 'asc',
+    page: 1
   });
+
   const isReadOnly = isNonAvailable(customer.data.features, 'alert.configuration.actions');
 
   const onInit = () => {
@@ -248,9 +251,9 @@ export const AlertsList = (props) => {
       .map((destination) => {
         return destination.uuid === row.destinationUUID
           ? {
-              value: destination.uuid,
-              label: destination.name
-            }
+            value: destination.uuid,
+            label: destination.name
+          }
           : null;
       })
       .filter((res) => res !== null);
@@ -268,8 +271,8 @@ export const AlertsList = (props) => {
     const currentDestination = destination[0]?.value
       ? destination[0]?.value
       : row.defaultDestination
-      ? '<default>'
-      : '<empty>';
+        ? '<default>'
+        : '<empty>';
     const targetType = row.target.all ? 'allUniverses' : 'selectedUniverses';
     const univerList =
       isNonEmptyArray(row.target.uuids) &&
@@ -298,7 +301,8 @@ export const AlertsList = (props) => {
   const onToggleActive = (row) => {
     const updatedAlertConfig = { ...row, active: !row.active };
     updateAlertConfig(updatedAlertConfig, row.uuid).then(() => {
-      alertConfigs(payload).then((res) => {
+      const reqPayload = preparePayloadForAlertReq();
+      alertConfigs(reqPayload).then((res) => {
         setAlertList(res);
       });
     });
@@ -314,7 +318,9 @@ export const AlertsList = (props) => {
    */
   const onDeleteConfig = (row) => {
     deleteAlertConfig(row.uuid).then(() => {
-      alertConfigs(payload).then((res) => {
+
+      const reqPayload = preparePayloadForAlertReq();
+      alertConfigs(reqPayload).then((res) => {
         setAlertList(res);
       });
     });
@@ -403,9 +409,20 @@ export const AlertsList = (props) => {
     return 'No destination';
   };
 
+  const decideDropdownMenuPos = (rowIndex, sizePerPage, totalRecords, currentPage) => {
+    //display the menu at the bottom for the top five records
+    if(rowIndex < 5){
+      return false;
+    }
+    //display the menu at the top for the last five records
+    const itemsPresentInCurrentPage = Math.min(sizePerPage ,totalRecords - (currentPage * sizePerPage));
+
+    return itemsPresentInCurrentPage - rowIndex < 5;
+  }
+
   // This method will handle all the required actions for the particular row.
   const editActionLabel = isReadOnly ? 'Alert Details' : 'Edit Alert';
-  const formatConfigActions = (cell, row) => {
+  const formatConfigActions = (cell, row, rowIndex, sizePerPage, totalRecords, currentPage) => {
     return (
       <>
         <DropdownButton
@@ -413,6 +430,7 @@ export const AlertsList = (props) => {
           title="..."
           noCaret
           id="bg-nested-dropdown"
+          dropup={decideDropdownMenuPos(rowIndex, sizePerPage, totalRecords, currentPage)}
           pullRight
         >
           <MenuItem
@@ -626,11 +644,15 @@ export const AlertsList = (props) => {
             <BootstrapTable
               className="alert-list-table"
               data={alertList}
-              options={options}
+              options={{
+                ...options,
+                sizePerPage,
+                onSizePerPageList : setSizePerPage
+              }}
               pagination
-              maxHeight="500px"
               condensed
               ref={bootstrapTableRef}
+              maxHeight='500px'
             >
               <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
               <TableHeaderColumn
@@ -697,7 +719,7 @@ export const AlertsList = (props) => {
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="configActions"
-                dataFormat={(cell, row) => formatConfigActions(cell, row)}
+                dataFormat={(cell, row, _, rowIndex) => formatConfigActions(cell, row, rowIndex, sizePerPage, alertList.length, options.page)}
                 columnClassName="yb-actions-cell"
                 className="yb-actions-cell"
                 width="5%"
