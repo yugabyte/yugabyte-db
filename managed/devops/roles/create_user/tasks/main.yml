@@ -80,6 +80,16 @@
     create_user.home_dir is not match('/home/{{ create_user.name }}(/.*)?$')
   tags: yb-prebuilt-ami
 
+- name: Allow AMI building to connect as yugabyte
+  copy:
+    remote_src: yes
+    src: "/home/{{ ssh_user }}/.ssh/authorized_keys"
+    dest: "/home/{{ create_user.name }}/.ssh/"
+    owner: "{{ create_user.name }}"
+    mode: 0400
+  become: yes
+  tags: yb-prebuilt-ami
+
 - name: "Setup {{ create_user.name }} ssh"
   include: setup-ssh.yml
   when: ssh_config is defined and ssh_config.enabled
