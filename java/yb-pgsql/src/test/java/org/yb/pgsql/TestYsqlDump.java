@@ -89,8 +89,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     testPgDumpHelper("ysql_dump" /* binaryName */,
                      "sql/yb_ysql_dump.sql" /* inputFileRelativePath */,
                      "output/yb_ysql_dump.out" /* outputFileRelativePath */,
-                     "expected/yb_ysql_dump.out" /* expectedFileRelativePath */,
-                     "ysql_dump_stdout.txt" /* stdoutFileRelativePath */);
+                     "expected/yb_ysql_dump.out" /* expectedFileRelativePath */);
   }
 
   @Test
@@ -98,15 +97,15 @@ public class TestYsqlDump extends BasePgSQLTest {
     testPgDumpHelper("ysql_dumpall" /* binaryName */,
                      "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
                      "output/yb_ysql_dumpall.out" /* outputFileRelativePath */,
-                     "expected/yb_ysql_dumpall.out" /* expectedFileRelativePath */,
-                     "ysql_dumpall_stdout.txt" /* stdoutFileRelativePath */);
+                     "expected/yb_ysql_dumpall.out" /* expectedFileRelativePath */);
   }
 
   void testPgDumpHelper(final String binaryName,
                         final String inputFileRelativePath,
                         final String outputFileRelativePath,
-                        final String expectedFileRelativePath,
-                        final String stdoutFileRelativePath) throws Exception {
+                        final String expectedFileRelativePath) throws Exception {
+    markClusterNeedsRecreation(); // create a new cluster for the next test
+
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.getPgRegressDir();
 
@@ -130,11 +129,17 @@ public class TestYsqlDump extends BasePgSQLTest {
     final int tserverIndex = 0;
     File actual = new File(pgRegressDir, outputFileRelativePath);
     File expected = new File(pgRegressDir, expectedFileRelativePath);
-    ProcessBuilder pb = new ProcessBuilder(ysqlDumpExec.toString(), "-h", getPgHost(tserverIndex),
-                                           "-p", Integer.toString(getPgPort(tserverIndex)),
-                                           "-U", DEFAULT_PG_USER,
-                                           "-f", actual.toString(),
-                                           "-m", getMasterLeaderAddress().toString());
+    List<String> args = new ArrayList<>(Arrays.asList(
+      ysqlDumpExec.toString(), "-h", getPgHost(tserverIndex),
+      "-p", Integer.toString(getPgPort(tserverIndex)),
+      "-U", DEFAULT_PG_USER,
+      "-f", actual.toString(),
+      "-m", getMasterLeaderAddress().toString()
+    ));
+    if (!binaryName.equals("ysql_dumpall")) {
+      args.add("--include-yb-metadata");
+    }
+    ProcessBuilder pb = new ProcessBuilder(args);
 
     // Handle the logs output by ysql_dump.
     String logPrefix = "ysql_dump";

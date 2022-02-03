@@ -1088,7 +1088,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         } else {
           throw new IllegalArgumentException("Cannot compare "
               + o1 + " (of class " + o1.getClass().getCanonicalName() + ") with "
-              + o2 + " (of class " + o1.getClass().getCanonicalName() + ")");
+              + o2 + " (of class " + o2.getClass().getCanonicalName() + ")");
         }
       }
     }

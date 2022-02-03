@@ -39,8 +39,8 @@ CREATE TABLESPACE z OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"n
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.8.3.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.8.3.0-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -62,8 +62,8 @@ SET row_security = off;
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.8.3.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.8.3.0-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -83,8 +83,8 @@ SET row_security = off;
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.8.3.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.8.3.0-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -132,8 +132,8 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.8.3.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.8.3.0-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;

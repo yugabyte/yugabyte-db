@@ -10268,7 +10268,7 @@ dumpEnumType(Archive *fout, TypeInfo *tyinfo)
 	 */
 	appendPQExpBuffer(delq, "DROP TYPE %s;\n", qualtypname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false);
@@ -10276,7 +10276,7 @@ dumpEnumType(Archive *fout, TypeInfo *tyinfo)
 	appendPQExpBuffer(q, "CREATE TYPE %s AS ENUM (",
 					  qualtypname);
 
-	if (!dopt->binary_upgrade)
+	if (!dopt->binary_upgrade && !dopt->include_yb_metadata)
 	{
 		/* Labels with server-assigned oids */
 		for (i = 0; i < num; i++)
@@ -10291,7 +10291,7 @@ dumpEnumType(Archive *fout, TypeInfo *tyinfo)
 
 	appendPQExpBufferStr(q, "\n);\n");
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 	{
 		/* Labels with dump-assigned (preserved) oids */
 		for (i = 0; i < num; i++)
@@ -10395,7 +10395,7 @@ dumpRangeType(Archive *fout, TypeInfo *tyinfo)
 	 */
 	appendPQExpBuffer(delq, "DROP TYPE %s;\n", qualtypname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false);
@@ -10502,7 +10502,7 @@ dumpUndefinedType(Archive *fout, TypeInfo *tyinfo)
 
 	appendPQExpBuffer(delq, "DROP TYPE %s;\n", qualtypname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false);
@@ -10708,7 +10708,7 @@ dumpBaseType(Archive *fout, TypeInfo *tyinfo)
 	 * We might already have a shell type, but setting pg_type_oid is
 	 * harmless, and in any case we'd better set the array type OID.
 	 */
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false);
@@ -10896,7 +10896,7 @@ dumpDomain(Archive *fout, TypeInfo *tyinfo)
 		typdefault = NULL;
 	typcollation = atooid(PQgetvalue(res, 0, PQfnumber(res, "typcollation")));
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 true); /* force array type */
@@ -11084,12 +11084,13 @@ dumpCompositeType(Archive *fout, TypeInfo *tyinfo)
 	i_attisdropped = PQfnumber(res, "attisdropped");
 	i_attcollation = PQfnumber(res, "attcollation");
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 	{
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false);
-		binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid, false);
+		if (dopt->binary_upgrade)
+			binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid, false);
 	}
 
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
@@ -11359,7 +11360,7 @@ dumpShellType(Archive *fout, ShellTypeInfo *stinfo)
 	 * after it's filled in, otherwise the backend complains.
 	 */
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 stinfo->baseType->dobj.catId.oid,
 												 false);
@@ -15547,7 +15548,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	qrelname = pg_strdup(fmtId(tbinfo->dobj.name));
 	qualrelname = pg_strdup(fmtQualifiedDumpable(tbinfo));
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_set_type_oids_by_rel_oid(fout, q,
 												tbinfo->dobj.catId.oid);
 
@@ -17177,10 +17178,11 @@ dumpSequence(Archive *fout, TableInfo *tbinfo)
 
 	resetPQExpBuffer(query);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 	{
-		binary_upgrade_set_pg_class_oids(fout, query,
-										 tbinfo->dobj.catId.oid, false);
+		if (dopt->binary_upgrade)
+			binary_upgrade_set_pg_class_oids(fout, query,
+											 tbinfo->dobj.catId.oid, false);
 		binary_upgrade_set_type_oids_by_rel_oid(fout, query,
 												tbinfo->dobj.catId.oid);
 	}

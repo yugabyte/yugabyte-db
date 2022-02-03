@@ -171,7 +171,6 @@ typedef struct _dumpOptions
 	int			load_via_partition_root;
 	int			include_yb_metadata;	/* In this mode DDL statements include YB specific
 										 * metadata such as tablet partitions. */
-
 	/* default, if no "inclusion" switches appear, is to dump everything */
 	bool		include_everything;
 

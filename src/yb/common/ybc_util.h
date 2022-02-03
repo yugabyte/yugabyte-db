@@ -44,6 +44,13 @@ extern bool yb_format_funcs_include_yb_metadata;
  */
 extern bool yb_non_ddl_txn_for_sys_tables_allowed;
 
+/*
+ * Guc variable to enable binary restore from a binary backup of YSQL tables. When doing binary
+ * restore, we copy the docdb SST files of those tables from the source database and reuse them
+ * for a newly created target database to restore those tables.
+ */
+extern bool yb_binary_restore;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 extern YBCStatus YBCStatusOK;
