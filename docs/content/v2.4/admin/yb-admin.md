@@ -82,7 +82,7 @@ yb-admin -master_addresses <master-addresses> change_config <tablet_id> [ ADD_SE
 
 - master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *tablet_id*: The identifier (ID) of the tablet.
-- ADD SERVER | REMOVE SERVER: Subcommand to add or remove the server.
+- ADD_SERVER | REMOVE_SERVER: Subcommand to add or remove the server.
 - *peer_uuid*: The UUID of the peer.
 - PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum. Required when using the `ADD_SERVER` subcommand.
 
@@ -93,7 +93,7 @@ If you need to take a node down temporarily, but intend to bring it back up, you
 - If the node is down for less than 15 minutes, it will catch up through RPC calls when it comes back online.
 - If the node is offline longer than 15 minutes, then it will go through Remote Bootstrap, where the current leader will forward all relevant files to catch up.
 
-If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOTE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
+If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOVE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
 
 #### change_master_config
 
@@ -489,16 +489,16 @@ When `show_details` is included, the `list_snapshot` command prints the followin
 - `type`: `TABLE` <== Use for table or index
   - `id`: `"<table_id>"`  or `"<index_id>"`
   - `data`:
-    - `name`: `"<table_name>"` or `"<index_id>"` 
+    - `name`: `"<table_name>"` or `"<index_id>"`
     - `version`: `"<table_version>"`
     - `state`: `"<state>"`
     - `state_msg`: `"<state_msg>"`
     - `next_column_id`: `"<column_id>"`
     - `table_type`: `"YQL_TABLE_TYPE"`
     - `namespace_id`: `"<namespace_id>"`
-    - `indexed_table_id` (index only): `<table_id>` 
+    - `indexed_table_id` (index only): `<table_id>`
     - `is_local_index` (index only): `true` or `false`
-    - `is_unique_index` (index only):  `true` or `false` 
+    - `is_unique_index` (index only):  `true` or `false`
 
 **Example**
 
@@ -654,7 +654,7 @@ Importing snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 (COMPLETE)
 Target imported table name: ydb.test_tb
 Table being imported: ydb.test_tb
 Successfully applied snapshot.
-Object           	Old ID                           	New ID                          
+Object           	Old ID                           	New ID
 Keyspace         	c478ed4f570841489dd973aacf0b3799 	c478ed4f570841489dd973aacf0b3799
 Table            	ff4389ee7a9d47ff897d3cec2f18f720 	ff4389ee7a9d47ff897d3cec2f18f720
 Tablet 0         	cea3aaac2f10460a880b0b4a2a4b652a 	cea3aaac2f10460a880b0b4a2a4b652a
