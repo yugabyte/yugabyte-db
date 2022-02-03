@@ -47,6 +47,8 @@ bool yb_force_global_transaction = false;
 
 bool suppress_nonpg_logs = false;
 
+bool yb_binary_restore = false;
+
 namespace yb {
 
 namespace {
