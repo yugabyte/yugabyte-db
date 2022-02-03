@@ -921,17 +921,24 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
                 SortGroupClause *grpcl = makeNode(SortGroupClause);
                 Oid sortop;
                 Oid eqop;
-                bool hashable;
+                bool hashable = false;
                 ParseCallbackState pcbstate;
 
                 setup_parser_errposition_callback(&pcbstate, pstate,
                                                   bestlocation);
 
-                /* determine the eqop and optional sortop */
+                /*
+                 * determine the eqop and optional sortop
+                 *
+                 * NOTE: for UNION, we set hashable to false and pass a NULL to
+                 * isHashable in get_sort_group_operators to prevent a logic error
+                 * where UNION fails to exclude duplicate results.
+                 *
+                 */
                 get_sort_group_operators(rescoltype,
                                          false, true, false,
                                          &sortop, &eqop, NULL,
-                                         &hashable);
+                                         NULL);
 
                 cancel_parser_errposition_callback(&pcbstate);
 

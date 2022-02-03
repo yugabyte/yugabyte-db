@@ -46,15 +46,15 @@ SELECT * FROM cypher('cypher_union', $$ MATCH (n) RETURN n UNION ALL MATCH (n) R
 SELECT * FROM cypher('cypher_union', $$ MATCH (n) RETURN n UNION RETURN 1 $$) as (a agtype);
                                a                                
 ----------------------------------------------------------------
- 1
  {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ 1
 (2 rows)
 
 SELECT * FROM cypher('cypher_union', $$ MATCH (n) RETURN n UNION RETURN NULL $$) as (a agtype);
                                a                                
 ----------------------------------------------------------------
- 
  {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ 
 (2 rows)
 
 SELECT * FROM cypher('cypher_union', $$ RETURN [1,2,3] UNION RETURN 1 $$) as (a agtype);
@@ -137,10 +137,26 @@ SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION MATCH (n) return
 (1 row)
 
 /* scoping */
-SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (m)  RETURN n$$) AS (result agtype);
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (m) RETURN n$$) AS (result agtype);
 ERROR:  could not find rte for n
-LINE 2: ... $$MATCH (n) RETURN n UNION ALL MATCH (m)  RETURN n$$) AS (r...
+LINE 2: ..., $$MATCH (n) RETURN n UNION ALL MATCH (m) RETURN n$$) AS (r...
                                                              ^
+/*
+ *UNION and UNION ALL, type casting
+ */
+SELECT * FROM cypher('cypher_union', $$ RETURN 1.0::int UNION return 1::float UNION ALL RETURN 2.0::float $$) AS (result agtype);
+ result 
+--------
+ 1
+ 2.0
+(2 rows)
+
+SELECT * FROM cypher('cypher_union', $$ RETURN 1.0::float UNION return 1::int UNION RETURN 1::float $$) AS (result agtype);
+ result 
+--------
+ 1.0
+(1 row)
+
 SELECT drop_graph('cypher_union', true);
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to table cypher_union._ag_label_vertex

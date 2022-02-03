@@ -65,6 +65,14 @@ SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (n) re
 SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION MATCH (n) return n UNION ALL MATCH(n) RETURN n$$) AS (result agtype);
 
 /* scoping */
-SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (m)  RETURN n$$) AS (result agtype);
+SELECT * FROM cypher('cypher_union', $$MATCH (n) RETURN n UNION ALL MATCH (m) RETURN n$$) AS (result agtype);
+
+/*
+ *UNION and UNION ALL, type casting
+ */
+SELECT * FROM cypher('cypher_union', $$ RETURN 1.0::int UNION return 1::float UNION ALL RETURN 2.0::float $$) AS (result agtype);
+
+SELECT * FROM cypher('cypher_union', $$ RETURN 1.0::float UNION return 1::int UNION RETURN 1::float $$) AS (result agtype);
+
 
 SELECT drop_graph('cypher_union', true);
