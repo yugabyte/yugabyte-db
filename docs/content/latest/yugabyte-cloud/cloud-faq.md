@@ -83,7 +83,10 @@ Cloud console
 : During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
 
 Cluster (YugabyteDB) version upgrade
-: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). We'll notify you in advance of any upcoming upgrade schedule via email.
+: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
+
+: We'll notify you in advance of any upcoming upgrade via email. The email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
+
 : The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
 : Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
