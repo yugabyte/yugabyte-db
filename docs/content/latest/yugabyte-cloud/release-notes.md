@@ -19,7 +19,7 @@ showAsideToc: true
 
 #### New features
 
-- Ability to select the version of YugabyteDB to install on a cluster when creating standard clusters. You can select a [stable or edge release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on).
+- Ability to select the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating standard clusters(../cloud-basics/create-clusters/)].
 - Automated notifications of upcoming database upgrades. The notification email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
 
 ### January 27, 2021
