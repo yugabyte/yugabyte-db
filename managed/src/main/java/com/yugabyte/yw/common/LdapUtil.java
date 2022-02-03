@@ -117,6 +117,28 @@ public class LdapUtil {
         String errorMessage = "Failed with " + e.getMessage();
         throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
       }
+
+      String serviceAccountUserName =
+          runtimeConfigFactory
+              .globalRuntimeConf()
+              .getString("yb.security.ldap.ldap_service_account_username");
+      String serviceAccountPassword =
+          runtimeConfigFactory
+              .globalRuntimeConf()
+              .getString("yb.security.ldap.ldap_service_account_password");
+
+      if (!serviceAccountUserName.isEmpty() && !serviceAccountPassword.isEmpty()) {
+        connection.unBind();
+        connection.close();
+        String serviceAccountDistinguishedName = ldapDnPrefix + serviceAccountUserName + ldapBaseDN;
+        try {
+          connection.bind(serviceAccountDistinguishedName, password);
+        } catch (LdapAuthenticationException e) {
+          log.error(e.getMessage());
+          String errorMessage = "Unable to bind with Service Account Credentials." + e.getMessage();
+          throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+        }
+      }
       String role = "";
       try {
         EntryCursor cursor =
