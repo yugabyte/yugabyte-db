@@ -855,6 +855,7 @@ class YBBackup:
         self.k8s_namespace_to_cfg = {}
         self.timer = BackupTimer()
         self.tserver_ip_to_web_port = {}
+        self.ts_secondary_to_primary_ip_map = {}
         self.region_to_location = {}
         self.database_version = YBVersion("unknown")
         self.manifest = YBManifest(self)
@@ -939,6 +940,9 @@ class YBBackup:
         parser.add_argument(
             '--ts_web_hosts_ports', help="Custom TS HTTP hosts and ports. "
                                          "In form: <IP>:<Port>,<IP>:<Port>")
+        parser.add_argument(
+            '--ts_secondary_ip_map', default=None,
+            help="Map of secondary IPs to primary for ensuring ssh connectivity")
         parser.add_argument(
             '--k8s_config', required=False,
             help="Namespace to use for kubectl in case of kubernetes deployment")
@@ -1109,6 +1113,8 @@ class YBBackup:
                     state = fields[3]
                     (ip, port) = ip_port.split(':')
                     if state == 'ALIVE':
+                        if self.ts_secondary_to_primary_ip_map:
+                            ip = self.ts_secondary_to_primary_ip_map[ip]
                         tablets_by_leader_ip.append(ip)
             tserver_ips = list(tablets_by_leader_ip)
             SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
@@ -1176,6 +1182,9 @@ class YBBackup:
                     "SAS tokens must begin with '?sv'.")
 
         self.storage = BACKUP_STORAGE_ABSTRACTIONS[self.args.storage_type](options)
+
+        if self.args.ts_secondary_ip_map is not None:
+            self.ts_secondary_to_primary_ip_map = json.loads(self.args.ts_secondary_ip_map)
 
         if self.is_k8s():
             self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
@@ -1274,6 +1283,8 @@ class YBBackup:
                 if LEADING_UUID_RE.match(line):
                     (uuid, ip_port, state, role) = split_by_tab(line)
                     (ip, port) = ip_port.split(':')
+                    if self.ts_secondary_to_primary_ip_map:
+                        ip = self.ts_secondary_to_primary_ip_map[ip]
                     if state == 'ALIVE':
                         alive_master_ip = ip
                     if role == 'LEADER':
@@ -1291,6 +1302,8 @@ class YBBackup:
                     ip_port = fields[1]
                     state = fields[3]
                     (ip, port) = ip_port.split(':')
+                    if self.ts_secondary_to_primary_ip_map:
+                        ip = self.ts_secondary_to_primary_ip_map[ip]
                     if state == 'ALIVE':
                         self.live_tserver_ip = ip
                         break
@@ -1592,6 +1605,8 @@ class YBBackup:
                     tablet_id = fields[0]
                     tablet_leader_host_port = fields[2]
                     (ts_host, ts_port) = tablet_leader_host_port.split(":")
+                    if self.ts_secondary_to_primary_ip_map:
+                        ts_host = self.ts_secondary_to_primary_ip_map[ts_host]
 
                     if ts_host not in region_by_ts:
                         region = self.region_for_ts(ts_host)
@@ -2814,6 +2829,8 @@ class YBBackup:
                 if LEADING_UUID_RE.match(line):
                     (ts_uuid, ts_ip_port, role) = split_by_tab(line)
                     (ts_ip, ts_port) = ts_ip_port.split(':')
+                    if self.ts_secondary_to_primary_ip_map:
+                        ts_ip = self.ts_secondary_to_primary_ip_map[ts_ip]
                     tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
 
         return tablets_by_tserver_ip
@@ -2977,8 +2994,9 @@ class YBBackup:
                 self.identify_new_tablet_replicas(all_tablets_by_tserver, tablets_by_tserver_new)
 
         if num_loops >= RESTORE_DOWNLOAD_LOOP_MAX_RETRIES:
-            logging.error("Exceeded max number of retries for the restore download loop ({})!".
-                          format(RESTORE_DOWNLOAD_LOOP_MAX_RETRIES))
+            raise BackupException(
+                "Exceeded max number of retries for the restore download loop ({})!".
+                format(RESTORE_DOWNLOAD_LOOP_MAX_RETRIES))
 
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)

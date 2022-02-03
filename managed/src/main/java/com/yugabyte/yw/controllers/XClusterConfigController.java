@@ -39,7 +39,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -136,33 +135,44 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
 
-    // If necessary, update cached CDC stream IDs
-    Map<String, String> cachedStreams = xClusterConfig.getStreams();
-    if (cachedStreams.containsValue("")) {
-      cachedStreams = refreshStreamIdsCache(xClusterConfig);
+    JsonNode lagMetricData;
+
+    try {
+      // If necessary, update cached CDC stream IDs
+      Map<String, String> cachedStreams = xClusterConfig.getStreams();
+      if (cachedStreams.containsValue("")) {
+        cachedStreams = refreshStreamIdsCache(xClusterConfig);
+      }
+
+      log.info(
+          "Querying lag metrics for XClusterConfig({}) using CDC stream IDs: {}",
+          xClusterConfig.uuid,
+          cachedStreams.values());
+
+      // Query for replication lag
+      Map<String, String> metricParams = new HashMap<>();
+      String metric = "tserver_async_replication_lag_micros";
+      metricParams.put("metrics[0]", metric);
+      String startTime = Long.toString(Instant.now().minus(Duration.ofMinutes(1)).getEpochSecond());
+      metricParams.put("start", startTime);
+      ObjectNode filterJson = Json.newObject();
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
+      String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
+      filterJson.put("node_prefix", nodePrefix);
+      String streamIdFilter = String.join("|", cachedStreams.values());
+      filterJson.put("stream_id", streamIdFilter);
+      metricParams.put("filters", Json.stringify(filterJson));
+      lagMetricData =
+          metricQueryHelper.query(
+              Collections.singletonList(metric), metricParams, Collections.emptyMap());
+    } catch (Exception e) {
+      String errorMsg =
+          String.format(
+              "Failed to get lag metric data for XClusterConfig(%s): %s",
+              xClusterConfig.uuid, e.getMessage());
+      log.error(errorMsg);
+      lagMetricData = Json.newObject().put("error", errorMsg);
     }
-
-    log.info(
-        "Querying lag metrics for XClusterConfig({}) using CDC stream IDs: {}",
-        xClusterConfig.uuid,
-        cachedStreams.values());
-
-    // Query for replication lag
-    Map<String, String> metricParams = new HashMap<>();
-    String metric = "tserver_async_replication_lag_micros";
-    metricParams.put("metrics[0]", metric);
-    String startTime = Long.toString(Instant.now().minus(Duration.ofMinutes(1)).getEpochSecond());
-    metricParams.put("start", startTime);
-    ObjectNode filterJson = Json.newObject();
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
-    String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
-    filterJson.put("node_prefix", nodePrefix);
-    String streamIdFilter = String.join("|", cachedStreams.values());
-    filterJson.put("stream_id", streamIdFilter);
-    metricParams.put("filters", Json.stringify(filterJson));
-    JsonNode lagMetricData =
-        metricQueryHelper.query(
-            Collections.singletonList(metric), metricParams, Collections.emptyMap());
 
     // Wrap XClusterConfig with lag metric data and return
     XClusterConfigGetResp resp = new XClusterConfigGetResp();
@@ -328,7 +338,6 @@ public class XClusterConfigController extends AuthenticatedController {
 
   private void checkConfigDoesNotAlreadyExist(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    // check if config specified in form exists or not (based on shouldExist)
     XClusterConfig xClusterConfig =
         XClusterConfig.getByNameSourceTarget(name, sourceUniverseUUID, targetUniverseUUID);
 
@@ -369,11 +378,12 @@ public class XClusterConfigController extends AuthenticatedController {
     try {
       config = client.getMasterClusterConfig().getConfig();
     } catch (Exception e) {
-      log.error(
-          "Failed to get universe config for XClusterConfig({}), skipping cache update: {}",
-          xClusterConfig.uuid,
-          e.getMessage());
-      return cachedStreams;
+      String errorMsg =
+          String.format(
+              "Failed to get universe config for XClusterConfig(%s), skipping cache update: %s",
+              xClusterConfig.uuid, e.getMessage());
+      log.error(errorMsg);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errorMsg);
     }
 
     // Parse replication group metadata
@@ -382,10 +392,12 @@ public class XClusterConfigController extends AuthenticatedController {
     ProducerEntryPB replicationGroup =
         replicationGroups.get(xClusterConfig.getReplicationGroupName());
     if (replicationGroup == null) {
-      log.error(
-          "No replication group found for XClusterConfig({}), skipping cache update",
-          xClusterConfig.uuid);
-      return cachedStreams;
+      String errorMsg =
+          String.format(
+              "No replication group found for XClusterConfig(%s), skipping cache update",
+              xClusterConfig.uuid);
+      log.error(errorMsg);
+      throw new PlatformServiceException(NOT_FOUND, errorMsg);
     }
 
     // Parse CDC stream IDs
@@ -400,14 +412,13 @@ public class XClusterConfigController extends AuthenticatedController {
     if (!streamMap.keySet().equals(cachedStreams.keySet())) {
       Set<String> cachedMissing = Sets.difference(streamMap.keySet(), cachedStreams.keySet());
       Set<String> actualMissing = Sets.difference(cachedStreams.keySet(), streamMap.keySet());
-      log.warn(
-          "Detected table set mismatch for XClusterConfig "
-              + "(uuid={}, cached missing={}, actual missing={}). "
-              + "Recommend running sync api. Continuing with cached values for now.",
-          cachedMissing,
-          actualMissing,
-          streamMap.keySet());
-      return cachedStreams;
+      String errorMsg =
+          String.format(
+              "Detected table set mismatch for XClusterConfig "
+                  + "(uuid=%s, cached missing=%s, actual missing=%s).",
+              cachedMissing, actualMissing, streamMap.keySet());
+      log.error(errorMsg);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errorMsg);
     }
 
     // Update cached CDC stream IDs and return

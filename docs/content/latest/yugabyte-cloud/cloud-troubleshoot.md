@@ -94,3 +94,9 @@ Select the peering request to display the **Peering Details** sheet and check th
 #### VPC and peering connection are active but your application cannot connect to the cluster
 
 Add the application VPC CIDR address to the [cluster IP allow list](../cloud-secure-clusters/add-connections/). Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
+
+## Cluster management
+
+### You are editing your cluster infrastructure and are unable to reduce disk size per node
+
+50GB of disk space per vCPU is included in the base price for standard clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{<support-cloud>}}.

@@ -66,6 +66,8 @@ For details on how online index backfill works, refer to [Online Index Backfill]
 
 {{< /note >}}
 
+Regarding colocation, indexes follow their table. If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
+
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
