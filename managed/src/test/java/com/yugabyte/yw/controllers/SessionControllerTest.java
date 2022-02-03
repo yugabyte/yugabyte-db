@@ -752,7 +752,15 @@ public class SessionControllerTest {
     Universe.saveDetails(
         universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
     universe = Universe.getOrBadRequest(universe.universeUUID);
-    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    NodeDetails node = details.nodeDetailsSet.stream().findFirst().get();
+
+    // Set to an invalid IP
+    node.cloudInfo.private_ip = "host-n1";
+    universe.setUniverseDetails(details);
+    universe.update();
+    universe = Universe.getOrBadRequest(universe.universeUUID);
+
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
     Http.RequestBuilder request =
         fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/")
