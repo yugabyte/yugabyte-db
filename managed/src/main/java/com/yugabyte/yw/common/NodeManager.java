@@ -855,6 +855,13 @@ public class NodeManager extends DevopsBase {
     subcommand.add("--redis_proxy_rpc_port");
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
+    // Custom cluster creation flow with prebuilt AMI
+    if (userIntent.providerType.equals(Common.CloudType.aws)
+        && taskParam.getRegion().ybPrebuiltAmi) {
+      subcommand.add("--skip_tags");
+      subcommand.add("yb-prebuilt-ami");
+    }
+
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
             || !isIpAddress(node.cloudInfo.private_ip);
@@ -1423,10 +1430,16 @@ public class NodeManager extends DevopsBase {
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
 
-          // aws uses instance_type to determine device names for mounting
           if (cloudType.equals(Common.CloudType.aws)) {
+            // aws uses instance_type to determine device names for mounting
             commandArgs.add("--instance_type");
             commandArgs.add(taskParam.instanceType);
+
+            // Custom cluster creation flow with prebuilt AMI
+            if (taskParam.getRegion().ybPrebuiltAmi) {
+              commandArgs.add("--skip_tags");
+              commandArgs.add("yb-prebuilt-ami");
+            }
           }
 
           // gcp uses machine_image for ansible preprovision.yml
