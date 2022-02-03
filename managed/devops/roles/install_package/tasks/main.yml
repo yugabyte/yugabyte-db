@@ -52,18 +52,21 @@
   register: rm_releases_result
   tags:
     - download-software
+    - yb-prebuilt-ami
 
 - name: Log remove older releases response
   debug:
     var: rm_releases_result.stdout_lines
   tags:
     - download-software
+    - yb-prebuilt-ami
 
 - name: Retrieve items to symlink
   command: "ls {{ yb_package_folder }}"
   register: symlink_items
   tags:
     - install-software
+    - yb-prebuilt-ami
   when: is_yugabyte_package
 
 - name: Install | Create symlink for individual directory/file inside of package
@@ -79,6 +82,7 @@
     - "{{ symlink_items.stdout_lines }}"
   tags:
     - install-software
+    - yb-prebuilt-ami
   when: is_yugabyte_package
 
 - name: Install | Create symlink to package folder
@@ -93,6 +97,7 @@
     - "{{ symlink_folders }}"
   tags:
     - install-software
+    - yb-prebuilt-ami
   when: not is_yugabyte_package
 
 # doing num_releases_to_keep + 2 because we need to protect 'TEMPORARY' directory under yb-software
@@ -103,9 +108,11 @@
   register: rm_yb_softwares_result
   tags:
     - install-software
+    - yb-prebuilt-ami
 
 - name: Log remove older yb software folders response
   debug:
     var: rm_yb_softwares_result.stdout_lines
   tags:
     - install-software
+    - yb-prebuilt-ami

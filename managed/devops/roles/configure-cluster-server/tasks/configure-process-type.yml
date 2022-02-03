@@ -1,7 +1,3 @@
-- assert:
-    that:
-      - yb_process_type is defined
-      - systemd_option is defined
 
 - name: Setup | Create config directory for {{ yb_process_type }}
   file:
@@ -10,13 +6,16 @@
     mode: 0755
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
 
 - set_fact:
     _mount_points: "{{ mount_points.split(',') }}"
   when: _mount_points is not defined
+  tags: always
 
 - set_fact:
     _mount_logs_dir: "{{ _mount_points[0] }}/yb-data/{{ yb_process_type }}/logs"
+  tags: always
 
 - name: Setup | Create {{ yb_process_type }} logs directory
   file:
@@ -34,6 +33,8 @@
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
     state: link
+    force: yes
+  tags: yb-prebuilt-ami
 
 # Remove existing gflags present in conf file
 - name: Configure | Remove {{ yb_process_type }} gflags
@@ -69,6 +70,7 @@
     - cron_result is failed
     - cloud_type != "onprem"
   when: not systemd_option
+  tags: yb-prebuilt-ami
 
 - block:
   # Remove old cron jobs and its tasks that start master and tserver
