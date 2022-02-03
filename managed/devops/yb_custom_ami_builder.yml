@@ -1,32 +1,38 @@
 # Todo: Make cloud_type dynamic when we come to GCP VM image phase.
 
 - name: "preprovision"
-  import_playbook: ../../preprovision.yml
+  import_playbook: preprovision.yml
   vars:
-    ssh_user: "centos"
-    yb_server_ssh_user: "centos"
-    user_name: "yugabyte"
-    cloud_type: "aws"
+    yb_ansible_host: "default"
+
+- name: "Use custom ssh port"
+  import_playbook: use_custom_ssh_port.yml
+  vars:
     yb_ansible_host: "default"
 
 - name: "YB Server Provision"
-  import_playbook: ../../yb-server-provision.yml
+  import_playbook: yb-server-provision.yml
   vars:
-    create_user:
-      name: "yugabyte"
-      group: "yugabyte"
-      shell: "/bin/bash"
-      comment: "yugabyte"
-      home_dir: "/home/yugabyte"
-    server_base:
-      update_yum_cache: false
-      air_gap: false
-    node_exporter_user: "prometheus"
     node_exporter_port: "9300"
-    local_package_path: "/opt/third-party"
-    yb_home_dir: "/home/yugabyte"
-    user_name: "yugabyte"
-    cloud_type: "aws"
     server_type: "cluster-server"
-    use_chrony: False
     yb_prebuilt_ami_host: "default"
+
+- name: "Configure cluster server"
+  import_playbook: configure-cluster-server.yml
+  vars:
+    yb_prebuilt_ami_host: "default"
+    ansible_user: "{{ user_name }}"
+    ansible_port: "{{ custom_ssh_port }}"
+
+- name: "Cleanup Yugabyte auth"
+  hosts: "default"
+  vars:
+    ansible_user: "{{ user_name }}"
+    ansible_port: "{{ custom_ssh_port }}"
+  gather_facts: no
+  tasks:
+    - name: "Clean up SSH keys"
+      file:
+        path: "/home/{{ user_name }}/.ssh/authorized_keys"
+        state: absent
+      tags: yb-prebuilt-ami
