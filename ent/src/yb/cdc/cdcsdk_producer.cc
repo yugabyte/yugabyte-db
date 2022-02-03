@@ -75,7 +75,7 @@ void AddColumnToMap(
   if (tablet_peer->tablet()->table_type() == PGSQL_TABLE_TYPE) {
     docdb::PrimitiveValue::ToQLValuePB(col, col_schema.type(), &tempPB);
     if (!IsNull(tempPB)) {
-      yb::docdb::SetValueFromQLBinaryWrapper(
+      docdb::SetValueFromQLBinaryWrapper(
           tempPB, col_schema.pg_type_oid(), is_proto_record,
           (!is_proto_record) ? kv_pair->mutable_value() : nullptr, cdc_datum_message);
     } else {
@@ -86,8 +86,8 @@ void AddColumnToMap(
   }
 }
 
-inline yb::DatumMessagePB* AddTuple(cdc::RowMessage* row_message) {
-  yb::DatumMessagePB* tuple = nullptr;
+inline DatumMessagePB* AddTuple(cdc::RowMessage* row_message) {
+  DatumMessagePB* tuple = nullptr;
 
   if (row_message) {
     if (row_message->op() == RowMessage_Op_DELETE) {
@@ -108,14 +108,14 @@ void AddPrimaryKey(
   size_t i = 0;
 
   for (const auto& col : decoded_key.doc_key().hashed_group()) {
-    yb::DatumMessagePB* tuple = AddTuple(row_message);
+    DatumMessagePB* tuple = AddTuple(row_message);
 
     AddColumnToMap(
         tablet_peer, tablet_schema.column(i), col, record ? record->add_key() : nullptr, tuple);
     i++;
   }
   for (const auto& col : decoded_key.doc_key().range_group()) {
-    yb::DatumMessagePB* tuple = AddTuple(row_message);
+    DatumMessagePB* tuple = AddTuple(row_message);
 
     AddColumnToMap(
         tablet_peer, tablet_schema.column(i), col, record ? record->add_key() : nullptr, tuple);
@@ -146,7 +146,31 @@ inline void SetCheckpoint(
   }
 }
 
+bool CreateNewRecord(CDCSDKRecordPB* record, const Schema& schema, size_t col_count) {
+  return (record->operation() == CDCSDKRecordPB::INSERT && col_count == schema.num_columns()) ||
+         (record->operation() == CDCSDKRecordPB::UPDATE) ||
+         (record->operation() == CDCSDKRecordPB::DELETE);
+}
+
+bool CreateNewProtoRecord(cdc::RowMessage* row_message, const Schema& schema, size_t col_count) {
+  return (row_message->op() == RowMessage_Op_INSERT && col_count == schema.num_columns()) ||
+         (row_message->op() == RowMessage_Op_UPDATE) ||
+         (row_message->op() == RowMessage_Op_DELETE);
+}
+
+bool IsInsertOperation(CDCSDKRecordPB* record, RowMessage* row_message) {
+  return (record->operation() == CDCSDKRecordPB::INSERT) ||
+         (row_message->op() == RowMessage_Op_INSERT);
+}
+
+bool IsInsertOrUpdate(CDCSDKRecordPB* record, cdc::RowMessage* row_message, bool is_proto_record) {
+  return (!is_proto_record && ((record->operation() == CDCSDKRecordPB::INSERT) ||
+                               (record->operation() == CDCSDKRecordPB::UPDATE))) ||
+         ((row_message->op() == RowMessage_Op_INSERT) ||
+          (row_message->op() == RowMessage_Op_UPDATE));
+}
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
+
 CHECKED_STATUS PopulateCDCSDKIntentRecord(
     const OpId& op_id,
     const TransactionId& transaction_id,
@@ -236,8 +260,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
       }
     }
 
-    if ((record.operation() == CDCSDKRecordPB::INSERT) ||
-        (row_message->op() == RowMessage_Op_INSERT)) {
+    if (IsInsertOperation(&record, row_message)) {
       ++col_count;
     }
 
@@ -248,10 +271,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
     else
       DCHECK(&proto_record);
 
-    if ((!is_proto_record && ((record.operation() == CDCSDKRecordPB::INSERT) ||
-                            (record.operation() == CDCSDKRecordPB::UPDATE))) ||
-        (is_proto_record && ((row_message->op() == RowMessage_Op_INSERT) ||
-                           (row_message->op() == RowMessage_Op_UPDATE)))) {
+    if (IsInsertOrUpdate(&record, row_message, is_proto_record)) {
       if (isColumnIDInitialized && column_id.value_type() == docdb::ValueType::kColumnId) {
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
 
@@ -273,19 +293,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
     }
 
     if (!is_proto_record) {
-      if (record.operation() == CDCSDKRecordPB::INSERT) {
-        if (col_count == schema.num_columns()) {
-          CDCSDKOpIdPB* cdcSdkOpIdPB = record.mutable_cdc_sdk_op_id();
-          SetCDCSDKOpId(
-              cdcSdkOpIdPB, op_id.term, op_id.index, intent.write_id, intent.reverse_index_key);
-
-          resp->add_cdc_sdk_records()->CopyFrom(record);
-          *write_id = intent.write_id;
-          *reverse_index_key = intent.reverse_index_key;
-        }
-      } else if (
-          (record.operation() == CDCSDKRecordPB::UPDATE) ||
-          (record.operation() == CDCSDKRecordPB::DELETE)) {
+      if (CreateNewRecord(&record, schema, col_count)) {
         CDCSDKOpIdPB* cdcSdkOpIdPB = record.mutable_cdc_sdk_op_id();
         SetCDCSDKOpId(
             cdcSdkOpIdPB, op_id.term, op_id.index, intent.write_id, intent.reverse_index_key);
@@ -296,22 +304,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
       }
     } else {
       row_message->set_table(tablet_peer->tablet()->metadata()->table_name());
-      if (row_message->op() == RowMessage_Op_INSERT) {
-        if (col_count == schema.num_columns()) {
-          CDCSDKOpIdPB* cdcSdkOpIdPB = proto_record.mutable_cdc_sdk_op_id();
-          SetCDCSDKOpId(
-              cdcSdkOpIdPB, op_id.term, op_id.index, intent.write_id, intent.reverse_index_key);
-
-          CDCSDKProtoRecordPB* record_to_be_added = resp->add_cdc_sdk_proto_records();
-          record_to_be_added->CopyFrom(proto_record);
-          record_to_be_added->mutable_row_message()->CopyFrom(*row_message);
-
-          *write_id = intent.write_id;
-          *reverse_index_key = intent.reverse_index_key;
-        }
-      } else if (
-          (row_message->op() == RowMessage_Op_UPDATE) ||
-          (row_message->op() == RowMessage_Op_DELETE)) {
+      if (CreateNewProtoRecord(row_message, schema, col_count)) {
         CDCSDKOpIdPB* cdcSdkOpIdPB = proto_record.mutable_cdc_sdk_op_id();
         SetCDCSDKOpId(
             cdcSdkOpIdPB, op_id.term, op_id.index, intent.write_id, intent.reverse_index_key);
@@ -345,7 +338,7 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
   Slice prev_key;
   CDCSDKRecordPB* record = nullptr;
   CDCSDKProtoRecordPB* proto_record = nullptr;
-  yb::cdc::RowMessage* row_message = nullptr;
+  RowMessage* row_message = nullptr;
   for (const auto& write_pair : batch.write_pairs()) {
     Slice key = write_pair.key();
     const auto key_size =
@@ -451,7 +444,7 @@ void SetTableProperties(
   cdc_sdk_table_properties_pb->set_is_ysql_catalog_table(table_properties->is_ysql_catalog_table());
 }
 
-void SetColumnInfo (yb::cdc::CDCSDKColumnInfoPB* column_info, const yb::ColumnSchemaPB& column) {
+void SetColumnInfo (CDCSDKColumnInfoPB* column_info, const ColumnSchemaPB& column) {
   column_info->set_name(column.name());
   column_info->mutable_type()->CopyFrom(column.type());
   column_info->set_is_key(column.is_key());
@@ -469,7 +462,7 @@ CHECKED_STATUS PopulateCDCSDKDDLRecord(
           "Change metadata (DDL) message requires metadata information: $0",
           msg->ShortDebugString()));
 
-  yb::cdc::RowMessage* row_message = nullptr;
+  RowMessage* row_message = nullptr;
   CDCSDKOpIdPB* cdcSdkOpIdPB;
 
   if (!is_proto_record) {
@@ -484,7 +477,7 @@ CHECKED_STATUS PopulateCDCSDKDDLRecord(
   SetCDCSDKOpId(cdcSdkOpIdPB, msg->id().term(), msg->id().index(), 0, "");
 
   for (const auto& column : msg->change_metadata_request().schema().columns()) {
-    yb::cdc::CDCSDKColumnInfoPB* column_info = nullptr;
+    CDCSDKColumnInfoPB* column_info = nullptr;
     if (!is_proto_record) {
       column_info = record->mutable_schema()->add_column_info();
     } else {
@@ -518,7 +511,7 @@ CHECKED_STATUS PopulateCDCSDKTruncateRecord(
       Format(
           "Truncate message requires truncate request information: $0", msg->ShortDebugString()));
 
-  yb::cdc::RowMessage* row_message = nullptr;
+  RowMessage* row_message = nullptr;
   CDCSDKOpIdPB* cdcSdkOpIdPB;
 
   if (!is_proto_record) {
@@ -553,7 +546,7 @@ CHECKED_STATUS ProcessIntents(
 
   if (is_proto_record && stream_state->key.empty() && stream_state->write_id == 0) {
     CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-    yb::cdc::RowMessage* row_message = proto_record->mutable_row_message();
+    RowMessage* row_message = proto_record->mutable_row_message();
     row_message->set_op(RowMessage_Op_BEGIN);
     row_message->set_transaction_id(transaction_id.ToString());
     row_message->set_table(tablet_peer->tablet()->metadata()->table_name());
@@ -587,7 +580,7 @@ CHECKED_STATUS ProcessIntents(
       record->mutable_transaction_state()->set_status(TransactionStatus::APPLYING);
     } else {
       CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-      yb::cdc::RowMessage* row_message = proto_record->mutable_row_message();
+      RowMessage* row_message = proto_record->mutable_row_message();
       row_message->set_op(RowMessage_Op_COMMIT);
       row_message->set_transaction_id(transaction_id.ToString());
       row_message->set_table(tablet_peer->tablet()->metadata()->table_name());
@@ -605,14 +598,14 @@ CHECKED_STATUS ProcessIntents(
 }
 
 CHECKED_STATUS PopulateCDCSDKSnapshotRecord(GetChangesResponsePB* resp,
-                                            const yb::QLTableRow* row,
-                                            const yb::Schema& schema,
+                                            const QLTableRow* row,
+                                            const Schema& schema,
                                             const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                                             ReadHybridTime time,
                                             bool is_proto_record) {
   CDCSDKRecordPB* record = nullptr;
   CDCSDKProtoRecordPB* proto_record = nullptr;
-  yb::cdc::RowMessage* row_message = nullptr;
+  RowMessage* row_message = nullptr;
   cdc::KeyValuePairPB* kv_pair = nullptr;
   DatumMessagePB* cdc_datum_message = nullptr;
   string table_name = tablet_peer->tablet()->metadata()->table_name();
@@ -642,7 +635,7 @@ CHECKED_STATUS PopulateCDCSDKSnapshotRecord(GetChangesResponsePB* resp,
     }
 
     if (value && value->value_case() != QLValuePB::VALUE_NOT_SET) {
-      yb::docdb::SetValueFromQLBinaryWrapper(
+      docdb::SetValueFromQLBinaryWrapper(
         *value, col_schema.pg_type_oid(), is_proto_record,
         (!is_proto_record) ? kv_pair->mutable_value() : nullptr, cdc_datum_message);
     } else {
@@ -660,13 +653,13 @@ CHECKED_STATUS PopulateCDCSDKSnapshotRecord(GetChangesResponsePB* resp,
 }
 
 void FillDDLInfo (CDCSDKRecordPB* record,
-  yb::cdc::RowMessage* row_message,
+  RowMessage* row_message,
   bool is_proto_record,
-  const yb::SchemaPB& schema,
+  const SchemaPB& schema,
   const uint32_t schema_version) {
   CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb;
   for (const auto& column : schema.columns()) {
-    yb::cdc::CDCSDKColumnInfoPB* column_info;
+    CDCSDKColumnInfoPB* column_info;
     if (!is_proto_record)
       column_info = record->mutable_schema()->add_column_info();
     else
@@ -712,7 +705,7 @@ Status GetChangesForCDCSDK(
   bool schema_streamed = false;
   CDCSDKRecordPB* record = nullptr;
   CDCSDKProtoRecordPB* proto_record = nullptr;
-  yb::cdc::RowMessage* row_message = nullptr;
+  RowMessage* row_message = nullptr;
 
   CDCSDKCheckpointPB checkpoint;
   bool checkpoint_updated = false;
@@ -725,7 +718,7 @@ Status GetChangesForCDCSDK(
     tablet::RemoveIntentsData data;
     ReadHybridTime time;
     std::string nextKey;
-    yb::SchemaPB schema_pb;
+    SchemaPB schema_pb;
     // It is first call in snapshot then take snapshot
     if ((from_op_id.key().empty()) && (from_op_id.snapshot_time() == 0)) {
       if (txn_participant == nullptr || txn_participant->context() == nullptr)
@@ -762,7 +755,7 @@ Status GetChangesForCDCSDK(
       Schema schema = *tablet_peer->tablet()->schema().get();
       int limit = FLAGS_cdc_snapshot_batch_size;
       int fetched = 0;
-      std::vector<yb::QLTableRow> rows;
+      std::vector<QLTableRow> rows;
       auto iter = VERIFY_RESULT(tablet_peer->tablet()->CreateCDCSnapshotIterator(
           schema.CopyWithoutColumnIds(), time, &nextKey));
 
