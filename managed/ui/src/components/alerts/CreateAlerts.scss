@@ -177,6 +177,10 @@
   font-weight: bold;
 }
 
+.react-bs-table-sizePerPage-dropdown.open {
+  display: flex !important;
+}
+
 .toggle-filter {
   font-weight: 600;
   font-size: 15px;
@@ -214,15 +218,14 @@
 
   .react-bs-container-body {
     overflow-y: auto !important;
-    overflow-x: hidden !important;
-    height: 500px;
-    width: 100%;
+    min-height: 350px;
   }
 
   .react-bs-table-pagination {
     margin-top: 30px !important;
   }
-  .yb-loader-circle{
+
+  .yb-loader-circle {
     position: absolute;
   }
 }
