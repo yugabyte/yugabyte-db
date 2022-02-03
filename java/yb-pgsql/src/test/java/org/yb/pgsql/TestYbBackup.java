@@ -858,4 +858,187 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
     doTestGeoPartitionedBackup("yugabyte", 3, true);
   }
+
+  @Test
+  public void testUserDefinedTypes() throws Exception {
+    // TODO(myang): Add ALTER TYPE test after #1893 is fixed.
+    try (Statement stmt = connection.createStatement()) {
+      // A enum type.
+      stmt.execute("CREATE TYPE e_t AS ENUM('c', 'b', 'a')");
+
+      // Table column of enum type.
+      stmt.execute("CREATE TABLE test_tb1(c1 e_t)");
+      stmt.execute("INSERT INTO test_tb1 VALUES ('b'), ('c')");
+
+      // Table column of enum type with default value.
+      stmt.execute("CREATE TABLE test_tb2(c1 INT, c2 e_t DEFAULT 'a')");
+      stmt.execute("INSERT INTO test_tb2 VALUES(1)");
+
+      // A user-defined type.
+      stmt.execute("CREATE TYPE udt1 AS (f1 INT, f2 TEXT, f3 e_t)");
+
+      // Table column of user-defined type.
+      stmt.execute("CREATE TABLE test_tb3(c1 udt1)");
+      stmt.execute("INSERT INTO test_tb3 VALUES((1, '1', 'a'))");
+      stmt.execute("INSERT INTO test_tb3 VALUES((1, '2', 'b'))");
+      stmt.execute("INSERT INTO test_tb3 VALUES((1, '2', 'c'))");
+
+      // Table column of user-defined type and enum type with default values.
+      stmt.execute("CREATE TABLE test_tb4(c1 INT, c2 udt1 DEFAULT (1, '2', 'b'), " +
+                   "c3 e_t DEFAULT 'b')");
+      stmt.execute("INSERT INTO test_tb4 VALUES (1)");
+
+      // Table column of enum array type.
+      stmt.execute("CREATE TABLE test_tb5 (c1 e_t[])");
+      stmt.execute("INSERT INTO test_tb5 VALUES (ARRAY['a', 'b', 'c']::e_t[])");
+
+      // nested user-defined type and enum type.
+      stmt.execute("CREATE TYPE udt2 AS (f1 INT, f2 udt1, f3 e_t)");
+
+      // Table column of nested user-defined type and enum type.
+      stmt.execute("CREATE TABLE test_tb6(c1 INT, c2 udt2, c3 e_t)");
+      stmt.execute("INSERT INTO test_tb6 VALUES (1, (1, (1, '1', 'a'), 'b'), 'c')");
+
+      // Table column of array of nested user-defined type and enum type.
+      stmt.execute("CREATE TABLE test_tb7 (c1 udt2[])");
+      stmt.execute("INSERT INTO test_tb7 VALUES (ARRAY[" +
+                   "(1, (1, (1, '1', 'a'), 'b'), 'c')," +
+                   "(2, (2, (2, '2', 'b'), 'a'), 'c')," +
+                   "(3, (3, (3, '3', 'a'), 'c'), 'b')]::udt2[])");
+
+      // A domain type.
+      stmt.execute("CREATE DOMAIN dom AS TEXT " +
+                   "check(value ~ '^\\d{5}$'or value ~ '^\\d{5}-\\d{4}$')");
+      // Table column of array of domain type.
+      stmt.execute("CREATE TABLE test_tb8(c1 dom[])");
+      stmt.execute("INSERT INTO test_tb8 VALUES (ARRAY['32768', '65536']::dom[])");
+
+      // A range type.
+      stmt.execute("CREATE TYPE inetrange AS RANGE(subtype = inet)");
+      // Table column of range type.
+      stmt.execute("CREATE TABLE test_tb9(c1 inetrange)");
+      stmt.execute("INSERT INTO test_tb9 VALUES ('[10.0.0.1,10.0.0.2]'::inetrange)");
+      // Table column of array of range type.
+      stmt.execute("CREATE TABLE test_tb10(c1 inetrange[])");
+      stmt.execute("INSERT INTO test_tb10 VALUES (ARRAY[" +
+                   "'[10.0.0.1,10.0.0.2]'::inetrange, '[10.0.0.3,10.0.0.8]'::inetrange])");
+
+      // Test drop column in the middle.
+      stmt.execute("CREATE TABLE test_tb11(c1 e_t, c2 e_t, c3 e_t, c4 e_t)");
+      stmt.execute("INSERT INTO test_tb11 VALUES (" +
+                   "'a', 'b', 'c', 'a'), ('a', 'c', 'b', 'b'), ('b', 'a', 'c', 'c')");
+      stmt.execute("ALTER TABLE test_tb11 DROP COLUMN c2");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+
+      stmt.execute("INSERT INTO test_tb1 VALUES ('a')");
+      stmt.execute("INSERT INTO test_tb2 VALUES(2)");
+      stmt.execute("INSERT INTO test_tb3 VALUES((2, '1', 'a'))");
+      stmt.execute("INSERT INTO test_tb3 VALUES((2, '2', 'b'))");
+      stmt.execute("INSERT INTO test_tb3 VALUES((2, '2', 'c'))");
+      stmt.execute("INSERT INTO test_tb4 VALUES (2)");
+      stmt.execute("INSERT INTO test_tb5 VALUES (ARRAY['c', 'b', 'a']::e_t[])");
+      stmt.execute("INSERT INTO test_tb6 VALUES (2, (2, (2, '2', 'c'), 'b'), 'a')");
+      stmt.execute("INSERT INTO test_tb7 VALUES (ARRAY[" +
+                   "(4, (4, (4, '4', 'c'), 'b'), 'a')]::udt2[])");
+      stmt.execute("INSERT INTO test_tb8 VALUES (ARRAY['16384', '81920']::dom[])");
+      stmt.execute("INSERT INTO test_tb9 VALUES ('[10.0.0.3,10.0.0.8]'::inetrange)");
+      stmt.execute("INSERT INTO test_tb10 VALUES (array['[10.0.0.9,10.0.0.12]'::inetrange])");
+      stmt.execute("ALTER TABLE test_tb11 DROP COLUMN c3");
+
+      List<Row> expectedRows1 = Arrays.asList(new Row("c"),
+                                              new Row("b"),
+                                              new Row("a"));
+      List<Row> expectedRows2 = Arrays.asList(new Row(1, "a"),
+                                              new Row(2, "a"));
+      List<Row> expectedRows3 = Arrays.asList(new Row("(1,1,a)"),
+                                              new Row("(1,2,c)"),
+                                              new Row("(1,2,b)"),
+                                              new Row("(2,1,a)"),
+                                              new Row("(2,2,c)"),
+                                              new Row("(2,2,b)"));
+      List<Row> expectedRows4 = Arrays.asList(new Row(1, "(1,2,b)", "b"),
+                                              new Row(2, "(1,2,b)", "b"));
+      List<Row> expectedRows5 = Arrays.asList(new Row("{a,b,c}"),
+                                              new Row("{c,b,a}"));
+      List<Row> expectedRows6 = Arrays.asList(new Row(1, "(1,\"(1,1,a)\",b)", "c"),
+                                              new Row(2, "(2,\"(2,2,c)\",b)", "a"));
+      List<Row> expectedRows7 = Arrays.asList(
+        new Row("{\"(1,\\\"(1,\\\"\\\"(1,1,a)\\\"\\\",b)\\\",c)\"," +
+                 "\"(2,\\\"(2,\\\"\\\"(2,2,b)\\\"\\\",a)\\\",c)\"," +
+                 "\"(3,\\\"(3,\\\"\\\"(3,3,a)\\\"\\\",c)\\\",b)\"}"),
+        new Row("{\"(4,\\\"(4,\\\"\\\"(4,4,c)\\\"\\\",b)\\\",a)\"}"));
+      List<Row> expectedRows8 = Arrays.asList(new Row("{16384,81920}"),
+                                              new Row("{32768,65536}"));
+      List<Row> expectedRows9 = Arrays.asList(new Row("[10.0.0.1,10.0.0.2]"),
+                                              new Row("[10.0.0.3,10.0.0.8]"));
+      List<Row> expectedRows10 = Arrays.asList(
+        new Row("{\"[10.0.0.1,10.0.0.2]\",\"[10.0.0.3,10.0.0.8]\"}"),
+        new Row("{\"[10.0.0.9,10.0.0.12]\"}"));
+
+      // Column c2 and c3 are dropped from test_tbl1 so we only expect to see rows for
+      // column c1 and c4.
+      List<Row> expectedRows11 = Arrays.asList(new Row("b", "c"),
+                                               new Row("a", "b"),
+                                               new Row("a", "a"));
+      assertRowList(stmt, "SELECT * FROM test_tb1 ORDER BY c1", expectedRows1);
+      assertRowList(stmt, "SELECT * FROM test_tb1 ORDER BY c1", expectedRows1);
+      assertRowList(stmt, "SELECT * FROM test_tb2 ORDER BY c1", expectedRows2);
+      assertRowList(stmt, "SELECT * FROM test_tb3 ORDER BY c1", expectedRows3);
+      assertRowList(stmt, "SELECT * FROM test_tb4 ORDER BY c1", expectedRows4);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb5 ORDER BY c1", expectedRows5);
+      assertRowList(stmt, "SELECT * FROM test_tb6 ORDER BY c1", expectedRows6);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb7 ORDER BY c1", expectedRows7);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb8 ORDER BY c1", expectedRows8);
+      assertRowList(stmt, "SELECT * FROM test_tb9 ORDER BY c1", expectedRows9);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb10 ORDER BY c1", expectedRows10);
+      assertRowList(stmt, "SELECT * FROM test_tb11 ORDER BY c1, c4", expectedRows11);
+    }
+
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      List<Row> expectedRows1 = Arrays.asList(new Row("c"),
+                                              new Row("b"));
+      List<Row> expectedRows2 = Arrays.asList(new Row(1, "a"));
+      List<Row> expectedRows3 = Arrays.asList(new Row("(1,1,a)"),
+                                              new Row("(1,2,c)"),
+                                              new Row("(1,2,b)"));
+      List<Row> expectedRows4 = Arrays.asList(new Row(1, "(1,2,b)", "b"));
+      List<Row> expectedRows5 = Arrays.asList(new Row("{a,b,c}"));
+      List<Row> expectedRows6 = Arrays.asList(new Row(1, "(1,\"(1,1,a)\",b)", "c"));
+      List<Row> expectedRows7 = Arrays.asList(
+        new Row("{\"(1,\\\"(1,\\\"\\\"(1,1,a)\\\"\\\",b)\\\",c)\"," +
+                 "\"(2,\\\"(2,\\\"\\\"(2,2,b)\\\"\\\",a)\\\",c)\"," +
+                 "\"(3,\\\"(3,\\\"\\\"(3,3,a)\\\"\\\",c)\\\",b)\"}"));
+      List<Row> expectedRows8 = Arrays.asList(new Row("{32768,65536}"));
+      List<Row> expectedRows9 = Arrays.asList(new Row("[10.0.0.1,10.0.0.2]"));
+      List<Row> expectedRows10 = Arrays.asList(
+        new Row("{\"[10.0.0.1,10.0.0.2]\",\"[10.0.0.3,10.0.0.8]\"}"));
+
+      // Only column c2 is dropped from test_tbl1 before backup, the column c3 was dropped
+      // after backup and it should be restored. Therefore we expect to see rows for column
+      // c1, c3 and c4.
+      List<Row> expectedRows11 = Arrays.asList(new Row("b", "c", "c"),
+                                               new Row("a", "c", "a"),
+                                               new Row("a", "b", "b"));
+      assertRowList(stmt, "SELECT * FROM test_tb1 ORDER BY c1", expectedRows1);
+      assertRowList(stmt, "SELECT * FROM test_tb2 ORDER BY c1", expectedRows2);
+      assertRowList(stmt, "SELECT * FROM test_tb3 ORDER BY c1", expectedRows3);
+      assertRowList(stmt, "SELECT * FROM test_tb4 ORDER BY c1", expectedRows4);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb5 ORDER BY c1", expectedRows5);
+      assertRowList(stmt, "SELECT * FROM test_tb6 ORDER BY c1", expectedRows6);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb7 ORDER BY c1", expectedRows7);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb8 ORDER BY c1", expectedRows8);
+      assertRowList(stmt, "SELECT * FROM test_tb9 ORDER BY c1", expectedRows9);
+      assertRowList(stmt, "SELECT c1::TEXT FROM test_tb10 ORDER BY c1", expectedRows10);
+      assertRowList(stmt, "SELECT * FROM test_tb11 ORDER BY c1, c3, c4", expectedRows11);
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
 }

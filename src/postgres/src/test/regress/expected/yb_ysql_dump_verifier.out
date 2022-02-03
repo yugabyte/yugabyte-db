@@ -1,49 +1,42 @@
-                                List of relations
- Schema |                 Name                  |   Type   |        Owner
---------+---------------------------------------+----------+----------------------
- public | chat_user                             | table    | yugabyte_test
- public | rls_private                           | table    | yugabyte_test
- public | rls_public                            | table    | yugabyte_test
- public | table1                                | table    | yugabyte_test
- public | table2                                | table    | yugabyte_test
- public | tbl1                                  | table    | yugabyte_test
- public | tbl10                                 | table    | yugabyte_test
- public | tbl11                                 | table    | yugabyte_test
- public | tbl12                                 | table    | yugabyte_test
- public | tbl13                                 | table    | yugabyte_test
- public | tbl1_a_seq                            | sequence | yugabyte_test
- public | tbl2                                  | table    | yugabyte_test
- public | tbl2_a_seq                            | sequence | yugabyte_test
- public | tbl3                                  | table    | yugabyte_test
- public | tbl4                                  | table    | yugabyte_test
- public | tbl5                                  | table    | yugabyte_test
- public | tbl6                                  | table    | yugabyte_test
- public | tbl7                                  | table    | yugabyte_test
- public | tbl8                                  | table    | yugabyte_test
- public | tbl9                                  | table    | yugabyte_test
- public | tgroup_empty_options                  | table    | tablegroup_test_user
- public | tgroup_no_options_and_tgroup          | table    | tablegroup_test_user
- public | tgroup_one_option                     | table    | tablegroup_test_user
- public | tgroup_one_option_and_tgroup          | table    | tablegroup_test_user
- public | tgroup_options                        | table    | tablegroup_test_user
- public | tgroup_options_and_tgroup             | table    | tablegroup_test_user
- public | this_table_is_just_to_shift_oids_by_1 | table    | yugabyte_test
- public | this_table_is_just_to_shift_oids_by_2 | table    | yugabyte_test
- public | this_table_is_just_to_shift_oids_by_3 | table    | yugabyte_test
- public | uaccount                              | table    | regress_rls_alice
-(30 rows)
+                            List of relations
+ Schema |             Name             |   Type   |        Owner         
+--------+------------------------------+----------+----------------------
+ public | chat_user                    | table    | yugabyte_test
+ public | rls_private                  | table    | yugabyte_test
+ public | rls_public                   | table    | yugabyte_test
+ public | tbl1                         | table    | yugabyte_test
+ public | tbl10                        | table    | yugabyte_test
+ public | tbl11                        | table    | yugabyte_test
+ public | tbl12                        | table    | yugabyte_test
+ public | tbl13                        | table    | yugabyte_test
+ public | tbl1_a_seq                   | sequence | yugabyte_test
+ public | tbl2                         | table    | yugabyte_test
+ public | tbl2_a_seq                   | sequence | yugabyte_test
+ public | tbl3                         | table    | yugabyte_test
+ public | tbl4                         | table    | yugabyte_test
+ public | tbl5                         | table    | yugabyte_test
+ public | tbl6                         | table    | yugabyte_test
+ public | tbl7                         | table    | yugabyte_test
+ public | tbl8                         | table    | yugabyte_test
+ public | tbl9                         | table    | yugabyte_test
+ public | tgroup_empty_options         | table    | tablegroup_test_user
+ public | tgroup_no_options_and_tgroup | table    | tablegroup_test_user
+ public | tgroup_one_option            | table    | tablegroup_test_user
+ public | tgroup_one_option_and_tgroup | table    | tablegroup_test_user
+ public | tgroup_options               | table    | tablegroup_test_user
+ public | tgroup_options_and_tgroup    | table    | tablegroup_test_user
+ public | uaccount                     | table    | regress_rls_alice
+(25 rows)
 
-          List of tablespaces
-    Name    |     Owner     | Location
-------------+---------------+----------
- pg_default | postgres      |
- pg_global  | postgres      |
- x          | yugabyte_test |
- z          | yugabyte_test |
-(4 rows)
+       List of tablespaces
+    Name    |  Owner   | Location 
+------------+----------+----------
+ pg_default | postgres | 
+ pg_global  | postgres | 
+(2 rows)
 
                                          List of roles
-      Role name       |                         Attributes                         | Member of
+      Role name       |                         Attributes                         | Member of 
 ----------------------+------------------------------------------------------------+-----------
  postgres             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  regress_rls_alice    | Cannot login                                               | {}
@@ -55,20 +48,20 @@
  yugabyte_test        | Superuser, Create role, Create DB, Bypass RLS              | {}
 
   List of schemas
-  Name  |  Owner
+  Name  |  Owner   
 --------+----------
  public | postgres
 (1 row)
 
                                  List of tablegroups
- Name |        Owner         | Access privileges | Description | Tablespace | Options
+ Name |        Owner         | Access privileges | Description | Tablespace | Options 
 ------+----------------------+-------------------+-------------+------------+---------
- grp1 | tablegroup_test_user |                   |             |            |
- grp2 | tablegroup_test_user |                   |             |            |
+ grp1 | tablegroup_test_user |                   |             |            | 
+ grp2 | tablegroup_test_user |                   |             |            | 
 (2 rows)
 
                                                                                        List of tablegroup tables
- Group Name |     Group Owner      | Access privileges | Group Description | Group Tablespace | Group Options |             Name             | Type  |        Owner         | Rel Description |  Size
+ Group Name |     Group Owner      | Access privileges | Group Description | Group Tablespace | Group Options |             Name             | Type  |        Owner         | Rel Description |  Size   
 ------------+----------------------+-------------------+-------------------+------------------+---------------+------------------------------+-------+----------------------+-----------------+---------
  grp1       | tablegroup_test_user |                   |                   |                  |               | tgroup_no_options_and_tgroup | table | tablegroup_test_user |                 | 0 bytes
  grp2       | tablegroup_test_user |                   |                   |                  |               | tgroup_one_option_and_tgroup | table | tablegroup_test_user |                 | 0 bytes

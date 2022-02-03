@@ -430,7 +430,7 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	 * pg_largeobject_metadata contains pg_authid.oid's, so we use the
 	 * binary-upgrade override.
 	 */
-	if (IsBinaryUpgrade)
+	if (IsBinaryUpgrade && !yb_binary_restore)
 	{
 		if (!OidIsValid(binary_upgrade_next_pg_authid_oid))
 			ereport(ERROR,

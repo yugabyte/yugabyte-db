@@ -1991,6 +1991,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_binary_restore", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enter a special mode designed specifically for YSQL binary restore."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_binary_restore,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Relaxes some internal sanity checks for system catalogs to "
 						 "allow creating them."),

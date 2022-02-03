@@ -23,7 +23,7 @@
 
 #define CHECK_IS_BINARY_UPGRADE									\
 do {															\
-	if (!IsBinaryUpgrade)										\
+	if (!IsBinaryUpgrade && !yb_binary_restore)					\
 		ereport(ERROR,											\
 				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),	\
 				 (errmsg("function can only be called when server is in binary upgrade mode")))); \
