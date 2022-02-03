@@ -167,8 +167,8 @@ inline bool IsInsertOrUpdate(
     const CDCSDKRecordPB* record, const RowMessage* row_message, bool is_proto_record) {
   return (!is_proto_record && ((record->operation() == CDCSDKRecordPB::INSERT) ||
                                (record->operation() == CDCSDKRecordPB::UPDATE))) ||
-         ((row_message->op() == RowMessage_Op_INSERT) ||
-          (row_message->op() == RowMessage_Op_UPDATE));
+         ((row_message != nullptr) && ((row_message->op() == RowMessage_Op_INSERT) ||
+                                       (row_message->op() == RowMessage_Op_UPDATE)));
 }
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
 
@@ -373,10 +373,7 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
       // Check whether operation is WRITE or DELETE.
       if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
-        if (!is_proto_record)
-          record->set_operation(CDCSDKRecordPB::DELETE);
-        else
-          row_message->set_op(RowMessage_Op_DELETE);
+        SetOperation(record, row_message, DELETE, is_proto_record);
       } else {
         docdb::PrimitiveValue column_id;
         Slice key_column((const char*)(key.data() + key_size));
@@ -384,11 +381,9 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
 
         if (column_id.value_type() == docdb::ValueType::kSystemColumnId &&
             decoded_value.value_type() == docdb::ValueType::kNullLow) {
-          (!is_proto_record) ? (record->set_operation(CDCSDKRecordPB::INSERT))
-                           : (row_message->set_op(RowMessage_Op_INSERT));
+          SetOperation(record, row_message, INSERT, is_proto_record);
         } else {
-          (!is_proto_record) ? (record->set_operation(CDCSDKRecordPB::UPDATE))
-                           : (row_message->set_op(RowMessage_Op_UPDATE));
+          SetOperation(record, row_message, UPDATE, is_proto_record);
         }
       }
 
@@ -408,12 +403,7 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
     else
       DCHECK(proto_record);
 
-    if ((!is_proto_record && ((record->operation() == CDCSDKRecordPB::INSERT) ||
-                            (record->operation() == CDCSDKRecordPB::UPDATE))) ||
-        (is_proto_record && (row_message != nullptr) &&
-         ((row_message->op() == RowMessage_Op_INSERT) ||
-          (row_message->op() == RowMessage_Op_UPDATE)))) {
-
+    if (IsInsertOrUpdate(record, row_message, is_proto_record)) {
       docdb::PrimitiveValue column_id;
       Slice key_column((const char*)(key.data() + key_size));
       RETURN_NOT_OK(docdb::SubDocument::DecodeKey(&key_column, &column_id));
@@ -812,6 +802,7 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(ProcessIntents(
         op_id, transaction_id, stream_metadata, resp, &consumption, &checkpoint, tablet_peer,
         &keyValueIntents, &stream_state, nullptr, is_proto_record));
+
     if (checkpoint.write_id() == 0 && checkpoint.key().empty()) {
       last_streamed_op_id->term = checkpoint.term();
       last_streamed_op_id->index = checkpoint.index();
