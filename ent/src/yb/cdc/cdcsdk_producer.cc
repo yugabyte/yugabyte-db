@@ -170,8 +170,8 @@ inline bool IsInsertOrUpdate(
          ((row_message != nullptr) && ((row_message->op() == RowMessage_Op_INSERT) ||
                                        (row_message->op() == RowMessage_Op_UPDATE)));
 }
-// Populate CDC record corresponding to WAL batch in ReplicateMsg.
 
+// Populate CDC record corresponding to WAL batch in ReplicateMsg.
 CHECKED_STATUS PopulateCDCSDKIntentRecord(
     const OpId& op_id,
     const TransactionId& transaction_id,
@@ -520,6 +520,16 @@ CHECKED_STATUS PopulateCDCSDKTruncateRecord(
   return Status::OK();
 }
 
+inline void SetTermIndex(CDCSDKCheckpointPB* checkpoint, int64_t term, int64_t index) {
+  checkpoint->set_term(term);
+  checkpoint->set_index(index);
+}
+
+inline void SetKeyWriteId(CDCSDKCheckpointPB* checkpoint, string key, int32_t write_id) {
+  checkpoint->set_key(key);
+  checkpoint->set_write_id(write_id);
+}
+
 CHECKED_STATUS ProcessIntents(
     const OpId& op_id,
     const TransactionId& transaction_id,
@@ -558,8 +568,7 @@ CHECKED_STATUS ProcessIntents(
       op_id, transaction_id, keyValueIntents, metadata, tablet_peer, resp, consumption, &write_id,
       &reverse_index_key, schema, is_proto_record));
 
-  checkpoint->set_term(op_id.term);
-  checkpoint->set_index(op_id.index);
+  SetTermIndex(checkpoint, op_id.term, op_id.index);
 
   if (stream_state->key.empty() && stream_state->write_id == 0) {
     CDCSDKOpIdPB* cdcSdkOpIdPB;
@@ -578,11 +587,9 @@ CHECKED_STATUS ProcessIntents(
       cdcSdkOpIdPB = proto_record->mutable_cdc_sdk_op_id();
     }
     SetCDCSDKOpId(cdcSdkOpIdPB, op_id.term, op_id.index, 0, "");
-    checkpoint->set_key("");
-    checkpoint->set_write_id(0);
+    SetKeyWriteId(checkpoint, "", 0);
   } else {
-    checkpoint->set_key(reverse_index_key);
-    checkpoint->set_write_id(write_id);
+    SetKeyWriteId(checkpoint, reverse_index_key, write_id);
   }
 
   return Status::OK();
