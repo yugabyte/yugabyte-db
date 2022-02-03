@@ -21,6 +21,7 @@ showAsideToc: true
 
 - Ability to select the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating standard clusters(../cloud-basics/create-clusters/)].
 - Automated notifications of upcoming database upgrades. The notification email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
+- [Amazon EC2 T3 instance types](https://aws.amazon.com/ec2/instance-types/t3/) for new free clusters on AWS.
 
 #### Database
 
@@ -37,7 +38,7 @@ showAsideToc: true
 
 #### Fixes
 
-- Windows and Firefox keyboard shortcuts now work correctly in cloud shell.
+- Windows and Firefox keyboard shortcuts work correctly in cloud shell.
 
 ### December 16, 2021
 
