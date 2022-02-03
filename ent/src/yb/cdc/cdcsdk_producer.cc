@@ -38,7 +38,7 @@ enum OpType {
 };
 
 void SetOperation(
-    CDCSDKRecordPB* record, cdc::RowMessage* row_message, OpType type, bool is_proto_record) {
+    CDCSDKRecordPB* record, RowMessage* row_message, OpType type, bool is_proto_record) {
   switch (type) {
     case INSERT:
       if (!is_proto_record)
@@ -65,7 +65,7 @@ void AddColumnToMap(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const ColumnSchema& col_schema,
     const docdb::PrimitiveValue& col,
-    cdc::KeyValuePairPB* kv_pair,
+    KeyValuePairPB* kv_pair,
     DatumMessagePB* cdc_datum_message) {
   bool is_proto_record = (kv_pair == nullptr);
   QLValuePB tempPB;
@@ -86,7 +86,7 @@ void AddColumnToMap(
   }
 }
 
-inline DatumMessagePB* AddTuple(cdc::RowMessage* row_message) {
+inline DatumMessagePB* AddTuple(RowMessage* row_message) {
   DatumMessagePB* tuple = nullptr;
 
   if (row_message) {
@@ -104,7 +104,7 @@ inline DatumMessagePB* AddTuple(cdc::RowMessage* row_message) {
 
 void AddPrimaryKey(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const docdb::SubDocKey& decoded_key,
-    const Schema& tablet_schema, CDCSDKRecordPB* record, cdc::RowMessage* row_message) {
+    const Schema& tablet_schema, CDCSDKRecordPB* record, RowMessage* row_message) {
   size_t i = 0;
 
   for (const auto& col : decoded_key.doc_key().hashed_group()) {
@@ -146,24 +146,25 @@ inline void SetCheckpoint(
   }
 }
 
-bool CreateNewRecord(CDCSDKRecordPB* record, const Schema& schema, size_t col_count) {
+inline bool CreateNewRecord(const CDCSDKRecordPB* record, const Schema& schema, size_t col_count) {
   return (record->operation() == CDCSDKRecordPB::INSERT && col_count == schema.num_columns()) ||
          (record->operation() == CDCSDKRecordPB::UPDATE) ||
          (record->operation() == CDCSDKRecordPB::DELETE);
 }
 
-bool CreateNewProtoRecord(cdc::RowMessage* row_message, const Schema& schema, size_t col_count) {
+inline bool CreateNewProtoRecord(
+    const RowMessage* row_message, const Schema& schema, size_t col_count) {
   return (row_message->op() == RowMessage_Op_INSERT && col_count == schema.num_columns()) ||
-         (row_message->op() == RowMessage_Op_UPDATE) ||
-         (row_message->op() == RowMessage_Op_DELETE);
+         (row_message->op() == RowMessage_Op_UPDATE) || (row_message->op() == RowMessage_Op_DELETE);
 }
 
-bool IsInsertOperation(CDCSDKRecordPB* record, RowMessage* row_message) {
+inline bool IsInsertOperation(const CDCSDKRecordPB* record, const RowMessage* row_message) {
   return (record->operation() == CDCSDKRecordPB::INSERT) ||
          (row_message->op() == RowMessage_Op_INSERT);
 }
 
-bool IsInsertOrUpdate(CDCSDKRecordPB* record, cdc::RowMessage* row_message, bool is_proto_record) {
+inline bool IsInsertOrUpdate(
+    const CDCSDKRecordPB* record, const RowMessage* row_message, bool is_proto_record) {
   return (!is_proto_record && ((record->operation() == CDCSDKRecordPB::INSERT) ||
                                (record->operation() == CDCSDKRecordPB::UPDATE))) ||
          ((row_message->op() == RowMessage_Op_INSERT) ||
@@ -187,7 +188,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
   Slice prev_key;
   CDCSDKRecordPB record;
   CDCSDKProtoRecordPB proto_record;
-  cdc::RowMessage* row_message = proto_record.mutable_row_message();
+  RowMessage* row_message = proto_record.mutable_row_message();
   size_t col_count = 0;
 
   for (const auto& intent : *intents) {
@@ -606,8 +607,6 @@ CHECKED_STATUS PopulateCDCSDKSnapshotRecord(GetChangesResponsePB* resp,
   CDCSDKRecordPB* record = nullptr;
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
-  cdc::KeyValuePairPB* kv_pair = nullptr;
-  DatumMessagePB* cdc_datum_message = nullptr;
   string table_name = tablet_peer->tablet()->metadata()->table_name();
 
   if (!is_proto_record) {
@@ -620,6 +619,9 @@ CHECKED_STATUS PopulateCDCSDKSnapshotRecord(GetChangesResponsePB* resp,
     row_message->set_op(RowMessage_Op_READ);
     row_message->set_commit_time(time.read.ToUint64());
   }
+
+  KeyValuePairPB* kv_pair = nullptr;
+  DatumMessagePB* cdc_datum_message = nullptr;
 
   for (size_t col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
     ColumnId col_id = schema.column_id(col_idx);
@@ -712,14 +714,14 @@ Status GetChangesForCDCSDK(
   std::vector<docdb::IntentKeyValueForCDC> keyValueIntents;
   docdb::ApplyTransactionState stream_state;
 
-  // It is snapshot call
+  // It is snapshot call.
   if (from_op_id.write_id() == -1) {
     auto txn_participant = tablet_peer->tablet()->transaction_participant();
     tablet::RemoveIntentsData data;
     ReadHybridTime time;
     std::string nextKey;
     SchemaPB schema_pb;
-    // It is first call in snapshot then take snapshot
+    // It is first call in snapshot then take snapshot.
     if ((from_op_id.key().empty()) && (from_op_id.snapshot_time() == 0)) {
       if (txn_participant == nullptr || txn_participant->context() == nullptr)
         return STATUS_SUBSTITUTE(Corruption,
@@ -728,7 +730,7 @@ Status GetChangesForCDCSDK(
       // Set the checkpoint and communicate to the follower.
       VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
               << "time " << data.log_ht.ToUint64();
-      // update the CDCConsumerOpId
+      // Update the CDCConsumerOpId.
       {
         std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
         shared_consensus->UpdateCDCConsumerOpId(data.op_id);
