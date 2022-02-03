@@ -2092,6 +2092,7 @@ Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
                         table_info.namespace_().name(),
                         table_info.id(),
                         table_info.name(),
+                        table_info.pgschema_name(),
                         table_info.relation_type());
   }
   return result;
@@ -2125,6 +2126,7 @@ Result<std::vector<YBTableName>> YBClient::ListUserTables(const NamespaceId& ns_
                         table_info.namespace_().name(),
                         table_info.id(),
                         table_info.name(),
+                        table_info.pgschema_name(),
                         table_info.relation_type());
   }
   return result;

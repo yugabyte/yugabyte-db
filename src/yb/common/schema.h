@@ -461,6 +461,8 @@ class TableProperties {
   bool is_ysql_catalog_table_ = false;
 };
 
+typedef std::string PgSchemaName;
+
 // The schema for a set of rows.
 //
 // A Schema is simply a set of columns, along with information about
@@ -486,7 +488,8 @@ class Schema {
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
       has_nullables_(false),
       cotable_id_(Uuid::Nil()),
-      pgtable_id_(0) {
+      pgtable_id_(0),
+      pgschema_name_("") {
   }
 
   Schema(const Schema& other);
@@ -506,7 +509,8 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const PgTableOid pgtable_id = 0);
+         const PgTableOid pgtable_id = 0,
+         const PgSchemaName pgschema_name = "");
 
   // Construct a schema with the given information.
   //
@@ -519,7 +523,8 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const PgTableOid pgtable_id = 0);
+         const PgTableOid pgtable_id = 0,
+         const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
@@ -527,7 +532,8 @@ class Schema {
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const PgTableOid pgtable_id = 0);
+                       const PgTableOid pgtable_id = 0,
+                       const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
@@ -537,7 +543,8 @@ class Schema {
                        size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const PgTableOid pgtable_id = 0);
+                       const PgTableOid pgtable_id = 0,
+                       const PgSchemaName pgschema_name = "");
 
   // Return the number of bytes needed to represent a single row of this schema.
   //
@@ -639,6 +646,18 @@ class Schema {
 
   void SetRetainDeleteMarkers(bool retain_delete_markers) {
     table_properties_.SetRetainDeleteMarkers(retain_delete_markers);
+  }
+
+  bool has_pgschema_name() const {
+    return !pgschema_name_.empty();
+  }
+
+  void SetSchemaName(std::string pgschema_name) {
+    pgschema_name_ = pgschema_name;
+  }
+
+  PgSchemaName SchemaName() const {
+    return pgschema_name_;
   }
 
   // Return the column index corresponding to the given column,
@@ -1085,6 +1104,8 @@ class Schema {
   // tables. Nil for the primary or single-tenant table.
   PgTableOid pgtable_id_;
 
+  PgSchemaName pgschema_name_;
+
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
 };
@@ -1132,6 +1153,14 @@ class SchemaBuilder {
     return pgtable_id_;
   }
 
+  void set_pgschema_name(PgSchemaName pgschema_name) {
+    pgschema_name_ = pgschema_name;
+  }
+
+  PgSchemaName pgschema_name() const {
+    return pgschema_name_;
+  }
+
   void set_cotable_id(Uuid cotable_id) {
     cotable_id_ = cotable_id;
   }
@@ -1141,10 +1170,12 @@ class SchemaBuilder {
   }
 
   Schema Build() const {
-    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
+    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_,
+                  pgtable_id_, pgschema_name_);
   }
   Schema BuildWithoutIds() const {
-    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,  pgtable_id_);
+    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,
+                  pgtable_id_, pgschema_name_);
   }
 
   // assumes type is allowed in primary key -- this should be checked before getting here
@@ -1206,6 +1237,7 @@ class SchemaBuilder {
   size_t num_key_columns_;
   TableProperties table_properties_;
   PgTableOid pgtable_id_ = 0;
+  PgSchemaName pgschema_name_ = "";
   Uuid cotable_id_ = Uuid::Nil();
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);

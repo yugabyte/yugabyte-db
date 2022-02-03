@@ -345,6 +345,7 @@ void SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   SchemaToColocatedTableIdentifierPB(schema, pb->mutable_colocated_table_id());
   SchemaToColumnPBs(schema, pb->mutable_columns(), flags);
   schema.table_properties().ToTablePropertiesPB(pb->mutable_table_properties());
+  pb->set_pgschema_name(schema.SchemaName());
 }
 
 void SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
@@ -362,6 +363,10 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
   // Convert the table properties.
   TableProperties table_properties = TableProperties::FromTablePropertiesPB(pb.table_properties());
   RETURN_NOT_OK(schema->Reset(columns, column_ids, num_key_columns, table_properties));
+
+  if(pb.has_pgschema_name()) {
+    schema->SetSchemaName(pb.pgschema_name());
+  }
 
   if (pb.has_colocated_table_id()) {
     switch (pb.colocated_table_id().value_case()) {

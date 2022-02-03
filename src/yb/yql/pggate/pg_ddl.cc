@@ -187,6 +187,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_is_shared_table(is_shared_table);
   req_.set_if_not_exist(if_not_exist);
   req_.set_colocated(colocated);
+  req_.set_schema_name(schema_name);
   tablegroup_oid.ToPB(req_.mutable_tablegroup_oid());
   tablespace_oid.ToPB(req_.mutable_tablespace_oid());
 

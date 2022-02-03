@@ -86,6 +86,9 @@ Status PgCreateTable::Exec(
   if (set_table_properties) {
     schema_builder_.SetTableProperties(table_properties);
   }
+  if (!req_.schema_name().empty()) {
+    schema_builder_.SetSchemaName(req_.schema_name());
+  }
 
   RETURN_NOT_OK(schema_builder_.Build(&schema));
   const auto split_rows = VERIFY_RESULT(BuildSplitRows(schema));

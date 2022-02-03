@@ -302,8 +302,10 @@ message CDCSDKRecordPB {
   // New table name, used in the case of rename table
   optional string new_table_name = 12;
 
+  optional string pgschema_name = 13;
+
   // truncate info
-  optional yb.tserver.TruncateRequestPB truncate_request_info = 13;
+  optional tserver.TruncateRequestPB truncate_request_info = 14;
 }
 
 message TypeInfo {
@@ -340,6 +342,8 @@ message RowMessage {
 
   // New table name, used in the case of rename table
   optional string new_table_name = 10;
+
+  optional string pgschema_name = 11;
 
   // truncate info
   optional yb.tserver.TruncateRequestPB truncate_request_info = 13;

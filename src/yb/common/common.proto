@@ -152,6 +152,7 @@ message SchemaPB {
   repeated ColumnSchemaPB columns = 1;
   optional TablePropertiesPB table_properties = 2;
   optional ColocatedTableIdentifierPB colocated_table_id = 3;
+  optional string pgschema_name = 4;
 }
 
 // This message contains the metadata of a secondary index of a table.

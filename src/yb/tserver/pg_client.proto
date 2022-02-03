@@ -165,6 +165,7 @@ message PgCreateTableRequestPB {
   PgObjectIdPB base_table_id = 15;
   bool is_unique_index = 16;
   bool skip_index_backfill = 17;
+  string schema_name = 18;
 }
 
 message PgCreateTableResponsePB {

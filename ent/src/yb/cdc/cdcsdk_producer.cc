@@ -38,7 +38,8 @@ enum OpType {
 };
 
 void SetOperation(
-    CDCSDKRecordPB* record, RowMessage* row_message, OpType type, bool is_proto_record) {
+    CDCSDKRecordPB* record, RowMessage* row_message, OpType type, bool is_proto_record,
+    const Schema& schema) {
   switch (type) {
     case INSERT:
       if (!is_proto_record)
@@ -59,6 +60,13 @@ void SetOperation(
         row_message->set_op(RowMessage_Op_DELETE);
       break;
   }
+
+  if (!is_proto_record) {
+    record->set_pgschema_name(schema.SchemaName());
+  } else {
+    row_message->set_pgschema_name(schema.SchemaName());
+  }
+
 }
 
 void AddColumnToMap(
@@ -237,15 +245,15 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
       // Check whether operation is WRITE or DELETE.
       if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
-        SetOperation(&record, row_message, DELETE, is_proto_record);
+        SetOperation(&record, row_message, DELETE, is_proto_record, schema);
         *write_id = intent.write_id;
       } else {
         if (isColumnIDInitialized && column_id.value_type() == docdb::ValueType::kSystemColumnId &&
             decoded_value.value_type() == docdb::ValueType::kNullLow) {
-          SetOperation(&record, row_message, INSERT, is_proto_record);
+          SetOperation(&record, row_message, INSERT, is_proto_record, schema);
           col_count = schema.num_key_columns() - 1;
         } else {
-          SetOperation(&record, row_message, UPDATE, is_proto_record);
+          SetOperation(&record, row_message, UPDATE, is_proto_record, schema);
           col_count = schema.num_columns();
           *write_id = intent.write_id;
         }
@@ -357,10 +365,12 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
       CDCSDKOpIdPB* cdcSdkOpIdPB;
       if (!is_proto_record) {
         record = resp->add_cdc_sdk_records();
+        record->set_pgschema_name(schema.SchemaName());
         cdcSdkOpIdPB = record->mutable_cdc_sdk_op_id();
       } else {
         proto_record = resp->add_cdc_sdk_proto_records();
         row_message = proto_record->mutable_row_message();
+        row_message->set_pgschema_name(schema.SchemaName());
         row_message->set_table(tablet_peer->tablet()->metadata()->table_name());
         cdcSdkOpIdPB = proto_record->mutable_cdc_sdk_op_id();
       }
@@ -373,7 +383,7 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
       // Check whether operation is WRITE or DELETE.
       if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
-        SetOperation(record, row_message, DELETE, is_proto_record);
+        SetOperation(record, row_message, DELETE, is_proto_record, schema);
       } else {
         docdb::PrimitiveValue column_id;
         Slice key_column((const char*)(key.data() + key_size));
@@ -381,9 +391,9 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
 
         if (column_id.value_type() == docdb::ValueType::kSystemColumnId &&
             decoded_value.value_type() == docdb::ValueType::kNullLow) {
-          SetOperation(record, row_message, INSERT, is_proto_record);
+          SetOperation(record, row_message, INSERT, is_proto_record, schema);
         } else {
-          SetOperation(record, row_message, UPDATE, is_proto_record);
+          SetOperation(record, row_message, UPDATE, is_proto_record, schema);
         }
       }
 
@@ -446,7 +456,7 @@ void SetColumnInfo (CDCSDKColumnInfoPB* column_info, const ColumnSchemaPB& colum
 
 CHECKED_STATUS PopulateCDCSDKDDLRecord(
     const ReplicateMsgPtr& msg, CDCSDKRecordPB* record, bool is_proto_record,
-    CDCSDKProtoRecordPB* proto_record, string table_name) {
+    CDCSDKProtoRecordPB* proto_record, string table_name, Schema& schema) {
   SCHECK(
       msg->has_change_metadata_request(), InvalidArgument,
       Format(
@@ -484,10 +494,12 @@ CHECKED_STATUS PopulateCDCSDKDDLRecord(
     cdc_sdk_table_properties_pb = record->mutable_schema()->mutable_tab_info();
     record->set_schema_version(msg->change_metadata_request().schema_version());
     record->set_new_table_name(msg->change_metadata_request().new_table_name());
+    record->set_pgschema_name(schema.SchemaName());
   } else {
     cdc_sdk_table_properties_pb = row_message->mutable_schema()->mutable_tab_info();
     row_message->set_schema_version(msg->change_metadata_request().schema_version());
     row_message->set_new_table_name(msg->change_metadata_request().new_table_name());
+    row_message->set_pgschema_name(schema.SchemaName());
   }
   SetTableProperties(cdc_sdk_table_properties_pb, table_properties);
 
@@ -496,7 +508,7 @@ CHECKED_STATUS PopulateCDCSDKDDLRecord(
 
 CHECKED_STATUS PopulateCDCSDKTruncateRecord(
     const ReplicateMsgPtr& msg, CDCSDKRecordPB* record, bool is_proto_record,
-    CDCSDKProtoRecordPB* proto_record) {
+    CDCSDKProtoRecordPB* proto_record, Schema& schema) {
   SCHECK(
       msg->has_truncate(), InvalidArgument,
       Format(
@@ -507,11 +519,13 @@ CHECKED_STATUS PopulateCDCSDKTruncateRecord(
 
   if (!is_proto_record) {
     record->set_operation(CDCSDKRecordPB::TRUNCATE);
+    record->set_pgschema_name(schema.SchemaName());
     cdcSdkOpIdPB = record->mutable_cdc_sdk_op_id();
     record->mutable_truncate_request_info()->CopyFrom(msg->truncate());
   } else {
     row_message = proto_record->mutable_row_message();
     row_message->set_op(RowMessage_Op_TRUNCATE);
+    row_message->set_pgschema_name(schema.SchemaName());
     cdcSdkOpIdPB = proto_record->mutable_cdc_sdk_op_id();
     row_message->mutable_truncate_request_info()->CopyFrom(msg->truncate());
   }
@@ -609,11 +623,13 @@ CHECKED_STATUS PopulateCDCSDKSnapshotRecord(GetChangesResponsePB* resp,
   if (!is_proto_record) {
     record = resp->add_cdc_sdk_records();
     record->set_operation(CDCSDKRecordPB_OperationType_READ);
+    record->set_pgschema_name(schema.SchemaName());
   } else {
     proto_record = resp->add_cdc_sdk_proto_records();
     row_message = proto_record->mutable_row_message();
     row_message->set_table(table_name);
     row_message->set_op(RowMessage_Op_READ);
+    row_message->set_pgschema_name(schema.SchemaName());
     row_message->set_commit_time(time.read.ToUint64());
   }
 
@@ -669,9 +685,11 @@ void FillDDLInfo (CDCSDKRecordPB* record,
 
   if (!is_proto_record) {
     record->set_schema_version(schema_version);
+    record->set_pgschema_name(schema.pgschema_name());
     cdc_sdk_table_properties_pb = record->mutable_schema()->mutable_tab_info();
   } else {
     row_message->set_schema_version(schema_version);
+    row_message->set_pgschema_name(schema.pgschema_name());
     cdc_sdk_table_properties_pb = row_message->mutable_schema()->mutable_tab_info();
   }
   const TablePropertiesPB* table_properties = &(schema.table_properties());
@@ -915,13 +933,15 @@ Status GetChangesForCDCSDK(
                          .row_message()
                          .schema_version() != msg->change_metadata_request().schema_version())) {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
-                  msg, (!is_proto_record) ? resp->add_cdc_sdk_records() : nullptr, is_proto_record,
-                  (is_proto_record) ? resp->add_cdc_sdk_proto_records() : nullptr, table_name));
+                  msg, (!is_proto_record) ? resp->add_cdc_sdk_records() : NULL, is_proto_record,
+                  (is_proto_record) ? resp->add_cdc_sdk_proto_records() : NULL, table_name,
+                  currentSchema));
             }
           } else {
             RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
-                msg, (!is_proto_record) ? resp->add_cdc_sdk_records() : nullptr, is_proto_record,
-                (is_proto_record) ? resp->add_cdc_sdk_proto_records() : nullptr, table_name));
+                msg, (!is_proto_record) ? resp->add_cdc_sdk_records() : NULL, is_proto_record,
+                (is_proto_record) ? resp->add_cdc_sdk_proto_records() : NULL, table_name,
+                currentSchema));
           }
           SetCheckpoint(
               &checkpoint, last_streamed_op_id, msg->id().term(), msg->id().index(), 0, "");
@@ -930,8 +950,9 @@ Status GetChangesForCDCSDK(
 
         case consensus::OperationType::TRUNCATE_OP: {
           RETURN_NOT_OK(PopulateCDCSDKTruncateRecord(
-              msg, resp->add_cdc_sdk_records(), is_proto_record,
-              resp->add_cdc_sdk_proto_records()));
+                        msg, resp->add_cdc_sdk_records(), is_proto_record,
+                        resp->add_cdc_sdk_proto_records(), currentSchema));
+
           SetCheckpoint(
               &checkpoint, last_streamed_op_id, msg->id().term(), msg->id().index(), 0, "");
           checkpoint_updated = true;
