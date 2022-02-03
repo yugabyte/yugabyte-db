@@ -130,19 +130,19 @@ When both universes use different certificates, you need to store the certificat
 
 1. Copy this file to each node on the target. It needs to be copied to a directory named: `<certs_for_cdc_dir>/<source_universe_uuid>`.
 
-  For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the cert file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
+    For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the cert file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
 
 1. Finally, set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the *target universe's* certificates (this should be different from the directory used in the previous steps).
 
-  For example, if you have the target's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run:
+    For example, if you have the target's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run:
 
-  ```sh
-  ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    -certs_dir_name /home/yugabyte/yugabyte-tls-config \
-    setup_universe_replication 00000000-1111-2222-3333-444444444444 \
-    127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-    000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
-  ```
+    ```sh
+    ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+      -certs_dir_name /home/yugabyte/yugabyte-tls-config \
+      setup_universe_replication 00000000-1111-2222-3333-444444444444 \
+      127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+      000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
+    ```
 
 ## Verifying Replication
 
