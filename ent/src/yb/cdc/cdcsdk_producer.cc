@@ -31,6 +31,36 @@ using docdb::PrimitiveValue;
 using tablet::TransactionParticipant;
 using yb::QLTableRow;
 
+enum OpType {
+  INSERT,
+  UPDATE,
+  DELETE
+};
+
+void SetOperation(
+    CDCSDKRecordPB* record, cdc::RowMessage* row_message, OpType type, bool is_proto_record) {
+  switch (type) {
+    case INSERT:
+      if (!is_proto_record)
+        record->set_operation(CDCSDKRecordPB::INSERT);
+      else
+        row_message->set_op(RowMessage_Op_INSERT);
+      break;
+    case UPDATE:
+      if (!is_proto_record)
+        record->set_operation(CDCSDKRecordPB::UPDATE);
+      else
+        row_message->set_op(RowMessage_Op_UPDATE);
+      break;
+    case DELETE:
+      if (!is_proto_record)
+        record->set_operation(CDCSDKRecordPB::DELETE);
+      else
+        row_message->set_op(RowMessage_Op_DELETE);
+      break;
+  }
+}
+
 void AddColumnToMap(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const ColumnSchema& col_schema,
@@ -41,12 +71,13 @@ void AddColumnToMap(
   QLValuePB tempPB;
   (is_proto_record) ? cdc_datum_message->set_column_name(col_schema.name())
                   : kv_pair->set_key(col_schema.name());
+
   if (tablet_peer->tablet()->table_type() == PGSQL_TABLE_TYPE) {
     docdb::PrimitiveValue::ToQLValuePB(col, col_schema.type(), &tempPB);
     if (!IsNull(tempPB)) {
       yb::docdb::SetValueFromQLBinaryWrapper(
           tempPB, col_schema.pg_type_oid(), is_proto_record,
-          (!is_proto_record) ? kv_pair->mutable_value() : NULL, cdc_datum_message);
+          (!is_proto_record) ? kv_pair->mutable_value() : nullptr, cdc_datum_message);
     } else {
       if (is_proto_record) cdc_datum_message->set_column_type(col_schema.pg_type_oid());
     }
@@ -55,45 +86,39 @@ void AddColumnToMap(
   }
 }
 
+inline yb::DatumMessagePB* AddTuple(cdc::RowMessage* row_message) {
+  yb::DatumMessagePB* tuple = nullptr;
+
+  if (row_message) {
+    if (row_message->op() == RowMessage_Op_DELETE) {
+      tuple = row_message->add_old_tuple();
+      row_message->add_new_tuple();
+    } else {
+      tuple = row_message->add_new_tuple();
+      row_message->add_old_tuple();
+    }
+  }
+
+  return tuple;
+}
+
 void AddPrimaryKey(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const docdb::SubDocKey& decoded_key,
-    const Schema& tablet_schema, CDCSDKRecordPB* record, yb::cdc::RowMessage* row_message) {
+    const Schema& tablet_schema, CDCSDKRecordPB* record, cdc::RowMessage* row_message) {
   size_t i = 0;
 
   for (const auto& col : decoded_key.doc_key().hashed_group()) {
-    yb::DatumMessagePB* tuple = nullptr;
-
-    if (row_message) {
-      if (row_message->op() == RowMessage_Op_DELETE) {
-        tuple = row_message->add_old_tuple();
-        row_message->add_new_tuple();
-      } else {
-        tuple = row_message->add_new_tuple();
-        row_message->add_old_tuple();
-      }
-    }
+    yb::DatumMessagePB* tuple = AddTuple(row_message);
 
     AddColumnToMap(
-        tablet_peer, tablet_schema.column(i), col, record ? record->add_key() : NULL,
-        row_message ? tuple : NULL);
+        tablet_peer, tablet_schema.column(i), col, record ? record->add_key() : nullptr, tuple);
     i++;
   }
   for (const auto& col : decoded_key.doc_key().range_group()) {
-    yb::DatumMessagePB* tuple = nullptr;
-
-    if (row_message) {
-      if (row_message->op() == RowMessage_Op_DELETE) {
-        tuple = row_message->add_old_tuple();
-        row_message->add_new_tuple();
-      } else {
-        tuple = row_message->add_new_tuple();
-        row_message->add_old_tuple();
-      }
-    }
+    yb::DatumMessagePB* tuple = AddTuple(row_message);
 
     AddColumnToMap(
-        tablet_peer, tablet_schema.column(i), col, record ? record->add_key() : NULL,
-        row_message ? tuple : NULL);
+        tablet_peer, tablet_schema.column(i), col, record ? record->add_key() : nullptr, tuple);
     i++;
   }
 }
@@ -138,7 +163,7 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
   Slice prev_key;
   CDCSDKRecordPB record;
   CDCSDKProtoRecordPB proto_record;
-  yb::cdc::RowMessage* row_message = proto_record.mutable_row_message();
+  cdc::RowMessage* row_message = proto_record.mutable_row_message();
   size_t col_count = 0;
 
   for (const auto& intent : *intents) {
@@ -162,9 +187,6 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
     docdb::Value decoded_value;
     RETURN_NOT_OK(decoded_value.Decode(value));
 
-    // column_id.value_type() is kColumnId for non-primary keys in case of insert & for all
-    // keys in case of update
-    // column_id.value_type() is kSystemColumnId for primary keys in case of insert
     if (isColumnIDInitialized && column_id.value_type() == docdb::ValueType::kColumnId &&
         schema.is_key_column(column_id.GetColumnId())) {
       *write_id = intent.write_id;
@@ -190,27 +212,15 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
       // Check whether operation is WRITE or DELETE.
       if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
           decoded_key.num_subkeys() == 0) {
-        if (!is_proto_record)
-          record.set_operation(CDCSDKRecordPB::DELETE);
-        else
-          row_message->set_op(RowMessage_Op_DELETE);
-
+        SetOperation(&record, row_message, DELETE, is_proto_record);
         *write_id = intent.write_id;
       } else {
         if (isColumnIDInitialized && column_id.value_type() == docdb::ValueType::kSystemColumnId &&
             decoded_value.value_type() == docdb::ValueType::kNullLow) {
-          if (!is_proto_record)
-            record.set_operation(CDCSDKRecordPB::INSERT);
-          else
-            row_message->set_op(RowMessage_Op_INSERT);
-
+          SetOperation(&record, row_message, INSERT, is_proto_record);
           col_count = schema.num_key_columns() - 1;
         } else {
-          if (!is_proto_record)
-            record.set_operation(CDCSDKRecordPB::UPDATE);
-          else
-            row_message->set_op(RowMessage_Op_UPDATE);
-
+          SetOperation(&record, row_message, UPDATE, is_proto_record);
           col_count = schema.num_columns();
           *write_id = intent.write_id;
         }
@@ -219,21 +229,17 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       if (is_proto_record) {
         row_message->set_transaction_id(transaction_id.ToString());
-        AddPrimaryKey(tablet_peer, decoded_key, schema, NULL, row_message);
+        AddPrimaryKey(tablet_peer, decoded_key, schema, nullptr, row_message);
       } else {
         record.mutable_transaction_state()->set_transaction_id(transaction_id.ToString());
-        AddPrimaryKey(tablet_peer, decoded_key, schema, &record, NULL);
+        AddPrimaryKey(tablet_peer, decoded_key, schema, &record, nullptr);
       }
-
-      //      Slice sub_doc_key = key;
-      //      docdb::SubDocKey decoded_key;
-      //      RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key,
-      //      docdb::HybridTimeRequired::kFalse));
     }
 
     if ((record.operation() == CDCSDKRecordPB::INSERT) ||
-        (row_message->op() == RowMessage_Op_INSERT))
+        (row_message->op() == RowMessage_Op_INSERT)) {
       ++col_count;
+    }
 
     prev_key = primary_key;
 
@@ -251,10 +257,10 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
 
         if (!is_proto_record) {
           AddColumnToMap(
-              tablet_peer, col, decoded_value.primitive_value(), record.add_changes(), NULL);
+              tablet_peer, col, decoded_value.primitive_value(), record.add_changes(), nullptr);
         } else {
           AddColumnToMap(
-              tablet_peer, col, decoded_value.primitive_value(), NULL,
+              tablet_peer, col, decoded_value.primitive_value(), nullptr,
               row_message->add_new_tuple());
           row_message->add_old_tuple();
         }
@@ -285,13 +291,12 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
             cdcSdkOpIdPB, op_id.term, op_id.index, intent.write_id, intent.reverse_index_key);
 
         resp->add_cdc_sdk_records()->CopyFrom(record);
-
         *write_id = intent.write_id;
         *reverse_index_key = intent.reverse_index_key;
       }
     } else {
       row_message->set_table(tablet_peer->tablet()->metadata()->table_name());
-      if (is_proto_record && (row_message->op() == RowMessage_Op_INSERT)) {
+      if (row_message->op() == RowMessage_Op_INSERT) {
         if (col_count == schema.num_columns()) {
           CDCSDKOpIdPB* cdcSdkOpIdPB = proto_record.mutable_cdc_sdk_op_id();
           SetCDCSDKOpId(
@@ -305,8 +310,8 @@ CHECKED_STATUS PopulateCDCSDKIntentRecord(
           *reverse_index_key = intent.reverse_index_key;
         }
       } else if (
-          is_proto_record && ((row_message->op() == RowMessage_Op_UPDATE) ||
-                            (row_message->op() == RowMessage_Op_DELETE))) {
+          (row_message->op() == RowMessage_Op_UPDATE) ||
+          (row_message->op() == RowMessage_Op_DELETE)) {
         CDCSDKOpIdPB* cdcSdkOpIdPB = proto_record.mutable_cdc_sdk_op_id();
         SetCDCSDKOpId(
             cdcSdkOpIdPB, op_id.term, op_id.index, intent.write_id, intent.reverse_index_key);
@@ -333,8 +338,6 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
     const Schema& schema,
     bool is_proto_record) {
   const auto& batch = msg->write().write_batch();
-  // CDCSDK TODO: We should make sure that we refer to correct schema
-  // at the time of record.
 
   // Write batch may contain records from different rows.
   // For CDC, we need to split the batch into 1 CDC record per row of the table.
@@ -396,9 +399,9 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
       }
 
       if (!is_proto_record) {
-        AddPrimaryKey(tablet_peer, decoded_key, schema, record, NULL);
+        AddPrimaryKey(tablet_peer, decoded_key, schema, record, nullptr);
       } else {
-        AddPrimaryKey(tablet_peer, decoded_key, schema, NULL, row_message);
+        AddPrimaryKey(tablet_peer, decoded_key, schema, nullptr, row_message);
       }
 
       // Process intent records.
@@ -413,7 +416,7 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
 
     if ((!is_proto_record && ((record->operation() == CDCSDKRecordPB::INSERT) ||
                             (record->operation() == CDCSDKRecordPB::UPDATE))) ||
-        (is_proto_record && (row_message != NULL) &&
+        (is_proto_record && (row_message != nullptr) &&
          ((row_message->op() == RowMessage_Op_INSERT) ||
           (row_message->op() == RowMessage_Op_UPDATE)))) {
 
@@ -424,10 +427,10 @@ CHECKED_STATUS PopulateCDCSDKWriteRecord(
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
         if (!is_proto_record) {
           AddColumnToMap(
-              tablet_peer, col, decoded_value.primitive_value(), record->add_changes(), NULL);
+              tablet_peer, col, decoded_value.primitive_value(), record->add_changes(), nullptr);
         } else {
           AddColumnToMap(
-              tablet_peer, col, decoded_value.primitive_value(), NULL,
+              tablet_peer, col, decoded_value.primitive_value(), nullptr,
               row_message->add_new_tuple());
           row_message->add_old_tuple();
         }
@@ -548,7 +551,7 @@ CHECKED_STATUS ProcessIntents(
   std::string reverse_index_key;
   IntraTxnWriteId write_id = 0;
 
-  if (is_proto_record && stream_state->key == "" && stream_state->write_id == 0) {
+  if (is_proto_record && stream_state->key.empty() && stream_state->write_id == 0) {
     CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
     yb::cdc::RowMessage* row_message = proto_record->mutable_row_message();
     row_message->set_op(RowMessage_Op_BEGIN);
@@ -574,7 +577,7 @@ CHECKED_STATUS ProcessIntents(
   checkpoint->set_term(op_id.term);
   checkpoint->set_index(op_id.index);
 
-  if (stream_state->key == "" && stream_state->write_id == 0) {
+  if (stream_state->key.empty() && stream_state->write_id == 0) {
     CDCSDKOpIdPB* cdcSdkOpIdPB;
     if (!is_proto_record) {
       CDCSDKRecordPB* record = resp->add_cdc_sdk_records();
@@ -641,7 +644,7 @@ CHECKED_STATUS PopulateCDCSDKSnapshotRecord(GetChangesResponsePB* resp,
     if (value && value->value_case() != QLValuePB::VALUE_NOT_SET) {
       yb::docdb::SetValueFromQLBinaryWrapper(
         *value, col_schema.pg_type_oid(), is_proto_record,
-        (!is_proto_record) ? kv_pair->mutable_value() : NULL, cdc_datum_message);
+        (!is_proto_record) ? kv_pair->mutable_value() : nullptr, cdc_datum_message);
     } else {
       if (is_proto_record) {
         cdc_datum_message->set_column_type(col_schema.pg_type_oid());
@@ -684,8 +687,7 @@ void FillDDLInfo (CDCSDKRecordPB* record,
 }
 
 // CDC get changes is different from 2DC as it doesn't need
-// to read intents from WAL
-// Also it need to not sort the entry etc.
+// to read intents from WAL.
 
 Status GetChangesForCDCSDK(
     const std::string& stream_id,
@@ -725,13 +727,12 @@ Status GetChangesForCDCSDK(
     std::string nextKey;
     yb::SchemaPB schema_pb;
     // It is first call in snapshot then take snapshot
-    if ((from_op_id.key() == "") && (from_op_id.snapshot_time() == 0)) {
+    if ((from_op_id.key().empty()) && (from_op_id.snapshot_time() == 0)) {
       if (txn_participant == nullptr || txn_participant->context() == nullptr)
         return STATUS_SUBSTITUTE(Corruption,
                                  "Cannot read data as the transaction participant context is null");
       txn_participant->context()->GetLastReplicatedData(&data);
-      // set the checkpoint
-      // also communicate to the follower
+      // Set the checkpoint and communicate to the follower.
       VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
               << "time " << data.log_ht.ToUint64();
       // update the CDCConsumerOpId
@@ -739,28 +740,25 @@ Status GetChangesForCDCSDK(
         std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
         shared_consensus->UpdateCDCConsumerOpId(data.op_id);
       }
-      // get the data again
-      // TODO: think how to propogate on follower node synchronously!
       if (txn_participant == nullptr || txn_participant->context() == nullptr)
         return STATUS_SUBSTITUTE(Corruption,
                                  "Cannot read data as the transaction participant context is null");
       txn_participant->context()->GetLastReplicatedData(&data);
       time = ReadHybridTime::SingleTime(data.log_ht);
 
-      // this should go to cdc_state table.
-      // for below condition update the checkpoint in cdc_state table
+      // This should go to cdc_state table.
+      // Below condition update the checkpoint in cdc_state table.
       SetCheckpoint(
-          &checkpoint, NULL, data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64());
+          &checkpoint, nullptr, data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64());
       checkpoint_updated = true;
     } else {
-      // snapshot already taken
+      // Snapshot is already taken.
       HybridTime ht;
       time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
       nextKey = from_op_id.key();
       VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
               << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
-      // We need to see if we can pass empty schema or null.
-      // any lock is required?
+
       Schema schema = *tablet_peer->tablet()->schema().get();
       int limit = FLAGS_cdc_snapshot_batch_size;
       int fetched = 0;
@@ -780,8 +778,7 @@ Status GetChangesForCDCSDK(
       }
       FillDDLInfo (record, row_message, is_proto_record, schema_pb,
                    tablet_peer->tablet()->metadata()->schema_version());
-      // key has to be full composite key
-      // otherwise there could be duplicates
+
       while (VERIFY_RESULT(iter->HasNext()) && fetched < limit) {
         RETURN_NOT_OK(iter->NextRow(&row));
         RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(resp, &row, schema, tablet_peer,
@@ -791,24 +788,24 @@ Status GetChangesForCDCSDK(
       docdb::SubDocKey sub_doc_key;
       RETURN_NOT_OK(iter->GetNextReadSubDocKey(&sub_doc_key));
 
-      // snapshot ended if next key is empty
+      // Snapshot ends when next key is empty.
       if (sub_doc_key.doc_key().empty()) {
         VLOG(1) << "Setting next sub doc key empty ";
-        // get the checkpoint or read the checkpoint from the table/cache
-        SetCheckpoint(&checkpoint, NULL, from_op_id.term(), from_op_id.index(), 0, "", 0);
+        // Get the checkpoint or read the checkpoint from the table/cache.
+        SetCheckpoint(&checkpoint, nullptr, from_op_id.term(), from_op_id.index(), 0, "", 0);
         checkpoint_updated = true;
       } else {
         VLOG(1) << "Setting next sub doc key is " << sub_doc_key.Encode().ToStringBuffer();
 
         checkpoint.set_write_id(-1);
         SetCheckpoint(
-            &checkpoint, NULL, from_op_id.term(), from_op_id.index(), -1,
+            &checkpoint, nullptr, from_op_id.term(), from_op_id.index(), -1,
             sub_doc_key.Encode().ToStringBuffer(), time.read.ToUint64());
 
         checkpoint_updated = true;
       }
     }
-  } else if (from_op_id.key() != "" && from_op_id.write_id() != 0) {
+  } else if (!from_op_id.key().empty() && from_op_id.write_id() != 0) {
     stream_state.key = from_op_id.key();
     stream_state.write_id = from_op_id.write_id();
     std::string reverse_index_key = from_op_id.key();
@@ -820,7 +817,7 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(ProcessIntents(
         op_id, transaction_id, stream_metadata, resp, &consumption, &checkpoint, tablet_peer,
         &keyValueIntents, &stream_state, nullptr, is_proto_record));
-    if (checkpoint.write_id() == 0 && checkpoint.key() == "") {
+    if (checkpoint.write_id() == 0 && checkpoint.key().empty()) {
       last_streamed_op_id->term = checkpoint.term();
       last_streamed_op_id->index = checkpoint.index();
     }
@@ -841,7 +838,6 @@ Status GetChangesForCDCSDK(
 
     Schema currentSchema;
     for (const auto& msg : read_ops.messages) {
-      // TODO: CDCSDK Revisit if it needs to be read everytime
       if (!schema_streamed && !(*cached_schema).initialized()) {
         string table_name = tablet_peer->tablet()->metadata()->table_name();
         schema_streamed = true;
@@ -869,13 +865,13 @@ Status GetChangesForCDCSDK(
       const auto& batch = msg->write().write_batch();
       switch (msg->op_type()) {
         case consensus::OperationType::UPDATE_TRANSACTION_OP:
-          // ignore intents, only when they have been applied read from IntentDB
+          // Ignore intents.
+          // Read from IntentDB after they have been applied.
           if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
             auto txn_id =
                 VERIFY_RESULT(FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
 
             auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
-            // result->aborted_subtxn_set;
             std::vector<docdb::IntentKeyValueForCDC> intents;
             docdb::ApplyTransactionState new_stream_state;
 
@@ -886,7 +882,7 @@ Status GetChangesForCDCSDK(
                 op_id, txn_id, stream_metadata, resp, &consumption, &checkpoint, tablet_peer,
                 &intents, &new_stream_state, &currentSchema, is_proto_record));
 
-            if (new_stream_state.write_id != 0 && new_stream_state.key != "") {
+            if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
               pending_intents = true;
             } else {
               last_streamed_op_id->term = msg->id().term();
@@ -926,13 +922,13 @@ Status GetChangesForCDCSDK(
                          .row_message()
                          .schema_version() != msg->change_metadata_request().schema_version())) {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
-                  msg, (!is_proto_record) ? resp->add_cdc_sdk_records() : NULL, is_proto_record,
-                  (is_proto_record) ? resp->add_cdc_sdk_proto_records() : NULL, table_name));
+                  msg, (!is_proto_record) ? resp->add_cdc_sdk_records() : nullptr, is_proto_record,
+                  (is_proto_record) ? resp->add_cdc_sdk_proto_records() : nullptr, table_name));
             }
           } else {
             RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
-                msg, (!is_proto_record) ? resp->add_cdc_sdk_records() : NULL, is_proto_record,
-                (is_proto_record) ? resp->add_cdc_sdk_proto_records() : NULL, table_name));
+                msg, (!is_proto_record) ? resp->add_cdc_sdk_records() : nullptr, is_proto_record,
+                (is_proto_record) ? resp->add_cdc_sdk_proto_records() : nullptr, table_name));
           }
           SetCheckpoint(
               &checkpoint, last_streamed_op_id, msg->id().term(), msg->id().index(), 0, "");
@@ -977,10 +973,7 @@ Status GetChangesForCDCSDK(
     resp->mutable_checkpoint()->mutable_op_id()->set_term(last_streamed_op_id->term);
     resp->mutable_checkpoint()->mutable_op_id()->set_index(last_streamed_op_id->index);
   }
-  //  else {
-  //    resp->mutable_checkpoint()->mutable_op_id()->set_term(from_op_id.term());
-  //    resp->mutable_checkpoint()->mutable_op_id()->set_index(from_op_id.index());
-  //  }
+
   return Status::OK();
 }
 
