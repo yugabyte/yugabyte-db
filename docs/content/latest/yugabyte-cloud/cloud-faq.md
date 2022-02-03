@@ -83,7 +83,10 @@ Cloud console
 : During a maintenance window, the Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. We'll notify you in advance of the maintenance schedule.
 
 Cluster (YugabyteDB) version upgrade
-: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). We'll notify you in advance of any upcoming upgrade schedule via email.
+: To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
+
+: Yugabyte will notify you in advance of any upcoming upgrade via email. The email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
+
 : The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either edge or stable). Free clusters are always in the edge track.
 : Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
@@ -194,21 +197,15 @@ For more details, refer to [Connect to clusters](../cloud-connect).
 
 ### Why is my free cluster paused?
 
-Free clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster). When a cluster is paused, you receive an email notification. You need to resume the paused cluster before you can perform any operations on it.
+Free clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
-To resume your cluster, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
-
-If you don't resume your cluster, a second notification is sent after 28 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
-
-Free clusters are deleted after 30 days of inactivity. Only paused clusters are deleted.
-
-Yugabyte Cloud runs idle cluster deletion jobs daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
+For more details, refer to [Inactive free clusters](../cloud-basics/create-clusters-free/#inactive-free-clusters).
 
 ### How do I keep my free cluster from being paused or deleted?
 
 Free clusters are paused after 21 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
 
-If your cluster is paused, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
+To keep a paused cluster from being deleted, sign in to Yugabyte Cloud, select the cluster on the **Clusters** page, and click **Resume**.
 
 ### What qualifies as activity on a cluster?
 
