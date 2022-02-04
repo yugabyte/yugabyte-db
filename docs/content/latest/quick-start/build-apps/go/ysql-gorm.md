@@ -122,12 +122,12 @@ The REST API server will start and listen for requests at `http://localhost:8080
 Create 2 users.
 
 ```sh
-$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
+$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
 ```sh
-$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
+$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
@@ -220,13 +220,13 @@ $ curl http://localhost:8080/users
       "userId": 2,
       "firstName": "Tom",
       "lastName": "Stewart",
-      "email": "tstewart@yb.com"
+      "email": "tstewart@example.com"
     },
     {
       "userId": 1,
       "firstName": "John",
       "lastName": "Smith",
-      "email": "jsmith@yb.com"
+      "email": "jsmith@example.com"
     }
   ],
   ...
@@ -271,7 +271,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 25,
@@ -284,7 +284,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 15,
