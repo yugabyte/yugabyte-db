@@ -83,6 +83,9 @@ DECLARE_int32(async_replication_idle_delay_ms);
 DECLARE_int32(async_replication_max_idle_wait);
 DECLARE_int32(external_intent_cleanup_secs);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
+DECLARE_int64(rpc_throttle_threshold_bytes);
+DECLARE_bool(enable_automatic_tablet_splitting);
 
 namespace yb {
 
@@ -635,6 +638,199 @@ TEST_P(TwoDCTest, SetupUniverseReplicationMultipleTables) {
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  Destroy();
+}
+
+TEST_P(TwoDCTest, SetupUniverseReplicationLargeTableCount) {
+  if (IsSanitizer()) {
+    LOG(INFO) << "Skipping slow test";
+    return;
+  }
+
+  // Setup the two clusters without any tables.
+  auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
+  FLAGS_enable_automatic_tablet_splitting = false;
+
+  // Create a large number of tables to test the performance of setup_replication.
+  int table_count = 2;
+  int amplification[2] = {1, 5};
+  MonoDelta setup_latency[2];
+  std::string table_prefix = "stress_table_";
+  bool passed_test = false;
+
+  for (int retries = 0; retries < 3 && !passed_test; ++retries) {
+    for (int a : {0, 1}) {
+      std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+      for (int i = 0; i < table_count * amplification[a]; i++) {
+        std::string cur_table =
+            table_prefix + std::to_string(amplification[a]) + "-" + std::to_string(i);
+        ASSERT_RESULT(CreateTable(consumer_client(), kNamespaceName, cur_table, 3));
+        auto t = ASSERT_RESULT(CreateTable(producer_client(), kNamespaceName, cur_table, 3));
+        std::shared_ptr<client::YBTable> producer_table;
+        ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
+        producer_tables.push_back(producer_table);
+      }
+
+      // Add delays to all rpc calls to simulate live environment and ensure the test is IO bound.
+      FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 200;
+      FLAGS_rpc_throttle_threshold_bytes = 200;
+
+      auto start_time = CoarseMonoClock::Now();
+
+      // Setup universe replication on all tables.
+      ASSERT_OK(SetupUniverseReplication(
+          producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+      // Verify that universe was setup on consumer.
+      master::GetUniverseReplicationResponsePB resp;
+      ASSERT_OK(
+          VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+      ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+      ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
+      for (uint32_t i = 0; i < producer_tables.size(); i++) {
+        ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
+      }
+
+      setup_latency[a] = CoarseMonoClock::Now() - start_time;
+      LOG(INFO) << "SetupReplication [" << a << "] took: " << setup_latency[a].ToSeconds() << "s";
+
+      // Remove delays for cleanup and next setup.
+      FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 0;
+
+      ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+    }
+
+    // We increased our table count by 5x, but we shouldn't have a linear latency increase.
+    passed_test = (setup_latency[1] < setup_latency[0] * 3);
+  }
+
+  ASSERT_TRUE(passed_test);
+
+  Destroy();
+}
+
+TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
+  if (IsSanitizer()) {
+    LOG(INFO) << "Skipping slow test";
+    return;
+  }
+
+  // Setup the two clusters without any tables.
+  auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
+  FLAGS_enable_automatic_tablet_splitting = false;
+
+  // Create a medium, then large number of tables to test the performance of our CLI commands.
+  int table_count = 2;
+  int amplification[2] = {1, 5};
+  MonoDelta bootstrap_latency[2];
+  MonoDelta setup_latency[2];
+  std::string table_prefix = "stress_table_";
+  bool passed_test = false;
+
+  for (int retries = 0; retries < 3 && !passed_test; ++retries) {
+    for (int a : {0, 1}) {
+      std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+      for (int i = 0; i < table_count * amplification[a]; i++) {
+        std::string cur_table =
+            table_prefix + std::to_string(amplification[a]) + "-" + std::to_string(i);
+        ASSERT_RESULT(CreateTable(consumer_client(), kNamespaceName, cur_table, 3));
+        auto t = ASSERT_RESULT(CreateTable(producer_client(), kNamespaceName, cur_table, 3));
+        std::shared_ptr<client::YBTable> producer_table;
+        ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
+        producer_tables.push_back(producer_table);
+      }
+
+      // Add delays to all rpc calls to simulate live environment and ensure the test is IO bound.
+      FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 200;
+      FLAGS_rpc_throttle_threshold_bytes = 200;
+
+      // Performance test of BootstrapProducer.
+      cdc::BootstrapProducerResponsePB boot_resp;
+      {
+        cdc::BootstrapProducerRequestPB req;
+
+        for (const auto& producer_table : producer_tables) {
+          req.add_table_ids(producer_table->id());
+        }
+
+        auto start_time = CoarseMonoClock::Now();
+
+        auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+            &producer_client()->proxy_cache(),
+            HostPort::FromBoundEndpoint(
+                producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+        rpc::RpcController rpc;
+        ASSERT_OK(producer_cdc_proxy->BootstrapProducer(req, &boot_resp, &rpc));
+        ASSERT_FALSE(boot_resp.has_error());
+        ASSERT_EQ(boot_resp.cdc_bootstrap_ids().size(), producer_tables.size());
+
+        bootstrap_latency[a] = CoarseMonoClock::Now() - start_time;
+        LOG(INFO) << "BootstrapProducer [" << a << "] took: " << bootstrap_latency[a].ToSeconds()
+                  << "s";
+      }
+
+      // Performance test of SetupReplication, with Bootstrap IDs.
+      {
+        auto start_time = CoarseMonoClock::Now();
+
+        // Calling the SetupUniverse API directly so we can use producer_bootstrap_ids.
+        master::SetupUniverseReplicationRequestPB req;
+        master::SetupUniverseReplicationResponsePB resp;
+        req.set_producer_id(kUniverseId);
+        auto master_addrs = producer_cluster()->GetMasterAddresses();
+        auto vec = ASSERT_RESULT(HostPort::ParseStrings(master_addrs, 0));
+        HostPortsToPBs(vec, req.mutable_producer_master_addresses());
+        for (const auto& table : producer_tables) {
+          req.add_producer_table_ids(table->id());
+        }
+        for (const auto& bootstrap_id : boot_resp.cdc_bootstrap_ids()) {
+          req.add_producer_bootstrap_ids(bootstrap_id);
+        }
+
+        auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+            &consumer_client()->proxy_cache(),
+            ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+        ASSERT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              rpc::RpcController rpc;
+              rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+              if (!master_proxy->SetupUniverseReplication(req, &resp, &rpc).ok()) {
+                return false;
+              }
+              if (resp.has_error()) {
+                return false;
+              }
+              return true;
+            },
+            MonoDelta::FromSeconds(30), "Setup universe replication"));
+
+        // Verify that universe was setup on consumer.
+        {
+          master::GetUniverseReplicationResponsePB resp;
+          ASSERT_OK(
+              VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+          ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+          ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
+          for (uint32_t i = 0; i < producer_tables.size(); i++) {
+            ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
+          }
+        }
+
+        setup_latency[a] = CoarseMonoClock::Now() - start_time;
+        LOG(INFO) << "SetupReplication [" << a << "] took: " << setup_latency[a].ToSeconds() << "s";
+      }
+
+      // Remove delays for cleanup and next setup.
+      FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 0;
+
+      ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+    }
+    // We increased our table count by 5x, but we shouldn't have a linear latency increase.
+    // ASSERT_LT(bootstrap_latency[1], bootstrap_latency[0] * 5);
+    passed_test = (setup_latency[1] < setup_latency[0] * 3);
+  }
+  ASSERT_TRUE(passed_test);
+
   Destroy();
 }
 
