@@ -14,10 +14,10 @@
 
 #include <algorithm>
 #include <utility>
+#include <string>
 #include <chrono>
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
-#include <string>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"

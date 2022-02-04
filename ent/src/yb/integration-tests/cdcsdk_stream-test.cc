@@ -459,7 +459,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCWithXclusterEnabled)) {
 
   // Ensuring that the streams we got in both the cases are different in order to make sure that
   // there are no clashes.
-  for (int i = 0; i < db_streams.size(); ++i) {
+  for (uint32_t i = 0; i < num_of_streams; ++i) {
     ASSERT_NE(db_streams[i], xcluster_streams[i]);
   }
 }
