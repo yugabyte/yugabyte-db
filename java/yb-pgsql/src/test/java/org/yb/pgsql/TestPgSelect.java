@@ -17,6 +17,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.yb.minicluster.RocksDBMetrics;
+
 import org.yb.util.YBTestRunnerNonTsanOnly;
 import org.yb.util.RegexMatcher;
 
@@ -934,6 +937,208 @@ public class TestPgSelect extends BasePgSQLTest {
                                                 " AND (vr1 IS NULL))"));
       assertFalse("Expect DocDB to filter fully",
                   explainOutput.contains("Rows Removed by"));
+    }
+  }
+
+  private RocksDBMetrics assertFullDocDBFilter(Statement statement,
+    String query, String table_name) throws Exception {
+    RocksDBMetrics beforeMetrics = getRocksDBMetric(table_name);
+    String explainOutput = getExplainAnalyzeOutput(statement, query);
+        assertFalse("Expect DocDB to filter fully",
+                    explainOutput.contains("Rows Removed by"));
+    RocksDBMetrics afterMetrics = getRocksDBMetric(table_name);
+    return afterMetrics.subtract(beforeMetrics);
+  }
+
+  @Test
+  public void testPartialKeyScan() throws Exception {
+    String query = "CREATE TABLE sample_table(h INT, r1 INT, r2 INT, r3 INT, "
+                    + "v INT, PRIMARY KEY(h HASH, r1 ASC, r2 ASC, r3 DESC))";
+
+    try (Statement statement = connection.createStatement()) {
+        statement.execute(query);
+
+        // v has values from 1 to 100000 and the other columns are
+        // various digits of v as such
+        // h    r1  r2  r3      v
+        // 0    0   0   0       0
+        // 0    0   0   1       1
+        // ...
+        // 12   4   9   3      12493
+        // ...
+        // 100  0   0   0      100000
+        query = "INSERT INTO sample_table SELECT i/1000, (i/100)%10, " +
+                "(i/10)%10, i%10, i FROM generate_series(1, 100000) i";
+        statement.execute(query);
+
+        Set<Row> allRows = new HashSet<>();
+        for (int i = 1; i <= 100000; i++) {
+            allRows.add(new Row(i/1000, (i/100)%10, (i/10)%10, i%10, i));
+        }
+
+        // Select where hash code is specified and one range constraint
+        query = "SELECT * FROM sample_table WHERE h = 1 AND r3 < 6";
+
+        Set<Row> expectedRows = allRows.stream()
+                                .filter(r -> r.getInt(0) == 1
+                                        && r.getInt(3) < 6)
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are 10 * 10 total values for r1 and r2 that we have to look
+        // through. For each pair (r1, r2) we iterate through all values of
+        // r3 in [0, 6] and then seek to the next pair for (r1, r2). There
+        // are 10 * 10 such pairs. There is also an initial seek into the
+        // hash key, making the total 10 * 10 + 1 = 101. The actual seeks are
+        // as follows:
+        // Seek(SubDocKey(DocKey(0x1210, [1], [kLowest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 6]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 1, 6]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 6]), []))
+        // ...
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 0, 6]), []))
+        // ...
+        // Seek(SubDocKey(DocKey(0x1210, [1], [9, 9, 6]), []))
+        assertEquals(101, metrics.seekCount);
+
+        // Select where hash code is specified, one range constraint
+        // and one option constraint on two separate columns.
+        // No constraint is specified for r2.
+        query = "SELECT * FROM sample_table WHERE " +
+                "h = 1 AND r1 < 2 AND r3 IN (2, 25, 8, 7, 23, 18)";
+        Integer[] r3FilterArray = {2, 25, 8, 7, 23, 18};
+        Set<Integer> r3Filter = new HashSet<Integer>();
+        r3Filter.addAll(Arrays.asList(r3FilterArray));
+
+        expectedRows = allRows.stream()
+                                .filter(r -> r.getInt(0) == 1
+                                        && r.getInt(1) < 2
+                                        && r3Filter.contains(r.getInt(3)))
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // For each of the 3 * 10 possible pairs of (r1, r2) we seek through
+        // 4 values of r3 (8, 7, 2, kHighest). We must have that seek to
+        // r3 = kHighest in order to get to the next value of (r1,r2).
+        // We also have one initial seek into the hash key, making the total
+        // number of seeks 3 * 10 * 4 + 1 = 121
+        // Seek(SubDocKey(DocKey(0x1210, [1], [kLowest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, kHighest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 1, 8]), []))
+        // ...
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 9, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 9, kHighest]), []))
+        assertEquals(121, metrics.seekCount);
+
+        // Select where all keys have some sort of discrete constraint
+        // on them
+        query = "SELECT * FROM sample_table WHERE " +
+                "h = 1 AND r1 IN (1,2) AND r2 IN (2,3) " +
+                "AND r3 IN (2, 25, 8, 7, 23, 18)";
+
+        expectedRows = allRows.stream()
+                                .filter(r -> r.getInt(0) == 1
+                                        && (r.getInt(1) == 1
+                                            || r.getInt(1) == 2)
+                                        && (r.getInt(2) == 2
+                                            || r.getInt(2) == 3)
+                                        && r3Filter.contains(r.getInt(3)))
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are 2 possible values for r1 and 2 possible values for r2.
+        // There are 3 possible values for r3 (8, 7, 2). Remember that for
+        // each value of (r1, r2), we must seek to (r1, r2, 25) to get
+        // to the first row that has value of (r1, r2),
+        // resulting in 4 total seeks for each (r1, r2).
+        // Altogether there are 2 * 2 * 4 = 16 seeks.
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 3, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 3, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 3, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 3, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 2, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 2, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 2, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 2, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 2]), []))
+        assertEquals(16, metrics.seekCount);
+
+
+        // Select where two out of three columns have discrete constraints
+        // set up while the other one has no restrictions
+        query = "SELECT * FROM sample_table WHERE " +
+                "h = 1 AND r2 IN (2,3) AND r3 IN (2, 25, 8, 7, 23, 18)";
+
+        expectedRows = allRows.stream()
+                                .filter(r -> r.getInt(0) == 1
+                                        && (r.getInt(2) == 2
+                                            || r.getInt(2) == 3)
+                                        && r3Filter.contains(r.getInt(3)))
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        metrics = assertFullDocDBFilter(statement, query, "sample_table");
+
+        // For each value of r1, we have two values of r2 to seek through and
+        // for each of those we have at most 6 values of r3 to seek through.
+        // In reality, we seek through 4 values of r3 for each (r1,r2) for
+        // the same reason as the previous test. After we've exhausted all
+        // possibilities for (r2,r3) for a given r1, we seek to (r1,kHighest)
+        // to seek to the next possible value of r1. Therefore, we seek
+        // 4 * 2 + 1 = 9 values for each r1.
+        // Note that there are 10 values of r1 to seek through and we do an
+        // initial seek into the hash code as usual. So in total, we have
+        // 10 * (4 * 2 + 1) + 1 = 10 * 9 + 1 = 91 seeks.
+        // Seek(SubDocKey(DocKey(0x1210, [1], [kLowest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 3, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 3, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 3, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 3, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, kHighest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 25]), []))
+        // ...
+        // Seek(SubDocKey(DocKey(0x1210, [1], [9, kHighest]), []))
+        assertEquals(91, metrics.seekCount);
+
+        // Select where we have options for the hash code and discrete
+        // filters on two out of three range columns
+        query = "SELECT * FROM sample_table WHERE " +
+                "h IN (1,5) AND r2 IN (2,3) AND r3 IN (2, 25, 8, 7, 23, 18)";
+
+        expectedRows = allRows.stream()
+                                .filter(r -> (r.getInt(0) == 1
+                                            || r.getInt(0) == 5)
+                                        && (r.getInt(2) == 2
+                                            || r.getInt(2) == 3)
+                                        && r3Filter.contains(r.getInt(3)))
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // Note that in this case, YSQL sends two batches of requests
+        // to DocDB in parallel, one for each hash code option. So this
+        // should really just be double the number of seeks as
+        // SELECT * FROM sample_table WHERE h = 1 AND r2 IN (2,3)
+        // AND r3 IN (2, 25, 8, 7, 23, 18)
+        // We have 91 * 2 = 182 seeks
+        assertEquals(182, metrics.seekCount);
     }
   }
 
