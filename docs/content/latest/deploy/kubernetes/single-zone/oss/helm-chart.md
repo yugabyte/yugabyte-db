@@ -334,6 +334,34 @@ You can also bring up an internal load balancer (for either YB-Master or YB-TSer
 
 If you intend to use a preallocated (reserved) IP for the exposed YB-Master and YB-TServer services, you need to specify the load balancer IP. If you do not set this IP, a so-called ephemeral, semi-random IP will be allocated.
 
+The following is an example of the `values-overrides.yaml` file that allows you to override IP values in the Helm charts:
+
+```
+serviceEndpoints:
+  - name: "yb-master-ui"
+    app: "yb-master"
+    loadBalancerIP: "11.11.11.11"
+    type: "LoadBalancer"
+    ports:
+      http-ui: "7000"
+  - name: "yb-tserver-service"
+    app: "yb-tserver"
+    loadBalancerIP: "22.22.22.22"
+    type: "LoadBalancer"
+    ports:
+      tcp-yql-port: "9042"
+      tcp-yedis-port: "6379"
+      tcp-ysql-port: "5433"
+```
+
+You apply the override by executing the following Helm command:
+
+```
+helm install yb-demo ./yugabyte -f values-overrides.yaml
+```
+
+Assuming that you already reserved the IP addresses (11.11.11.11 and 22.22.22.22), `yb-master-ui` and `yb-tserver-service` will use the predetermined addresses.
+
 Note that setting the load balancer IP results in a behavior that might not be entirely consistent across cloud providers.
 
 ### Storage class
