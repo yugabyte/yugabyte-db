@@ -244,13 +244,13 @@ class CDCServiceImpl::Impl {
       const ProducerTabletInfo& producer_tablet,
       const std::string& timestamp,
       const Schema& schema,
-      const OpId& opid) {
+      const OpId& op_id) {
     std::lock_guard<decltype(mutex_)> l(mutex_);
     auto it = cdc_state_metadata_.find(producer_tablet);
     if (it != cdc_state_metadata_.end()) {
       it->commit_timestamp = timestamp;
       it->current_schema = schema;
-      it->last_streamed_op_id = opid;
+      it->last_streamed_op_id = op_id;
     }
   }
 
