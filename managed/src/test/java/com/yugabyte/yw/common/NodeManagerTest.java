@@ -128,13 +128,11 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock Config mockConfig;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
-  private final String MASTER_ADDRESSES = "host-n1:7100,host-n2:7100,host-n3:7100";
+  private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
   private final String fakeMountPath1 = "/fake/path/d0";
   private final String fakeMountPath2 = "/fake/path/d1";
   private final String fakeMountPaths = fakeMountPath1 + "," + fakeMountPath2;
   private final String instanceTypeCode = "fake_instance_type";
-  private final String SERVER_CERT_PATH = "/tmp/cert.crt";
-  private final String SERVER_KEY_PATH = "/tmp/key.crt";
 
   private static final List<String> PRECHECK_CERT_PATHS =
       Arrays.asList(
@@ -246,15 +244,6 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.throughput = 250;
       }
     }
-  }
-
-  private NodeTaskParams createInvalidParams(TestData testData) {
-    Universe u = createUniverse();
-    NodeTaskParams params = new NodeTaskParams();
-    params.azUuid = testData.zone.uuid;
-    params.nodeName = testData.node.getNodeName();
-    params.universeUUID = u.universeUUID;
-    return params;
   }
 
   private AccessKey getOrCreate(UUID providerUUID, String keyCode, AccessKey.KeyInfo keyInfo) {
@@ -512,12 +501,13 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("fs_data_dirs", mount_points);
     }
 
-    String private_ip = testData.node.getDetails().nodeName;
+    String index = testData.node.getDetails().nodeName.split("-n")[1];
+    String private_ip = "10.0.0." + index;
     String processType = params.getProperty("processType");
 
     if (processType == null) {
       gflags.put("master_addresses", "");
-    } else if (processType == ServerType.TSERVER.name()) {
+    } else if (processType.equals(ServerType.TSERVER.name())) {
       if (useHostname) {
         gflags.put("server_broadcast_addresses", String.format("%s:%s", private_ip, "9100"));
       } else {
@@ -527,19 +517,12 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("tserver_master_addrs", MASTER_ADDRESSES);
       gflags.put("webserver_port", "9000");
       gflags.put("webserver_interface", private_ip);
-      gflags.put("cql_proxy_bind_address", String.format("%s:%s", private_ip, "9042"));
       gflags.put("redis_proxy_bind_address", String.format("%s:%s", private_ip, "6379"));
 
       if (userIntent.enableYEDIS) {
         gflags.put("redis_proxy_webserver_port", "11000");
       } else {
         gflags.put("start_redis_proxy", "false");
-      }
-      if (userIntent.enableYCQL) {
-        gflags.put("cql_proxy_webserver_port", "12000");
-      }
-      if (userIntent.enableYSQL) {
-        gflags.put("pgsql_proxy_webserver_port", "13000");
       }
     } else {
       if (useHostname) {
@@ -557,8 +540,8 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("webserver_interface", private_ip);
     }
 
-    String pgsqlProxyBindAddress = configureParams.nodeName;
-    String cqlProxyBindAddress = configureParams.nodeName;
+    String pgsqlProxyBindAddress = private_ip;
+    String cqlProxyBindAddress = private_ip;
     if (useHostname) {
       pgsqlProxyBindAddress = "0.0.0.0";
       cqlProxyBindAddress = "0.0.0.0";
@@ -566,6 +549,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
     if (configureParams.enableYSQL) {
       gflags.put("enable_ysql", "true");
+      gflags.put("pgsql_proxy_webserver_port", "13000");
       gflags.put(
           "pgsql_proxy_bind_address",
           String.format(
@@ -585,6 +569,7 @@ public class NodeManagerTest extends FakeDBApplication {
     }
     if (configureParams.enableYCQL) {
       gflags.put("start_cql_proxy", "true");
+      gflags.put("cql_proxy_webserver_port", "12000");
       gflags.put(
           "cql_proxy_bind_address",
           String.format(
@@ -784,7 +769,8 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("/yb/release.tar.gz");
         }
 
-        boolean useHostname = !NodeManager.isIpAddress(configureParams.nodeName);
+        // boolean useHostname = !NodeManager.isIpAddress(configureParams.nodeName);
+        boolean useHostname = false;
 
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeTaskSubType taskSubType =

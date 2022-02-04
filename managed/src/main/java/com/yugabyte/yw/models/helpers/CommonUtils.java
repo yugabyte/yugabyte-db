@@ -279,6 +279,18 @@ public class CommonUtils {
     return query;
   }
 
+  public static <T> ExpressionList<T> appendLikeClause(
+      ExpressionList<T> query, String field, Collection<String> values) {
+    if (!CollectionUtils.isEmpty(values)) {
+      Junction<T> orExpr = query.or();
+      for (String value : values) {
+        orExpr.icontains(field, value);
+      }
+      query.endOr();
+    }
+    return query;
+  }
+
   public static <T> ExpressionList<T> appendNotInClause(
       ExpressionList<T> query, String field, Collection<?> values) {
     if (!CollectionUtils.isEmpty(values)) {

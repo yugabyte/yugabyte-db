@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import java.util.UUID;
 import org.junit.After;
 import org.junit.Before;
@@ -82,10 +83,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST1");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(true);
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
         () -> Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID));
@@ -96,10 +98,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createGcsStorageConfig(defaultCustomer, "TEST2");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     mockGCPUtil.when(() -> GCPUtil.canCredentialListObjects(any())).thenReturn(true);
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
         () -> Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID));
@@ -110,10 +113,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createAZStorageConfig(defaultCustomer, "TEST3");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     mockAZUtil.when(() -> AZUtil.canCredentialListObjects(any())).thenReturn(true);
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
         () -> Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID));
@@ -131,7 +135,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManagerYb.deleteBackup(any())).thenReturn(shellResponse);
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
         () -> Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID));
@@ -146,7 +150,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     defaultUniverse.delete();
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
         () -> Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID));
@@ -157,10 +161,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
     mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(false);
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
     assertEquals(BackupState.FailedToDelete, backup.state);
   }
@@ -177,7 +182,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     shellResponse.message = "{\"error\": true}";
     shellResponse.code = 2;
     when(mockTableManagerYb.deleteBackup(any())).thenReturn(shellResponse);
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
     assertEquals(BackupState.FailedToDelete, backup.state);
   }
@@ -194,7 +199,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     mockAWSUtil
         .when(() -> AWSUtil.deleteKeyIfExists(any(), any()))
         .thenThrow(new RuntimeException());
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
     assertEquals(BackupState.FailedToDelete, backup.state);
   }
@@ -203,10 +208,67 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   public void testDeleteBackupWithInvalidStorageConfig() {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
+    bp.universeUUID = UUID.randomUUID();
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    backupGC.deleteBackup(defaultCustomer.uuid, backup.backupUUID);
+    backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
+    assertEquals(BackupState.FailedToDelete, backup.state);
+  }
+
+  @Test
+  public void testDeleteCustomerConfigSuccess() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST9");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(true);
+    customerConfig.setState(ConfigState.QueuedForDeletion);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () -> Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID));
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            customerConfigService.getOrBadRequest(defaultCustomer.uuid, customerConfig.configUUID));
+  }
+
+  @Test
+  public void testDeleteCustomerConfigSuccessWithBackupsLeft() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST10");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(true);
+    customerConfig.setState(ConfigState.QueuedForDeletion);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            customerConfigService.getOrBadRequest(defaultCustomer.uuid, customerConfig.configUUID));
+  }
+
+  @Test
+  public void testDeleteCustomerConfigSuccessWithBackupsError() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST11");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    mockAWSUtil.when(() -> AWSUtil.canCredentialListObjects(any())).thenReturn(false);
+    customerConfig.setState(ConfigState.QueuedForDeletion);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            customerConfigService.getOrBadRequest(defaultCustomer.uuid, customerConfig.configUUID));
+    backup.refresh();
     assertEquals(BackupState.FailedToDelete, backup.state);
   }
 }

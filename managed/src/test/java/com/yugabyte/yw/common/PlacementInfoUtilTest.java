@@ -1987,7 +1987,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         ApiUtils.getDummyNodeDetails(
             6, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
 
-    PlacementInfoUtil.selectMasters("host-n1", nodes, 1);
+    PlacementInfoUtil.selectMasters("10.0.0.1", nodes, 1);
     PlacementInfoUtil.verifyMastersSelection(nodes, 1);
   }
 
@@ -2026,7 +2026,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         ApiUtils.getDummyNodeDetails(
             7, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
 
-    PlacementInfoUtil.selectMasters("host-n1", nodes, 3);
+    PlacementInfoUtil.selectMasters("10.0.0.1", nodes, 3);
     PlacementInfoUtil.verifyMastersSelection(nodes, 3);
 
     // Master-leader (host-n1) should be left as the leader, the second master
