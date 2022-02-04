@@ -113,6 +113,13 @@ DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
              "Interval that is used to update memory consumption from external source. "
              "For instance from tcmalloc statistics.");
 
+DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, 128 * 1024L * 1024L,
+             "Size, in bytes, that is considered a large value for Release() (or Consume() with "
+             "a negative value). If tcmalloc is used, this can trigger it to GC. "
+             "A higher value will make us call into tcmalloc less often (and therefore more "
+             "efficient). A lower value will mean our memory overhead is lower.");
+TAG_FLAG(mem_tracker_tcmalloc_gc_release_bytes, runtime);
+
 namespace yb {
 
 // NOTE: this class has been adapted from Impala, so the code style varies
@@ -134,7 +141,7 @@ shared_ptr<MemTracker> root_tracker;
 GoogleOnceType root_tracker_once = GOOGLE_ONCE_INIT;
 
 // Total amount of memory from calls to Release() since the last GC. If this
-// is greater than GC_RELEASE_SIZE, this will trigger a tcmalloc gc.
+// is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
 
 // Validate that various flags are percentages.
@@ -580,7 +587,7 @@ void MemTracker::Release(int64_t bytes) {
   }
 
   if (PREDICT_FALSE(base::subtle::Barrier_AtomicIncrement(&released_memory_since_gc, bytes) >
-                    GC_RELEASE_SIZE)) {
+                    GetAtomicFlag(&FLAGS_mem_tracker_tcmalloc_gc_release_bytes))) {
     GcTcmalloc();
   }
 
