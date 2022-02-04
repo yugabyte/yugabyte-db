@@ -46,14 +46,6 @@ public class ReleaseManager {
     DELETED
   }
 
-  public enum Architecture {
-    X86_64,
-    AARCH64
-  }
-
-  private static final String X86_GLOB = "glob:**yugabyte*centos*x86_64.tar.gz";
-  private static final String AARCH64_GLOB = "glob:**yugabyte*centos*aarch64.tar.gz";
-
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
 
   @ApiModel(description = "Yugabyte release metadata")
@@ -61,9 +53,6 @@ public class ReleaseManager {
 
     @ApiModelProperty(value = "Release state", example = "ACTIVE")
     public ReleaseState state = ReleaseState.ACTIVE;
-
-    @ApiModelProperty(value = "Release architecture")
-    public Architecture arch = Architecture.X86_64;
 
     @ApiModelProperty(value = "Release notes")
     public List<String> notes;
@@ -181,11 +170,6 @@ public class ReleaseManager {
       return this;
     }
 
-    public ReleaseMetadata withArchitecture(Architecture arch) {
-      this.arch = arch;
-      return this;
-    }
-
     public String toString() {
       return Json.toJson(CommonUtils.maskObject(this)).toString();
     }
@@ -193,11 +177,10 @@ public class ReleaseManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
 
-  private Predicate<Path> getPackageFilter(String pathMatchGlob) {
-    PathMatcher ybPackageMatcher = FileSystems.getDefault().getPathMatcher(pathMatchGlob);
-    Predicate<Path> ybPackageFilter = p -> Files.isRegularFile(p) && ybPackageMatcher.matches(p);
-    return ybPackageFilter;
-  }
+  final PathMatcher ybPackageMatcher =
+      FileSystems.getDefault().getPathMatcher("glob:**yugabyte*centos*.tar.gz");
+  final Predicate<Path> ybPackageFilter =
+      p -> Files.isRegularFile(p) && ybPackageMatcher.matches(p);
 
   final PathMatcher ybChartMatcher =
       FileSystems.getDefault().getPathMatcher("glob:**yugabyte-*-helm.tar.gz");
@@ -226,31 +209,18 @@ public class ReleaseManager {
     return fileMap;
   }
 
-  private Map<String, ReleaseMetadata> createLocalReleases(
-      Map<String, String> releaseFiles, Map<String, String> releaseCharts, Architecture arch) {
+  public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
     Map<String, ReleaseMetadata> localReleases = new HashMap<>();
+    Map<String, String> releaseFiles = getReleaseFiles(releasesPath, ybPackageFilter);
+    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
     releaseFiles.forEach(
         (version, filePath) -> {
           ReleaseMetadata r =
               ReleaseMetadata.create(version)
                   .withFilePath(filePath)
-                  .withChartPath(releaseCharts.getOrDefault(version, ""))
-                  .withArchitecture(arch);
-          String releaseName = version + "-" + arch.name().toLowerCase();
-          localReleases.put(releaseName, r);
+                  .withChartPath(releaseCharts.getOrDefault(version, ""));
+          localReleases.put(version, r);
         });
-    return localReleases;
-  }
-
-  public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
-    Map<String, String> x86ReleaseFiles = getReleaseFiles(releasesPath, getPackageFilter(X86_GLOB));
-    Map<String, String> aarch64ReleaseFiles =
-        getReleaseFiles(releasesPath, getPackageFilter(AARCH64_GLOB));
-    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
-    Map<String, ReleaseMetadata> localReleases =
-        createLocalReleases(x86ReleaseFiles, releaseCharts, Architecture.X86_64);
-    localReleases.putAll(
-        createLocalReleases(aarch64ReleaseFiles, releaseCharts, Architecture.AARCH64));
     return localReleases;
   }
 
@@ -392,17 +362,11 @@ public class ReleaseManager {
       Map<String, ReleaseMetadata> localReleases = getLocalReleases(ybReleasesPath);
       Map<String, Object> currentReleases = getReleaseMetadata();
       localReleases.keySet().removeAll(currentReleases.keySet());
-      Map<String, ReleaseMetadata> filterReleases =
-          localReleases
-              .entrySet()
-              .stream()
-              .filter(map -> !currentReleases.keySet().contains(map.getValue().imageTag))
-              .collect(Collectors.toMap(map -> map.getKey(), map -> map.getValue()));
       LOG.debug("Current releases: [ {} ]", currentReleases.keySet().toString());
-      LOG.debug("Local releases: [ {} ]", filterReleases.keySet());
-      if (!filterReleases.isEmpty()) {
-        LOG.info("Importing local releases: [ {} ]", Json.toJson(filterReleases));
-        filterReleases.forEach(currentReleases::put);
+      LOG.debug("Local releases: [ {} ]", localReleases.keySet());
+      if (!localReleases.isEmpty()) {
+        LOG.info("Importing local releases: [ {} ]", Json.toJson(localReleases));
+        localReleases.forEach(currentReleases::put);
         configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
       }
     }
