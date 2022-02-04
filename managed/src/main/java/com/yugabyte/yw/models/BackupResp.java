@@ -1,6 +1,7 @@
 package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import org.yb.CommonTypes.TableType;
 import java.util.Collection;
 import java.util.Date;
@@ -27,8 +28,5 @@ public class BackupResp {
   Date createTime;
   Date updateTime;
   Date expiryTime;
-  String storageLocation;
-  String keyspace;
-  Set<String> tableNames;
-  Set<BackupResp> respList;
+  Set<KeyspaceTablesList> responseList;
 }

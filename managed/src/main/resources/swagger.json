@@ -1289,15 +1289,12 @@
         "isUniversePresent" : {
           "type" : "boolean"
         },
-        "keyspace" : {
-          "type" : "string"
-        },
         "onDemand" : {
           "type" : "boolean"
         },
-        "respList" : {
+        "responseList" : {
           "items" : {
-            "$ref" : "#/definitions/BackupResp"
+            "$ref" : "#/definitions/KeyspaceTablesList"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -1314,16 +1311,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "storageLocation" : {
-          "type" : "string"
-        },
-        "tableNames" : {
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        },
         "universeName" : {
           "type" : "string"
         },
@@ -1336,7 +1323,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "keyspace", "onDemand", "respList", "scheduleUUID", "state", "storageConfigUUID", "storageLocation", "tableNames", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "state", "storageConfigUUID", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -2751,6 +2738,25 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "KeyspaceTablesList" : {
+      "properties" : {
+        "keyspace" : {
+          "type" : "string"
+        },
+        "storageLocation" : {
+          "type" : "string"
+        },
+        "tablesList" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "keyspace", "storageLocation", "tablesList" ],
       "type" : "object"
     },
     "LogData" : {
