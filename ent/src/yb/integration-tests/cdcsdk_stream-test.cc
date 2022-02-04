@@ -11,20 +11,17 @@
 // under the License.
 
 #include <algorithm>
-#include <utility>
 #include <chrono>
+#include <utility>
 #include <boost/assign.hpp>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/client/client.h"
+
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -35,18 +32,22 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/cdcsdk_test_base.h"
 
+#include "yb/integration-tests/cdcsdk_test_base.h"
+#include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/master.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/master-test-util.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -61,6 +62,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
@@ -126,13 +128,21 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     return created_streams;
   }
 
-  Result<google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB>> ListDBStreams() {
+  Result<google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB>> ListDBStreams(
+      const std::string& namespace_name = kNamespaceName, const TableId table_id = "") {
     // Listing the streams now.
     master::ListCDCStreamsRequestPB list_req;
     master::ListCDCStreamsResponsePB list_resp;
 
-    list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
-    list_req.set_namespace_id(VERIFY_RESULT(GetNamespaceId(kNamespaceName)));
+    // If table_id is passed i.e. it is not empty, it means that now the xCluster streams are being
+    // requested, so we will be doing further operations based on the same check.
+    if (!table_id.empty()) {
+      list_req.set_id_type(master::IdTypePB::TABLE_ID);
+      list_req.set_table_id(table_id);
+    } else {
+      list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
+      list_req.set_namespace_id(VERIFY_RESULT(GetNamespaceId(kNamespaceName)));
+    }
 
     RpcController list_rpc;
     list_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -391,6 +401,67 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DBStreamInfoTest_AllTablesWitho
   std::vector<std::string> table_names_without_pk = {"table_without_pk_1", "table_without_pk_2"};
 
   TestDBStreamInfo({}, table_names_without_pk);
+}
+
+TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCWithXclusterEnabled)) {
+  // Set up an RF 3 cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  // We not need to create both xcluster and cdc streams on a table,
+  // and we will list them to check that they are not the same.
+
+  const uint32_t num_of_streams = 100;
+
+  // Creating CDC DB streams on the table.
+  // We get a sorted vector from CreateDBStreams() function already.
+  std::vector<CDCStreamId> created_db_streams = ASSERT_RESULT(CreateDBStreams(num_of_streams));
+
+  // Creating xCluster streams now.
+  std::vector<CDCStreamId> created_xcluster_streams;
+  for (uint32_t i = 0; i < num_of_streams; ++i) {
+    RpcController rpc;
+    CreateCDCStreamRequestPB create_req;
+    CreateCDCStreamResponsePB create_resp;
+
+    create_req.set_table_id(table.table_id());
+    ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
+
+    // Assert that there is no DB stream ID in the response while creating xCluster stream.
+    ASSERT_FALSE(create_resp.has_db_stream_id());
+
+    created_xcluster_streams.push_back(create_resp.stream_id());
+  }
+  std::sort(created_xcluster_streams.begin(), created_xcluster_streams.end());
+
+  // Ensure that created streams are all different.
+  for (uint32_t i = 0; i < num_of_streams; ++i) {
+    ASSERT_NE(created_db_streams[i], created_xcluster_streams[i]);
+  }
+
+  // List streams for CDC and xCluster. They both should not be the same.
+  google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_cdc_resp =
+      ASSERT_RESULT(ListDBStreams(kNamespaceName));
+  std::vector<std::string> db_streams;
+  for (int32_t i = 0; i < list_cdc_resp.size(); ++i) {
+    db_streams.push_back(list_cdc_resp.Get(i).stream_id());
+  }
+  std::sort(db_streams.begin(), db_streams.end());
+
+  // List the streams for xCluster.
+  google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_xcluster_resp =
+      ASSERT_RESULT(ListDBStreams(kNamespaceName, table.table_id()));
+  std::vector<std::string> xcluster_streams;
+  for (int32_t i = 0; i < list_xcluster_resp.size(); ++i) {
+    xcluster_streams.push_back(list_xcluster_resp.Get(i).stream_id());
+  }
+  std::sort(xcluster_streams.begin(), xcluster_streams.end());
+
+  // Ensuring that the streams we got in both the cases are different in order to make sure that
+  // there are no clashes.
+  for (int i = 0; i < db_streams.size(); ++i) {
+    ASSERT_NE(db_streams[i], xcluster_streams[i]);
+  }
 }
 }  // namespace enterprise
 }  // namespace cdc

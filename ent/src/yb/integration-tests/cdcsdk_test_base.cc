@@ -293,6 +293,7 @@ void CDCSDKTestBase::InitCreateStreamRequest(
   create_req->set_source_type(CDCSDK);
 }
 
+// This creates a DB stream on the database kNamespaceName by default.
 Result<std::string> CDCSDKTestBase::CreateDBStream(CDCCheckpointType checkpoint_type) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;

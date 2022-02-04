@@ -16,11 +16,8 @@
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_value.h"
-#include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/cdc/cdc_service.h"
+
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
@@ -32,13 +29,18 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/cdcsdk_test_base.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
