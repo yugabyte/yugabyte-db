@@ -84,7 +84,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   CHECKED_STATUS InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
                                  const std::string& master_addrs,
-                                 const std::string& producer_universe_uuid);
+                                 const std::string& producer_universe_uuid,
+                                 std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
