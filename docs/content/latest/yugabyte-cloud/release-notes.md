@@ -15,6 +15,23 @@ showAsideToc: true
 
 ## Releases
 
+### February 3, 2021
+
+#### New features
+
+- Ability to select the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating standard clusters](../cloud-basics/create-clusters/).
+- Automated notifications of upcoming database upgrades. The notification email includes the date and time of the upgrade window. An Upcoming Upgrade badge is also displayed on the cluster. You can start the upgrade any time by signing in to Yugabyte Cloud, selecting the cluster, clicking the **Upcoming Upgrade** badge, and clicking **Upgrade Now**. To change the upgrade window, contact {{<support-cloud>}}.
+
+#### Infrastructure
+
+- Instance type for new free clusters on AWS updated to [EC2 T3.small](https://aws.amazon.com/ec2/instance-types/t3/). Existing free clusters retain their EC2 T2.small instance type for their lifetime.
+- Instance type for new standard clusters on GCP updated to [n2-standard](https://cloud.google.com/compute/docs/general-purpose-machines#n2_machines).
+
+#### Database
+
+- [Edge release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.11.1. New free clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- Stable release updated to version 2.8.1 for standard clusters. New standard clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
 ### January 27, 2021
 
 #### New features
@@ -22,6 +39,10 @@ showAsideToc: true
 - Support for [alerts](../cloud-monitor/cloud-alerts/) to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues. Configure alerts and view notifications on the **Alerts** page. When an alert triggers, Yugabyte Cloud sends an email notification and displays a notification on the **Notifications** tab. When the alert condition resolves, the notification dismisses automatically. Alerts are enabled for all clusters in your cloud.
 - Free clusters are now [paused](../cloud-faq/#why-is-my-free-cluster-paused) after 21 days of inactivity. Yugabyte Cloud sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../cloud-faq/#what-qualifies-as-activity-on-a-cluster) Free clusters are deleted after 30 days of inactivity.
 - Ability to see the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB that your cluster is running on.
+
+#### Fixes
+
+- Windows and Firefox keyboard shortcuts work correctly in cloud shell.
 
 ### December 16, 2021
 
@@ -125,7 +146,6 @@ The following **AWS regions** are available:
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
-- **Installing PostgreSQL Extensions** - For security reasons, the admin account used for the YugabyteDB database is not a super user. As a result, you cannot install extensions. If you need a database extension that is not [pre-bundled](../../explore/ysql-language-features/advanced-features/extensions/) with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or reach out on Slack.
 
 ### Known issues in cloud shell
 
@@ -133,5 +153,3 @@ The following **AWS regions** are available:
 - If the cloud shell stops responding, close the browser tab and restart the cloud shell.
 - Cloud shell is unavailable for clusters in a VPC.
 - Cloud shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- No support for keyboard shortcuts on Windows. Use the shortcut menu.
-- No support for keyboard shortcuts in Firefox. Use the shortcut menu.
