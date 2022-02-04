@@ -39,6 +39,7 @@ public class HashicorpEARServiceUtil {
   public static final String HC_VAULT_MOUNT_PATH = "HC_VAULT_MOUNT_PATH";
   public static final String HC_VAULT_TTL = "HC_VAULT_TTL";
   public static final String HC_VAULT_TTL_EXPIRY = "HC_VAULT_TTL_EXPIRY";
+  public static final String HC_VAULT_EKE_NAME = "key_yugabyte";
 
   /** Creates Secret Engine object with VaultAccessor. */
   private static class VaultSecretEngineBuilder {
@@ -106,8 +107,8 @@ public class HashicorpEARServiceUtil {
    */
   public static String getVaultKeyForUniverse(UUID universeUUID, UUID configUUID) {
     String keyName = "key";
-    // generate keyname using => "'key_' + "CONFIG_UUID"
-    keyName = "key_" + configUUID.toString(); // + "_" + universeUUID.toString();
+    // generate keyname using => 'key_yugabyte'
+    keyName = HC_VAULT_EKE_NAME;
     LOG.debug("getVaultKeyForUniverse returning {}", keyName);
     return keyName;
   }
