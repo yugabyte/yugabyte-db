@@ -173,7 +173,7 @@ class YBTableName {
   YQLDatabase namespace_type_; // Can be empty, that means the namespace id will be used.
   std::string table_id_; // Optional. Can be set when client knows the table id also.
   std::string table_name_;
-  std::string pgschema_name_;
+  std::string pgschema_name_; // Can be empty
   // Optional. Can be set when the client knows the table type.
   boost::optional<master::RelationType> relation_type_;
 };
