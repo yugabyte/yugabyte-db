@@ -456,7 +456,7 @@ void SetColumnInfo (CDCSDKColumnInfoPB* column_info, const ColumnSchemaPB& colum
 
 CHECKED_STATUS PopulateCDCSDKDDLRecord(
     const ReplicateMsgPtr& msg, CDCSDKRecordPB* record, bool is_proto_record,
-    CDCSDKProtoRecordPB* proto_record, string table_name, Schema& schema) {
+    CDCSDKProtoRecordPB* proto_record, const string& table_name, const Schema& schema) {
   SCHECK(
       msg->has_change_metadata_request(), InvalidArgument,
       Format(
@@ -508,7 +508,7 @@ CHECKED_STATUS PopulateCDCSDKDDLRecord(
 
 CHECKED_STATUS PopulateCDCSDKTruncateRecord(
     const ReplicateMsgPtr& msg, CDCSDKRecordPB* record, bool is_proto_record,
-    CDCSDKProtoRecordPB* proto_record, Schema& schema) {
+    CDCSDKProtoRecordPB* proto_record, const Schema& schema) {
   SCHECK(
       msg->has_truncate(), InvalidArgument,
       Format(
