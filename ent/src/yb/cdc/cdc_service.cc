@@ -1869,7 +1869,6 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
   auto session = client()->NewSession();
 
   // Used to delete streams in case of failure.
-  // also include cdc_state_metadata lik tablet_checkpoint
   CDCCreationState creation_state;
   auto scope_exit = ScopeExit([this, &creation_state] {
     RollbackPartialCreate(creation_state);
