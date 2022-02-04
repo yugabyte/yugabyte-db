@@ -189,19 +189,6 @@ bool AllReplicasHaveFinishedCompaction(const TabletInfo& tablet_info) {
   return true;
 }
 
-bool IsCompactingSplit(const TabletInfo& tablet,
-                       const MetadataCowWrapper<PersistentTabletInfo>::ReadLock& tablet_lock) {
-  return (tablet_lock->pb.has_split_parent_tablet_id() &&
-          tablet_lock->pb.state() == SysTabletsEntryPB::RUNNING &&
-          !AllReplicasHaveFinishedCompaction(tablet));
-}
-
-bool IsSplitToRestart(const TabletInfo& tablet,
-                      const MetadataCowWrapper<PersistentTabletInfo>::ReadLock& tablet_lock) {
-  return tablet_lock->pb.has_split_parent_tablet_id() &&
-         tablet_lock->pb.state() != SysTabletsEntryPB::RUNNING;
-}
-
 bool TabletSplitManager::ShouldSplitTablet(const TabletInfo& tablet) {
   auto tablet_lock = tablet.LockForRead();
   // If no leader for this tablet, skip it for now.
@@ -262,27 +249,30 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
       }
 
       auto tablet_lock = tablet->LockForRead();
-      const TabletId& parent_id = tablet_lock->pb.split_parent_tablet_id();
-      if (IsCompactingSplit(*tablet, tablet_lock)) {
-        // This tablet is the child of a split and is still compacting. We assume that this split
-        // will eventually complete for both tablets.
-        compacting_splits.insert(parent_id);
-      } else if (IsSplitToRestart(*tablet, tablet_lock)) {
-        splits_to_schedule.insert(parent_id);
-      } else {
-        // Add new split candidates to a list. We add as many as we can into splits_to_schedule
-        // after we have found any splits that need to be restarted.
-        if (ShouldSplitTablet(*tablet)) {
-          new_split_candidates.push_back(tablet);
+      // Ignore a tablet as a new split candidate if it is part of an outstanding split.
+      bool ignore_as_candidate = false;
+      if (tablet_lock->pb.has_split_parent_tablet_id()) {
+        const TabletId& parent_id = tablet_lock->pb.split_parent_tablet_id();
+        if (!tablet_lock->is_running()) {
+          // Recently split child is not running; restart the split.
+          ignore_as_candidate = true;
+          splits_to_schedule.insert(parent_id);
+        } else if (!AllReplicasHaveFinishedCompaction(*tablet)) {
+          // This (running) tablet is the child of a split and is still compacting. We assume that
+          // this split will eventually complete for both tablets.
+          ignore_as_candidate = true;
+          compacting_splits.insert(parent_id);
+        }
+        if (splits_to_schedule.count(parent_id) != 0 && compacting_splits.count(parent_id) != 0) {
+          // It's possible that one child subtablet leads us to insert the parent tablet id into
+          // splits_to_schedule, and another leads us to insert into compacting_splits. In this
+          // case, it means one of the children is live, thus both children have been created and
+          // the split RPC does not need to be scheduled.
+          splits_to_schedule.erase(parent_id);
         }
       }
-      if (splits_to_schedule.count(parent_id) != 0 &&
-          compacting_splits.count(parent_id) != 0) {
-        // It's possible that one child subtablet leads us to insert the parent tablet id into
-        // splits_to_schedule, and another leads us to insert into compacting_splits. In this case,
-        // it means one of the children is live, thus both children have been created and the split
-        // RPC does not need to be scheduled.
-        splits_to_schedule.erase(parent_id);
+      if (!ignore_as_candidate && ShouldSplitTablet(*tablet)) {
+        new_split_candidates.push_back(tablet);
       }
     }
     if (!can_split_more()) {
