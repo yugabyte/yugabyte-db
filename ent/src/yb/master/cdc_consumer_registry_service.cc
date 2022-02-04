@@ -48,10 +48,10 @@ Status CreateTabletMapping(
     const std::string& producer_master_addrs,
     const GetTableLocationsResponsePB& consumer_tablets_resp,
     std::unordered_set<HostPort, HostPortHash>* tserver_addrs,
-    cdc::StreamEntryPB* stream_entry) {
+    cdc::StreamEntryPB* stream_entry,
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks) {
+
   // Get the tablets in the producer table.
-  auto cdc_rpc_tasks = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(
-      producer_id, producer_master_addrs));
   auto producer_table_locations =
       VERIFY_RESULT(cdc_rpc_tasks->GetTableLocations(producer_table_id));
 

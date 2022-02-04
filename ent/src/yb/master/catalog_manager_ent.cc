@@ -3539,10 +3539,8 @@ void CatalogManager::GetCDCStreamCallback(
         }
         new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
 
-        auto s = cdc_rpc->client()->UpdateCDCStream(bootstrap_id, new_entry);
-        if (!s.ok()) {
-          LOG(WARNING) << "Unable to update CDC stream options " << s;
-        }
+        WARN_NOT_OK(cdc_rpc->client()->UpdateCDCStream(bootstrap_id, new_entry),
+                  "Unable to update CDC stream options");
       });
   }
 }
@@ -3601,18 +3599,27 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
       std::vector<HostPort> hp;
       HostPortsFromPBs(l->pb.producer_master_addresses(), &hp);
 
-      Status s = InitCDCConsumer(consumer_info, HostPort::ToCommaSeparatedString(hp),
-          l->pb.producer_id());
-      if (!s.ok()) {
-        LOG(ERROR) << "Error registering subscriber: " << s;
+      auto cdc_rpc_tasks_result =
+          universe->GetOrCreateCDCRpcTasks(l->pb.producer_master_addresses());
+      if (!cdc_rpc_tasks_result.ok()) {
+        LOG(WARNING) << "CDC streams won't be created: " << cdc_rpc_tasks_result;
         l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
       } else {
-        GStringPiece original_producer_id(universe->id());
-        if (original_producer_id.ends_with(".ALTER")) {
-          // Don't enable ALTER universes, merge them into the main universe instead.
-          merge_alter = true;
+        auto cdc_rpc_tasks = *cdc_rpc_tasks_result;
+        Status s = InitCDCConsumer(
+            consumer_info, HostPort::ToCommaSeparatedString(hp), l->pb.producer_id(),
+            cdc_rpc_tasks);
+        if (!s.ok()) {
+          LOG(ERROR) << "Error registering subscriber: " << s;
+          l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
         } else {
-          l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+          GStringPiece original_producer_id(universe->id());
+          if (original_producer_id.ends_with(".ALTER")) {
+            // Don't enable ALTER universes, merge them into the main universe instead.
+            merge_alter = true;
+          } else {
+            l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+          }
         }
       }
     }
@@ -3737,7 +3744,8 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
 Status CatalogManager::InitCDCConsumer(
     const std::vector<CDCConsumerStreamInfo>& consumer_info,
     const std::string& master_addrs,
-    const std::string& producer_universe_uuid) {
+    const std::string& producer_universe_uuid,
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks) {
 
   std::unordered_set<HostPort, HostPortHash> tserver_addrs;
   // Get the tablets in the consumer table.
@@ -3750,11 +3758,12 @@ Status CatalogManager::InitCDCConsumer(
     table_identifer.set_table_id(stream_info.consumer_table_id);
     *(consumer_table_req.mutable_table()) = table_identifer;
     RETURN_NOT_OK(GetTableLocations(&consumer_table_req, &consumer_table_resp));
+
     cdc::StreamEntryPB stream_entry;
     // Get producer tablets and map them to the consumer tablets
     RETURN_NOT_OK(CreateTabletMapping(
         stream_info.producer_table_id, stream_info.consumer_table_id, producer_universe_uuid,
-        master_addrs, consumer_table_resp, &tserver_addrs, &stream_entry));
+        master_addrs, consumer_table_resp, &tserver_addrs, &stream_entry, cdc_rpc_tasks));
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
   }
 

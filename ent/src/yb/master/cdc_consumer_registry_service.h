@@ -49,7 +49,8 @@ Status CreateTabletMapping(
     const std::string& producer_master_addrs,
     const GetTableLocationsResponsePB& consumer_tablets_resp,
     std::unordered_set<HostPort, HostPortHash>* tserver_addrs,
-    cdc::StreamEntryPB* stream_entry);
+    cdc::StreamEntryPB* stream_entry,
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
 
 // After split_tablet_ids.source splits, remove its entry and replace it with its children tablets.
 Status UpdateTableMappingOnTabletSplit(
