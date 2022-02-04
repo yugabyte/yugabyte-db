@@ -322,13 +322,19 @@ $ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 
 ### Independent LoadBalancers
 
-By default, the YugabyteDB Helm chart will expose the client API endpoints as well as master UI endpoint using 2 LoadBalancers. If you want to expose the client APIs using independent LoadBalancers, you can do the following.
+By default, the YugabyteDB Helm chart exposes the client API endpoints and master UI endpoint using two load balancers. If you want to expose the client APIs using independent LoadBalancers, you can execute the following command:
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --wait
 ```
 
-You can also bring up an internal LoadBalancer (for either YB-Master or YB-TServer services), if required. Just specify the [annotation](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) required for your cloud provider. See [Amazon EKS](../../eks/helm-chart/) and [Google Kubernetes Engine](../../gke/helm-chart/) for examples.
+You can also bring up an internal load balancer (for either YB-Master or YB-TServer services), if required. To do so, you specify the [annotation](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) required for your cloud provider. See [Amazon EKS](../../eks/helm-chart/) and [Google Kubernetes Engine](../../gke/helm-chart/) for examples.
+
+### Reserved LoadBalancer IP Addresses
+
+If you intend to use a preallocated (reserved) IP for the exposed YB-Master and YB-TServer services, you need to specify the load balancer IP. If you do not set this IP, a so-called ephemeral, semi-random IP will be allocated.
+
+Note that setting the load balancer IP results in a behavior that might not be entirely consistent across cloud providers.
 
 ### Storage class
 
