@@ -2,7 +2,7 @@
 
 @import "./_colors.scss";
 
-#version-switcher {
+#contribute-list{
   width: auto;
   margin-right: 25px;
   background-color: #fff;
@@ -41,7 +41,7 @@
       border-radius: .2em;
     }
   }
-  .dropdown-menu {
+  .contribute-dropdown-menu {
     float: left;
     width: 100%;
     transform: translateX(0) !important;
@@ -56,7 +56,7 @@
     border: none;
     border-radius: 7px;
     overflow: hidden;
-    .dropdown-item {
+    .contribute-dropdown-item {
       font-weight: 300;
       font-size: 15px;
       line-height: 40px;
