@@ -35,7 +35,7 @@ Use the **Flags** dialog to do all or some of the following, as per your require
 
 - Click **Add Flags > Add to T-Server** to open the **Add to T-Server** dialog, then select the flag you want to add to YB-TServer and set its value.
 
-- Use **Add as JSON > Add to Master** and **Add as JSON > Add to T-Server** to import flags in bulk. The flugs must be defined as name-value pairs in a JSON format via the in the **Add to T-Server** or **Add to Master** dialog, as per the following illustration:<br><br>
+- Use **Add as JSON > Add to Master** and **Add as JSON > Add to T-Server** to import flags in bulk. The flags must be defined as key-value pairs in a JSON format via the in the **Add to T-Server** or **Add to Master** dialog, as per the following illustration:<br><br>
 
   ![JSON Config](/images/ee/add-gflags-json.png)<br><br>
 
