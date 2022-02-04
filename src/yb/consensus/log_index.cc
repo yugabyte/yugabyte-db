@@ -249,7 +249,7 @@ Status LogIndex::AddEntry(const LogIndexEntry& entry) {
   phys.term = entry.op_id.term;
   phys.segment_sequence_number = entry.segment_sequence_number;
   phys.offset_in_segment = entry.offset_in_segment;
-
+  std::lock_guard<simple_spinlock> l(open_chunks_lock_);
   chunk->SetEntry(index_in_chunk, phys);
   VLOG(3) << "Added log index entry " << entry.ToString();
 
@@ -261,6 +261,7 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
   RETURN_NOT_OK(GetChunkForIndex(index, false /* do not create */, &chunk));
   int index_in_chunk = index % kEntriesPerIndexChunk;
   PhysicalEntry phys;
+  std::lock_guard<simple_spinlock> l(open_chunks_lock_);
   chunk->GetEntry(index_in_chunk, &phys);
 
   // We never write any real entries to offset 0, because there's a header
