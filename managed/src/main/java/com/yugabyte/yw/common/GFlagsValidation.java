@@ -62,7 +62,7 @@ public class GFlagsValidation {
       MostUsedGFlags freqUsedGFlags = mapper.readValue(inputStream, MostUsedGFlags.class);
       List<GFlagDetails> result = new ArrayList<>();
       for (GFlagDetails flag : data.flags) {
-        if (serverType == ServerType.MASTER.name()) {
+        if (serverType.equals(ServerType.MASTER.name())) {
           if (freqUsedGFlags.masterGFlags.contains(flag.name)) {
             result.add(flag);
           }
