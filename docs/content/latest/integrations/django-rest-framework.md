@@ -2,10 +2,10 @@
 title: Django REST framework
 linkTitle: Django REST framework
 description: Django REST framework
+section: INTEGRATIONS
 menu:
   latest:
     identifier: django-rest-framework
-    parent: integrations
     weight: 670
 isTocNested: true
 showAsideToc: true
