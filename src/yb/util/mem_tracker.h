@@ -391,7 +391,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // gc_lock. Updates metrics if initialized.
   bool GcMemory(int64_t max_consumption);
 
-  // Called when the total release memory is larger than GC_RELEASE_SIZE.
+  // Called when the total release memory is larger than mem_tracker_tcmalloc_gc_release_bytes.
   // TcMalloc holds onto released memory and very slowly (if ever) releases it back to
   // the OS. This is problematic since it is memory we are not constantly tracking which
   // can cause us to go way over mem limits.
@@ -418,13 +418,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // Creates the root tracker.
   static void CreateRootTracker();
-
-  // Size, in bytes, that is considered a large value for Release() (or Consume() with
-  // a negative value). If tcmalloc is used, this can trigger it to GC.
-  // A higher value will make us call into tcmalloc less often (and therefore more
-  // efficient). A lower value will mean our memory overhead is lower.
-  // TODO: this is a stopgap.
-  static const int64_t GC_RELEASE_SIZE = 128 * 1024L * 1024L;
 
   const int64_t limit_;
   const int64_t soft_limit_;

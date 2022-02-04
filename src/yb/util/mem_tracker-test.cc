@@ -46,6 +46,7 @@
 
 DECLARE_int32(memory_limit_soft_percentage);
 DECLARE_int64(mem_tracker_update_consumption_interval_us);
+DECLARE_int64(mem_tracker_tcmalloc_gc_release_bytes);
 
 namespace yb {
 
@@ -333,6 +334,34 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   ASSERT_OK(WaitFor([root, value] {
     return root->GetUpdatedConsumption() > value;
   }, kWaitTimeout, "Consumption increased"));
+}
+
+TEST(MemTrackerTest, TcMallocGC) {
+  shared_ptr<MemTracker> root = MemTracker::GetRootTracker();
+  // Set a low GC threshold, so we can manage it easily in the test.
+  FLAGS_mem_tracker_tcmalloc_gc_release_bytes = 1_MB;
+  // Allocate something bigger than the threshold.
+  std::unique_ptr<char[]> big_alloc(new char[4_MB]);
+  // clang in release mode can optimize out the above allocation unless
+  // we do something with the pointer... so we just log it.
+  VLOG(8) << static_cast<void*>(big_alloc.get());
+  // Check overhead at start of the test.
+  auto overhead_before = MemTracker::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  LOG(INFO) << "Initial overhead " << overhead_before;
+  // Clear the memory, so tcmalloc gets free bytes.
+  big_alloc.reset();
+  // Check the overhead afterwards, should clearly be higher.
+  auto overhead_after = MemTracker::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  LOG(INFO) << "Post-free overhead " << overhead_after;
+  ASSERT_GT(overhead_after, overhead_before);
+  // Release up to the threshold. We only GC after we cross it, so nothing should happen now.
+  root->Release(1_MB);
+  ASSERT_EQ(overhead_after, MemTracker::GetTCMallocProperty("tcmalloc.pageheap_free_bytes"));
+  // Now we go over the limit and trigger a GC.
+  root->Release(1);
+  auto overhead_final = MemTracker::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  LOG(INFO) << "Final overhead " << overhead_final;
+  ASSERT_GT(overhead_after, overhead_final);
 }
 #endif
 

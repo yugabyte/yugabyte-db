@@ -111,6 +111,13 @@ DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
              "Interval that is used to update memory consumption from external source. "
              "For instance from tcmalloc statistics.");
 
+DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
+             "When the total amount of memory from calls to Release() since the last GC exceeds "
+             "this flag, a new tcmalloc GC will be triggered. This GC will clear the tcmalloc "
+             "page heap freelist. A higher value implies less aggressive GC, i.e. higher memory "
+             "overhead, but more efficient in terms of runtime.");
+TAG_FLAG(mem_tracker_tcmalloc_gc_release_bytes, runtime);
+
 namespace yb {
 
 // NOTE: this class has been adapted from Impala, so the code style varies
@@ -132,7 +139,7 @@ shared_ptr<MemTracker> root_tracker;
 GoogleOnceType root_tracker_once = GOOGLE_ONCE_INIT;
 
 // Total amount of memory from calls to Release() since the last GC. If this
-// is greater than GC_RELEASE_SIZE, this will trigger a tcmalloc gc.
+// is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
 
 // Validate that various flags are percentages.
@@ -273,6 +280,14 @@ void MemTracker::CreateRootTracker() {
 
   #ifdef TCMALLOC_ENABLED
   consumption_functor = &MemTracker::GetTCMallocActualHeapSizeBytes;
+
+  if (FLAGS_mem_tracker_tcmalloc_gc_release_bytes < 0) {
+    // Allocate 1% of memory to the tcmallc page heap freelist.
+    // On a 4GB RAM machine, the master gets 10%, so 400MB, so 1% is 4MB.
+    // On a 16GB RAM machine, the tserver gets 85%, so 13.6GB, so 1% is 136MB, so cap at 128MB.
+    FLAGS_mem_tracker_tcmalloc_gc_release_bytes =
+        std::min(static_cast<size_t>(1.0 * limit / 100), 128_MB);
+  }
   #endif
 
   root_tracker = std::make_shared<MemTracker>(
@@ -578,7 +593,7 @@ void MemTracker::Release(int64_t bytes) {
   }
 
   if (PREDICT_FALSE(base::subtle::Barrier_AtomicIncrement(&released_memory_since_gc, bytes) >
-                    GC_RELEASE_SIZE)) {
+                    GetAtomicFlag(&FLAGS_mem_tracker_tcmalloc_gc_release_bytes))) {
     GcTcmalloc();
   }
 
