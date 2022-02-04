@@ -11,6 +11,7 @@ aliases:
   - /latest/introduction/core-features/
   - /latest/introduction/
   - /latest/faq/architecture/
+  - /latest/faq
 menu:
   latest:
     identifier: faq-general
