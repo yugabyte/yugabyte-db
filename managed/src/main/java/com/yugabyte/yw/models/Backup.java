@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import com.yugabyte.yw.models.filters.BackupFilter;
+import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -48,6 +49,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -665,26 +667,29 @@ public class Backup extends Model {
             .backupType(backup.backupInfo.backupType)
             .state(backup.state);
     if (backup.backupInfo.backupList == null) {
-      builder
-          .storageLocation(backup.backupInfo.storageLocation)
-          .keyspace(backup.backupInfo.getKeyspace())
-          .tableNames(backup.backupInfo.getTableNames());
+      KeyspaceTablesList kTList =
+          KeyspaceTablesList.builder()
+              .keyspace(backup.backupInfo.getKeyspace())
+              .tablesList(backup.backupInfo.getTableNames())
+              .storageLocation(backup.backupInfo.storageLocation)
+              .build();
+      builder.responseList(Stream.of(kTList).collect(Collectors.toSet()));
     } else {
-      Set<BackupResp> respList =
+      Set<KeyspaceTablesList> kTLists =
           backup
               .backupInfo
               .backupList
               .stream()
               .map(
                   b -> {
-                    return BackupResp.builder()
+                    return KeyspaceTablesList.builder()
                         .keyspace(b.getKeyspace())
-                        .tableNames(b.getTableNames())
+                        .tablesList(b.getTableNames())
                         .storageLocation(b.storageLocation)
                         .build();
                   })
               .collect(Collectors.toSet());
-      builder.respList(respList);
+      builder.responseList(kTLists);
     }
     return builder.build();
   }
