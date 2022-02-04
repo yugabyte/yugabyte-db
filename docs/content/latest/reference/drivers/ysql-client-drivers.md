@@ -34,7 +34,7 @@ For a tutorial on building a sample C application with `libpq`, see [Build a C a
 
 #### To install the libpq client library
 
-The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows :
+The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows:
 
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
@@ -141,7 +141,7 @@ For a tutorial on building a sample Java application with the PostgreSQL JDBC Dr
 
 #### Install the PostgreSQL JDBC driver
 
-To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
+To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download.html). Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
 
@@ -195,8 +195,7 @@ $ pip3 install psycopg2-binary
 
 ### aiopg
 
-[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP
--3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using `aiopg`, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
+[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP-3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using `aiopg`, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
 
 For a tutorial on building a sample Python application that uses `aiopg`, see [Build a Python application](../../../quick-start/build-apps/python/ysql-aiopg).
 
