@@ -79,6 +79,14 @@ class DocQLScanSpec : public QLScanSpec {
 
   const Schema* schema() const override { return &schema_; }
 
+  const std::vector<ColumnId> range_options_indexes() const {
+    return range_options_indexes_;
+  }
+
+  const std::vector<ColumnId> range_bounds_indexes() const {
+    return range_bounds_indexes_;
+  }
+
  private:
   static const DocKey& DefaultStartDocKey();
 
@@ -99,6 +107,9 @@ class DocQLScanSpec : public QLScanSpec {
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const QLScanRange> range_bounds_;
 
+  // Indexes of columns that have range bounds such as c2 < 4 AND c2 >= 1
+  std::vector<ColumnId> range_bounds_indexes_;
+
   // Schema of the columns to scan.
   const Schema& schema_;
 
@@ -115,6 +126,10 @@ class DocQLScanSpec : public QLScanSpec {
 
   // The range value options if set. (possibly more than one due to IN conditions).
   std::shared_ptr<std::vector<std::vector<PrimitiveValue>>> range_options_;
+
+  // Indexes of columns that have range option filters such as
+  // c2 IN (1, 5, 6, 9)
+  std::vector<ColumnId> range_options_indexes_;
 
   // Does the scan include static columns also?
   const bool include_static_columns_;
