@@ -1684,6 +1684,7 @@ yb-admin \
 #### upgrade_ysql
 
 Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
+YSQL upgrades are not required for clusters where YSQL is not enabled. Learn more about configuring YSQL flags [here](../../reference/configuration/yb-tserver/#ysql-flags).
 
 **Syntax**
 
