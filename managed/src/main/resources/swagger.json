@@ -4108,11 +4108,6 @@
     "ReleaseMetadata" : {
       "description" : "Yugabyte release metadata",
       "properties" : {
-        "arch" : {
-          "description" : "Release architecture",
-          "enum" : [ "X86_64", "AARCH64" ],
-          "type" : "string"
-        },
         "chartPath" : {
           "description" : "Helm chart path",
           "type" : "string"
