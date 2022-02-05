@@ -38,6 +38,9 @@ public class RestoreBackupParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Storage config uuid")
   public UUID storageConfigUUID;
 
+  @ApiModelProperty(value = "Alter load balancer state")
+  public boolean alterLoadBalancer = true;
+
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
