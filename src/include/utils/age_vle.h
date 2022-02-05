@@ -20,7 +20,8 @@
 #ifndef AG_AGTYPE_VLE_H
 #define AG_AGTYPE_VLE_H
 
-#include "postgres.h"
+#include "utils/agtype.h"
+#include "utils/age_global_graph.h"
 
 /*
  * We declare the VLE_path_container here, and in this way, so that it may be

@@ -48,12 +48,14 @@ OBJS = src/backend/age.o \
        src/backend/parser/cypher_parse_agg.o \
        src/backend/parser/cypher_parse_node.o \
        src/backend/parser/cypher_parser.o \
+       src/backend/utils/adt/age_graphid_ds.o \
        src/backend/utils/adt/agtype.o \
        src/backend/utils/adt/agtype_ext.o \
        src/backend/utils/adt/agtype_ops.o \
        src/backend/utils/adt/agtype_parser.o \
        src/backend/utils/adt/agtype_util.o \
-       src/backend/utils/adt/agtype_vle.o \
+       src/backend/utils/adt/age_global_graph.o \
+       src/backend/utils/adt/age_vle.o \
        src/backend/utils/adt/cypher_funcs.o \
        src/backend/utils/adt/ag_float8_supp.o \
        src/backend/utils/adt/graphid.o \
