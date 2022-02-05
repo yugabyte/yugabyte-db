@@ -43,14 +43,17 @@ public class SupportBundle extends Model {
   private UUID scopeUUID;
 
   @Column
+  @Getter
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date startDate;
 
   @Column
+  @Getter
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date endDate;
 
   @Column(nullable = true)
+  @Getter
   @DbJson
   private BundleDetails bundleDetails;
 

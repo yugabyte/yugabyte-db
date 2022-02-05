@@ -1,0 +1,15 @@
+package com.yugabyte.yw.common.supportbundle;
+
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import java.util.Date;
+import java.nio.file.Path;
+import java.io.IOException;
+
+public interface SupportBundleComponent {
+
+  void downloadComponent(Customer customer, Universe universe, Path bundlePath) throws IOException;
+
+  void downloadComponentBetweenDates(
+      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate);
+}

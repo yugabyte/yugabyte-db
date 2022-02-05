@@ -11,6 +11,9 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
+import com.yugabyte.yw.models.helpers.BundleDetails;
+import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
+import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -34,6 +37,7 @@ import org.apache.commons.io.FileUtils;
 public class CreateSupportBundle extends AbstractTaskBase {
 
   @Inject private UniverseInfoHandler universeInfoHandler;
+  @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
 
   @Inject
   protected CreateSupportBundle(BaseTaskDependencies baseTaskDependencies) {
@@ -70,8 +74,13 @@ public class CreateSupportBundle extends AbstractTaskBase {
         Paths.get(bundlePath.toAbsolutePath().toString().concat(".tar.gz")); // test this path
     log.debug("gzip support bundle path: {}", gzipPath.toString());
     log.debug("Fetching Universe {} logs", universe.name);
-    universeInfoHandler.downloadUniverseLogs(customer, universe, bundlePath);
-    downloadApplicationLogs(customer, universe, bundlePath);
+
+    // Downloads each type of support bundle component type into the bundle path
+    for (BundleDetails.ComponentType componentType : supportBundle.getBundleDetails().components) {
+      SupportBundleComponent supportBundleComponent =
+          supportBundleComponentFactory.getComponent(componentType);
+      supportBundleComponent.downloadComponent(customer, universe, bundlePath);
+    }
 
     try (FileOutputStream fos = new FileOutputStream(gzipPath.toString()); // need to test this path
         GZIPOutputStream gos = new GZIPOutputStream(new BufferedOutputStream(fos));
@@ -91,24 +100,6 @@ public class CreateSupportBundle extends AbstractTaskBase {
     String bundleName = "yb-support-bundle-" + universe.name + "-" + datePrefix + "-logs";
     Path bundlePath = Paths.get(storagePath + "/" + bundleName);
     return bundlePath;
-  }
-
-  private Path downloadApplicationLogs(Customer customer, Universe universe, Path basePath)
-      throws IOException {
-    String appHomeDir =
-        config.hasPath("application.home") ? config.getString("application.home") : ".";
-    String logDir =
-        config.hasPath("log.override.path")
-            ? config.getString("log.override.path")
-            : String.format("%s/logs", appHomeDir);
-    String destDir = basePath.toString() + "/" + "application_logs";
-    Path destPath = Paths.get(destDir);
-    Files.createDirectories(destPath);
-    log.debug("Downloading application logs to {}", destDir);
-    File source = new File(logDir);
-    File dest = new File(destDir);
-    FileUtils.copyDirectory(source, dest);
-    return basePath;
   }
 
   private static void addFilesToTarGZ(

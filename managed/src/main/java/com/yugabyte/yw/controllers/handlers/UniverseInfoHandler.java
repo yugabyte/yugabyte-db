@@ -203,17 +203,4 @@ public class UniverseInfoHandler {
     }
     return targetFile;
   }
-
-  public Path downloadUniverseLogs(Customer customer, Universe universe, Path basePath) {
-    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
-
-    for (NodeDetails node : nodes) {
-      String nodeName = node.getNodeName();
-      Path nodeTargetFile = Paths.get(basePath.toString() + "/" + nodeName + ".tar.gz");
-      log.debug("Node target file {}", nodeTargetFile.toString());
-
-      Path targetFile = downloadNodeLogs(customer, universe, node, nodeTargetFile);
-    }
-    return basePath;
-  }
 }
