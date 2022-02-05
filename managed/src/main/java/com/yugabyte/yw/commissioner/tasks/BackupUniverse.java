@@ -117,6 +117,10 @@ public class BackupUniverse extends UniverseTaskBase {
           throw new RuntimeException("A backup for this universe is already in progress.");
         }
       }
+      if (taskParams().alterLoadBalancer) {
+        createLoadBalancerStateChangeTask(false)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
       try {
         UserTaskDetails.SubTaskGroupType groupType;
         if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
@@ -151,7 +155,10 @@ public class BackupUniverse extends UniverseTaskBase {
         backup.setTaskUUID(userTaskUUID);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
-
+        if (taskParams().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         createMarkUniverseUpdateSuccessTasks()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -176,6 +183,14 @@ public class BackupUniverse extends UniverseTaskBase {
           unlockUniverseForUpdate();
         }
       } catch (Throwable t) {
+        if (taskParams().alterLoadBalancer) {
+          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          // If the task failed, we don't want the loadbalancer to be
+          // disabled, so we enable it again in case of errors.
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          subTaskGroupQueue.run();
+        }
         throw t;
       } finally {
         if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {

@@ -281,7 +281,10 @@ public class CreateBackup extends UniverseTaskBase {
         }
 
         subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
+        if (params().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(false)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         Backup backup =
             Backup.create(
                 params().customerUUID,
@@ -300,6 +303,10 @@ public class CreateBackup extends UniverseTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
+        if (params().alterLoadBalancer) {
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
         createMarkUniverseUpdateSuccessTasks()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -319,6 +326,14 @@ public class CreateBackup extends UniverseTaskBase {
             .forEach((backup) -> backup.transitionState(BackupState.Stopped));
         throw ce;
       } catch (Throwable t) {
+        if (params().alterLoadBalancer) {
+          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          // If the task failed, we don't want the loadbalancer to be
+          // disabled, so we enable it again in case of errors.
+          createLoadBalancerStateChangeTask(true)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          subTaskGroupQueue.run();
+        }
         throw t;
       } finally {
         lockedUpdateBackupState(params().universeUUID, this, false);
