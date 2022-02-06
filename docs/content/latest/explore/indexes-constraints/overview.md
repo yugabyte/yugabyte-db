@@ -1,26 +1,23 @@
 ---
-title: Indexes
-linkTitle: Indexes
-description: Using Indexes
+title: Overview
+linkTitle: Overview
+description: Defining constraints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
-    identifier: indexes-1
+    identifier: overview
     parent: explore-indexes-constraints
-    weight: 251
-aliases:
-   - /latest/explore/ysql-language-features/indexes-1/
+    weight: 200
 isTocNested: true
 showAsideToc: true
+
 ---
 
-The use of indexes can enhance database performance by enabling the database server to find rows faster.
-
-YSQL allows you to create, drop, and list indexes, as well as use indexes on expressions.
+The use of indexes can enhance database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
 
 ## Create indexes
 
-You create indexes in YSQL using the `CREATE INDEX` statement that has the following syntax:
+You can create indexes in YSQL and YCQL using the `CREATE INDEX` statement that has the following syntax:
 
 ```sql
 CREATE INDEX index_name ON table_name(column_list);
@@ -28,13 +25,41 @@ CREATE INDEX index_name ON table_name(column_list);
 
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index.
 
-You can also create a functional index, in which case you would replace any element of *column_list* with an expression. For more information, see [Use indexes on expressions](#use-indexes-on-expressions).
+- You can also create a functional index, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression Indexes](#use-indexes-on-expressions).
 
 YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen. For more information on `ybgin`, see [Generalized inverted index][explore-gin].
 
 You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC examples](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 
+## List indexes and verify the query plan
+
+YSQL inherits all the functionality of the PostgeSQL `pg_indexes` view that allows you to retrieve a list of all indexes in the database as well as detailed information about every index.
+
+```sql
+SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'your_table_name';
+```
+
+For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
+
+For YCQL, you can use the [DESCRIBE INDEX](/latest/admin/ycqlsh/#describe) command to check the indexes as follows:
+
+```cql
+DESCRIBE INDEX <index name>
+```
+
 You can use the `EXPLAIN` statement to check if a query uses an index.
+
+## Remove indexes
+
+You can remove one or more existing indexes using the `DROP INDEX` statement in YSQL and YCQL with the following syntax:
+
+```ysql
+DROP INDEX index_name1, index_name2, index_name3, ... ;
+```
+
+If you execute the same `SELECT` query with the `EXPLAIN` statement as in [Create indexes](#create-indexes), the query plan will not include any information about the index.
+
+## Example scenario
 
 Suppose you work with a database that includes the following table populated with data:
 
@@ -85,13 +110,14 @@ Index Cond: (department = 'Operations'::text)
 
 For additional information, see [Create index API](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique).
 
-## List indexes
+The following example shows how to remove index_employees_department that was created in Create indexes:
 
-YSQL inherits all the functionality of the PostgeSQL `pg_indexes` view that allows you to retrieve a list of all indexes in the database as well as detailed information about every index.
+```sql
+DROP INDEX index_employees_department;
+```
 
-For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
 
-## Use a UNIQUE index
+<!-- ## Use a UNIQUE index
 
 If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
 
@@ -153,22 +179,4 @@ You can define a partial index using the following syntax:
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 
-For examples, see [Partial Indexes](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#partial-indexes).
-
-## Remove indexes
-
-You can remove one or more existing indexes using the `DROP INDEX` statement that has the following syntax:
-
-```ysql
-DROP INDEX index_name1, index_name2, index_name3, ... ;
-```
-
-The following example shows how to remove `index_employees_department` that was created in [Create indexes](#create-indexes):
-
-```sql
-DROP INDEX index_employees_department;
-```
-
-If you execute the same `SELECT` query with the `EXPLAIN` statement as in [Create indexes](#create-indexes), the query plan will not include any information about the index.
-
-[explore-gin]: ../gin/
+For examples, see [Partial Indexes](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#partial-indexes). -->

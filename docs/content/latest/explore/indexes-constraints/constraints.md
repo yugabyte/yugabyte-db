@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: indexes-constraints-constraints
     parent: explore-indexes-constraints
-    weight: 275
+    weight: 220
 isTocNested: true
 showAsideToc: true
 aliases:

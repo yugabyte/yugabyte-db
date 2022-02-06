@@ -7,12 +7,21 @@ menu:
   latest:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
-    weight: 400
+    weight: 360
 aliases:
    - /latest/explore/ysql-language-features/gin/
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../indexes-constraints-gin/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
 
 In YugabyteDB, tables and secondary indexes are both [key-value stores internally][arch-persistence].
 Loosely speaking:

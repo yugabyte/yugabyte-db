@@ -13,21 +13,25 @@ menu:
 ---
 
 
+
+The use of indexes can enhance database performance by enabling the database server to find rows faster.
+
+YSQL allows you to create, drop, and list indexes, as well as use indexes on expressions.
+
 <div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="indexes-1/">
+ <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="overview/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Indexes</div>
+        <div class="title">Overview</div>
       </div>
       <div class="body">
-          Use indexes to enhance database performance.
+          Explore Indexes and Constraints to optimize your database performance.
       </div>
     </a>
   </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+ <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="constraints/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
@@ -35,6 +39,42 @@ menu:
       </div>
       <div class="body">
           Define primary and foreign keys; check values based on various criteria.
+      </div>
+    </a>
+  </div>
+
+<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="unique-index-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Unique Indexes</div>
+      </div>
+      <div class="body">
+          Use indexes to enhance database performance.
+      </div>
+    </a>
+  </div>
+
+<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="partial-index-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Partial Indexes</div>
+      </div>
+      <div class="body">
+          Use indexes to enhance database performance.
+      </div>
+    </a>
+  </div>
+
+<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="expression-index-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Expression Indexes</div>
+      </div>
+      <div class="body">
+          Use indexes to enhance database performance.
       </div>
     </a>
   </div>
