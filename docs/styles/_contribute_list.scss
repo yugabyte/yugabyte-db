@@ -3,12 +3,12 @@
 @import "./_colors.scss";
 
 #contribute-list{
-  width: auto;
+  width: 160px;
   margin-right: 25px;
   background-color: #fff;
   border-radius: 7px;
   line-height: 40px;
-  margin-bottom: 25px;
+  margin-top: -5px;
   button {
     width: 100%;
     text-align: left;
@@ -22,10 +22,7 @@
       background-color: transparent;
       color: $YB_DARK;
       box-shadow: none;
-
-      @media screen and (max-width: 959px) {
-        background: #F7F8F9;
-      }
+      background: #F7F8F9;
     }
     &::after {
       position: absolute;
@@ -33,7 +30,6 @@
       top: 17px;
       margin-left: 0;
       vertical-align: middle;
-      content: "";
       border-top: .4em solid $YB_ORANGE;
       border-right: .4em solid transparent;
       border-bottom: 0;
@@ -41,14 +37,24 @@
       border-radius: .2em;
     }
   }
-  .contribute-dropdown-menu {
+  a {
+    border-bottom: 1px;
+    color: $YB_DARK;
+
+    &:hover {
+        color: $YB_ORANGE;
+        text-decoration: none !important;
+    }
+  }
+  .dropdown-menu {
     float: left;
+    z-index: 1022;
     width: 100%;
     transform: translateX(0) !important;
     padding: 0;
     margin: 0;
     font-size: inherit;
-    color: #212529;
+    color: #2564a3;
     text-align: left;
     list-style: none;
     background-color: #fff;
@@ -56,7 +62,7 @@
     border: none;
     border-radius: 7px;
     overflow: hidden;
-    .contribute-dropdown-item {
+    .dropdown-item {
       font-weight: 300;
       font-size: 15px;
       line-height: 40px;

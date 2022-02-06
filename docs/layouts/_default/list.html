@@ -27,9 +27,9 @@
 				</div>
 				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
 				
-				<div class="list-title-flex">
+				<div class="title-flex">
 					<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Page.Title }}{{ end }}  {{ if .Draft }} (Draft){{ end }}</h1>
-					<div class="list-contribute-text"> 
+					<div class="contribute-text"> 
 						{{ partial "contribute_list" . }}
 					</div>
 				</div>

@@ -4,10 +4,10 @@
     </button>
 
     <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=[docs]+Title&labels=area/documentation&body={{ .Permalink }}">
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=[docs]+{{ $.Page.Title }}&labels=area/documentation&body={{ .Permalink }}%0A%0A%23%23%20Issue%20Description%0A%0A%23%23%20Suggested%20Resolution">
             <strong>Report Doc Issue</strong>
         </a>
-        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=[docs]+Title&labels=area/documentation,community/request&body={{ .Permalink }}">
+        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=[docs]+New+Docs+Proposal&labels=area/documentation,community/request&body={{ .Permalink }}%0A%0A%23%23%20Issue%20Description%0A%0A%23%23%20Suggested%20Resolution">
             <strong>Suggest New Content</strong>
         </a>
     </div>
