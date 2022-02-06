@@ -153,6 +153,7 @@ public class AppInit {
 
       replicationManager.init();
 
+      scheduler.resetRunningStatus();
       scheduler.start();
       callHome.start();
       queryAlerts.start();

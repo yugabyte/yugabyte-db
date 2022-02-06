@@ -124,7 +124,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             node.isMaster = true;
             node.isTserver = true;
             node.cloudInfo = new CloudSpecificInfo();
-            node.cloudInfo.private_ip = "1.2.3." + idx;
+            node.cloudInfo.private_ip = "10.0.0." + idx;
             node.cloudInfo.az = az4.code;
             node.azUuid = az4.uuid;
             universeDetails.nodeDetailsSet.add(node);

@@ -80,6 +80,10 @@ public class ScheduleTask extends Model {
     return tasks.get(0);
   }
 
+  public static List<ScheduleTask> getAllTasks(UUID scheduleUUID) {
+    return find.query().where().eq("schedule_uuid", scheduleUUID).findList();
+  }
+
   public void setCompletedTime() {
     this.completedTime = new Date();
     save();

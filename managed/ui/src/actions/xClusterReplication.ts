@@ -78,10 +78,12 @@ export function deleteXclusterConfig(
 
 export function queryLagMetricsForUniverse(nodePrefix: string | undefined) {
   const DEFAULT_GRAPH_FILTER = {
-    start: moment().subtract('1', 'minute').format('X'),
+    start: moment().subtract('1','hour').format('X'),
+    end:  moment().format('X'),
     nodePrefix,
     metrics: ['tserver_async_replication_lag_micros']
   };
+  
   const customerUUID = localStorage.getItem('customerId');
   return axios.post(`${ROOT_URL}/customers/${customerUUID}/metrics`, DEFAULT_GRAPH_FILTER);
 }

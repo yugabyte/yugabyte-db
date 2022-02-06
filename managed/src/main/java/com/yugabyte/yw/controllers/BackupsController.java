@@ -21,16 +21,23 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.filters.BackupApiFilter;
+import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.paging.BackupPagedQuery;
+import com.yugabyte.yw.models.paging.BackupPagedResponse;
+import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -40,6 +47,7 @@ import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +59,7 @@ import play.mvc.Result;
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
   private static final int maxRetryCount = 5;
+  private static final String VALID_OWNER_REGEX = "^[\\pL_][\\pL\\pM_0-9]*$";
 
   private final Commissioner commissioner;
   private final CustomerConfigService customerConfigService;
@@ -75,18 +84,7 @@ public class BackupsController extends AuthenticatedController {
           response = YBPError.class))
   public Result list(UUID customerUUID, UUID universeUUID) {
     List<Backup> backups = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
-    JsonNode custStorageLoc =
-        CommonUtils.getNodeProperty(
-            Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
-    boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
-    if (!isStorageLocMasked) {
-      UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
-      JsonNode userStorageLoc =
-          CommonUtils.getNodeProperty(
-              user.getFeatures(), "universes.details.backups.storageLocation");
-      isStorageLocMasked = userStorageLoc != null && userStorageLoc.asText().equals("hidden");
-    }
-
+    Boolean isStorageLocMasked = isStorageLocationMasked(customerUUID);
     // If either customer or user featureConfig has storageLocation hidden,
     // mask the string in each backup.
     if (isStorageLocMasked) {
@@ -99,6 +97,42 @@ public class BackupsController extends AuthenticatedController {
         backup.setBackupInfo(params);
       }
     }
+    return PlatformResults.withData(backups);
+  }
+
+  @ApiOperation(value = "Get Backup", response = Backup.class)
+  public Result get(UUID customerUUID, UUID backupUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+    Boolean isStorageLocMasked = isStorageLocationMasked(customerUUID);
+    if (isStorageLocMasked) {
+      BackupTableParams params = backup.getBackupInfo();
+      String loc = params.storageLocation;
+      if ((loc != null) && !loc.isEmpty()) {
+        params.storageLocation = "**********";
+      }
+      backup.setBackupInfo(params);
+    }
+    return PlatformResults.withData(backup);
+  }
+
+  @ApiOperation(value = "List Backups (paginated)", response = BackupPagedApiResponse.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PageBackupsRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.paging.BackupPagedApiQuery",
+          required = true))
+  public Result pageBackupList(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    BackupPagedApiQuery apiQuery = parseJsonAndValidate(BackupPagedApiQuery.class);
+    BackupApiFilter apiFilter = apiQuery.getFilter();
+    BackupFilter filter = apiFilter.toFilter().toBuilder().customerUUID(customerUUID).build();
+    BackupPagedQuery query = apiQuery.copyWithFilter(filter, BackupPagedQuery.class);
+
+    BackupPagedApiResponse backups = Backup.pagedList(query);
+
     return PlatformResults.withData(backups);
   }
 
@@ -136,6 +170,14 @@ public class BackupsController extends AuthenticatedController {
     Form<RestoreBackupParams> formData =
         formFactory.getFormDataOrBadRequest(RestoreBackupParams.class);
     RestoreBackupParams taskParams = formData.get();
+
+    if (taskParams.newOwner != null) {
+      if (!Pattern.matches(VALID_OWNER_REGEX, taskParams.newOwner)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Invalid owner rename during restore operation");
+      }
+    }
+
     taskParams.customerUUID = customerUUID;
 
     UUID universeUUID = taskParams.universeUUID;
@@ -144,6 +186,14 @@ public class BackupsController extends AuthenticatedController {
         && (taskParams.backupStorageInfoList == null
             || taskParams.backupStorageInfoList.isEmpty())) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
+    }
+
+    CustomerConfig customerConfig =
+        customerConfigService.getOrBadRequest(
+            customerUUID, taskParams.backupData.storageConfigUUID);
+    if (!customerConfig.getState().equals(ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
     }
 
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
@@ -184,6 +234,13 @@ public class BackupsController extends AuthenticatedController {
     if (taskParams.storageLocation == null && taskParams.backupList == null) {
       String errMsg = "Storage Location is required";
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+
+    if (taskParams.newOwner != null) {
+      if (!Pattern.matches(VALID_OWNER_REGEX, taskParams.newOwner)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Invalid owner rename during restore operation");
+      }
     }
 
     taskParams.universeUUID = universeUUID;
@@ -426,5 +483,21 @@ public class BackupsController extends AuthenticatedController {
     throw new PlatformServiceException(
         BAD_REQUEST,
         "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
+  }
+
+  private Boolean isStorageLocationMasked(UUID customerUUID) {
+    JsonNode custStorageLoc =
+        CommonUtils.getNodeProperty(
+            Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
+    boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
+    if (!isStorageLocMasked) {
+      UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
+      JsonNode userStorageLoc =
+          CommonUtils.getNodeProperty(
+              user.getFeatures(), "universes.details.backups.storageLocation");
+      isStorageLocMasked = userStorageLoc != null && userStorageLoc.asText().equals("hidden");
+    }
+
+    return isStorageLocMasked;
   }
 }

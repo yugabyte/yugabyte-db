@@ -2,10 +2,10 @@
 title: Entity Framework
 linkTitle: Entity Framework
 description: Entity Framework
+section: INTEGRATIONS
 menu:
   latest:
     identifier: entity-framework
-    parent: integrations
     weight: 660
 isTocNested: true
 showAsideToc: true

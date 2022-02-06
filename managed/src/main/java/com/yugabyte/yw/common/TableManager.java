@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.text.ParseException;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
@@ -79,6 +81,7 @@ public class TableManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
     Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, String> secondaryToPrimaryIP = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
@@ -87,6 +90,18 @@ public class TableManager extends DevopsBase {
       namespaceToConfig =
           PlacementInfoUtil.getConfigPerNamespace(
               pi, universe.getUniverseDetails().nodePrefix, provider);
+    }
+
+    List<NodeDetails> tservers = universe.getTServers();
+    // Verify if secondary IPs exist. If so, create map.
+    if (tservers.get(0).cloudInfo.secondary_private_ip != null
+        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")) {
+      secondaryToPrimaryIP =
+          tservers
+              .stream()
+              .collect(
+                  Collectors.toMap(
+                      t -> t.cloudInfo.secondary_private_ip, t -> t.cloudInfo.private_ip));
     }
 
     commandArgs.add(PY_WRAPPER);
@@ -104,6 +119,10 @@ public class TableManager extends DevopsBase {
 
         commandArgs.add("--ts_web_hosts_ports");
         commandArgs.add(universe.getTserverHTTPAddresses());
+        if (!secondaryToPrimaryIP.isEmpty()) {
+          commandArgs.add("--ts_secondary_ip_map");
+          commandArgs.add(Json.stringify(Json.toJson(secondaryToPrimaryIP)));
+        }
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
         if (userIntent.isYSQLAuthEnabled()) {
@@ -194,6 +213,13 @@ public class TableManager extends DevopsBase {
                     backupLocation);
             commandArgs.add("--restore_time");
             commandArgs.add(restoreTimeStampMicroUnix);
+          }
+          if (backupTableParams.newOwner != null) {
+            commandArgs.add("--edit_ysql_dump_sed_reg_exp");
+            commandArgs.add(
+                String.format(
+                    "s|OWNER TO %s|OWNER TO %s|",
+                    backupTableParams.oldOwner, backupTableParams.newOwner));
           }
         }
         if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)
