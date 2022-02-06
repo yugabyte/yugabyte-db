@@ -9,6 +9,7 @@ const initialStateFeatureInTest = {
   enableXCluster: false,
   enableGeoPartitioning: false,
   enableHCVault: true,
+  enableHCVaultEAT: false,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false
 };
@@ -22,6 +23,7 @@ const initialStateFeatureReleased = {
   enableXCluster: true,
   enableGeoPartitioning: false,
   enableHCVault: true,
+  enableHCVaultEAT: false,
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false
 };
