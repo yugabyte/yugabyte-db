@@ -119,7 +119,9 @@
           margin-left: 185px;
           margin-top: 25px;
         }
-
+        .list-contribute-text {
+          margin-top: 0px;
+        }
         @media only screen and (max-width: 767px) {
           .image {
             width: 85px;
@@ -131,6 +133,9 @@
           }
           h1 {
             margin-left: 0;
+          }
+          .list-contribute-text {
+            margin-top: 20px;
           }
           .head-content {
             margin-left: 0;
