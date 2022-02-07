@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -485,7 +486,7 @@ public class TablesController extends AuthenticatedController {
         name = "Backup",
         value = "Backup data to be created",
         required = true,
-        dataType = "com.yugabyte.yw.forms.BackupTableParams",
+        dataType = "com.yugabyte.yw.forms.BackupRequestParams",
         paramType = "body")
   })
   // Rename this to createBackup on completion
@@ -493,18 +494,25 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
-    BackupTableParams taskParams = formData.get();
+    Form<BackupRequestParams> formData =
+        formFactory.getFormDataOrBadRequest(BackupRequestParams.class);
+    BackupRequestParams taskParams = formData.get();
 
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
-    taskParams.customerUuid = customerUUID;
+    taskParams.customerUUID = customerUUID;
 
-    if (taskParams.tableUUIDList == null) {
-      taskParams.tableUUIDList = new ArrayList<>();
+    if (taskParams.keyspaceTableList != null) {
+      for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
+        if (keyspaceTable.tableUUIDList == null) {
+          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
+        }
+        validateTables(
+            keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
+      }
+    } else {
+      validateTables(null, universe, null, taskParams.backupType);
     }
-    validateTables(
-        taskParams.tableUUIDList, universe, taskParams.getKeyspace(), taskParams.backupType);
 
     if (taskParams.storageConfigUUID == null) {
       throw new PlatformServiceException(
@@ -512,7 +520,7 @@ public class TablesController extends AuthenticatedController {
     }
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (!customerConfig.equals(ConfigState.Active)) {
+    if (!customerConfig.getState().equals(ConfigState.Active)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }

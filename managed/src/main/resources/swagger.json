@@ -1265,6 +1265,158 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
+    "BackupRequestParams" : {
+      "description" : "Backup table parameters",
+      "properties" : {
+        "backupType" : {
+          "description" : "Backup type",
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        },
+        "cmkArn" : {
+          "description" : "Amazon Resource Name (ARN) of the CMK",
+          "type" : "string"
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts",
+          "description" : "Communication ports"
+        },
+        "cronExpression" : {
+          "description" : "Cron expression for a recurring backup",
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device information"
+        },
+        "enableVerboseLogs" : {
+          "description" : "Is verbose logging enabled",
+          "type" : "boolean"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
+          "description" : "Encryption at rest configation"
+        },
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "expectedUniverseVersion" : {
+          "description" : "Expected universe version",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies",
+          "description" : "Extra dependencies"
+        },
+        "firstTry" : {
+          "description" : "Whether this task has been tried before",
+          "type" : "boolean"
+        },
+        "ignoreErrors" : {
+          "description" : "Should table backup errors be ignored",
+          "type" : "boolean"
+        },
+        "keyspaceTableList" : {
+          "description" : "Backup info",
+          "items" : {
+            "$ref" : "#/definitions/KeyspaceTable"
+          },
+          "type" : "array"
+        },
+        "kmsConfigUUID" : {
+          "description" : "KMS configuration UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "minNumBackupsToRetain" : {
+          "description" : "Minimum number of backups to retain for a particular backup schedule",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeDetailsSet" : {
+          "description" : "Node details",
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodeExporterUser" : {
+          "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "parallelism" : {
+          "description" : "Number of concurrent commands to run on nodes over SSH",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "previousTaskUUID" : {
+          "description" : "Previous task UUID only if this task is a retry",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "scheduleUUID" : {
+          "description" : "Schedule UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "schedulingFrequency" : {
+          "description" : "Frequency to run the backup, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "sourceXClusterConfigs" : {
+          "description" : "The source universe's xcluster replication relationships",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "sse" : {
+          "description" : "Is SSE",
+          "type" : "boolean"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage configuration UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "targetXClusterConfigs" : {
+          "description" : "The target universe's xcluster replication relationships",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "universeUUID" : {
+          "description" : "Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
+        }
+      },
+      "required" : [ "storageConfigUUID", "universeUUID" ],
+      "type" : "object"
+    },
     "BackupResp" : {
       "properties" : {
         "backupType" : {
@@ -1289,15 +1441,12 @@
         "isUniversePresent" : {
           "type" : "boolean"
         },
-        "keyspace" : {
-          "type" : "string"
-        },
         "onDemand" : {
           "type" : "boolean"
         },
-        "respList" : {
+        "responseList" : {
           "items" : {
-            "$ref" : "#/definitions/BackupResp"
+            "$ref" : "#/definitions/KeyspaceTablesList"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -1314,16 +1463,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "storageLocation" : {
-          "type" : "string"
-        },
-        "tableNames" : {
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        },
         "universeName" : {
           "type" : "string"
         },
@@ -1336,7 +1475,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "keyspace", "onDemand", "respList", "scheduleUUID", "state", "storageConfigUUID", "storageLocation", "tableNames", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "createTime", "customerUUID", "expiryTime", "isStorageConfigPresent", "isUniversePresent", "onDemand", "responseList", "scheduleUUID", "state", "storageConfigUUID", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -1415,10 +1554,6 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
-        "controller" : {
-          "description" : "Controller type",
-          "type" : "string"
-        },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
@@ -1475,6 +1610,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "newOwner" : {
+          "description" : "User name of the new tables owner",
+          "type" : "string"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -1485,6 +1624,10 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "oldOwner" : {
+          "description" : "User name of the current tables owner",
           "type" : "string"
         },
         "parallelism" : {
@@ -2753,6 +2896,50 @@
       },
       "type" : "object"
     },
+    "KeyspaceTable" : {
+      "description" : "Keyspace and table info for backup",
+      "properties" : {
+        "keyspace" : {
+          "description" : "keyspace",
+          "type" : "string"
+        },
+        "tableNameList" : {
+          "description" : "Tables",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "tableUUIDList" : {
+          "description" : "Table UUIDs",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "type" : "object"
+    },
+    "KeyspaceTablesList" : {
+      "properties" : {
+        "keyspace" : {
+          "type" : "string"
+        },
+        "storageLocation" : {
+          "type" : "string"
+        },
+        "tablesList" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "keyspace", "storageLocation", "tablesList" ],
+      "type" : "object"
+    },
     "LogData" : {
       "properties" : {
         "lines" : {
@@ -2988,10 +3175,6 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
-        "controller" : {
-          "description" : "Controller type",
-          "type" : "string"
-        },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
@@ -3052,6 +3235,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "newOwner" : {
+          "description" : "User name of the new tables owner",
+          "type" : "string"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -3062,6 +3249,10 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "oldOwner" : {
+          "description" : "User name of the current tables owner",
           "type" : "string"
         },
         "parallelism" : {
@@ -3201,10 +3392,6 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
-        "controller" : {
-          "description" : "Controller type",
-          "type" : "string"
-        },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
@@ -3266,6 +3453,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "newOwner" : {
+          "description" : "User name of the new tables owner",
+          "type" : "string"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -3276,6 +3467,10 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "oldOwner" : {
+          "description" : "User name of the current tables owner",
           "type" : "string"
         },
         "parallelism" : {
@@ -4102,11 +4297,6 @@
     "ReleaseMetadata" : {
       "description" : "Yugabyte release metadata",
       "properties" : {
-        "arch" : {
-          "description" : "Release architecture",
-          "enum" : [ "X86_64", "AARCH64" ],
-          "type" : "string"
-        },
         "chartPath" : {
           "description" : "Helm chart path",
           "type" : "string"
@@ -4212,6 +4402,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "newOwner" : {
+          "description" : "User name of the new tables owner",
+          "type" : "string"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -4222,6 +4416,10 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "oldOwner" : {
+          "description" : "User name of the current tables owner",
           "type" : "string"
         },
         "parallelism" : {
@@ -4314,6 +4512,10 @@
           "description" : "Frequency of the schedule, in minutes",
           "format" : "int64",
           "type" : "integer"
+        },
+        "runningState" : {
+          "description" : "Running state of the schedule",
+          "type" : "boolean"
         },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
@@ -6765,7 +6967,7 @@
           "name" : "Backup",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/BackupTableParams"
+            "$ref" : "#/definitions/BackupRequestParams"
           }
         } ],
         "responses" : {
@@ -9189,6 +9391,38 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit a backup schedule",
+        "tags" : [ "Backup schedule management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/schedules/{sUUID}/delete" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteScheduleV2",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a schedule V2",
         "tags" : [ "Backup schedule management" ]
       }
     },
