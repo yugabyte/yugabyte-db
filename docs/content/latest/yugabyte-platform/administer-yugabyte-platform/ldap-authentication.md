@@ -105,7 +105,7 @@ When configured, Yugabyte Platform users are able to login by specifying the com
 
 For additional information, see [Update a configuration key](https://yugabyte.stoplight.io/docs/yugabyte-platform/b3A6MTg5NDc2OTY-update-a-configuration-key).
 
-In addition to the preceding parameters, you may choose to specify parameters for the service account credentials. This  would be helpful in certain scenarios. For example, Windows Active Directory (AD) server does not typically provide regular users with query permissions for the LDAP server. Setting service account credentials would enable these users to query the LDAP server ([the `yugabytePlatformRole` attribute](#define-the-yugabyte-platform-role) would be read and set it accordingly).
+In addition to the preceding parameters, you may choose to specify parameters for the service account credentials. This would be helpful in certain scenarios. For example, Windows Active Directory (AD) server does not typically provide regular users with query permissions for the LDAP server. Setting service account credentials would enable these users to query the LDAP server ([the `yugabytePlatformRole` attribute](#define-the-yugabyte-platform-role) would be read and set it accordingly). The service account should have enough permissions to query the LDAP server, find users, and read the user attributes.
 
 The following are the runtime configurations to specify:
 
