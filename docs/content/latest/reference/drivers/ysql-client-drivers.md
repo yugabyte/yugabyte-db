@@ -151,7 +151,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 [`node-postgres`](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases. `node-postgres` optionally uses [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details on installing and using node-postgres, see the [node-postgres documentation].
+For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
 For a tutorial on building a sample Node.js application with `node-postgres`, see [Build a Node.js application](../../../quick-start/build-apps/nodejs/ysql-pg/).
 
