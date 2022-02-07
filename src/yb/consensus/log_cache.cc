@@ -415,7 +415,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
       }
     }
   }
-  result.have_more_messages = remaining_space < 0;
+  result.have_more_messages = HaveMoreMessages(remaining_space < 0);
   return result;
 }
 
