@@ -121,12 +121,14 @@ public class XClusterConfig extends Model {
         });
   }
 
+  @Transactional
   public void setTables(Map<String, String> newTables) {
     this.tables = new HashSet<>();
     newTables.forEach(
         (tableId, streamId) -> {
           tables.add(new XClusterTableConfig(tableId, streamId));
         });
+    update();
   }
 
   @JsonIgnore

@@ -206,7 +206,7 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
 
-    // If renaming, verify xcluster replication wtih same name (between same source/target)
+    // If renaming, verify xcluster replication with same name (between same source/target)
     // does not already exist.
     if (editFormData.name != null) {
       if (XClusterConfig.getByNameSourceTarget(
@@ -215,7 +215,7 @@ public class XClusterConfigController extends AuthenticatedController {
               xClusterConfig.targetUniverseUUID)
           != null) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "XCluster config with same name already exists");
+            BAD_REQUEST, "XClusterConfig with same name already exists");
       }
     }
 
@@ -379,9 +379,7 @@ public class XClusterConfigController extends AuthenticatedController {
       config = client.getMasterClusterConfig().getConfig();
     } catch (Exception e) {
       String errorMsg =
-          String.format(
-              "Failed to get universe config for XClusterConfig(%s), skipping cache update: %s",
-              xClusterConfig.uuid, e.getMessage());
+          String.format("Failed to get universe config, skipping cache update: %s", e.getMessage());
       log.error(errorMsg);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errorMsg);
     }
@@ -392,10 +390,7 @@ public class XClusterConfigController extends AuthenticatedController {
     ProducerEntryPB replicationGroup =
         replicationGroups.get(xClusterConfig.getReplicationGroupName());
     if (replicationGroup == null) {
-      String errorMsg =
-          String.format(
-              "No replication group found for XClusterConfig(%s), skipping cache update",
-              xClusterConfig.uuid);
+      String errorMsg = "No replication group found, skipping cache update";
       log.error(errorMsg);
       throw new PlatformServiceException(NOT_FOUND, errorMsg);
     }
@@ -408,22 +403,20 @@ public class XClusterConfigController extends AuthenticatedController {
             .stream()
             .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
 
-    // If Platform's table set is outdated, log warning and skip cache update
+    // If Platform's table set is outdated, log error and throw exception
     if (!streamMap.keySet().equals(cachedStreams.keySet())) {
       Set<String> cachedMissing = Sets.difference(streamMap.keySet(), cachedStreams.keySet());
       Set<String> actualMissing = Sets.difference(cachedStreams.keySet(), streamMap.keySet());
       String errorMsg =
           String.format(
-              "Detected table set mismatch for XClusterConfig "
-                  + "(uuid=%s, cached missing=%s, actual missing=%s).",
-              cachedMissing, actualMissing, streamMap.keySet());
+              "Detected table set mismatch (cached missing=%s, actual missing=%s).",
+              cachedMissing, actualMissing);
       log.error(errorMsg);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errorMsg);
     }
 
     // Update cached CDC stream IDs and return
     xClusterConfig.setTables(streamMap);
-    xClusterConfig.update();
     return xClusterConfig.getStreams();
   }
 }
