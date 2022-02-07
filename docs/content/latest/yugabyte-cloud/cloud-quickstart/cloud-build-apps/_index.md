@@ -22,6 +22,8 @@ To run these applications with Yugabyte Cloud, you will need the following:
 
 Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. For details about supported API client drivers (by programming language), see <a href="../../../reference/drivers">Drivers</a>.
 
+For more advanced applications, including Spring and GraphQL examples, refer to [Develop](../../cloud-develop/).
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -48,6 +50,20 @@ Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has r
     </div>
     <div class="body">
       Go application that connects to a YugabyteDB cluster using the Go PostgreSQL driver.
+    </div>
+  </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <a class="section-link icon-offset" href="cloud-ysql-python/">
+    <div class="head">
+      <div class="icon">
+        <i class="icon-python"></i>
+      </div>
+      <div class="title">Python</div>
+    </div>
+    <div class="body">
+      Python application that connects to a YugabyteDB cluster using the Psycopg PostgreSQL database adapter.
     </div>
   </a>
   </div>
