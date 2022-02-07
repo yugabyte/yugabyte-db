@@ -20,6 +20,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 
@@ -46,10 +47,17 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
 
     try {
-      CatalogEntityInfo.SysClusterConfigEntryPB config =
-          client.getMasterClusterConfig().getConfig();
+      GetMasterClusterConfigResponse resp = client.getMasterClusterConfig();
+      if (resp.hasError()) {
+        String errMsg =
+            String.format(
+                "Failed to sync XClusterConfigs for Universe(%s): "
+                    + "Failed to get cluster config: %s",
+                targetUniverse.universeUUID, resp.errorMessage());
+        throw new RuntimeException(errMsg);
+      }
 
-      syncXClusterConfigs(config, targetUniverse.universeUUID);
+      syncXClusterConfigs(resp.getConfig(), targetUniverse.universeUUID);
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

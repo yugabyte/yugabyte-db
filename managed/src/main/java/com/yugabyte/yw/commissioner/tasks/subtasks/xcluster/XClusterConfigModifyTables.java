@@ -53,7 +53,11 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             client.alterUniverseReplicationAddTables(
                 xClusterConfig.getReplicationGroupName(), tablesToAdd);
         if (resp.hasError()) {
-          throw new RuntimeException(resp.errorMessage());
+          String errMsg =
+              String.format(
+                  "Failed to add tables to XClusterConfig(%s): %s",
+                  xClusterConfig.uuid, resp.errorMessage());
+          throw new RuntimeException(errMsg);
         }
 
         waitForXClusterOperation(client::isAlterUniverseReplicationDone);
@@ -73,7 +77,11 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             client.alterUniverseReplicationRemoveTables(
                 xClusterConfig.getReplicationGroupName(), tablesToRemove);
         if (resp.hasError()) {
-          throw new RuntimeException(resp.errorMessage());
+          String errMsg =
+              String.format(
+                  "Failed to remove tables from XClusterConfig(%s): %s",
+                  xClusterConfig.uuid, resp.errorMessage());
+          throw new RuntimeException(errMsg);
         }
 
         if (HighAvailabilityConfig.get().isPresent()) {
