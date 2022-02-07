@@ -1082,33 +1082,41 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMovesToNextPhase) {
   const auto this_phase_tablet_upper_limit = FLAGS_tablet_split_high_phase_shard_count_per_node
       * cluster_->num_tablet_servers();
 
-  auto num_tablets = this_phase_tablet_lower_limit;
-  SetNumTablets(num_tablets);
+  // Create table with a number of tablets that puts it into the high phase for tablet splitting.
+  SetNumTablets(static_cast<uint32_t>(this_phase_tablet_lower_limit));
   CreateTable();
 
+  auto get_num_tablets = [this]() {
+    return ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id()).size();
+  };
+
   auto key = 1;
-  while (num_tablets < this_phase_tablet_upper_limit) {
+  while (get_num_tablets() < this_phase_tablet_upper_limit) {
     ASSERT_OK(WriteRows(kNumRowsPerBatch, key));
     key += kNumRowsPerBatch;
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-    num_tablets = peers.size();
     for (const auto& peer : peers) {
       // Flush other replicas of this shard to ensure that even if the leader changed we will be in
       // a state where yb-master should initiate a split.
       ASSERT_OK(FlushAllTabletReplicas(peer->tablet_id()));
-      auto size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
+      auto peer_tablet = peer->shared_tablet();
+      if (!peer_tablet) {
+        // If this tablet was split after we computed peers above, then the shared_tablet() call may
+        // return null.
+        continue;
+      }
+      ssize_t size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
       if (size > FLAGS_tablet_split_high_phase_size_threshold_bytes) {
-        num_tablets++;
-        LOG(INFO) << "Waiting for tablet number " << num_tablets
-            << " with id " << peer->tablet_id()
-            << " and size " << size
-            << " bytes and leader status " << peer->consensus()->GetLeaderStatus()
-            << " to split.";
-        ASSERT_OK(WaitForTabletSplitCompletion(num_tablets));
+        // Wait for the tablet count to go up by at least one, indicating some tablet was split, or
+        // for the total number of tablets to put this table outside of the high phase.
+        ASSERT_OK(WaitFor([&]() {
+          auto num_tablets = get_num_tablets();
+          return num_tablets > peers.size() || num_tablets >= this_phase_tablet_upper_limit;
+        }, 10s * kTimeMultiplier, "Waiting for split of oversized tablet."));
       }
     }
   }
-  EXPECT_EQ(num_tablets, this_phase_tablet_upper_limit);
+  EXPECT_EQ(get_num_tablets(), this_phase_tablet_upper_limit);
 }
 
 TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
