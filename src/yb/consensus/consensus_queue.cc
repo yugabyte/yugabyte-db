@@ -739,7 +739,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
         after_op_index, result.status());
   }
   if (result.ok()) {
-    result->have_more_messages |= pending_messages;
+    result->have_more_messages = HaveMoreMessages(result->have_more_messages.get() ||
+                                                  pending_messages);
   }
   return result;
 }
