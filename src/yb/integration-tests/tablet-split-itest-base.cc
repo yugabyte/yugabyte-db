@@ -226,7 +226,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
   LOG(INFO) << "Writing " << num_rows << " rows...";
 
   auto txn = this->CreateTransaction();
-  auto session = this->CreateSession();
+  auto session = this->CreateSession(txn);
   for (int32_t i = start_key; i < start_key + static_cast<int32_t>(num_rows); ++i) {
     client::YBqlWriteOpPtr op = VERIFY_RESULT(
         client::kv_table_test::WriteRow(table,
@@ -387,35 +387,35 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
 
   std::vector<tablet::TabletPeerPtr> peers;
   auto s = WaitFor([&] {
-      peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-      size_t num_peers_running = 0;
-      size_t num_peers_split = 0;
-      size_t num_peers_leader_ready = 0;
-      for (const auto& peer : peers) {
-        const auto tablet = peer->shared_tablet();
-        const auto consensus = peer->shared_consensus();
-        if (!tablet || !consensus) {
-          break;
-        }
-        if (tablet->metadata()->table_name() != table.table_name() ||
-            tablet->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
-          continue;
-        }
-        const auto raft_group_state = peer->state();
-        const auto tablet_data_state = tablet->metadata()->tablet_data_state();
-        const auto leader_status = consensus->GetLeaderStatus(/* allow_stale =*/true);
-        if (raft_group_state == tablet::RaftGroupStatePB::RUNNING) {
-          ++num_peers_running;
-        } else {
-          return false;
-        }
-        num_peers_leader_ready += leader_status == consensus::LeaderStatus::LEADER_AND_READY;
-        num_peers_split +=
-            tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+    peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    size_t num_peers_running = 0;
+    size_t num_peers_split = 0;
+    size_t num_peers_leader_ready = 0;
+    for (const auto& peer : peers) {
+      const auto tablet = peer->shared_tablet();
+      const auto consensus = peer->shared_consensus();
+      if (!tablet || !consensus) {
+        break;
       }
-      VLOG(1) << "num_peers_running: " << num_peers_running;
-      VLOG(1) << "num_peers_split: " << num_peers_split;
-      VLOG(1) << "num_peers_leader_ready: " << num_peers_leader_ready;
+      if (tablet->metadata()->table_name() != table.table_name() ||
+          tablet->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+        continue;
+      }
+      const auto raft_group_state = peer->state();
+      const auto tablet_data_state = tablet->metadata()->tablet_data_state();
+      const auto leader_status = consensus->GetLeaderStatus(/* allow_stale =*/true);
+      if (raft_group_state == tablet::RaftGroupStatePB::RUNNING) {
+        ++num_peers_running;
+      } else {
+        return false;
+      }
+      num_peers_leader_ready += leader_status == consensus::LeaderStatus::LEADER_AND_READY;
+      num_peers_split +=
+          tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+    }
+    VLOG(1) << "num_peers_running: " << num_peers_running;
+    VLOG(1) << "num_peers_split: " << num_peers_split;
+    VLOG(1) << "num_peers_leader_ready: " << num_peers_leader_ready;
 
     return num_peers_running == num_replicas_online * expected_total_tablets &&
            num_peers_split == num_replicas_online * expected_split_tablets &&

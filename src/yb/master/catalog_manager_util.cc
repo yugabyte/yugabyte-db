@@ -222,6 +222,9 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
 
 CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     const scoped_refptr<TabletInfo>& tablet) {
+  static const auto stringify_partition_key = [](const Slice& key) {
+    return key.empty() ? "{empty}" : key.ToDebugString();
+  };
   const auto& tablet_id = tablet->tablet_id();
 
   const auto tablet_lock = tablet->LockForRead();
@@ -259,8 +262,9 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
       return STATUS_FORMAT(
           IllegalState,
           "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
-          tablet_id, Slice(partition_key).ToDebugString(),
-          Slice(inner_partition.partition_key_start()).ToDebugString());
+          tablet_id,
+          stringify_partition_key(partition_key),
+          stringify_partition_key(inner_partition.partition_key_start()));
     }
     partition_key = inner_partition.partition_key_end();
     if (!partition.partition_key_end().empty() && partition_key >= partition.partition_key_end()) {
@@ -271,8 +275,9 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     return STATUS_FORMAT(
         IllegalState,
         "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
-        tablet_id, Slice(partition_key).ToDebugString(),
-        Slice(partition.partition_key_end()).ToDebugString());
+        tablet_id,
+        stringify_partition_key(partition_key),
+        stringify_partition_key(partition.partition_key_end()));
   }
   return Status::OK();
 }
