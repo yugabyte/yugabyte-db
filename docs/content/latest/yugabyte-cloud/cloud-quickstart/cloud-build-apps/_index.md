@@ -68,4 +68,18 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <a class="section-link icon-offset" href="cloud-ysql-node/">
+    <div class="head">
+      <div class="icon">
+        <i class="icon-nodejs"></i>
+      </div>
+      <div class="title">NodeJS</div>
+    </div>
+    <div class="body">
+      NodeJS application that connects to a YugabyteDB cluster using the node-postgres module.
+    </div>
+  </a>
+  </div>
+
 </div>
