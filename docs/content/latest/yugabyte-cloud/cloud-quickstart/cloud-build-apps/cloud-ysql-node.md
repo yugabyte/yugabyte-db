@@ -1,12 +1,11 @@
 ---
 title: Build a Node.js application that uses YSQL
 headerTitle: Build a Node.js application
-linkTitle: NodeJS
-description: Build a simple node.js application using the driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
+description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
 menu:
   latest:
     parent: cloud-build-apps
-    name: NodeJS
+    name: Node.js
     identifier: cloud-node
     weight: 400
 type: page
@@ -14,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following tutorial shows a small [node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in NodeJS.
+The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in Node.js.
 
 ## Prerequisites
 
-In addition to the latest version of [node](https://nodejs.org/en/download/), this tutorial requires the following.
+In addition to the latest version of [Node.js](https://nodejs.org/en/download/), this tutorial requires the following.
 
 ### Yugabyte Cloud
 
