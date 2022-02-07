@@ -521,6 +521,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Universe version in master does not need to be updated as this does not change
     // the Universe state. It simply sets updateInProgress flag to false.
     universe = Universe.saveDetails(universeUUID, updater, false);
+    universeLocked = false;
     log.trace("Unlocked universe {} for updates.", universeUUID);
     return universe;
   }
