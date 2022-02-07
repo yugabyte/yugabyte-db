@@ -105,6 +105,34 @@ When configured, Yugabyte Platform users are able to login by specifying the com
 
 For additional information, see [Update a configuration key](https://yugabyte.stoplight.io/docs/yugabyte-platform/b3A6MTg5NDc2OTY-update-a-configuration-key).
 
+In addition to the preceding parameters, you may choose to specify parameters for the service account credentials. This would be helpful in certain scenarios. For example, Windows Active Directory (AD) server does not typically provide regular users with query permissions for the LDAP server. Setting service account credentials would enable these users to query the LDAP server ([the `yugabytePlatformRole` attribute](#define-the-yugabyte-platform-role) would be read and set it accordingly). The service account should have enough permissions to query the LDAP server, find users, and read the user attributes.
+
+The following are the runtime configurations to specify:
+
+- A service account user name `yb.security.ldap.ldap_service_account_username`, as follows:
+
+  ```shell
+  curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_service_account_username' \
+  --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
+  --header 'Content-Type: text/plain' \
+  --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
+  --data-raw '[SERVICE ACCOUNT USERNAME]'
+  ```
+
+  <br>Replace `[SERVICE ACCOUNT USERNAME]` with the actual value.<br>
+
+- A service account password `yb.security.ldap.ldap_service_account_password`, as follows:
+
+  ```shell
+  curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_service_account_password' \
+  --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
+  --header 'Content-Type: text/plain' \
+  --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
+  --data-raw '[SERVICE ACCOUNT PASSWORD]'
+  ```
+
+  <br>Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.<br>
+
 ## Define the Yugabyte Platform Role
 
 You need to define a Yugabyte Platform-specific role for each user on your LDAP server by setting the `yugabytePlatformRole` annotation. The value set for this annotation is read during the Yugabyte Platform login. Note that if the value is modified on the LDAP server, the change is propagated to Yugabyte Platform and automatically updated during login. Password updates are also automatically handled.
