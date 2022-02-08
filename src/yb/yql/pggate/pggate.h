@@ -450,6 +450,7 @@ class PgApiImpl {
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
   Status FlushBufferedOperations();
+  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -597,6 +598,10 @@ class PgApiImpl {
   void StartSysTablePrefetching();
   void StopSysTablePrefetching();
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
+
+  // RPC stats for EXPLAIN ANALYZE
+  void GetAndResetReadRpcStats(PgStatement *handle, uint64_t* reads, uint64_t* read_wait,
+                               uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
   //------------------------------------------------------------------------------------------------
   // System Validation.

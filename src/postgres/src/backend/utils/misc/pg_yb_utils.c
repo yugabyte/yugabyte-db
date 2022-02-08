@@ -1548,6 +1548,10 @@ void YBFlushBufferedOperations() {
 	HandleYBStatus(YBCPgFlushBufferedOperations());
 }
 
+void YBGetAndResetOperationFlushRpcStats(uint64_t *count, uint64_t *wait_time) {
+	YBCPgGetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
 bool YBReadFromFollowersEnabled() {
   return yb_read_from_followers;
 }
@@ -2832,4 +2836,15 @@ void YBCheckServerAccessIsAllowed() {
 				 errmsg("server file access disabled"),
 				 errdetail("tserver flag ysql_disable_server_file_access is "
 						   "set to true")));
+}
+
+void YbUpdateReadRpcStats(YBCPgStatement handle,
+						  YbPgRpcStats *reads, YbPgRpcStats *tbl_reads) {
+	uint64_t read_count = 0, read_wait = 0, tbl_read_count = 0, tbl_read_wait = 0;
+	YBCGetAndResetReadRpcStats(handle, &read_count, &read_wait,
+							   &tbl_read_count, &tbl_read_wait);
+	reads->count += read_count;
+	reads->wait_time += read_wait;
+	tbl_reads->count += tbl_read_count;
+	tbl_reads->wait_time += tbl_read_wait;
 }
