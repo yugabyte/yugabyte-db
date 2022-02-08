@@ -82,4 +82,18 @@ For more advanced applications, including Spring and GraphQL examples, refer to 
   </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <a class="section-link icon-offset" href="cloud-ysql-c/">
+    <div class="head">
+      <div class="icon">
+        <i class="icon-c"></i>
+      </div>
+      <div class="title">C</div>
+    </div>
+    <div class="body">
+      C application that connects to a YugabyteDB cluster using the libpq driver.
+    </div>
+  </a>
+  </div>
+
 </div>
