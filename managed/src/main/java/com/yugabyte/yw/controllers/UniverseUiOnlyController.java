@@ -237,6 +237,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     TlsConfigUpdateParams taskParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
             request(), TlsConfigUpdateParams.class);
+
     UUID taskUUID = universeCRUDHandler.tlsConfigUpdate(customer, universe, taskParams);
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return new YBPTask(taskUUID, universe.universeUUID).asResult();
