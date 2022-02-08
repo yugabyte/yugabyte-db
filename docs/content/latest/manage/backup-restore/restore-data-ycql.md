@@ -99,7 +99,7 @@ ycqlsh> DROP KEYSPACE myapp;
 
 ### Restore the table schema
 
-The schema backup file `myapp_schema.cql` should look as show below:
+The schema backup file `myapp_schema.cql` should appear as follows:
 
 ```sh
 $ cat myapp_schema.cql
@@ -123,7 +123,7 @@ To import the schema, run the following:
 $ ./bin/ycqlsh -f myapp_schema.cql
 ```
 
-You can verify that the table was created by connecting to the cluster using `ycqlsh` and running the following :
+You can verify that the table was created by connecting to the cluster using `ycqlsh` and running the following:
 
 ```sql
 ycqlsh> DESC myapp.stock_market;
@@ -141,7 +141,7 @@ CREATE TABLE myapp.stock_market (
 
 ### Restore the data
 
-The data backup file `myapp_data.csv` should look as follows:
+The data backup file `myapp_data.csv` should appear as follows:
 
 ```sh
 $ cat myapp_data.csv
