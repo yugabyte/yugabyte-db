@@ -246,7 +246,6 @@ For an overview of the 2.8.0.0 release's notable new features, check out the [re
 * [PLAT-1747] supporting n2 instance types for GCP internally
 * [PLAT-1766] [Alerts] [UI] Cleanup
 * [PLAT-1774] Add a customer ID field in Customer Profile page
-* [Plat-1777] Add basic filtering and sorting
 * [PLAT-1793] DB Error logs alert
 * [Plat-1797] Create a pagination component
 * [PLAT-1808] [Alert UI] cleanup tasks
