@@ -1647,6 +1647,18 @@ Result<uint64_t> PgApiImpl::GetSharedAuthKey() {
   return pg_session_->GetSharedAuthKey();
 }
 
+void PgApiImpl::GetAndResetReadRpcStats(PgStatement *handle,
+                                        uint64_t* reads, uint64_t* read_wait,
+                                        uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  down_cast<PgDmlRead*>(handle)->GetAndResetReadRpcStats(reads, read_wait,
+                                                         tbl_reads, tbl_read_wait);
+}
+
+void PgApiImpl::GetAndResetOperationFlushRpcStats(uint64_t* count,
+                                                  uint64_t* wait_time) {
+  pg_session_->GetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
 // Transaction Control -----------------------------------------------------------------------------
 Status PgApiImpl::BeginTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
