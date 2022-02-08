@@ -256,11 +256,15 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
         if (!tablet_lock->is_running()) {
           // Recently split child is not running; restart the split.
           ignore_as_candidate = true;
+          LOG(INFO) << Substitute("Found split child ($0) that is not running. Adding parent ($1) "
+                                  "to list of splits to reschedule.", tablet->id(), parent_id);
           splits_to_schedule.insert(parent_id);
         } else if (!AllReplicasHaveFinishedCompaction(*tablet)) {
           // This (running) tablet is the child of a split and is still compacting. We assume that
           // this split will eventually complete for both tablets.
           ignore_as_candidate = true;
+          LOG(INFO) << Substitute("Found split child ($0) that is compacting. Adding parent ($1) "
+                                  " to list of compacting splits.", tablet->id(), parent_id);
           compacting_splits.insert(parent_id);
         }
         if (splits_to_schedule.count(parent_id) != 0 && compacting_splits.count(parent_id) != 0) {
@@ -268,6 +272,8 @@ void TabletSplitManager::DoSplitting(const TableInfoMap& table_info_map) {
           // splits_to_schedule, and another leads us to insert into compacting_splits. In this
           // case, it means one of the children is live, thus both children have been created and
           // the split RPC does not need to be scheduled.
+          LOG(INFO) << Substitute("Found compacting split child ($0), so removing split parent "
+                                  "($1) from splits to schedule.", tablet->id(), parent_id);
           splits_to_schedule.erase(parent_id);
         }
       }
