@@ -143,7 +143,6 @@ public class AppInit {
 
       setUniverseKey.start();
 
-      queryAlerts.start();
       platformMetricsProcessor.start();
       alertConfigurationWriter.start();
 
