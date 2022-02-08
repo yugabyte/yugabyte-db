@@ -211,10 +211,10 @@ bool PgDocResponse::Valid() const {
       : static_cast<bool>(std::get<ProviderPtr>(holder_));
 }
 
-Result<PgDocResponse::Data> PgDocResponse::Get() {
+Result<PgDocResponse::Data> PgDocResponse::Get(MonoDelta* wait_time) {
   if (std::holds_alternative<PerformInfo>(holder_)) {
     auto& info = std::get<PerformInfo>(holder_);
-    return Data(VERIFY_RESULT(info.future.Get()), info.in_txn_limit);
+    return Data(VERIFY_RESULT(info.future.Get(wait_time)), info.in_txn_limit);
   }
   // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
   ProviderPtr provider;
@@ -262,7 +262,7 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
     }
 
     DCHECK(response_.Valid());
-    result = VERIFY_RESULT(ProcessResponse(response_.Get()));
+    result = VERIFY_RESULT(ProcessResponse(response_.Get(&read_rpc_wait_time_)));
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
     DCHECK(!result.empty() || end_of_data_);
@@ -292,6 +292,7 @@ Status PgDocOp::SendRequest(bool force_non_bufferable) {
   DCHECK(exec_status_.ok());
   DCHECK(!response_.Valid());
   exec_status_ = SendRequestImpl(force_non_bufferable);
+  ++read_rpc_count_;
   return exec_status_;
 }
 

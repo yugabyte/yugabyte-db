@@ -824,6 +824,11 @@ YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
+void YBCPgGetAndResetOperationFlushRpcStats(uint64_t* count,
+                                            uint64_t* wait_time) {
+  pgapi->GetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }
@@ -1347,6 +1352,11 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
     }
   }
   return YBCStatusOK();
+}
+
+void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t* read_wait,
+                                uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
 //------------------------------------------------------------------------------------------------
