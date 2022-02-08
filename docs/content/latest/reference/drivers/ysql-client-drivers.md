@@ -32,13 +32,15 @@ For details and documentation, see [`libpq - C Library`](https://www.postgresql.
 
 For a tutorial on building a sample C application with `libpq`, see [Build a C application](../../../quick-start/build-apps/c/ysql/).
 
-#### To install the libpq client library
+#### Install the libpq client library
 
 The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows:
 
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
+
+Homebrew users on macOS can install `libpq` using `brew install libpq`. You can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page.
 
 ## C++
 
