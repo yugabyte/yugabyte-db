@@ -22,7 +22,7 @@
       background-color: transparent;
       color: $YB_DARK;
       box-shadow: none;
-      background: #F7F8F9;
+      background: rgba(128,128,128, 0.2);
     }
     &::after {
       position: absolute;
@@ -54,7 +54,6 @@
     padding: 0;
     margin: 0;
     font-size: inherit;
-    color: #2564a3;
     text-align: left;
     list-style: none;
     background-color: #fff;
