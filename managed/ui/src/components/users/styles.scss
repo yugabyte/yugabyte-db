@@ -171,3 +171,10 @@
   flex-grow: 1;
   font-size: 14px;
 }
+
+#ldap-toggle-tooltip .tooltip-inner {
+  width: 260px;
+  max-width: 260px;
+  padding: 8px;
+  text-align: left;
+}

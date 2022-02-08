@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
-import { Row, Col } from 'react-bootstrap';
+import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
@@ -15,7 +15,12 @@ const VALIDATION_SCHEMA = Yup.object().shape({
       message: 'LDAP URL must be a valid URL with port number'
     })
     .required('LDAP URL is Required'),
-  ldap_basedn: Yup.string().required('LDAP Base DN is required')
+  ldap_basedn: Yup.string().required('LDAP Base DN is required'),
+  ldap_service_account_password: Yup.string().when('ldap_service_account_username', {
+    is: (username) => username && username.length > 0,
+    then: Yup.string().required('Password is Required'),
+    otherwise: Yup.string()
+  })
 });
 
 const LDAP_PATH = 'yb.security.ldap';
@@ -62,8 +67,9 @@ export const LDAPAuth = (props) => {
 
   const saveLDAPConfigs = async (values) => {
     const formValues = transformData(values);
+    const initValues = initializeFormValues();
     const promiseArray = Object.keys(formValues).reduce((promiseArr, key) => {
-      if (formValues[key] !== '' && formValues[key] !== '')
+      if (formValues[key] !== '' && formValues[key] !== initValues[key])
         promiseArr.push(
           setRunTimeConfig({
             key: `${LDAP_PATH}.${key}`,
@@ -164,35 +170,55 @@ export const LDAPAuth = (props) => {
           {({ handleSubmit, isSubmitting, values, dirty }) => {
             const isDisabled = !ldapEnabled && showToggle;
             const isSaveDisabled = !dirty;
+
+            const LDAPToggle = () => (
+              <YBToggle
+                onToggle={handleToggle}
+                name="use_ldap"
+                input={{
+                  value: ldapEnabled,
+                  onChange: () => {}
+                }}
+                isReadOnly={!showToggle}
+              />
+            );
+
+            const LDAPToggleTooltip = () => (
+              <OverlayTrigger
+                placement="top"
+                overlay={
+                  <Tooltip className="high-index" id="ldap-toggle-tooltip">
+                    To enable LDAP you need to provide and save the required configurations
+                  </Tooltip>
+                }
+              >
+                <div>
+                  <LDAPToggle />
+                </div>
+              </OverlayTrigger>
+            );
+
             return (
               <Form name="LDAPConfigForm" onSubmit={handleSubmit}>
                 <Row className="ua-field-row">
                   <Col lg={2} className="ua-label-c ua-title-c">
                     {!isTabsVisible && <h5>LDAP Configuration</h5>}
                   </Col>
-                  <Col lg={7} sm={10} className="ua-toggle-c">
-                    {showToggle && (
-                      <>
-                        <Col className="ua-toggle-label-c">
-                          LDAP Enabled &nbsp;
-                          <YBInfoTip
-                            title="LDAP Enabled"
-                            content="Enable or Disable LDAP Authentication"
-                          >
-                            <i className="fa fa-info-circle" />
-                          </YBInfoTip>
-                        </Col>
 
-                        <YBToggle
-                          onToggle={handleToggle}
-                          name="use_ldap"
-                          input={{
-                            value: ldapEnabled,
-                            onChange: () => {}
-                          }}
-                        />
-                      </>
-                    )}
+                  <Col lg={7} sm={10} className="ua-toggle-c">
+                    <>
+                      <Col className="ua-toggle-label-c">
+                        LDAP Enabled &nbsp;
+                        <YBInfoTip
+                          title="LDAP Enabled"
+                          content="Enable or Disable LDAP Authentication"
+                        >
+                          <i className="fa fa-info-circle" />
+                        </YBInfoTip>
+                      </Col>
+
+                      {showToggle ? <LDAPToggle /> : <LDAPToggleTooltip />}
+                    </>
                   </Col>
                 </Row>
 
@@ -283,6 +309,51 @@ export const LDAPAuth = (props) => {
                     />
                   </Col>
                 </Row>
+
+                <Row className="ua-field-row" key="ldap_service_account_username">
+                  <Col lg={2} className="ua-label-c">
+                    <div>
+                      LDAP Username (Optional) &nbsp;
+                      <YBInfoTip title="LDAP Username" content="Username of LDAP Service Account">
+                        <i className="fa fa-info-circle" />
+                      </YBInfoTip>
+                    </div>
+                  </Col>
+                  <Col lg={7} sm={10}>
+                    <Field
+                      name="ldap_service_account_username"
+                      component={YBFormInput}
+                      disabled={isDisabled}
+                      className="ua-form-field"
+                    />
+                  </Col>
+                </Row>
+
+                {values.ldap_service_account_username && (
+                  <Row className="ua-field-row" key="ldap_service_account_password">
+                    <Col lg={2} className="ua-label-c">
+                      <div>
+                        LDAP Password&nbsp;
+                        <YBInfoTip
+                          title="LDAP Password"
+                          content="Password for LDAP Service Account"
+                        >
+                          <i className="fa fa-info-circle" />
+                        </YBInfoTip>
+                      </div>
+                    </Col>
+                    <Col lg={7} sm={10}>
+                      <Field
+                        name="ldap_service_account_password"
+                        component={YBFormInput}
+                        disabled={isDisabled}
+                        className="ua-form-field"
+                        type="password"
+                        autoComplete="new-password"
+                      />
+                    </Col>
+                  </Row>
+                )}
 
                 <br />
 
