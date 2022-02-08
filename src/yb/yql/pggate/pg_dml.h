@@ -94,6 +94,12 @@ class PgDml : public PgStatement {
     return doc_op_ != nullptr;
   }
 
+  // RPC stats for EXPLAIN ANALYZE
+  void GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait);
+
+  void GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait,
+                               uint64_t* tbl_reads, uint64_t* tbl_read_wait);
+
  protected:
   // Method members.
   // Constructor.
