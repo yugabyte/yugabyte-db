@@ -47,6 +47,7 @@ import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +59,7 @@ import play.mvc.Result;
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
   private static final int maxRetryCount = 5;
+  private static final String VALID_OWNER_REGEX = "^[\\pL_][\\pL\\pM_0-9]*$";
 
   private final Commissioner commissioner;
   private final CustomerConfigService customerConfigService;
@@ -168,6 +170,14 @@ public class BackupsController extends AuthenticatedController {
     Form<RestoreBackupParams> formData =
         formFactory.getFormDataOrBadRequest(RestoreBackupParams.class);
     RestoreBackupParams taskParams = formData.get();
+
+    if (taskParams.newOwner != null) {
+      if (!Pattern.matches(VALID_OWNER_REGEX, taskParams.newOwner)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Invalid owner rename during restore operation");
+      }
+    }
+
     taskParams.customerUUID = customerUUID;
 
     UUID universeUUID = taskParams.universeUUID;
@@ -224,6 +234,13 @@ public class BackupsController extends AuthenticatedController {
     if (taskParams.storageLocation == null && taskParams.backupList == null) {
       String errMsg = "Storage Location is required";
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+
+    if (taskParams.newOwner != null) {
+      if (!Pattern.matches(VALID_OWNER_REGEX, taskParams.newOwner)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Invalid owner rename during restore operation");
+      }
     }
 
     taskParams.universeUUID = universeUUID;

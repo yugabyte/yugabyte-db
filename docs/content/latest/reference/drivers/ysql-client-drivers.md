@@ -34,7 +34,7 @@ For a tutorial on building a sample C application with `libpq`, see [Build a C a
 
 #### To install the libpq client library
 
-The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows :
+The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows:
 
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
@@ -141,7 +141,7 @@ For a tutorial on building a sample Java application with the PostgreSQL JDBC Dr
 
 #### Install the PostgreSQL JDBC driver
 
-To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
+To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download.html). Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
 
@@ -151,7 +151,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 [`node-postgres`](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases. `node-postgres` optionally uses [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details on installing and using node-postgres, see the [node-postgres documentation].
+For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
 For a tutorial on building a sample Node.js application with `node-postgres`, see [Build a Node.js application](../../../quick-start/build-apps/nodejs/ysql-pg/).
 
@@ -173,7 +173,7 @@ For a tutorial on building a sample Node.js application with `php-pgsql`, see [B
 
 #### Install the php-pgsql driver
 
-To enable PostgreSQL support using `php-pgsql`, see [Installing/Configuring] in the PHP documentation.
+To enable PostgreSQL support using `php-pgsql`, see [Installing/Configuring](https://www.php.net/manual/en/pgsql.setup.php) in the PHP documentation.
 
 ## Python
 
@@ -187,25 +187,21 @@ For a tutorial on building a sample Python application that uses `psycopg2`, see
 
 #### Install the psycopg2 binary
 
-To install the `psycopg2` binary package, run the following pip install` command:
+To install the `psycopg2` binary package, run the following `pip3 install` command:
 
 ```sh
-$ pip install psycopg2
+$ pip3 install psycopg2-binary
 ```
 
 ### aiopg
 
-[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP
--3156/tulip) framework. It wraps
- asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using `aiopg`, see
-  [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
+[aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP-3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using `aiopg`, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
 
-For a tutorial on building a sample Python application that uses `psycopg2`, see [Build a Python application
-](../../../quick-start/build-apps/python/ysql-aiopg).
+For a tutorial on building a sample Python application that uses `aiopg`, see [Build a Python application](../../../quick-start/build-apps/python/ysql-aiopg).
 
 #### Install
 
-To install the `aio` package, run the following `pip3 install` command:
+To install the `aiopg` package, run the following `pip3 install` command:
 
 ```sh
 pip3 install aiopg
@@ -221,7 +217,7 @@ For a tutorial on building a sample Ruby application with `pg`, see [Build a Rub
 
 #### Install the pg driver
 
-To install `pg` driver, run the following [`gem install`](https://guides.rubygems.org/command-reference/#gem-install) command:
+To install the `pg` driver, run the following [`gem install`](https://guides.rubygems.org/command-reference/#gem-install) command:
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config

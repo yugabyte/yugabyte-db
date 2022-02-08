@@ -326,6 +326,7 @@ GET    /metadata/azu_types                                                     c
 # Schedule Management API
 GET    /customers/:cUUID/schedules                                             com.yugabyte.yw.controllers.ScheduleController.list(cUUID: java.util.UUID)
 DELETE /customers/:cUUID/schedules/:sUUID                                      com.yugabyte.yw.controllers.ScheduleController.delete(cUUID: java.util.UUID, sUUID: java.util.UUID)
+DELETE /customers/:cUUID/schedules/:sUUID/delete                               com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID)
 
 GET    /customers/:cUUID/universes/:uniUUID/tablet-servers                     com.yugabyte.yw.controllers.TabletServerController.listTabletServers(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 

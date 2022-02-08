@@ -109,11 +109,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static boolean pgInitialized = false;
 
-  public void runPgRegressTest(File inputDir, String schedule, long maxRuntimeMillis)
-        throws Exception {
+  public void runPgRegressTest(
+      File inputDir, String schedule, long maxRuntimeMillis, File executable) throws Exception {
     final int tserverIndex = 0;
     PgRegressRunner pgRegress = new PgRegressRunner(inputDir, schedule, maxRuntimeMillis);
-    ProcessBuilder procBuilder = new PgRegressBuilder()
+    ProcessBuilder procBuilder = new PgRegressBuilder(executable)
         .setDirs(inputDir, pgRegress.outputDir())
         .setSchedule(schedule)
         .setHost(getPgHost(tserverIndex))
@@ -127,34 +127,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   public void runPgRegressTest(File inputDir, String schedule) throws Exception {
-    runPgRegressTest(inputDir, schedule, 0 /* maxRuntimeMillis */);
+    runPgRegressTest(
+        inputDir, schedule, 0 /* maxRuntimeMillis */,
+        PgRegressBuilder.PG_REGRESS_EXECUTABLE);
   }
 
   public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
-    File inputDir = PgRegressBuilder.getPgRegressDir();
-    runPgRegressTest(inputDir, schedule, maxRuntimeMillis);
+    runPgRegressTest(
+        PgRegressBuilder.PG_REGRESS_DIR /* inputDir */, schedule, maxRuntimeMillis,
+        PgRegressBuilder.PG_REGRESS_EXECUTABLE);
   }
 
   public void runPgRegressTest(String schedule) throws Exception {
     runPgRegressTest(schedule, 0 /* maxRuntimeMillis */);
-  }
-
-  private static int getRetryableRpcSingleCallTimeoutMs() {
-    if (TestUtils.isReleaseBuild()) {
-      return 10000;
-    } else if (TestUtils.IS_LINUX) {
-      if (BuildTypeUtil.isASAN()) {
-        return 20000;
-      } else if (BuildTypeUtil.isTSAN()) {
-        return 45000;
-      } else {
-        // Linux debug builds.
-        return 15000;
-      }
-    } else {
-      // We get a lot of timeouts in macOS debug builds.
-      return 45000;
-    }
   }
 
   public static void perfAssertLessThan(double time1, double time2) {

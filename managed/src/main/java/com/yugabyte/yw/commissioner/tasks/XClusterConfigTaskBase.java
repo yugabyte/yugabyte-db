@@ -161,12 +161,14 @@ public abstract class XClusterConfigTaskBase extends UniverseTaskBase {
       }
 
       if (doneResponse == null) {
+        // TODO: Add unit tests (?) -- May be difficult due to wait
         throw new RuntimeException(
             String.format(
                 "Never received response waiting for XClusterConfig(%s) operation to complete",
                 xClusterConfig.uuid));
       }
       if (!doneResponse.isDone()) {
+        // TODO: Add unit tests (?) -- May be difficult due to wait
         throw new RuntimeException(
             String.format(
                 "Timed out waiting for XClusterConfig(%s) operation to complete",
