@@ -6,9 +6,9 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.Map;
@@ -128,20 +129,30 @@ public class UpgradeUniverseHandler {
         customer,
         universe);
   }
-
+  /**
+   * Called when TLS CONFIG is toggeled.
+   *
+   * @param requestParams
+   * @param customer
+   * @param universe
+   * @return
+   */
   public UUID rotateCerts(CertsRotateParams requestParams, Customer customer, Universe universe) {
+    log.debug(
+        "rotateCerts called with rootCA: {}",
+        (requestParams.rootCA != null) ? requestParams.rootCA.toString() : "NULL");
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
-
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
     // This is there only for legacy support, no need if rootCA and clientRootCA are different.
     if (userIntent.enableClientToNodeEncrypt && requestParams.rootAndClientRootCASame) {
       CertificateInfo rootCert = CertificateInfo.get(requestParams.rootCA);
-      if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+      if (rootCert.certType == CertConfigType.SelfSigned
+          || rootCert.certType == CertConfigType.HashicorpVault) {
         CertificateHelper.createClientCertificate(
             requestParams.rootCA,
             String.format(
@@ -170,6 +181,14 @@ public class UpgradeUniverseHandler {
         TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
   }
 
+  /**
+   * Enable/Disable TLS on Cluster
+   *
+   * @param requestParams
+   * @param customer
+   * @param universe
+   * @return
+   */
   public UUID toggleTls(TlsToggleParams requestParams, Customer customer, Universe universe) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
@@ -238,7 +257,8 @@ public class UpgradeUniverseHandler {
       // This is there only for legacy support, no need if rootCA and clientRootCA are different.
       if (requestParams.rootAndClientRootCASame) {
         CertificateInfo cert = CertificateInfo.get(requestParams.rootCA);
-        if (cert.certType == CertificateInfo.Type.SelfSigned) {
+        if (cert.certType == CertConfigType.SelfSigned
+            || cert.certType == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
               requestParams.rootCA,
               String.format(

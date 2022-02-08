@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -69,10 +70,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
   public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
   public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
 
-  public static final String HC_ADDR_FNAME = HashicorpEARServiceUtil.HC_VAULT_ADDRESS;
-  public static final String HC_TOKEN_FNAME = HashicorpEARServiceUtil.HC_VAULT_TOKEN;
-  public static final String HC_ENGINE_FNAME = HashicorpEARServiceUtil.HC_VAULT_ENGINE;
-  public static final String HC_MPATH_FNAME = HashicorpEARServiceUtil.HC_VAULT_MOUNT_PATH;
+  public static final String HC_ADDR_FNAME = HashicorpVaultConfigParams.HC_VAULT_ADDRESS;
+  public static final String HC_TOKEN_FNAME = HashicorpVaultConfigParams.HC_VAULT_TOKEN;
+  public static final String HC_ENGINE_FNAME = HashicorpVaultConfigParams.HC_VAULT_ENGINE;
+  public static final String HC_MPATH_FNAME = HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH;
 
   @Inject EncryptionAtRestManager keyManager;
 

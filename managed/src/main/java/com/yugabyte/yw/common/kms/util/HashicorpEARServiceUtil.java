@@ -20,6 +20,8 @@ import javax.crypto.SecretKey;
 import com.bettercloud.vault.VaultException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
+
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
@@ -33,12 +35,6 @@ import org.slf4j.LoggerFactory;
 public class HashicorpEARServiceUtil {
   private static final Logger LOG = LoggerFactory.getLogger(HashicorpEARServiceUtil.class);
 
-  public static final String HC_VAULT_TOKEN = "HC_VAULT_TOKEN";
-  public static final String HC_VAULT_ADDRESS = "HC_VAULT_ADDRESS";
-  public static final String HC_VAULT_ENGINE = "HC_VAULT_ENGINE";
-  public static final String HC_VAULT_MOUNT_PATH = "HC_VAULT_MOUNT_PATH";
-  public static final String HC_VAULT_TTL = "HC_VAULT_TTL";
-  public static final String HC_VAULT_TTL_EXPIRY = "HC_VAULT_TTL_EXPIRY";
   public static final String HC_VAULT_EKE_NAME = "key_yugabyte";
 
   /** Creates Secret Engine object with VaultAccessor. */
@@ -70,10 +66,10 @@ public class HashicorpEARServiceUtil {
       String vaultAddr, vaultToken;
       String vaultSE, sePath;
 
-      vaultAddr = authConfig.get(HC_VAULT_ADDRESS).asText();
-      vaultToken = authConfig.get(HC_VAULT_TOKEN).asText();
-      vaultSE = authConfig.get(HC_VAULT_ENGINE).asText();
-      sePath = authConfig.get(HC_VAULT_MOUNT_PATH).asText();
+      vaultAddr = authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS).asText();
+      vaultToken = authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN).asText();
+      vaultSE = authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ENGINE).asText();
+      sePath = authConfig.get(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH).asText();
 
       try {
         LOG.info(
@@ -81,7 +77,7 @@ public class HashicorpEARServiceUtil {
             vaultAddr,
             vaultSE,
             sePath,
-            CommonUtils.getMaskedValue(HC_VAULT_TOKEN, vaultToken));
+            CommonUtils.getMaskedValue(HashicorpVaultConfigParams.HC_VAULT_TOKEN, vaultToken));
 
         VaultAccessor hcVaultAccessor = VaultAccessor.buildVaultAccessor(vaultAddr, vaultToken);
         VaultSecretEngineBase engine =
@@ -157,9 +153,10 @@ public class HashicorpEARServiceUtil {
     try {
       long existingTTL = -1, existingTTLExpiry = -1;
       try {
-        existingTTL = Long.valueOf(authConfig.get(HashicorpEARServiceUtil.HC_VAULT_TTL).asText());
+        existingTTL =
+            Long.valueOf(authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TTL).asText());
         existingTTLExpiry =
-            Long.valueOf(authConfig.get(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY).asText());
+            Long.valueOf(authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY).asText());
       } catch (Exception e) {
         LOG.debug("Error fetching the vaules, updating ttl anyways");
       }
@@ -178,8 +175,8 @@ public class HashicorpEARServiceUtil {
           ttlInfo.get(0),
           ttlInfo.get(1));
 
-      authConfig.put(HashicorpEARServiceUtil.HC_VAULT_TTL, (long) ttlInfo.get(0));
-      authConfig.put(HashicorpEARServiceUtil.HC_VAULT_TTL_EXPIRY, (long) ttlInfo.get(1));
+      authConfig.put(HashicorpVaultConfigParams.HC_VAULT_TTL, (long) ttlInfo.get(0));
+      authConfig.put(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY, (long) ttlInfo.get(1));
     } catch (Exception e) {
       LOG.error("Unable to update TTL of token into authConfig, it will not reflect on UI", e);
     }

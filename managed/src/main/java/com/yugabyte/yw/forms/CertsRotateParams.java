@@ -6,12 +6,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 import play.mvc.Http.Status;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = CertsRotateParams.Converter.class)
@@ -67,12 +68,12 @@ public class CertsRotateParams extends UpgradeTaskParams {
     }
 
     boolean isRootCARequired =
-        CertificateHelper.isRootCARequired(
+        EncryptionInTransitUtil.isRootCARequired(
             userIntent.enableNodeToNodeEncrypt,
             userIntent.enableClientToNodeEncrypt,
             rootAndClientRootCASame);
     boolean isClientRootCARequired =
-        CertificateHelper.isClientRootCARequired(
+        EncryptionInTransitUtil.isClientRootCARequired(
             userIntent.enableNodeToNodeEncrypt,
             userIntent.enableClientToNodeEncrypt,
             rootAndClientRootCASame);
@@ -124,7 +125,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");
           }
-          if (rootCert.getCustomCertInfo() == null) {
+          if (rootCert.getCustomCertPathParams() == null) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 String.format(
@@ -139,6 +140,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
         case CustomServerCert:
           throw new PlatformServiceException(
               Status.BAD_REQUEST, "rootCA cannot be of type CustomServerCert.");
+        case HashicorpVault:
+          {
+            rootCARotationType = CertRotationType.RootCert;
+            break;
+          }
       }
     } else {
       // Consider this case:
@@ -172,7 +178,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");
           }
-          if (clientRootCert.getCustomCertInfo() == null) {
+          if (clientRootCert.getCustomCertPathParams() == null) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 String.format(
@@ -201,6 +207,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
             clientRootCARotationType = CertRotationType.RootCert;
           }
           break;
+        case HashicorpVault:
+          {
+            clientRootCARotationType = CertRotationType.RootCert;
+            break;
+          }
       }
     } else {
       // Consider this case:

@@ -50,6 +50,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
+import com.yugabyte.yw.common.NodeManager.NodeCommandType;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -63,7 +65,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -107,6 +109,8 @@ import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.libs.Json;
+
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
@@ -303,7 +307,7 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -324,6 +328,22 @@ public class NodeManagerTest extends FakeDBApplication {
         case CustomServerCert:
           {
             throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
+          }
+        case HashicorpVault:
+          {
+            rootCertPath = rootCert.certificate;
+            serverCertPath = "cert.crt";
+            serverKeyPath = "key.crt";
+            certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
+
+            if (configureParams.rootAndClientRootCASame
+                && configureParams.enableClientToNodeEncrypt) {
+              expectedCommand.add("--client_cert_path");
+              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add("--client_key_path");
+              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+            }
+            break;
           }
       }
 
@@ -365,7 +385,8 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = clientRootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo =
+                clientRootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -380,6 +401,14 @@ public class NodeManagerTest extends FakeDBApplication {
             serverCertPath = customServerCertInfo.serverCert;
             serverKeyPath = customServerCertInfo.serverKey;
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
+          }
+        case HashicorpVault:
+          {
+            rootCertPath = clientRootCert.certificate;
+            serverCertPath = "cert.crt";
+            serverKeyPath = "%key.cert";
+            certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
+            break;
           }
       }
 
@@ -624,10 +653,10 @@ public class NodeManagerTest extends FakeDBApplication {
               .cloudInfo
               .private_ip);
     }
-    if (CertificateHelper.isRootCARequired(configureParams)) {
+    if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
       gflags.put("certs_dir", certsDir);
     }
-    if (CertificateHelper.isClientRootCARequired(configureParams)) {
+    if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
       gflags.put("certs_for_client_dir", certsForClientDir);
     }
     if (processType == ServerType.TSERVER.name()
@@ -840,10 +869,10 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", "true");
-              if (CertificateHelper.isRootCARequired(configureParams)) {
+              if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(configureParams)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else if (configureParams.nodeToNodeChange < 0) {
@@ -852,10 +881,10 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(configureParams)) {
+              if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(configureParams)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             }
@@ -868,10 +897,10 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(configureParams)) {
+              if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(configureParams)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             }
@@ -899,12 +928,15 @@ public class NodeManagerTest extends FakeDBApplication {
               {
                 String rootCertPath = "";
                 String certsLocation = "";
-                if (rootCert.certType == Type.SelfSigned) {
+                if (rootCert.certType == CertConfigType.SelfSigned) {
                   rootCertPath = rootCert.certificate;
                   certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
-                } else if (rootCert.certType == Type.CustomCertHostPath) {
-                  rootCertPath = rootCert.getCustomCertInfo().rootCertPath;
+                } else if (rootCert.certType == CertConfigType.CustomCertHostPath) {
+                  rootCertPath = rootCert.getCustomCertPathParams().rootCertPath;
                   certsLocation = NodeManager.CERT_LOCATION_NODE;
+                } else if (rootCert.certType == CertConfigType.HashicorpVault) {
+                  rootCertPath = rootCert.certificate;
+                  certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
                 }
                 expectedCommand.add("--root_cert_path");
                 expectedCommand.add(rootCertPath);
@@ -2724,13 +2756,17 @@ public class NodeManagerTest extends FakeDBApplication {
     }
   }
 
-  private UUID createCertificate(Type certType, UUID customerUUID, String label)
+  private UUID createCertificateConfig(CertConfigType certType, UUID customerUUID, String label)
       throws IOException, NoSuchAlgorithmException {
     return createCertificate(certType, customerUUID, label, "", false).uuid;
   }
 
   private CertificateInfo createCertificate(
-      Type certType, UUID customerUUID, String label, String suffix, boolean createClientPaths)
+      CertConfigType certType,
+      UUID customerUUID,
+      String label,
+      String suffix,
+      boolean createClientPaths)
       throws IOException, NoSuchAlgorithmException {
     UUID certUUID = UUID.randomUUID();
     Calendar cal = Calendar.getInstance();
@@ -2740,10 +2776,10 @@ public class NodeManagerTest extends FakeDBApplication {
 
     createTempFile("node_manager_test_ca.crt", "test data");
 
-    if (certType == Type.SelfSigned) {
+    if (certType == CertConfigType.SelfSigned) {
       certUUID = CertificateHelper.createRootCA("foobar", customerUUID, TestHelper.TMP_PATH);
       return CertificateInfo.get(certUUID);
-    } else if (certType == Type.CustomCertHostPath) {
+    } else if (certType == CertConfigType.CustomCertHostPath) {
       CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
       customCertInfo.rootCertPath = String.format("/path/to/cert%s.crt", suffix);
       customCertInfo.nodeCertPath = String.format("/path/to/rootcert%s.crt", suffix);
@@ -2760,7 +2796,7 @@ public class NodeManagerTest extends FakeDBApplication {
           nextYear,
           TestHelper.TMP_PATH + "/node_manager_test_ca.crt",
           customCertInfo);
-    } else if (certType == Type.CustomServerCert) {
+    } else if (certType == CertConfigType.CustomServerCert) {
       return CertificateInfo.create(
           certUUID,
           customerUUID,
@@ -2769,7 +2805,17 @@ public class NodeManagerTest extends FakeDBApplication {
           nextYear,
           "privateKey",
           TestHelper.TMP_PATH + "/node_manager_test_ca.crt",
-          Type.CustomServerCert);
+          CertConfigType.CustomServerCert);
+    } else if (certType == CertConfigType.HashicorpVault) {
+      return CertificateInfo.create(
+          certUUID,
+          customerUUID,
+          label,
+          today,
+          nextYear,
+          "privateKey",
+          TestHelper.TMP_PATH + "/node_manager_test_ca.crt",
+          CertConfigType.HashicorpVault);
     } else {
       throw new IllegalArgumentException("Unknown type " + certType);
     }
@@ -2869,7 +2915,8 @@ public class NodeManagerTest extends FakeDBApplication {
       params.certRotateAction = CertRotateAction.valueOf(action);
       params.rootCARotationType = CertRotationType.RootCert;
       params.rootCA =
-          createCertificate(Type.CustomServerCert, data.provider.customerUUID, params.nodePrefix);
+          createCertificateConfig(
+              CertConfigType.CustomServerCert, data.provider.customerUUID, params.nodePrefix);
       params.setProperty("processType", MASTER.toString());
 
       try {
@@ -2888,7 +2935,9 @@ public class NodeManagerTest extends FakeDBApplication {
     "APPEND_NEW_ROOT_CERT, SelfSigned",
     "APPEND_NEW_ROOT_CERT, CustomCertHostPath",
     "REMOVE_OLD_ROOT_CERT, SelfSigned",
-    "REMOVE_OLD_ROOT_CERT, CustomCertHostPath"
+    "REMOVE_OLD_ROOT_CERT, CustomCertHostPath",
+    "APPEND_NEW_ROOT_CERT, HashicorpVault",
+    "REMOVE_OLD_ROOT_CERT, HashicorpVault"
   })
   @TestCaseName("testCertsRotateWithValidParams_Action:{0}_CertType:{1}")
   public void testCertsRotateWithValidParams(String action, String certType)
@@ -2911,7 +2960,8 @@ public class NodeManagerTest extends FakeDBApplication {
       params.certRotateAction = CertRotateAction.valueOf(action);
       params.rootCARotationType = CertRotationType.RootCert;
       params.rootCA =
-          createCertificate(Type.valueOf(certType), data.provider.customerUUID, params.nodePrefix);
+          createCertificateConfig(
+              CertConfigType.valueOf(certType), data.provider.customerUUID, params.nodePrefix);
       params.setProperty("processType", MASTER.toString());
       params.deviceInfo = new DeviceInfo();
       params.deviceInfo.numVolumes = 1;
@@ -2950,12 +3000,14 @@ public class NodeManagerTest extends FakeDBApplication {
       if (isRootCA) {
         params.rootCARotationType = CertRotationType.RootCert;
         params.rootCA =
-            createCertificate(Type.SelfSigned, data.provider.customerUUID, params.nodePrefix);
+            createCertificateConfig(
+                CertConfigType.SelfSigned, data.provider.customerUUID, params.nodePrefix);
       }
       if (isClientRootCA) {
         params.clientRootCARotationType = CertRotationType.RootCert;
         params.clientRootCA =
-            createCertificate(Type.SelfSigned, data.provider.customerUUID, params.nodePrefix);
+            createCertificateConfig(
+                CertConfigType.SelfSigned, data.provider.customerUUID, params.nodePrefix);
       }
       params.setProperty("processType", MASTER.toString());
 
@@ -3091,7 +3143,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testPrecheckNotCheckingSelfSignedCertificates()
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.customerUUID;
-    UUID certificateUUID = createCertificate(Type.SelfSigned, customerUUID, "SS");
+    UUID certificateUUID = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
     List<String> cmds = createPrecheckCommandForCerts(certificateUUID, null);
     checkArguments(cmds, PRECHECK_CERT_PATHS); // Check no args
   }
@@ -3100,8 +3152,8 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testPrecheckNotCheckingTwoSelfSignedCertificates()
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.customerUUID;
-    UUID certificateUUID1 = createCertificate(Type.SelfSigned, customerUUID, "SS");
-    UUID certificateUUID2 = createCertificate(Type.SelfSigned, customerUUID, "SS");
+    UUID certificateUUID1 = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
+    UUID certificateUUID2 = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
     List<String> cmds = createPrecheckCommandForCerts(certificateUUID1, certificateUUID2);
     checkArguments(cmds, PRECHECK_CERT_PATHS); // Check no args
   }
@@ -3110,40 +3162,40 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testPrecheckCheckCertificates() throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.customerUUID;
     CertificateInfo certificateInfo =
-        createCertificate(Type.CustomCertHostPath, customerUUID, "CS", "", false);
+        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
     List<String> cmds = createPrecheckCommandForCerts(certificateInfo.uuid, null);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
-        certificateInfo.getCustomCertInfo().rootCertPath,
+        certificateInfo.getCustomCertPathParams().rootCertPath,
         "--server_cert_path",
-        certificateInfo.getCustomCertInfo().nodeCertPath,
+        certificateInfo.getCustomCertPathParams().nodeCertPath,
         "--server_key_path",
-        certificateInfo.getCustomCertInfo().nodeKeyPath);
+        certificateInfo.getCustomCertPathParams().nodeKeyPath);
   }
 
   @Test
   public void testPrecheckCheckEqualCertificates() throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.customerUUID;
     CertificateInfo certificateInfo =
-        createCertificate(Type.CustomCertHostPath, customerUUID, "CS", "", true);
+        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
     List<String> cmds = createPrecheckCommandForCerts(certificateInfo.uuid, certificateInfo.uuid);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
-        certificateInfo.getCustomCertInfo().rootCertPath,
+        certificateInfo.getCustomCertPathParams().rootCertPath,
         "--server_cert_path",
-        certificateInfo.getCustomCertInfo().nodeCertPath,
+        certificateInfo.getCustomCertPathParams().nodeCertPath,
         "--server_key_path",
-        certificateInfo.getCustomCertInfo().nodeKeyPath,
+        certificateInfo.getCustomCertPathParams().nodeKeyPath,
         "--client_cert_path",
-        certificateInfo.getCustomCertInfo().clientCertPath,
+        certificateInfo.getCustomCertPathParams().clientCertPath,
         "--client_key_path",
-        certificateInfo.getCustomCertInfo().clientKeyPath);
+        certificateInfo.getCustomCertPathParams().clientKeyPath);
   }
 
   @Test
@@ -3151,74 +3203,75 @@ public class NodeManagerTest extends FakeDBApplication {
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.customerUUID;
     CertificateInfo certificateInfo =
-        createCertificate(Type.CustomCertHostPath, customerUUID, "CS", "", true);
+        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
     List<String> cmds = createPrecheckCommandForCerts(certificateInfo.uuid, null);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
-        certificateInfo.getCustomCertInfo().rootCertPath,
+        certificateInfo.getCustomCertPathParams().rootCertPath,
         "--server_cert_path",
-        certificateInfo.getCustomCertInfo().nodeCertPath,
+        certificateInfo.getCustomCertPathParams().nodeCertPath,
         "--server_key_path",
-        certificateInfo.getCustomCertInfo().nodeKeyPath,
+        certificateInfo.getCustomCertPathParams().nodeKeyPath,
         "--client_cert_path",
-        certificateInfo.getCustomCertInfo().clientCertPath,
+        certificateInfo.getCustomCertPathParams().clientCertPath,
         "--client_key_path",
-        certificateInfo.getCustomCertInfo().clientKeyPath);
+        certificateInfo.getCustomCertPathParams().clientKeyPath);
   }
 
   @Test
   public void testPrecheckCheckBothCertificatesWithClientPaths()
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.customerUUID;
-    CertificateInfo cert = createCertificate(Type.CustomCertHostPath, customerUUID, "CS", "", true);
+    CertificateInfo cert =
+        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
     CertificateInfo cert2 =
-        createCertificate(Type.CustomCertHostPath, customerUUID, "CS", "", true);
+        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
     List<String> cmds = createPrecheckCommandForCerts(cert.uuid, cert2.uuid);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
-        cert.getCustomCertInfo().rootCertPath,
+        cert.getCustomCertPathParams().rootCertPath,
         "--server_cert_path",
-        cert.getCustomCertInfo().nodeCertPath,
+        cert.getCustomCertPathParams().nodeCertPath,
         "--server_key_path",
-        cert.getCustomCertInfo().nodeKeyPath,
+        cert.getCustomCertPathParams().nodeKeyPath,
         "--root_cert_path_client_to_server",
-        cert2.getCustomCertInfo().rootCertPath,
+        cert2.getCustomCertPathParams().rootCertPath,
         "--server_cert_path_client_to_server",
-        cert2.getCustomCertInfo().nodeCertPath,
+        cert2.getCustomCertPathParams().nodeCertPath,
         "--server_key_path_client_to_server",
-        cert2.getCustomCertInfo().nodeKeyPath);
+        cert2.getCustomCertPathParams().nodeKeyPath);
   }
 
   @Test
   public void testPrecheckCheckBothCertificates() throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.customerUUID;
     CertificateInfo cert =
-        createCertificate(Type.CustomCertHostPath, customerUUID, "CS", "", false);
+        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
     CertificateInfo cert2 =
-        createCertificate(Type.CustomCertHostPath, customerUUID, "CS", "", false);
+        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
     List<String> cmds = createPrecheckCommandForCerts(cert.uuid, cert2.uuid);
 
     checkArguments(
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
-        cert.getCustomCertInfo().rootCertPath,
+        cert.getCustomCertPathParams().rootCertPath,
         "--server_cert_path",
-        cert.getCustomCertInfo().nodeCertPath,
+        cert.getCustomCertPathParams().nodeCertPath,
         "--server_key_path",
-        cert.getCustomCertInfo().nodeKeyPath,
+        cert.getCustomCertPathParams().nodeKeyPath,
         "--root_cert_path_client_to_server",
-        cert2.getCustomCertInfo().rootCertPath,
+        cert2.getCustomCertPathParams().rootCertPath,
         "--server_cert_path_client_to_server",
-        cert2.getCustomCertInfo().nodeCertPath,
+        cert2.getCustomCertPathParams().nodeCertPath,
         "--server_key_path_client_to_server",
-        cert2.getCustomCertInfo().nodeKeyPath);
+        cert2.getCustomCertPathParams().nodeKeyPath);
   }
 
   @Test
@@ -3226,7 +3279,7 @@ public class NodeManagerTest extends FakeDBApplication {
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.customerUUID;
     CertificateInfo cert =
-        createCertificate(Type.CustomCertHostPath, customerUUID, "CS", "", false);
+        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
     List<String> cmds =
         createPrecheckCommandForCerts(
             cert.uuid,
@@ -3249,11 +3302,11 @@ public class NodeManagerTest extends FakeDBApplication {
         cmds,
         PRECHECK_CERT_PATHS,
         "--root_cert_path",
-        cert.getCustomCertInfo().rootCertPath,
+        cert.getCustomCertPathParams().rootCertPath,
         "--server_cert_path",
-        cert.getCustomCertInfo().nodeCertPath,
+        cert.getCustomCertPathParams().nodeCertPath,
         "--server_key_path",
-        cert.getCustomCertInfo().nodeKeyPath,
+        cert.getCustomCertPathParams().nodeKeyPath,
         "--skip_cert_validation",
         "HOSTNAME");
   }

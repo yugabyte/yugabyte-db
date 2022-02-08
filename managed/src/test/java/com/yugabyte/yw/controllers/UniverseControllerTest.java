@@ -39,6 +39,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import java.net.URLEncoder;
@@ -290,7 +291,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     try {
       certInfo =
           ModelFactory.createCertificateInfo(
-              customer.getUuid(), certificate, CertificateInfo.Type.SelfSigned);
+              customer.getUuid(), certificate, CertConfigType.SelfSigned);
     } catch (Exception e) {
 
     }

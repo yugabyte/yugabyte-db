@@ -86,7 +86,7 @@ public class VaultAccessor {
       vAccessor.getTokenExpiryFromVault();
       vAccessor.renewSelf();
     } catch (VaultException e) {
-      LOG.error("Creation of vault is failed with error:", e);
+      LOG.error("Creation of vault is failed with error:" + e.getMessage());
       throw e;
     }
     return vAccessor;
@@ -108,7 +108,7 @@ public class VaultAccessor {
 
       return fetchedType;
     } catch (VaultException e) {
-      LOG.debug("Cannot extract secret engine type /sys/mounts/, exception {}:", e);
+      LOG.debug("Cannot extract secret engine type /sys/mounts/, exception :" + e.getMessage());
     }
     return new String("INVAID");
   }

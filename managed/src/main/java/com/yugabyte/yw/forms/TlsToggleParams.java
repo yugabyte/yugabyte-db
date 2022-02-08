@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 import play.mvc.Http;
@@ -83,15 +84,14 @@ public class TlsToggleParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "No valid client root certificate found for UUID: " + clientRootCA);
     }
 
-    if (rootCA != null
-        && CertificateInfo.get(rootCA).certType == CertificateInfo.Type.CustomServerCert) {
+    if (rootCA != null && CertificateInfo.get(rootCA).certType == CertConfigType.CustomServerCert) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "CustomServerCert are only supported for Client to Server Communication.");
     }
 
     if (rootCA != null
-        && CertificateInfo.get(rootCA).certType == CertificateInfo.Type.CustomCertHostPath
+        && CertificateInfo.get(rootCA).certType == CertConfigType.CustomCertHostPath
         && !userIntent.providerType.equals(CloudType.onprem)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
@@ -99,7 +99,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
     }
 
     if (clientRootCA != null
-        && CertificateInfo.get(clientRootCA).certType == CertificateInfo.Type.CustomCertHostPath
+        && CertificateInfo.get(clientRootCA).certType == CertConfigType.CustomCertHostPath
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,

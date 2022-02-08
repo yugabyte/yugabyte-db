@@ -1,11 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.certmgmt;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -31,6 +34,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CertificateHelperTest extends FakeDBApplication {
@@ -349,7 +353,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
     UUID rootCA = null;
-    CertificateInfo.Type type = CertificateInfo.Type.CustomCertHostPath;
+    CertConfigType type = CertConfigType.CustomCertHostPath;
     String certContent = getCertContent();
 
     try {
@@ -375,7 +379,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     Date certStart = cal.getTime();
     cal.add(Calendar.DATE, 1);
     Date certExpiry = cal.getTime();
-    CertificateInfo.Type type = CertificateInfo.Type.CustomServerCert;
+    CertConfigType type = CertConfigType.CustomServerCert;
     String certContent = getRootCertContent();
     CertificateParams.CustomServerCertData customServerCertData =
         new CertificateParams.CustomServerCertData();
@@ -395,6 +399,7 @@ public class CertificateHelperTest extends FakeDBApplication {
           null,
           customServerCertData);
     } catch (Exception e) {
+
       assertEquals(
           "Certificate with CN = CA for YugabyteDB" + " has invalid start/end dates.",
           e.getMessage());
@@ -407,13 +412,14 @@ public class CertificateHelperTest extends FakeDBApplication {
     Date certStart = cal.getTime();
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
-    CertificateInfo.Type type = CertificateInfo.Type.CustomCertHostPath;
+    CertConfigType type = CertConfigType.CustomCertHostPath;
 
     try {
       CertificateHelper.uploadRootCA(
           "test", c.uuid, "/tmp", "invalid_cert", null, certStart, certExpiry, type, null, null);
+      assertTrue(false);
     } catch (Exception e) {
-      assertEquals("Unable to get cert Object", e.getMessage());
+      assertEquals("Unable to get cert Objects", e.getMessage());
     }
   }
 
@@ -423,7 +429,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     Date certStart = cal.getTime();
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
-    CertificateInfo.Type type = CertificateInfo.Type.SelfSigned;
+    CertConfigType type = CertConfigType.SelfSigned;
     String cert_content = getCertContent();
     try {
       CertificateHelper.uploadRootCA(
@@ -448,7 +454,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     Date certStart = cal.getTime();
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
-    CertificateInfo.Type type = CertificateInfo.Type.SelfSigned;
+    CertConfigType type = CertConfigType.SelfSigned;
     String cert_content = getIncorrectCertContent();
     try {
       CertificateHelper.uploadRootCA(

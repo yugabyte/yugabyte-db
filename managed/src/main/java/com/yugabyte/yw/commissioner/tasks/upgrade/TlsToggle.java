@@ -8,7 +8,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
-import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -65,11 +65,11 @@ public class TlsToggle extends UpgradeTaskBase {
   private void verifyParams() {
     taskParams().verifyParams(getUniverse());
 
-    if (CertificateHelper.isRootCARequired(taskParams()) && taskParams().rootCA == null) {
+    if (EncryptionInTransitUtil.isRootCARequired(taskParams()) && taskParams().rootCA == null) {
       throw new IllegalArgumentException("Root certificate is null");
     }
 
-    if (CertificateHelper.isClientRootCARequired(taskParams())
+    if (EncryptionInTransitUtil.isClientRootCARequired(taskParams())
         && taskParams().clientRootCA == null) {
       throw new IllegalArgumentException("Client root certificate is null");
     }

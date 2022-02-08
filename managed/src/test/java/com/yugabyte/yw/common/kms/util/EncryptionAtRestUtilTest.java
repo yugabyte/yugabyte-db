@@ -1,7 +1,6 @@
 package com.yugabyte.yw.common.kms.util;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
@@ -11,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
@@ -100,7 +100,7 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
       UUID uid = UUID.fromString("f33e3c9b-75ab-4c30-80ad-cba85646ea39");
 
       JsonNode originalObj = Json.parse(jsonString);
-      assertEquals("transit", originalObj.get(HashicorpEARServiceUtil.HC_VAULT_ENGINE).asText());
+      assertEquals("transit", originalObj.get(HashicorpVaultConfigParams.HC_VAULT_ENGINE).asText());
 
       ObjectNode encryptedObj =
           EncryptionAtRestUtil.maskConfigData(uid, originalObj, KeyProvider.HASHICORP);
@@ -112,15 +112,14 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
           EncryptionAtRestUtil.unmaskConfigData(uid, encryptedObj, KeyProvider.HASHICORP);
       assertNotNull(unencryptedObj);
       outData = om.writeValueAsString(unencryptedObj);
-
       assertEquals(jsonString, outData);
 
       assertEquals(
-          originalObj.get(HashicorpEARServiceUtil.HC_VAULT_ADDRESS),
-          unencryptedObj.get(HashicorpEARServiceUtil.HC_VAULT_ADDRESS));
+          originalObj.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS),
+          unencryptedObj.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS));
       assertEquals(
-          originalObj.get(HashicorpEARServiceUtil.HC_VAULT_TOKEN),
-          unencryptedObj.get(HashicorpEARServiceUtil.HC_VAULT_TOKEN));
+          originalObj.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN),
+          unencryptedObj.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
     } catch (Exception e) {
       LOG.error("test:: failed", e);
       throw e;

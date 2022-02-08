@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -43,7 +44,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -68,6 +69,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
@@ -321,6 +324,17 @@ public class NodeManager extends DevopsBase {
     return null;
   }
 
+  /**
+   * Creates certificates if not present. Called from various places like - when node is added to
+   * universe
+   *
+   * @param config
+   * @param userIntent
+   * @param taskParam
+   * @param nodeIP
+   * @param ybHomeDir
+   * @return
+   */
   private List<String> getCertificatePaths(
       Config config,
       UserIntent userIntent,
@@ -332,8 +346,8 @@ public class NodeManager extends DevopsBase {
         config,
         userIntent,
         taskParam,
-        CertificateHelper.isRootCARequired(taskParam),
-        CertificateHelper.isClientRootCARequired(taskParam),
+        EncryptionInTransitUtil.isRootCARequired(taskParam),
+        EncryptionInTransitUtil.isClientRootCARequired(taskParam),
         nodeIP,
         ybHomeDir,
         subjectAltName);
@@ -367,12 +381,20 @@ public class NodeManager extends DevopsBase {
 
       switch (rootCert.certType) {
         case SelfSigned:
+        case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
-              Path tempStorageDirectory =
-                  Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
-                      .toAbsolutePath();
+              Path tempStorageDirectory;
+              if (rootCert.certType == CertConfigType.SelfSigned) {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              } else {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("Hashicorp%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              }
               CertificateHelper.createServerCertificate(
                   taskParam.rootCA,
                   tempStorageDirectory.toString(),
@@ -405,7 +427,7 @@ public class NodeManager extends DevopsBase {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -462,13 +484,20 @@ public class NodeManager extends DevopsBase {
 
       switch (clientRootCert.certType) {
         case SelfSigned:
+        case HashicorpVault:
           {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
-              Path tempStorageDirectory =
-                  Files.createTempDirectory(
-                          String.format("SelfSignedClient%s", taskParam.clientRootCA))
-                      .toAbsolutePath();
+              Path tempStorageDirectory;
+              if (clientRootCert.certType == CertConfigType.SelfSigned) {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              } else {
+                tempStorageDirectory =
+                    Files.createTempDirectory(String.format("Hashicorp%s", taskParam.rootCA))
+                        .toAbsolutePath();
+              }
               CertificateHelper.createServerCertificate(
                   taskParam.clientRootCA,
                   tempStorageDirectory.toString(),
@@ -490,7 +519,8 @@ public class NodeManager extends DevopsBase {
           }
         case CustomCertHostPath:
           {
-            CertificateParams.CustomCertInfo customCertInfo = clientRootCert.getCustomCertInfo();
+            CertificateParams.CustomCertInfo customCertInfo =
+                clientRootCert.getCustomCertPathParams();
             rootCertPath = customCertInfo.rootCertPath;
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
@@ -572,10 +602,10 @@ public class NodeManager extends DevopsBase {
     if (taskParam.enableClientToNodeEncrypt || taskParam.enableNodeToNodeEncrypt) {
       gflags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
-    if (CertificateHelper.isRootCARequired(taskParam)) {
+    if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       gflags.put("certs_dir", certsDir);
     }
-    if (CertificateHelper.isClientRootCARequired(taskParam)) {
+    if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
       gflags.put("certs_for_client_dir", certsForClientDir);
     }
     return gflags;
@@ -932,6 +962,7 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
 
+          // TODO: PLAT-2782: certificates are generated 3 times for each node.
           if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
             subcommand.addAll(
                 getCertificatePaths(
@@ -942,6 +973,7 @@ public class NodeManager extends DevopsBase {
                     taskParam.getProvider().getYbHome(),
                     alternateNames));
           }
+
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -991,19 +1023,22 @@ public class NodeManager extends DevopsBase {
                 if (rootCert == null) {
                   throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
                 }
-                if (rootCert.certType == Type.CustomServerCert) {
+                if (rootCert.certType == CertConfigType.CustomServerCert) {
                   throw new RuntimeException(
                       "Root certificate cannot be of type CustomServerCert.");
                 }
 
                 String rootCertPath = "";
                 String certsLocation = "";
-                if (rootCert.certType == Type.SelfSigned) {
+                if (rootCert.certType == CertConfigType.SelfSigned) {
                   rootCertPath = rootCert.certificate;
                   certsLocation = CERT_LOCATION_PLATFORM;
-                } else if (rootCert.certType == Type.CustomCertHostPath) {
-                  rootCertPath = rootCert.getCustomCertInfo().rootCertPath;
+                } else if (rootCert.certType == CertConfigType.CustomCertHostPath) {
+                  rootCertPath = rootCert.getCustomCertPathParams().rootCertPath;
                   certsLocation = CERT_LOCATION_NODE;
+                } else if (rootCert.certType == CertConfigType.HashicorpVault) {
+                  rootCertPath = rootCert.certificate;
+                  certsLocation = CERT_LOCATION_PLATFORM;
                 }
 
                 subcommand.add("--root_cert_path");
@@ -1079,10 +1114,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", "true");
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else if (taskParam.nodeToNodeChange < 0) {
@@ -1091,10 +1126,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             }
@@ -1114,10 +1149,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              if (CertificateHelper.isRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                 gflags.put("certs_dir", certsDir);
               }
-              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else {
@@ -1734,12 +1769,12 @@ public class NodeManager extends DevopsBase {
     }
     CertificateInfo rootCert = CertificateInfo.get(rootCA);
     // checking only certs with CustomCertHostPath type, CustomServerCert is not used for onprem
-    if (rootCert.certType != CertificateInfo.Type.CustomCertHostPath) {
+    if (rootCert.certType != CertConfigType.CustomCertHostPath) {
       return;
     }
     String suffix = isClient ? "_client_to_server" : "";
 
-    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
 
     commandArgs.add(String.format("--root_cert_path%s", suffix));
     commandArgs.add(customCertInfo.rootCertPath);

@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import org.junit.After;
@@ -43,13 +44,13 @@ public class DeleteCertificateTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     usedCertificateInfo =
         ModelFactory.createCertificateInfo(
-            defaultCustomer.getUuid(), certificate, CertificateInfo.Type.SelfSigned);
+            defaultCustomer.getUuid(), certificate, CertConfigType.SelfSigned);
     universe =
         ModelFactory.createUniverse(defaultCustomer.getCustomerId(), usedCertificateInfo.uuid);
 
     unusedCertificateInfo =
         ModelFactory.createCertificateInfo(
-            defaultCustomer.getUuid(), certificate, CertificateInfo.Type.SelfSigned);
+            defaultCustomer.getUuid(), certificate, CertConfigType.SelfSigned);
 
     params = new DeleteCertificate.Params();
     params.customerUUID = defaultCustomer.uuid;

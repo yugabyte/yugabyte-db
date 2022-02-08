@@ -39,11 +39,11 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -94,6 +94,7 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
 @RunWith(JUnitParamsRunner.class)
 public class UpgradeUniverseControllerTest extends WithApplication {
@@ -970,6 +971,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     createTempFile("upgrade_universe_controller_test_ca.crt", cert1Contents);
     if (onprem) {
       Date date = new Date();
+
       CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
       customCertInfo.rootCertPath = "rootCertPath";
       customCertInfo.nodeCertPath = "nodeCertPath";
@@ -992,7 +994,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
           new Date(),
           "privateKey",
           TestHelper.TMP_PATH + "/upgrade_universe_controller_test_ca.crt",
-          CertificateInfo.Type.SelfSigned);
+          CertConfigType.SelfSigned);
       CertificateInfo.create(
           clientRootCA,
           customer.uuid,
@@ -1001,7 +1003,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
           new Date(),
           "privateKey",
           TestHelper.TMP_PATH + "/upgrade_universe_controller_test_ca2.crt",
-          CertificateInfo.Type.SelfSigned);
+          CertConfigType.SelfSigned);
     }
 
     UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
@@ -1037,6 +1039,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     createTempFile("upgrade_universe_controller_test_ca2.crt", cert2Contents);
     if (onprem) {
       Date date = new Date();
+
       CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
       customCertInfo.rootCertPath = "rootCertPath1";
       customCertInfo.nodeCertPath = "nodeCertPath1";
@@ -1060,7 +1063,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
           new Date(),
           "privateKey",
           TestHelper.TMP_PATH + "/upgrade_universe_controller_test_ca2.crt",
-          CertificateInfo.Type.SelfSigned);
+          CertConfigType.SelfSigned);
       CertificateInfo.create(
           clientRootCA,
           customer.uuid,
@@ -1069,7 +1072,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
           new Date(),
           "privateKey",
           TestHelper.TMP_PATH + "/upgrade_universe_controller_test_ca.crt",
-          CertificateInfo.Type.SelfSigned);
+          CertConfigType.SelfSigned);
       return Json.newObject()
           .put("rootCA", rootCA.toString())
           .put("clientRootCA", clientRootCA.toString());
