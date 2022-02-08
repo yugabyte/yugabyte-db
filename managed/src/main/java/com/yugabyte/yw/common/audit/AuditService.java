@@ -65,7 +65,8 @@ public class AuditService {
           // SMTP password
           "$..smtpPassword",
           // Hashicorp token
-          "$..HC_VAULT_TOKEN");
+          "$..HC_VAULT_TOKEN",
+          "$..vaultToken");
 
   public static final List<JsonPath> SECRET_JSON_PATHS =
       SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());

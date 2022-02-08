@@ -89,6 +89,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
   @Override
   public void run() {
+    log.debug("AnsibleConfigureServers run called for {}", taskParams().universeUUID);
     Universe universe_temp = Universe.getOrBadRequest(taskParams().universeUUID);
     taskParams().useSystemd =
         universe_temp.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;

@@ -136,7 +136,7 @@ GET     /customers/:cUUID/certificates/:name                                   c
 GET     /customers/:cUUID/certificates/:rUUID/download                         com.yugabyte.yw.controllers.CertificateController.getRootCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/certificates/:rUUID                                  com.yugabyte.yw.controllers.CertificateController.getClientCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/certificates/:rUUID/update_empty_cert                com.yugabyte.yw.controllers.CertificateController.updateEmptyCustomCert(cUUID: java.util.UUID, rUUID: java.util.UUID)
-
+POST    /customers/:cUUID/certificates/:rUUID/edit                             com.yugabyte.yw.controllers.CertificateController.edit(cUUID: java.util.UUID, rUUID: java.util.UUID)
 
 # Alerts API
 GET     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
