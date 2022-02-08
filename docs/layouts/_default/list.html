@@ -30,6 +30,9 @@
 				<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Page.Title }}{{ end }}  {{ if .Draft }} (Draft){{ end }}</h1>
 
 				<div class="head-content clearfix">{{ .Page.Params.headcontent }}</div>
+				<div class="list-contribute-text">
+					{{ partial "contribute_list" . }}
+				</div>
 
 				{{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
 				{{ $latestUrl := path.Join "latest" (after 2 $urlArray) }}
