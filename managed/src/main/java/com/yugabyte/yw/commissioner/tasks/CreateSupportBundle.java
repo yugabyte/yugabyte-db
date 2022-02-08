@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
@@ -14,6 +15,7 @@ import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -27,6 +29,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.UUID;
 import java.util.zip.GZIPOutputStream;
+import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -38,6 +41,8 @@ public class CreateSupportBundle extends AbstractTaskBase {
 
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
+  @Inject private SupportBundleUtil supportBundleUtil;
+  @Inject private Config config;
 
   @Inject
   protected CreateSupportBundle(BaseTaskDependencies baseTaskDependencies) {
@@ -65,7 +70,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
     }
   }
 
-  public Path generateBundle(SupportBundle supportBundle) throws IOException {
+  public Path generateBundle(SupportBundle supportBundle) throws IOException, RuntimeException {
     Customer customer = taskParams().customer;
     Universe universe = taskParams().universe;
     Path bundlePath = generateBundlePath(universe);
@@ -79,7 +84,44 @@ public class CreateSupportBundle extends AbstractTaskBase {
     for (BundleDetails.ComponentType componentType : supportBundle.getBundleDetails().components) {
       SupportBundleComponent supportBundleComponent =
           supportBundleComponentFactory.getComponent(componentType);
-      supportBundleComponent.downloadComponent(customer, universe, bundlePath);
+      try {
+        // If both of the dates are given and valid
+        if (supportBundleUtil.isValidDate(supportBundle.getStartDate())
+            && supportBundleUtil.isValidDate(supportBundle.getEndDate())) {
+          supportBundleComponent.downloadComponentBetweenDates(
+              customer,
+              universe,
+              bundlePath,
+              supportBundle.getStartDate(),
+              supportBundle.getEndDate());
+        }
+        // If only the start date is valid, filter from startDate till the end
+        else if (supportBundleUtil.isValidDate(supportBundle.getStartDate())) {
+          supportBundleComponent.downloadComponentBetweenDates(
+              customer,
+              universe,
+              bundlePath,
+              supportBundle.getStartDate(),
+              new Date(Long.MAX_VALUE));
+        }
+        // If only the end date is valid, filter from the beginning till endDate
+        else if (supportBundleUtil.isValidDate(supportBundle.getEndDate())) {
+          supportBundleComponent.downloadComponentBetweenDates(
+              customer, universe, bundlePath, new Date(Long.MIN_VALUE), supportBundle.getEndDate());
+        }
+        // Default : If no dates are specified, download all the files without date range filtering
+        else {
+          int default_date_range = config.getInt("yb.support_bundle.default_date_range");
+          Date defaultEndDate = supportBundleUtil.getTodaysDate();
+          Date defaultStartDate =
+              supportBundleUtil.getDateNDaysAgo(defaultEndDate, default_date_range);
+          supportBundleComponent.downloadComponentBetweenDates(
+              customer, universe, bundlePath, defaultStartDate, defaultEndDate);
+        }
+      } catch (ParseException e) {
+        throw new RuntimeException(
+            String.format("Error while trying to parse the universe files : %s", e.getMessage()));
+      }
     }
 
     try (FileOutputStream fos = new FileOutputStream(gzipPath.toString()); // need to test this path
