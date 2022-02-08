@@ -1,6 +1,5 @@
 ```
-alter_table ::= ALTER TABLE [ ONLY ] name [ * ] alter_table_action 
-                [ , ... ]
+alter_table ::= ALTER TABLE table_expr alter_table_action [ , ... ]
 
 alter_table_action ::= ADD [ COLUMN ] column_name data_type 
                        [ alter_column_constraint [ ... ] ]
@@ -36,4 +35,6 @@ alter_column_constraint ::= [ CONSTRAINT constraint_name ]
                             [ DEFERRABLE | NOT DEFERRABLE ] 
                             [ INITIALLY DEFERRED
                               | INITIALLY IMMEDIATE ]
+
+table_expr ::= [ ONLY ] table_name [ * ]
 ```
