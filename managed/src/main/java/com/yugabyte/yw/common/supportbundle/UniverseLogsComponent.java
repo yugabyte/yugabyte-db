@@ -11,6 +11,8 @@ import java.nio.file.Paths;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.io.IOException;
+import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -25,7 +27,8 @@ class UniverseLogsComponent implements SupportBundleComponent {
   }
 
   @Override
-  public void downloadComponent(Customer customer, Universe universe, Path bundlePath) {
+  public void downloadComponent(Customer customer, Universe universe, Path bundlePath)
+      throws IOException {
     List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
 
     // Downloads the master/logs and tserver/logs from each node in the universe into the bundle
@@ -41,7 +44,8 @@ class UniverseLogsComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponentBetweenDates(
-      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate) {
+      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate)
+      throws IOException, ParseException {
     // To fill
   }
 }
