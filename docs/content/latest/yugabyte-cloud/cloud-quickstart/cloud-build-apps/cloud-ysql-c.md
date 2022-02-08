@@ -17,11 +17,10 @@ The following tutorial shows a small [C application](https://github.com/yugabyte
 
 ## Prerequisites
 
-- a 32-bit (x86) or 64-bit (x64) architecture machine. (Use [Rosetta](https://support.apple.com/en-us/HT211861) to build and run on Apple silicon.)
+- 32-bit (x86) or 64-bit (x64) architecture machine. (Use [Rosetta](https://support.apple.com/en-us/HT211861) to build and run on Apple silicon.)
 - gcc 4.1.2 or later, and clang 3.4 or later installed.
 - OpenSSL 1.1.1 or later (used by libpq to establish secure SSL connections).
 - [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page.
-.
 
 ### Yugabyte Cloud
 

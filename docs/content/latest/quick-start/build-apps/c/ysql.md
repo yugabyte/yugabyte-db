@@ -32,8 +32,8 @@ showAsideToc: true
 The tutorial assumes that you have:
 
 - installed YugabyteDB and created a universe. If not, follow the steps in [Quick start](../../../../quick-start/).
-- have a 32-bit (x86) or 64-bit (x64) architecture machine.
-- have gcc 4.1.2 or later, clang 3.4 or later installed.
+- a 32-bit (x86) or 64-bit (x64) architecture machine.
+- gcc 4.1.2 or later, clang 3.4 or later installed.
 
 ## Install the libpq C driver
 
