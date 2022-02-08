@@ -256,6 +256,13 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 
 DECLARE_int32(heartbeat_interval_ms);
 
+DECLARE_int32(ysql_transaction_abort_timeout_ms);
+
+DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
+                 "If true, setup an error status in AlterSchema and respond success to rpc call. "
+                 "This failure should not cause the TServer to crash but "
+                 "instead return an error message on the YSQL connection.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -965,8 +972,9 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
   ScopedRWOperationPause pause_writes;
-  if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE &&
-      !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
+  if ((tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE &&
+       !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
+      tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
     pause_writes = tablet.peer->tablet()->PauseWritePermits(context.GetClientDeadline());
@@ -977,6 +985,44 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
               TryAgain, "Could not lock the tablet against write operations for schema change"),
           &context);
       return;
+    }
+
+    // After write operation is paused, active transactions will be aborted for YSQL transactions.
+    if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE &&
+        req->should_abort_active_txns()) {
+      DCHECK(req->has_transaction_id());
+      if (tablet.peer->tablet()->transaction_participant() == nullptr) {
+        auto status = STATUS(
+            IllegalState, "Transaction participant is null for tablet " + req->tablet_id());
+        LOG(ERROR) << status;
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            status,
+            &context);
+        return;
+      }
+      HybridTime max_cutoff = HybridTime::kMax;
+      CoarseTimePoint deadline =
+          CoarseMonoClock::Now() +
+          MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
+      TransactionId txn_id = CHECK_RESULT(TransactionId::FromString(req->transaction_id()));
+      LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff
+                << " for tablet id " << req->tablet_id()
+                << " excluding transaction with id " << txn_id;
+      // There could be a chance where a transaction does not appear by transaction_participant
+      // but has already begun replicating through Raft. Such transactions might succeed rather
+      // than get aborted. This race codnition is dismissable for this intermediate solution.
+      Status status = tablet.peer->tablet()->transaction_participant()->StopActiveTxnsPriorTo(
+            max_cutoff, deadline, &txn_id);
+      if (!status.ok() || PREDICT_FALSE(FLAGS_TEST_fail_alter_schema_after_abort_transactions)) {
+        auto status = STATUS(TryAgain, "Transaction abort failed for tablet " + req->tablet_id());
+        LOG(WARNING) << status;
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            status,
+            &context);
+        return;
+      }
     }
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
