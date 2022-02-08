@@ -1,15 +1,21 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.certmgmt;
 
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import com.google.common.base.Strings;
+
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -19,15 +25,12 @@ import java.io.InputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.math.BigInteger;
-import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.Security;
-import java.security.SignatureException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -37,14 +40,29 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Calendar;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
+import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.ToggleTlsParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.DERSequence;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -70,9 +88,14 @@ import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNames;
+
 import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.ebean.annotation.EnumValue;
 import play.libs.Json;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -83,71 +106,85 @@ public class CertificateHelper {
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateHelper.class);
 
-  public static final String CLIENT_CERT = "yugabytedb.crt";
-  public static final String CLIENT_KEY = "yugabytedb.key";
-  public static final String DEFAULT_CLIENT = "yugabyte";
   public static final String CERT_PATH = "%s/certs/%s/%s";
+
   public static final String ROOT_CERT = "root.crt";
+
   public static final String SERVER_CERT = "server.crt";
   public static final String SERVER_KEY = "server.key.pem";
+
   public static final String CLIENT_NODE_SUFFIX = "-client";
+  public static final String DEFAULT_CLIENT = "yugabyte";
+
+  public static final String CLIENT_CERT = "yugabytedb.crt";
+  public static final String CLIENT_KEY = "yugabytedb.key";
+
+  public static final String SIGNATURE_ALGO = "SHA256withRSA";
+
+  public enum CertificateType {
+    @EnumValue("ROOT_CA_CERT")
+    ROOT_CA_CERT,
+
+    @EnumValue("CLIENT_CA_CERT")
+    CLIENT_CA_CERT,
+
+    @EnumValue("USER_NODE_CERT")
+    USER_NODE_CERT,
+
+    @EnumValue("USER_CLIENT_CERT")
+    USER_CLIENT_CERT;
+  }
+
+  public static String getCACertPath(String storagePath, UUID customerUUID, UUID caCertUUID) {
+    return String.format(
+        CERT_PATH + "/ca.%s",
+        storagePath,
+        customerUUID.toString(),
+        caCertUUID.toString(),
+        ROOT_CERT);
+  }
+
+  public static String getCAKeyPath(String storagePath, UUID customerUUID, UUID caCertUUID) {
+    return String.format(
+        CERT_PATH + "/ca.key.pem", storagePath, customerUUID.toString(), caCertUUID.toString());
+  }
+
+  private static String generateUniqueRootCALabel(String nodePrefix, CertConfigType certType) {
+
+    // Default the cert label with node prefix.
+    // If cert with the label already exists append number
+
+    String certLabel = nodePrefix;
+    List<CertificateInfo> certificateInfoList =
+        CertificateInfo.getWhereLabelStartsWith(nodePrefix, certType);
+    if (!certificateInfoList.isEmpty()) {
+      certificateInfoList.sort(Comparator.comparing(a -> a.label, Comparator.reverseOrder()));
+      String[] labelArray = certificateInfoList.get(0).label.split("~");
+      int lastCount = 0;
+      try {
+        lastCount = Integer.parseInt(labelArray[labelArray.length - 1]);
+      } catch (NumberFormatException ignored) {
+      }
+      certLabel = nodePrefix + "~" + (++lastCount);
+    }
+    return certLabel;
+  }
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
-    try {
-      // Default the cert label with node prefix.
-      // If cert with the label already exists append number
-      String certLabel = nodePrefix;
-      CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
-      List<CertificateInfo> certificateInfoList =
-          CertificateInfo.getWhereLabelStartsWith(nodePrefix, certType);
-      if (!certificateInfoList.isEmpty()) {
-        certificateInfoList.sort(Comparator.comparing(a -> a.label, Comparator.reverseOrder()));
-        String[] labelArray = certificateInfoList.get(0).label.split("~");
-        int lastCount = 0;
-        try {
-          lastCount = Integer.parseInt(labelArray[labelArray.length - 1]);
-        } catch (NumberFormatException ignored) {
-        }
-        certLabel = nodePrefix + "~" + (++lastCount);
-      }
+    LOG.info("Creating root certificate for {}", nodePrefix);
 
-      KeyPair keyPair = getKeyPairObject();
+    try {
+      CertConfigType certType = CertConfigType.SelfSigned;
+      String certLabel = generateUniqueRootCALabel(nodePrefix, certType);
+
       UUID rootCA_UUID = UUID.randomUUID();
-      Calendar cal = Calendar.getInstance();
-      Date certStart = cal.getTime();
-      cal.add(Calendar.YEAR, 4);
-      Date certExpiry = cal.getTime();
-      X500Name subject =
-          new X500NameBuilder(BCStyle.INSTANCE)
-              .addRDN(BCStyle.CN, certLabel)
-              .addRDN(BCStyle.O, "example.com")
-              .build();
-      BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
-      X509v3CertificateBuilder certGen =
-          new JcaX509v3CertificateBuilder(
-              subject, serial, certStart, certExpiry, subject, keyPair.getPublic());
-      BasicConstraints basicConstraints = new BasicConstraints(1);
-      KeyUsage keyUsage =
-          new KeyUsage(
-              KeyUsage.digitalSignature
-                  | KeyUsage.nonRepudiation
-                  | KeyUsage.keyEncipherment
-                  | KeyUsage.keyCertSign);
-      certGen.addExtension(Extension.basicConstraints, true, basicConstraints.toASN1Primitive());
-      certGen.addExtension(Extension.keyUsage, true, keyUsage.toASN1Primitive());
-      ContentSigner signer =
-          new JcaContentSignerBuilder("SHA256withRSA").build(keyPair.getPrivate());
-      X509CertificateHolder holder = certGen.build(signer);
-      JcaX509CertificateConverter converter = new JcaX509CertificateConverter();
-      converter.setProvider(new BouncyCastleProvider());
-      X509Certificate x509 = converter.getCertificate(holder);
-      String certPath =
-          String.format(
-              CERT_PATH + "/ca.%s", storagePath, customerUUID.toString(), rootCA_UUID, ROOT_CERT);
-      writeCertFileContentToCertPath(Collections.singletonList(x509), certPath);
-      String keyPath =
-          String.format(CERT_PATH + "/ca.key.pem", storagePath, customerUUID, rootCA_UUID);
-      writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
+      KeyPair keyPair = getKeyPairObject();
+
+      CertificateSelfSigned obj = new CertificateSelfSigned(rootCA_UUID);
+      X509Certificate x509 = obj.generateCACertificate(certLabel, keyPair);
+      Pair<String, String> location = obj.dumpCACertBundle(storagePath, customerUUID);
+      Date certStart = x509.getNotBefore();
+      Date certExpiry = x509.getNotAfter();
 
       LOG.info(
           "Generated self signed cert label {} uuid {} of type {} for customer {} at paths {}, {}",
@@ -155,8 +192,8 @@ public class CertificateHelper {
           rootCA_UUID,
           certType,
           customerUUID,
-          certPath,
-          keyPath);
+          location.getLeft(),
+          location.getRight());
 
       CertificateInfo cert =
           CertificateInfo.create(
@@ -165,185 +202,87 @@ public class CertificateHelper {
               certLabel,
               certStart,
               certExpiry,
-              keyPath,
-              certPath,
+              location.getRight(),
+              location.getLeft(),
               certType);
 
       LOG.info("Created Root CA for universe {}.", certLabel);
       return cert.uuid;
-    } catch (NoSuchAlgorithmException
-        | IOException
-        | OperatorCreationException
-        | CertificateException e) {
+    } catch (Exception e) {
       LOG.error("Unable to create RootCA for universe {}", nodePrefix, e);
       return null;
     }
   }
 
   public static UUID createClientRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
+    LOG.info("Creating a client root certificate for {}", nodePrefix);
     return createRootCA(nodePrefix + CLIENT_NODE_SUFFIX, customerUUID, storagePath);
   }
 
-  public static CertificateDetails createSignedCertificate(
-      UUID rootCA,
+  public static CertificateDetails dumpNewCertsToFile(
       String storagePath,
-      String username,
-      Date certStart,
-      Date certExpiry,
       String certFileName,
       String certKeyName,
-      Map<String, Integer> subjectAltNames) {
-    LOG.info(
-        "Creating signed certificate signed by root CA {} and user {} at path {}",
-        rootCA,
-        username,
-        storagePath);
+      X509Certificate clientCert,
+      PrivateKey pKey)
+      throws IOException {
+    JcaPEMWriter certificateWriter = null;
+    JcaPEMWriter certKeyWriter = null;
+    CertificateDetails certificateDetails = new CertificateDetails();
+
     try {
-      // Add the security provider in case createSignedCertificate was never called.
-      KeyPair clientKeyPair = getKeyPairObject();
+      if (storagePath != null) {
+        // get file path write it there
+        String clientCertPath = String.format("%s/%s", storagePath, certFileName);
+        String clientKeyPath = String.format("%s/%s", storagePath, certKeyName);
+        writeCertFileContentToCertPath(clientCert, clientCertPath);
+        writeKeyFileContentToKeyPath(pKey, clientKeyPath);
+        LOG.info(
+            "Dumping certificate {} at Path {}",
+            clientCert.getSubjectDN().toString(),
+            clientCertPath);
 
-      Calendar cal = Calendar.getInstance();
-      if (certStart == null) {
-        certStart = cal.getTime();
-      }
-      if (certExpiry == null) {
-        cal.add(Calendar.YEAR, 4);
-        certExpiry = cal.getTime();
-      }
-
-      CertificateInfo cert = CertificateInfo.get(rootCA);
-      if (cert.privateKey == null) {
-        throw new PlatformServiceException(BAD_REQUEST, "Keyfile cannot be null!");
-      }
-      // The first entry will be the certificate that needs to sign the necessary certificate.
-      X509Certificate cer =
-          getX509CertificateCertObject(FileUtils.readFileToString(new File(cert.certificate)))
-              .get(0);
-      X500Name subject = new JcaX509CertificateHolder(cer).getSubject();
-      PrivateKey pk = null;
-      try {
-        pk = getPrivateKey(FileUtils.readFileToString(new File(cert.privateKey)));
-      } catch (Exception e) {
-        LOG.error(
-            "Unable to create client CA for username {} using root CA {}", username, rootCA, e);
-        throw new PlatformServiceException(BAD_REQUEST, "Could not create client cert.");
-      }
-
-      X500Name clientCertSubject = new X500Name(String.format("CN=%s", username));
-      BigInteger clientSerial = BigInteger.valueOf(System.currentTimeMillis());
-      PKCS10CertificationRequestBuilder p10Builder =
-          new JcaPKCS10CertificationRequestBuilder(clientCertSubject, clientKeyPair.getPublic());
-      ContentSigner csrContentSigner = new JcaContentSignerBuilder("SHA256withRSA").build(pk);
-      PKCS10CertificationRequest csr = p10Builder.build(csrContentSigner);
-
-      KeyUsage keyUsage =
-          new KeyUsage(
-              KeyUsage.digitalSignature
-                  | KeyUsage.nonRepudiation
-                  | KeyUsage.keyEncipherment
-                  | KeyUsage.keyCertSign);
-
-      X509v3CertificateBuilder clientCertBuilder =
-          new X509v3CertificateBuilder(
-              subject,
-              clientSerial,
-              certStart,
-              certExpiry,
-              csr.getSubject(),
-              csr.getSubjectPublicKeyInfo());
-      JcaX509ExtensionUtils clientCertExtUtils = new JcaX509ExtensionUtils();
-      clientCertBuilder.addExtension(
-          Extension.basicConstraints, true, new BasicConstraints(false).toASN1Primitive());
-      clientCertBuilder.addExtension(
-          Extension.authorityKeyIdentifier,
-          false,
-          clientCertExtUtils.createAuthorityKeyIdentifier(cer));
-      clientCertBuilder.addExtension(
-          Extension.subjectKeyIdentifier,
-          false,
-          clientCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
-      clientCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
-
-      List<GeneralName> altNames = new ArrayList<>();
-      InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
-      if (subjectAltNames != null) {
-        for (Map.Entry<String, Integer> entry : subjectAltNames.entrySet()) {
-          if (entry.getValue() == GeneralName.iPAddress) {
-            // If IP address is invalid, throw error.
-            if (!ipAddressValidator.isValid(entry.getKey())) {
-              throw new IllegalArgumentException(
-                  String.format("IP %s invalid for SAN entry.", entry.getKey()));
-            }
-          }
-          altNames.add(new GeneralName(entry.getValue(), entry.getKey()));
-        }
-        if (!altNames.isEmpty()) {
-          GeneralNames generalNames =
-              GeneralNames.getInstance(new DERSequence(altNames.toArray(new GeneralName[] {})));
-          clientCertBuilder.addExtension(Extension.subjectAlternativeName, false, generalNames);
-        }
-      }
-
-      X509CertificateHolder clientCertHolder = clientCertBuilder.build(csrContentSigner);
-      X509Certificate clientCert =
-          new JcaX509CertificateConverter()
-              .setProvider(new BouncyCastleProvider())
-              .getCertificate(clientCertHolder);
-
-      clientCert.verify(cer.getPublicKey(), "BC");
-
-      JcaPEMWriter clientCertWriter = null;
-      JcaPEMWriter clientKeyWriter = null;
-      StringWriter certWriter = new StringWriter();
-      StringWriter keyWriter = new StringWriter();
-      CertificateDetails certificateDetails = new CertificateDetails();
-      try {
-        if (storagePath != null) {
-          String clientCertPath = String.format("%s/%s", storagePath, certFileName);
-          String clientKeyPath = String.format("%s/%s", storagePath, certKeyName);
-          File clientCertfile = new File(clientCertPath);
-          File clientKeyfile = new File(clientKeyPath);
-          clientCertWriter = new JcaPEMWriter(new FileWriter(clientCertfile));
-          clientKeyWriter = new JcaPEMWriter(new FileWriter(clientKeyfile));
-        } else {
-          clientCertWriter = new JcaPEMWriter(certWriter);
-          clientKeyWriter = new JcaPEMWriter(keyWriter);
-        }
-        clientCertWriter.writeObject(clientCert);
-        clientCertWriter.flush();
-        clientKeyWriter.writeObject(clientKeyPair.getPrivate());
-        clientKeyWriter.flush();
-      } finally {
-        if (clientCertWriter != null) {
-          clientCertWriter.close();
-        }
-        if (clientKeyWriter != null) {
-          clientKeyWriter.close();
-        }
-      }
-      if (storagePath == null) {
+      } else {
+        // storagePath is null, converting it to string and returning it.
+        StringWriter certWriter = new StringWriter();
+        StringWriter keyWriter = new StringWriter();
+        certificateWriter = new JcaPEMWriter(certWriter);
+        certKeyWriter = new JcaPEMWriter(keyWriter);
+        certificateWriter.writeObject(clientCert);
+        certificateWriter.flush();
+        certKeyWriter.writeObject(pKey);
+        certKeyWriter.flush();
         certificateDetails.crt = certWriter.toString();
         certificateDetails.key = keyWriter.toString();
+        LOG.info("Returning certificate {} as Strings", clientCert.getSubjectDN().toString());
       }
-      LOG.info("Created Client CA for username {} signed by root CA {}.", username, rootCA);
-      return certificateDetails;
-
-    } catch (NoSuchAlgorithmException
-        | IOException
-        | OperatorCreationException
-        | CertificateException
-        | InvalidKeyException
-        | NoSuchProviderException
-        | SignatureException e) {
-      LOG.error("Unable to create client CA for username {} using root CA {}", username, rootCA, e);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not create client cert.");
+    } finally {
+      if (certificateWriter != null) {
+        certificateWriter.close();
+      }
+      if (certKeyWriter != null) {
+        certKeyWriter.close();
+      }
     }
+    return certificateDetails;
   }
 
   public static CertificateDetails createClientCertificate(
       UUID rootCA, String storagePath, String username, Date certStart, Date certExpiry) {
-    return createSignedCertificate(
-        rootCA, storagePath, username, certStart, certExpiry, CLIENT_CERT, CLIENT_KEY, null);
+    LOG.info("Creating client certificate for {}", username);
+
+    CertificateInfo rootCertConfigInfo = CertificateInfo.get(rootCA);
+    CertificateProviderInterface certProvider =
+        EncryptionInTransitUtil.getCertificateProviderInstance(rootCertConfigInfo);
+
+    return certProvider.createCertificate(
+        storagePath,
+        username,
+        certStart,
+        certExpiry,
+        CertificateHelper.CLIENT_CERT,
+        CertificateHelper.CLIENT_KEY,
+        null);
   }
 
   public static CertificateDetails createServerCertificate(
@@ -355,15 +294,101 @@ public class CertificateHelper {
       String certFileName,
       String certKeyName,
       Map<String, Integer> subjectAltNames) {
-    return createSignedCertificate(
-        rootCA,
-        storagePath,
-        username,
-        certStart,
-        certExpiry,
-        certFileName,
-        certKeyName,
-        subjectAltNames);
+    LOG.info("Creating server certificate for {}", username);
+
+    CertificateInfo rootCertConfigInfo = CertificateInfo.get(rootCA);
+    CertificateProviderInterface certProvider =
+        EncryptionInTransitUtil.getCertificateProviderInstance(rootCertConfigInfo);
+
+    return certProvider.createCertificate(
+        storagePath, username, certStart, certExpiry, certFileName, certKeyName, subjectAltNames);
+  }
+
+  public static GeneralNames extractGeneralNames(Map<String, Integer> subjectAltNames) {
+    InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
+    List<GeneralName> altNames = new ArrayList<>();
+
+    if (subjectAltNames == null) return null;
+
+    for (Map.Entry<String, Integer> entry : subjectAltNames.entrySet()) {
+      if (entry.getValue() == GeneralName.iPAddress) {
+        // If IP address is invalid, throw error.
+        if (!ipAddressValidator.isValid(entry.getKey())) {
+          throw new IllegalArgumentException(
+              String.format("IP %s invalid for SAN entry.", entry.getKey()));
+        }
+      }
+      LOG.debug("Processing {}", entry.getKey());
+      altNames.add(new GeneralName(entry.getValue(), entry.getKey()));
+    }
+    if (!altNames.isEmpty()) {
+      return GeneralNames.getInstance(new DERSequence(altNames.toArray(new GeneralName[] {})));
+    }
+    return null;
+  }
+
+  public static String extractIPsFromGeneralNamesAsString(Map<String, Integer> subjectAltNames) {
+    InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
+    String ipAddrs = "";
+
+    if (subjectAltNames == null) return null;
+
+    // byte[] ipAddressBytes = ((ASN1OctetString) generalName.getName()).getOctets();
+    // ipAddressString = InetAddress.getByAddress(ipAddressBytes).getHostAddress();
+
+    for (Map.Entry<String, Integer> entry : subjectAltNames.entrySet()) {
+      if (entry.getValue() == GeneralName.iPAddress) {
+        // If IP address is invalid, throw error.
+        if (!ipAddressValidator.isValid(entry.getKey())) {
+          throw new IllegalArgumentException(
+              String.format("IP %s invalid for SAN entry.", entry.getKey()));
+        }
+        ipAddrs += entry.getKey() + ",";
+      }
+    }
+
+    if (!Strings.isNullOrEmpty(ipAddrs)) return ipAddrs.substring(0, ipAddrs.length() - 1);
+
+    return "";
+  }
+
+  public static String extractHostNamesFromGeneralNamesAsString(
+      Map<String, Integer> subjectAltNames) {
+    InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
+    String names = "";
+
+    if (subjectAltNames == null) return null;
+
+    for (Map.Entry<String, Integer> entry : subjectAltNames.entrySet()) {
+      if (entry.getValue() == GeneralName.dNSName) {
+        names += entry.getKey() + ",";
+      }
+    }
+
+    if (!Strings.isNullOrEmpty(names)) return names.substring(0, names.length() - 1);
+    return "";
+  }
+
+  /**
+   * Extract start and end dates from cert bundle/list
+   *
+   * @param x509CACerts
+   * @return Pair of <StartDate, EndDate>
+   */
+  public static Pair<Date, Date> extractDatesFromCertBundle(List<X509Certificate> x509CACerts) {
+    long certStartTimestamp = 0L;
+    long certExpiryTimestamp = Long.MAX_VALUE;
+
+    for (X509Certificate cert : x509CACerts) {
+      if (cert.getNotBefore().getTime() > certStartTimestamp) {
+        certStartTimestamp = cert.getNotBefore().getTime();
+      }
+      if (cert.getNotAfter().getTime() < certExpiryTimestamp) {
+        certExpiryTimestamp = cert.getNotAfter().getTime();
+      }
+    }
+
+    return new ImmutablePair<>(new Date(certStartTimestamp), new Date(certExpiryTimestamp));
   }
 
   public static UUID uploadRootCA(
@@ -374,7 +399,7 @@ public class CertificateHelper {
       String keyContent,
       Date certStart,
       Date certExpiry,
-      CertificateInfo.Type certType,
+      CertConfigType certType,
       CertificateParams.CustomCertInfo customCertInfo,
       CertificateParams.CustomServerCertData customServerCertData) {
     LOG.debug("uploadRootCA: Label: {}, customerUUID: {}", label, customerUUID.toString());
@@ -385,45 +410,24 @@ public class CertificateHelper {
       UUID rootCA_UUID = UUID.randomUUID();
       String keyPath = null;
       CertificateInfo.CustomServerCertInfo customServerCertInfo = null;
-      List<X509Certificate> x509CACerts = getX509CertificateCertObject(certContent);
+      List<X509Certificate> x509CACerts = convertStringToX509CertList(certContent);
 
-      // Set certStart and certExpiry from X509Certificate if provided null
-      if (certType == Type.CustomCertHostPath) {
-        if (certStart == null || certStart.getTime() == 0) {
-          long certStartTimestamp = 0L;
-          for (X509Certificate cert : x509CACerts) {
-            if (cert.getNotBefore().getTime() > certStartTimestamp) {
-              certStartTimestamp = cert.getNotBefore().getTime();
-            }
-          }
-          certStart = new Date(certStartTimestamp);
-        }
-        if (certExpiry == null || certExpiry.getTime() == 0) {
-          long certExpiryTimestamp = Long.MAX_VALUE;
-          for (X509Certificate cert : x509CACerts) {
-            if (cert.getNotAfter().getTime() < certExpiryTimestamp) {
-              certExpiryTimestamp = cert.getNotAfter().getTime();
-            }
-          }
-          certExpiry = new Date(certExpiryTimestamp);
-        }
-      }
+      Pair<Date, Date> dates = extractDatesFromCertBundle(x509CACerts);
+      certStart = dates.getLeft();
+      certExpiry = dates.getRight();
 
       // Verify the uploaded cert is a verified cert chain.
       verifyCertValidity(x509CACerts);
-      if (certType == CertificateInfo.Type.SelfSigned) {
+      if (certType == CertConfigType.SelfSigned) {
         // The first entry in the file should be the cert we want to use for generating server
         // certs.
         verifyCertSignatureAndOrder(x509CACerts, keyContent);
-        keyPath =
-            String.format(
-                "%s/certs/%s/%s/ca.key.pem",
-                storagePath, customerUUID.toString(), rootCA_UUID.toString());
-      }
-      if (certType == CertificateInfo.Type.CustomServerCert) {
+        keyPath = getCAKeyPath(storagePath, customerUUID, rootCA_UUID);
+
+      } else if (certType == CertConfigType.CustomServerCert) {
         // Verify the upload Server Cert is a verified cert chain.
         List<X509Certificate> x509ServerCertificates =
-            getX509CertificateCertObject(customServerCertData.serverCertContent);
+            convertStringToX509CertList(customServerCertData.serverCertContent);
         // Verify that the uploaded server cert was signed by the uploaded CA cert
         List<X509Certificate> combinedArrayList = new ArrayList<>(x509ServerCertificates);
         combinedArrayList.addAll(x509CACerts);
@@ -439,18 +443,16 @@ public class CertificateHelper {
             String.format(
                 "%s/certs/%s/%s/%s",
                 storagePath, customerUUID.toString(), rootCA_UUID.toString(), SERVER_KEY);
-        writeCertFileContentToCertPath(x509ServerCertificates, serverCertPath);
+        writeCertBundleToCertPath(x509ServerCertificates, serverCertPath);
         writeKeyFileContentToKeyPath(
             getPrivateKey(customServerCertData.serverKeyContent), serverKeyPath);
         customServerCertInfo =
             new CertificateInfo.CustomServerCertInfo(serverCertPath, serverKeyPath);
+      } else if (certType == CertConfigType.HashicorpVault) {
+        throw new PlatformServiceException(BAD_REQUEST, "Not a valid request for HashicorpVault");
       }
-      String certPath =
-          String.format(
-              "%s/certs/%s/%s/ca.%s",
-              storagePath, customerUUID.toString(), rootCA_UUID.toString(), ROOT_CERT);
-
-      writeCertFileContentToCertPath(getX509CertificateCertObject(certContent), certPath);
+      String certPath = getCACertPath(storagePath, customerUUID, rootCA_UUID);
+      writeCertBundleToCertPath(convertStringToX509CertList(certContent), certPath);
 
       CertificateInfo cert;
       switch (certType) {
@@ -494,6 +496,10 @@ public class CertificateHelper {
                     certPath,
                     customServerCertInfo);
             break;
+          }
+        case HashicorpVault:
+          {
+            throw new PlatformServiceException(BAD_REQUEST, "certType should be valid.");
           }
         default:
           {
@@ -584,8 +590,12 @@ public class CertificateHelper {
   public static boolean arePathsSame(UUID cert1, UUID cert2) {
     CertificateInfo cer1 = CertificateInfo.get(cert1);
     CertificateInfo cer2 = CertificateInfo.get(cert2);
-    return (cer1.getCustomCertInfo().nodeCertPath.equals(cer2.getCustomCertInfo().nodeCertPath)
-        || cer1.getCustomCertInfo().nodeKeyPath.equals(cer2.getCustomCertInfo().nodeKeyPath));
+    return (cer1.getCustomCertPathParams()
+            .nodeCertPath
+            .equals(cer2.getCustomCertPathParams().nodeCertPath)
+        || cer1.getCustomCertPathParams()
+            .nodeKeyPath
+            .equals(cer2.getCustomCertPathParams().nodeKeyPath));
   }
 
   public static void createChecksums() {
@@ -600,8 +610,38 @@ public class CertificateHelper {
     }
   }
 
+  /**
+   * return selected readable properties of certifiate in form of string (k:v)
+   *
+   * @param cert
+   * @return
+   */
+  public static String getCertificateProperties(X509Certificate cert) {
+
+    String san = "";
+    try {
+      san = cert.getSubjectAlternativeNames().toString();
+    } catch (Exception e) {
+      san = "exception";
+    }
+    String ret;
+    ret = "cert info: " + System.lineSeparator();
+    ret += String.format("\t dn:%s", cert.getIssuerDN().toString());
+    ret += String.format("\t subject:%s", cert.getSubjectDN().toString());
+    ret += System.lineSeparator();
+    ret += String.format("\t ip_san:%s", san);
+    ret += System.lineSeparator();
+    ret += String.format("\t beforeDate:%s", cert.getNotBefore().toString());
+    ret += String.format("\t AfterDate:%s", cert.getNotAfter().toString());
+    ret += System.lineSeparator();
+
+    ret += String.format("\t serial:%s", cert.getSerialNumber().toString(16));
+    return ret;
+  }
+
   @SuppressWarnings("unchecked")
-  public static List<X509Certificate> getX509CertificateCertObject(String certContent) {
+  public static List<X509Certificate> convertStringToX509CertList(String certContent) {
+    java.security.Security.addProvider(new BouncyCastleProvider());
     try {
       InputStream in = null;
       byte[] certEntryBytes = certContent.getBytes();
@@ -610,8 +650,39 @@ public class CertificateHelper {
       return (List<X509Certificate>) (List<?>) certFactory.generateCertificates(in);
     } catch (CertificateException e) {
       LOG.error(e.getMessage());
-      throw new RuntimeException("Unable to get cert Object");
+      throw new RuntimeException("Unable to get cert Objects");
     }
+  }
+
+  public static X509Certificate convertStringToX509Cert(String certificate) throws Exception {
+    java.security.Security.addProvider(new BouncyCastleProvider());
+
+    certificate = certificate.replace("\\n", "");
+    certificate = certificate.replaceAll("^\"+|\"+$", "");
+    certificate = certificate.replace("-----BEGIN CERTIFICATE-----", "");
+    certificate = certificate.replace("-----END CERTIFICATE-----", "");
+
+    byte[] certificateData = Base64.getMimeDecoder().decode(certificate);
+    CertificateFactory cf = CertificateFactory.getInstance("X509");
+    return (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(certificateData));
+  }
+
+  public static PrivateKey convertStringToPrivateKey(String strKey) throws Exception {
+
+    java.security.Security.addProvider(new BouncyCastleProvider());
+
+    strKey = strKey.replace(System.lineSeparator(), "");
+    strKey = strKey.replaceAll("^\"+|\"+$", "");
+    strKey = strKey.replace("-----BEGIN PRIVATE KEY-----", "");
+    strKey = strKey.replace("-----END PRIVATE KEY-----", "");
+    strKey = strKey.replace("-----BEGIN RSA PRIVATE KEY-----", "");
+    strKey = strKey.replace("-----END RSA PRIVATE KEY-----", "");
+
+    byte[] decoded = Base64.getMimeDecoder().decode(strKey);
+
+    PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
+    KeyFactory kf = KeyFactory.getInstance("RSA");
+    return kf.generatePrivate(spec);
   }
 
   public static PrivateKey getPrivateKey(String keyContent) {
@@ -627,85 +698,15 @@ public class CertificateHelper {
     }
   }
 
-  public static boolean isRootCARequired(UserIntent userIntent, boolean rootAndClientRootCASame) {
-    return isRootCARequired(
-        userIntent.enableNodeToNodeEncrypt,
-        userIntent.enableClientToNodeEncrypt,
-        rootAndClientRootCASame);
-  }
-
-  public static boolean isRootCARequired(UniverseDefinitionTaskParams taskParams) {
-    UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
-    return isRootCARequired(userIntent, taskParams.rootAndClientRootCASame);
-  }
-
-  public static boolean isRootCARequired(AnsibleConfigureServers.Params taskParams) {
-    return isRootCARequired(
-        taskParams.enableNodeToNodeEncrypt,
-        taskParams.enableClientToNodeEncrypt,
-        taskParams.rootAndClientRootCASame);
-  }
-
-  public static boolean isRootCARequired(UniverseSetTlsParams.Params taskParams) {
-    return isRootCARequired(
-        taskParams.enableNodeToNodeEncrypt,
-        taskParams.enableClientToNodeEncrypt,
-        taskParams.rootAndClientRootCASame);
-  }
-
-  public static boolean isRootCARequired(TlsToggleParams taskParams) {
-    return isRootCARequired(
-        taskParams.enableNodeToNodeEncrypt,
-        taskParams.enableClientToNodeEncrypt,
-        taskParams.rootAndClientRootCASame);
-  }
-
-  public static boolean isRootCARequired(
-      boolean enableNodeToNodeEncrypt,
-      boolean enableClientToNodeEncrypt,
-      boolean rootAndClientRootCASame) {
-    return enableNodeToNodeEncrypt || (rootAndClientRootCASame && enableClientToNodeEncrypt);
-  }
-
-  public static boolean isClientRootCARequired(
-      UserIntent userIntent, boolean rootAndClientRootCASame) {
-    return isClientRootCARequired(
-        userIntent.enableNodeToNodeEncrypt,
-        userIntent.enableClientToNodeEncrypt,
-        rootAndClientRootCASame);
-  }
-
-  public static boolean isClientRootCARequired(UniverseDefinitionTaskParams taskParams) {
-    UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
-    return isClientRootCARequired(userIntent, taskParams.rootAndClientRootCASame);
-  }
-
-  public static boolean isClientRootCARequired(AnsibleConfigureServers.Params taskParams) {
-    return isClientRootCARequired(
-        taskParams.enableNodeToNodeEncrypt,
-        taskParams.enableClientToNodeEncrypt,
-        taskParams.rootAndClientRootCASame);
-  }
-
-  public static boolean isClientRootCARequired(UniverseSetTlsParams.Params taskParams) {
-    return isClientRootCARequired(
-        taskParams.enableNodeToNodeEncrypt,
-        taskParams.enableClientToNodeEncrypt,
-        taskParams.rootAndClientRootCASame);
-  }
-
-  public static boolean isClientRootCARequired(TlsToggleParams taskParams) {
-    return isClientRootCARequired(
-        taskParams.enableNodeToNodeEncrypt,
-        taskParams.enableClientToNodeEncrypt,
-        taskParams.rootAndClientRootCASame);
-  }
-
-  public static boolean isClientRootCARequired(
-      boolean enableNodeToNodeEncrypt,
-      boolean enableClientToNodeEncrypt,
-      boolean rootAndClientRootCASame) {
-    return !rootAndClientRootCASame && enableClientToNodeEncrypt;
+  public static void writeCertFileContentToCertPath(X509Certificate cert, String certPath) {
+    File certFile = new File(certPath);
+    try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certFile))) {
+      certWriter.writeObject(cert);
+      certWriter.flush();
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Save certificate failed.");
+    }
   }
 
   public static void writeKeyFileContentToKeyPath(PrivateKey keyContent, String keyPath) {
@@ -719,12 +720,14 @@ public class CertificateHelper {
     }
   }
 
-  public static void writeCertFileContentToCertPath(List<X509Certificate> certs, String certPath) {
+  public static void writeCertBundleToCertPath(List<X509Certificate> certs, String certPath) {
     File certfile = new File(certPath);
     // Create directory to store the certFile.
     certfile.getParentFile().mkdirs();
+    LOG.info("Dumpting certs at path: {}", certPath);
     try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certfile))) {
       for (X509Certificate cert : certs) {
+        LOG.info(getCertificateProperties(cert));
         certWriter.writeObject(cert);
         certWriter.flush();
       }
