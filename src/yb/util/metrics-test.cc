@@ -110,6 +110,8 @@ class MetricsTest : public YBTest {
     ASSERT_EQ(writer.per_table_attributes_[kTableId], expected_attrs);
   }
 
+  std::string dumpPrometheusWriterOutput(const PrometheusWriter& w) { return w.output_->str(); }
+
   MetricRegistry registry_;
   scoped_refptr<MetricEntity> entity_;
 };
@@ -449,6 +451,30 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
   }
   ASSERT_TRUE(ContainsKey(seen_metrics, "threads_started"));
   ASSERT_TRUE(ContainsKey(seen_metrics, "test_hist"));
+}
+
+// A basic test to verify PrometheusWriter member functions
+TEST_F(MetricsTest, PrometheusWriter) {
+  static const auto LABLE_1 = "lable1";
+  static const auto LABLE_1_VAL = "lable1_value";
+  static const auto TEST_METRIC_NAME = "test_metric_name";
+  static const int ONCE = 1;
+
+  std::stringstream output;
+  PrometheusWriter writer(&output);
+
+  MetricEntity::AttributeMap attr;
+  attr[LABLE_1] = LABLE_1_VAL;
+
+  ASSERT_OK(writer.WriteSingleEntryNonTable(attr, TEST_METRIC_NAME, 1u));
+  std::ostringstream expected;
+  expected << TEST_METRIC_NAME << "{" << LABLE_1 << "=\"" << LABLE_1_VAL << "\"} " << ONCE;
+  auto pw_output = dumpPrometheusWriterOutput(writer);
+
+  ASSERT_STR_CONTAINS(pw_output, expected.str());
+
+  attr["table_id"] = "table_1";
+  ASSERT_NOK(writer.WriteSingleEntryNonTable(attr, TEST_METRIC_NAME, 1u));
 }
 
 } // namespace yb
