@@ -10,12 +10,12 @@
   font-size: 14px;
   font-family: inherit;
   z-index: 0;
-  color: lighten($YB_DARK_GRAY,10%);
+  color: lighten($YB_DARK_GRAY, 10%);
   background: transparent;
   border: 1px solid #fff;
   line-height: 1.42857143;
 }
-.search-container { 
+.search-container {
   height: 85px;
 }
 .search {
@@ -23,4 +23,13 @@
   color: #000;
   z-index: 10;
   background: transparent;
+}
+
+.hc-label-c {
+  padding-left: 0;
+  padding-bottom: 5px;
+}
+
+.hc-field-c {
+  padding-bottom: 5px;
 }
