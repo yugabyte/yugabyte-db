@@ -17,6 +17,7 @@ public class BackupResp {
 
   BackupState state;
   TableType backupType;
+  UUID backupUUID;
   UUID storageConfigUUID;
   UUID universeUUID;
   UUID scheduleUUID;

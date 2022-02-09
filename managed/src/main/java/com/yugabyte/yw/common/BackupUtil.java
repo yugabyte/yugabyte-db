@@ -47,7 +47,7 @@ public class BackupUtil {
 
   public static void validateBackupFrequency(Long frequency) throws PlatformServiceException {
     if (frequency < MIN_SCHEDULE_DURATION_IN_MILLIS) {
-      throw new PlatformServiceException(BAD_REQUEST, "Min schedule duration is 1 hour");
+      throw new PlatformServiceException(BAD_REQUEST, "Minimum schedule duration is 1 hour");
     }
   }
 }

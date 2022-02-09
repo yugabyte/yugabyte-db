@@ -53,6 +53,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
@@ -118,8 +119,8 @@ public class CreateBackup extends UniverseTaskBase {
             for (BackupRequestParams.KeyspaceTable keyspaceTable : params().keyspaceTableList) {
               BackupTableParams backupParams =
                   createBackupParams(params().backupType, keyspaceTable.keyspace);
-              Set<UUID> tableSet = new HashSet<>(keyspaceTable.tableUUIDList);
-              if (tableSet.size() != 0) {
+              if (!CollectionUtils.isEmpty(keyspaceTable.tableUUIDList)) {
+                Set<UUID> tableSet = new HashSet<>(keyspaceTable.tableUUIDList);
                 for (UUID tableUUID : tableSet) {
                   GetTableSchemaResponse tableSchema =
                       client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
