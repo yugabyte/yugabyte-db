@@ -2491,7 +2491,7 @@ Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_id
 }
 
 std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable(
-    const TableId& table_id) {
+    const TableId& table_id) const {
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
   SharedLock lock(mutex_);
 
@@ -4637,8 +4637,20 @@ bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
   auto it = cdc_stream_tables_count_map_.find(table_info.id());
   if (it == cdc_stream_tables_count_map_.end()) {
     return false;
+  } else {
+    auto tid = table_info.id();
+    std::vector<scoped_refptr<CDCStreamInfo>> streams;
+    for (const auto& entry : cdc_stream_map_) {
+      auto s = entry.second->LockForRead();
+      // for xCluster the first entry will be the table_id
+      if (s->table_id().Get(0) == tid) {
+        if (!(s->is_deleting() || s->is_deleted())) {
+          return it->second > 0;
+        }
+      }
+    }
   }
-  return it->second > 0;
+  return false;
 }
 
 bool CatalogManager::IsTableCdcConsumer(const TableInfo& table_info) const {
