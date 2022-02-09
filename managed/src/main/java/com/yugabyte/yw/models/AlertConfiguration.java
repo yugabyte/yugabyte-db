@@ -308,7 +308,7 @@ public class AlertConfiguration extends Model {
       expression.eq("customerUUID", filter.getCustomerUuid());
     }
     if (filter.getName() != null) {
-      expression.eq("name", filter.getName());
+      expression.ilike("name", "%" + filter.getName() + "%");
     }
     if (filter.getActive() != null) {
       expression.eq("active", filter.getActive());
