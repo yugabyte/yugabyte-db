@@ -757,3 +757,19 @@ UPDATE array_t4 SET arr1 = array_remove(arr1, 3::int2),
                     arr2 = array_remove(arr2, 3.25::double precision),
                     arr3 = array_remove(arr3, 'c'::char) WHERE k = 1;
 SELECT * FROM array_t4 ORDER BY k;
+
+-----------------------------------
+-- Test for https://github.com/yugabyte/yugabyte-db/issues/11346.
+-- Original test case.
+CREATE TABLE t0(c0 money, PRIMARY KEY(c0));
+INSERT INTO t0(c0) VALUES(CAST(1.38073114E9 AS MONEY));
+DELETE FROM t0 WHERE (((0.14198202)::MONEY)>=((0.14222479)::MONEY));
+-- Confirm that multi-row delete isn't done incorrectly as single row delete.
+CREATE TABLE multi_row (k int primary key, v1 int, v2 int);
+INSERT INTO multi_row VALUES (1, 1, 1);
+INSERT INTO multi_row VALUES (2, 2, 2);
+INSERT INTO multi_row VALUES (3, 3, 3);
+SELECT * FROM multi_row;
+EXPLAIN (COSTS FALSE) DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
+DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
+SELECT * FROM multi_row;
