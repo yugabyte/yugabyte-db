@@ -851,3 +851,19 @@ SELECT * FROM json_t1;
 
 UPDATE json_t1 SET json1 = json1 -> 0, json2 = json2||'["c", 3]'::jsonb WHERE k = 1;
 SELECT * FROM json_t1;
+
+-----------------------------------
+-- Test for https://github.com/yugabyte/yugabyte-db/issues/11346.
+-- Original test case.
+CREATE TABLE t0(c0 money, PRIMARY KEY(c0));
+INSERT INTO t0(c0) VALUES(CAST(1.38073114E9 AS MONEY));
+DELETE FROM t0 WHERE (((0.14198202)::MONEY)>=((0.14222479)::MONEY));
+-- Confirm that multi-row delete isn't done incorrectly as single row delete.
+CREATE TABLE multi_row (k int primary key, v1 int, v2 int);
+INSERT INTO multi_row VALUES (1, 1, 1);
+INSERT INTO multi_row VALUES (2, 2, 2);
+INSERT INTO multi_row VALUES (3, 3, 3);
+SELECT * FROM multi_row;
+EXPLAIN (COSTS FALSE) DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
+DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
+SELECT * FROM multi_row;
