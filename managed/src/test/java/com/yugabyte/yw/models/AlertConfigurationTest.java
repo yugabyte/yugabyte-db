@@ -266,6 +266,14 @@ public class AlertConfigurationTest extends FakeDBApplication {
         AlertConfigurationFilter.builder().name(AlertTemplate.MEMORY_CONSUMPTION.getName()).build();
     assertFind(filter, configuration);
 
+    // Name starts with
+    filter = AlertConfigurationFilter.builder().name("Memory").build();
+    assertFind(filter, configuration);
+
+    // Name contains case insensitive
+    filter = AlertConfigurationFilter.builder().name("cons").build();
+    assertFind(filter, configuration);
+
     // Active filter
     filter = AlertConfigurationFilter.builder().active(true).build();
     assertFind(filter, configuration, platformConfiguration);
