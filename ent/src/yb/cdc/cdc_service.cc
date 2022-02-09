@@ -1033,8 +1033,7 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     op_id = OpId::FromPB(req->from_checkpoint().op_id());
   } else if (req->has_from_cdc_sdk_checkpoint()) {
     cdc_sdk_op_id = req->from_cdc_sdk_checkpoint();
-    op_id.term = cdc_sdk_op_id.term();
-    op_id.index = cdc_sdk_op_id.index();
+    op_id = OpId::FromPB(cdc_sdk_op_id);
   } else {
     auto result = GetLastCheckpoint(producer_tablet, session);
     RPC_CHECK_AND_RETURN_ERROR(
@@ -1042,12 +1041,10 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     if (record.source_type == XCLUSTER) {
       op_id = *result;
     } else {
-      cdc_sdk_op_id.set_term(((*result).term));
-      cdc_sdk_op_id.set_index(((*result).index));
+      result->ToPB(&cdc_sdk_op_id);
       cdc_sdk_op_id.set_write_id(0);
       cdc_sdk_op_id.set_key("");
-      op_id.term = cdc_sdk_op_id.term();
-      op_id.index = cdc_sdk_op_id.index();
+      op_id = OpId:FromPB(cdc_sdk_op_id);
     }
   }
 
@@ -1731,7 +1728,7 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
                                                     CDCErrorPB::INTERNAL_ERROR, context);
 
     shared_consensus->UpdateCDCConsumerOpId(OpId(req->replicated_term(),
-                                                       req->replicated_index()));
+                                                 req->replicated_index()));
     RequestScope request_scope;
     auto txn_participant = tablet_peer->tablet()->transaction_participant();
     if (txn_participant) {
