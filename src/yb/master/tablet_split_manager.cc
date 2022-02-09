@@ -38,9 +38,9 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DEFINE_test_flag(bool, disable_split_tablet_candidate_processing, false,
                  "When true, do not process split tablet candidates.");
 
-DEFINE_int32(outstanding_tablet_split_limit, 5,
-             "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
-             "value is set to 0.");
+DEFINE_uint64(outstanding_tablet_split_limit, 1,
+              "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
+              "value is set to 0.");
 
 constexpr int32 kHardLimitCandidateQueueSize = 100;
 
