@@ -33,16 +33,6 @@ jobs:
     architecture: aarch64
     release_artifact: false
 
-  - os: centos7
-    compiler: gcc5
-    build_type: debug
-    release_artifact: false
-
-  - os: centos7
-    compiler: gcc5
-    build_type: release
-    release_artifact: false
-
   - os: alma8
     compiler: gcc9
     build_type: debug
