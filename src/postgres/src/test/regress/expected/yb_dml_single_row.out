@@ -2573,3 +2573,37 @@ SELECT * FROM json_t1;
 ---+-------+------------------
  1 | "a"   | ["b", 2, "c", 3]
 (1 row)
+
+-----------------------------------
+-- Test for https://github.com/yugabyte/yugabyte-db/issues/11346.
+-- Original test case.
+CREATE TABLE t0(c0 money, PRIMARY KEY(c0));
+INSERT INTO t0(c0) VALUES(CAST(1.38073114E9 AS MONEY));
+DELETE FROM t0 WHERE (((0.14198202)::MONEY)>=((0.14222479)::MONEY));
+-- Confirm that multi-row delete isn't done incorrectly as single row delete.
+CREATE TABLE multi_row (k int primary key, v1 int, v2 int);
+INSERT INTO multi_row VALUES (1, 1, 1);
+INSERT INTO multi_row VALUES (2, 2, 2);
+INSERT INTO multi_row VALUES (3, 3, 3);
+SELECT * FROM multi_row;
+ k | v1 | v2
+---+----+----
+ 1 |  1 |  1
+ 2 |  2 |  2
+ 3 |  3 |  3
+(3 rows)
+
+EXPLAIN (COSTS FALSE) DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
+                     QUERY PLAN
+-----------------------------------------------------
+ Delete on multi_row
+   ->  Result
+         One-Time Filter: ((2)::money <= (2)::money)
+         ->  Seq Scan on multi_row
+(4 rows)
+
+DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
+SELECT * FROM multi_row;
+ k | v1 | v2
+---+----+----
+(0 rows)

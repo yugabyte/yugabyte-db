@@ -510,8 +510,11 @@ bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable)
 	if (list_length(modifyTable->plans) != 1)
 		return false;
 
-	/* Verify the single data source is a Result node. */
-	if (!IsA(linitial(modifyTable->plans), Result))
+	/*
+	 * Verify the single data source is a Result node and does not have outer plan.
+	 * Note that Result node never has inner plan.
+	 */
+	if (!IsA(linitial(modifyTable->plans), Result) || outerPlan(linitial(modifyTable->plans)))
 		return false;
 
 	return true;
