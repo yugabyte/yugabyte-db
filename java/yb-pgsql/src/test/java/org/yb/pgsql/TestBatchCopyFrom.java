@@ -500,6 +500,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       statement.execute("SET " + DISABLE_TXN_WRITES_SESSION_VARIABLE_NAME + "=true");
       statement.execute(String.format(
           "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
+      statement.execute(String.format("CREATE INDEX ON %s (d)", tableName));
       statement.execute(String.format(
           "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", tableName, absFilePath));
 

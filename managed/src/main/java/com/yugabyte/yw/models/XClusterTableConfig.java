@@ -12,7 +12,7 @@ import lombok.EqualsAndHashCode;
 @Entity
 @Data
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true)
+@EqualsAndHashCode
 public class XClusterTableConfig extends Model {
   @Column(name = "table_id")
   private String tableID;
