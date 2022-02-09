@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: foreign-key-ysql
     parent: explore-indexes-constraints
-    weight: 220
+    weight: 260
 isTocNested: true
 showAsideToc: true
 aliases:
@@ -35,7 +35,7 @@ You use a foreign key constraint to maintain the referential integrity of data b
 
 ## Syntax
 
-You define the foreign key constraint using the following syntax:
+Define the foreign key constraint using the following syntax:
 
 ```sql
 [CONSTRAINT fk_name]
@@ -54,6 +54,10 @@ Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you 
 - `NO ACTION` (default) - when the referenced rows in the parent table are deleted or updated, no action is taken.
 
 ## Examples
+
+- To run the examples below, follow these steps to create a local [cluster](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/).
+
+- Use the [YSQL shell](/latest/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/latest/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a database.
 
 The following example creates two tables:
 
@@ -78,15 +82,22 @@ CREATE TABLE contacts(
 );
 ```
 
-In the preceding example, the parent table is `employees` and the child table is `contacts`. Each employee has any number of contacts, and each contact belongs to no more than one employee. The `employee_no` column in the `contacts` table is the foreign key column that references the primary key column with the same name in the `employees` table. The `fk_employee` foreign key constraint in the `contacts` table defines the `employee_no` as the foreign key. Since `fk_employee` is not associated with any action, `NO ACTION` is applied by default.
+In the preceding example, the parent table is `employees` and the child table is `contacts`. Each employee has any number of contacts, and each contact belongs to no more than one employee. The `employee_no` column in the `contacts` table is the foreign key column that references the primary key column with the same name in the `employees` table. The `fk_employee` foreign key constraint in the `contacts` table defines the `employee_no` as the foreign key. By default, `NO ACTION` is applied because `fk_employee` is not associated with any action.
 
 The following example shows how to create the same `contacts` table with a `CASCADE` action `ON DELETE`:
 
 ```sql
 CREATE TABLE contacts(
-  ...
-  REFERENCES employees_1(employee_no)
-  ON DELETE CASCADE
+  contact_id integer GENERATED ALWAYS AS IDENTITY,
+  employee_no integer,
+  contact_name text NOT NULL,
+  phone integer,
+  email text,
+  PRIMARY KEY(contact_id),
+  CONSTRAINT fk_employee
+    FOREIGN KEY(employee_no)
+      REFERENCES employees(employee_no)
+      ON DELETE CASCADE
 );
 ```
 
@@ -120,7 +131,6 @@ ALTER TABLE child_table
 
 ## Learn more
 
-- [Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#foreign-key)
 - [Table with Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
 - [Foreign Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-FK)
 - [Relational Data Modeling with Foreign Keys in a Distributed SQL Database](https://blog.yugabyte.com/relational-data-modeling-with-foreign-keys-in-a-distributed-sql-database/)

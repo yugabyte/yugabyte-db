@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
-    weight: 360
+    weight: 240
 aliases:
    - /latest/explore/ysql-language-features/gin/
 isTocNested: true

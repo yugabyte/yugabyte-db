@@ -2,8 +2,8 @@
 title: Indexes and Constraints
 headerTitle: Indexes and Constraints
 linkTitle: Indexes and Constraints
-description: Indexes and constraints in YSQL
-headcontent: Indexes and constraints in YSQL
+description: Explore Indexes and Constraints in YSQL and YCQL
+headcontent: Explore Indexes and Constraints in YSQL and YCQL
 image: /images/section_icons/explore/monitoring.png
 menu:
   latest:
@@ -13,60 +13,19 @@ menu:
 ---
 
 
-
-The use of indexes can enhance database performance by enabling the database server to find rows faster.
-
-YSQL allows you to create, drop, and list indexes, as well as use indexes on expressions.
-
 <div class="row">
 
  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="overview/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Overview</div>
+        <div class="title">Indexes Overview</div>
       </div>
       <div class="body">
-          Explore Indexes and Constraints to optimize your database performance.
+          Explore Indexes to optimize your database performance.
       </div>
     </a>
   </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="primary-key-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Primary Key</div>
-      </div>
-      <div class="body">
-          Explore Indexes and Constraints to optimize your database performance.
-      </div>
-    </a>
-  </div>
-
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="foreign-key-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Foreign Key</div>
-      </div>
-      <div class="body">
-          Explore Indexes and Constraints to optimize your database performance.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="other-constraints/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Other Constraints</div>
-      </div>
-      <div class="body">
-          Explore Indexes and Constraints to optimize your database performance.
-      </div>
-    </a>
- </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="unique-index-ysql/">
@@ -75,7 +34,7 @@ YSQL allows you to create, drop, and list indexes, as well as use indexes on exp
         <div class="title">Unique Indexes</div>
       </div>
       <div class="body">
-          Use indexes to enhance database performance.
+          Explore Unique Indexes in YSQL and YCQL with examples.
       </div>
     </a>
   </div>
@@ -87,7 +46,7 @@ YSQL allows you to create, drop, and list indexes, as well as use indexes on exp
         <div class="title">Partial Indexes</div>
       </div>
       <div class="body">
-          Use indexes to enhance database performance.
+          Explore Partial Indexes in YSQL and YCQL with examples.
       </div>
     </a>
   </div>
@@ -99,7 +58,7 @@ YSQL allows you to create, drop, and list indexes, as well as use indexes on exp
         <div class="title">Expression Indexes</div>
       </div>
       <div class="body">
-          Use indexes to enhance database performance.
+          Explore Expression Indexes in YSQL with examples.
       </div>
     </a>
   </div>
@@ -115,4 +74,40 @@ YSQL allows you to create, drop, and list indexes, as well as use indexes on exp
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="primary-key-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Primary Key</div>
+      </div>
+      <div class="body">
+          Explore the use of Primary Keys in YSQL and YCQL with examples.
+      </div>
+    </a>
+  </div>
+
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="foreign-key-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Foreign Key</div>
+      </div>
+      <div class="body">
+          Explore the use of Foreign Keys associated with Primary keys in YSQL.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="other-constraints/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Other Constraints</div>
+      </div>
+      <div class="body">
+          Explore Other Constraints to optimize your database performance.
+      </div>
+    </a>
+ </div>
 </div>

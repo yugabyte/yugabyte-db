@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: unique-index-ysql
     parent: explore-indexes-constraints
-    weight: 300
+    weight: 210
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/
@@ -33,9 +33,9 @@ showAsideToc: true
 
 If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
 
-When a `UNIQUE` index is applied to two or more columns, the combined values in these columns cannot be duplicated in multiple rows. Note that since a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a `UNIQUE` index.
+When a `UNIQUE` index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a `UNIQUE` index.
 
-If a table has a primary key or a `UNIQUE` constraint defined, a corresponding `UNIQUE` index is created autumatically.
+If a table has a primary key or a `UNIQUE` constraint defined, a corresponding `UNIQUE` index is created automatically.
 
 ## Syntax
 
@@ -133,8 +133,6 @@ northwind=# SELECT * FROM categories;
 
 ## Learn more
 
-- [Unique index with HASH column ordering](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
-
-- [Indexes on JSON attributes](/latest/explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
-
+- [Unique index with HASH column ordering](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
+- [Indexes on JSON attributes](../../../explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
 - [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)

@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: primary-key-ycql
     parent: explore-indexes-constraints
-    weight: 211
+    weight: 251
 isTocNested: true
 showAsideToc: true
 aliases:
@@ -31,7 +31,7 @@ aliases:
   </li>
 </ul>
 
-The Primary Key is a means to identify a specific row in a table uniquely via one or more columns. In YCQL, it should be defined either under the `column_constraint` or the `table_constraint`, but not under both. Refer the   [grammar](../../../api/ycql/ddl_create_table/#grammar) for CREATE TABLE in YCQL.
+The Primary Key constraint is a means to identify a specific row in a table uniquely via one or more columns. In YCQL, it should be defined either under the `column_constraint` or the `table_constraint`, but not under both. Refer the [grammar](../../../api/ycql/ddl_create_table/#grammar) section for CREATE TABLE in YCQL.
 
 - **column_constraint** : Columns can be either STATIC or declared as the PRIMARY KEY. Declaring a column as STATIC results in the same value being shared for all those rows that belong to the same partition(rows with the partition key). Declaring a column as a PRIMARY KEY makes that individual column its sole component.
 
@@ -123,9 +123,6 @@ The row with `device_name` Pixel gets overridden with MotoRazr.
 ## Explore more examples
 
 - [Use column constraint to define a static column](../../../api/ycql/ddl_create_table/#use-column-constraint-to-define-a-static-column)
-
 - [Example for clustering columns by ORDER](../../../api/ycql/ddl_create_table/#use-table-property-to-define-the-order-ascending-or-descending-for-clustering-columns)
-
 - [Example to define the default expiration time for rows](../../../api/ycql/ddl_create_table/#use-table-property-to-define-the-default-expiration-time-for-rows)
-
 - [Create a table specifying the number of tablets](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets)

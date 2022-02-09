@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints
-    weight: 340
+    weight: 230
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/
@@ -36,13 +36,13 @@ When the index is defined, it is used when the expression that defines the index
 
 ## Example
 
-A common use case of an expression index is to support case-insensitive text to enable efficient seachability.
+A common use case of an expression index is to support case-insensitive text to enable efficient searchability.
 
 For example, let's say there's a `users` table with an `email` column to store their email addresses for signing in, but the user want's to maintain authentication in a case-insensitive manner. This can be done using the `WHERE` clause as WHERE LOWER(email) = '<lower_case_email>', but storing the email address as originally entered by the user.
 
 The following example uses the `employees` table from [Create indexes](../../indexes-constraints/overview/#create-indexes) to show how to create an index on an expression that converts the department to lowercase to improve searchability.
 
-- Verify the query plan without creating an on the expression for the department `Operations`.
+- Verify the query plan without creating an expression index for the department `Operations`.
 
 ```sql
 EXPLAIN SELECT * FROM employees
@@ -64,7 +64,7 @@ CREATE INDEX index_employees_department_lc
   ON employees(LOWER(department));
 ```
 
-- Run the following `SELECT` statement with `EXPLAIN`  the now uses the `index_employees_department_lc` index  to find departments regardless of which case is used:
+- Run the `EXPLAIN` statement again to verify that the `index_employees_department_lc` index is used to find the department regardless of it's case:
 
 ```sql
 EXPLAIN SELECT * FROM employees

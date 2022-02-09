@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: partial-index-ycql
     parent: explore-indexes-constraints
-    weight: 321
+    weight: 221
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/
@@ -32,7 +32,7 @@ showAsideToc: true
 </ul>
 
 Partial indexes allow you to improve the query performance by reducing the index size. The smaller index size will be faster to scan and easier to maintain, thereby requiring less storage.
-Indexing works by specifying the rows defined by a conditional expression(called the `predicate of the partial index`), typically within the `WHERE` clause of the table.
+Indexing works by specifying the rows defined by a conditional expression(called the `predicate of the partial index`), typically in the `WHERE` clause of the table.
 Partial indexes can be `UNIQUE`. A UNIQUE partial index enforces the constraint that for each possible tuple of indexed columns, only one row that satisfies the `index_predicate` is allowed in the table.
 
 ## Syntax
@@ -44,7 +44,7 @@ CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 {{< note title="Note" >}}
 
 - A partial index might not be chosen even if the implication holds in case there are better query plans.
-- The logical implication holds if all sub-expressions of the `index_predicate` are present as is in the `where_expression`. For example, assume `where_expression = A AND B AND C`, `index_predicate_1 = A AND B`, `index_predicate_2 = A AND B AND D`, `index_predicate_3 = A AND B AND C AND D`. Then `where_expression` only implies `index_predicate_1`
+- The logical implication holds if all sub-expressions of the `index_predicate` are present as is in the `where_expression`. For example, assume `where_expression = A AND B AND C`, `index_predicate_1 = A AND B`, `index_predicate_2 = A AND B AND D`, `index_predicate_3 = A AND B AND C AND D`. Then `where_expression` only implies `index_predicate_1`.
 
 - Currently, valid mathematical implications are not taken into account when checking for logical implication. For example, even if `where_expression = x > 5` and `index_predicate = x > 4`, the `SELECT` query will not use the index for scanning. This is because the two sub-expressions `x > 5` and `x > 4` differ.
 
@@ -75,7 +75,7 @@ ycqlsh:example> CREATE INDEX idx ON orders (warehouse_id)
                 WHERE warehouse_id < 100;
 ```
 
-- When using a prepared statement, the logical implication check (to decide if a partial index is usable), will only consider those sub-expressions of `where_expression` that don't have a bind variable. This is because the query plan is decided before execution (when a statement is prepared).
+- When using a prepared statement, the logical implication check (to decide if a partial index is usable), will only consider those sub-expressions of `where_expression` that don't have dynamic parameters. This is because the query plan is decided before execution (when a statement is prepared).
 
 ```cql
 ycqlsh:example> EXPLAIN SELECT product FROM orders
@@ -134,4 +134,4 @@ ycqlsh:example> EXPLAIN SELECT product FROM orders
 
 ## Learn more
 
-- For more details on partial indexes, refer [here](/latest/api/ycql/ddl_create_index/#partial-index).
+- For more details, refer [PARTIAL INDEX](/latest/api/ycql/ddl_create_index/#partial-index) in the YCQL API section.

@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: primary-key-ysql
     parent: explore-indexes-constraints
-    weight: 210
+    weight: 250
 isTocNested: true
 showAsideToc: true
 aliases:
@@ -30,10 +30,8 @@ aliases:
     </a>
   </li>
 </ul>
-<!--
-YSQL allows you to define primary and foreign keys, as well as check values based on various criteria. -->
 
-The Primary Key is a means to identify a specific row in a table uniquely via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns.
+The Primary Key constraint is a means to identify a specific row in a table uniquely via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns.
 
 ## Syntax and examples
 

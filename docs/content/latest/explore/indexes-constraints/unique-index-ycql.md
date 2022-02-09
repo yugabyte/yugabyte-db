@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
-    weight: 301
+    weight: 211
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
    - /latest/explore/indexes-constraints/indexes-1/
@@ -34,9 +34,9 @@ showAsideToc: true
 
 If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
 
-When a `UNIQUE` index is applied to two or more columns, the combined values in these columns cannot be duplicated in multiple rows. Note that since a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a `UNIQUE` index.
+When a `UNIQUE` index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a `UNIQUE` index.
 
-If a table has a primary key or a `UNIQUE` constraint defined, a corresponding `UNIQUE` index is created autumatically.
+If a table has a primary key or a `UNIQUE` constraint defined, a corresponding `UNIQUE` index is created automatically.
 
 ## Syntax
 
@@ -88,8 +88,6 @@ INSERT INTO employees(employee_no, name, department) VALUES (3, 'Bob', 'Engineer
  (ql error -300)"
 ```
 
-## Lean more
+## Learn more
 
-- For additional information about creating indexes, refer to the [CREATE INDEX](/latest/api/ycql/ddl_create_index/) API.
-
-- For other examples, refer [here](/latest/api/ycql/ddl_create_index/#create-a-table-with-a-unique-index).
+For other examples, see [Create a table with a unique index](../../../api/ycql/ddl_create_index/#create-a-table-with-a-unique-index).
