@@ -31,19 +31,44 @@ YSQL allows you to create, drop, and list indexes, as well as use indexes on exp
       </div>
     </a>
   </div>
- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="constraints/">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="primary-key-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Constraints</div>
+        <div class="title">Primary Key</div>
       </div>
       <div class="body">
-          Define primary and foreign keys; check values based on various criteria.
+          Explore Indexes and Constraints to optimize your database performance.
       </div>
     </a>
   </div>
 
-<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="foreign-key-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Foreign Key</div>
+      </div>
+      <div class="body">
+          Explore Indexes and Constraints to optimize your database performance.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="other-constraints/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Other Constraints</div>
+      </div>
+      <div class="body">
+          Explore Indexes and Constraints to optimize your database performance.
+      </div>
+    </a>
+ </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="unique-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
@@ -55,7 +80,7 @@ YSQL allows you to create, drop, and list indexes, as well as use indexes on exp
     </a>
   </div>
 
-<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="partial-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
@@ -67,7 +92,7 @@ YSQL allows you to create, drop, and list indexes, as well as use indexes on exp
     </a>
   </div>
 
-<div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="expression-index-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>

@@ -1,6 +1,6 @@
 ---
-title: Unique Indexes
-linkTitle:  Unique Indexes
+title: Unique Index
+linkTitle:  Unique Index
 description: Using Unique Indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -10,6 +10,7 @@ menu:
     weight: 300
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
+   - /latest/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 ---
@@ -135,3 +136,5 @@ northwind=# SELECT * FROM categories;
 - [Unique index with HASH column ordering](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 
 - [Indexes on JSON attributes](/latest/explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
+
+- [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)

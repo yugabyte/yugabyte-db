@@ -8,6 +8,9 @@ menu:
     identifier: overview
     parent: explore-indexes-constraints
     weight: 200
+aliases:
+   - /latest/explore/ysql-language-features/indexes-1/
+   - /latest/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 
@@ -115,6 +118,14 @@ The following example shows how to remove index_employees_department that was cr
 ```sql
 DROP INDEX index_employees_department;
 ```
+
+## Learn more
+
+- [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+
+- [Pushdown #3: Filtering using index predicates](https://blog.yugabyte.com/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) in our blog discusses the performance boost of distributed SQL queries using indexes.
+
+
 
 
 <!-- ## Use a UNIQUE index

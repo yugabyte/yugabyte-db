@@ -1,7 +1,7 @@
 ---
-title: Expression Indexes
-linkTitle: Expression Indexes
-description: Using Expression Indexes
+title: Expression Index
+linkTitle: Expression Index
+description: Using Expression Indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   latest:
@@ -10,6 +10,7 @@ menu:
     weight: 340
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
+   - /latest/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 ---
@@ -80,5 +81,5 @@ Index Scan using index_employees_department_lc on employees  (cost=0.00..5.25 ro
 ## Learn more
 
 - [Partial and expression indexes](../../json-support/jsonb-ysql/#partial-and-expression-indexes)
-
 - [SQL Puzzle: Partial Versus Expression Indexes](https://blog.yugabyte.com/sql-puzzle-partial-versus-expression-indexes/)
+- [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)

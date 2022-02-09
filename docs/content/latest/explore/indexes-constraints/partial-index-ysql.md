@@ -1,6 +1,6 @@
 ---
-title: Partial Indexes
-linkTitle: Partial Indexes
+title: Partial Index
+linkTitle: Partial Index
 description: Using Partial Indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -10,6 +10,7 @@ menu:
     weight: 320
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
+   - /latest/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 ---

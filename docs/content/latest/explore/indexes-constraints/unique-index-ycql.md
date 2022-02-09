@@ -1,6 +1,6 @@
 ---
-title: Unique Indexes
-linkTitle: Unique Indexes
+title: Unique Index
+linkTitle: Unique Index
 description: Using Unique Indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -10,6 +10,7 @@ menu:
     weight: 301
 aliases:
    - /latest/explore/ysql-language-features/indexes-1/
+   - /latest/explore/indexes-constraints/indexes-1/
 isTocNested: true
 showAsideToc: true
 ---
