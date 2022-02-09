@@ -6,9 +6,16 @@ import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import java.util.ArrayList;
@@ -29,14 +36,20 @@ import play.modules.swagger.SwaggerModule;
 @Slf4j
 public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
   private final ObjectMapper mapper = new ObjectMapper();
+  private Config mockConfig;
 
   @Override
   protected Application provideApplication() {
+    mockConfig = mock(Config.class);
+    when(mockConfig.getString(anyString())).thenReturn("");
     return super.configureApplication(
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
                 .configure(testDatabase()))
+        .overrides(
+            bind(RuntimeConfigFactory.class)
+                .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .build();
   }
 
