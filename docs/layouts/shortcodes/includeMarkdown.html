@@ -1,5 +1,2 @@
-{{ $optBlock := dict "display" "block" }}
-{{ $optMarkdown := dict "markup" "markdown" }}
-
 {{ $includePath := (print .Page.File.Dir (.Get 0)) | printf "./content/%s" }}
 {{ readFile $includePath | safeHTML }}
