@@ -427,11 +427,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-    "create_change_data_stream", " <namespace>",
+    "create_change_data_stream", " <namespace> [checkpoint_type]",
     [client](const CLIArguments& args) -> Status {
       if (args.size() < 1) {
         return ClusterAdminCli::kInvalidArguments;
       }
+
+      std::string checkpoint_type = yb::ToString("EXPLICIT");
+      std::string uppercase_checkpoint_type;
+
+      if (args.size() > 1) {
+         ToUpperCase(args[1], &uppercase_checkpoint_type);
+         if (uppercase_checkpoint_type != yb::ToString("EXPLICIT")
+            && uppercase_checkpoint_type != yb::ToString("IMPLICIT")) {
+            return ClusterAdminCli::kInvalidArguments;
+         }
+         checkpoint_type = uppercase_checkpoint_type;
+      }
+
       const string namespace_name = args[0];
 
       const TypedNamespaceName database =
@@ -440,7 +453,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
         Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
 
-      RETURN_NOT_OK_PREPEND(client->CreateCDCSDKDBStream(database),
+      RETURN_NOT_OK_PREPEND(client->CreateCDCSDKDBStream(database, checkpoint_type),
                             Substitute("Unable to create CDC stream for database $0",
                                        namespace_name));
       return Status::OK();
@@ -634,7 +647,6 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                 producer_id));
         return Status::OK();
       });
-
 
   Register(
       "bootstrap_cdc_producer", " <comma_separated_list_of_table_ids>",

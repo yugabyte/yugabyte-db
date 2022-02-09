@@ -484,7 +484,7 @@ TEST_P(CDCServiceTest, TestCreateCDCStream) {
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id, &ns_id, &table_ids, &options));
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
   ASSERT_EQ(table_ids.front(), table_.table()->id());
 }
 
@@ -497,7 +497,7 @@ TEST_P(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id, &ns_id, &table_ids, &options));
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
 
 
   // Verify that the wal retention time was set at the tablet level.
@@ -511,7 +511,7 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
   std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(client_->GetCDCStream(stream_id, &ns_id, &table_ids, &options));
+  ASSERT_OK(client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options));
   ASSERT_EQ(table_ids.front(), table_.table()->id());
 
 
@@ -536,7 +536,7 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   ns_id.clear();
   table_ids.clear();
   options.clear();
-  Status s = client_->GetCDCStream(stream_id, &ns_id, &table_ids, &options);
+  Status s = client_->GetCDCStream(stream_id_, &ns_id, &table_ids, &options);
   ASSERT_TRUE(s.IsNotFound());
 
   for (const auto& tablet_id : tablet_ids) {
