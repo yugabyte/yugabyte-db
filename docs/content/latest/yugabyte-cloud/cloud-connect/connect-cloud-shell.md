@@ -89,6 +89,7 @@ The following table lists common meta-commands that can be used in cloud shell.
 | \di | Display indexes. |
 | \dn | Display schemas. |
 | \dT | Display data types. |
+| \du | Display roles. |
 | \sv [view name] | Show a view definition. |
 | \x [ on \| off \| auto ] | Toggle the expanded display. Used for viewing tables with many columns. Can be toggled on or off, or set to auto. |
 | \set | List all internal variables. |
