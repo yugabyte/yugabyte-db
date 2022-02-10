@@ -129,14 +129,15 @@ public class LdapUtil {
 
       if (!serviceAccountUserName.isEmpty() && !serviceAccountPassword.isEmpty()) {
         connection.unBind();
-        connection.close();
         String serviceAccountDistinguishedName = ldapDnPrefix + serviceAccountUserName + ldapBaseDN;
         try {
-          connection.bind(serviceAccountDistinguishedName, password);
+          connection.bind(serviceAccountDistinguishedName, serviceAccountPassword);
         } catch (LdapAuthenticationException e) {
-          log.error(e.getMessage());
-          String errorMessage = "Unable to bind with Service Account Credentials." + e.getMessage();
-          throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
+          String errorMessage =
+              "Service Account bind failed. Defaulting to current user connection with LDAP Server."
+                  + e.getMessage();
+          log.error(errorMessage);
+          connection.bind(distinguishedName, password);
         }
       }
       String role = "";
