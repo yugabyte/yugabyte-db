@@ -175,7 +175,7 @@ try {
 
 [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/)
 
-[Explore additional applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-develop)
 
 [Sample Java application demonstrating load balancing](../../../../quick-start/build-apps/java/ysql-yb-jdbc/)
 
