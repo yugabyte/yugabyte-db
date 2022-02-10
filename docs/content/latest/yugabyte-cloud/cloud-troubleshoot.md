@@ -95,6 +95,19 @@ Select the peering request to display the **Peering Details** sheet and check th
 
 Add the application VPC CIDR address to the [cluster IP allow list](../cloud-secure-clusters/add-connections/). Even with connectivity established between VPCs, the cluster cannot accept connections until the application VPC IP addresses are added to the IP allow list.
 
+## Database management
+
+### Permission denied, must be superuser
+
+If you execute a YSQL command and receive the following error:
+
+```output
+ERROR:  permission denied to [...]
+HINT:  Must be superuser to [...].
+```
+
+For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in Yugabyte Cloud, refer to [Database authorization in Yugabyte Cloud clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
+
 ## Cluster management
 
 ### You are editing your cluster infrastructure and are unable to reduce disk size per node
