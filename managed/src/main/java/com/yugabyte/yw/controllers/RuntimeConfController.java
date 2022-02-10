@@ -204,12 +204,17 @@ public class RuntimeConfController extends AuthenticatedController {
     if (!mutableKeys.contains(path)) {
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
+
+    String logValue = newValue;
+    if (sensitiveKeys.contains(path)) {
+      logValue = CommonUtils.getMaskedValue(path, logValue);
+    }
     LOG.info(
         "Setting runtime conf for key '{}' on scope {} to value '{}' of length {}",
         path,
         scopeUUID,
-        (newValue.length() < 50 ? newValue : "[long value hidden]"),
-        newValue.length());
+        (logValue.length() < 50 ? logValue : "[long value hidden]"),
+        logValue.length());
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).setValue(path, newValue);
 
     return ok();
