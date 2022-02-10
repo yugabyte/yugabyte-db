@@ -6317,6 +6317,7 @@ Status CatalogManager::ProcessTabletReportBatch(
       rpcs->push_back(std::make_shared<AsyncDeleteReplica>(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
           TABLET_DATA_DELETED, boost::none, msg));
+      ts_desc->AddPendingTabletDelete(tablet_id);
       continue;
     }
 
@@ -6351,6 +6352,7 @@ Status CatalogManager::ProcessTabletReportBatch(
           TABLET_DATA_TOMBSTONED, prev_opid_index,
           Substitute("$0 (current committed config index is $1)",
               delete_msg, prev_opid_index)));
+      ts_desc->AddPendingTabletDelete(tablet_id);
       continue;
     }
 
@@ -6376,6 +6378,7 @@ Status CatalogManager::ProcessTabletReportBatch(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
           TABLET_DATA_DELETED, boost::none, msg);
       task->set_hide_only(true);
+      ts_desc->AddPendingTabletDelete(tablet_id);
       rpcs->push_back(task);
     }
 
