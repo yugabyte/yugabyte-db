@@ -1930,7 +1930,7 @@ yb::Result<std::string> BlockBasedTable::GetMiddleKey() {
     // For tablet splitting we don't need to handle such small files, but if needed for other cases
     // we can update this function to return the middle key of the data block in case there is data
     // in the SST.
-    return STATUS(Incomplete, "Empty or to small SST");
+    return STATUS(Incomplete, "Empty or too small SST");
   }
   return iter->key().ToBuffer();
 }
