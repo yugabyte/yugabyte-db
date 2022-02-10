@@ -26,11 +26,11 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 ### libpq
 
-[`libpq`](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. `libpq` is also the underlying engine used in other PostgreSQL application interfaces. The `libpq` client library also supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[`libpq`](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. `libpq` is also the underlying engine used in other PostgreSQL application interfaces. The `libpq` client library supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details and documentation, see [`libpq - C Library`](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11, which YugabyteDB is based on.
+For details and documentation, refer to [`libpq - C Library`](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
 
-For a tutorial on building a sample C application with `libpq`, see [Build a C application](../../../quick-start/build-apps/c/ysql/).
+For a tutorial on building a sample C application with `libpq`, refer to [Build a C application](../../../quick-start/build-apps/c/ysql/).
 
 #### Install the libpq client library
 
@@ -48,27 +48,25 @@ Homebrew users on macOS can install `libpq` using `brew install libpq`. You can 
 
 The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. `libpqxx` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details and documentation, see [`jvt/libpqxx` README](https://github.com/jtv/libpqxx#readme) and [`libpqxx` ReadTheDocs](https://libpqxx.readthedocs.io/en/latest/).
+For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/en/latest/).
 
-For a tutorial on building a sample C++ application with `libpqxx`, see [Build a C++ application](../../../quick-start/build-apps/cpp/ysql/).
+For a tutorial on building a sample C++ application with `libpqxx`, refer to [Build a C++ application](../../../quick-start/build-apps/cpp/ysql/).
 
 #### Install the libpqxx driver
 
-To build and install the libpqxx driver for use with YugabyteDB, follow these steps:
-
-- Clone the libpqxx repository.
+To build and install the libpqxx driver for use with YugabyteDB, first Clone the libpqxx repository.
 
 ```sh
 $ git clone https://github.com/jtv/libpqxx.git
 ```
 
-- For dependencies on the PostgreSQL binaries, add the PostgreSQL `bin` directory to the command path by running the following command.
+For dependencies on the PostgreSQL binaries, add the PostgreSQL `bin` directory to the command path by running the following command.
 
 ```sh
 $ export PATH=$PATH:<yugabyte-install-dir>/postgres/bin
 ```
 
-- Build and install the driver.
+Build and install the driver.
 
 ```sh
 $ cd libpqxx
