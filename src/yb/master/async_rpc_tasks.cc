@@ -292,6 +292,12 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
+    if (!target_ts_desc_->IsLive() && type() == ASYNC_DELETE_REPLICA) {
+      LOG_WITH_PREFIX(WARNING)
+          << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
+          << tablet_id() << ". TS is DEAD. No further retry.";
+      TransitionToCompleteState();
+    }
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
   }
