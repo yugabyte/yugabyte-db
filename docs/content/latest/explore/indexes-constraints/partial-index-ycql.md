@@ -1,6 +1,6 @@
 ---
-title: Partial Index
-linkTitle: Partial Index
+title: Partial Indexes
+linkTitle: Partial Indexes
 description: Using Partial Indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:

@@ -13,6 +13,7 @@ showAsideToc: true
 aliases:
    - /latest/explore/ysql-language-features/constraints/
    - /latest/explore/indexes-constraints/constraints/
+   - /latest/explore/indexes-constraints/indexes-1/
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -146,7 +147,7 @@ The following example shows how to remove the primary key constraint `employees_
 ALTER TABLE employees DROP CONSTRAINT employees_pkey;
 ```
 
-## Primary Key recommended practices
+<!-- ## Primary Key recommended practices -->
 
 <!-- Add information here -->
 

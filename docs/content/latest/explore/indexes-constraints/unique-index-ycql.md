@@ -1,6 +1,6 @@
 ---
-title: Unique Index
-linkTitle: Unique Index
+title: Unique Indexes
+linkTitle: Unique Indexes
 description: Using Unique Indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -90,4 +90,4 @@ INSERT INTO employees(employee_no, name, department) VALUES (3, 'Bob', 'Engineer
 
 ## Learn more
 
-For other examples, see [Create a table with a unique index](../../../api/ycql/ddl_create_index/#create-a-table-with-a-unique-index).
+For other examples, refer the [Create a table with a unique index](../../../api/ycql/ddl_create_index/#create-a-table-with-a-unique-index).

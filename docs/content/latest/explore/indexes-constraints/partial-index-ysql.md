@@ -1,6 +1,6 @@
 ---
-title: Partial Index
-linkTitle: Partial Index
+title: Partial Indexes
+linkTitle: Partial Indexes
 description: Using Partial Indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -32,7 +32,7 @@ showAsideToc: true
 </ul>
 
 Partial Indexes allow you to improve the query performance by reducing the index size. The smaller index size will be faster to scan and easier to maintain, thereby requiring lesser storage.
-Indexing works by specifying the rows defined by a conditional expression(called the predicate of the partial index), typically within the `WHERE` clause of the table.
+Indexing works by specifying the rows defined by a conditional expression(called the predicate of the partial index), typically in the `WHERE` clause of the table.
 
 ## Syntax
 

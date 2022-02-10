@@ -13,6 +13,7 @@ showAsideToc: true
 aliases:
    - /latest/explore/ysql-language-features/constraints/
    - /latest/explore/indexes-constraints/constraints/
+   - /latest/explore/indexes-constraints/indexes-1/
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
