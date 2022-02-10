@@ -176,8 +176,7 @@ set_metric_names(void)
   strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
   strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
   strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
-  strcpy(ybpgm_table[Single_Shard_Transaction].name,
-         YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+  strcpy(ybpgm_table[Single_Shard_Transaction].name, YSQL_METRIC_PREFIX "SingleShardTransactions");
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
   strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
