@@ -97,6 +97,8 @@ class AuditLogger {
   // Empty string means not in a batch processing mode.
   std::string batch_id_;
 
+  boost::uuids::random_generator batch_id_gen_;
+
   // Cache of parsed gflags, to avoid re-parsing unchanged values.
   GflagsCache gflags_cache_;
 

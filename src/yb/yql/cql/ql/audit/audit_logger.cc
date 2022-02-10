@@ -13,7 +13,6 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/audit/audit_logger.h"
-#include <fstream>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional_io.hpp>
@@ -663,13 +662,8 @@ Status AuditLogger::StartBatchRequest(int statements_count,
 
   // We cannot have sub-batches as only DMLs are allowed within a batch.
   SCHECK(batch_id_.empty(), InternalError, "Batch request mode is already active!");
-  uint32_t seed;
-  std::ifstream fin("/dev/urandom", std::ifstream::binary);
-  fin.read(reinterpret_cast<char*>(&seed), sizeof(seed));
 
-  boost::mt19937 _prng;
-  _prng.seed(seed);
-  batch_id_ = AsString(boost::uuids::random_generator_mt19937(_prng)());
+  batch_id_ = AsString(batch_id_gen_());
 
   auto operation = Format("BatchId:[$0] - BATCH of [$1] statements", batch_id_, statements_count);
 
