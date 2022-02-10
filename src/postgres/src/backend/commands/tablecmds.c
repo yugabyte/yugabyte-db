@@ -8377,6 +8377,9 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 	{
 		/* Table will be re-created, along with the dummy PK index. */
 		address = YBCloneRelationSetPrimaryKey(mutable_rel, stmt);
+
+		/* Update the table relid so that further passes will operate on the new table. */
+		tab->relid = (*mutable_rel)->rd_id;
 	}
 
 	/*
