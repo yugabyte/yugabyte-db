@@ -209,7 +209,7 @@ export default function GFlagComponent(props) {
               }
             >
               <Button bsClass="flag-icon-button mb-2" onClick={() => fields.remove(index)}>
-                <img alt="--" src={Close} width="22" />
+                <img alt="Remove" src={Close} width="22" />
               </Button>
             </OverlayTrigger>
             &nbsp;
@@ -269,7 +269,7 @@ export default function GFlagComponent(props) {
                 bsClass="flag-icon-button mb-2"
                 onClick={() => handleSelectedOption(modalProps)}
               >
-                <img alt="--" src={MoreIcon} width="20" />
+                <img alt="More" src={MoreIcon} width="20" />
               </Button>
             </div>
             <div className="flag-icons">
@@ -286,7 +286,7 @@ export default function GFlagComponent(props) {
                     bsClass="flag-icon-button mr-10 mb-2"
                     onClick={() => handleSelectedOption(modalProps)}
                   >
-                    <img alt="--" src={Edit} width="20" />
+                    <img alt="Edit" src={Edit} width="20" />
                   </Button>
                 </OverlayTrigger>
               )}
@@ -305,7 +305,7 @@ export default function GFlagComponent(props) {
                     handleRemoveFlag(row, index, server, checkFlagExistsOnOtherServer(server))
                   }
                 >
-                  <img alt="--" src={Close} width="22" />
+                  <img alt="Remove" src={Close} width="22" />
                 </Button>
               </OverlayTrigger>
             </div>
@@ -332,7 +332,7 @@ export default function GFlagComponent(props) {
               bsClass="flag-icon-button display-inline-flex mb-2"
               onClick={() => handleSelectedOption(modalProps)}
             >
-              <img alt="--" src={Plus} width="20" />
+              <img alt="Add" src={Plus} width="20" />
               <span className="add-label">Add value</span>
             </Button>
           )}
@@ -345,7 +345,11 @@ export default function GFlagComponent(props) {
   const renderTable = () => {
     return (
       <div className={isReadOnly ? 'gflag-read-table' : 'gflag-edit-table'}>
-        <BootstrapTable data={fields.getAll()}>
+        <BootstrapTable
+          data={fields.getAll()}
+          maxHeight="400px"
+          tableStyle={{ overflow: 'scroll' }}
+        >
           <TableHeaderColumn width="40%" dataField="Name" dataFormat={nameFormatter} isKey>
             <span className="header-title">FLAG NAME</span>
           </TableHeaderColumn>
