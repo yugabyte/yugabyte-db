@@ -95,7 +95,7 @@ Drop the named column from the table.
 
 Set up and populate a parents-children pair of tables:
 
-```plpgssql
+```plpgsql
 drop table if exists children cascade;
 drop table if exists parents  cascade;
 
