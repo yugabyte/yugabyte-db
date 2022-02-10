@@ -23,6 +23,18 @@ Since Yugabyte Platform and the LDAP server are synchronized during login, Yugab
 
 If configured by the LDAP server, Yugabyte Platform can prevent the user from being able to change their password.
 
+## Use the Yugabyte Platform UI Console
+
+You can use the Yugabyte Platform UI console to enable LDAP authentication for Yugabyte Platform login, as follows:
+
+- Navigate to **Admin > User Management > User Authentication**. 
+
+- Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br><br>
+
+  ![LDAP authentication](/images/yp/ldap-auth-1.png)<br><br>
+
+  The description of these settings are provided in [Use the Yugabyte Platform API](#use-the-yugabyte-platform-ui).
+
 ## Use the Yugabyte Platform API
 
 To enable LDAP authentication for Yugabyte Platform login, you need to perform a number of runtime configurations to specify the following:
