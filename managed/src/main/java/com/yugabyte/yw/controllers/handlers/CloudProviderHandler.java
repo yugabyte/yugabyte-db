@@ -222,7 +222,7 @@ public class CloudProviderHandler {
         boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
         if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
           // Use in-cluster ServiceAccount credentials
-          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+          az.updateConfig(ImmutableMap.of("KUBECONFIG", ""));
           az.save();
         }
       }
@@ -290,7 +290,7 @@ public class CloudProviderHandler {
         boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
         if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
           // Use in-cluster ServiceAccount credentials
-          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+          az.updateConfig(ImmutableMap.of("KUBECONFIG", ""));
           az.save();
         }
       }
