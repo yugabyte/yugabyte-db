@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -64,6 +65,9 @@ public class ReleaseManager {
     // File path where the release helm chart is stored
     @ApiModelProperty(value = "Helm chart path")
     public String chartPath;
+
+    @ApiModelProperty(value = "Release packages")
+    public List<Package> packages;
 
     // Docker image tag corresponding to the release
     @ApiModelProperty(value = "Release image tag")
@@ -143,6 +147,12 @@ public class ReleaseManager {
       public PackagePaths paths;
     }
 
+    public static class Package {
+      @ApiModelProperty @Constraints.Required public String path;
+
+      @ApiModelProperty @Constraints.Required public Architecture arch;
+    }
+
     public static ReleaseMetadata fromLegacy(String version, Object metadata) {
       // Legacy release metadata would have name and release path alone
       // convert those to new format.
@@ -157,6 +167,7 @@ public class ReleaseManager {
       rm.state = ReleaseState.ACTIVE;
       rm.imageTag = version;
       rm.notes = new ArrayList<>();
+      rm.packages = new ArrayList<>();
       return rm;
     }
 
@@ -170,6 +181,14 @@ public class ReleaseManager {
       return this;
     }
 
+    public ReleaseMetadata withPackage(String path, Architecture arch) {
+      Package p = new Package();
+      p.path = path;
+      p.arch = arch;
+      this.packages.add(p);
+      return this;
+    }
+
     public String toString() {
       return Json.toJson(CommonUtils.maskObject(this)).toString();
     }
@@ -177,10 +196,11 @@ public class ReleaseManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
 
-  final PathMatcher ybPackageMatcher =
-      FileSystems.getDefault().getPathMatcher("glob:**yugabyte*{alma,centos}*.tar.gz");
-  final Predicate<Path> ybPackageFilter =
-      p -> Files.isRegularFile(p) && ybPackageMatcher.matches(p);
+  private Predicate<Path> getPackageFilter(String pathMatchGlob) {
+    PathMatcher ybPackageMatcher = FileSystems.getDefault().getPathMatcher(pathMatchGlob);
+    Predicate<Path> ybPackageFilter = p -> Files.isRegularFile(p) && ybPackageMatcher.matches(p);
+    return ybPackageFilter;
+  }
 
   final PathMatcher ybChartMatcher =
       FileSystems.getDefault().getPathMatcher("glob:**yugabyte-*-helm.tar.gz");
@@ -210,18 +230,33 @@ public class ReleaseManager {
     return fileMap;
   }
 
-  public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
-    Map<String, ReleaseMetadata> localReleases = new HashMap<>();
-    Map<String, String> releaseFiles = getReleaseFiles(releasesPath, ybPackageFilter);
-    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
+  private void updateLocalReleases(
+      Map<String, ReleaseMetadata> localReleases,
+      Map<String, String> releaseFiles,
+      Map<String, String> releaseCharts,
+      Architecture arch) {
     releaseFiles.forEach(
         (version, filePath) -> {
-          ReleaseMetadata r =
-              ReleaseMetadata.create(version)
-                  .withFilePath(filePath)
-                  .withChartPath(releaseCharts.getOrDefault(version, ""));
-          localReleases.put(version, r);
+          ReleaseMetadata r = localReleases.get(version);
+          if (r == null) {
+            r =
+                ReleaseMetadata.create(version)
+                    .withFilePath(filePath)
+                    .withChartPath(releaseCharts.getOrDefault(version, ""));
+          }
+          localReleases.put(version, r.withPackage(filePath, arch));
         });
+  }
+
+  public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
+    Map<String, String> x86ReleaseFiles =
+        getReleaseFiles(releasesPath, getPackageFilter(Architecture.x86_64.getGlob()));
+    Map<String, String> arm64ReleaseFiles =
+        getReleaseFiles(releasesPath, getPackageFilter(Architecture.arm64.getGlob()));
+    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
+    Map<String, ReleaseMetadata> localReleases = new HashMap<>();
+    updateLocalReleases(localReleases, x86ReleaseFiles, releaseCharts, Architecture.x86_64);
+    updateLocalReleases(localReleases, arm64ReleaseFiles, releaseCharts, Architecture.arm64);
     return localReleases;
   }
 

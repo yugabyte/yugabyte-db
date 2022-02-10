@@ -4201,6 +4201,18 @@
       "required" : [ "nodes" ],
       "type" : "object"
     },
+    "Package" : {
+      "properties" : {
+        "arch" : {
+          "enum" : [ "x86_64", "arm64" ],
+          "type" : "string"
+        },
+        "path" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "PackagePaths" : {
       "properties" : {
         "x86_64" : {
@@ -4556,6 +4568,13 @@
           "description" : "Release notes",
           "items" : {
             "type" : "string"
+          },
+          "type" : "array"
+        },
+        "packages" : {
+          "description" : "Release packages",
+          "items" : {
+            "$ref" : "#/definitions/Package"
           },
           "type" : "array"
         },
