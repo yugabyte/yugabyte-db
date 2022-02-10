@@ -2231,7 +2231,6 @@ activate_virtualenv() {
     pip_no_cache="--no-cache-dir"
   fi
 
-  which pip3
   local pip_executable=pip3
   if ! "$yb_readonly_virtualenv"; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
