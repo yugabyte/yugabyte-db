@@ -44,8 +44,6 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
   static CHECKED_STATUS ValidateSplitCandidateTablet(const TabletInfo& tablet);
 
  private:
-  unordered_set<TabletId> FindSplitsWithTask(const vector<TableInfoPtr>& tables);
-
   bool ShouldSplitTablet(const TabletInfo& tablet);
 
   void ScheduleSplits(const unordered_set<TabletId>& splits_to_schedule);
