@@ -188,7 +188,7 @@ if checkIfTxAborted(err) {
 
 [Go PostgreSQL driver](../../../../reference/drivers/ysql-client-drivers/#go-postgresql-driver-pq)
 
-[Explore additional applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-develop)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 
