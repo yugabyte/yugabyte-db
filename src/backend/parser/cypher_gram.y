@@ -85,7 +85,7 @@
                  FALSE_P
                  IN IS
                  LIMIT
-                 MATCH
+                 MATCH MERGE
                  NOT NULL_P
                  OPTIONAL OR ORDER
                  REMOVE RETURN
@@ -126,6 +126,9 @@
 /* DELETE clause */
 %type <node> delete
 %type <boolean> detach_opt
+
+/* MERGE clause */
+%type <node> merge
 
 /* common */
 %type <node> where_opt
@@ -405,6 +408,7 @@ updating_clause:
     | set
     | remove
     | delete
+    | merge
     ;
 
 cypher_varlen_opt:
@@ -893,6 +897,21 @@ detach_opt:
     | /* EMPTY */
         {
             $$ = false;
+        }
+    ;
+
+/*
+ * MERGE clause
+ */
+merge:
+    MERGE path
+        {
+            cypher_merge *n;
+
+            n = make_ag_node(cypher_merge);
+            n->path = $2;
+
+            $$ = (Node *)n;
         }
     ;
 
@@ -1837,6 +1856,7 @@ safe_keywords:
     | IS         { $$ = pnstrdup($1, 2); }
     | LIMIT      { $$ = pnstrdup($1, 6); }
     | MATCH      { $$ = pnstrdup($1, 6); }
+    | MERGE      { $$ = pnstrdup($1, 6); }
     | NOT        { $$ = pnstrdup($1, 3); }
     | OPTIONAL   { $$ = pnstrdup($1, 8); }
     | OR         { $$ = pnstrdup($1, 2); }

@@ -192,6 +192,7 @@ void read_cypher_create_path(struct ExtensibleNode *node)
 
     READ_NODE_FIELD(target_nodes);
     READ_INT_FIELD(path_attr_num);
+    READ_STRING_FIELD(var_name);
 }
 
 /*
@@ -207,6 +208,8 @@ void read_cypher_target_node(struct ExtensibleNode *node)
     READ_ENUM_FIELD(dir, cypher_rel_dir);
     READ_NODE_FIELD(id_expr);
     READ_NODE_FIELD(id_expr_state);
+    READ_NODE_FIELD(prop_expr);
+    READ_NODE_FIELD(prop_expr_state);
     READ_INT_FIELD(prop_attr_num);
     READ_NODE_FIELD(resultRelInfo);
     READ_NODE_FIELD(elemTupleSlot);
@@ -272,4 +275,18 @@ void read_cypher_delete_item(struct ExtensibleNode *node)
 
     READ_NODE_FIELD(entity_position);
     READ_STRING_FIELD(var_name);
+}
+
+/*
+ * Deserialize a string representing the cypher_merge_information
+ * data structure.
+ */
+void read_cypher_merge_information(struct ExtensibleNode *node)
+{
+    READ_LOCALS(cypher_merge_information);
+
+    READ_INT_FIELD(flags);
+    READ_OID_FIELD(graph_oid);
+    READ_INT_FIELD(merge_function_attr);
+    READ_NODE_FIELD(path);
 }

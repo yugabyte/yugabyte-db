@@ -27,6 +27,7 @@ OBJS = src/backend/age.o \
        src/backend/commands/graph_commands.o \
        src/backend/commands/label_commands.o \
        src/backend/executor/cypher_create.o \
+       src/backend/executor/cypher_merge.o \
        src/backend/executor/cypher_set.o \
        src/backend/executor/cypher_utils.o \
        src/backend/nodes/ag_nodes.o \
@@ -79,6 +80,7 @@ REGRESS = scan \
           cypher_with \
           cypher_vle \
           cypher_union \
+          cypher_merge \
           drop
 
 srcdir=`pwd`

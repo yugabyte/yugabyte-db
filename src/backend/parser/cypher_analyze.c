@@ -402,8 +402,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
      * coercion logic applied to them because we are forcing the column
      * definition list to be a particular way in this case.
      */
-    if (is_ag_node(llast(stmt), cypher_create)  || is_ag_node(llast(stmt), cypher_set) ||
-        is_ag_node(llast(stmt), cypher_delete))
+    if (is_ag_node(llast(stmt), cypher_create) || is_ag_node(llast(stmt), cypher_set) ||
+        is_ag_node(llast(stmt), cypher_delete) || is_ag_node(llast(stmt), cypher_merge))
     {
         // column definition list must be ... AS relname(colname agtype) ...
         if (!(rtfunc->funccolcount == 1 &&

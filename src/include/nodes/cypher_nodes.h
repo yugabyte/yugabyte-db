@@ -122,6 +122,12 @@ typedef struct cypher_unwind
     ResTarget *target;
 } cypher_unwind;
 
+typedef struct cypher_merge
+{
+    ExtensibleNode extensible;
+    Node *path;
+} cypher_merge;
+
 /*
  * pattern
  */
@@ -231,6 +237,7 @@ typedef struct cypher_create_path
     ExtensibleNode extensible;
     List *target_nodes;
     AttrNumber path_attr_num;
+    char *var_name;
 } cypher_create_path;
 
 #define CYPHER_CLAUSE_FLAG_NONE 0x0000
@@ -272,6 +279,9 @@ typedef struct cypher_target_node
      */
     Expr *id_expr;
     ExprState *id_expr_state;
+
+    Expr *prop_expr;
+    ExprState *prop_expr_state;
     /*
      * Attribute Number that this entity's properties
      * are stored in the CustomScanState's child TupleTableSlot
@@ -309,6 +319,8 @@ typedef struct cypher_target_node
 #define CYPHER_TARGET_NODE_IS_VAR 0x0004
 // node is an element in a path variable
 #define CYPHER_TARGET_NODE_IN_PATH_VAR 0x0008
+
+#define CYPHER_TARGET_NODE_MERGE_EXISTS 0x0010
 
 #define CYPHER_TARGET_NODE_OUTPUT(flags) \
     (flags & (CYPHER_TARGET_NODE_IS_VAR | CYPHER_TARGET_NODE_IN_PATH_VAR))
@@ -370,6 +382,15 @@ typedef struct cypher_delete_item
     Value *entity_position;
     char *var_name;
 } cypher_delete_item;
+
+typedef struct cypher_merge_information
+{
+    ExtensibleNode extensible;
+    int flags;
+    Oid graph_oid;
+    AttrNumber merge_function_attr;
+    cypher_create_path *path;
+} cypher_merge_information;
 
 /* grammar node for typecasts */
 typedef struct cypher_typecast

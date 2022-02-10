@@ -75,11 +75,30 @@ typedef struct cypher_delete_custom_scan_state
     List *edge_labels;
 } cypher_delete_custom_scan_state;
 
+typedef struct cypher_merge_custom_scan_state
+{
+    CustomScanState css;
+    CustomScan *cs;
+    cypher_merge_information *merge_information;
+    int flags;
+    cypher_create_path *path;
+    List *path_values;
+    Oid graph_oid;
+    AttrNumber merge_function_attr;
+    bool created_new_path;
+    bool found_a_path;
+} cypher_merge_custom_scan_state;
+
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *properties);
 TupleTableSlot *populate_edge_tts(
     TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *startid,
     agtype_value *endid, agtype_value *properties);
 
 ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name, char *label_name);
+
+bool entity_exists(EState *estate, Oid graph_oid, graphid id);
+HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
+                              TupleTableSlot *elemTupleSlot,
+                              EState *estate);
 
 #endif

@@ -51,10 +51,9 @@ static void create_edge(cypher_create_custom_scan_state *css,
 
 static Datum create_vertex(cypher_create_custom_scan_state *css,
                            cypher_target_node *node, ListCell *next);
-static HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
-                                TupleTableSlot *elemTupleSlot, EState *estate);
+
 static void process_pattern(cypher_create_custom_scan_state *css);
-static bool entity_exists(EState *estate, Oid graph_oid, graphid id);
+
 
 const CustomExecMethods cypher_create_exec_methods = {CREATE_SCAN_STATE_NAME,
                                                       begin_cypher_create,
@@ -594,73 +593,3 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
     return id;
 }
 
-/*
- * Find out if the entity still exists. This is for 'implicit' deletion
- * of an entity.
- */
-static bool entity_exists(EState *estate, Oid graph_oid, graphid id)
-{
-    label_cache_data *label;
-    ScanKeyData scan_keys[1];
-    HeapScanDesc scan_desc;
-    HeapTuple tuple;
-    Relation rel;
-    bool result = true;
-
-    /*
-     * Extract the label id from the graph id and get the table name
-     * the entity is part of.
-     */
-    label = search_label_graph_id_cache(graph_oid, GET_LABEL_ID(id));
-
-    // Setup the scan key to be the graphid
-    ScanKeyInit(&scan_keys[0], 1, BTEqualStrategyNumber,
-                F_GRAPHIDEQ, GRAPHID_GET_DATUM(id));
-
-    rel = heap_open(label->relation, RowExclusiveLock);
-    scan_desc = heap_beginscan(rel, estate->es_snapshot, 1, scan_keys);
-
-    tuple = heap_getnext(scan_desc, ForwardScanDirection);
-
-    /*
-     * If a single tuple was returned, the tuple is still valid, otherwise'
-     * set to false.
-     */
-    if (!HeapTupleIsValid(tuple))
-        result = false;
-
-    heap_endscan(scan_desc);
-    heap_close(rel, RowExclusiveLock);
-
-    return result;
-}
-
-/*
- * Insert the edge/vertex tuple into the table and indices. If the table's
- * constraints have not been violated.
- */
-static HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
-                                     TupleTableSlot *elemTupleSlot,
-                                     EState *estate)
-{
-    HeapTuple tuple;
-
-    ExecStoreVirtualTuple(elemTupleSlot);
-    tuple = ExecMaterializeSlot(elemTupleSlot);
-
-    // Check the constraints of the tuple
-    tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
-    if (resultRelInfo->ri_RelationDesc->rd_att->constr != NULL)
-        ExecConstraints(resultRelInfo, elemTupleSlot, estate);
-
-    // Insert the tuple normally
-    heap_insert(resultRelInfo->ri_RelationDesc, tuple,
-                GetCurrentCommandId(true), 0, NULL);
-
-    // Insert index entries for the tuple
-    if (resultRelInfo->ri_NumIndices > 0)
-        ExecInsertIndexTuples(elemTupleSlot, &(tuple->t_self), estate, false,
-                              NULL, NIL);
-
-    return tuple;
-}

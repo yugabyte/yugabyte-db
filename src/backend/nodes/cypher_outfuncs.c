@@ -175,6 +175,14 @@ void out_cypher_unwind(StringInfo str, const ExtensibleNode *node)
     WRITE_NODE_FIELD(target);
 }
 
+// serialization function for the cypher_delete ExtensibleNode.
+void out_cypher_merge(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_merge);
+
+    WRITE_NODE_FIELD(path);
+}
+
 // serialization function for the cypher_path ExtensibleNode.
 void out_cypher_path(StringInfo str, const ExtensibleNode *node)
 {
@@ -300,6 +308,7 @@ void out_cypher_create_path(StringInfo str, const ExtensibleNode *node)
 
     WRITE_NODE_FIELD(target_nodes);
     WRITE_INT32_FIELD(path_attr_num);
+    WRITE_STRING_FIELD(var_name);
 }
 
 // serialization function for the cypher_target_node ExtensibleNode.
@@ -312,6 +321,8 @@ void out_cypher_target_node(StringInfo str, const ExtensibleNode *node)
     WRITE_ENUM_FIELD(dir, cypher_rel_dir);
     WRITE_NODE_FIELD(id_expr);
     WRITE_NODE_FIELD(id_expr_state);
+    WRITE_NODE_FIELD(prop_expr);
+    WRITE_NODE_FIELD(prop_expr_state);
     WRITE_INT32_FIELD(prop_attr_num);
     WRITE_NODE_FIELD(resultRelInfo);
     WRITE_NODE_FIELD(elemTupleSlot);
@@ -375,6 +386,17 @@ void out_cypher_union(StringInfo str, const ExtensibleNode *node)
     WRITE_ENUM_FIELD(op, SetOperation);
     WRITE_NODE_FIELD(larg);
     WRITE_NODE_FIELD(rarg);
+}
+
+// serialization function for the cypher_merge_information ExtensibleNode.
+void out_cypher_merge_information(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_merge_information);
+
+    WRITE_INT32_FIELD(flags);
+    WRITE_OID_FIELD(graph_oid);
+    WRITE_INT32_FIELD(merge_function_attr);
+    WRITE_NODE_FIELD(path);
 }
 
 /*

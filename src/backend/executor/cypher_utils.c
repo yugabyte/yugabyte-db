@@ -43,6 +43,7 @@
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
 #include "utils/agtype.h"
+#include "utils/ag_cache.h"
 #include "utils/graphid.h"
 
 ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name, char *label_name)
@@ -81,8 +82,10 @@ TupleTableSlot *populate_vertex_tts(
     bool properties_isnull;
 
     if (id == NULL)
+    {
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                         errmsg("vertex id field cannot be NULL")));
+    }
 
     properties_isnull = properties == NULL;
 
@@ -103,16 +106,21 @@ TupleTableSlot *populate_edge_tts(
     bool properties_isnull;
 
     if (id == NULL)
+    {
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                         errmsg("edge id field cannot be NULL")));
+    }
     if (startid == NULL)
+    {
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                         errmsg("edge start_id field cannot be NULL")));
+    }
 
     if (endid == NULL)
+    {
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                         errmsg("edge end_id field cannot be NULL")));
-
+    }
 
     properties_isnull = properties == NULL;
 
@@ -133,4 +141,82 @@ TupleTableSlot *populate_edge_tts(
     elemTupleSlot->tts_isnull[edge_tuple_properties] = properties_isnull;
 
     return elemTupleSlot;
+}
+
+
+/*
+ * Find out if the entity still exists. This is for 'implicit' deletion
+ * of an entity.
+ */
+bool entity_exists(EState *estate, Oid graph_oid, graphid id)
+{
+    label_cache_data *label;
+    ScanKeyData scan_keys[1];
+    HeapScanDesc scan_desc;
+    HeapTuple tuple;
+    Relation rel;
+    bool result = true;
+
+    /*
+     * Extract the label id from the graph id and get the table name
+     * the entity is part of.
+     */
+    label = search_label_graph_id_cache(graph_oid, GET_LABEL_ID(id));
+
+    // Setup the scan key to be the graphid
+    ScanKeyInit(&scan_keys[0], 1, BTEqualStrategyNumber,
+                F_GRAPHIDEQ, GRAPHID_GET_DATUM(id));
+
+    rel = heap_open(label->relation, RowExclusiveLock);
+    scan_desc = heap_beginscan(rel, estate->es_snapshot, 1, scan_keys);
+
+    tuple = heap_getnext(scan_desc, ForwardScanDirection);
+
+    /*
+     * If a single tuple was returned, the tuple is still valid, otherwise'
+     * set to false.
+     */
+    if (!HeapTupleIsValid(tuple))
+    {
+        result = false;
+    }
+
+    heap_endscan(scan_desc);
+    heap_close(rel, RowExclusiveLock);
+
+    return result;
+}
+
+/*
+ * Insert the edge/vertex tuple into the table and indices. If the table's
+ * constraints have not been violated.
+ */
+HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
+                              TupleTableSlot *elemTupleSlot,
+                              EState *estate)
+{
+    HeapTuple tuple;
+
+    ExecStoreVirtualTuple(elemTupleSlot);
+    tuple = ExecMaterializeSlot(elemTupleSlot);
+
+    // Check the constraints of the tuple
+    tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
+    if (resultRelInfo->ri_RelationDesc->rd_att->constr != NULL)
+    {
+        ExecConstraints(resultRelInfo, elemTupleSlot, estate);
+    }
+
+    // Insert the tuple normally
+    heap_insert(resultRelInfo->ri_RelationDesc, tuple,
+                GetCurrentCommandId(true), 0, NULL);
+
+    // Insert index entries for the tuple
+    if (resultRelInfo->ri_NumIndices > 0)
+    {
+        ExecInsertIndexTuples(elemTupleSlot, &(tuple->t_self), estate, false,
+                              NULL, NIL);
+    }
+
+    return tuple;
 }

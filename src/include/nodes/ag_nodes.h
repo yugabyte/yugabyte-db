@@ -42,6 +42,7 @@ typedef enum ag_node_tag
     cypher_delete_t,
     cypher_union_t,
     cypher_unwind_t,
+    cypher_merge_t,
     // pattern
     cypher_path_t,
     cypher_node_t,
@@ -68,7 +69,8 @@ typedef enum ag_node_tag
     cypher_update_item_t,
     // delete data structures
     cypher_delete_information_t,
-    cypher_delete_item_t
+    cypher_delete_item_t,
+    cypher_merge_information_t
 } ag_node_tag;
 
 void register_ag_nodes(void);

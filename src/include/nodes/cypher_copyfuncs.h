@@ -47,4 +47,6 @@ void copy_cypher_update_item(ExtensibleNode *newnode, const ExtensibleNode *from
 void copy_cypher_delete_information(ExtensibleNode *newnode, const ExtensibleNode *from);
 void copy_cypher_delete_item(ExtensibleNode *newnode, const ExtensibleNode *from);
 
+// merge data structure
+void copy_cypher_merge_information(ExtensibleNode *newnode, const ExtensibleNode *from);
 #endif

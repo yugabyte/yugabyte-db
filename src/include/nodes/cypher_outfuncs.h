@@ -42,6 +42,7 @@ void out_cypher_delete(StringInfo str, const ExtensibleNode *node);
 void out_cypher_union(StringInfo str, const ExtensibleNode *node);
 void out_cypher_union_stmt(StringInfo str, const ExtensibleNode *node);
 void out_cypher_unwind(StringInfo str, const ExtensibleNode *node);
+void out_cypher_merge(StringInfo str, const ExtensibleNode *node);
 
 // pattern
 void out_cypher_path(StringInfo str, const ExtensibleNode *node);
@@ -78,5 +79,8 @@ void out_cypher_update_item(StringInfo str, const ExtensibleNode *node);
 // delete private data structures
 void out_cypher_delete_information(StringInfo str, const ExtensibleNode *node);
 void out_cypher_delete_item(StringInfo str, const ExtensibleNode *node);
+
+// merge private data structures
+void out_cypher_merge_information(StringInfo str, const ExtensibleNode *node);
 
 #endif

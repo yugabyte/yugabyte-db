@@ -41,6 +41,7 @@ const char *node_names[] = {
     "cypher_delete",
     "cypher_union",
     "cypher_unwind",
+    "cypher_merge",
     "cypher_path",
     "cypher_node",
     "cypher_relationship",
@@ -58,7 +59,8 @@ const char *node_names[] = {
     "cypher_update_information",
     "cypher_update_item",
     "cypher_delete_information",
-    "cypher_delete_item"
+    "cypher_delete_item",
+    "cypher_merge_information"
 };
 
 /*
@@ -102,6 +104,7 @@ const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS(cypher_delete),
     DEFINE_NODE_METHODS(cypher_union),
     DEFINE_NODE_METHODS(cypher_unwind),
+    DEFINE_NODE_METHODS(cypher_merge),
     DEFINE_NODE_METHODS(cypher_path),
     DEFINE_NODE_METHODS(cypher_node),
     DEFINE_NODE_METHODS(cypher_relationship),
@@ -119,7 +122,8 @@ const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS_EXTENDED(cypher_update_information),
     DEFINE_NODE_METHODS_EXTENDED(cypher_update_item),
     DEFINE_NODE_METHODS_EXTENDED(cypher_delete_information),
-    DEFINE_NODE_METHODS_EXTENDED(cypher_delete_item)
+    DEFINE_NODE_METHODS_EXTENDED(cypher_delete_item),
+    DEFINE_NODE_METHODS_EXTENDED(cypher_merge_information)
 };
 
 static bool equal_ag_node(const ExtensibleNode *a, const ExtensibleNode *b)
