@@ -185,7 +185,7 @@ if (PQresultStatus(res) != PGRES_COMMAND_OK) {
 
 [libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq)
 
-[Explore additional applications](../../../cloud-develop)
+[Explore more applications](../../../cloud-develop)
 
 [Deploy clusters in Yugabyte Cloud](../../../cloud-basics)
 
