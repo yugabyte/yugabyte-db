@@ -91,7 +91,7 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   }
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
@@ -126,7 +126,7 @@ TEST_F(YBTsCliTest, TestTabletServerReadiness) {
   }
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }

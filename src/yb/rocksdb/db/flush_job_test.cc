@@ -42,7 +42,7 @@ namespace rocksdb {
 // TODO(icanadi) Mock out everything else:
 // 1. VersionSet
 // 2. Memtable
-class FlushJobTest : public testing::Test {
+class FlushJobTest : public RocksDBTest {
  public:
   FlushJobTest()
       : env_(Env::Default()),
@@ -114,7 +114,10 @@ TEST_F(FlushJobTest, Empty) {
       *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
       &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
       &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
-  ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
+  {
+    InstrumentedMutexLock l(&mutex_);
+    ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
+  }
   job_context.Clean();
 }
 
@@ -161,9 +164,10 @@ TEST_F(FlushJobTest, NonEmpty) {
       &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
       &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
   FileMetaData fd;
-  mutex_.Lock();
-  ASSERT_OK(yb::ResultToStatus(flush_job.Run(&fd)));
-  mutex_.Unlock();
+  {
+    InstrumentedMutexLock l(&mutex_);
+    ASSERT_OK(yb::ResultToStatus(flush_job.Run(&fd)));
+  }
   ASSERT_EQ(ToString(0), fd.smallest.key.user_key().ToString());
   ASSERT_EQ(ToString(9999), fd.largest.key.user_key().ToString());
   ASSERT_EQ(1, fd.smallest.seqno);
@@ -229,9 +233,10 @@ TEST_F(FlushJobTest, Snapshots) {
       &disable_flush_on_shutdown_, snapshots, kMaxSequenceNumber, MemTableFilter(),
       &file_numbers_provider, &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
       &event_logger);
-  mutex_.Lock();
-  ASSERT_OK(ResultToStatus(flush_job.Run()));
-  mutex_.Unlock();
+  {
+    InstrumentedMutexLock l(&mutex_);
+    ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
+  }
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();
 }

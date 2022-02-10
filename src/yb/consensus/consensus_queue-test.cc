@@ -54,7 +54,7 @@
 #include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_data_block_fsync);
-DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -137,8 +137,7 @@ class ConsensusQueueTest : public YBTest {
                                ConsensusResponsePB* response,
                                const OpIdPB& last_received,
                                const OpIdPB& last_received_current_leader,
-                               int last_committed_idx) {
-
+                               int64_t last_committed_idx) {
     queue_->TrackPeer(kPeerUuid);
     response->set_responder_uuid(kPeerUuid);
 
@@ -181,7 +180,7 @@ class ConsensusQueueTest : public YBTest {
     StatusToPB(STATUS(IllegalState, "LMP failed."), error->mutable_status());
   }
 
-  void WaitForLocalPeerToAckIndex(int index) {
+  void WaitForLocalPeerToAckIndex(int64_t index) {
     while (true) {
       PeerMessageQueue::TrackedPeer leader = queue_->GetTrackedPeerForTests(kLeaderUuid);
       if (leader.last_received.index >= index) {
@@ -195,7 +194,7 @@ class ConsensusQueueTest : public YBTest {
   void SetLastReceivedAndLastCommitted(ConsensusResponsePB* response,
                                        const OpId& last_received,
                                        const OpId& last_received_current_leader,
-                                       int last_committed_idx) {
+                                       int64_t last_committed_idx) {
     last_received.ToPB(response->mutable_status()->mutable_last_received());
     last_received_current_leader.ToPB(
         response->mutable_status()->mutable_last_received_current_leader());
@@ -205,7 +204,7 @@ class ConsensusQueueTest : public YBTest {
   // Like the above but uses the same last_received for current term.
   void SetLastReceivedAndLastCommitted(ConsensusResponsePB* response,
                                        const OpId& last_received,
-                                       int last_committed_idx) {
+                                       int64_t last_committed_idx) {
     SetLastReceivedAndLastCommitted(response, last_received, last_received, last_committed_idx);
   }
 

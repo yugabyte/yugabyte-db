@@ -10,7 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -26,7 +25,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Matchers;
-import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +36,6 @@ public class SchedulerTest extends FakeDBApplication {
 
   private static Commissioner mockCommissioner;
   private CustomerConfig s3StorageConfig;
-  @Mock private Scheduler mockScheduler;
   com.yugabyte.yw.scheduler.Scheduler scheduler;
   Customer defaultCustomer;
   ActorSystem mockActorSystem;
@@ -52,7 +49,6 @@ public class SchedulerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST28");
 
-    when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
     scheduler =
         new com.yugabyte.yw.scheduler.Scheduler(
             mockActorSystem, mockExecutionContext, mockCommissioner);

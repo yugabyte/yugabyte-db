@@ -174,16 +174,14 @@ bool CatalogManagerUtil::IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInf
           lhs.placement_zone() == rhs.placement_zone());
 }
 
-Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
-                                                             const CloudInfoPB& cloud_info) {
+bool CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
+                                                           const CloudInfoPB& cloud_info) {
   for (const auto& placement_block : placement_info.placement_blocks()) {
     if (IsCloudInfoEqual(placement_block.cloud_info(), cloud_info)) {
-      return Status::OK();
+      return true;
     }
   }
-  return STATUS_SUBSTITUTE(InvalidArgument, "Placement info $0 does not contain cloud info $1",
-                           placement_info.DebugString(),
-                           TSDescriptor::generate_placement_id(cloud_info));
+  return false;
 }
 
 Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
@@ -200,7 +198,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
       std::vector<std::string> placement_uuid_matches;
       for (const auto& placement_info : replication_info.read_replicas()) {
         if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(
-            placement_info, peer.cloud_info()).ok()) {
+            placement_info, peer.cloud_info())) {
           placement_uuid_matches.push_back(placement_info.placement_uuid());
         }
       }
@@ -224,6 +222,9 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
 
 CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     const scoped_refptr<TabletInfo>& tablet) {
+  static const auto stringify_partition_key = [](const Slice& key) {
+    return key.empty() ? "{empty}" : key.ToDebugString();
+  };
   const auto& tablet_id = tablet->tablet_id();
 
   const auto tablet_lock = tablet->LockForRead();
@@ -261,8 +262,9 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
       return STATUS_FORMAT(
           IllegalState,
           "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
-          tablet_id, Slice(partition_key).ToDebugString(),
-          Slice(inner_partition.partition_key_start()).ToDebugString());
+          tablet_id,
+          stringify_partition_key(partition_key),
+          stringify_partition_key(inner_partition.partition_key_start()));
     }
     partition_key = inner_partition.partition_key_end();
     if (!partition.partition_key_end().empty() && partition_key >= partition.partition_key_end()) {
@@ -273,8 +275,9 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     return STATUS_FORMAT(
         IllegalState,
         "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
-        tablet_id, Slice(partition_key).ToDebugString(),
-        Slice(partition.partition_key_end()).ToDebugString());
+        tablet_id,
+        stringify_partition_key(partition_key),
+        stringify_partition_key(partition.partition_key_end()));
   }
   return Status::OK();
 }

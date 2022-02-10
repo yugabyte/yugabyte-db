@@ -45,21 +45,27 @@
  */
 
 // The OS-specific header included below must provide two calls:
-// base::internal::SpinLockDelay() and base::internal::SpinLockWake().
+// yb::base::internal::SpinLockDelay() and yb::base::internal::SpinLockWake().
 // See spinlock_internal.h for the spec of SpinLockWake().
 
 // void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop)
 // SpinLockDelay() generates an apprproate spin delay on iteration "loop" of a
 // spin loop on location *w, whose previously observed value was "value".
 // SpinLockDelay() may do nothing, may yield the CPU, may sleep a clock tick,
-// or may wait for a delay that can be truncated by a call to SpinlockWake(w).
-// In all cases, it must return in bounded time even if SpinlockWake() is not
+// or may wait for a delay that can be truncated by a call to SpinLockWake(w).
+// In all cases, it must return in bounded time even if SpinLockWake() is not
 // called.
 
 #include "yb/gutil/spinlock_internal.h"
 
 // forward declaration for use by spinlock_*-inl.h
-namespace base { namespace internal { static int SuggestedDelayNS(int loop); }}
+namespace yb {
+namespace base {
+namespace internal {
+static int SuggestedDelayNS(int loop);
+}  // namespace internal
+}  // namespace base
+}  // namespace yb
 
 #if defined(_WIN32)
 #include "yb/gutil/spinlock_win32-inl.h"
@@ -69,6 +75,7 @@ namespace base { namespace internal { static int SuggestedDelayNS(int loop); }}
 #include "yb/gutil/spinlock_posix-inl.h"
 #endif
 
+namespace yb {
 namespace base {
 namespace internal {
 
@@ -78,14 +85,14 @@ int32 SpinLockWait(volatile Atomic32 *w, int n,
   int32 v;
   bool done = false;
   for (int loop = 0; !done; loop++) {
-    v = base::subtle::Acquire_Load(w);
+    v = ::base::subtle::Acquire_Load(w);
     int i;
     for (i = 0; i != n && v != trans[i].from; i++) {
     }
     if (i == n) {
       SpinLockDelay(w, v, loop);     // no matching transition
     } else if (trans[i].to == v ||   // null transition
-               base::subtle::Acquire_CompareAndSwap(w, v, trans[i].to) == v) {
+               ::base::subtle::Acquire_CompareAndSwap(w, v, trans[i].to) == v) {
       done = trans[i].done;
     }
   }
@@ -97,10 +104,10 @@ static int SuggestedDelayNS(int loop) {
   // Weak pseudo-random number generator to get some spread between threads
   // when many are spinning.
 #ifdef BASE_HAS_ATOMIC64
-  static base::subtle::Atomic64 rand;
-  uint64 r = base::subtle::NoBarrier_Load(&rand);
+  static ::base::subtle::Atomic64 rand;
+  uint64 r = ::base::subtle::NoBarrier_Load(&rand);
   r = 0x5deece66dLL * r + 0xb;   // numbers from nrand48()
-  base::subtle::NoBarrier_Store(&rand, r);
+  ::base::subtle::NoBarrier_Store(&rand, r);
 
   r <<= 16;   // 48-bit random number now in top 48-bits.
   if (loop < 0 || loop > 32) {   // limit loop to 0..32
@@ -112,12 +119,12 @@ static int SuggestedDelayNS(int loop) {
   // Mean is exponential in loop for first 32 iterations, then 8ms.
   // The futex path multiplies this by 16, since we expect explicit wakeups
   // almost always on that path.
-  return r >> (44 - (loop >> 3));
+  return static_cast<int>(r >> (44 - (loop >> 3)));
 #else
   static Atomic32 rand;
-  uint32 r = base::subtle::NoBarrier_Load(&rand);
+  uint32 r = ::base::subtle::NoBarrier_Load(&rand);
   r = 0x343fd * r + 0x269ec3;   // numbers from MSVC++
-  base::subtle::NoBarrier_Store(&rand, r);
+  ::base::subtle::NoBarrier_Store(&rand, r);
 
   r <<= 1;   // 31-bit random number now in top 31-bits.
   if (loop < 0 || loop > 32) {   // limit loop to 0..32
@@ -135,3 +142,4 @@ static int SuggestedDelayNS(int loop) {
 
 } // namespace internal
 } // namespace base
+} // namespace yb

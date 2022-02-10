@@ -17,9 +17,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
@@ -36,7 +34,7 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.EditProviderRequest;
@@ -60,6 +58,10 @@ import java.util.UUID;
 import javax.persistence.PersistenceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
 import play.Configuration;
 import play.Environment;
 import play.libs.Json;
@@ -86,7 +88,7 @@ public class CloudProviderHandler {
   @Inject private DnsManager dnsManager;
   @Inject private Environment environment;
   @Inject private CloudAPI.Factory cloudAPIFactory;
-  @Inject private KubernetesManager kubernetesManager;
+  @Inject private KubernetesManagerFactory kubernetesManagerFactory;
   @Inject private Configuration appConfig;
   @Inject private Config config;
   @Inject private CloudQueryHelper queryHelper;
@@ -105,7 +107,8 @@ public class CloudProviderHandler {
       if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
         new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
       }
-      accessManager.deleteKeyByProvider(provider, accessKey.getKeyCode());
+      accessManager.deleteKeyByProvider(
+          provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
       accessKey.delete();
     }
     NodeInstance.deleteByProvider(provider.uuid);
@@ -219,7 +222,7 @@ public class CloudProviderHandler {
         boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
         if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
           // Use in-cluster ServiceAccount credentials
-          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+          az.updateConfig(ImmutableMap.of("KUBECONFIG", ""));
           az.save();
         }
       }
@@ -287,7 +290,7 @@ public class CloudProviderHandler {
         boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
         if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
           // Use in-cluster ServiceAccount credentials
-          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+          az.updateConfig(ImmutableMap.of("KUBECONFIG", ""));
           az.save();
         }
       }
@@ -438,7 +441,6 @@ public class CloudProviderHandler {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "No region and zone information found.");
       }
-
       String storageClass = appConfig.getString("yb.kubernetes.storageClass");
       String pullSecretName = appConfig.getString("yb.kubernetes.pullSecretName");
       if (storageClass == null || pullSecretName == null) {
@@ -481,38 +483,40 @@ public class CloudProviderHandler {
 
   // topology/failure-domain labels from the Kubernetes nodes.
   private Multimap<String, String> computeKubernetesRegionToZoneInfo() {
-    JsonNode nodeInfos = kubernetesManager.getNodeInfos(null);
+    List<Node> nodes = kubernetesManagerFactory.getManager().getNodeInfos(null);
     Multimap<String, String> regionToAZ = HashMultimap.create();
-    for (JsonNode nodeInfo : nodeInfos.path("items")) {
-      JsonNode nodeLabels = nodeInfo.path("metadata").path("labels");
-      // failure-domain.beta.k8s.io is deprecated as of 1.17
-      String region = nodeLabels.path("topology.kubernetes.io/region").asText();
-      if (region.isEmpty()) {
-        region = nodeLabels.path("failure-domain.beta.kubernetes.io/region").asText();
-      }
-      String zone = nodeLabels.path("topology.kubernetes.io/zone").asText();
-      zone =
-          zone.isEmpty()
-              ? nodeLabels.path("failure-domain.beta.kubernetes.io/zone").asText()
-              : zone;
-      if (region.isEmpty() || zone.isEmpty()) {
-        LOG.debug(
-            "Value of the zone or region label is empty for "
-                + nodeInfo.path("metadata").path("name").asText()
-                + ", skipping.");
-        continue;
-      }
-      regionToAZ.put(region, zone);
-    }
+    nodes.forEach(
+        node -> {
+          Map<String, String> labels = node.getMetadata().getLabels();
+          if (labels == null) {
+            return;
+          }
+          String region = labels.get("topology.kubernetes.io/region");
+          if (region == null) {
+            region = labels.get("failure-domain.beta.kubernetes.io/region");
+          }
+          String zone = labels.get("topology.kubernetes.io/zone");
+          if (zone == null) {
+            zone = labels.get("failure-domain.beta.kubernetes.io/zone");
+          }
+          if (region == null || zone == null) {
+            LOG.debug(
+                "Value of the zone or region label is empty for "
+                    + node.getMetadata().getName()
+                    + ", skipping.");
+            return;
+          }
+          regionToAZ.put(region, zone);
+        });
     return regionToAZ;
   } // Fetches the secret secretName from current namespace, removes
 
   // extra metadata and returns the secret as JSON string. Returns
   // null if the secret is not present.
   private String getKubernetesPullSecretContent(String secretName) {
-    JsonNode pullSecretJson;
+    Secret pullSecret;
     try {
-      pullSecretJson = kubernetesManager.getSecret(null, secretName, null);
+      pullSecret = kubernetesManagerFactory.getManager().getSecret(null, secretName, null);
     } catch (RuntimeException e) {
       if (e.getMessage().contains("Error from server (NotFound): secrets")) {
         LOG.debug(
@@ -521,22 +525,24 @@ public class CloudProviderHandler {
       }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to fetch the pull secret.");
     }
-    JsonNode secretMetadata = pullSecretJson.get("metadata");
-    if (secretMetadata == null) {
+    if (pullSecret.getMetadata() == null) {
       LOG.error(
           "metadata of the pull secret " + secretName + " is missing. This should never happen.");
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Error while fetching the pull secret.");
     }
-    ((ObjectNode) secretMetadata)
-        .remove(
-            ImmutableList.of(
-                "namespace", "uid", "selfLink", "creationTimestamp", "resourceVersion"));
-    JsonNode secretAnnotations = secretMetadata.get("annotations");
-    if (secretAnnotations != null) {
-      ((ObjectNode) secretAnnotations).remove("kubectl.kubernetes.io/last-applied-configuration");
+
+    ObjectMeta metadata = pullSecret.getMetadata();
+    metadata.setNamespace(null);
+    metadata.setUid(null);
+    metadata.setSelfLink(null);
+    metadata.setCreationTimestamp(null);
+    metadata.setResourceVersion(null);
+
+    if (metadata.getAnnotations() != null) {
+      metadata.getAnnotations().remove("kubectl.kubernetes.io/last-applied-configuration");
     }
-    return pullSecretJson.toString();
+    return pullSecret.toString();
   }
 
   public Provider setupNewDockerProvider(Customer customer) {

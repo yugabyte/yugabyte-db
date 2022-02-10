@@ -196,6 +196,8 @@ message GetTableSchemaResponsePB {
   optional bool colocated = 13;
 
   optional bool is_compatible_with_previous_version = 14 [default = false];
+
+  optional uint32 wal_retention_secs = 15;
 }
 
 message GetColocatedTabletSchemaRequestPB {
@@ -490,6 +492,9 @@ message CreateTablegroupRequestPB {
   required bytes id = 1;
   required bytes namespace_id = 2;
   optional string namespace_name = 3;
+
+  // This denotes the tablespace that this tablegroup is associated with.
+  optional bytes tablespace_id = 4;
 }
 
 message CreateTablegroupResponsePB {

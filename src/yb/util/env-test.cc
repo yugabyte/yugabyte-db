@@ -130,7 +130,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
  protected:
 
   void VerifyTestData(const Slice& read_data, size_t offset) {
-    for (int i = 0; i < read_data.size(); i++) {
+    for (size_t i = 0; i < read_data.size(); i++) {
       size_t file_offset = offset + i;
       ASSERT_EQ((file_offset * 31) & 0xff, read_data[i]) << "failed at " << i;
     }
@@ -149,19 +149,19 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
     ASSERT_EQ(file_checksum, expected_checksum) << "File checksum didn't match expected checksum";
   }
 
-  void MakeVectors(int num_slices, int slice_size, int num_iterations,
+  void MakeVectors(size_t num_slices, size_t slice_size, size_t num_iterations,
                    std::unique_ptr<faststring[]>* data, vector<vector<Slice > >* vec) {
     data->reset(new faststring[num_iterations * num_slices]);
     vec->resize(num_iterations);
 
     int data_idx = 0;
     int byte_idx = 0;
-    for (int vec_idx = 0; vec_idx < num_iterations; vec_idx++) {
+    for (size_t vec_idx = 0; vec_idx < num_iterations; vec_idx++) {
       vector<Slice>& iter_vec = vec->at(vec_idx);
       iter_vec.resize(num_slices);
-      for (int i = 0; i < num_slices; i++) {
+      for (size_t i = 0; i < num_slices; i++) {
         (*data)[data_idx].resize(slice_size);
-        for (int j = 0; j < slice_size; j++) {
+        for (size_t j = 0; j < slice_size; j++) {
           (*data)[data_idx][j] = (byte_idx * 31) & 0xff;
           ++byte_idx;
         }
@@ -208,7 +208,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
         "appending a vector of slices(number of slices=$0,size of slice=$1 b) $2 times",
         num_slices, slice_size, iterations);
     LOG_TIMING(INFO, test_descr)  {
-      for (int i = 0; i < iterations; i++) {
+      for (size_t i = 0; i < iterations; i++) {
         if (fast || random() % 2) {
           ASSERT_OK(file->AppendVector(input[i]));
         } else {
@@ -234,7 +234,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
     if (fast) {
       ASSERT_OK(env_util::OpenFileForRandom(env_.get(), kTestPath, &raf));
     }
-    for (int i = 0; i < iterations; i++) {
+    for (size_t i = 0; i < iterations; i++) {
       ASSERT_NO_FATALS(ReadAndVerifyTestData(raf.get(), num_slices * slice_size * i,
                                                     num_slices * slice_size));
     }
@@ -454,7 +454,7 @@ class ShortReadRandomAccessFile : public RandomAccessFile {
     CHECK_GT(n, 0);
     // Divide the requested amount of data by a small integer,
     // and issue the shorter read to the underlying file.
-    int short_n = n / ((rand_r(&seed_) % 3) + 1);
+    auto short_n = n / ((rand_r(&seed_) % 3) + 1);
     if (short_n == 0) {
       short_n = 1;
     }
@@ -489,7 +489,7 @@ static void WriteTestFile(Env* env, const string& path, size_t size) {
   ASSERT_OK(env_util::OpenFileForWrite(env, path, &wf));
   faststring data;
   data.resize(size);
-  for (int i = 0; i < data.size(); i++) {
+  for (size_t i = 0; i < data.size(); i++) {
     data[i] = (i * 31) & 0xff;
   }
   ASSERT_OK(wf->Append(Slice(data)));

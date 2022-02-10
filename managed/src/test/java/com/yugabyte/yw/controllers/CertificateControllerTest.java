@@ -59,13 +59,15 @@ public class CertificateControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     for (String cert : test_certs) {
-      test_certs_uuids.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs"));
+      test_certs_uuids.add(
+          CertificateHelper.createRootCA(
+              cert, customer.uuid, "/tmp/" + getClass().getSimpleName() + "/certs"));
     }
   }
 
   @After
   public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File("/tmp/certs"));
+    FileUtils.deleteDirectory(new File("/tmp/" + getClass().getSimpleName() + "/certs"));
   }
 
   private Result listCertificates(UUID customerUUID) {
@@ -252,8 +254,7 @@ public class CertificateControllerTest extends FakeDBApplication {
   public void testUpdateCustomCertificate() throws IOException, NoSuchAlgorithmException {
     UUID certUUID = UUID.randomUUID();
     Date date = new Date();
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", "test-cert");
+    createTempFile("certificate_controller_test_ca.crt", "test-cert");
     CertificateParams.CustomCertInfo emptyCustomCertInfo = null;
     CertificateInfo.create(
         certUUID,
@@ -261,7 +262,7 @@ public class CertificateControllerTest extends FakeDBApplication {
         "test",
         date,
         date,
-        TestHelper.TMP_PATH + "/ca.crt",
+        TestHelper.TMP_PATH + "/certificate_controller_test_ca.crt",
         emptyCustomCertInfo);
     CertificateParams.CustomCertInfo customCertInfo =
         CertificateInfo.get(certUUID).getCustomCertInfo();
@@ -291,15 +292,14 @@ public class CertificateControllerTest extends FakeDBApplication {
     customCertInfo.rootCertPath = "rootCertPath";
     customCertInfo.nodeCertPath = "nodeCertPath";
     customCertInfo.nodeKeyPath = "nodeKeyPath";
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", "test-cert");
+    createTempFile("certificate_controller_test_ca.crt", "test-cert");
     CertificateInfo.create(
         certUUID,
         customer.uuid,
         "test",
         date,
         date,
-        TestHelper.TMP_PATH + "/ca.crt",
+        TestHelper.TMP_PATH + "/certificate_controller_test_ca.crt",
         customCertInfo);
     customCertInfo = CertificateInfo.get(certUUID).getCustomCertInfo();
     assertNotNull(customCertInfo);
@@ -328,7 +328,9 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certContent", cert_content);
-    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid, "/tmp");
+    UUID rootCA =
+        CertificateHelper.createRootCA(
+            "test-universe", customer.uuid, "/tmp/" + getClass().getSimpleName() + "/certs");
     Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -341,7 +343,9 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetRootCertificate() {
-    UUID rootCA = CertificateHelper.createRootCA("test-universe", customer.uuid, "/tmp");
+    UUID rootCA =
+        CertificateHelper.createRootCA(
+            "test-universe", customer.uuid, "/tmp/" + getClass().getSimpleName() + "/certs");
     Result result = getRootCertificate(customer.uuid, rootCA);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());

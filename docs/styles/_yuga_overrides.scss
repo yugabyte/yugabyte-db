@@ -30,6 +30,10 @@ dd {
   margin-inline-start: 40px;
 }
 
+.links {
+  display: inline;
+}
+
 .article {
   flex: 1;
   min-width: 0;
@@ -44,7 +48,7 @@ dd {
     font-weight: 600;
     letter-spacing: -.02em;
     line-height: 36px;
-    position: relative;
+    position: static;
   }
   h1 {
     z-index: 1006;
@@ -1390,4 +1394,11 @@ table code {
       }
     }
   }
+}
+
+.header-link {
+  text-decoration: inherit !important;
+  border-bottom: inherit !important;
+  color: inherit !important;
+  font-weight: inherit !important;
 }

@@ -40,9 +40,8 @@ Status YQLVTableIterator::DoNextRow(const Schema& projection, QLTableRow* table_
 
   // TODO: return columns in projection only.
   QLRow& row = vtable_->row(vtable_index_);
-  for (int i = 0; i < row.schema().num_columns(); i++) {
-    table_row->AllocColumn(row.schema().column_id(i),
-                           down_cast<const QLValue&>(row.column(i)));
+  for (size_t i = 0; i < row.schema().num_columns(); i++) {
+    table_row->AllocColumn(row.schema().column_id(i), down_cast<const QLValue&>(row.column(i)));
   }
   Advance(true /* increment */);
   return Status::OK();
@@ -71,14 +70,14 @@ void YQLVTableIterator::Advance(bool increment) {
   if (increment) {
     ++vtable_index_;
   }
-  size_t num_hashed_columns = hashed_column_values_.size();
+  int num_hashed_columns = hashed_column_values_.size();
   if (num_hashed_columns == 0) {
     return;
   }
   while (vtable_index_ < vtable_->row_count()) {
     auto& row = vtable_->row(vtable_index_);
     bool bad = false;
-    for (size_t idx = 0; idx != num_hashed_columns; ++idx) {
+    for (int idx = 0; idx != num_hashed_columns; ++idx) {
       if (hashed_column_values_[idx].value() != row.column(idx)) {
         bad = true;
         break;

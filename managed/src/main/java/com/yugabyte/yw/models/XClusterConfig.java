@@ -17,6 +17,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -120,6 +121,27 @@ public class XClusterConfig extends Model {
         });
   }
 
+  @Transactional
+  public void setTables(Map<String, String> newTables) {
+    this.tables = new HashSet<>();
+    newTables.forEach(
+        (tableId, streamId) -> {
+          tables.add(new XClusterTableConfig(tableId, streamId));
+        });
+    update();
+  }
+
+  @JsonIgnore
+  public Map<String, String> getStreams() {
+    return this.tables
+        .stream()
+        .collect(
+            Collectors.toMap(
+                XClusterTableConfig::getTableID,
+                (xClusterConfig) ->
+                    xClusterConfig.getStreamID() == null ? "" : xClusterConfig.getStreamID()));
+  }
+
   @JsonIgnore
   public String getReplicationGroupName() {
     return this.sourceUniverseUUID + "_" + this.name;
@@ -164,7 +186,7 @@ public class XClusterConfig extends Model {
 
   public static Optional<XClusterConfig> maybeGet(UUID xClusterConfigUUID) {
     XClusterConfig xClusterConfig =
-        find.query().fetch("tables", "tableID").where().eq("uuid", xClusterConfigUUID).findOne();
+        find.query().fetch("tables").where().eq("uuid", xClusterConfigUUID).findOne();
     if (xClusterConfig == null) {
       log.info("Cannot find XClusterConfig {}", xClusterConfigUUID);
       return Optional.empty();
@@ -174,7 +196,7 @@ public class XClusterConfig extends Model {
 
   public static List<XClusterConfig> getByTargetUniverseUUID(UUID targetUniverseUUID) {
     return find.query()
-        .fetch("tables", "tableID")
+        .fetch("tables")
         .where()
         .eq("target_universe_uuid", targetUniverseUUID)
         .findList();
@@ -182,7 +204,7 @@ public class XClusterConfig extends Model {
 
   public static List<XClusterConfig> getBySourceUniverseUUID(UUID sourceUniverseUUID) {
     return find.query()
-        .fetch("tables", "tableID")
+        .fetch("tables")
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .findList();
@@ -191,7 +213,7 @@ public class XClusterConfig extends Model {
   public static List<XClusterConfig> getBetweenUniverses(
       UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     return find.query()
-        .fetch("tables", "tableID")
+        .fetch("tables")
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .eq("target_universe_uuid", targetUniverseUUID)
@@ -201,7 +223,7 @@ public class XClusterConfig extends Model {
   public static XClusterConfig getByNameSourceTarget(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     return find.query()
-        .fetch("tables", "tableID")
+        .fetch("tables")
         .where()
         .eq("config_name", name)
         .eq("source_universe_uuid", sourceUniverseUUID)

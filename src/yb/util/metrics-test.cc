@@ -95,21 +95,22 @@ class MetricsTest : public YBTest {
 
   template <class Gauge>
   void DoAggregationTest(const vector<int>& values,
+                         const vector<MetricEntity::AttributeMap>& attrs,
                          const scoped_refptr<Gauge>& gauge,
                          const string& name,
-                         int expected_aggregation) {
-
-    // Test SUM aggregation
-    MetricEntity::AttributeMap attrs;
-    attrs["table_id"] = kTableId;
+                         int expected_aggregation,
+                         const MetricEntity::AttributeMap& expected_attrs) {
     std::stringstream output;
     PrometheusWriter writer(&output);
-    for (const auto& value : values) {
-      gauge->set_value(value);
-      ASSERT_OK(gauge->WriteForPrometheus(&writer, attrs, MetricPrometheusOptions()));
+    for (size_t i = 0; i < values.size(); ++i) {
+      gauge->set_value(values[i]);
+      ASSERT_OK(gauge->WriteForPrometheus(&writer, attrs[i], MetricPrometheusOptions()));
     }
     ASSERT_EQ(writer.per_table_values_[kTableId][name], expected_aggregation);
+    ASSERT_EQ(writer.per_table_attributes_[kTableId], expected_attrs);
   }
+
+  std::string dumpPrometheusWriterOutput(const PrometheusWriter& w) { return w.output_->str(); }
 
   MetricRegistry registry_;
   scoped_refptr<MetricEntity> entity_;
@@ -234,14 +235,22 @@ METRIC_DEFINE_gauge_int32(test_entity, test_max_gauge, "Test Max", MetricUnit::k
                           {0, yb::AggregationFunction::kMax} /* optional_args */);
 
 TEST_F(MetricsTest, AggregationTest) {
+  vector<int> values{1, 2, 3, 4};
+  vector<MetricEntity::AttributeMap> attrs;
+  for (const auto val : values) {
+    MetricEntity::AttributeMap attr;
+    attr["table_id"] = kTableId;
+    attr["val"] = val;
+    attrs.push_back(std::move(attr));
+  }
   // Test SUM aggregation
   auto sum_gauge = METRIC_test_sum_gauge.Instantiate(entity_,
                                                      0 /* initial_value */);
-  ASSERT_NO_FATALS(DoAggregationTest({1, 2, 3, 4}, sum_gauge, "test_sum_gauge", 10));
+  ASSERT_NO_FATALS(DoAggregationTest(values, attrs, sum_gauge, "test_sum_gauge", 10, attrs[0]));
   // Test MAX aggregation
   auto max_gauge = METRIC_test_max_gauge.Instantiate(entity_,
                                                      0 /* initial_value */);
-  ASSERT_NO_FATALS(DoAggregationTest({1, 2, 3, 4}, max_gauge, "test_max_gauge", 4));
+  ASSERT_NO_FATALS(DoAggregationTest(values, attrs, max_gauge, "test_max_gauge", 4, attrs[3]));
 }
 
 TEST_F(MetricsTest, SimpleHistogramTest) {
@@ -437,11 +446,35 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
   // Spot-check that some metrics were properly registered and that the JSON was properly
   // formed.
   unordered_set<string> seen_metrics;
-  for (int i = 0; i < d["metrics"].Size(); i++) {
+  for (rapidjson::SizeType i = 0; i < d["metrics"].Size(); i++) {
     InsertOrDie(&seen_metrics, d["metrics"][i]["name"].GetString());
   }
   ASSERT_TRUE(ContainsKey(seen_metrics, "threads_started"));
   ASSERT_TRUE(ContainsKey(seen_metrics, "test_hist"));
+}
+
+// A basic test to verify PrometheusWriter member functions
+TEST_F(MetricsTest, PrometheusWriter) {
+  static const auto LABLE_1 = "lable1";
+  static const auto LABLE_1_VAL = "lable1_value";
+  static const auto TEST_METRIC_NAME = "test_metric_name";
+  static const int ONCE = 1;
+
+  std::stringstream output;
+  PrometheusWriter writer(&output);
+
+  MetricEntity::AttributeMap attr;
+  attr[LABLE_1] = LABLE_1_VAL;
+
+  ASSERT_OK(writer.WriteSingleEntryNonTable(attr, TEST_METRIC_NAME, 1u));
+  std::ostringstream expected;
+  expected << TEST_METRIC_NAME << "{" << LABLE_1 << "=\"" << LABLE_1_VAL << "\"} " << ONCE;
+  auto pw_output = dumpPrometheusWriterOutput(writer);
+
+  ASSERT_STR_CONTAINS(pw_output, expected.str());
+
+  attr["table_id"] = "table_1";
+  ASSERT_NOK(writer.WriteSingleEntryNonTable(attr, TEST_METRIC_NAME, 1u));
 }
 
 } // namespace yb

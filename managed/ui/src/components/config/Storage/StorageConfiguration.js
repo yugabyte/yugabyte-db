@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
+import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
 import { SubmissionError } from 'redux-form';
 import _ from 'lodash';
@@ -22,15 +23,23 @@ import { Formik } from 'formik';
 const getTabTitle = (configName) => {
   switch (configName) {
     case 'S3':
-      return <span><img src={awss3Logo} alt="AWS S3" className="s3-logo" /> Amazon S3</span>;
+      return (
+        <span>
+          <img src={awss3Logo} alt="AWS S3" className="s3-logo" /> Amazon S3
+        </span>
+      );
     case 'GCS':
       return (
         <span>
-          <img src={gcsLogo} alt="Google Cloud Storage" className="gcs-logo"/> Google Cloud Storage
+          <img src={gcsLogo} alt="Google Cloud Storage" className="gcs-logo" /> Google Cloud Storage
         </span>
       );
     case 'AZ':
-      return <span><img src={azureLogo} alt="Azure" className="azure-logo" /> Azure Storage</span>;
+      return (
+        <span>
+          <img src={azureLogo} alt="Azure" className="azure-logo" /> Azure Storage
+        </span>
+      );
     default:
       return (
         <span>
@@ -43,7 +52,6 @@ const getTabTitle = (configName) => {
 class StorageConfiguration extends Component {
   constructor(props) {
     super(props);
-
     this.state = {
       editView: {
         s3: false,
@@ -146,11 +154,12 @@ class StorageConfiguration extends Component {
             'AWS_ACCESS_KEY_ID',
             'AWS_SECRET_ACCESS_KEY',
             'BACKUP_LOCATION',
-            'AWS_HOST_BASE'
+            'AWS_HOST_BASE',
+            'PATH_STYLE_ACCESS'
           ]);
         }
         break;
-    };
+    }
 
     if (values.type === 'update') {
       return this.props
@@ -232,18 +241,18 @@ class StorageConfiguration extends Component {
     const tab = activeTab.toUpperCase();
     let initialVal = {};
     switch (activeTab) {
-      case "nfs":
+      case 'nfs':
         initialVal = {
-          type: "update",
+          type: 'update',
           configUUID: row?.configUUID,
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
-          [`${tab}_CONFIGURATION_NAME`]: row?.configName,
+          [`${tab}_CONFIGURATION_NAME`]: row?.configName
         };
         break;
 
-      case "gcs":
+      case 'gcs':
         initialVal = {
-          type: "update",
+          type: 'update',
           configUUID: row?.configUUID,
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
@@ -251,9 +260,9 @@ class StorageConfiguration extends Component {
         };
         break;
 
-      case "az":
+      case 'az':
         initialVal = {
-          type: "update",
+          type: 'update',
           configUUID: row?.configUUID,
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
@@ -263,15 +272,17 @@ class StorageConfiguration extends Component {
 
       default:
         initialVal = {
-          type: "update",
+          type: 'update',
           configUUID: row?.configUUID,
           IAM_INSTANCE_PROFILE: row.data?.IAM_INSTANCE_PROFILE,
-          AWS_ACCESS_KEY_ID: row.data?.AWS_ACCESS_KEY_ID || "",
-          AWS_SECRET_ACCESS_KEY: row.data?.AWS_SECRET_ACCESS_KEY || "",
+          AWS_ACCESS_KEY_ID: row.data?.AWS_ACCESS_KEY_ID || '',
+          AWS_SECRET_ACCESS_KEY: row.data?.AWS_SECRET_ACCESS_KEY || '',
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           AWS_HOST_BASE: row.data?.AWS_HOST_BASE
         };
+        if (row?.data?.PATH_STYLE_ACCESS)
+          initialVal['PATH_STYLE_ACCESS'] = row?.data?.PATH_STYLE_ACCESS;
         break;
     }
     this.props.setInitialValues(initialVal);
@@ -294,6 +305,8 @@ class StorageConfiguration extends Component {
    * @param {string} activeTab It's a respective active tab.
    */
   createBackupConfig = (activeTab) => {
+    if (this.props.enablePathStyleAccess)
+      this.props.setInitialValues({ PATH_STYLE_ACCESS: 'true' });
     this.setState({
       listView: {
         ...this.state.listView,
@@ -333,16 +346,8 @@ class StorageConfiguration extends Component {
   };
 
   render() {
-    const {
-      handleSubmit,
-      customerConfigs,
-      initialValues
-    } = this.props;
-    const {
-      iamRoleEnabled,
-      editView,
-      listView
-    } = this.state;
+    const { handleSubmit, customerConfigs, initialValues, enablePathStyleAccess } = this.props;
+    const { iamRoleEnabled, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const backupListData = customerConfigs.data.filter((list) => {
       if (activeTab === list.name.toLowerCase()) {
@@ -366,6 +371,7 @@ class StorageConfiguration extends Component {
               iamRoleEnabled={iamRoleEnabled}
               iamInstanceToggle={this.iamInstanceToggle}
               isEdited={editView[activeTab]}
+              enablePathStyleAccess={enablePathStyleAccess}
             />
           )}
         </Tab>
@@ -380,7 +386,8 @@ class StorageConfiguration extends Component {
               key={field.id}
               configName={configName}
               field={field}
-              isEdited={editView[activeTab]} />
+              isEdited={editView[activeTab]}
+            />
           );
         });
         configs.push(this.wrapFields(configFields, configName));
@@ -427,4 +434,14 @@ class StorageConfiguration extends Component {
   }
 }
 
-export default withRouter(StorageConfiguration);
+function mapStateToProps(state) {
+  const {
+    featureFlags: { test, released }
+  } = state;
+
+  return {
+    enablePathStyleAccess: test.enablePathStyleAccess || released.enablePathStyleAccess
+  };
+}
+
+export default connect(mapStateToProps, null)(withRouter(StorageConfiguration));

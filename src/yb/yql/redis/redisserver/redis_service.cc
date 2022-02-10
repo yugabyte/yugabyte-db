@@ -100,12 +100,10 @@ DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeout
 // In order to support up to three 64MB strings along with other strings,
 // we have the total size of a redis command at 253_MB, which is less than the consensus size
 // to account for the headers in the consensus layer.
-DEFINE_int32(redis_max_command_size, 253_MB,
-             "Maximum size of the command in redis");
+DEFINE_uint64(redis_max_command_size, 253_MB, "Maximum size of the command in redis");
 
 // Maximum value size is 64MB
-DEFINE_int32(redis_max_value_size, 64_MB,
-             "Maximum size of the value in redis");
+DEFINE_uint64(redis_max_value_size, 64_MB, "Maximum size of the value in redis");
 DEFINE_int32(redis_callbacks_threadpool_size, 64,
              "The maximum size for the threadpool which handles callbacks from the ybclient layer");
 
@@ -760,12 +758,12 @@ struct RedisServiceImplData : public RedisServiceData {
 
   void AppendToSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-      std::vector<int>* subs) override;
+      std::vector<size_t>* subs) override;
   void RemoveFromSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-      std::vector<int>* subs) override;
+      std::vector<size_t>* subs) override;
   void CleanUpSubscriptions(Connection* conn) override;
-  int NumSubscribers(AsPattern type, const std::string& channel) override;
+  size_t NumSubscribers(AsPattern type, const std::string& channel) override;
   std::unordered_set<std::string> GetSubscriptions(AsPattern type, rpc::Connection* conn) override;
   std::unordered_set<std::string> GetAllSubscriptions(AsPattern type) override;
   int Publish(const string& channel, const string& message);
@@ -773,7 +771,7 @@ struct RedisServiceImplData : public RedisServiceData {
       const string& channel, const string& message, const IntFunctor& f) override;
   int PublishToLocalClients(IsMonitorMessage mode, const string& channel, const string& message);
   Result<vector<HostPortPB>> GetServerAddrsForChannel(const string& channel);
-  int NumSubscriptionsUnlocked(Connection* conn);
+  size_t NumSubscriptionsUnlocked(Connection* conn);
 
   CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) override;
   CHECKED_STATUS Initialize();
@@ -960,7 +958,7 @@ class BatchContextImpl : public BatchContext {
       }
     }
 
-    int idx = 0;
+    size_t idx = 0;
     for (auto& tablet : tablets_) {
       tablet.second.Done(&impl_data_->session_pool_, ++idx == tablets_.size());
     }
@@ -1077,14 +1075,14 @@ void RedisServiceImplData::RemoveFromMonitors(Connection* conn) {
   }
 }
 
-int RedisServiceImplData::NumSubscriptionsUnlocked(Connection* conn) {
+size_t RedisServiceImplData::NumSubscriptionsUnlocked(Connection* conn) {
   return clients_to_subscriptions_[conn].channels.size() +
          clients_to_subscriptions_[conn].patterns.size();
 }
 
 void RedisServiceImplData::AppendToSubscribers(
     AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-    std::vector<int>* subs) {
+    std::vector<size_t>* subs) {
   boost::lock_guard<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   subs->clear();
   for (const auto& channel : channels) {
@@ -1107,7 +1105,7 @@ void RedisServiceImplData::AppendToSubscribers(
 
 void RedisServiceImplData::RemoveFromSubscribers(
     AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-    std::vector<int>* subs) {
+    std::vector<size_t>* subs) {
   boost::lock_guard<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   auto& map_to_clients = (type == AsPattern::kTrue ? patterns_to_clients_ : channels_to_clients_);
   auto& map_from_clients =
@@ -1145,7 +1143,7 @@ std::unordered_set<string> RedisServiceImplData::GetAllSubscriptions(AsPattern t
 }
 
 // ENG-4199: Consider getting all the cluster-wide subscribers?
-int RedisServiceImplData::NumSubscribers(AsPattern type, const std::string& channel) {
+size_t RedisServiceImplData::NumSubscribers(AsPattern type, const std::string& channel) {
   SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   const auto& look_in = (type ? patterns_to_clients_ : channels_to_clients_);
   const auto& iter = look_in.find(channel);
@@ -1310,7 +1308,7 @@ int RedisServiceImplData::PublishToLocalClients(
     for (auto& entry : patterns_to_clients_) {
       auto& pattern = entry.first;
       auto& clients_subscribed_to_pattern = entry.second;
-      if (!RedisUtil::RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
+      if (!RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
         continue;
       }
 

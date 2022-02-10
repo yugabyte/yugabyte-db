@@ -59,6 +59,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
@@ -108,13 +109,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static boolean pgInitialized = false;
 
-  public void runPgRegressTest(File inputDir, String schedule, long maxRuntimeMillis)
-        throws Exception {
+  public void runPgRegressTest(
+      File inputDir, String schedule, long maxRuntimeMillis, File executable) throws Exception {
     final int tserverIndex = 0;
-    String label = String.format("using schedule %s at %s", schedule, inputDir);
-    PgRegressRunner pgRegress = new PgRegressRunner(inputDir, label, maxRuntimeMillis);
-    ProcessBuilder procBuilder = new PgRegressBuilder()
-        .setDirs(inputDir, PgRegressRunner.OUTPUT_DIR)
+    PgRegressRunner pgRegress = new PgRegressRunner(inputDir, schedule, maxRuntimeMillis);
+    ProcessBuilder procBuilder = new PgRegressBuilder(executable)
+        .setDirs(inputDir, pgRegress.outputDir())
         .setSchedule(schedule)
         .setHost(getPgHost(tserverIndex))
         .setPort(getPgPort(tserverIndex))
@@ -127,34 +127,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   public void runPgRegressTest(File inputDir, String schedule) throws Exception {
-    runPgRegressTest(inputDir, schedule, 0 /* maxRuntimeMillis */);
+    runPgRegressTest(
+        inputDir, schedule, 0 /* maxRuntimeMillis */,
+        PgRegressBuilder.PG_REGRESS_EXECUTABLE);
   }
 
   public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
-    File inputDir = PgRegressBuilder.getPgRegressDir();
-    runPgRegressTest(inputDir, schedule, maxRuntimeMillis);
+    runPgRegressTest(
+        PgRegressBuilder.PG_REGRESS_DIR /* inputDir */, schedule, maxRuntimeMillis,
+        PgRegressBuilder.PG_REGRESS_EXECUTABLE);
   }
 
   public void runPgRegressTest(String schedule) throws Exception {
     runPgRegressTest(schedule, 0 /* maxRuntimeMillis */);
-  }
-
-  private static int getRetryableRpcSingleCallTimeoutMs() {
-    if (TestUtils.isReleaseBuild()) {
-      return 10000;
-    } else if (TestUtils.IS_LINUX) {
-      if (BuildTypeUtil.isASAN()) {
-        return 20000;
-      } else if (BuildTypeUtil.isTSAN()) {
-        return 45000;
-      } else {
-        // Linux debug builds.
-        return 15000;
-      }
-    } else {
-      // We get a lot of timeouts in macOS debug builds.
-      return 45000;
-    }
   }
 
   public static void perfAssertLessThan(double time1, double time2) {
@@ -674,7 +659,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return value;
   }
 
-  protected static List<String> getTabletsForTable(
+  protected List<String> getTabletsForTable(
     String database, String tableName) throws Exception {
     try {
       return YBBackupUtil.getTabletsForTable("ysql." + database, tableName);
@@ -686,6 +671,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected String getOwnerForTable(Statement stmt, String tableName) throws Exception {
     return getSingleRow(stmt, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = '" +
         tableName + "'").getString(0);
+  }
+
+  protected String getTablespaceForTable(Statement stmt, String tableName) throws Exception {
+    ResultSet rs = stmt.executeQuery(
+        "SELECT ts.spcname FROM pg_tablespace ts INNER JOIN pg_class c " +
+        "ON ts.oid = c.reltablespace WHERE c.oid = '" + tableName + "'::regclass");
+    if (!rs.next()) {
+      return null; // No tablespace for the table.
+    }
+
+    Row row = Row.fromResultSet(rs);
+    assertFalse("Result set has more than one row", rs.next());
+    return row.getString(0);
   }
 
   protected long getMetricCounter(String metricName) throws Exception {
@@ -1217,7 +1215,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return systemTableQueryHelper(stmt, () -> stmt.executeUpdate(dml));
   }
 
-  protected static List<Row> getSystemTableRowsList(
+  protected List<Row> getSystemTableRowsList(
       Statement stmt, String query) throws SQLException {
     return systemTableQueryHelper(stmt, () -> {
       try (ResultSet result = stmt.executeQuery(query)) {
@@ -1243,7 +1241,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected static List<Row> getRowList(ResultSet rs) throws SQLException {
+  protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       rows.add(Row.fromResultSet(rs));
@@ -1361,6 +1359,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     try (ResultSet rs = statement.executeQuery(query)) {
       assertEquals(expectedRows, getRowSet(rs));
     }
+  }
+
+  @SafeVarargs
+  protected final <T> Set<T> asSet(T... ts) {
+    return Stream.of(ts).collect(Collectors.toSet());
   }
 
   protected void assertRowList(Statement statement,

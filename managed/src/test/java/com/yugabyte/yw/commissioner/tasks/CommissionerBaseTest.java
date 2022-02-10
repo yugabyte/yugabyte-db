@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -19,7 +20,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -40,7 +41,6 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
-import java.util.Map;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
@@ -55,7 +55,6 @@ import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
   private static final int MAX_RETRY_COUNT = 2000;
@@ -69,7 +68,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected DnsManager mockDnsManager;
   protected TableManager mockTableManager;
   protected CloudQueryHelper mockCloudQueryHelper;
-  protected KubernetesManager mockKubernetesManager;
+  protected ShellKubernetesManager mockKubernetesManager;
   protected SwamperHelper mockSwamperHelper;
   protected CallHome mockCallHome;
   protected CallbackController mockCallbackController;
@@ -136,7 +135,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockDnsManager = mock(DnsManager.class);
     mockCloudQueryHelper = mock(CloudQueryHelper.class);
     mockTableManager = mock(TableManager.class);
-    mockKubernetesManager = mock(KubernetesManager.class);
+    mockKubernetesManager = mock(ShellKubernetesManager.class);
     mockSwamperHelper = mock(SwamperHelper.class);
     mockCallHome = mock(CallHome.class);
     mockCallbackController = mock(CallbackController.class);
@@ -151,7 +150,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
-                .configure((Map) Helpers.inMemoryDatabase())
+                .configure(testDatabase())
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
                 .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
                 .overrides(bind(ConfigHelper.class).toInstance(mockConfigHelper))
@@ -162,7 +161,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
                 .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
                 .overrides(bind(TableManager.class).toInstance(mockTableManager))
-                .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+                .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
@@ -207,7 +206,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         TaskInfo taskInfo = TaskInfo.get(taskUUID);
         if (taskInfo.getTaskState() == TaskInfo.State.Success
             || taskInfo.getTaskState() == TaskInfo.State.Failure) {
-          return taskInfo;
+          // Also, ensure task details are set before returning.
+          if (taskInfo.getTaskDetails() != null) {
+            return taskInfo;
+          }
         }
       } catch (Exception e) {
       }

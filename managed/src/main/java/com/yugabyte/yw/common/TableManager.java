@@ -5,7 +5,10 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.DELETE;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -20,6 +23,7 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.text.ParseException;
@@ -27,6 +31,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -41,7 +47,9 @@ public class TableManager extends DevopsBase {
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
-  private static final String BACKUP_LOCATION = "BACKUP_LOCATION";
+
+  private static final String REGION_LOCATIONS = "REGION_LOCATIONS";
+  private static final String REGION_NAME = "REGION";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -73,6 +81,7 @@ public class TableManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
     Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, String> secondaryToPrimaryIP = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
@@ -81,6 +90,18 @@ public class TableManager extends DevopsBase {
       namespaceToConfig =
           PlacementInfoUtil.getConfigPerNamespace(
               pi, universe.getUniverseDetails().nodePrefix, provider);
+    }
+
+    List<NodeDetails> tservers = universe.getTServers();
+    // Verify if secondary IPs exist. If so, create map.
+    if (tservers.get(0).cloudInfo.secondary_private_ip != null
+        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")) {
+      secondaryToPrimaryIP =
+          tservers
+              .stream()
+              .collect(
+                  Collectors.toMap(
+                      t -> t.cloudInfo.secondary_private_ip, t -> t.cloudInfo.private_ip));
     }
 
     commandArgs.add(PY_WRAPPER);
@@ -98,6 +119,10 @@ public class TableManager extends DevopsBase {
 
         commandArgs.add("--ts_web_hosts_ports");
         commandArgs.add(universe.getTserverHTTPAddresses());
+        if (!secondaryToPrimaryIP.isEmpty()) {
+          commandArgs.add("--ts_secondary_ip_map");
+          commandArgs.add(Json.stringify(Json.toJson(secondaryToPrimaryIP)));
+        }
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
         if (userIntent.isYSQLAuthEnabled()) {
@@ -130,6 +155,9 @@ public class TableManager extends DevopsBase {
               commandArgs.add("ysql." + taskParams.getKeyspace());
             } else {
               commandArgs.add(taskParams.getKeyspace());
+            }
+            if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.pg_based")) {
+              commandArgs.add("--pg_based_backup");
             }
           }
         } else if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
@@ -177,7 +205,7 @@ public class TableManager extends DevopsBase {
         }
         if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.restoreTimeStamp != null) {
-            String backupLocation = customerConfig.data.get(BACKUP_LOCATION).asText();
+            String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
             String restoreTimeStampMicroUnix =
                 getValidatedRestoreTimeStampMicroUnix(
                     backupTableParams.restoreTimeStamp,
@@ -185,6 +213,33 @@ public class TableManager extends DevopsBase {
                     backupLocation);
             commandArgs.add("--restore_time");
             commandArgs.add(restoreTimeStampMicroUnix);
+          }
+          if (backupTableParams.newOwner != null) {
+            commandArgs.add("--edit_ysql_dump_sed_reg_exp");
+            commandArgs.add(
+                String.format(
+                    "s|OWNER TO %s|OWNER TO %s|",
+                    backupTableParams.oldOwner, backupTableParams.newOwner));
+          }
+        }
+        if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)
+            && !customerConfig.name.toLowerCase().equals("nfs")) {
+          // For non-nfs configurations we are adding region configurations.
+          JsonNode regions = customerConfig.getData().get(REGION_LOCATIONS);
+          if ((regions != null) && regions.isArray()) {
+            for (JsonNode regionSettings : regions) {
+              JsonNode regionName = regionSettings.get(REGION_NAME);
+              JsonNode regionLocation = regionSettings.get(REGION_LOCATION_FIELDNAME);
+              if ((regionName != null)
+                  && !StringUtils.isEmpty(regionName.asText())
+                  && (regionLocation != null)
+                  && !StringUtils.isEmpty(regionLocation.asText())) {
+                commandArgs.add("--region");
+                commandArgs.add(regionName.asText().toLowerCase());
+                commandArgs.add("--region_location");
+                commandArgs.add(regionLocation.asText());
+              }
+            }
           }
         }
         addCommonCommandArgs(
@@ -328,8 +383,9 @@ public class TableManager extends DevopsBase {
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION).asText());
+      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
+
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));
@@ -337,6 +393,9 @@ public class TableManager extends DevopsBase {
     commandArgs.add(backupTableParams.actionType.name().toLowerCase());
     if (backupTableParams.enableVerboseLogs) {
       commandArgs.add("--verbose");
+    }
+    if (backupTableParams.useTablespaces) {
+      commandArgs.add("--use_tablespaces");
     }
   }
 

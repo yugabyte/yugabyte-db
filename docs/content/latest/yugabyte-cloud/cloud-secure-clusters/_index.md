@@ -5,9 +5,9 @@ linkTitle: Secure clusters
 description: Secure clusters in Yugabyte Cloud.
 image: /images/section_icons/index/secure.png
 headcontent: Configure the security features of your Yugabyte Cloud clusters.
+section: YUGABYTE CLOUD
 menu:
   latest:
-    parent: yugabyte-cloud
     identifier: cloud-secure-clusters
 weight: 30
 ---
@@ -21,7 +21,7 @@ Network authorization
 Database authorization
 : YugabyteDB uses role-based access control for database authorization. Using the default admin user that is created when a cluster is deployed, you can add additional roles and users to provide custom access to database resources to other team members and database clients.
 
-Authentication
+Encryption in transit
 : Yugabyte Cloud uses encryption-in-transit for client-server and intra-node connectivity.
 
 Auditing
@@ -73,6 +73,18 @@ Auditing
       </div>
       <div class="body">
         Add users to your cluster databases.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-authentication/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
+        <div class="title">Encryption in transit</div>
+      </div>
+      <div class="body">
+        Yugabyte Cloud clusters use TLS and digital certificates to secure data in transit.
       </div>
     </a>
   </div>

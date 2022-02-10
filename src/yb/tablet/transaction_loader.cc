@@ -215,7 +215,7 @@ class TransactionLoader::Executor {
     TransactionMetadataPB metadata_pb;
 
     const Slice& value = intents_iterator_.value();
-    if (!metadata_pb.ParseFromArray(value.cdata(), value.size())) {
+    if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
       LOG_WITH_PREFIX(DFATAL) << "Unable to parse stored metadata: "
                               << value.ToDebugHexString();
       return;

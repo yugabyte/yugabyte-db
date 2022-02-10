@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Overview
 
-Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. The Yugabyte Platform console allows you to do the following:
+Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. The Yugabyte Platform UI allows you to do the following:
 
  <!-- no toc -->
 
@@ -29,22 +29,22 @@ There are two types of keys that are used to encrypt data in YugabyteDB:
 - Universe key: The top-level symmetric key used to encrypt other keys and are common to the universe.
 - Data key: The symmetric key used to encrypt data. There is one data key generated per flushed file.
 
-For details on the features, assumptions, design, data key management, universe keys, key rotations, master failures, and adding a node, see [Encryption At Rest in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md).
+For more information on the features, assumptions, design, data key management, universe keys, key rotations, master failures, and adding a node, see [Encryption At Rest in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md).
 
 ## Enable encryption at rest during universe creation
 
 You can enable encryption at rest during the universe creation as follows:
 
-1. Open the Yugabyte Platform console and navigate to **Universes**.
-2. Click **Create Universe**. The **Universe Configuration** page appears.
+1. Open the Yugabyte Platform UI and navigate to **Universes**.
+2. Click **Create Universe** to open the **Universe Configuration** page.
 3. After you select a provider, the **Instance Configuration** section expands to show more options.
 4. Select the **Enable Encryption at Rest** option. The **Key Management Service Config** option appears.
-5. Select your KMS configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config.md/aws-kms/) and [Create a KMS configuration using Equinix SmartKey](../create-kms-config.md/equinix-smartkey/).
+5. Select your KMS configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/), [Create a KMS configuration using Equinix SmartKey](../create-kms-config/equinix-smartkey/), or [Create a KMS configuration using HashiCorp Vault](../create-kms-config/hashicorp-kms/).
 6. Continue with your universe creation, then click **Create**.
 
 You can verify that encryption at rest has been successfully configured as follows:
 
-1. Open the Yugabyte Platform console and navigate to the universe.
+1. Open the Yugabyte Platform UI and navigate to the universe.
 2. Select **Nodes**.
 3. On one of the nodes, click **Master** under the **PROCESSES** column to open the overview.
 4. To the right of **Replication Factor**, click **See full config** to open the **Current Cluster Config** page.
@@ -60,15 +60,15 @@ You can verify that encryption at rest has been successfully configured as follo
     ```
 
 
-If your configuration includes Equinix SmartKey, the following occurs: once the universe has started being created, a security object will be created with SmartKey through REST API with the universe UUID as the name of the security object. This object will then be exported to Yugabyte Platform as the universe key. Once received, Yugabyte Platform sends the key to all masters to persist. Yugabyte Platform does not persist any information about the security object beyond a reference to the object `kId`. At this point, data within the universe will be encrypted at rest using data keys encrypted with the aforementioned universe key generated through the selected KMS configuration. For more information, see [Create a KMS configuration using Equinix SmartKey](../create-kms-config.md/equinix-smartkey/). You can access the **Security Object** page for the Equinix SmartKey account that was used to create the KMS configuration. A security object should exist with a name matching the universe UUID that was configured to use encryption at rest with the SMARTKEY configuration (defaults to AES 256).
+If your configuration includes Equinix SmartKey, the following occurs: once the universe has started being created, a security object will be created with SmartKey through REST API with the universe UUID as the name of the security object. This object will then be exported to Yugabyte Platform as the universe key. Once received, Yugabyte Platform sends the key to all masters to persist. Yugabyte Platform does not persist any information about the security object beyond a reference to the object `kId`. At this point, data within the universe will be encrypted at rest using data keys encrypted with the aforementioned universe key generated through the selected KMS configuration. For more information, see [Create a KMS configuration using Equinix SmartKey](../create-kms-config/equinix-smartkey/). You can access the **Security Object** page for the Equinix SmartKey account that was used to create the KMS configuration. A security object should exist with a name matching the universe UUID that was configured to use encryption at rest with the SMARTKEY configuration (defaults to AES 256).
 
-If your configuration includes AWS KMS, the following occurs: once the universe has been created with encryption at rest enabled, Yugabyte Platform persists the ciphertext of the universe key (because AWS does not persist any CMK-generated data keys themselves) and requests the plaintext of the universe key from AWS KMS using the KMS configuration whenever it needs to provide the universe key to the master nodes. For more information, see [Create a KMS configuration using AWS KMS](../create-kms-config.md/aws-kms/).
+If your configuration includes AWS KMS, the following occurs: once the universe has been created with encryption at rest enabled, Yugabyte Platform persists the ciphertext of the universe key (because AWS does not persist any CMK-generated data keys themselves) and requests the plaintext of the universe key from AWS KMS using the KMS configuration whenever it needs to provide the universe key to the master nodes. For more information, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/).
 
 ## Enable encryption at rest on an existing universe
 
 You can enable encryption at rest on an existing universe as follows:
 
-1. Open the Yugabyte Platform console and click **Universes**.
+1. Open the Yugabyte Platform UI and click **Universes**.
 
 2. Select the universe for which to enable encryption.
 
@@ -78,7 +78,7 @@ You can enable encryption at rest on an existing universe as follows:
 
    When the encryption is enabled, the **Key Management Service Config** option appears.
 
-5. Select your KSM configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config.md/aws-kms/) and [Create a KMS configuration using Equinix SmartKey](../create-kms-config.md/equinix-smartkey/).
+5. Select your KSM configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/), [Create a KMS configuration using Equinix SmartKey](../create-kms-config/equinix-smartkey/), or [Create a KMS configuration using HashiCorp Vault](../create-kms-config/hashicorp-kms/).
 
 6. Click **Submit**.
 

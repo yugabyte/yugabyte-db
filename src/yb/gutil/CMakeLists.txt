@@ -30,14 +30,16 @@
 # under the License.
 #
 
+add_library(gutil_c STATIC dynamic_annotations.c utf/rune.c)
+
 set(YB_PCH_PREFIX gutil)
 set(YB_PCH_DEP_LIBS gmock)
 
 set(GUTIL_SRCS
   bits.cc
   callback_internal.cc
+  casts.cc
   cpu.cc
-  dynamic_annotations.c
   hash/city.cc
   hash/hash.cc
   hash/jenkins.cc
@@ -65,7 +67,6 @@ set(GUTIL_SRCS
   strtoint.cc
   sysinfo.cc
   threading/thread_collision_warner.cc
-  utf/rune.c
   walltime.cc)
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
@@ -75,7 +76,8 @@ endif()
 set(GUTIL_LIBS
   glog
   gflags
-  protobuf)
+  protobuf
+  gutil_c)
 
 if (NOT APPLE)
   set(GUTIL_LIBS
@@ -83,20 +85,10 @@ if (NOT APPLE)
     rt) # clock_gettime() requires -lrt
 endif()
 
-# Disable warnings which trigger a lot in the Google code:
-set(GUTIL_COMPILE_FLAGS "-funsigned-char -Wno-deprecated -Wno-char-subscripts")
-
 ADD_YB_LIBRARY(gutil
   SRCS ${GUTIL_SRCS}
-  DEPS ${GUTIL_LIBS}
-  COMPILE_FLAGS "${GUTIL_COMPILE_FLAGS}")
+  DEPS ${GUTIL_LIBS})
 
 ADD_YB_TEST(sysinfo-test)
-set_target_properties(sysinfo-test PROPERTIES COMPILE_FLAGS "${GUTIL_COMPILE_FLAGS}")
-
-
-add_yb_test(strings/string_util-test)
-set_target_properties(string_util-test PROPERTIES COMPILE_FLAGS "${GUTIL_COMPILE_FLAGS}")
-
-add_yb_test(hash/jenkins-test)
-set_target_properties(jenkins-test PROPERTIES COMPILE_FLAGS "${GUTIL_COMPILE_FLAGS}")
+ADD_YB_TEST(strings/string_util-test)
+ADD_YB_TEST(hash/jenkins-test)

@@ -15,11 +15,13 @@
     use_system_user: no
     user_existence_check_cmd: id
   when: ansible_os_family == "Darwin"
+  tags: yb-prebuilt-ami
 
 - set_fact:
     use_system_user: yes
     user_existence_check_cmd: getent passwd
   when: ansible_os_family != "Darwin"
+  tags: yb-prebuilt-ami
 
 # Do not try to create the user if it already exists. That sometimes produces errors (e.g. on Mac OS
 # X when also trying to set a custom shell for the user).
@@ -28,6 +30,7 @@
   register: user_existence_check_result
   ignore_errors: True
   failed_when: False
+  tags: yb-prebuilt-ami
 
 - block:
   # Check if home_dir already exists, i.e. when it's specified for onprem.
@@ -65,6 +68,7 @@
       group: "{{ create_user.group | default(omit) }}"
     when: home_stat.stat.isdir is defined
   when: user_existence_check_result.rc != 0
+  tags: yb-prebuilt-ami
 
 - name: Cleanup old homedir if custom homedir is used
   file:
@@ -74,6 +78,17 @@
   when: >
     cloud_type == 'onprem' and
     create_user.home_dir is not match('/home/{{ create_user.name }}(/.*)?$')
+  tags: yb-prebuilt-ami
+
+- name: Allow AMI building to connect as yugabyte
+  copy:
+    remote_src: yes
+    src: "/home/{{ ssh_user }}/.ssh/authorized_keys"
+    dest: "/home/{{ create_user.name }}/.ssh/"
+    owner: "{{ create_user.name }}"
+    mode: 0400
+  become: yes
+  tags: yb-prebuilt-ami
 
 - name: "Setup {{ create_user.name }} ssh"
   include: setup-ssh.yml

@@ -30,35 +30,37 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to back up your YugabyteDB universe YSQL data. 
+Use Yugabyte Platform to back up your YugabyteDB universe YSQL data.
 
 To schedule backups for a later time, or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql).
 
-To immediately back up your YugabyteDB universe YSQL data:
+You can immediately back up your YugabyteDB universe YSQL data as follows:
 
-1. Open the **Universe Overview** and then click the **Backups** tab. The **Backups** page appears.
+1. Open your universe and select the **Backups** tab.
 1. Click **Create Backup** to open the **Create Backup** dialog.
 
     <br/><br/>
 
     ![Create Backup - YSQL](/images/yp/create-backup-ysql.png)
 
-1. Click the **YSQL** tab and enter the following information:
+1. Select the **YSQL** tab and enter the following information:
 
     - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
     - **Namespace**: Select the namespace from the drop-down list of available namespaces.
     - **Parallel Threads**: Enter or select the number of threads. The default is `8`.
 
-1. Click **OK**. The requested backup begins immediately.
-
-{{< note title="Note" >}}
+1. Click **OK**.
 
 If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file, containing key references, is also backed up.
 
-To allow Yugabyte Platform to back up your data with user authentication enabled, follow the [instructions here](../../../manage-deployments/edit-config-flags) to add the following YB-TServer flags:
+To allow Yugabyte Platform to back up your data with user authentication enabled, consult [Edit configuration flags](../../../manage-deployments/edit-config-flags) for instructions on how to add the following T-Server flags:
 
-`ysql_enable_auth=true`
+- `ysql_enable_auth = true`
+- `ysql_hba_conf_csv= "local all all trust"`
 
-`ysql_hba_conf_csv="local all all trust"`
+{{< note title="Note" >}}
+
+Versions of Yugabyte Platform prior to 2.8.2.0 do not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
 
 {{< /note >}}
+<!-- The preceding note should say 2.8.2.0. Careful with search and replace on version numbers! -->

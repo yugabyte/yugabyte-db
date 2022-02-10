@@ -24,10 +24,11 @@
 #include "yb/rocksdb/db/db_test_util.h"
 
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class SliceTransformTest : public testing::Test {};
+class SliceTransformTest : public RocksDBTest {};
 
 TEST_F(SliceTransformTest, CapPrefixTransform) {
   std::string s;
@@ -54,7 +55,7 @@ TEST_F(SliceTransformTest, CapPrefixTransform) {
   ASSERT_EQ(transform->Transform(std::string()).ToString(), "");
 }
 
-class SliceTransformDBTest : public testing::Test {
+class SliceTransformDBTest : public RocksDBTest {
  private:
   std::string dbname_;
   Env* env_;

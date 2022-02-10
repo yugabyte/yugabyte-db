@@ -515,38 +515,74 @@ function(yb_process_pch target)
     return()
   endif()
 
-  set(TARGET_PROPERTY "PCH_FIRST_TARGET_FOR_${YB_PCH_PREFIX}")
+  set(pch_file_property "PCH_FILE_FOR_${YB_PCH_PREFIX}")
+  get_property(pch_file GLOBAL PROPERTY "${pch_file_property}")
 
-  get_property(EXISTING_TARGET GLOBAL PROPERTY "${TARGET_PROPERTY}")
+  if ("${pch_file}" STREQUAL "")
+    _add_library(${YB_PCH_PREFIX}_pch SHARED)
+    get_target_property(build_dir ${YB_PCH_PREFIX}_pch BINARY_DIR)
+    set(pch_dir "${build_dir}/CMakeFiles/${YB_PCH_PREFIX}_pch.dir")
+    set(pch_file "${pch_dir}/${YB_PCH_PREFIX}_pch.h.pch")
+    set(pch_cc_file "${build_dir}/${YB_PCH_PREFIX}_pch.cc")
+    set(pch_h_file_copy "${pch_dir}/${YB_PCH_PREFIX}_pch.h")
 
-  if (NOT "${EXISTING_TARGET}" STREQUAL "")
-    target_precompile_headers(${target} REUSE_FROM "${EXISTING_TARGET}")
-    if (${YB_PCH_CODEGEN})
-      target_link_libraries(${target} "${YB_PCH_PREFIX}_pch_obj")
+    get_target_property(source_dir ${target} SOURCE_DIR)
+    set(pch_h_file "${source_dir}/${YB_PCH_PATH}${YB_PCH_PREFIX}_pch.h")
+
+    message("Generating PCH for ${YB_PCH_PREFIX}: ${pch_file}")
+    set_property(GLOBAL PROPERTY "${pch_file_property}" "${pch_file}")
+
+    if(NOT EXISTS "${pch_cc_file}")
+      file(MAKE_DIRECTORY "${build_dir}")
+      file(TOUCH "${pch_cc_file}")
     endif()
+    # This file is only required by CLion, so could be out of date.
+    if(NOT EXISTS "${pch_h_file_copy}")
+      file(MAKE_DIRECTORY "${pch_dir}")
+      file(COPY "${pch_h_file}" DESTINATION "${pch_dir}")
+    endif()
+    target_sources(${YB_PCH_PREFIX}_pch PRIVATE "${pch_cc_file}")
+
+    set_source_files_properties(
+        "${YB_PCH_PREFIX}_pch.cc" PROPERTIES
+        COMPILE_FLAGS "-yb-pch ${source_dir}/${YB_PCH_PATH}${YB_PCH_PREFIX}_pch.h")
+
+    if (NOT "${YB_PCH_DEP_LIBS}" STREQUAL "")
+      target_link_libraries(${YB_PCH_PREFIX}_pch PUBLIC "${YB_PCH_DEP_LIBS}")
+    endif()
+    target_link_libraries(${YB_PCH_PREFIX}_pch PUBLIC "${YB_BASE_LIBS}")
+
+    # Intermediate target is required to make sure that PCH file generated before any dependent
+    # binary source file compilation.
+    add_custom_target(${YB_PCH_PREFIX}_pch_proxy DEPENDS "${pch_h_file}")
+    add_dependencies(${YB_PCH_PREFIX}_pch_proxy "${YB_PCH_PREFIX}_pch")
+  endif()
+
+  yb_use_pch(${target} ${YB_PCH_PREFIX})
+endfunction()
+
+function(yb_use_pch target prefix)
+  if(NOT ${YB_PCH_ON})
     return()
   endif()
 
-  message("Use PCH for ${target}: ${YB_PCH_PREFIX}")
-  set_property(GLOBAL PROPERTY "${TARGET_PROPERTY}" ${target})
-  set(PCH_FILE ${CMAKE_CURRENT_SOURCE_DIR}/${YB_PCH_PATH}${YB_PCH_PREFIX}_pch.h)
-  target_precompile_headers(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${PCH_FILE}>")
+  set(pch_file_property "PCH_FILE_FOR_${prefix}")
+  get_property(pch_file GLOBAL PROPERTY "${pch_file_property}")
 
-  if (${YB_PCH_CODEGEN})
-    _add_library("${YB_PCH_PREFIX}_pch_obj" OBJECT IMPORTED GLOBAL)
-    set(PCH_OBJ_DIR "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${target}.dir")
-    set(PCH_OBJ_FILE "${PCH_OBJ_DIR}/cmake_pch.hxx.pch.o")
-    if(NOT EXISTS "${PCH_OBJ_FILE}")
-      file(MAKE_DIRECTORY "${PCH_OBJ_DIR}")
-      file(TOUCH "${PCH_OBJ_FILE}")
-    endif()
-    set_target_properties(${YB_PCH_PREFIX}_pch_obj PROPERTIES IMPORTED_OBJECTS "${PCH_OBJ_FILE}")
-    if (NOT "${YB_PCH_DEP_LIBS}" STREQUAL "")
-      target_link_libraries(${YB_PCH_PREFIX}_pch_obj INTERFACE "${YB_PCH_DEP_LIBS}")
-    endif()
-    target_link_libraries(${YB_PCH_PREFIX}_pch_obj INTERFACE "${YB_BASE_LIBS}")
-    target_link_libraries(${target} "${YB_PCH_PREFIX}_pch_obj")
+  if ("${pch_file}" STREQUAL "")
+    message(FATAL_ERROR "PCH file not set for ${prefix}")
   endif()
+
+  set(use_pch_flags "-Xclang -include-pch -Xclang ${pch_file}")
+  get_target_property(compile_flags ${target} COMPILE_FLAGS)
+  if (NOT ${compile_flags} STREQUAL "compile_flags-NOTFOUND")
+    set(compile_flags "${compile_flags} ${use_pch_flags}")
+  else()
+    set(compile_flags "${use_pch_flags}")
+  endif ()
+  set_target_properties(${target} PROPERTIES COMPILE_FLAGS "${compile_flags}")
+  target_link_libraries(${target} ${prefix}_pch)
+  add_dependencies(${target} ${prefix}_pch_proxy)
 endfunction()
 
 # A wrapper around add_library() for YugabyteDB libraries.
@@ -573,10 +609,7 @@ function(ADD_YB_LIBRARY LIB_NAME)
   endif()
 
   add_library(${LIB_NAME} ${ARG_SRCS})
-  if(ARG_COMPILE_FLAGS)
-    set_target_properties(${LIB_NAME}
-      PROPERTIES COMPILE_FLAGS ${ARG_COMPILE_FLAGS})
-  endif()
+
   target_link_libraries(${LIB_NAME} ${ARG_DEPS})
   yb_remember_dependency(${LIB_NAME} ${ARG_DEPS})
   if(ARG_NONLINK_DEPS)
@@ -696,3 +729,30 @@ function(parse_build_root_basename)
         "but CMAKE_SYSTEM_PROCESSOR is ${CMAKE_SYSTEM_PROCESSOR}")
   endif()
 endfunction()
+
+macro(enable_lto_if_needed)
+  if(NOT DEFINED COMPILER_FAMILY)
+    message(FATAL_ERROR "COMPILER_FAMILY not defined")
+  endif()
+  if(NOT DEFINED USING_LINUXBREW)
+    message(FATAL_ERROR "USING_LINUXBREW not defined")
+  endif()
+  if(NOT DEFINED YB_BUILD_TYPE)
+    message(FATAL_ERROR "YB_BUILD_TYPE not defined")
+  endif()
+
+  if("${YB_BUILD_TYPE}" STREQUAL "release" AND
+     "${COMPILER_FAMILY}" STREQUAL "clang" AND
+     "${YB_COMPILER_TYPE}" STREQUAL "clang12" AND
+     USING_LINUXBREW AND
+     NOT APPLE)
+    message("Enabling full LTO and lld linker")
+    ADD_CXX_FLAGS("-flto=full -fuse-ld=lld")
+  else()
+    message("Not enabling LTO: "
+            "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
+            "COMPILER_FAMILY=${COMPILER_FAMILY}, "
+            "USING_LINUXBREW=${USING_LINUXBREW}, "
+            "APPLE=${APPLE}")
+  endif()
+endmacro()

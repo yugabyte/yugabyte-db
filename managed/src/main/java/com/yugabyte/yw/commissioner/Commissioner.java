@@ -19,7 +19,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.Iterator;
@@ -71,6 +73,26 @@ public class Commissioner {
   }
 
   /**
+   * Returns true if the task identified by the task type is abortable.
+   *
+   * @param taskType the task type.
+   * @return true if abortable.
+   */
+  public static boolean isTaskAbortable(TaskType taskType) {
+    return TaskExecutor.isTaskAbortable(TaskExecutor.getTaskClass(taskType));
+  }
+
+  /**
+   * Returns true if the task identified by the task type is retryable.
+   *
+   * @param taskType the task type.
+   * @return true if retryable.
+   */
+  public static boolean isTaskRetryable(TaskType taskType) {
+    return TaskExecutor.isTaskRetryable(TaskExecutor.getTaskClass(taskType));
+  }
+
+  /**
    * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
    *
    * @param taskType the task type.
@@ -119,6 +141,11 @@ public class Commissioner {
    */
   public boolean abortTask(UUID taskUUID) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    if (!isTaskAbortable(taskInfo.getTaskType())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
+    }
+
     if (taskInfo.getTaskState() != TaskInfo.State.Running) {
       LOG.warn("Task {} is not running", taskUUID);
       return false;
@@ -153,6 +180,24 @@ public class Commissioner {
       // Get subtask groups
       UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
       responseJson.set("details", Json.toJson(userTaskDetails));
+      // Set abortable if eligible.
+      responseJson.put("abortable", false);
+      if (taskExecutor.isTaskRunning(taskUUID)) {
+        // Task is abortable only when it is running.
+        responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
+      }
+      // Set retryable if eligible.
+      responseJson.put("retryable", false);
+      if (isTaskRetryable(taskInfo.getTaskType())
+          && (task.getTarget() == TargetType.Universe || task.getTarget() == TargetType.Cluster)
+          && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
+        // Retryable depends on the updating task UUID in the Universe.
+        Universe.maybeGet(task.getTargetUUID())
+            .ifPresent(
+                u ->
+                    responseJson.put(
+                        "retryable", taskUUID.equals(u.getUniverseDetails().updatingTaskUUID)));
+      }
       return Optional.of(responseJson);
     }
 

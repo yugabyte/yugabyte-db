@@ -1,5 +1,5 @@
 """
-Copyright (c) YugaByte, Inc.
+Copyright (c) Yugabyte, Inc.
 
 This module provides utilities for generating and publishing release.
 """
@@ -12,12 +12,18 @@ import platform
 import shutil
 import sys
 import re
-import distro
+import distro  # type: ignore
 
 from subprocess import call, check_output
 from xml.dom import minidom
 from yb.command_util import run_program, mkdir_p, copy_deep
-from yb.common_util import get_thirdparty_dir, is_macos
+from yb.common_util import (
+    get_thirdparty_dir,
+    is_macos,
+    get_compiler_type_from_build_root,
+)
+
+from typing import Dict, Any, Optional, cast, List
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
@@ -26,23 +32,53 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 class ReleaseUtil(object):
     """Packages a YugaByte package with the appropriate file naming schema."""
-    def __init__(self, repository, build_type, distribution_path, force, commit, build_root,
-                 package_name):
+    release_manifest: Dict[str, Any]
+    base_version: str
+
+    repository: str
+    build_type: str
+    distribution_path: str
+    force: bool
+    commit: str
+    build_root: str
+    package_name: str
+
+    def __init__(
+            self,
+            repository: str,
+            build_type: str,
+            distribution_path: str,
+            force: bool,
+            commit: Optional[str],
+            build_root: str,
+            package_name: str) -> None:
+        """
+        :param repository: the path to YugabyteDB repository (also known as YB_SRC_ROOT).
+        :param build_type: build type such as "release".
+        :param distribution_path: the directory where to place the resulting archive.
+        :param force: whether to skip the prompt in case there are local uncommitted changes.
+        :param commit: the Git commit SHA1 to use. If not specified, it is autodetected.
+        :param build_root: the build root directory corresponding to the build type.
+        :param package_name: the name of the top-level section of yb_release_manifest.json, such as
+                             "all" or "cli", specifying the set of files to include.
+        """
         self.repo = repository
         self.build_type = build_type
         self.build_path = os.path.join(self.repo, 'build')
         self.distribution_path = distribution_path
         self.force = force
         self.commit = commit or ReleaseUtil.get_head_commit_hash()
-        self.base_version = None
-        with open(os.path.join(self.repo, RELEASE_VERSION_FILE)) as v:
-            # Remove any build number in the version.txt.
-            self.base_version = v.read().split("-")[0]
-        assert self.base_version is not None, \
-            'Unable to read {0} file'.format(RELEASE_VERSION_FILE)
 
-        with open(os.path.join(self.repo, RELEASE_MANIFEST_NAME)) as f:
-            self.release_manifest = json.load(f)[package_name]
+        base_version = None
+        with open(os.path.join(self.repo, RELEASE_VERSION_FILE)) as version_file:
+            # Remove any build number in the version.txt.
+            base_version = version_file.read().split("-")[0]
+        assert base_version is not None, \
+            'Unable to read {0} file'.format(RELEASE_VERSION_FILE)
+        self.base_version = base_version
+
+        with open(os.path.join(self.repo, RELEASE_MANIFEST_NAME)) as release_manifest_file:
+            self.release_manifest = json.load(release_manifest_file)[package_name]
         assert self.release_manifest is not None, \
             'Unable to read {0} file'.format(RELEASE_MANIFEST_NAME)
         self.build_root = build_root
@@ -52,13 +88,13 @@ class ReleaseUtil(object):
         logging.info("Java project version from pom.xml: {}".format(self.java_project_version))
         self._rewrite_manifest()
 
-    def get_release_manifest(self):
+    def get_release_manifest(self) -> Dict[str, Any]:
         return self.release_manifest
 
-    def get_seed_executable_patterns(self):
-        return self.release_manifest['bin']
+    def get_seed_executable_patterns(self) -> List[str]:
+        return cast(List[str], self.release_manifest['bin'])
 
-    def expand_value(self, old_value):
+    def expand_value(self, old_value: str) -> str:
         """
         Expand old_value with the following changes:
         - Replace ${project.version} with the Java version from pom.xml.
@@ -82,7 +118,7 @@ class ReleaseUtil(object):
                 old_value, new_value))
         return new_value
 
-    def _rewrite_manifest(self):
+    def _rewrite_manifest(self) -> None:
         """
         Rewrite the release manifest expanding values using expand_value function.
         """
@@ -94,7 +130,7 @@ class ReleaseUtil(object):
                 for i in range(len(values)):
                     values[i] = self.expand_value(values[i])
 
-    def repo_expand_path(self, path):
+    def repo_expand_path(self, path: str) -> str:
         """
         If path is relative treat it as a path within repo and make it absolute.
         """
@@ -102,7 +138,7 @@ class ReleaseUtil(object):
             path = os.path.join(self.repo, path)
         return path
 
-    def create_distribution(self, distribution_dir):
+    def create_distribution(self, distribution_dir: str) -> None:
         """This method would read the release_manifest and traverse through the
         build directory and copy necessary files/symlinks into the distribution_dir
         Args:
@@ -127,7 +163,7 @@ class ReleaseUtil(object):
                               os.path.join(current_dest_dir, os.path.basename(file_path)))
         logging.info("Created the distribution at '{}'".format(distribution_dir))
 
-    def update_manifest(self, distribution_dir):
+    def update_manifest(self, distribution_dir: str) -> None:
         for release_subdir in ['bin']:
             if release_subdir in self.release_manifest:
                 del self.release_manifest[release_subdir]
@@ -145,10 +181,10 @@ class ReleaseUtil(object):
                       json.dumps(self.release_manifest, indent=2, sort_keys=True))
 
     @staticmethod
-    def get_head_commit_hash():
-        return check_output(["git", "rev-parse", "HEAD"]).strip().decode()
+    def get_head_commit_hash() -> str:
+        return check_output(["git", "rev-parse", "HEAD"]).strip().decode('utf-8')
 
-    def get_release_file(self):
+    def get_release_file(self) -> str:
         """
         This method does couple of checks before generating the release file name.
         - Checks if there are local uncommitted changes.
@@ -159,7 +195,18 @@ class ReleaseUtil(object):
         Returns:
             (string): Release file path.
         """
-        release_name = "{}-{}-{}".format(self.base_version, self.commit, self.build_type)
+        components: List[str] = [
+            self.base_version,
+            self.commit,
+            self.build_type
+        ]
+        compiler_type = get_compiler_type_from_build_root(self.build_root)
+        # Make the clang12 release package the default, and append the compiler type for all other
+        # compiler types so we can still use them with the appropriate support from the downstream
+        # tooling.
+        if compiler_type != 'clang12':
+            components.append(compiler_type)
+        release_name = "-".join(components)
 
         system = platform.system().lower()
         if system == "linux":
@@ -169,7 +216,10 @@ class ReleaseUtil(object):
             release_name, system, platform.machine().lower())
         return os.path.join(self.build_path, release_file_name)
 
-    def generate_release(self):
+    def generate_release(self) -> str:
+        """
+        Generates a release package and returns the path to the release file.
+        """
         yugabyte_folder_prefix = "yugabyte-{}".format(self.base_version)
         tmp_parent_dir = self.distribution_path + '.tmp_for_tar_gz'
         os.mkdir(tmp_parent_dir)
@@ -182,7 +232,7 @@ class ReleaseUtil(object):
         tmp_distribution_dir = os.path.join(tmp_parent_dir, yugabyte_folder_prefix)
         shutil.move(self.distribution_path, tmp_distribution_dir)
 
-        def change_permissions(mode):
+        def change_permissions(mode: str) -> None:
             logging.info(
                 "Changing permissions recursively on directory '%s': %s", tmp_distribution_dir,
                 mode)
@@ -206,7 +256,7 @@ class ReleaseUtil(object):
             os.rmdir(tmp_parent_dir)
 
 
-def check_for_local_changes():
+def check_for_local_changes() -> None:
     is_dirty = False
     if check_output(["git", "diff", "origin/master"]).strip():
         logging.error("Local changes exists. This shouldn't be an official release.")

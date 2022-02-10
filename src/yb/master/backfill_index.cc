@@ -652,7 +652,7 @@ BackfillTable::BackfillTable(
   if (pb.backfill_jobs_size() > 0 && pb.backfill_jobs(0).has_backfilling_timestamp() &&
       read_time_for_backfill_.FromUint64(pb.backfill_jobs(0).backfilling_timestamp()).ok()) {
     DCHECK(pb.backfill_jobs_size() == 1) << "Expect only 1 outstanding backfill job";
-    DCHECK(pb.backfill_jobs(0).indexes_size() == index_infos_.size())
+    DCHECK(implicit_cast<size_t>(pb.backfill_jobs(0).indexes_size()) == index_infos_.size())
         << "Expect to use the same set of indexes.";
     timestamp_chosen_.store(true, std::memory_order_release);
     VLOG_WITH_PREFIX(1) << "Will be using " << read_time_for_backfill_
@@ -748,7 +748,7 @@ const std::string BackfillTable::GetNamespaceName() const {
   return ns_info_->name();
 }
 
-Status BackfillTable::UpdateRowsProcessedForIndexTable(const int number_rows_processed) {
+Status BackfillTable::UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed) {
   auto l = indexed_table_->LockForWrite();
 
   if (l.data().pb.backfill_jobs_size() == 0) {
@@ -1141,7 +1141,7 @@ void BackfillTablet::LaunchNextChunkOrDone() {
 
 void BackfillTablet::Done(
     const Status& status, const boost::optional<string>& backfilled_until,
-    const int number_rows_processed, const std::unordered_set<TableId>& failed_indexes) {
+    const uint64_t number_rows_processed, const std::unordered_set<TableId>& failed_indexes) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status
               << "\nFailed_indexes are " << yb::ToString(failed_indexes);
@@ -1160,7 +1160,7 @@ void BackfillTablet::Done(
 }
 
 Status BackfillTablet::UpdateBackfilledUntil(
-    const string& backfilled_until, const int number_rows_processed) {
+    const string& backfilled_until, const uint64_t number_rows_processed) {
   backfilled_until_ = backfilled_until;
   VLOG_WITH_PREFIX(2) << "Done backfilling the tablet " << yb::ToString(tablet_) << " until "
                       << yb::ToString(backfilled_until_);

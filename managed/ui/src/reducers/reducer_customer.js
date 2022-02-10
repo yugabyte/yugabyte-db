@@ -40,6 +40,10 @@ import {
   SET_INITIAL_VALUES,
   EDIT_CUSTOMER_CONFIG,
   EDIT_CUSTOMER_CONFIG_RESPONSE,
+  FETCH_RUNTIME_CONFIGS,
+  FETCH_RUNTIME_CONFIGS_RESPONSE,
+  SET_RUNTIME_CONFIG,
+  SET_RUNTIME_CONFIG_RESPONSE,
   FETCH_CUSTOMER_CONFIGS,
   FETCH_CUSTOMER_CONFIGS_RESPONSE,
   DELETE_CUSTOMER_CONFIG,
@@ -378,6 +382,15 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'configs', []);
     case FETCH_CUSTOMER_CONFIGS_RESPONSE:
       return setPromiseResponse(state, 'configs', action);
+    case FETCH_RUNTIME_CONFIGS:
+      return setLoadingState(state, 'runtimeConfigs', []);
+    case FETCH_RUNTIME_CONFIGS_RESPONSE:
+      return setPromiseResponse(state, 'runtimeConfigs', action);
+    case SET_RUNTIME_CONFIG:
+      return setLoadingState(state, 'updateRuntimeConfig', {});
+    case SET_RUNTIME_CONFIG_RESPONSE:
+      return setPromiseResponse(state, 'updateRuntimeConfig', action);
+
     case DELETE_CUSTOMER_CONFIG:
       return setLoadingState(state, 'deleteConfig', {});
     case DELETE_CUSTOMER_CONFIG_RESPONSE:

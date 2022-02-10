@@ -3,12 +3,12 @@ title: FAQs about Yugabyte Platform
 headerTitle: Yugabyte Platform FAQ
 linkTitle: Yugabyte Platform FAQ
 description: Answers to common questions about Yugabyte Platform.
+section: FAQ
 aliases:
   - /latest/faq/enterprise-edition/
 menu:
   latest:
     identifier: faq-yugabyte-platform
-    parent: faq
     weight: 2750
 isTocNested: false
 showAsideToc: true

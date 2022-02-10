@@ -24,6 +24,7 @@
 #include "yb/common/ybc-internal.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/thread.h"
 #include "yb/util/yb_partition.h"
 
@@ -41,6 +42,10 @@ DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-clien
 DEFINE_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
+DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
+                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
+                 "production environment. In unit test we use this flag to force allocation of "
+                 "large Postgres OIDs.");
 
 DECLARE_int32(num_connections_to_server);
 
@@ -246,8 +251,10 @@ YBCStatus YBCPgReserveOids(const YBCPgOid database_oid,
                            const uint32_t count,
                            YBCPgOid *begin_oid,
                            YBCPgOid *end_oid) {
-  return ToYBCStatus(pgapi->ReserveOids(database_oid, next_oid, count,
-                                        begin_oid, end_oid));
+  return ToYBCStatus(pgapi->ReserveOids(database_oid,
+                                        next_oid + static_cast<YBCPgOid>(
+                                          FLAGS_TEST_ysql_oid_prefetch_adjustment),
+                                        count, begin_oid, end_oid));
 }
 
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
@@ -276,10 +283,12 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
 YBCStatus YBCPgNewCreateTablegroup(const char *database_name,
                                    YBCPgOid database_oid,
                                    YBCPgOid tablegroup_oid,
+                                   YBCPgOid tablespace_oid,
                                    YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateTablegroup(database_name,
                                                 database_oid,
                                                 tablegroup_oid,
+                                                tablespace_oid,
                                                 handle));
 }
 
@@ -1047,6 +1056,10 @@ bool YBCGetDisableIndexBackfill() {
   return FLAGS_ysql_disable_index_backfill;
 }
 
+bool YBCGetLogYsqlCatalogVersions() {
+  return FLAGS_log_ysql_catalog_versions;
+}
+
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
@@ -1072,7 +1085,7 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   pgapi->SetTimeout(timeout_ms);
 }
 
-YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, int *count) {
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) {
   const auto result = pgapi->ListTabletServers();
   if (!result.ok()) {
     return ToYBCStatus(result.status());

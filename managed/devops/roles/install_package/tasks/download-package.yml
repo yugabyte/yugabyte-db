@@ -10,11 +10,13 @@
 - set_fact:
     package_folder_or_tmp: "{{ temporary_package_dir if is_yugabyte_package else package_folder }}"
     package_dest: "{{ yb_software_dir }}/{{ package_folder }}"
+  tags: always
 
 - name: Download package | Set temporary package path
   set_fact:
     tmp_package_location: "{{ yb_software_dir }}/{{ package_folder_or_tmp }}/{{ package_name }}"
     remote_tmp_package: "/tmp/{{ package_name }}"
+  tags: always
 
 - name: Download package | Download "{{ package_name }}" from AWS S3
   command:
@@ -28,6 +30,7 @@
     AWS_ACCESS_KEY_ID: "{{ aws_access_key | default(lookup('env', 'AWS_ACCESS_KEY_ID')) }}"
     AWS_SECRET_ACCESS_KEY: "{{ aws_secret_key | default(lookup('env', 'AWS_SECRET_ACCESS_KEY')) }}"
   when: s3_package_path is defined
+  tags: yb-prebuilt-ami
 
 - name: Download package | Create credentials file and download "{{ package_name }}" from GCS
   block:
@@ -74,12 +77,15 @@
     mode: 0755
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
+
 
 - name: Download package | Move package "{{ remote_tmp_package }}" to "{{ tmp_package_location }}"
   copy:
     src: "{{ remote_tmp_package }}"
     dest: "{{ tmp_package_location }}"
     remote_src: True
+  tags: yb-prebuilt-ami
 
 - name: Download package | Unpack package "{{ tmp_package_location }}"
   unarchive:
@@ -88,22 +94,26 @@
     remote_src: yes
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
 
 - name: Download package | Remove the package destination
   file:
     path: "{{ package_dest }}"
     state: absent
   when: is_yugabyte_package
+  tags: yb-prebuilt-ami
 
 - name: Download package | Move unpacked dir to "{{ release_folder }}"
   command: mv "{{ yb_software_dir }}/{{ package_folder_or_tmp }}/yugabyte-{{ release_version }}" "{{ package_dest }}"
   when: is_yugabyte_package
+  tags: yb-prebuilt-ami
 
 - name: Download package | Clean the releases directory
   file:
     path: "{{ yb_home_dir }}/{{ release_folder }}"
     state: absent
   when: release_folder != ""
+  tags: yb-prebuilt-ami
 
 - name: Download package | Create releases directory
   file:
@@ -113,6 +123,7 @@
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
   when: release_folder != ""
+  tags: yb-prebuilt-ami
 
 - name: Download package | Move package "{{ tmp_package_location }}" to releases folder
   copy:
@@ -120,14 +131,17 @@
     dest: "{{ yb_home_dir }}/{{ release_folder }}"
     remote_src: True
   when: release_folder != ""
+  tags: yb-prebuilt-ami
 
 - name: Download package | Clean up temporary downloads
   file:
     path: "{{ tmp_package_location }}"
     state: absent
+  tags: yb-prebuilt-ami
 
 - name: Download package | Run the post install script
   command: "{{ package_dest }}/bin/post_install.sh"
   tags:
     - download-software
+    - yb-prebuilt-ami
   when: is_yugabyte_package

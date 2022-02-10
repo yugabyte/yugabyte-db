@@ -9,8 +9,11 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -19,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
@@ -32,15 +36,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class SoftwareUpgradeTest extends UpgradeTaskTest {
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @InjectMocks private SoftwareUpgrade softwareUpgrade;
 
@@ -65,12 +75,21 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
+  private ArgumentCaptor<String> ybAdminFuncName;
+
   @Override
   @Before
   public void setUp() {
     super.setUp();
 
     softwareUpgrade.setUserTaskUUID(UUID.randomUUID());
+    ShellResponse successResponse = new ShellResponse();
+    successResponse.message = "YSQL successfully upgraded to the latest version";
+
+    ybAdminFuncName = ArgumentCaptor.forClass(String.class);
+    when(mockNodeUniverseManager.runYbAdminCommand(
+            any(), any(), ybAdminFuncName.capture(), anyLong()))
+        .thenReturn(successResponse);
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams) {
@@ -96,7 +115,10 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
       }
 
       commonNodeTasks.addAll(
-          ImmutableList.of(TaskType.UpdateSoftwareVersion, TaskType.UniverseUpdateSucceeded));
+          ImmutableList.of(
+              TaskType.RunYsqlUpgrade,
+              TaskType.UpdateSoftwareVersion,
+              TaskType.UniverseUpdateSucceeded));
     }
     for (TaskType commonNodeTask : commonNodeTasks) {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask);
@@ -223,7 +245,16 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
-  public void testSoftwareUpgradeWithReadReplica() {
+  @Parameters({"false", "true"})
+  public void testSoftwareUpgradeWithReadReplica(boolean enableYSQL) {
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL = enableYSQL;
+            });
+
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
@@ -246,6 +277,15 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     taskParams.ybSoftwareVersion = "new-version";
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.version);
     verify(mockNodeManager, times(33)).nodeCommand(any(), any());
+
+    if (enableYSQL) {
+      verify(mockNodeUniverseManager, times(1))
+          .runYbAdminCommand(any(), any(), ybAdminFuncName.capture(), anyLong());
+      assertEquals("upgrade_ysql", ybAdminFuncName.getValue());
+    } else {
+      verify(mockNodeUniverseManager, never())
+          .runYbAdminCommand(any(), any(), ybAdminFuncName.capture(), anyLong());
+    }
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

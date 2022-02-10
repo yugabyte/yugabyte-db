@@ -18,6 +18,46 @@ Included here are the release notes for all releases in the v2.8 stable release 
 
 For an RSS feed of the release notes for the latest and stable releases, point your feed reader to [https://docs.yugabyte.com/latest/releases/whats-new/index.xml](../index.xml).
 
+## v2.8.1.1 - February 2, 2022 {#v2.8.1.1}
+
+**Build:** `2.8.1.1-b5`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.1/yugabyte-2.8.1.1-b5-darwin-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.1/yugabyte-2.8.1.1-b5-linux-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux x86</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.8.1.1/yugabyte-2.8.1.1-b5-el8-aarch64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux ARM</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.8.1.1-b5
+```
+
+### Bug fixes
+
+This release is a bugfix-only release.
+
+#### Yugabyte Platform
+
+* [PLAT-2647] Add HTTP_PROXY environment variable to `replicated.yml`
+* [PLAT-2673] Validating custom key-pair with AWS
+
 ## v2.8.1.0 - January 4, 2022 {#v2.8.1.0}
 
 **Build:** `2.8.1.0-b37`
@@ -206,7 +246,6 @@ For an overview of the 2.8.0.0 release's notable new features, check out the [re
 * [PLAT-1747] supporting n2 instance types for GCP internally
 * [PLAT-1766] [Alerts] [UI] Cleanup
 * [PLAT-1774] Add a customer ID field in Customer Profile page
-* [Plat-1777] Add basic filtering and sorting
 * [PLAT-1793] DB Error logs alert
 * [Plat-1797] Create a pagination component
 * [PLAT-1808] [Alert UI] cleanup tasks

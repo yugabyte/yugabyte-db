@@ -71,10 +71,8 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
-DECLARE_int32(max_queued_split_candidates);
 
 DECLARE_int32(heartbeat_interval_ms);
-DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 
@@ -184,14 +182,14 @@ class PgMiniTest : public PgMiniTestBase {
 
 class PgMiniSingleTServerTest : public PgMiniTest {
  public:
-  int NumTabletServers() override {
+  size_t NumTabletServers() override {
     return 1;
   }
 };
 
 class PgMiniMasterFailoverTest : public PgMiniTest {
  public:
-  int NumMasters() override {
+  size_t NumMasters() override {
     return 3;
   }
 };
@@ -439,6 +437,16 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
 
   auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithoutTransaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto status = conn.Execute(
+      "SELECT tmplinline FROM pg_catalog.pg_pltemplate WHERE tmplname !~ tmplhandler FOR SHARE");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(),
+                      "Read request with row mark types must be part of a transaction");
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
@@ -886,7 +894,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
         RandomHumanReadableString(kValueSize)));
 
     return false;
-  }, 5s, "Intents cleanup", 200ms));
+  }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
@@ -2120,7 +2128,6 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     FLAGS_yb_num_shards_per_tserver = 1;
     FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
     FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
-    FLAGS_max_queued_split_candidates = 10;
     FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
     FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
     FLAGS_tablet_force_split_threshold_bytes = 30_KB;
@@ -2130,7 +2137,6 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     FLAGS_db_index_block_size_bytes = 2_KB;
     FLAGS_heartbeat_interval_ms = 1000;
     FLAGS_tserver_heartbeat_metrics_interval_ms = 1000;
-    FLAGS_process_split_tablet_candidates_interval_msec = 1000;
     FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms = 4000;
     FLAGS_ysql_prefetch_limit = 32;
     PgMiniTest::SetUp();
@@ -2206,7 +2212,7 @@ TEST_F_EX(
 
   std::string table_id;
   GetTableIDFromTableName(table_name, &table_id);
-  int start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  auto start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
   // Insert elements into the table using a parallel thread
@@ -2227,7 +2233,7 @@ TEST_F_EX(
   StartReadWriteThreads(table_name, &thread_holder);
 
   thread_holder.WaitAndStop(200s);
-  int end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  auto end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ASSERT_GT(end_num_tablets, start_num_tablets);
   DestroyTable(table_name);
 

@@ -68,7 +68,7 @@ namespace {
 
 constexpr size_t kQueueLength = 1000;
 
-Slice GetSidecarPointer(const RpcController& controller, int idx, int expected_size) {
+Slice GetSidecarPointer(const RpcController& controller, int idx, size_t expected_size) {
   Slice sidecar = CHECK_RESULT(controller.GetSidecar(idx));
   CHECK_EQ(expected_size, sidecar.size());
   return sidecar;
@@ -143,7 +143,7 @@ void GenericCalculatorService::Handle(InboundCallPtr incoming) {
 void GenericCalculatorService::GenericCalculatorService::DoAdd(InboundCall* incoming) {
   Slice param(incoming->serialized_request());
   AddRequestPB req;
-  if (!req.ParseFromArray(param.data(), param.size())) {
+  if (!req.ParseFromArray(param.data(), narrow_cast<int>(param.size()))) {
     LOG(FATAL) << "couldn't parse: " << param.ToDebugString();
   }
 
@@ -155,16 +155,17 @@ void GenericCalculatorService::GenericCalculatorService::DoAdd(InboundCall* inco
 void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
   Slice param(incoming->serialized_request());
   SendStringsRequestPB req;
-  if (!req.ParseFromArray(param.data(), param.size())) {
+  if (!req.ParseFromArray(param.data(), narrow_cast<int>(param.size()))) {
     LOG(FATAL) << "couldn't parse: " << param.ToDebugString();
   }
 
   Random r(req.random_seed());
   SendStringsResponsePB resp;
+  auto* yb_call = down_cast<YBInboundCall*>(incoming);
   for (auto size : req.sizes()) {
     auto sidecar = RefCntBuffer(size);
     RandomString(sidecar.udata(), size, &r);
-    resp.add_sidecars(down_cast<YBInboundCall*>(incoming)->AddRpcSidecar(sidecar.as_slice()));
+    resp.add_sidecars(narrow_cast<uint32_t>(yb_call->AddRpcSidecar(sidecar.as_slice())));
   }
 
   down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
@@ -173,7 +174,7 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
 void GenericCalculatorService::DoSleep(InboundCall* incoming) {
   Slice param(incoming->serialized_request());
   SleepRequestPB req;
-  if (!req.ParseFromArray(param.data(), param.size())) {
+  if (!req.ParseFromArray(param.data(), narrow_cast<int>(param.size()))) {
     incoming->RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST,
         STATUS(InvalidArgument, "Couldn't parse pb",
             req.InitializationErrorString()));
@@ -189,7 +190,7 @@ void GenericCalculatorService::DoSleep(InboundCall* incoming) {
 void GenericCalculatorService::DoEcho(InboundCall* incoming) {
   Slice param(incoming->serialized_request());
   EchoRequestPB req;
-  if (!req.ParseFromArray(param.data(), param.size())) {
+  if (!req.ParseFromArray(param.data(), narrow_cast<int>(param.size()))) {
     incoming->RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST,
         STATUS(InvalidArgument, "Couldn't parse pb",
             req.InitializationErrorString()));
@@ -379,6 +380,16 @@ class CalculatorService: public CalculatorServiceIf {
     context.RespondSuccess();
   }
 
+  Result<rpc_test::TrivialResponsePB> Trivial(
+      const rpc_test::TrivialRequestPB& req, CoarseTimePoint deadline) override {
+    if (req.value() < 0) {
+      return STATUS_FORMAT(InvalidArgument, "Negative value: $0", req.value());
+    }
+    rpc_test::TrivialResponsePB resp;
+    resp.set_value(req.value());
+    return resp;
+  }
+
  private:
   void DoSleep(const SleepRequestPB* req, RpcContext context) {
     SleepFor(MonoDelta::FromMicroseconds(req->sleep_micros()));
@@ -508,7 +519,7 @@ void RpcTestBase::DoTestSidecar(Proxy* proxy,
   for (size_t i = 0; i != sizes.size(); ++i) {
     size_t size = sizes[i];
     expected.resize(size);
-    Slice sidecar = GetSidecarPointer(controller, resp.sidecars(i), size);
+    Slice sidecar = GetSidecarPointer(controller, resp.sidecars(narrow_cast<uint32_t>(i)), size);
     RandomString(expected.data(), size, &rng);
     ASSERT_EQ(0, sidecar.compare(expected)) << "Invalid sidecar at " << i << " position";
   }
@@ -528,7 +539,7 @@ void RpcTestBase::DoTestExpectTimeout(Proxy* proxy, const MonoDelta& timeout) {
   ASSERT_FALSE(s.ok());
   sw.stop();
 
-  int expected_millis = timeout.ToMilliseconds();
+  auto expected_millis = timeout.ToMilliseconds();
   int elapsed_millis = sw.elapsed().wall_millis();
 
   // We shouldn't timeout significantly faster than our configured timeout.
@@ -607,4 +618,13 @@ MessengerBuilder RpcTestBase::CreateMessengerBuilder(const string &name,
 }
 
 } // namespace rpc
+
+namespace rpc_test {
+
+void SetupError(TrivialErrorPB* error, const Status& status) {
+  error->set_code(status.code());
+}
+
+}
+
 } // namespace yb

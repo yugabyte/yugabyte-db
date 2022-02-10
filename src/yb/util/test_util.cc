@@ -35,6 +35,7 @@
 #include <glog/logging.h>
 #include <gtest/gtest-spi.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
@@ -46,6 +47,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/debug/trace_event.h"
 
 DEFINE_string(test_leave_files, "on_failure",
               "Whether to leave test files around after the test run. "
@@ -55,6 +57,7 @@ DEFINE_int32(test_random_seed, 0, "Random seed to use for randomized tests");
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(TEST_running_test);
+DECLARE_bool(never_fsync);
 
 using std::string;
 using strings::Substitute;
@@ -74,6 +77,7 @@ YBTest::YBTest()
   : env_(new EnvWrapper(Env::Default())),
     test_dir_(GetTestDataDirectory()) {
   InitThreading();
+  debug::EnableTraceEvents();
 }
 
 // env passed in from subclass, for tests that run in-memory
@@ -106,6 +110,7 @@ void YBTest::SetUp() {
   FLAGS_enable_tracing = true;
   FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
   FLAGS_TEST_running_test = true;
+  FLAGS_never_fsync = true;
   for (const char* env_var_name : {
       "ASAN_OPTIONS",
       "LSAN_OPTIONS",
@@ -347,13 +352,13 @@ string GetToolPath(const string& rel_path, const string& tool_name) {
   return tool_path;
 }
 
-int CalcNumTablets(int num_tablet_servers) {
+int CalcNumTablets(size_t num_tablet_servers) {
 #ifdef NDEBUG
   return 0;  // Will use the default.
 #elif defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
-  return num_tablet_servers;
+  return narrow_cast<int>(num_tablet_servers);
 #else
-  return num_tablet_servers * 3;
+  return narrow_cast<int>(num_tablet_servers * 3);
 #endif
 }
 

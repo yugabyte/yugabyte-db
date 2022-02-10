@@ -40,6 +40,7 @@
 #include <rapidjson/document.h>
 
 #include "yb/util/status_fwd.h"
+#include "yb/tools/tools_fwd.h"
 
 namespace yb {
 namespace client {
@@ -50,7 +51,6 @@ class YBTableName;
 
 namespace tools {
 
-class ClusterAdminClient;
 typedef enterprise::ClusterAdminClient ClusterAdminClientClass;
 
 // Tool to administer a cluster from the CLI.
@@ -102,7 +102,7 @@ Result<client::YBTableName> ResolveSingleTableName(
     const CLIArgumentsIterator& end,
     TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
 
-CHECKED_STATUS CheckArgumentsCount(int count, int min, int max);
+CHECKED_STATUS CheckArgumentsCount(size_t count, size_t min, size_t max);
 
 }  // namespace tools
 }  // namespace yb

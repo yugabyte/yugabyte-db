@@ -57,6 +57,7 @@ $ ./bin/yb-admin --help
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
+* [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)
 
 ---
 
@@ -93,7 +94,7 @@ yb-admin \
 
 * master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *tablet_id*: The identifier (ID) of the tablet.
-* ADD SERVER | REMOVE SERVER: Subcommand to add or remove the server.
+* ADD_SERVER | REMOVE_SERVER: Subcommand to add or remove the server.
 * *peer_uuid*: The UUID of the tablet server hosting the peer tablet.
 * PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum. Required when using the `ADD_SERVER` subcommand.
 
@@ -104,7 +105,7 @@ If you need to take a node down temporarily, but intend to bring it back up, you
 * If the node is down for less than 15 minutes, it will catch up through RPC calls when it comes back online.
 * If the node is offline longer than 15 minutes, then it will go through Remote Bootstrap, where the current leader will forward all relevant files to catch up.
 
-If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOTE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
+If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOVE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
 
 #### change_master_config
 
@@ -1675,3 +1676,46 @@ yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_is_load_balancer_idle
 ```
+
+---
+
+### Upgrade YSQL system catalog
+
+#### upgrade_ysql
+
+Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
+YSQL upgrades are not required for clusters where YSQL is not enabled. Learn more about configuring YSQL flags [here](../../reference/configuration/yb-tserver/#ysql-flags).
+
+**Syntax**
+
+```sh
+yb-admin upgrade_ysql
+```
+
+**Example**
+
+```sh
+./bin/yb-admin upgrade_ysql
+```
+
+A successful upgrade returns the following message:
+
+```output
+YSQL successfully upgraded to the latest version
+```
+
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+
+```sh
+$ ./bin/yb-admin \
+      -timeout_ms 180000 \
+      upgrade_ysql
+```
+
+Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+
+{{< note title="Note" >}}
+Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
+{{< /note >}}
+
+Refer [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.

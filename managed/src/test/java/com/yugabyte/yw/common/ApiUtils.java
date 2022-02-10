@@ -115,7 +115,7 @@ public class ApiUtils {
       final boolean updateInProgress) {
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, false, null);
     return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
   }
 
@@ -467,12 +467,13 @@ public class ApiUtils {
     NodeDetails node = new NodeDetails();
     // TODO: Set nodeName to null for ToBeAdded state
     node.nodeName = "host-n" + idx;
+    node.nodeUuid = UUID.randomUUID();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.cloud = cloud;
     node.cloudInfo.az = zone;
     node.cloudInfo.region = region;
     node.cloudInfo.subnet_id = subnet;
-    node.cloudInfo.private_ip = "host-n" + idx;
+    node.cloudInfo.private_ip = "10.0.0." + idx;
     node.cloudInfo.instance_type = UTIL_INST_TYPE;
     node.isTserver = true;
     node.state = state;

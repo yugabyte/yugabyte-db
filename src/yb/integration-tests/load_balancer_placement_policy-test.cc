@@ -63,12 +63,12 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
   }
 
   void GetLoadOnTservers(const string tablename,
-                         int num_tservers,
+                         size_t num_tservers,
                          vector<int> *const out_load_per_tserver) {
     out_load_per_tserver->clear();
-    for (int ii = 0; ii < num_tservers; ++ii) {
+    for (size_t i = 0; i < num_tservers; ++i) {
       const int count = ASSERT_RESULT(GetLoadOnTserver(
-          external_mini_cluster()->tablet_server(ii), tablename));
+          external_mini_cluster()->tablet_server(i), tablename));
       out_load_per_tserver->emplace_back(count);
     }
   }
@@ -119,7 +119,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
 
   void AddNewTserverToZone(
     const string& zone,
-    const int expected_num_tservers,
+    const size_t expected_num_tservers,
     const string& placement_uuid = "") {
 
     std::vector<std::string> extra_opts;
@@ -132,8 +132,8 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     }
 
     ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
-    ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(expected_num_tservers,
-      kDefaultTimeout));
+    ASSERT_OK(
+        external_mini_cluster()->WaitForTabletServerCount(expected_num_tservers, kDefaultTimeout));
   }
 
   void AddNewTserverToLocation(const string& cloud, const string& region,
@@ -218,7 +218,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
   // Add a new tserver to zone 1.
-  int num_tservers = num_tablet_servers() + 1;
+  auto num_tservers = num_tablet_servers() + 1;
   AddNewTserverToZone("z1", num_tservers);
 
   WaitForLoadBalancer();
@@ -257,7 +257,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
 
   // The table with cluster placement policy should have tablets spread across all tservers.
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     ASSERT_GT(counts_per_ts[ii], 0);
   }
 
@@ -272,7 +272,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   WaitForLoadBalancer();
 
   GetLoadOnTservers(custom_policy_table, num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     if (ii == 0 || ii == 4) {
       // The table with custom policy should have no tablets in z0, i.e. ts0 and ts4.
       ASSERT_EQ(counts_per_ts[ii], 0);
@@ -302,7 +302,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   // The table with cluster placement policy should continue to have tablets spread across all
   // tservers.
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
-  for (int ii = 0; ii < num_tservers; ++ii) {
+  for (size_t ii = 0; ii < num_tservers; ++ii) {
     ASSERT_GT(counts_per_ts[ii], 0);
   }
 }
@@ -318,6 +318,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
 
   TestWorkload workload(external_mini_cluster());
   workload.set_table_name(placement_table);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -348,7 +349,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
 
   // Verify that the data inserted is still sane.
   workload.StopAndJoin();
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   // Verify that number of rows is as expected.
@@ -363,7 +364,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
   // Add 2 tservers with custom placement uuid.
-  int num_tservers = num_tablet_servers() + 1;
+  auto num_tservers = num_tablet_servers() + 1;
   const string& random_placement_uuid = "19dfa091-2b53-434f-b8dc-97280a5f8831";
   AddNewTserverToZone("z1", num_tservers, random_placement_uuid);
   AddNewTserverToZone("z2", ++num_tservers, random_placement_uuid);
@@ -381,8 +382,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
 
   // Now there are 2 tservers with custom placement_uuid and 3 tservers with default placement_uuid.
   // Modify the cluster config to have new placement_uuid matching the new tservers.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
-    "c.r.z0,c.r.z1,c.r.z2", 2, random_placement_uuid));
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z1,c.r.z2", 2, random_placement_uuid));
 
   // Change the table placement policy and verify that the change reflected.
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(

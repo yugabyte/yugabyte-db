@@ -34,7 +34,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -117,8 +116,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     customCertInfo.rootCertPath = "rootCertPath";
     customCertInfo.nodeCertPath = "nodeCertPath";
     customCertInfo.nodeKeyPath = "nodeKeyPath";
-    new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", CERT_CONTENTS);
+    createTempFile("upgrade_task_test_ca.crt", CERT_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -126,7 +124,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           "test",
           date,
           date,
-          TestHelper.TMP_PATH + "/ca.crt",
+          TestHelper.TMP_PATH + "/upgrade_task_test_ca.crt",
           customCertInfo);
     } catch (IOException | NoSuchAlgorithmException ignored) {
     }
@@ -154,7 +152,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
-          .thenReturn(HostAndPort.fromString("host-n2").withDefaultPort(11));
+          .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ignored) {

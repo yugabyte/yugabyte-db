@@ -779,7 +779,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
       }
     }
 
-    uint32_t entry_batch_bytes = entry_batch->total_size_bytes();
+    auto entry_batch_bytes = entry_batch->total_size_bytes();
     // If there is no data to write return OK.
     if (PREDICT_FALSE(entry_batch_bytes == 0)) {
       return Status::OK();
@@ -787,9 +787,9 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
 
     // If the size of this entry overflows the current segment, get a new one.
     if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
-      if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
+      if (active_segment_->Size() + entry_batch_bytes + kEntryHeaderSize > cur_max_segment_size_) {
         LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
-                              << "Starting new segment allocation. ";
+                              << "Starting new segment allocation.";
         RETURN_NOT_OK(AsyncAllocateSegment());
         if (!options_.async_preallocate_segments) {
           RETURN_NOT_OK(RollOver());
@@ -812,7 +812,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
     }
 
     if (metrics_) {
-      metrics_->bytes_logged->IncrementBy(entry_batch_bytes);
+      metrics_->bytes_logged->IncrementBy(active_segment_->written_offset() - start_offset);
     }
 
     // Populate the offset and sequence number for the entry batch if we did a WAL write.
@@ -909,7 +909,7 @@ Status Log::Sync() {
 
   if (!sync_disabled_) {
     if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_log_inject_latency))) {
-      Random r(GetCurrentTimeMicros());
+      Random r(static_cast<uint32_t>(GetCurrentTimeMicros()));
       int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
                               GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));
       if (sleep_ms > 0) {
@@ -966,22 +966,24 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
       min_op_idx, cdc_min_replicated_index_.load(std::memory_order_acquire), segments_to_gc));
 
-  int max_to_delete = std::max(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
-  if (segments_to_gc->size() > max_to_delete) {
+  auto max_to_delete = std::max<ssize_t>(
+      reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
+  ssize_t segments_to_gc_size = segments_to_gc->size();
+  if (segments_to_gc_size > max_to_delete) {
     VLOG_WITH_PREFIX(2)
-        << "GCing " << segments_to_gc->size() << " in " << wal_dir_
+        << "GCing " << segments_to_gc_size << " in " << wal_dir_
         << " would not leave enough remaining segments to satisfy minimum "
         << "retention requirement. Only considering "
         << max_to_delete << "/" << reader_->num_segments();
     segments_to_gc->resize(max_to_delete);
-  } else if (segments_to_gc->size() < max_to_delete) {
-    int extra_segments = max_to_delete - segments_to_gc->size();
+  } else if (segments_to_gc_size < max_to_delete) {
+    auto extra_segments = max_to_delete - segments_to_gc_size;
     VLOG_WITH_PREFIX(2) << "Too many log segments, need to GC " << extra_segments << " more.";
   }
 
   // Don't GC segments that are newer than the configured time-based retention.
   int64_t now = GetCurrentTimeMicros();
-  for (int i = 0; i < segments_to_gc->size(); i++) {
+  for (size_t i = 0; i < segments_to_gc->size(); i++) {
     const scoped_refptr<ReadableLogSegment>& segment = (*segments_to_gc)[i];
 
     // Segments here will always have a footer, since we don't return the in-progress segment up
@@ -1254,9 +1256,9 @@ Status Log::Close() {
   }
 }
 
-int Log::num_segments() const {
+size_t Log::num_segments() const {
   std::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
-  return (reader_) ? reader_->num_segments() : 0;
+  return reader_ ? reader_->num_segments() : 0;
 }
 
 scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) const {

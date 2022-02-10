@@ -26,8 +26,8 @@ using namespace yb::size_literals;
 // than that because we will have overheads from that layer.
 // Hence, we have a limit of 254MB at the consensus layer.
 // The rpc layer adds its own headers, so we limit the rpc message size to 255MB.
-DEFINE_int32(rpc_max_message_size, 255_MB,
-             "The maximum size of a message of any RPC that the server will accept.");
+DEFINE_uint64(rpc_max_message_size, 255_MB,
+              "The maximum size of a message of any RPC that the server will accept.");
 
 using google::protobuf::internal::WireFormatLite;
 using google::protobuf::io::CodedOutputStream;
@@ -53,12 +53,12 @@ inline bool SliceRead(google::protobuf::io::CodedInputStream* input, Slice* out)
 }
 
 inline size_t SliceSize(Slice value) {
-  uint32_t size = value.size();
+  uint32_t size = narrow_cast<uint32_t>(value.size());
   return CodedOutputStream::VarintSize32(size) + size;
 }
 
 inline uint8_t* SliceWrite(Slice value, uint8_t* out) {
-  uint32_t size = value.size();
+  uint32_t size = narrow_cast<uint32_t>(value.size());
   out = CodedOutputStream::WriteVarint32ToArray(size, out);
   memcpy(out, value.data(), size);
   return out + size;
@@ -67,8 +67,8 @@ inline uint8_t* SliceWrite(Slice value, uint8_t* out) {
 } // namespace
 
 Status LightweightMessage::ParseFromSlice(const Slice& slice) {
-  google::protobuf::io::CodedInputStream in(slice.data(), slice.size());
-  in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size * 3 / 4);
+  google::protobuf::io::CodedInputStream in(slice.data(), narrow_cast<int>(slice.size()));
+  SetupLimit(&in);
   return ParseFromCodedStream(&in);
 }
 
@@ -91,8 +91,8 @@ Status AnyMessagePtr::ParseFromSlice(const Slice& slice) {
     return lightweight()->ParseFromSlice(slice);
   }
 
-  google::protobuf::io::CodedInputStream in(slice.data(), slice.size());
-  in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size * 3 / 4);
+  google::protobuf::io::CodedInputStream in(slice.data(), narrow_cast<int>(slice.size()));
+  SetupLimit(&in);
   auto* proto = protobuf();
   if (PREDICT_FALSE(!proto->ParseFromCodedStream(&in))) {
     return STATUS(InvalidArgument, proto->InitializationErrorString());
@@ -366,6 +366,11 @@ void AppendFieldTitle(const char* name, const char* suffix, bool* first, std::st
 
 CHECKED_STATUS ParseFailed(const char* field_name) {
   return STATUS_FORMAT(Corruption, "Failed to parse '$0'", field_name);
+}
+
+void SetupLimit(google::protobuf::io::CodedInputStream* in) {
+  in->SetTotalBytesLimit(narrow_cast<int>(FLAGS_rpc_max_message_size),
+                         narrow_cast<int>(FLAGS_rpc_max_message_size * 3 / 4));
 }
 
 } // namespace rpc

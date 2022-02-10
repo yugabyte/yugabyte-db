@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.HashSet;
@@ -43,7 +44,12 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
           client.setupUniverseReplication(
               xClusterConfig.getReplicationGroupName(),
               taskParams().createFormData.tables,
-              new HashSet<>(NetUtil.parseStringsAsPB(sourceUniverse.getMasterAddresses())));
+              // For dual NIC, the universes will be able to communicate over the secondary
+              // addresses.
+              new HashSet<>(
+                  NetUtil.parseStringsAsPB(
+                      sourceUniverse.getMasterAddresses(
+                          false /* mastersQueryable */, true /* getSecondary */))));
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
@@ -52,6 +58,10 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
       }
 
       waitForXClusterOperation(client::isSetupUniverseReplicationDone);
+
+      if (HighAvailabilityConfig.get().isPresent()) {
+        getUniverse(true).incrementVersion();
+      }
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

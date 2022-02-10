@@ -73,12 +73,12 @@
 using namespace std::literals;
 using namespace yb::size_literals;
 
-DECLARE_int32(rpc_max_message_size);
+DECLARE_uint64(rpc_max_message_size);
 
 // We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
 // Otherwise such batch would be rejected by RPC layer.
-DEFINE_int32(consensus_max_batch_size_bytes, 4_MB,
-             "The maximum per-tablet RPC batch size when updating peers.");
+DEFINE_uint64(consensus_max_batch_size_bytes, 4_MB,
+              "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 TAG_FLAG(consensus_max_batch_size_bytes, runtime);
 
@@ -120,12 +120,12 @@ namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
 
-static bool RpcThrottleThresholdBytesValidator(const char* flagname, int32_t value) {
+static bool RpcThrottleThresholdBytesValidator(const char* flagname, int64_t value) {
   if (value > 0) {
     if (value < kMinRpcThrottleThresholdBytes) {
       LOG(ERROR) << "Expect " << flagname << " to be at least " << kMinRpcThrottleThresholdBytes;
       return false;
-    } else if (value >= FLAGS_consensus_max_batch_size_bytes) {
+    } else if (implicit_cast<size_t>(value) >= FLAGS_consensus_max_batch_size_bytes) {
       LOG(ERROR) << "Expect " << flagname << " to be less than consensus_max_batch_size_bytes "
                  << "value (" << FLAGS_consensus_max_batch_size_bytes << ")";
       return false;
@@ -136,9 +136,7 @@ static bool RpcThrottleThresholdBytesValidator(const char* flagname, int32_t val
 
 } // namespace
 
-DECLARE_int32(rpc_throttle_threshold_bytes);
-__attribute__((unused))
-DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
+DECLARE_int64(rpc_throttle_threshold_bytes);
 
 namespace yb {
 namespace consensus {
@@ -510,7 +508,17 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     request->set_propagated_hybrid_time(now_ht.ToUint64());
 
     // NOTE: committed_op_id may be overwritten later.
-    queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
+    // In our system committed_op_id means that this operation was also applied.
+    // If we have operation that applied significant time, followers would not know that this
+    // operation is committed until it is applied in the leader.
+    // To address this issue we use majority_replicated_op_id, that is updated before apply.
+    // But we could use it only when its term matches current term, see Fig.8 in Raft paper.
+    if (queue_state_.majority_replicated_op_id.index > queue_state_.committed_op_id.index &&
+        queue_state_.majority_replicated_op_id.term == queue_state_.current_term) {
+      queue_state_.majority_replicated_op_id.ToPB(request->mutable_committed_op_id());
+    } else {
+      queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
+    }
 
     request->set_caller_term(queue_state_.current_term);
     unreachable_time =
@@ -566,7 +574,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   // Otherwise, we grab requests from the log starting at the last_received point.
   if (!is_new && num_log_ops_to_send > 0) {
     // The batch of messages to send to the peer.
-    int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
+    auto max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSizeLong();
     auto to_index = num_log_ops_to_send == kSendUnboundedLogOps ?
         0 : previously_sent_index + num_log_ops_to_send;
     auto result = ReadFromLogCache(previously_sent_index, to_index, max_batch_size, uuid);
@@ -653,7 +661,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
                                                          int64_t to_index,
-                                                         int max_batch_size,
+                                                         size_t max_batch_size,
                                                          const std::string& peer_uuid,
                                                          const CoarseTimePoint deadline) {
   DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
@@ -855,14 +863,14 @@ struct GetInfiniteWatermarkForLocalPeer<Policy, false> {
 template <class Policy>
 typename Policy::result_type PeerMessageQueue::GetWatermark() {
   DCHECK(queue_lock_.is_locked());
-  const int num_peers_required = queue_state_.majority_size_;
+  const auto num_peers_required = queue_state_.majority_size_;
   if (num_peers_required == kUninitializedMajoritySize) {
     // We don't even know the quorum majority size yet.
     return Policy::NotEnoughPeersValue();
   }
   CHECK_GE(num_peers_required, 0);
 
-  const size_t num_peers = peers_map_.size();
+  const ssize_t num_peers = peers_map_.size();
   if (num_peers < num_peers_required) {
     return Policy::NotEnoughPeersValue();
   }
@@ -903,7 +911,7 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
   }
 
   // We always assume that local peer has most recent information.
-  const size_t num_responsive_peers = watermarks.size() + local_peer_infinite_watermark;
+  const ssize_t num_responsive_peers = watermarks.size() + local_peer_infinite_watermark;
 
   if (num_responsive_peers < num_peers_required) {
     VLOG_WITH_PREFIX_UNLOCKED(2)
@@ -1605,6 +1613,21 @@ void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
 Result<OpId> PeerMessageQueue::TEST_GetLastOpIdWithType(
     int64_t max_allowed_index, OperationType op_type) {
   return log_cache_.TEST_GetLastOpIdWithType(max_allowed_index, op_type);
+}
+
+Status ValidateFlags() {
+  // Normally we would have used
+  //   DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
+  // right after defining the rpc_throttle_threshold_bytes flag. However, this leads to a segfault
+  // in the LTO-enabled build, presumably due to indeterminate order of static initialization.
+  // Instead, we invoke this function from master/tserver main() functions when static
+  // initialization is already finished.
+  if (!RpcThrottleThresholdBytesValidator(
+      "rpc_throttle_threshold_bytes", FLAGS_rpc_throttle_threshold_bytes)) {
+    return STATUS(InvalidArgument, "Flag validation failed");
+  }
+
+  return Status::OK();
 }
 
 }  // namespace consensus

@@ -11,11 +11,16 @@
 
 #include <boost/optional/optional.hpp>
 
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/bfpg/tserver_opcodes.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/ql_value.h"
-#include "yb/bfql/tserver_opcodes.h"
-#include "yb/bfpg/tserver_opcodes.h"
+
+#include "yb/gutil/casts.h"
+
+
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
@@ -189,7 +194,8 @@ class QLTableRow {
   std::unordered_map<ColumnIdRep, unsigned int> column_id_to_index_;
 
   static constexpr size_t kPreallocatedSize = 8;
-  static constexpr size_t kFirstNonPreallocatedColumnId = kFirstColumnIdRep + kPreallocatedSize;
+  static constexpr ColumnIdRep kFirstNonPreallocatedColumnId =
+      kFirstColumnIdRep + static_cast<ColumnIdRep>(kPreallocatedSize);
 
   // The two following vectors will be of the same size.
   // We use separate fields to achieve the following features:
@@ -315,13 +321,13 @@ class QLExprExecutor {
 
 template <class Operands>
 CHECKED_STATUS EvalOperandsHelper(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, size_t index) {
+    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, int index) {
   return Status::OK();
 }
 
 template <class Operands, class... Args>
 CHECKED_STATUS EvalOperandsHelper(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, size_t index,
+    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, int index,
     QLExprResultWriter arg0, Args&&... args) {
   RETURN_NOT_OK(executor->EvalExpr(operands[index], table_row, arg0));
   return EvalOperandsHelper(executor, operands, table_row, index + 1, std::forward<Args>(args)...);
@@ -336,7 +342,7 @@ CHECKED_STATUS EvalOperands(
                          sizeof...(Args), operands.size());
   }
 
-  return EvalOperandsHelper(executor, operands, table_row,  0, std::forward<Args>(args)...);
+  return EvalOperandsHelper(executor, operands, table_row, 0, std::forward<Args>(args)...);
 }
 
 } // namespace yb

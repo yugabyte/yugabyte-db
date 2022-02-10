@@ -28,7 +28,7 @@ bool ResourceLimit::IsNegative() const {
 }
 
 bool ResourceLimit::IsUnlimited() const {
-  return value_ == RLIM_INFINITY;
+  return value_ == static_cast<int64_t>(RLIM_INFINITY);
 }
 
 bool ResourceLimit::operator==(const ResourceLimit& other) const {
@@ -36,8 +36,8 @@ bool ResourceLimit::operator==(const ResourceLimit& other) const {
 }
 
 bool ResourceLimit::operator<(const ResourceLimit& other) const {
-  if (value_ == RLIM_INFINITY) return false;
-  if (other.value_  == RLIM_INFINITY) return true;
+  if (IsUnlimited()) return false;
+  if (other.IsUnlimited()) return true;
   return value_ < other.value_;
 }
 

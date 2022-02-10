@@ -198,7 +198,7 @@ std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* s
       auto num_servers = cluster->num_tablet_servers();
       std::vector<server::SkewedClock::DeltaTime> time_deltas(num_servers);
 
-      for (int i = 0; i != num_servers; ++i) {
+      for (size_t i = 0; i != num_servers; ++i) {
         auto* tserver = cluster->mini_tablet_server(i)->server();
         auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
         auto skewed_clock =
@@ -226,7 +226,7 @@ std::thread StrobeThread(MiniCluster* cluster, std::atomic<bool>* stop) {
   return std::thread([cluster, stop] {
     int iteration = 0;
     while (!stop->load(std::memory_order_acquire)) {
-      for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+      for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
         auto* tserver = cluster->mini_tablet_server(i)->server();
         auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
         auto skewed_clock =
@@ -273,11 +273,11 @@ void SnapshotTxnTest::TestBankAccounts(
 
   if (options.Test(BankAccountsOption::kNetworkPartition)) {
     threads.AddThreadFunctor([cluster = cluster_.get(), &stop = threads.stop_flag()]() {
-      int num_tservers = cluster->num_tablet_servers();
+      auto num_tservers = cluster->num_tablet_servers();
       while (!stop.load(std::memory_order_acquire)) {
-        int partitioned = RandomUniformInt(0, num_tservers - 1);
+        auto partitioned = RandomUniformInt<size_t>(0, num_tservers - 1);
         for (auto connectivity : {Connectivity::kOff, Connectivity::kOn}) {
-          for (int i = 0; i != num_tservers; ++i) {
+          for (size_t i = 0; i != num_tservers; ++i) {
             if (i == partitioned) {
               continue;
             }
@@ -869,12 +869,13 @@ void SnapshotTxnTest::TestRemoteBootstrap() {
     ASSERT_OK(cluster_->CleanTabletLogs());
 
     // Shutdown to reset cached logs.
-    for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 1; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->mini_tablet_server(i)->Shutdown();
     }
 
     // Start all servers. Cluster verifier should check that all tablets are synchronized.
-    for (int i = cluster_->num_tablet_servers(); i-- > 0;) {
+    for (auto i = cluster_->num_tablet_servers(); i > 0;) {
+      --i;
       ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
     }
 

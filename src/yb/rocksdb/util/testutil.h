@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/compaction_filter.h"
@@ -48,8 +50,16 @@
 
 #include "yb/util/slice.h"
 
+DECLARE_bool(never_fsync);
 namespace rocksdb {
 class SequentialFileReader;
+
+class RocksDBTest : public ::testing::Test {
+ public:
+  RocksDBTest() {
+    FLAGS_never_fsync = true;
+  }
+};
 
 namespace test {
 

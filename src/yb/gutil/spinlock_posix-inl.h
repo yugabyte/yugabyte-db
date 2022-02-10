@@ -47,12 +47,16 @@
  * This file is a Posix-specific part of spinlock_internal.cc
  */
 
+#ifndef YB_GUTIL_SPINLOCK_POSIX_INL_H
+#define YB_GUTIL_SPINLOCK_POSIX_INL_H
+
 #include <errno.h>
 #if defined(HAVE_SCHED_H) || defined(__APPLE__)
 #include <sched.h>      /* For sched_yield() */
 #endif
 #include <time.h>       /* For nanosleep() */
 
+namespace yb {
 namespace base {
 namespace internal {
 
@@ -64,7 +68,7 @@ void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop) {
   } else {
     struct timespec tm;
     tm.tv_sec = 0;
-    tm.tv_nsec = base::internal::SuggestedDelayNS(loop);
+    tm.tv_nsec = yb::base::internal::SuggestedDelayNS(loop);
     nanosleep(&tm, NULL);
   }
   errno = save_errno;
@@ -75,3 +79,6 @@ void SpinLockWake(volatile Atomic32 *w, bool all) {
 
 } // namespace internal
 } // namespace base
+} // namespace yb
+
+#endif  // YB_GUTIL_SPINLOCK_POSIX_INL_H

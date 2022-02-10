@@ -113,6 +113,13 @@ DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
              "Interval that is used to update memory consumption from external source. "
              "For instance from tcmalloc statistics.");
 
+DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, 128 * 1024L * 1024L,
+             "Size, in bytes, that is considered a large value for Release() (or Consume() with "
+             "a negative value). If tcmalloc is used, this can trigger it to GC. "
+             "A higher value will make us call into tcmalloc less often (and therefore more "
+             "efficient). A lower value will mean our memory overhead is lower.");
+TAG_FLAG(mem_tracker_tcmalloc_gc_release_bytes, runtime);
+
 namespace yb {
 
 // NOTE: this class has been adapted from Impala, so the code style varies
@@ -134,7 +141,7 @@ shared_ptr<MemTracker> root_tracker;
 GoogleOnceType root_tracker_once = GOOGLE_ONCE_INIT;
 
 // Total amount of memory from calls to Release() since the last GC. If this
-// is greater than GC_RELEASE_SIZE, this will trigger a tcmalloc gc.
+// is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
 
 // Validate that various flags are percentages.
@@ -527,7 +534,7 @@ bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
     LogUpdate(true, bytes);
   }
 
-  int i = 0;
+  ssize_t i = 0;
   // Walk the tracker tree top-down, to avoid expanding a limit on a child whose parent
   // won't accommodate the change.
   for (i = all_trackers_.size() - 1; i >= 0; --i) {
@@ -563,7 +570,7 @@ bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
   // TODO: This might leave us with an allocated resource that we can't use. Do we need
   // to adjust the consumption of the query tracker to stop the resource from never
   // getting used by a subsequent TryConsume()?
-  for (int j = all_trackers_.size() - 1; j > i; --j) {
+  for (ssize_t j = all_trackers_.size(); --j > i;) {
     IncrementBy(-bytes, &all_trackers_[j]->consumption_, all_trackers_[j]->metrics_);
   }
   if (blocking_mem_tracker) {
@@ -580,7 +587,7 @@ void MemTracker::Release(int64_t bytes) {
   }
 
   if (PREDICT_FALSE(base::subtle::Barrier_AtomicIncrement(&released_memory_since_gc, bytes) >
-                    GC_RELEASE_SIZE)) {
+                    GetAtomicFlag(&FLAGS_mem_tracker_tcmalloc_gc_release_bytes))) {
     GcTcmalloc();
   }
 
@@ -772,7 +779,7 @@ void MemTracker::GcTcmalloc() {
 #endif
 }
 
-string MemTracker::LogUsage(const string& prefix, size_t usage_threshold, int indent) const {
+string MemTracker::LogUsage(const string& prefix, int64_t usage_threshold, int indent) const {
   stringstream ss;
   ss << prefix << std::string(indent, ' ') << id_ << ":";
   if (CheckLimitExceeded()) {

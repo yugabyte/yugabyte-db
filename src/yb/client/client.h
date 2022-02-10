@@ -81,6 +81,9 @@ class CloudInfoPB;
 class MemTracker;
 class MetricEntity;
 
+namespace cdc {
+struct StreamMetaData;
+}
 namespace master {
 class ReplicationInfoPB;
 class TabletLocationsPB;
@@ -141,6 +144,12 @@ void SetVerboseLogLevel(int level);
 Status SetInternalSignalNumber(int signum);
 
 using MasterAddressSource = std::function<std::vector<std::string>()>;
+
+struct TransactionStatusTablets {
+  std::vector<TabletId> global_tablets;
+  std::vector<TabletId> placement_local_tablets;
+};
+
 
 // Creates a new YBClient with the desired options.
 //
@@ -442,7 +451,8 @@ class YBClient {
   // Create a new tablegroup.
   CHECKED_STATUS CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
-                                  const std::string& tablegroup_id);
+                                  const std::string& tablegroup_id,
+                                  const std::string& tablespace_id);
 
   // Delete a tablegroup.
   CHECKED_STATUS DeleteTablegroup(const std::string& namespace_id,
@@ -510,7 +520,8 @@ class YBClient {
   Result<CDCStreamId> CreateCDCStream(
       const TableId& table_id,
       const std::unordered_map<std::string, std::string>& options,
-      bool active = true);
+      bool active = true,
+      const NamespaceId& namespace_id = "");
 
   void CreateCDCStream(const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
@@ -518,13 +529,26 @@ class YBClient {
 
   // Delete multiple CDC streams.
   CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams,
-                                 bool force = false,
+                                 bool force_delete = false,
+                                 bool ignore_errors = false,
                                  master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
-  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
+  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id,
+                                 bool force_delete = false,
+                                 bool ignore_errors = false);
 
   void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
+
+  // Create a new CDC stream.
+  CHECKED_STATUS GetCDCDBStreamInfo(
+      const std::string& db_stream_id,
+      std::vector<pair<std::string, std::string>>* db_stream_info);
+
+  void GetCDCDBStreamInfo(
+      const std::string& db_stream_id,
+      const std::shared_ptr<std::vector<pair<std::string, std::string>>>& db_stream_info,
+      const StdStatusCallback& callback);
 
   // Retrieve a CDC stream.
   CHECKED_STATUS GetCDCStream(const CDCStreamId &stream_id,
@@ -541,6 +565,11 @@ class YBClient {
   // Update a CDC stream's options.
   CHECKED_STATUS UpdateCDCStream(const CDCStreamId& stream_id,
                                  const master::SysCDCStreamEntryPB& new_entry);
+
+  // Update consumer pollers after a producer side tablet split.
+  CHECKED_STATUS UpdateConsumerOnProducerSplit(const string& producer_id,
+                                               const TableId& table_id,
+                                               const master::ProducerSplitTabletInfoPB& split_info);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -585,6 +614,11 @@ class YBClient {
       const std::string& filter = "",
       bool exclude_ysql = false);
 
+  // List tables in a namespace.
+  //
+  // 'tables' is appended to only on success.
+  Result<std::vector<YBTableName>> ListUserTables(const NamespaceId& ns_id = "");
+
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
   CHECKED_STATUS GetTablets(
@@ -618,6 +652,10 @@ class YBClient {
 
   CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
                                    master::TabletLocationsPB* tablet_location);
+
+  // Get a list of global transaction status tablets, and local transaction status tablets
+  // that are local to 'placement'.
+  Result<TransactionStatusTablets> GetTransactionStatusTablets(const CloudInfoPB& placement);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   CHECKED_STATUS ListMasters(
@@ -716,7 +754,7 @@ class YBClient {
   void SetLatestObservedHybridTime(uint64_t ht_hybrid_time);
 
   // Given a host and port for a master, get the uuid of that process.
-  CHECKED_STATUS GetMasterUUID(const std::string& host, int16_t port, std::string* uuid);
+  CHECKED_STATUS GetMasterUUID(const std::string& host, uint16_t port, std::string* uuid);
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 

@@ -1,6 +1,5 @@
 {
     "MASTER":[
-      "version",
       "flagfile",
       "master_addresses",
       "fs_data_dirs",
@@ -69,10 +68,7 @@
       "cdc_wal_retention_time_secs"
     ],
     "TSERVER":[
-      "help",
-      "helpon",
       "flagfile",
-      "version",
       "tserver_master_addrs",
       "fs_data_dirs",
       "fs_wal_dirs",

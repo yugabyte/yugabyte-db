@@ -77,7 +77,7 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
     std::sort(src_snapshot_files.begin(), src_snapshot_files.end());
     std::sort(dst_snapshot_files.begin(), dst_snapshot_files.end());
 
-    for (int i = 0; i < src_snapshot_files.size(); ++i) {
+    for (size_t i = 0; i < src_snapshot_files.size(); ++i) {
       // Verify that client has the same files that leader has.
       const string dst_snapshot_file = dst_snapshot_files[i];
       const string src_snapshot_file = src_snapshot_files[i];

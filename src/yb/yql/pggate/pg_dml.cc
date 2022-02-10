@@ -386,10 +386,11 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
 }
 
 bool PgDml::has_aggregate_targets() {
-  int num_aggregate_targets = 0;
+  size_t num_aggregate_targets = 0;
   for (const auto& target : targets_) {
-    if (target->is_aggregate())
+    if (target->is_aggregate()) {
       num_aggregate_targets++;
+    }
   }
 
   CHECK(num_aggregate_targets == 0 || num_aggregate_targets == targets_.size())

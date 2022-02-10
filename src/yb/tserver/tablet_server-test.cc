@@ -699,14 +699,14 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
 
   scoped_refptr<Histogram> histogram = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
 
-  uint64_t warmup = AllowSlowTests() ?
+  auto warmup = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_warmup_rows : 10;
 
   for (int i = 0; i < warmup; i++) {
     InsertTestRowsRemote(0, i, 1);
   }
 
-  uint64_t max_rows = AllowSlowTests() ?
+  auto max_rows = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_insert_rows : 100;
 
   MonoTime start = MonoTime::Now();

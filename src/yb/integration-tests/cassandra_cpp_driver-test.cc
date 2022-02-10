@@ -97,7 +97,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     ASSERT_NO_FATALS(StartCluster(ExtraTServerFlags(), ExtraMasterFlags(), 3, NumMasters()));
 
     std::vector<std::string> hosts;
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       hosts.push_back(cluster_->tablet_server(i)->bind_host());
     }
     driver_.reset(new CppCassandraDriver(
@@ -370,7 +370,7 @@ class Metrics {
 
   void load() {
     reset();
-    for (int i = 0; i < cluster_.num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_.num_tablet_servers(); ++i) {
       for (auto& proto : prototypes_) {
         int64_t metric = 0;
         load_value(cluster_, cql_metrics_, i, proto.second, &metric);
@@ -423,7 +423,7 @@ class Metrics {
   }
 
   static void load_value(
-      const ExternalMiniCluster& cluster, bool cql_metric, int ts_index,
+      const ExternalMiniCluster& cluster, bool cql_metric, size_t ts_index,
       const MetricPrototype* metric_proto, int64_t* value) {
     const ExternalTabletServer& ts = *CHECK_NOTNULL(cluster.tablet_server(ts_index));
     const HostPort host_port = cql_metric ?
@@ -524,7 +524,7 @@ class TestTable {
     do_get_values(&values, data);
     CHECK_EQ(values.size(), column_names_.size());
 
-    for (int i = 0; i < column_names_.size(); ++i) {
+    for (size_t i = 0; i < column_names_.size(); ++i) {
       LOG(INFO) << ">     " << column_names_[i] << ' ' << types[i] << ": " << values[i];
     }
   }
@@ -689,7 +689,7 @@ class TestTable {
     do_get_type_names(&types, ColumnsTuple());
     CHECK_EQ(types.size(), columns.size());
 
-    for (int i = 0; i < columns.size(); ++i) {
+    for (size_t i = 0; i < columns.size(); ++i) {
       types[i] = columns[i] + ' ' + types[i];
     }
 
@@ -1118,9 +1118,9 @@ void TestBackfillIndexTable(
     IncludeAllColumns include_primary_key = IncludeAllColumns::kFalse,
     UserEnforced user_enforced = UserEnforced::kFalse) {
   constexpr int kLoops = 3;
-  constexpr int kBatchSize = 10;
-  constexpr int kNumBatches = 10;
-  constexpr int kExpectedCount = kBatchSize * kNumBatches;
+  constexpr size_t kBatchSize = 10;
+  constexpr size_t kNumBatches = 10;
+  constexpr size_t kExpectedCount = kBatchSize * kNumBatches;
 
   typedef TestTable<string, string, string> MyTable;
   typedef MyTable::ColumnsTuple ColumnsType;
@@ -1212,8 +1212,8 @@ void TestBackfillIndexTable(
   auto s = create_index_future.Wait();
   WARN_NOT_OK(s, "Create index failed.");
 
-  const int kLowerBound = kExpectedCount - kBatchSize * num_failures;
-  const int kUpperBound = kExpectedCount + kBatchSize * num_failures;
+  const auto kLowerBound = kExpectedCount - kBatchSize * num_failures;
+  const auto kUpperBound = kExpectedCount + kBatchSize * num_failures;
 
   // Verified implicitly here that the backfill job has met the expected total number of
   // records
@@ -1226,7 +1226,7 @@ void TestBackfillIndexTable(
         if (!backfill_job) {
           return backfill_job.status();
         }
-        const int number_rows_processed = backfill_job->num_rows_processed();
+        const auto number_rows_processed = backfill_job->num_rows_processed();
         return number_rows_processed >= kLowerBound;
       }, kMaxWait),
       "Could not get BackfillJobPB. May be OK, if the backfill is already done.");
@@ -2255,10 +2255,10 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
 
   vector<unique_ptr<CppCassandraDriver>> drivers;
   std::vector<std::string> hosts;
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     hosts.push_back(cluster_->tablet_server(i)->bind_host());
   }
-  for (int i = 0; i <= kNumLoops; i++) {
+  for (size_t i = 0; i <= kNumLoops; i++) {
     drivers.emplace_back(new CppCassandraDriver(
         hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kTrue));
   }

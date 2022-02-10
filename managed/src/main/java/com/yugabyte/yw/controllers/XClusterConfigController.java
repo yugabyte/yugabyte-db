@@ -9,14 +9,20 @@
  */
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
+import com.yugabyte.yw.forms.XClusterConfigGetResp;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -29,10 +35,20 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.List;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.cdc.CdcConsumer;
+import org.yb.cdc.CdcConsumer.ProducerEntryPB;
+import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
+import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
@@ -42,10 +58,17 @@ import play.mvc.Result;
 public class XClusterConfigController extends AuthenticatedController {
 
   private final Commissioner commissioner;
+  private final YBClientService ybClientService;
+  private final MetricQueryHelper metricQueryHelper;
 
   @Inject
-  public XClusterConfigController(Commissioner commissioner) {
+  public XClusterConfigController(
+      Commissioner commissioner,
+      YBClientService ybClientService,
+      MetricQueryHelper metricQueryHelper) {
     this.commissioner = commissioner;
+    this.ybClientService = ybClientService;
+    this.metricQueryHelper = metricQueryHelper;
   }
 
   /**
@@ -73,7 +96,7 @@ public class XClusterConfigController extends AuthenticatedController {
     Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
     Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
     checkConfigDoesNotAlreadyExist(
-        createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
+        createFormData.name, createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
 
     // Create xCluster config object
     XClusterConfig xClusterConfig =
@@ -105,13 +128,57 @@ public class XClusterConfigController extends AuthenticatedController {
   @ApiOperation(
       nickname = "getXClusterConfig",
       value = "Get xcluster config",
-      response = XClusterConfig.class)
+      response = XClusterConfigGetResp.class)
   public Result get(UUID customerUUID, UUID xclusterConfigUUID) {
     log.info("Received get XClusterConfig({}) request", xclusterConfigUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
-    return PlatformResults.withData(xClusterConfig);
+
+    JsonNode lagMetricData;
+
+    try {
+      // If necessary, update cached CDC stream IDs
+      Map<String, String> cachedStreams = xClusterConfig.getStreams();
+      if (cachedStreams.containsValue("")) {
+        cachedStreams = refreshStreamIdsCache(xClusterConfig);
+      }
+
+      log.info(
+          "Querying lag metrics for XClusterConfig({}) using CDC stream IDs: {}",
+          xClusterConfig.uuid,
+          cachedStreams.values());
+
+      // Query for replication lag
+      Map<String, String> metricParams = new HashMap<>();
+      String metric = "tserver_async_replication_lag_micros";
+      metricParams.put("metrics[0]", metric);
+      String startTime = Long.toString(Instant.now().minus(Duration.ofMinutes(1)).getEpochSecond());
+      metricParams.put("start", startTime);
+      ObjectNode filterJson = Json.newObject();
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
+      String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
+      filterJson.put("node_prefix", nodePrefix);
+      String streamIdFilter = String.join("|", cachedStreams.values());
+      filterJson.put("stream_id", streamIdFilter);
+      metricParams.put("filters", Json.stringify(filterJson));
+      lagMetricData =
+          metricQueryHelper.query(
+              Collections.singletonList(metric), metricParams, Collections.emptyMap());
+    } catch (Exception e) {
+      String errorMsg =
+          String.format(
+              "Failed to get lag metric data for XClusterConfig(%s): %s",
+              xClusterConfig.uuid, e.getMessage());
+      log.error(errorMsg);
+      lagMetricData = Json.newObject().put("error", errorMsg);
+    }
+
+    // Wrap XClusterConfig with lag metric data and return
+    XClusterConfigGetResp resp = new XClusterConfigGetResp();
+    resp.xClusterConfig = xClusterConfig;
+    resp.lag = lagMetricData;
+    return PlatformResults.withData(resp);
   }
 
   /**
@@ -139,7 +206,7 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
 
-    // If renaming, verify xcluster replication wtih same name (between same source/target)
+    // If renaming, verify xcluster replication with same name (between same source/target)
     // does not already exist.
     if (editFormData.name != null) {
       if (XClusterConfig.getByNameSourceTarget(
@@ -148,7 +215,7 @@ public class XClusterConfigController extends AuthenticatedController {
               xClusterConfig.targetUniverseUUID)
           != null) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "XCluster config with same name already exists");
+            BAD_REQUEST, "XClusterConfig with same name already exists");
       }
     }
 
@@ -269,19 +336,21 @@ public class XClusterConfigController extends AuthenticatedController {
     return formData;
   }
 
-  private void checkConfigDoesNotAlreadyExist(UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    // check if config specified in form exists or not (based on shouldExist)
-    List<XClusterConfig> xClusterConfig =
-        XClusterConfig.getBetweenUniverses(sourceUniverseUUID, targetUniverseUUID);
+  private void checkConfigDoesNotAlreadyExist(
+      String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.getByNameSourceTarget(name, sourceUniverseUUID, targetUniverseUUID);
 
-    if (xClusterConfig.size() > 0) {
+    if (xClusterConfig != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "xCluster config between source universe "
               + sourceUniverseUUID
               + " and target universe "
               + targetUniverseUUID
-              + " already exists.");
+              + " with name '"
+              + name
+              + "' already exists.");
     }
   }
 
@@ -292,5 +361,62 @@ public class XClusterConfigController extends AuthenticatedController {
         throw new PlatformServiceException(BAD_REQUEST, "Table set must be non-empty");
       }
     }
+  }
+
+  private Map<String, String> refreshStreamIdsCache(XClusterConfig xClusterConfig) {
+    log.info("Updating CDC stream ID cache for XClusterConfig({})", xClusterConfig.uuid);
+
+    Map<String, String> cachedStreams = xClusterConfig.getStreams();
+
+    // Get Universe config
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
+    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
+    YBClient client =
+        ybClientService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
+    CatalogEntityInfo.SysClusterConfigEntryPB config;
+    try {
+      config = client.getMasterClusterConfig().getConfig();
+    } catch (Exception e) {
+      String errorMsg =
+          String.format("Failed to get universe config, skipping cache update: %s", e.getMessage());
+      log.error(errorMsg);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errorMsg);
+    }
+
+    // Parse replication group metadata
+    Map<String, ProducerEntryPB> replicationGroups =
+        config.getConsumerRegistry().getProducerMapMap();
+    ProducerEntryPB replicationGroup =
+        replicationGroups.get(xClusterConfig.getReplicationGroupName());
+    if (replicationGroup == null) {
+      String errorMsg = "No replication group found, skipping cache update";
+      log.error(errorMsg);
+      throw new PlatformServiceException(NOT_FOUND, errorMsg);
+    }
+
+    // Parse CDC stream IDs
+    Map<String, CdcConsumer.StreamEntryPB> replicationStreams = replicationGroup.getStreamMapMap();
+    Map<String, String> streamMap =
+        replicationStreams
+            .entrySet()
+            .stream()
+            .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
+
+    // If Platform's table set is outdated, log error and throw exception
+    if (!streamMap.keySet().equals(cachedStreams.keySet())) {
+      Set<String> cachedMissing = Sets.difference(streamMap.keySet(), cachedStreams.keySet());
+      Set<String> actualMissing = Sets.difference(cachedStreams.keySet(), streamMap.keySet());
+      String errorMsg =
+          String.format(
+              "Detected table set mismatch (cached missing=%s, actual missing=%s).",
+              cachedMissing, actualMissing);
+      log.error(errorMsg);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errorMsg);
+    }
+
+    // Update cached CDC stream IDs and return
+    xClusterConfig.setTables(streamMap);
+    return xClusterConfig.getStreams();
   }
 }

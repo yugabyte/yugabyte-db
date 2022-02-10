@@ -45,7 +45,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -59,6 +59,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -67,20 +68,23 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeList;
+import io.fabric8.kubernetes.api.model.Secret;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import play.libs.Json;
 import play.mvc.Result;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
 
@@ -96,7 +100,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
-    new File(TestHelper.TMP_PATH).mkdirs();
     try {
       String kubeFile = createTempFile("test2.conf", "test5678");
       when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
@@ -104,11 +107,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     } catch (Exception e) {
       // Do nothing
     }
-  }
-
-  @After
-  public void tearDown() throws IOException {
-    FileUtils.deleteDirectory(new File(TestHelper.TMP_PATH));
   }
 
   private Result listProviders() {
@@ -213,6 +211,29 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(1, json.size());
     assertValues(json, "uuid", ImmutableList.of(p.uuid.toString()));
     assertValues(json, "name", ImmutableList.of(p.name));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  @Parameters({
+    "Fake Provider, aws, 0",
+    "Test Provider, aws, 1",
+    "Test Provider, null, 2",
+  })
+  public void testProviderFindByName(String name, String code, int expected) {
+    Provider.create(customer.uuid, Common.CloudType.aws, "Test Provider");
+    Provider.create(customer.uuid, Common.CloudType.gcp, "Test Provider");
+    Provider.create(customer.uuid, Common.CloudType.aws, "Another Test Provider");
+    String findUrl =
+        "/api/customers/" + customer.uuid + "/providers?name=" + URLEncoder.encode(name);
+    if (!code.equals("null")) {
+      findUrl += "&providerCode=" + URLEncoder.encode(code);
+    }
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", findUrl, user.createAuthToken());
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(expected, json.size());
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -483,7 +504,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
             + "{\"topology.kubernetes.io/region\": \"region-3\", \"topology.kubernetes.io/zone\": \"r3-az1\"}, "
             + "\"name\": \"node-3\"}}"
             + "]}";
-    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(Util.convertStringToJson(nodeInfos));
+    List<Node> nodes = TestUtils.deserialize(nodeInfos, NodeList.class).getItems();
+    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(nodes);
 
     String secretContent =
         "{\"metadata\": {"
@@ -500,8 +522,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       when(mockKubernetesManager.getSecret(null, pullSecretName, null))
           .thenThrow(new RuntimeException(msg));
     } else {
-      when(mockKubernetesManager.getSecret(null, pullSecretName, null))
-          .thenReturn(Util.convertStringToJson(secretContent));
+      Secret secret = TestUtils.deserialize(secretContent, Secret.class);
+      when(mockKubernetesManager.getSecret(null, pullSecretName, null)).thenReturn(secret);
     }
 
     Result result = getKubernetesSuggestedConfig();
@@ -511,17 +533,18 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     if (noPullSecret) {
       assertTrue(Json.fromJson(json.path("config"), Map.class).isEmpty());
     } else {
-      String parsedSecret =
+      String parsedSecretString =
           "{\"metadata\":{"
               + "\"annotations\":{},"
               + "\"name\":\""
               + pullSecretName
               + "\"},"
               + "\"data\":{\".dockerconfigjson\":\"sec-key\"}}";
+      Secret parsedSecret = TestUtils.deserialize(parsedSecretString, Secret.class);
 
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName);
       assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_NAME", pullSecretName);
-      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_CONTENT", parsedSecret);
+      assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_CONTENT", parsedSecret.toString());
     }
 
     assertValues(
@@ -540,7 +563,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
             + "{\"metadata\": {\"name\": \"node-2\"}}, "
             + "{\"metadata\": {\"name\": \"node-3\"}}"
             + "]}";
-    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(Util.convertStringToJson(nodeInfos));
+    List<Node> nodes = TestUtils.deserialize(nodeInfos, NodeList.class).getItems();
+    when(mockKubernetesManager.getNodeInfos(any())).thenReturn(nodes);
 
     Result result = assertPlatformException(() -> getKubernetesSuggestedConfig());
     assertInternalServerError(result, "No region and zone information found.");
@@ -554,7 +578,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertYBPSuccess(result, "Deleted provider: " + p.uuid);
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
-    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak.getKeyCode());
+    verify(mockAccessManager, times(1))
+        .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -592,7 +617,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertYBPSuccess(result, "Deleted provider: " + p.uuid);
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
-    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak.getKeyCode());
+    verify(mockAccessManager, times(1))
+        .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
     assertAuditEntry(1, customer.uuid);
   }
 

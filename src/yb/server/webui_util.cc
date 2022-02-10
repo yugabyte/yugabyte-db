@@ -53,7 +53,7 @@ void HtmlOutputSchemaTable(const Schema& schema,
   *output << "<table class='table table-striped'>\n";
   *output << "<tr><th>Column</th><th>ID</th><th>Type</th></tr>\n";
 
-  for (int i = 0; i < schema.num_columns(); i++) {
+  for (size_t i = 0; i < schema.num_columns(); i++) {
     const ColumnSchema& col = schema.column(i);
     *output << Format("<tr><th>$0</th><td>$1</td><td>$2</td></tr>\n",
                       EscapeForHtmlToString(col.name()),

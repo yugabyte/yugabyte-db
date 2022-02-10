@@ -854,7 +854,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 		for (int i = 1; i <= tuple_desc->natts; i++)
 		{
 			Form_pg_attribute attribute = TupleDescAttr(tuple_desc, i - 1);
-			char *attribute_name = NameStr(attribute->attname);
+			const char *attribute_name = quote_identifier(NameStr(attribute->attname));
 			appendStringInfo(&querybuf, "(newdata).%s IS NULL AND (mv).%s IS NULL ",
 							 attribute_name, attribute_name);
 			if (i < tuple_desc->natts)
@@ -888,7 +888,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 
 		for (int i = 1; i <= tuple_desc->natts; i++) {
 			Form_pg_attribute attribute = TupleDescAttr(tuple_desc, i - 1);
-			char *attribute_name = NameStr(attribute->attname);
+			const char *attribute_name = quote_identifier(NameStr(attribute->attname));
 			appendStringInfo(&querybuf, "(diff.mv).%s IS NOT NULL ", attribute_name);
 			if (i < tuple_desc->natts)
 				appendStringInfo(&querybuf, "OR ");

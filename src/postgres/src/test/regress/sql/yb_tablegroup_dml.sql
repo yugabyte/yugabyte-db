@@ -133,7 +133,9 @@ SELECT * FROM tab_range2;
 \di
 
 -- DROP TABLEGROUP
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLEGROUP tg_test1; -- fail
+\set VERBOSITY default
 DROP TABLEGROUP tg_test2;
 
 -- drop database

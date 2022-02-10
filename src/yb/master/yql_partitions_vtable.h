@@ -22,7 +22,7 @@ namespace master {
 
 // VTable implementation of system.partitions.
 class YQLPartitionsVTable : public YQLVirtualTable {
-  static const int kInvalidCache = -1;
+  static const intptr_t kInvalidCache = -1;
 
   typedef std::unordered_map<std::string, std::shared_future<Result<IpAddress>>> DnsLookupMap;
 
@@ -48,7 +48,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
       const std::map<TabletId, TabletInfo::WriteLock>& tablet_write_locks) const;
 
   // Used to check if all of a table's partitions are present during a CreateTable call.
-  bool CheckTableIsPresent(const TableId& table_id, int expected_num_tablets) const;
+  bool CheckTableIsPresent(const TableId& table_id, size_t expected_num_tablets) const;
 
   // Reset the cache versions and fully regenerate the vtable.
   void ResetAndRegenerateCache() const;
@@ -82,8 +82,8 @@ class YQLPartitionsVTable : public YQLVirtualTable {
 
   mutable std::shared_timed_mutex mutex_;
   mutable std::shared_ptr<QLRowBlock> cache_ GUARDED_BY(mutex_);
-  mutable int cached_tablets_version_ GUARDED_BY(mutex_) = kInvalidCache;
-  mutable int cached_tablet_locations_version_ GUARDED_BY(mutex_) = kInvalidCache;
+  mutable intptr_t cached_tablets_version_ GUARDED_BY(mutex_) = kInvalidCache;
+  mutable intptr_t cached_tablet_locations_version_ GUARDED_BY(mutex_) = kInvalidCache;
   // Generate the cache from the map lazily (only when there's a request and update_cache_ is true).
   mutable bool update_cache_ GUARDED_BY(mutex_) = true;
 

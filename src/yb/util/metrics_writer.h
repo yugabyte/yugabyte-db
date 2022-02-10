@@ -28,6 +28,20 @@ class PrometheusWriter {
 
   virtual ~PrometheusWriter();
 
+  // Write to the a single metric entry for non-table level metrics.
+  template <typename T>
+  CHECKED_STATUS WriteSingleEntryNonTable(
+      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
+    auto it = attr.find("table_id");
+    if (it != attr.end()) {
+      return STATUS(
+          InvalidArgument, "Expect no table_id in attr argument when calling this function.");
+    }
+
+    RETURN_NOT_OK(FlushSingleEntry(attr, name, value));
+    return Status::OK();
+  }
+
   template<typename T>
   CHECKED_STATUS WriteSingleEntry(
       const MetricEntity::AttributeMap& attr, const std::string& name, const T& value,
@@ -45,8 +59,11 @@ class PrometheusWriter {
             per_table_values_[it->second][name] += value;
             break;
           case kMax:
-            per_table_values_[it->second][name] = std::max(per_table_values_[it->second][name],
-                                                           static_cast<double>(value));
+            // If we have a new max, also update the metadata so that it matches correctly.
+            if (static_cast<double>(value) > per_table_values_[it->second][name]) {
+              per_table_attributes_[it->second] = attr;
+              per_table_values_[it->second][name] = value;
+            }
             break;
           default:
             InvalidAggregationFunction(aggregation_function);

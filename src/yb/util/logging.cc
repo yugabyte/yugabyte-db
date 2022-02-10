@@ -203,8 +203,8 @@ void CustomGlogFailureWriter(const char* data, int size) {
 void ReportRefCountedDebugEvent(
     const char* type_name,
     const void* this_ptr,
-    int32_t current_refcount,
-    int ref_delta) {
+    int64_t current_refcount,
+    int64_t ref_delta) {
   std::string demangled_type = DemangleName(type_name);
   LOG(INFO) << demangled_type << "::" << (ref_delta == 1 ? "AddRef" : "Release")
             << "(this=" << this_ptr << ", ref_count_=" << current_refcount << "):\n"
@@ -310,6 +310,27 @@ void InitGoogleLoggingSafeBasic(const char* arg) {
   // Stderr logging threshold: INFO.
   // Sink logging: off.
   initial_stderr_severity = google::INFO;
+
+  ApplyFlagsInternal();
+
+  logging_initialized = true;
+}
+
+void InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs(const char* arg) {
+  SpinLockHolder l(&logging_mutex);
+  if (logging_initialized) return;
+
+  InitializeGoogleLogging(arg);
+
+  // This also disables file-based logging.
+  google::LogToStderr();
+
+  // File logging: off.
+  // Stderr logging threshold: NUM_SEVERITIES;
+  // Sink logging: off.
+  // Since Postgres logging collector collects logs from stderr, we never log to stderr.
+  FLAGS_stderrthreshold = google::NUM_SEVERITIES;
+  initial_stderr_severity = google::NUM_SEVERITIES;
 
   ApplyFlagsInternal();
 

@@ -704,7 +704,10 @@ class NodeChecker():
             else:
                 return e.fill_and_return_entry(["Could not find local socket"], True)
 
-        remote_cmd = "{} -c \"\\conninfo\"".format(ysqlsh_cmd)
+        # Passing dbname template1 explicitly as ysqlsh fails to connect if
+        # yugabyte database is deleted. We assume template1 will always be there
+        # in ysqlsh.
+        remote_cmd = "{} -c \"\\conninfo\" --dbname=template1".format(ysqlsh_cmd)
 
         errors = []
         output = self._remote_check_output(remote_cmd).strip()

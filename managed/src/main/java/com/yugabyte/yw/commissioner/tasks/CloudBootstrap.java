@@ -51,6 +51,7 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.sshPort = provider.sshPort;
       taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
       taskParams.sshUser = provider.sshUser;
+      taskParams.overrideKeyValidate = provider.overrideKeyValidate;
       taskParams.perRegionMetadata =
           provider
               .regions
@@ -98,6 +99,12 @@ public class CloudBootstrap extends CloudTaskBase {
       // Required: False.
       public String customImageId;
 
+      // When this is set to true, provider will use the supplied customImageId which is expected to
+      // have required package installations,
+      // Yugabyte release package, etc built in, as Ansible tasks corresponding to these would be
+      // skipped.
+      public boolean ybPrebuiltAmi = false;
+
       // Custom SG ID to use for the YB nodes.
       // Default: created by YB.
       // Required: True for custom input, False for YW managed.
@@ -106,6 +113,7 @@ public class CloudBootstrap extends CloudTaskBase {
       public static PerRegionMetadata fromRegion(Region region) {
         PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
         perRegionMetadata.customImageId = region.ybImage;
+        perRegionMetadata.ybPrebuiltAmi = region.ybPrebuiltAmi;
         perRegionMetadata.customSecurityGroupId = region.getSecurityGroupId();
         //    perRegionMetadata.subnetId = can only be set per zone
         perRegionMetadata.vpcId = region.getVnetName();
@@ -155,6 +163,10 @@ public class CloudBootstrap extends CloudTaskBase {
 
     // Port to open for connections on the instance.
     public Integer sshPort = 54422;
+
+    // Whether provider should validate a custom KeyPair
+    // Default: false.
+    public boolean overrideKeyValidate = false;
 
     public String hostVpcId = null;
     public String hostVpcRegion = null;
@@ -238,6 +250,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.regionCode = regionCode;
     params.keyPairName = taskParams().keyPairName;
     params.sshPrivateKeyContent = taskParams().sshPrivateKeyContent;
+    params.overrideKeyValidate = taskParams().overrideKeyValidate;
     params.sshUser = taskParams().sshUser;
     params.sshPort = taskParams().sshPort;
     params.airGapInstall = taskParams().airGapInstall;

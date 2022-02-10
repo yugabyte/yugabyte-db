@@ -22,7 +22,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.SecretEngineType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 
@@ -39,6 +39,7 @@ public class HashicorpEARServiceUtil {
   public static final String HC_VAULT_MOUNT_PATH = "HC_VAULT_MOUNT_PATH";
   public static final String HC_VAULT_TTL = "HC_VAULT_TTL";
   public static final String HC_VAULT_TTL_EXPIRY = "HC_VAULT_TTL_EXPIRY";
+  public static final String HC_VAULT_EKE_NAME = "key_yugabyte";
 
   /** Creates Secret Engine object with VaultAccessor. */
   private static class VaultSecretEngineBuilder {
@@ -47,7 +48,7 @@ public class HashicorpEARServiceUtil {
     private static VaultSecretEngineBase buildSecretEngine(
         VaultAccessor accesor, String vaultSE, String mountPath, KeyType keyType) throws Exception {
       LOG.info("VaultSecretEngineBase.buildSecretEngine called");
-      SecretEngineType engineType = SecretEngineType.valueOf(vaultSE.toUpperCase());
+      KMSEngineType engineType = KMSEngineType.valueOf(vaultSE.toUpperCase());
 
       VaultSecretEngineBase returnVault = null;
       switch (engineType) {
@@ -106,8 +107,8 @@ public class HashicorpEARServiceUtil {
    */
   public static String getVaultKeyForUniverse(UUID universeUUID, UUID configUUID) {
     String keyName = "key";
-    // generate keyname using => "'key_' + "UniverseUUID + '_' + CONFIG_UUID"
-    keyName = "key_" + configUUID.toString() + "_" + universeUUID.toString();
+    // generate keyname using => 'key_yugabyte'
+    keyName = HC_VAULT_EKE_NAME;
     LOG.debug("getVaultKeyForUniverse returning {}", keyName);
     return keyName;
   }
@@ -132,7 +133,10 @@ public class HashicorpEARServiceUtil {
 
     return keyName;
   }
-  /** Deletes Vault key, this operation cannot be reverted, call only when cluster is deleted. */
+  /**
+   * Deletes Vault key, this operation cannot be reverted. Used only for TESTING, do not call in
+   * production code.
+   */
   public static boolean deleteVaultKey(UUID universeUUID, UUID configUUID, ObjectNode authConfig)
       throws Exception {
 

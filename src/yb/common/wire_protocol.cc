@@ -89,7 +89,8 @@ std::vector<AppStatusPB::ErrorCode> CreateStatusToErrorCode() {
   #define YB_STATUS_CODE(name, pb_name, value, message) \
     SetAt(Status::BOOST_PP_CAT(k, name), AppStatusPB::pb_name, default_value, &result); \
     static_assert( \
-        to_underlying(AppStatusPB::pb_name) == to_underlying(Status::BOOST_PP_CAT(k, name)), \
+        static_cast<int32_t>(to_underlying(AppStatusPB::pb_name)) == \
+            to_underlying(Status::BOOST_PP_CAT(k, name)), \
         "The numeric value of AppStatusPB::" BOOST_PP_STRINGIZE(pb_name) " defined in" \
             " wire_protocol.proto does not match the value of Status::k" BOOST_PP_STRINGIZE(name) \
             " defined in status.h.");
@@ -450,7 +451,7 @@ void SchemaToColumnPBs(const Schema& schema,
                        RepeatedPtrField<ColumnSchemaPB>* cols,
                        int flags) {
   cols->Clear();
-  int idx = 0;
+  size_t idx = 0;
   for (const ColumnSchema& col : schema.columns()) {
     ColumnSchemaPB* col_pb = cols->Add();
     ColumnSchemaToPB(col, col_pb);
@@ -485,29 +486,30 @@ UsePrivateIpMode GetMode() {
   return UsePrivateIpMode::never;
 }
 
-bool UsePublicIp(const CloudInfoPB& connect_to,
-                 const CloudInfoPB& connect_from) {
+PublicAddressAllowed UsePublicIp(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
   auto mode = GetMode();
 
   if (mode == UsePrivateIpMode::never) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (connect_to.placement_cloud() != connect_from.placement_cloud()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (mode == UsePrivateIpMode::cloud) {
-    return false;
+    return PublicAddressAllowed::kFalse;
   }
   if (connect_to.placement_region() != connect_from.placement_region()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (mode == UsePrivateIpMode::region) {
-    return false;
+    return PublicAddressAllowed::kFalse;
   }
   if (connect_to.placement_zone() != connect_from.placement_zone()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
-  return mode != UsePrivateIpMode::zone;
+  return mode == UsePrivateIpMode::zone
+      ? PublicAddressAllowed::kFalse
+      : PublicAddressAllowed::kTrue;
 }
 
 const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration) {
@@ -523,7 +525,7 @@ const HostPortPB& DesiredHostPort(
     const CloudInfoPB& connect_from) {
   return GetHostPort(broadcast_addresses,
                      private_host_ports,
-                     PublicAddressAllowed(UsePublicIp(connect_to, connect_from)));
+                     UsePublicIp(connect_to, connect_from));
 }
 
 const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,

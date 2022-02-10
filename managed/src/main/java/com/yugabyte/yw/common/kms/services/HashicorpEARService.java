@@ -198,11 +198,5 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
 
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
     LOG.info("cleanupWithService called: {}, {}", universeUUID, configUUID);
-    try {
-      final ObjectNode authConfig = getAuthConfig(configUUID);
-      HashicorpEARServiceUtil.deleteVaultKey(universeUUID, configUUID, authConfig);
-    } catch (Exception e) {
-      LOG.error("Failed to CleanupWithService", e);
-    }
   }
 }

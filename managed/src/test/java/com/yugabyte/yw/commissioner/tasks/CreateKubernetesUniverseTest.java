@@ -25,11 +25,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -52,6 +54,9 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
+
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -132,15 +137,16 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
             + " \"metadata\": {\"namespace\": \"%1$s\"}}]}";
-    ShellResponse shellResponse1 = ShellResponse.create(0, String.format(podInfosMessage, ns1));
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(ns1)))
-        .thenReturn(shellResponse1);
-    ShellResponse shellResponse2 = ShellResponse.create(0, String.format(podInfosMessage, ns2));
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(ns2)))
-        .thenReturn(shellResponse2);
-    ShellResponse shellResponse3 = ShellResponse.create(0, String.format(podInfosMessage, ns3));
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(ns3)))
-        .thenReturn(shellResponse3);
+
+    List<Pod> pods1 =
+        TestUtils.deserialize(String.format(podInfosMessage, ns1), PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(ns1))).thenReturn(pods1);
+    List<Pod> pods2 =
+        TestUtils.deserialize(String.format(podInfosMessage, ns2), PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(ns2))).thenReturn(pods2);
+    List<Pod> pods3 =
+        TestUtils.deserialize(String.format(podInfosMessage, ns3), PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(ns3))).thenReturn(pods3);
   }
 
   private void setupUniverse(boolean setMasters, boolean enabledYEDIS, boolean setNamespace) {
@@ -177,8 +183,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       defaultProvider.save();
     }
 
-    ShellResponse response = new ShellResponse();
-    response.message =
+    String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
             + " \"metadata\": {\"namespace\": \""
@@ -209,14 +214,11 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             + " \"metadata\": {\"namespace\": \""
             + ns
             + "\"}}]}";
-    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(response);
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
   }
 
   private void setupCommon() {
-    ShellResponse response = new ShellResponse();
-    when(mockKubernetesManager.createNamespace(anyMap(), any())).thenReturn(response);
-    when(mockKubernetesManager.helmInstall(any(), anyMap(), any(), any(), any(), any()))
-        .thenReturn(response);
     // Table RPCs.
     YBClient mockClient = mock(YBClient.class);
     // WaitForTServerHeartBeats mock.

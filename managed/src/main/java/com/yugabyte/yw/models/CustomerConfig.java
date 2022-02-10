@@ -20,9 +20,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.Transient;
 import javax.validation.constraints.NotNull;
@@ -77,6 +81,14 @@ public class CustomerConfig extends Model {
     }
   }
 
+  public enum ConfigState {
+    @EnumValue("Active")
+    Active,
+
+    @EnumValue("QueuedForDeletion")
+    QueuedForDeletion
+  }
+
   @Id
   @ApiModelProperty(value = "Config UUID", accessMode = READ_ONLY)
   public UUID configUUID;
@@ -113,11 +125,25 @@ public class CustomerConfig extends Model {
       example = "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}")
   public ObjectNode data;
 
+  @ApiModelProperty(
+      value = "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+      accessMode = READ_ONLY)
+  @Column(nullable = false)
+  @Enumerated(EnumType.STRING)
+  private ConfigState state = ConfigState.Active;
+
   public static final Finder<UUID, CustomerConfig> find =
       new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
 
   public Map<String, String> dataAsMap() {
-    return new ObjectMapper().convertValue(data, Map.class);
+    Map<String, String> result = new ObjectMapper().convertValue(data, Map.class);
+    // Remove not String values.
+    for (Entry<String, String> entry : result.entrySet()) {
+      if (!(entry.getValue() instanceof String)) {
+        result.remove(entry.getKey());
+      }
+    }
+    return result;
   }
 
   public CustomerConfig generateUUID() {
@@ -251,6 +277,18 @@ public class CustomerConfig extends Model {
         .findList();
   }
 
+  public static List<CustomerConfig> getAllStorageConfigsQueuedForDeletion(UUID customerUUID) {
+    List<CustomerConfig> configList =
+        CustomerConfig.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("type", ConfigType.STORAGE)
+            .eq("state", ConfigState.QueuedForDeletion)
+            .findList();
+    return configList;
+  }
+
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
     return createCallHomeConfig(customerUUID, "MEDIUM");
   }
@@ -293,5 +331,22 @@ public class CustomerConfig extends Model {
       callhomeConfig.update();
     }
     return callhomeConfig;
+  }
+
+  public ConfigState getState() {
+    return this.state;
+  }
+
+  public void setState(ConfigState newState) {
+    if (this.state == newState) {
+      LOG.debug("Invalid State transition as no change requested");
+      return;
+    }
+    if (this.state == ConfigState.QueuedForDeletion) {
+      LOG.debug("Invalid State transition {} to {}", this.state, newState);
+      return;
+    }
+    this.state = newState;
+    save();
   }
 }

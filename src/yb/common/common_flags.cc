@@ -45,6 +45,10 @@ TAG_FLAG(enable_pg_savepoints, hidden);
 DEFINE_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
 
+DEFINE_bool(log_ysql_catalog_versions, false,
+            "Log YSQL catalog events. For debugging purposes.");
+TAG_FLAG(log_ysql_catalog_versions, hidden);
+
 namespace yb {
 
 static int GetYCQLNumShardsPerTServer() {

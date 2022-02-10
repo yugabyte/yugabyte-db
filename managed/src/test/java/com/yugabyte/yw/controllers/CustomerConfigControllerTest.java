@@ -15,10 +15,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
-
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.when;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -33,6 +31,7 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.Arrays;
 import java.util.List;
@@ -472,5 +471,238 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST", url, defaultUser.createAuthToken(), bodyJson);
+  }
+
+  @Test
+  public void testDeleteInUsStorageConfigYbWithInProgressBackup() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST17").configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+    assertBadRequest(
+        result,
+        "Backup task associated with Configuration " + configUUID.toString() + " is in progress.");
+    assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteInUseStorageConfigYbWithoutDeleteBackups() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST18").configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    assertOk(result);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), configUUID);
+  }
+
+  @Test
+  public void testDeleteStorageConfigYbWithoutDeleteBackups() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST18").configUUID;
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    assertOk(result);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), configUUID);
+  }
+
+  @Test
+  public void testDeleteInUseStorageConfigYbWithDeleteBackups() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST19").configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+    String url =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/configs/"
+            + configUUID
+            + "/delete?isDeleteBackups=true";
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    assertOk(result);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), configUUID);
+  }
+
+  @Test
+  public void testDeleteInvalidCustomerConfigYb() {
+    Customer customer = ModelFactory.testCustomer("nc", "New Customer");
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer, "TEST20").configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+    assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
+    assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteValidCustomerConfigYb() {
+    UUID configUUID = CustomerConfig.createCallHomeConfig(defaultCustomer.uuid).configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/delete";
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
+    assertOk(result);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditInUseStorageConfigYb() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data =
+        Json.parse(
+            "{\"BACKUP_LOCATION\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", "
+                + "\"ACCESS_SECRET\": \"A-SECRET\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "test-edited");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12").configUUID;
+    Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/edit";
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    backup.delete();
+    result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
+  }
+
+  @Test
+  public void testEditInvalidCustomerConfigYb() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "test");
+    Customer customer = ModelFactory.testCustomer("nc", "New Customer");
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer, "TEST13").configUUID;
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/edit";
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
+    assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
+    assertEquals(1, CustomerConfig.getAll(customer.uuid).size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testEditWithBackupLocationYb() {
+    CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST14");
+    JsonNode newData =
+        Json.parse(
+            "{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY-NEW\", "
+                + "\"ACCESS_SECRET\": \"DATA\"}");
+    config.setData((ObjectNode) newData);
+    JsonNode bodyJson = Json.toJson(config);
+    String url =
+        "/api/customers/" + defaultCustomer.uuid + "/configs/" + config.getConfigUUID() + "/edit";
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
+
+    assertBadRequest(result, "{\"data.BACKUP_LOCATION\":[\"Field is read-only.\"]}");
+
+    // Should not update the field BACKUP_LOCATION to "test".
+    CustomerConfig fromDb = CustomerConfig.get(config.getConfigUUID());
+    assertEquals("s3://foo", fromDb.data.get("BACKUP_LOCATION").textValue());
+  }
+
+  @Test
+  public void testEditStorageNameOnly_SecretKeysPersistYb() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15").configUUID;
+    CustomerConfig fromDb = CustomerConfig.get(configUUID);
+
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = fromDb.getMaskedData();
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", fromDb.configName);
+
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/edit";
+    Result result =
+        FakeApiHelper.doRequestWithAuthTokenAndBody(
+            "PUT", url, defaultUser.createAuthToken(), bodyJson);
+    assertOk(result);
+
+    CustomerConfig newFromDb = CustomerConfig.get(configUUID);
+    assertEquals(
+        fromDb.data.get("ACCESS_KEY").textValue(), newFromDb.data.get("ACCESS_KEY").textValue());
+    assertEquals(
+        fromDb.data.get("ACCESS_SECRET").textValue(),
+        newFromDb.data.get("ACCESS_SECRET").textValue());
+  }
+
+  @Test
+  public void testEditConfigNameToExistentConfigNameYb() {
+    String existentConfigName = "TEST152";
+    ModelFactory.createS3StorageConfig(defaultCustomer, existentConfigName);
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST153").configUUID;
+    CustomerConfig fromDb = CustomerConfig.get(configUUID);
+
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = fromDb.data;
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", existentConfigName);
+
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/edit";
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
+    assertConflict(result, "Configuration TEST152 already exists");
+  }
+
+  @Test
+  public void testEditConfigQueuedForDeletion() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15").configUUID;
+    CustomerConfig config = customerConfigService.getOrBadRequest(defaultCustomer.uuid, configUUID);
+    config.setState(ConfigState.QueuedForDeletion);
+    config.refresh();
+
+    CustomerConfig fromDb = CustomerConfig.get(configUUID);
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = fromDb.getMaskedData();
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", fromDb.configName);
+
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID + "/edit";
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
+    assertBadRequest(result, "Cannot edit config as it is queued for deletion.");
   }
 }

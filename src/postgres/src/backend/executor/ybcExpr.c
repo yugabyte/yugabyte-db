@@ -103,13 +103,13 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 	YBCPgCollationInfo collation_info;
 	YBGetCollationInfo(params[0].collid, type_ent, 0 /* Datum */, true /* is_null */,
 					   &collation_info);
-	YBCPgNewOperator(ybc_stmt, "eval_expr_call", type_ent,
-					 collation_info.collate_is_valid_non_c, &ybc_expr);
+	HandleYBStatus(YBCPgNewOperator(ybc_stmt, "eval_expr_call", type_ent,
+					 collation_info.collate_is_valid_non_c, &ybc_expr));
 
 	Datum expr_datum = CStringGetDatum(nodeToString(pg_expr));
 	YBCPgExpr expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,
 									expr_datum , /* IsNull */ false);
-	YBCPgOperatorAppendArg(ybc_expr, expr);
+	HandleYBStatus(YBCPgOperatorAppendArg(ybc_expr, expr));
 
 	/*
 	 * Adding the column type ids and mods to the message since we only have the YQL types in the
@@ -119,15 +119,15 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 	for (int i = 0; i < num_params; i++) {
 		Datum attno = Int32GetDatum(params[i].attno);
 		YBCPgExpr attno_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, attno, /* IsNull */ false);
-		YBCPgOperatorAppendArg(ybc_expr, attno_expr);
+		HandleYBStatus(YBCPgOperatorAppendArg(ybc_expr, attno_expr));
 
 		Datum typid = Int32GetDatum(params[i].typid);
 		YBCPgExpr typid_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typid, /* IsNull */ false);
-		YBCPgOperatorAppendArg(ybc_expr, typid_expr);
+		HandleYBStatus(YBCPgOperatorAppendArg(ybc_expr, typid_expr));
 		
 		Datum typmod = Int32GetDatum(params[i].typmod);
 		YBCPgExpr typmod_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typmod, /* IsNull */ false);
-		YBCPgOperatorAppendArg(ybc_expr, typmod_expr);
+		HandleYBStatus(YBCPgOperatorAppendArg(ybc_expr, typmod_expr));
 	}
 	return ybc_expr;
 }

@@ -205,6 +205,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   workload.set_write_timeout_millis(10000);
   workload.set_num_write_threads(1);
   workload.set_write_batch_size(1);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -223,19 +224,19 @@ TEST_F(AdminCliTest, TestChangeConfig) {
                                                 MonoDelta::FromSeconds(10)));
 
   workload.StopAndJoin();
-  int num_batches = workload.batches_completed();
+  auto num_batches = workload.batches_completed();
 
   LOG(INFO) << "Waiting for replicas to agree...";
   // Wait for all servers to replicate everything up through the last write op.
   // Since we don't batch, there should be at least # rows inserted log entries,
   // plus the initial leader's no-op, plus 1 for
   // the added replica for a total == #rows + 2.
-  int min_log_index = num_batches + 2;
+  auto min_log_index = num_batches + 2;
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(30),
                                   active_tablet_servers, tablet_id_,
                                   min_log_index));
 
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   ClusterVerifier cluster_verifier(cluster_.get());
@@ -538,6 +539,22 @@ TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
   ASSERT_NE(output.find("ENABLED"), std::string::npos);
 }
 
+TEST_F(AdminCliTest, TestModifyPlacementPolicy) {
+  BuildAndStart();
+
+  // Modify the cluster placement policy to consist of 2 zones.
+  ASSERT_OK(CallAdmin("modify_placement_info", "c.r.z0,c.r.z1:2,c.r.z0:2", 5, ""));
+
+  auto output = ASSERT_RESULT(CallAdmin("get_universe_config"));
+
+  std::string expected_placement_blocks =
+      "[{\"cloudInfo\":{\"placementCloud\":\"c\",\"placementRegion\":\"r\","
+      "\"placementZone\":\"z1\"},\"minNumReplicas\":2},{\"cloudInfo\":{\"placementCloud\":\"c\","
+      "\"placementRegion\":\"r\",\"placementZone\":\"z0\"},\"minNumReplicas\":3}]";
+
+  ASSERT_NE(output.find(expected_placement_blocks), string::npos);
+}
+
 TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   // Start a cluster with 3 tservers, each corresponding to a different zone.
   FLAGS_num_tablet_servers = 3;
@@ -567,6 +584,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   TestWorkload workload(cluster_.get());
   workload.set_table_name(extra_table);
   workload.set_timeout_allowed(true);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -638,7 +656,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Stop the workload.
   workload.StopAndJoin();
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   sleep(5);
@@ -672,6 +690,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   TestWorkload workload(cluster_.get());
   workload.set_table_name(extra_table);
   workload.set_timeout_allowed(true);
+  workload.set_sequential_write(true);
   workload.Setup();
   workload.Start();
 
@@ -721,7 +740,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
 
   // Stop the workload.
   workload.StopAndJoin();
-  int rows_inserted = workload.rows_inserted();
+  auto rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
   sleep(5);
@@ -729,8 +748,8 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   // Verify that there was no data loss.
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
-  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
-    extra_table, ClusterVerifier::EXACTLY, rows_inserted));
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCountWithRetries(
+    extra_table, ClusterVerifier::EXACTLY, rows_inserted, 20s));
 }
 
 TEST_F(AdminCliTest, TestClearPlacementPolicy) {
@@ -820,6 +839,65 @@ TEST_F(AdminCliTest, CompactSysCatalog) {
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
   auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
   ASSERT_OK(CallAdmin("compact_sys_catalog"));
+}
+
+// A simple smoke test to ensure it working and
+// nothing is broken by future changes.
+TEST_F(AdminCliTest, SetWalRetentionSecsTest) {
+  constexpr auto WAL_RET_TIME_SEC = 100ul;
+  constexpr auto UNEXPECTED_ARG = 911ul;
+
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  // Default table that gets created;
+  const auto& table_name = kTableName.table_name();
+  const auto& keyspace = kTableName.namespace_name();
+
+  // No WAL ret time found
+  {
+    const auto output = ASSERT_RESULT(CallAdmin("get_wal_retention_secs", keyspace, table_name));
+    ASSERT_NE(output.find("not set"), std::string::npos);
+  }
+
+  // Successfuly set WAL time and verified by the getter
+  {
+    ASSERT_OK(CallAdmin("set_wal_retention_secs", keyspace, table_name, WAL_RET_TIME_SEC));
+    const auto output = ASSERT_RESULT(CallAdmin("get_wal_retention_secs", keyspace, table_name));
+    ASSERT_TRUE(
+        output.find(std::to_string(WAL_RET_TIME_SEC)) != std::string::npos &&
+        output.find(table_name) != std::string::npos);
+  }
+
+  // Too many args in input
+  {
+    const auto output_setter =
+        CallAdmin("set_wal_retention_secs", keyspace, table_name, WAL_RET_TIME_SEC, UNEXPECTED_ARG);
+    ASSERT_FALSE(output_setter.ok());
+    ASSERT_TRUE(output_setter.status().IsRuntimeError());
+    ASSERT_TRUE(
+        output_setter.status().ToUserMessage().find("Invalid argument") != std::string::npos);
+
+    const auto output_getter =
+        CallAdmin("get_wal_retention_secs", keyspace, table_name, UNEXPECTED_ARG);
+    ASSERT_FALSE(output_getter.ok());
+    ASSERT_TRUE(output_getter.status().IsRuntimeError());
+    ASSERT_TRUE(
+        output_getter.status().ToUserMessage().find("Invalid argument") != std::string::npos);
+  }
+
+  // Outbounded arg in input
+  {
+    const auto output_setter =
+        CallAdmin("set_wal_retention_secs", keyspace, table_name, -WAL_RET_TIME_SEC);
+    ASSERT_FALSE(output_setter.ok());
+    ASSERT_TRUE(output_setter.status().IsRuntimeError());
+
+    const auto output_getter =
+        CallAdmin("get_wal_retention_secs", keyspace, table_name + "NoTable");
+    ASSERT_FALSE(output_getter.ok());
+    ASSERT_TRUE(output_getter.status().IsRuntimeError());
+  }
 }
 
 }  // namespace tools

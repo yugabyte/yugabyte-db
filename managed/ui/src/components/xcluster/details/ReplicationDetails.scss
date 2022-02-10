@@ -63,6 +63,17 @@
         border: 1px solid #e8e8e8;
       }
     }
+
+    .lag-status-graph {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      white-space: nowrap;
+      .lag-text,
+      .lag-value {
+        margin-left: 5px;
+      }
+    }
   }
 
   .noLeftPadding {
@@ -88,5 +99,21 @@
     height: 20px;
     display: inline-block;
     margin-left: 10px;
+  }
+
+  .details-actions-button {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+.alertMsg {
+  * {
+    margin-right: 5px;
+  }
+
+  a {
+    text-decoration: underline;
+    color: #fff;
   }
 }

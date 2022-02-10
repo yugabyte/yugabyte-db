@@ -78,7 +78,7 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
 ### How to Configure TKG Credentials
 
-- On the **Cloud Provider Configuration** window, select the **VMware Tanzu** tab, as shown in the following illustration.
+- Navigate to **Configs > Cloud Provider Configuration > Infrastructure > VMware Tanzu**.
 - Use the **Name** field to provide a meaningful name for your configuration.
 - Use the **Kube Config** field to specify the kubeconfig for an availability zone at one of the following levels:
 
@@ -93,61 +93,60 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
 ### How to Configure Region and Zones
 
-- On the **Cloud Provider Configuration** window, click **Add Region** to open the **Add new region** dialog shown in the following illustration:
+- On the **Create VMware Tanzu Configuration** page, click **Add Region** to open the **Add new region** dialog shown in the following illustration: <br><br>
 
 
-![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
+  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
 
 - Use the **Region** field to select the region.
 - Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
-- In the **Storage Class** field, provide the storage class that (1) exists in your Kubernetes cluster and (2) matches the one installed on TKG. The valid input is a comma delimited value. The default is standard. That is, the default storage class is TKG - Multi Cloud: standard-sc, TKG - Service: tkg-vsan-storage-policy
-- Overrides to add Service level annotations
-
+- In the **Storage Class** field, provide the storage class that (1) exists in your Kubernetes cluster and (2) matches the one installed on TKG. The valid input is a comma delimited value. The default is standard. That is, the default storage class is TKG - Multi Cloud: standard-sc, TKG - Service: tkg-vsan-storage-policy.
 - Use the **Kube Config** field to upload the kubeconfig file.
+
 - Optionally, complete the **Overrides** field. If not completed, Yugabyte Platform uses the default values specified inside the Helm chart.
 
   To add Service-level annotations, use the following overrides:
 
-```
-serviceEndpoints:
-  - name: "yb-master-service"
-    type: "LoadBalancer"
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-    app: "yb-master"
-    ports:
-      ui: "7000"
+  ```config
+  serviceEndpoints:
+    - name: "yb-master-service"
+      type: "LoadBalancer"
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+      app: "yb-master"
+      ports:
+        ui: "7000"
+  
+    - name: "yb-tserver-service"
+      type: "LoadBalancer"
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+      app: "yb-tserver"
+      ports:
+        ycql-port: "9042"
+        yedis-port: "6379"
+        ysql-port: "5433"
+  ```
 
-  - name: "yb-tserver-service"
-    type: "LoadBalancer"
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-    app: "yb-tserver"
-    ports:
-      ycql-port: "9042"
-      yedis-port: "6379"
-      ysql-port: "5433"
-```
+  <br>To disable LoadBalancer, use the following overrides:
 
-  To disable LoadBalancer, use the following overrides:
+  ```configuration
+  enableLoadBalancer: False
+  ```
 
-```
-enableLoadBalancer: False
-```
+  <br>To change the cluster domain name, use the following overrides:
 
-  To change the cluster domain name, use the following overrides:
+  ```configuration
+  domainName: my.cluster
+  ```
 
-```
-domainName: my.cluster
-```
+  <br>To add annotations at the StatefulSet level, use the following overrides:
 
-  To add annotations at the StatefulSet level, use the following overrides:
-
-```
-networkAnnotation:
-  annotation1: 'foo'
-  annotation2: 'bar'
-```
+  ```configuration
+  networkAnnotation:
+    annotation1: 'foo'
+    annotation2: 'bar'
+  ```
 
 - Add a new zone by clicking **Add Zone**. Your configuration may have multiple zones, as shown in the following illustration:
 
@@ -156,10 +155,10 @@ networkAnnotation:
 
 - Click **Add Region**.
 
-- Click **Save**. If your configuration is successful, you are redirected to **VMware Tanzu configs**, as shown in the following illustration. 
+- Click **Save**. If your configuration is successful, you are redirected to **VMware Tanzu configs**, as shown in the following illustration:<br><br>
 
 
-![Finish Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-finish.png)
+  ![Finish Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-finish.png)
 
 ## Appendix Using VMware Tanzu Application Service
 
@@ -221,7 +220,7 @@ Depending on the cloud providers configured for your Yugabyte Platform, you can 
 
 To provision in AWS or GCP cloud, your overrides should include the appropriate `provider_type` and `region_codes` as an array, as follows:
 
-```sh
+```configuration
 {
  "universe_name": "cloud-override-demo",
  "provider_type": "gcp", # gcp for Google Cloud, aws for Amazon Web Service
@@ -231,7 +230,7 @@ To provision in AWS or GCP cloud, your overrides should include the appropriate 
 
 To provision in Kubernetes, your overrides should include the appropriate `provider_type` and `kube_provider` type, as follows:
 
-```sh
+```configuration
 {
  "universe_name": "cloud-override-demo",
  "provider_type": "kubernetes",
@@ -243,7 +242,7 @@ To provision in Kubernetes, your overrides should include the appropriate `provi
 
 To override the number of nodes, include the `num_nodes` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
-```sh
+```configuration
 {
  "universe_name": "cloud-override-demo",
  "num_nodes": 4 # default is 3 nodes.
@@ -254,7 +253,7 @@ To override the number of nodes, include the `num_nodes` with the desired value,
 
 To override the replication factor, include `replication` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
-```sh
+```configuration
 {
  "universe_name": "cloud-override-demo",
  "replication": 5,
@@ -268,7 +267,7 @@ To override the replication factor, include `replication` with the desired value
 
 To override the volume settings, include `num_volumes` with the desired value, as well as `volume_size` with the volume size in GB for each of those volumes. For example, to have two volumes with 100GB each, overrides should be specified as follows:
 
-```sh
+```configuration
 {
  "universe_name": "cloud-override-demo",
  "num_volumes": 2,
@@ -280,7 +279,7 @@ To override the volume settings, include `num_volumes` with the desired value, a
 
 To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in Yugabyte Platform, as follows:
 
-```sh
+```configuration
 {
  "universe_name": "cloud-override-demo",
  "yb_version": "1.1.6.0-b4"

@@ -47,7 +47,7 @@ struct TestEntry : public MPSCQueueEntry<TestEntry> {
 TEST(LockfreeTest, MPSCQueueSimple) {
   const size_t kTotalEntries = 10;
   std::vector<TestEntry> entries(kTotalEntries);
-  for (int i = 0; i != entries.size(); ++i) {
+  for (size_t i = 0; i != entries.size(); ++i) {
     entries[i].index = i;
   }
   MPSCQueue<TestEntry> queue;
@@ -303,7 +303,7 @@ class QueuePerformanceHelper {
       kBoth,
     };
 
-    for (int i = 0; i != workers_; ++i) {
+    for (size_t i = 0; i != workers_; ++i) {
       Role role = mixed_mode_ ? Role::kBoth : (i & 1 ? Role::kReader : Role::kWriter);
       threads.emplace_back([queue, &start_latch, &finish_latch, &pushes, &pops, role] {
         CDSAttacher attacher;

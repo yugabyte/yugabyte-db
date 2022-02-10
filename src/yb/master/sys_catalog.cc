@@ -140,7 +140,7 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
-DEFINE_int32(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
+DEFINE_uint64(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
@@ -440,14 +440,14 @@ void SysCatalogTable::SysCatalogStateChanged(
     // been a ROLE_CHANGE, thus old_config must have exactly one peer in transition (PRE_VOTER or
     // PRE_OBSERVER) and new_config should have none.
     if (new_count == old_count) {
-      int old_config_peers_transition_count =
+      auto old_config_peers_transition_count =
           CountServersInTransition(context->change_record.old_config());
-      if ( old_config_peers_transition_count != 1) {
+      if (old_config_peers_transition_count != 1) {
         LOG(FATAL) << "Expected old config to have one server in transition (PRE_VOTER or "
                    << "PRE_OBSERVER), but found " << old_config_peers_transition_count
                    << ". Config: " << context->change_record.old_config().ShortDebugString();
       }
-      int new_config_peers_transition_count =
+      auto new_config_peers_transition_count =
           CountServersInTransition(context->change_record.new_config());
       if (new_config_peers_transition_count != 0) {
         LOG(FATAL) << "Expected new config to have no servers in transition (PRE_VOTER or "
@@ -1212,7 +1212,7 @@ Status SysCatalogTable::CopyPgsqlTables(
   int batch_count = 0, total_count = 0, total_bytes = 0;
   const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
   const auto* meta = tablet->metadata();
-  for (int i = 0; i < source_table_ids.size(); ++i) {
+  for (size_t i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
     auto& target_table_id = target_table_ids[i];
 

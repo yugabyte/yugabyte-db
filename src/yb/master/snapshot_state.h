@@ -76,7 +76,7 @@ class SnapshotState : public StateWithTablets {
     return schedule_id_;
   }
 
-  int version() const {
+  int64_t version() const {
     return version_;
   }
 
