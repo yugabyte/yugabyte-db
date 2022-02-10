@@ -11,7 +11,7 @@ import WarningIcon from '../icons/warning_icon';
 
 const VALIDATION_SCHEMA = Yup.object().shape({
   ldap_url: Yup.string()
-    .matches(/^(?:http(s)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/, {
+    .matches(/^(?:(http|https|ldap)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/, {
       message: 'LDAP URL must be a valid URL with port number'
     })
     .required('LDAP URL is Required'),
@@ -228,7 +228,7 @@ export const LDAPAuth = (props) => {
                       LDAP URL &nbsp;
                       <YBInfoTip
                         title="LDAP URL"
-                        content="LDAP URL must be a valid URL with port number, Ex:- http://0.0.0.0:0000"
+                        content="LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000"
                       >
                         <i className="fa fa-info-circle" />
                       </YBInfoTip>
@@ -313,8 +313,11 @@ export const LDAPAuth = (props) => {
                 <Row className="ua-field-row" key="ldap_service_account_username">
                   <Col lg={2} className="ua-label-c">
                     <div>
-                      LDAP Username (Optional) &nbsp;
-                      <YBInfoTip title="LDAP Username" content="Username of LDAP Service Account">
+                      Service Account Username (Optional) &nbsp;
+                      <YBInfoTip
+                        title="Service Account Username"
+                        content="Username of Service Account"
+                      >
                         <i className="fa fa-info-circle" />
                       </YBInfoTip>
                     </div>
@@ -333,10 +336,10 @@ export const LDAPAuth = (props) => {
                   <Row className="ua-field-row" key="ldap_service_account_password">
                     <Col lg={2} className="ua-label-c">
                       <div>
-                        LDAP Password&nbsp;
+                        Service Account Password&nbsp;
                         <YBInfoTip
-                          title="LDAP Password"
-                          content="Password for LDAP Service Account"
+                          title="Service Account Password"
+                          content="Password for Service Account"
                         >
                           <i className="fa fa-info-circle" />
                         </YBInfoTip>
