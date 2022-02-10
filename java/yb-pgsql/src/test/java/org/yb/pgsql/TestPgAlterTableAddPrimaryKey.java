@@ -47,6 +47,14 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   }
 
   @Test
+  public void withNoForceRowLevelSecurity() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int)");
+      alterAddPrimaryKey(stmt, "nopk", "NO FORCE ROW LEVEL SECURITY, ADD PRIMARY KEY (id)");
+    }
+  }
+
+  @Test
   public void withFillFactor() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE public.pgbench_accounts (aid integer NOT NULL," +
