@@ -69,7 +69,7 @@ The database admin credentials are separate from your Yugabyte Cloud credentials
 
 If you are a database user who was added to the database by an administrator, ask them to either re-send your credentials or reset your database password.
 
-If you are the database admin and are unable to locate your database admin credentials file, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
 
 ### VPC networking
 
@@ -77,7 +77,7 @@ If you have set up a VPC network and are unable to connect, verify the following
 
 #### VPC status is Failed
 
-If you are unable to successfully create the VPC, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+If you are unable to successfully create the VPC, contact {{<support-cloud>}}.
 
 #### Peering connection status is Pending
 
