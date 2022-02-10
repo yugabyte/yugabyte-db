@@ -391,10 +391,6 @@
 .g-flag-search {
   width: 100%;
 }
-.g-flag-modal {
-  width: '1100px';
-  height: '600px';
-}
 
 .add-gflag-container {
   display: flex;
@@ -768,6 +764,7 @@
 
 .display-inline-flex {
   display: inline-flex;
+  align-items: center;
 }
 
 .gflag-button {
