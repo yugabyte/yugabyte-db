@@ -271,13 +271,12 @@ public class TaskInfo extends Model {
   }
 
   public List<TaskInfo> getIncompleteSubTasks() {
-    Object[] incompleteStates = {State.Created, State.Initializing, State.Running};
     return TaskInfo.find
         .query()
         .select(GET_SUBTASKS_FG)
         .where()
         .eq("parent_uuid", getTaskUUID())
-        .in("task_state", incompleteStates)
+        .in("task_state", INCOMPLETE_STATES)
         .findList();
   }
 
