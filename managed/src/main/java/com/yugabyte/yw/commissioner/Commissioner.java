@@ -100,10 +100,11 @@ public class Commissioner {
    * @return
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
+    RunnableTask taskRunnable = null;
     try {
       final int subTaskAbortPosition = getSubTaskAbortPosition();
       // Create the task runnable object based on the various parameters passed in.
-      RunnableTask taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
+      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
       if (subTaskAbortPosition >= 0) {
         taskRunnable.setTaskExecutionListener(
             new TaskExecutionListener() {
@@ -126,6 +127,10 @@ public class Commissioner {
       runningTasks.put(taskUUID, taskRunnable);
       return taskRunnable.getTaskUUID();
     } catch (Throwable t) {
+      if (taskRunnable != null) {
+        // Destroy the task initialization in case of failure.
+        taskRunnable.task.terminate();
+      }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
       LOG.error(msg, t);
       throw new RuntimeException(msg, t);

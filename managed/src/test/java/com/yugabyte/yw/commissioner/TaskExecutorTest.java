@@ -23,6 +23,7 @@ import static play.inject.Bindings.bind;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
@@ -35,14 +36,20 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -419,5 +426,50 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(2, subTaskStates.size());
     assertTrue(subTaskStates.contains(TaskInfo.State.Created));
     assertTrue(subTaskStates.contains(TaskInfo.State.Success));
+  }
+
+  @Test
+  public void testShutdown() throws InterruptedException {
+    ITask task = mockTaskCommon(false);
+    CountDownLatch latch1 = new CountDownLatch(1);
+    CountDownLatch latch2 = new CountDownLatch(1);
+    AtomicBoolean executed = new AtomicBoolean();
+    ExecutorService executor = Executors.newFixedThreadPool(1);
+    doAnswer(
+            inv -> {
+              try {
+                latch1.countDown();
+                latch2.await();
+                executed.set(true);
+              } catch (InterruptedException e) {
+                throw new CancellationException(e.getMessage());
+              }
+              return null;
+            })
+        .when(task)
+        .run();
+
+    // CompletableFuture.supplyAsync(() -> TaskExecutor.this.shutdown(Duration.ofMinutes(5))));
+    RunnableTask taskRunner1 = taskExecutor.createRunnableTask(task);
+    UUID taskUUID = taskExecutor.submit(taskRunner1, executor);
+    // Wait for the task to be running.
+    latch1.await();
+    // Submit executor service shutdown to mimic shutdown hook.
+    CompletableFuture.supplyAsync(
+        () -> MoreExecutors.shutdownAndAwaitTermination(executor, 2, TimeUnit.SECONDS));
+    // Submit task executor shutdown to mimic shutdown hook.
+    CompletableFuture.supplyAsync(() -> taskExecutor.shutdown(Duration.ofSeconds(2)));
+    // Wait for the task to be cancelled.
+    waitForTask(taskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    // Aborted due to shutdown.
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task);
+    // This should get rejected as the executor is already shutdown.
+    assertThrows(
+        IllegalStateException.class,
+        () -> {
+          taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1));
+        });
   }
 }
