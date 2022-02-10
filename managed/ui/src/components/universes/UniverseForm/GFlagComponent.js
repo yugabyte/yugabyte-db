@@ -21,6 +21,8 @@ import { useWhenMounted } from '../../../redesign/helpers/hooks';
 //Icons
 import Edit from '../images/edit_pen.svg';
 import Close from '../images/close.svg';
+import Plus from '../images/plus.svg';
+import MoreIcon from '../images/ellipsis.svg';
 
 //server
 const MASTER = 'MASTER';
@@ -263,8 +265,11 @@ export default function GFlagComponent(props) {
           <div className="cell-font">{`${cell}`}</div>
           <div className="icons">
             <div className="more-icon">
-              <Button bsClass="flag-icon-button" onClick={() => handleSelectedOption(modalProps)}>
-                <i className="fa fa-ellipsis-h"></i>
+              <Button
+                bsClass="flag-icon-button mb-2"
+                onClick={() => handleSelectedOption(modalProps)}
+              >
+                <img alt="--" src={MoreIcon} width="20" />
               </Button>
             </div>
             <div className="flag-icons">
@@ -324,10 +329,10 @@ export default function GFlagComponent(props) {
         <div className="table-val-column">
           {isFlagExist && (
             <Button
-              bsClass="flag-icon-button display-inline-flex"
+              bsClass="flag-icon-button display-inline-flex mb-2"
               onClick={() => handleSelectedOption(modalProps)}
             >
-              <i className="fa fa-plus"></i>
+              <img alt="--" src={Plus} width="20" />
               <span className="add-label">Add value</span>
             </Button>
           )}

@@ -18,7 +18,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   const { mode, server, dbVersion } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
-  const [toggleMostUsed, setToggleMostUsed] = useState(false);
+  const [toggleMostUsed, setToggleMostUsed] = useState(true);
   const [allGFlagsArr, setAllGflags] = useState(null);
   const [mostUsedArr, setMostUsedFlags] = useState(null);
   const [filteredArr, setFilteredArr] = useState(null);
@@ -27,6 +27,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   //Declarative methods
   const filterByText = (arr, text) => arr.filter((e) => e?.name?.includes(text));
+  const isMostUsed = (fName) => mostUsedArr?.some((mf) => mf?.name === fName);
 
   const handleFlagSelect = (flag) => {
     let flagvalue = null;
@@ -190,19 +191,6 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       </FlexShrink>
       <FlexShrink className="button-container">
         <YBButton
-          btnText="All Flags"
-          disabled={mode === EDIT}
-          active={toggleMostUsed}
-          btnClass={clsx(!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
-          onClick={() => {
-            if (toggleMostUsed) {
-              setSelectedFlag(null);
-              setToggleMostUsed(false);
-            }
-          }}
-        />{' '}
-        &nbsp;
-        <YBButton
           btnText="Most used"
           disabled={mode === EDIT}
           active={!toggleMostUsed}
@@ -211,6 +199,19 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
             if (!toggleMostUsed) {
               setSelectedFlag(null);
               setToggleMostUsed(true);
+            }
+          }}
+        />
+        &nbsp;
+        <YBButton
+          btnText="All Flags"
+          disabled={mode === EDIT}
+          active={toggleMostUsed}
+          btnClass={clsx(!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
+          onClick={() => {
+            if (toggleMostUsed) {
+              setSelectedFlag(null);
+              setToggleMostUsed(false);
             }
           }}
         />
@@ -242,6 +243,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   );
 
   const renderFlagDetails = () => {
+    const showDocLink = mode !== EDIT && (toggleMostUsed || isMostUsed(selectedFlag?.name));
     if (selectedFlag)
       return (
         <>
@@ -257,7 +259,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
                     <Badge className="gflag-badge">{selectedFlag?.default}</Badge>
                   </>
                 )}
-                {documentationLink}
+                {showDocLink && documentationLink}
               </FlexContainer>
               {/* <FlexContainer direction="column">placeholder to show min and max values</FlexContainer> */}
             </div>
