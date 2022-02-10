@@ -114,10 +114,10 @@ DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
              "For instance from tcmalloc statistics.");
 
 DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, 128 * 1024L * 1024L,
-             "Size, in bytes, that is considered a large value for Release() (or Consume() with "
-             "a negative value). If tcmalloc is used, this can trigger it to GC. "
-             "A higher value will make us call into tcmalloc less often (and therefore more "
-             "efficient). A lower value will mean our memory overhead is lower.");
+             "When the total amount of memory from calls to Release() since the last GC exceeds "
+             "this flag, a new tcmalloc GC will be triggered. This GC will clear the tcmalloc "
+             "page heap freelist. A higher value implies less aggressive GC, i.e. higher memory "
+             "overhead, but more efficient in terms of runtime.");
 TAG_FLAG(mem_tracker_tcmalloc_gc_release_bytes, runtime);
 
 namespace yb {
