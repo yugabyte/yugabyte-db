@@ -30,7 +30,8 @@ const awsRegionList = regionsData.map((region, index) => {
 
 // TODO: (Daniel) - Replace this hard-coding with an API that returns a list of supported KMS Configurations
 let kmsConfigTypes = [
-  { value: 'SMARTKEY', label: 'Equinix SmartKey' },
+  // Equinix KMS support is deprecated from 2.12.1
+  // { value: 'SMARTKEY', label: 'Equinix SmartKey' },
   { value: 'AWS', label: 'AWS KMS' },
   { value: 'HASHICORP', label: 'Hashicorp Vault' }
 ];
@@ -41,7 +42,9 @@ class KeyManagementConfiguration extends Component {
     enabledIAMProfile: false,
     useCmkPolicy: false,
     mode: 'NEW',
-    formData: {}
+    formData: {
+      kmsProvider: { value: 'AWS', label: 'AWS KMS' }
+    }
   };
 
   isEditMode = () => {
@@ -438,7 +441,7 @@ class KeyManagementConfiguration extends Component {
 
   displayFormContent = (provider) => {
     if (!provider) {
-      return this.getSmartKeyForm();
+      return this.getAWSForm();
     }
     switch (provider.value) {
       case 'SMARTKEY':
@@ -448,7 +451,7 @@ class KeyManagementConfiguration extends Component {
       case 'HASHICORP':
         return this.getHCVaultForm();
       default:
-        return this.getSmartKeyForm();
+        return this.getAWSForm();
     }
   };
 
