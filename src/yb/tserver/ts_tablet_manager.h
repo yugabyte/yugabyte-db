@@ -326,6 +326,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
 
+  // Background task that Retires old metrics.
+  void CleanupOldMetrics();
+
   client::YBClient& client();
 
   const std::shared_future<client::YBClient*>& client_future();
@@ -572,6 +575,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for verifying tablet data integrity.
   std::unique_ptr<rpc::Poller> verify_tablet_data_poller_;
+
+  // Used for cleaning up old metrics.
+  std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;
