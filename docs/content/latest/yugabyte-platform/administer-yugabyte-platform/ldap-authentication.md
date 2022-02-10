@@ -33,7 +33,8 @@ You can use the Yugabyte Platform UI console to enable LDAP authentication for Y
 
   ![LDAP authentication](/images/yp/ldap-auth-1.png)<br><br>
 
-  The description of these settings are provided in [Use the Yugabyte Platform API](#use-the-yugabyte-platform-ui).
+  With the exception of **LDAP URL**, the description of the preceding settings is provided in [Use the Yugabyte Platform API](#use-the-yugabyte-platform-ui). The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as per the following example:<br>
+  `0.0.0.0:9000`
 
 ## Use the Yugabyte Platform API
 
