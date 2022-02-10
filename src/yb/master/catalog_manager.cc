@@ -300,6 +300,15 @@ DEFINE_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerT
     "The default number of tablets per tablet server for transaction status table. If the value is "
     "-1, the system automatically determines an appropriate value based on number of CPU cores.");
 
+DEFINE_bool(auto_create_local_transaction_tables, true,
+            "Whether or not to create local transaction status tables automatically on table "
+            "creation with a tablespace with placement specified.");
+
+DEFINE_test_flag(bool, name_transaction_tables_with_tablespace_id, false,
+                 "This is only used in tests to make associating automatically created transaction "
+                 "tables with their tablespaces easier, and causes transaction tables created "
+                 "automatically for tablespaces to include the tablespace oid in their names.");
+
 DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 
 DEFINE_int32(metrics_snapshots_table_num_tablets, 0,
@@ -1089,6 +1098,7 @@ Status CatalogManager::Load(const std::string& title, const int64_t term) {
 Status CatalogManager::RunLoaders(int64_t term) {
   // Clear the table and tablet state.
   table_names_map_.clear();
+  transaction_table_ids_set_.clear();
   auto table_ids_map_checkout = table_ids_map_.CheckOut();
   table_ids_map_checkout->clear();
 
@@ -1965,7 +1975,83 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
   return tablespace_map;
 }
 
-Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablespaceMap() {
+boost::optional<TablespaceId> CatalogManager::GetTransactionStatusTableTablespace(
+    const scoped_refptr<TableInfo>& table) {
+  auto lock = table->LockForRead();
+  if (lock->pb.table_type() != TRANSACTION_STATUS_TABLE_TYPE) {
+    return boost::none;
+  }
+
+  if (!lock->pb.has_transaction_table_tablespace_id()) {
+    return boost::none;
+  }
+
+  return lock->pb.transaction_table_tablespace_id();
+}
+
+void CatalogManager::ClearTransactionStatusTableTablespace(const scoped_refptr<TableInfo>& table) {
+  auto lock = table->LockForWrite();
+  if (lock->pb.table_type() != TRANSACTION_STATUS_TABLE_TYPE) {
+    return;
+  }
+
+  lock.mutable_data()->pb.clear_transaction_table_tablespace_id();
+  lock.mutable_data()->pb.set_version(lock.mutable_data()->pb.version() + 1);
+  lock.Commit();
+}
+
+bool CatalogManager::CheckTransactionStatusTablesWithMissingTablespaces(
+    const TablespaceIdToReplicationInfoMap& tablespace_info) {
+  SharedLock lock(mutex_);
+  for (const auto& table_id : transaction_table_ids_set_) {
+    auto table = table_ids_map_->find(table_id);
+    if (table == table_ids_map_->end()) {
+      LOG(DFATAL) << "Table uuid " << table_id
+                  << " in transaction_table_ids_set_ but not in table_ids_map_";
+      continue;
+    }
+    auto tablespace_id = GetTransactionStatusTableTablespace(table->second);
+    if (tablespace_id) {
+      if (!tablespace_info.count(*tablespace_id)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void CatalogManager::UpdateTransactionStatusTableTablespaces(
+    const TablespaceIdToReplicationInfoMap& tablespace_info) {
+  if (CheckTransactionStatusTablesWithMissingTablespaces(tablespace_info)) {
+    LockGuard lock(mutex_);
+    for (const auto& table_id : transaction_table_ids_set_) {
+      auto table = table_ids_map_->find(table_id);
+      if (table == table_ids_map_->end()) {
+        LOG(DFATAL) << "Table uuid " << table_id
+                    << " in transaction_table_ids_set_ but not in table_ids_map_";
+        continue;
+      }
+      auto tablespace_id = GetTransactionStatusTableTablespace(table->second);
+      if (tablespace_id) {
+        if (!tablespace_info.count(*tablespace_id)) {
+          // TODO: We should also delete the transaction table, see #11123.
+          LOG(INFO) << "Found transaction status table for tablespace id " << *tablespace_id
+                    << " which doesn't exist, clearing tablespace id";
+          ClearTransactionStatusTableTablespace(table->second);
+        }
+      }
+    }
+
+    // A tablespace id has been cleared, meaning a transaction table's placement has changed,
+    // and thus the hash needs to be recomputed.
+    RecomputeTxnTableVersionsHashUnlocked();
+  }
+}
+
+Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablespaceMap(
+    const TablespaceIdToReplicationInfoMap& tablespace_info) {
+  auto table_to_tablespace_map = std::make_shared<TableToTablespaceIdMap>();
+
   // First fetch all namespaces. This is because the table_to_tablespace information is only
   // found in the pg_class catalog table. There exists a separate pg_class table in each
   // namespace. To build in-memory state for all tables, process pg_class table for each
@@ -1991,10 +2077,32 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
       // TODO (Deepthi): Investigate if safe to skip template0 and template1 as well.
       namespace_id_vec.emplace_back(ns.first);
     }
+
+    // Add local transaction tables corresponding to tablespaces.
+    for (const auto& table_id : transaction_table_ids_set_) {
+      auto table = table_ids_map_->find(table_id);
+      if (table == table_ids_map_->end()) {
+        LOG(DFATAL) << "Table uuid " << table_id
+                    << " in transaction_table_ids_set_ but not in table_ids_map_";
+        continue;
+      }
+      auto tablespace_id = GetTransactionStatusTableTablespace(table->second);
+      if (tablespace_id) {
+        if (tablespace_info.count(*tablespace_id)) {
+          (*table_to_tablespace_map)[table_id] = *tablespace_id;
+        } else {
+          // It's possible that a new tablespace had its transaction table created then deleted
+          // between when we checked tablespace ids and now; we ignore it here, and it will be
+          // caught and cleared in the next tablespace update.
+          LOG(INFO) << "Found transaction status table for tablespace id " << *tablespace_id
+                    << " which doesn't exist, ignoring";
+        }
+      }
+    }
   }
+
   // For each namespace, fetch the table->tablespace information by reading pg_class
   // table for each namespace.
-  auto table_to_tablespace_map = std::make_shared<TableToTablespaceIdMap>();
   for (const NamespaceId& nsid : namespace_id_vec) {
     VLOG(5) << "Refreshing placement information for namespace " << nsid;
     const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(nsid));
@@ -2099,12 +2207,15 @@ Status CatalogManager::DoRefreshTablespaceInfo() {
   // First refresh the tablespace info in memory.
   auto tablespace_info = VERIFY_RESULT(GetYsqlTablespaceInfo());
 
+  // Clear tablespace ids for transaction tables mapped to missing tablespaces.
+  UpdateTransactionStatusTableTablespaces(*tablespace_info);
+
   shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map = nullptr;
 
   if (tablespace_info->size() > kYsqlNumDefaultTablespaces) {
     // There exist custom tablespaces in the system. Fetch the table->tablespace
     // map from PG catalog tables.
-    table_to_tablespace_map = VERIFY_RESULT(GetYsqlTableToTablespaceMap());
+    table_to_tablespace_map = VERIFY_RESULT(GetYsqlTableToTablespaceMap(*tablespace_info));
   }
 
   // Update tablespace_manager_.
@@ -2931,6 +3042,28 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         << "  " << EXPR_VALUE_FOR_LOG(FLAGS_create_initial_sys_catalog_snapshot);
   }
 
+  // If this is a transactional table and there is a associated tablespace, try to create a
+  // local transaction status table for the tablespace if there is a placement attached to it
+  // (and if it does not exist already).
+  if (GetAtomicFlag(&FLAGS_auto_create_local_transaction_tables)) {
+    if (is_transactional && orig_req->has_tablespace_id()) {
+      const auto& tablespace_id = orig_req->tablespace_id();
+      auto tablespace_pb = VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
+      if (tablespace_pb) {
+        RETURN_NOT_OK(CreateLocalTransactionStatusTableIfNeeded(rpc, tablespace_id));
+      } else {
+        VLOG(1)
+            << "Not attempting to create a local transaction status table: "
+            << "tablespace " << EXPR_VALUE_FOR_LOG(tablespace_id) << " has no placement\n";
+      }
+    } else {
+        VLOG(1)
+            << "Not attempting to create a local transaction status table:\n"
+            << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
+            << "  " << EXPR_VALUE_FOR_LOG(orig_req->has_tablespace_id());
+    }
+  }
+
   if (is_pg_catalog_table) {
     return CreateYsqlSysTable(orig_req, resp);
   }
@@ -3299,6 +3432,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
+  // For create transaction table requests with tablespace id, save the tablespace id.
+  const auto is_transaction_status_table =
+      orig_req->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE;
+  if (is_transaction_status_table && req.has_tablespace_id()) {
+    table->mutable_metadata()->mutable_dirty()->pb.set_transaction_table_tablespace_id(
+        req.tablespace_id());
+  }
+
   // Tables with a transaction should be rolled back if the transaction does not get committed.
   // Store this on the table persistent state until the transaction has been a verified success.
   TransactionMetadata txn;
@@ -3413,8 +3554,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // Update transaction status hash if needed.
-  const auto is_transaction_status_table =
-      (orig_req->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE);
   if (is_transaction_status_table) {
     RecomputeTxnTableVersionsHash();
   }
@@ -3594,6 +3733,10 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
     table_names_map_[{namespace_id, req.name()}] = *table;
   }
 
+  if (req.table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+    transaction_table_ids_set_.insert(table_id);
+  }
+
   if (tablets) {
     *tablets = VERIFY_RESULT(CreateTabletsFromTable(partitions, *table));
   }
@@ -3619,7 +3762,7 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
     const CreateTransactionStatusTableRequestPB* req, CreateTransactionStatusTableResponsePB* resp,
     rpc::RpcContext *rpc) {
   const string& table_name = req->table_name();
-  Status s = CreateTransactionStatusTableInternal(rpc, table_name);
+  Status s = CreateTransactionStatusTableInternal(rpc, table_name, nullptr /* tablespace_id */);
   if (s.IsAlreadyPresent()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
   }
@@ -3629,8 +3772,8 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(rpc::RpcContext *rpc,
-                                                                    const string& table_name) {
+CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(
+    rpc::RpcContext *rpc, const string& table_name, const TablespaceId* tablespace_id) {
   if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
     return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
   }
@@ -3642,6 +3785,9 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(rpc::RpcCont
   req.set_name(table_name);
   req.mutable_namespace_()->set_name(kSystemNamespaceName);
   req.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+  if (tablespace_id) {
+    req.set_tablespace_id(*tablespace_id);
+  }
 
   // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
   // will use the same defaults as for regular tables.
@@ -3669,8 +3815,48 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(rpc::RpcCont
   return Status::OK();
 }
 
+bool CatalogManager::DoesTransactionTableExistForTablespace(const TablespaceId& tablespace_id) {
+  SharedLock lock(mutex_);
+  for (const auto& table_id : transaction_table_ids_set_) {
+    auto table = table_ids_map_->find(table_id);
+    if (table == table_ids_map_->end()) {
+      LOG(DFATAL) << "Table uuid " << table_id
+                  << " in transaction_table_ids_set_ but not in table_ids_map_";
+      continue;
+    }
+    auto this_tablespace_id = GetTransactionStatusTableTablespace(table->second);
+    if (this_tablespace_id && *this_tablespace_id == tablespace_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+CHECKED_STATUS CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
+    rpc::RpcContext *rpc, const TablespaceId& tablespace_id) {
+  std::lock_guard<std::mutex> lock(tablespace_transaction_table_creation_mutex_);
+
+  if (DoesTransactionTableExistForTablespace(tablespace_id)) {
+    VLOG(1) << "Transaction status table already exists, not creating.";
+    return Status::OK();
+  }
+
+  std::string table_name;
+  if (FLAGS_TEST_name_transaction_tables_with_tablespace_id) {
+    uint32_t tablespace_oid = VERIFY_RESULT(GetPgsqlTablespaceOid(tablespace_id));
+    table_name = kTransactionTablePrefix + std::to_string(tablespace_oid);
+  } else {
+    std::string uuid;
+    RETURN_NOT_OK(yb::Uuid::Generate().ToString(&uuid));
+    table_name = kTransactionTablePrefix + uuid;
+  }
+
+  return CreateTransactionStatusTableInternal(rpc, table_name, &tablespace_id);
+}
+
 CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc) {
-  Status s = CreateTransactionStatusTableInternal(rpc, kGlobalTransactionsTableName);
+  Status s = CreateTransactionStatusTableInternal(
+      rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */);
   if (s.IsAlreadyPresent()) {
     VLOG(1) << "Transaction status table already exists, not creating.";
     return Status::OK();
@@ -3699,38 +3885,41 @@ CHECKED_STATUS CatalogManager::GetGlobalTransactionStatusTablets(
   return Status::OK();
 }
 
-std::vector<TableId> CatalogManager::GetPlacementLocalTransactionStatusTables(
+Result<std::vector<TableId>> CatalogManager::GetPlacementLocalTransactionStatusTables(
     const CloudInfoPB& placement) {
   std::vector<TableId> same_placement_transaction_tables;
+  auto tablespace_manager = GetTablespaceManager();
 
   SharedLock lock(mutex_);
-  for (const auto& entry : *table_ids_map_) {
-    auto& table_info = *entry.second;
-
-    if (table_info.namespace_id() != kSystemNamespaceId) {
+  for (const auto& table_id : transaction_table_ids_set_) {
+    auto table = table_ids_map_->find(table_id);
+    if (table == table_ids_map_->end()) {
+      LOG(DFATAL) << "Table uuid " << table_id
+                  << " in transaction_table_ids_set_ but not in table_ids_map_";
       continue;
     }
-
-    if (!table_info.IsTransactionStatusTable()) {
-      continue;
-    }
-
-    auto lock = table_info.LockForRead();
-
-    if (!lock->visible_to_client()) {
-      continue;
-    }
-
-    if (!StringStartsWithOrEquals(lock->name(), kTransactionTablePrefix)) {
-      continue;
-    }
-
-    const auto& cloud_info = lock->pb.replication_info();
-    if (IsReplicationInfoSet(cloud_info)) {
-      const auto& replicas = cloud_info.live_replicas();
-      if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(replicas, placement)) {
-        same_placement_transaction_tables.push_back(entry.first);
+    // system.transaction is filtered out because it cannot have a placement set.
+    auto table_info = table->second;
+    auto lock = table_info->LockForRead();
+    auto tablespace_id = GetTransactionStatusTableTablespace(table_info);
+    auto cloud_info = lock->pb.replication_info();
+    if (!IsReplicationInfoSet(cloud_info)) {
+      if (tablespace_id) {
+        const auto result = tablespace_manager->GetTablespaceReplicationInfo(*tablespace_id);
+        if (!result.ok() || !*result || !IsReplicationInfoSet(**result)) {
+          continue;
+        }
+        cloud_info = **result;
       }
+    }
+    const auto& txn_table_replicas = cloud_info.live_replicas();
+    // Skip transaction tables spanning multiple regions, since using them will incur global
+    // latencies. See #11268.
+    if (CatalogManagerUtil::DoesPlacementInfoSpanMultipleRegions(txn_table_replicas)) {
+      continue;
+    }
+    if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(txn_table_replicas, placement)) {
+      same_placement_transaction_tables.push_back(table_id);
     }
   }
 
@@ -3740,7 +3929,8 @@ std::vector<TableId> CatalogManager::GetPlacementLocalTransactionStatusTables(
 CHECKED_STATUS CatalogManager::GetPlacementLocalTransactionStatusTablets(
     const CloudInfoPB& placement,
     GetTransactionStatusTabletsResponsePB* resp) {
-  auto same_placement_transaction_tables = GetPlacementLocalTransactionStatusTables(placement);
+  auto same_placement_transaction_tables = VERIFY_RESULT(GetPlacementLocalTransactionStatusTables(
+      placement));
 
   if (!same_placement_transaction_tables.empty()) {
     for (const auto& table_id : same_placement_transaction_tables) {
@@ -7903,14 +8093,21 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
 
 void CatalogManager::RecomputeTxnTableVersionsHash() {
   SharedLock lock(mutex_);
+  RecomputeTxnTableVersionsHashUnlocked();
+}
 
+void CatalogManager::RecomputeTxnTableVersionsHashUnlocked() {
   std::stringstream ss;
-  for (const auto& entry : *table_ids_map_) {
-    auto& table_info = *entry.second;
-    if (StringStartsWithOrEquals(table_info.name(), kTransactionTablePrefix)) {
-      auto l = table_info.LockForRead();
-      ss << table_info.id() << "," << l->pb.version() << ",";
+  for (const auto& table_id : transaction_table_ids_set_) {
+    auto table = table_ids_map_->find(table_id);
+    if (table == table_ids_map_->end()) {
+      LOG(DFATAL) << "Table uuid " << table_id
+                  << " in transaction_table_ids_set_ but not in table_ids_map_";
+      continue;
     }
+    auto& table_info = table->second;
+    auto l = table_info->LockForRead();
+    ss << table_info->id() << "," << l->pb.version() << ",";
   }
   std::string tables = ss.str();
   uint64_t hash = HashUtil::MurmurHash2_64(tables.c_str(), tables.size(), 0 /* seed */);

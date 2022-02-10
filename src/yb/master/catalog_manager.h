@@ -122,6 +122,8 @@ using PlacementId = std::string;
 
 typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
+typedef std::unordered_set<TableId> TableIdSet;
+
 typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
   TablespaceIdToReplicationInfoMap;
 
@@ -198,8 +200,21 @@ class CatalogManager :
                                               rpc::RpcContext *rpc);
 
   // Create a transaction status table with the given name.
-  CHECKED_STATUS CreateTransactionStatusTableInternal(rpc::RpcContext *rpc,
-                                                      const string& table_name);
+  CHECKED_STATUS CreateTransactionStatusTableInternal(rpc::RpcContext* rpc,
+                                                      const string& table_name,
+                                                      const TablespaceId* tablespace_id);
+
+  // Check if there is a transaction table whose tablespace id matches the given tablespace id.
+  bool DoesTransactionTableExistForTablespace(
+      const TablespaceId& tablespace_id) EXCLUDES(mutex_);
+
+  // Create a local transaction status table for a tablespace if needed
+  // (i.e. if it does not exist already).
+  //
+  // This is called during CreateTable if the table has transactions enabled and is part
+  // of a tablespace with a placement set.
+  CHECKED_STATUS CreateLocalTransactionStatusTableIfNeeded(
+      rpc::RpcContext *rpc, const TablespaceId& tablespace_id) EXCLUDES(mutex_);
 
   // Create the global transaction status table if needed (i.e. if it does not exist already).
   //
@@ -211,7 +226,7 @@ class CatalogManager :
       GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
 
   // Get ids of transaction status tables matching a given placement.
-  std::vector<TableId> GetPlacementLocalTransactionStatusTables(
+  Result<std::vector<TableId>> GetPlacementLocalTransactionStatusTables(
       const CloudInfoPB& placement) EXCLUDES(mutex_);
 
   // Get tablet ids of local transaction status tables matching a given placement.
@@ -489,6 +504,7 @@ class CatalogManager :
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
   void RecomputeTxnTableVersionsHash() EXCLUDES(mutex_);
+  void RecomputeTxnTableVersionsHashUnlocked() REQUIRES_SHARED(mutex_);
 
   uint64_t GetTxnTableVersionsHash() override;
 
@@ -1376,6 +1392,11 @@ class CatalogManager :
   // Note that this map isn't used for YSQL tables.
   TableInfoByNameMap table_names_map_ GUARDED_BY(mutex_);
 
+  // Set of table ids that are transaction status tables.
+  // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
+  TableIdSet transaction_table_ids_set_ GUARDED_BY(mutex_);
+
+  // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   // Tablet maps: tablet-id -> TabletInfo
   VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(mutex_);
 
@@ -1527,6 +1548,8 @@ class CatalogManager :
 
   std::unique_ptr<client::YBClient> cdc_state_client_;
 
+  // Mutex to avoid simultaneous creation of transaction tables for a tablespace.
+  std::mutex tablespace_transaction_table_creation_mutex_;
 
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
@@ -1570,12 +1593,31 @@ class CatalogManager :
 
   CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
 
+  // Return the id of the tablespace associated with a transaction status table, if any.
+  boost::optional<TablespaceId> GetTransactionStatusTableTablespace(
+      const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
+
+  // Clears tablespace id for a transaction status table, reverting it back to cluster default
+  // if no placement has been set explicitly.
+  void ClearTransactionStatusTableTablespace(
+      const scoped_refptr<TableInfo>& table) REQUIRES(mutex_);
+
+  // Checks if there are any transaction tables with tablespace id set for a tablespace not in
+  // the given tablespace info map.
+  bool CheckTransactionStatusTablesWithMissingTablespaces(
+      const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
+
+  // Updates transaction tables' tablespace ids for tablespaces that don't exist.
+  void UpdateTransactionStatusTableTablespaces(
+      const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
+
   // Return the tablespaces in the system and their associated replication info from
   // pg catalog tables.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetYsqlTablespaceInfo();
 
   // Return the table->tablespace mapping by reading the pg catalog tables.
-  Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap();
+  Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
+      const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
 
   // Background task that refreshes the in-memory state for YSQL tables with their associated
   // tablespace info.
