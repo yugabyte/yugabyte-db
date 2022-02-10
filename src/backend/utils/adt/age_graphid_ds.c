@@ -46,31 +46,31 @@ typedef struct ListGraphId
 
 /* definitions */
 /* return the next GraphIdNode */
-inline GraphIdNode *next_GraphIdNode(GraphIdNode *node)
+GraphIdNode *next_GraphIdNode(GraphIdNode *node)
 {
     return node->next;
 }
 
 /* return the graphid */
-inline graphid get_graphid(GraphIdNode *node)
+graphid get_graphid(GraphIdNode *node)
 {
     return node->id;
 }
 
 /* get the size of the passed stack */
-inline int64 get_stack_size(ListGraphId *stack)
+int64 get_stack_size(ListGraphId *stack)
 {
     return stack->size;
 }
 
 /* return a reference to the head entry in the stack */
-inline GraphIdNode *peek_stack_head(ListGraphId *stack)
+GraphIdNode *peek_stack_head(ListGraphId *stack)
 {
     return stack->head;
 }
 
 /* return a reference to the tail entry in the stack */
-inline GraphIdNode *peek_stack_tail(ListGraphId *stack)
+GraphIdNode *peek_stack_tail(ListGraphId *stack)
 {
     return stack->tail;
 }

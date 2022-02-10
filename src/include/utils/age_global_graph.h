@@ -42,19 +42,19 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
                                                    Oid graph_oid);
 GRAPH_global_context *find_GRAPH_global_context(Oid graph_oid);
 /* GRAPH retrieval functions */
-inline ListGraphId *get_graph_vertices(GRAPH_global_context *ggctx);
+ListGraphId *get_graph_vertices(GRAPH_global_context *ggctx);
 vertex_entry *get_vertex_entry(GRAPH_global_context *ggctx,
                                graphid vertex_id);
 edge_entry *get_edge_entry(GRAPH_global_context *ggctx, graphid edge_id);
 /* vertex entry accessor functions*/
-inline graphid get_vertex_entry_id(vertex_entry *ve);
-inline ListGraphId *get_vertex_entry_edges(vertex_entry *ve);
-inline Oid get_vertex_entry_label_table_oid(vertex_entry *ve);
-inline Datum get_vertex_entry_properties(vertex_entry *ve);
+graphid get_vertex_entry_id(vertex_entry *ve);
+ListGraphId *get_vertex_entry_edges(vertex_entry *ve);
+Oid get_vertex_entry_label_table_oid(vertex_entry *ve);
+Datum get_vertex_entry_properties(vertex_entry *ve);
 /* edge entry accessor functions */
-inline graphid get_edge_entry_id(edge_entry *ee);
-inline Oid get_edge_entry_label_table_oid(edge_entry *ee);
-inline Datum get_edge_entry_properties(edge_entry *ee);
-inline graphid get_edge_entry_start_vertex_id(edge_entry *ee);
-inline graphid get_edge_entry_end_vertex_id(edge_entry *ee);
+graphid get_edge_entry_id(edge_entry *ee);
+Oid get_edge_entry_label_table_oid(edge_entry *ee);
+Datum get_edge_entry_properties(edge_entry *ee);
+graphid get_edge_entry_start_vertex_id(edge_entry *ee);
+graphid get_edge_entry_end_vertex_id(edge_entry *ee);
 #endif

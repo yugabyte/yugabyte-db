@@ -38,8 +38,8 @@ typedef struct GraphIdNode GraphIdNode;
 typedef struct ListGraphId ListGraphId;
 
 /* GraphIdNode access functions */
-inline GraphIdNode *next_GraphIdNode(GraphIdNode *node);
-inline graphid get_graphid(GraphIdNode *node);
+GraphIdNode *next_GraphIdNode(GraphIdNode *node);
+graphid get_graphid(GraphIdNode *node);
 
 /* graphid stack functions */
 /* create a new ListGraphId stack */
@@ -51,11 +51,11 @@ void push_graphid_stack(ListGraphId *stack, graphid id);
 /* pop (remove) a GraphIdNode from the top of the stack */
 graphid pop_graphid_stack(ListGraphId *stack);
 /* peek (doesn't remove) at the head entry of a ListGraphId stack */
-inline GraphIdNode *peek_stack_head(ListGraphId *stack);
+GraphIdNode *peek_stack_head(ListGraphId *stack);
 /* peek (doesn't remove) at the tail entry of a ListGraphId stack */
-inline GraphIdNode *peek_stack_tail(ListGraphId *stack);
+GraphIdNode *peek_stack_tail(ListGraphId *stack);
 /* return the size of a ListGraphId stack */
-inline int64 get_stack_size(ListGraphId *stack);
+int64 get_stack_size(ListGraphId *stack);
 
 /* graphid list functions */
 /*
