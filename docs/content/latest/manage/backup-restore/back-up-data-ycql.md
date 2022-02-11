@@ -35,7 +35,7 @@ You perform schema backups using the `DESC` command.
 
 ### Back up the schema for one keyspace
 
-To backup the schema for a particular keyspace, run the following command.
+To back up the schema for a particular keyspace, run the following command.
 
 ```sh
 $ ycqlsh -e "DESC KEYSPACE <keyspace name>" > schema.cql
@@ -43,7 +43,7 @@ $ ycqlsh -e "DESC KEYSPACE <keyspace name>" > schema.cql
 
 ### Back up the schema for an entire cluster
 
-To backup the schema for all tables across all keyspaces, run the following command.
+To back up the schema for all tables across all keyspaces, run the following command.
 
 ```sh
 $ ycqlsh -e "DESC SCHEMA" > schema.cql
@@ -110,7 +110,7 @@ This example uses the `myapp` keyspace and tables created in the Quick start. Re
 
 ### Back up the schema
 
-Run the following to backup the schema of the keyspace `myapp`.
+Run the following to back up the schema of the keyspace `myapp`.
 
 ```sh
 $ ./bin/ycqlsh -e "DESC KEYSPACE myapp" > myapp_schema.cql
@@ -136,7 +136,7 @@ CREATE TABLE myapp.stock_market (
 
 ### Back up all the columns of the table
 
-Run the following command to backup the data in the table `myapp.stock_market`.
+Run the following command to back up the data in the table `myapp.stock_market`.
 
 ```sh
 $ ./bin/ycqlsh -e "COPY myapp.stock_market TO 'myapp_data.csv' WITH HEADER = TRUE ;"
