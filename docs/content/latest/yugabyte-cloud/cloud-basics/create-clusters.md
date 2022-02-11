@@ -23,7 +23,7 @@ Standard clusters support multi-node and highly available deployments and are su
 Standard clusters include the following features:
 
 - No limit on cluster size - choose any cluster size based on your use case.
-- Multi node [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance. To deploy multi-region clusters, contact {{<support-cloud>}}.
+- Multi node [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance. To deploy multi-region clusters, contact {{<support-cloud>}}.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking support.
 - Automated and on-demand backups.

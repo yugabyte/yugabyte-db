@@ -31,7 +31,7 @@ return value:      bigint
 ```
 **Purpose:** Return the integer ordinal rank of each row according to the emergent order that the window `ORDER BY` clause specifies. The series of values starts with _1_ but, when the [_window_](../../invocation-syntax-semantics/#the-window-definition-rule) contains ties, the series is not dense.
 
-The "ordinal rank" notion is familiar from sporting events. If three runners reach the finish line at the same time, within the limits of timing accuracy, then they are all deemed to have tied for first place. The runner who finishes next after these is deemed to have come in in fourth place because three runners came in before this finisher.
+The "ordinal rank" notion is familiar from sporting events. If three runners reach the finish line at the same time, within the limits of timing accuracy, then they are all deemed to have tied for first place. The runner who finishes next after these is deemed to have come in fourth place because three runners came in before this finisher.
 
 ## dense_rank()
 
@@ -65,7 +65,7 @@ order by 1, 2;
 ```
 Here is a typical result. The exact ordering or the `row_number()` values within tie groups changes (exactly according to how the table is populated for maximum pedagogic effect) each time you re-create table _"t2"_. To make it easier to see the pattern, several blank lines have been manually inserted here between each successive set of rows with the same value for _"class"_. And in the second set, which has ties, one blank line has been inserted between each tie group.
 ```
- class | k  | score | row_number | rank | dense_rank 
+ class | k  | score | row_number | rank | dense_rank
 -------+----+-------+------------+------+------------
      1 |  1 |     1 |          1 |    1 |          1
      1 |  2 |     2 |          2 |    2 |          2
@@ -76,22 +76,22 @@ Here is a typical result. The exact ordering or the `row_number()` values within
      1 |  7 |     7 |          7 |    7 |          7
      1 |  8 |     8 |          8 |    8 |          8
      1 |  9 |     9 |          9 |    9 |          9
-     
-     
-     
+
+
+
      2 | 10 |     2 |          2 |    1 |          1
      2 | 11 |     2 |          3 |    1 |          1
      2 | 12 |     2 |          1 |    1 |          1
-     
+
      2 | 13 |     4 |          4 |    4 |          2
-     
+
      2 | 14 |     5 |          5 |    5 |          3
-     
+
      2 | 15 |     6 |          6 |    6 |          4
-     
+
      2 | 16 |     7 |          7 |    7 |          5
      2 | 17 |     7 |          8 |    7 |          5
-     
+
      2 | 18 |     9 |          9 |    9 |          6
 ```
 

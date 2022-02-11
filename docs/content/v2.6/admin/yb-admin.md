@@ -759,7 +759,7 @@ yb-admin \
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * _snapshot_id_: The identifier (ID) for the snapshot.
-* *file_name*: The name of the the file to contain the metadata. Recommended file extension is `.snapshot`.
+* *file_name*: The name of the file to contain the metadata. Recommended file extension is `.snapshot`.
 
 **Example**
 

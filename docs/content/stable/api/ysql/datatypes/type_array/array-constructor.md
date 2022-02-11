@@ -16,9 +16,9 @@ The `array[]` value constructor is a special variadic function. Uniquely among a
 
 ## Purpose and signature
 
-**Purpose:** Create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an [array literal](../literals/). 
+**Purpose:** Create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an [array literal](../literals/).
 
-**Signature** 
+**Signature**
 ```
 input value:       [anyarray | [ anyelement, [anyelement]* ]
 return value:      anyarray
@@ -29,7 +29,7 @@ These thee ordinary functions also create an array value from scratch:
 
 - [`array_fill()`](../functions-operators/array-fill/) creates a "blank canvas" array of the specified shape with all values set the same to what you want.
 - [`array_agg()`](../functions-operators/array-agg-unnest/#array-agg) creates an array (of, in general, an implied _"row"_ type) from a SQL subquery.
-- [`text_to_array()`](../functions-operators/string-to-array/) creates a `text[]`array from a single `text` value that uses a a specifiable delimiter to beak it into individual values.
+- [`text_to_array()`](../functions-operators/string-to-array/) creates a `text[]`array from a single `text` value that uses a specifiable delimiter to beak it into individual values.
 
 **Example:**
 ```plpgsql
@@ -38,7 +38,7 @@ select array[(1, 'a')::rt, (2, 'b')::rt, (3, 'dog \ house')::rt]::rt[] as arr;
 ```
 This is the result:
 ```
-                    arr                     
+                    arr
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
@@ -131,7 +131,7 @@ begin
     arr := two_d::text;
     return next;
   end;
-  
+
 end;
 $body$;
 
@@ -140,7 +140,7 @@ select arr from some_arrays();
 It produces two rows. This is the first:
 
 ```
-                    arr                     
+                    arr
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
@@ -186,7 +186,7 @@ select
 It shows this:
 
 ```
- result 
+ result
 --------
  true
 ```
