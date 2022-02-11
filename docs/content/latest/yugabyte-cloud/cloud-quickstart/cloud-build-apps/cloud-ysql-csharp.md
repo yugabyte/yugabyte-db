@@ -86,7 +86,7 @@ Open the `sample-app.cs` file in the `yugabyte-simple-csharp-app` folder to revi
 
 ### connect
 
-The `connect` method establishes a connection with your cluster via the libpqxx driver.
+The `connect` method establishes a connection with your cluster via the libpqxx driver. To avoid making extra system table queries to map types, the `ServerCompatibilityMode` is set to `NoTypeLoading`.
 
 ```cpp
 NpgsqlConnectionStringBuilder urlBuilder = new NpgsqlConnectionStringBuilder();
@@ -97,6 +97,8 @@ urlBuilder.Username = "";
 urlBuilder.Password = "";
 urlBuilder.SslMode = SslMode.VerifyFull;
 urlBuilder.RootCertificate = "";
+
+urlBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
 
 NpgsqlConnection conn = new NpgsqlConnection(urlBuilder.ConnectionString);
 
