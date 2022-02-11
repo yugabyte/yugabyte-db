@@ -12,7 +12,8 @@ import { isAvailable } from '../../../utils/LayoutUtils';
 import './AlertsTable.scss';
 import { toast } from 'react-toastify';
 import { Label } from 'react-bootstrap';
-import {timeFormatter} from "../../../utils/TableFormatters";
+import { timeFormatter } from '../../../utils/TableFormatters';
+import { useSearchParam } from 'react-use';
 
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
@@ -62,7 +63,19 @@ export default function AlertsTable({ filters, customer }) {
     resetPage();
   }, [filters.states, filters.severities, filters.configurationTypes, filters.sourceName]);
 
-  if (isLoading) return <YBLoading />;
+  const showDetails = useSearchParam('showDetails');
+  const { isLoading: isAlertDetailsLoading } = useQuery(
+    [showDetails],
+    () => api.getAlert(showDetails),
+    {
+      enabled: showDetails !== null,
+      onSuccess: (data) => {
+        setAlertDetails(data);
+      }
+    }
+  );
+
+  if (isLoading || isAlertDetailsLoading) return <YBLoading />;
 
   if (!data) return 'Unable to load data at the moment. Please try again later';
 
@@ -167,7 +180,7 @@ export default function AlertsTable({ filters, customer }) {
               >
                 Status
               </TableHeaderColumn>
-              { isAvailable(customer.currentCustomer.data.features, 'alert.list.actions') && (
+              {isAvailable(customer.currentCustomer.data.features, 'alert.list.actions') && (
                 <TableHeaderColumn
                   dataField="message"
                   columnClassName="no-border name-column"
