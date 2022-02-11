@@ -23,6 +23,7 @@ import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.json.JSONObject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,8 +105,11 @@ public class TestYsqlPartitionedBackup extends BasePgSQLTest {
 
   private void partitionedTestBackupAndRestoreHelper() throws Exception {
     partitionedTestInsertSampleDataHelper();
-    YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", "ysql.yugabyte");
+    backupDir = new JSONObject(output).getString("snapshot_url");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
     partitionedTestVerifyInsertDataHelper();
   }
 
