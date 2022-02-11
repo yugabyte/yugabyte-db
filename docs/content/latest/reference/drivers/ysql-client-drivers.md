@@ -26,13 +26,13 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 ### libpq
 
-[`libpq`](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. `libpq` is also the underlying engine used in other PostgreSQL application interfaces. The `libpq` client library also supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[`libpq`](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. `libpq` is also the underlying engine used in other PostgreSQL application interfaces. The `libpq` client library supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details and documentation, see [`libpq - C Library`](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11, which YugabyteDB is based on.
+For details and documentation, refer to [`libpq - C Library`](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
 
-For a tutorial on building a sample C application with `libpq`, see [Build a C application](../../../quick-start/build-apps/c/ysql/).
+For a tutorial on building a sample C application with `libpq`, refer to [Build a C application](../../../quick-start/build-apps/c/ysql/).
 
-#### To install the libpq client library
+#### Install the libpq client library
 
 The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows:
 
@@ -40,33 +40,33 @@ The `libpq` C driver is included in the YugabyteDB installation. You can use it 
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
 
+Homebrew users on macOS can install `libpq` using `brew install libpq`. You can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page.
+
 ## C++
 
 ### libpqxx
 
 The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. `libpqxx` is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details and documentation, see [`jvt/libpqxx` README](https://github.com/jtv/libpqxx#readme) and [`libpqxx` ReadTheDocs](https://libpqxx.readthedocs.io/en/latest/).
+For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/en/latest/).
 
-For a tutorial on building a sample C++ application with `libpqxx`, see [Build a C++ application](../../../quick-start/build-apps/cpp/ysql/).
+For a tutorial on building a sample C++ application with `libpqxx`, refer to [Build a C++ application](../../../quick-start/build-apps/cpp/ysql/).
 
 #### Install the libpqxx driver
 
-To build and install the libpqxx driver for use with YugabyteDB, follow these steps:
-
-- Clone the libpqxx repository.
+To build and install the libpqxx driver for use with YugabyteDB, first Clone the libpqxx repository.
 
 ```sh
 $ git clone https://github.com/jtv/libpqxx.git
 ```
 
-- For dependencies on the PostgreSQL binaries, add the PostgreSQL `bin` directory to the command path by running the following command.
+For dependencies on the PostgreSQL binaries, add the PostgreSQL `bin` directory to the command path by running the following command.
 
 ```sh
 $ export PATH=$PATH:<yugabyte-install-dir>/postgres/bin
 ```
 
-- Build and install the driver.
+Build and install the driver.
 
 ```sh
 $ cd libpqxx
@@ -151,7 +151,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 [`node-postgres`](https://node-postgres.com/) is a collection of Node.js modules for interacting with PostgreSQL databases. `node-postgres` optionally uses [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details on installing and using node-postgres, see the [node-postgres documentation].
+For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
 For a tutorial on building a sample Node.js application with `node-postgres`, see [Build a Node.js application](../../../quick-start/build-apps/nodejs/ysql-pg/).
 

@@ -13,6 +13,8 @@ import './RollingUpgradeForm.scss';
 import { EncryptionInTransit } from './EncryptionInTransit';
 import GFlagComponent from '../../../universes/UniverseForm/GFlagComponent';
 import { FlexShrink, FlexContainer } from '../../flexbox/YBFlexBox';
+import clsx from 'clsx';
+import WarningIcon from './images/warning.svg';
 
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
@@ -229,11 +231,22 @@ export default class RollingUpgradeForm extends Component {
             visible={modalVisible}
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
+            footerAccessory={
+              formValues.upgradeOption === 'Non-Rolling' && (
+                <span className="non-rolling-msg">
+                  <img alt="Note" src={WarningIcon} />
+                  &nbsp; <b>Note!</b> &nbsp; Flags that require rolling restart won't be applied
+                </span>
+              )
+            }
             title="G-Flags"
             size="large"
             onFormSubmit={submitAction}
             error={error}
             dialogClassName="gflag-modal"
+            showCancelButton={true}
+            submitLabel="Apply Changes"
+            cancelLabel="Cancel"
           >
             <FieldArray
               name="gFlags"
@@ -246,15 +259,30 @@ export default class RollingUpgradeForm extends Component {
                 <span>G-Flag Upgrade Options</span>
               </FlexShrink>
               <div className="gflag-upgrade-options">
-                {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target) => (
-                  <div className="upgrade-radio-option" key={target}>
-                    <Field
-                      name={'upgradeOption'}
-                      type="radio"
-                      component="input"
-                      value={`${target}`}
-                    />
-                    <span className="upgrade-radio-label">{`${target}`}</span>
+                {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target, i) => (
+                  <div key={target} className="row-flex">
+                    <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')} key={target}>
+                      <Field
+                        name={'upgradeOption'}
+                        type="radio"
+                        component="input"
+                        value={`${target}`}
+                      />
+                      <span className="upgrade-radio-label">{`${target}`}</span>
+                    </div>
+                    {i === 0 && (
+                      <div className="gflag-delay">
+                        <span className="vr-line">|</span>
+                        Delay Between Servers :{' '}
+                        <Field
+                          name="timeDelay"
+                          type="number"
+                          component={YBInputField}
+                          isReadOnly={formValues.upgradeOption !== 'Rolling'}
+                        />
+                        seconds
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

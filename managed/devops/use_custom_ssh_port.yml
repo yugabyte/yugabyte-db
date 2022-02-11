@@ -27,3 +27,4 @@
       ChallengeResponseAuthentication: no
       KbdInteractiveAuthentication: no
       AuthenticationMethods: 'publickey'
+  tags: yb-prebuilt-ami

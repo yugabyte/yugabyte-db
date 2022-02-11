@@ -1,7 +1,6 @@
 ---
 title: Build a Node.js application that uses YSQL
 headerTitle: Build a Node.js application
-linkTitle: Node.js
 description: Build a Node.js application with the PostgreSQL driver that uses YSQL.
 aliases:
   - /develop/client-drivers/nodejs/
@@ -11,7 +10,7 @@ aliases:
 menu:
   latest:
     parent: build-apps
-    name: NodeJS
+    name: Node.js
     identifier: nodejs-1
     weight: 551
 type: page
@@ -50,7 +49,7 @@ Are you using Yugabyte Cloud? Install the [prerequisites](#prerequisites), then 
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe. If not, follow the steps in [Quick Start](../../../../quick-start).
+- installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start).
 - installed a recent version of [`node`](https://nodejs.org/en/download/).
 - installed the [`node-postgres` driver](../../../../reference/drivers/ysql-client-drivers/#node-postgres).
 - installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
@@ -66,8 +65,6 @@ To install the async utility, run the following command:
 ```sh
 $ npm install --save async
 ```
-
-The `node-postgres` module is installed.
 
 ## Create a sample Node.js application
 
@@ -153,7 +150,7 @@ The client driver supports several SSL modes, as follows:
 | verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
 | verify-full | Supported |
 
-By default, the driver supports the `require` SSL mode, in which a root CA certificate isn't required to be configured. This enables SSL communication between the NodeJS client and YugabyteDB servers.
+By default, the driver supports the `require` SSL mode, in which a root CA certificate isn't required to be configured. This enables SSL communication between the Node.js client and YugabyteDB servers.
 
 ```js
 const config = {

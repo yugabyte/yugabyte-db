@@ -76,8 +76,9 @@ export const LagGraph: FC<LagGraphProps> = ({ replicationUUID, sourceUniverseUUI
       if (parsedY > maxLagInMetric) {
         maxLagInMetric = parsedY;
       }
+      const momentObj = currentUserTimezone ?  (moment(xAxis) as any).tz(currentUserTimezone) : moment(xAxis)
       graphData.push({
-        x: (moment(xAxis) as any).tz(currentUserTimezone).format('HH:mm'),
+        x: momentObj.format('HH:mm'),
         max_lag: parsedY
       });
     });
