@@ -17,12 +17,12 @@ jobs:
     compiler: clang12
     build_type: release
 
-  - os: centos8
+  - os: alma8
     compiler: clang11
     build_type: release
     architecture: aarch64
 
-  - os: centos8
+  - os: alma8
     compiler: clang11
     build_type: debug
     architecture: aarch64
