@@ -87,7 +87,7 @@ The second chart below shows the latency for the YCSB run.
 
 ## Geo-distributed
 
-This is a screenshot of YugabyteDB EE, which visualized the universe created. Below is a screenshot of a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region. 
+This is a screenshot of YugabyteDB EE, which visualized the universe created. Below is a screenshot of a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region.
 
 ![Geo-distributed](/images/develop/learn/yb-geo-distributed.png)
 
@@ -100,7 +100,7 @@ Because of this configuration, this universe can:
 ![Geo-distributed ops/sec](/images/develop/learn/yb-geo-distributed-ops.png)
 ![Geo-distributed latency](/images/develop/learn/yb-geo-distributed-latency.png)
 
-The graphs above, also taken from the EE, show that the average read latencies for apps running the the various cloud regions are just 250 microseconds, while writes are strongly consistent and incur 218 milliseconds.
+The graphs above, also taken from the EE, show that the average read latencies for apps running the various cloud regions are just 250 microseconds, while writes are strongly consistent and incur 218 milliseconds.
 
 ## Multi-cloud ready
 

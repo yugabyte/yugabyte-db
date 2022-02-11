@@ -28,7 +28,7 @@ The optional _(p)_ qualifier, where _p_ is a literal integer value in _0..6_, sp
 
 The spelling _timestamptz_ is an alias, defined by PostgreSQL and inherited by YSQL, for what the SQL Standard spells as _timestamp with time zone_. The unadorned spelling, _timestamp_, is defined by the SQL Standard and may, optionally, be spelled as _timestamp without time zone_. A corresponding account applies to _timetz_ and _time_.
 
-Because of their brevity, the forms (plain) _time_, _timetz_, (plain) _timestamp_, and _timestamptz_ are used throughout this _"Date and time data data types"_ main section rather than the verbose forms that spell the names using _without time zone_ and _with time zone_.
+Because of their brevity, the forms (plain) _time_, _timetz_, (plain) _timestamp_, and _timestamptz_ are used throughout this _"Date and time data types"_ main section rather than the verbose forms that spell the names using _without time zone_ and _with time zone_.
 
 A value of the _interval_ data type represents a _duration_. In contrast, a value of one of the other five data types each represents a _point in time_ (a.k.a. a _moment_).
 
@@ -94,7 +94,7 @@ This is the result:
 ```output
  max_ts: 294276-12-31 23:59:59+00
  max_ts overflowed
- 
+
  min_ts: 4714-11-24 00:00:00+00 BC
  min_ts underflowed
 ```
@@ -137,7 +137,7 @@ The constants _'infinity'_ and _'-infinity'_ can be also used to define _range_ 
 
 The remaining special constants have different kinds of non-obvious results. See the recommendation [Don't use the special manifest constant 'now'](./functions/current-date-time-moment/#avoid-constant-now) on the 'Functions that return the current date-time moment' page. The constants _'today'_, _'tomorrow'_. and _'yesterday'_ all bring analogous risks to those brought by _'now'_. And the intended effects of _'epoch'_ and _'allballs'_ are brought with optimal clarity for the reader by typecasting an appropriately spelled literal value to the required data type, whatever it might be.
 
-Yugabyte recommends that you avoid using all of the special manifest _text_ _date-time_ constants except for for _'infinity'_ and _'-infinity'_.
+Yugabyte recommends that you avoid using all of the special manifest _text_ _date-time_ constants except for _'infinity'_ and _'-infinity'_.
 {{< /tip >}}
 
 {{< note title="Even 'infinity' and '-infinity' can't be used everywhere that you might expect." >}}

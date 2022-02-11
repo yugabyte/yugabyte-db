@@ -156,7 +156,7 @@ An updatable view can contain a combination of updatable and non-updatable colum
 
 To be able to update a view, you need to have the required privilege on this view (but not necessarily on the base table).
 
-The following example shows how use the the `employees_view` to delete the row that has been added to the  `employees` table:
+The following example shows how use the `employees_view` to delete the row that has been added to the  `employees` table:
 
 ```sql
 DELETE FROM employees_view
