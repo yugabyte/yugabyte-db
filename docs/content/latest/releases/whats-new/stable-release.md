@@ -55,6 +55,7 @@ This release is a bugfix-only release.
 
 #### Yugabyte Platform
 
+* [[10804](https://github.com/yugabyte/yugabyte-db/issues/10804)] Allow specifying `loadBalancerIP` during helm install to get static IP address
 * [PLAT-2647] Add HTTP_PROXY environment variable to `replicated.yml`
 * [PLAT-2673] Validating custom key-pair with AWS
 
