@@ -21,6 +21,7 @@ import {
   updateMaintenanceWindow
 } from '.';
 import { toast } from 'react-toastify';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -93,6 +94,10 @@ export const CreateMaintenanceWindow: FC<CreateMaintenanceWindowProps> = ({
       onSuccess: () => {
         toast.success('Maintenance Window created sucessfully!');
         showListView();
+      },
+      onError: (err) => {
+        const errMsg = createErrorMessage(err);
+        toast.error(errMsg);
       }
     }
   );
@@ -192,7 +197,7 @@ export const CreateMaintenanceWindow: FC<CreateMaintenanceWindowProps> = ({
             </Col>
           </Row>
           <Row>
-            <Col lg={2}>
+            <Col lg={2} className="date-picker-start">
               <div className="time-label">Start Time</div>
               <DateTimePicker
                 placeholder="Pick a time"
