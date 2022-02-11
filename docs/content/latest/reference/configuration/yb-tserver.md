@@ -10,6 +10,7 @@ menu:
     weight: 2440
 aliases:
   - /latest/admin/yb-tserver
+  - /latest/deploy/reference/configuration/yb-tserver
 isTocNested: true
 showAsideToc: true
 ---
