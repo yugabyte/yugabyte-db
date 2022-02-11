@@ -253,6 +253,11 @@ class TSDescriptor {
     return ts_metrics_.path_metrics;
   }
 
+  bool get_disable_tablet_split_if_default_ttl() {
+    SharedLock<decltype(lock_)> l(lock_);
+    return ts_metrics_.disable_tablet_split_if_default_ttl;
+  }
+
   void UpdateMetrics(const TServerMetricsPB& metrics);
 
   void GetMetrics(TServerMetricsPB* metrics);
@@ -331,6 +336,8 @@ class TSDescriptor {
 
     std::unordered_map<std::string, TSPathMetrics> path_metrics;
 
+    bool disable_tablet_split_if_default_ttl = false;
+
     void ClearMetrics() {
       total_memory_usage = 0;
       total_sst_file_size = 0;
@@ -340,6 +347,7 @@ class TSDescriptor {
       write_ops_per_sec = 0;
       uptime_seconds = 0;
       path_metrics.clear();
+      disable_tablet_split_if_default_ttl = false;
     }
   };
 

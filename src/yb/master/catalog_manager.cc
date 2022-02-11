@@ -162,6 +162,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
@@ -2695,6 +2696,11 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id, bool select_all_ta
         if (result.ok()) {
           SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key,
               select_all_tablets_for_split);
+        } else if (tserver::TabletServerError(result.status()) ==
+            tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
+          tablet_split_manager()->MarkTtlTableForSplitIgnore(tablet->table()->id());
+          LOG(INFO) << "AsyncGetTabletSplitKey task failed for tablet " << tablet->tablet_id()
+              << ". Tablet split not supported for tablets with TTL file expiration.";
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
         }

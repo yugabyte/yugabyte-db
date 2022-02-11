@@ -197,4 +197,5 @@ message TServerMetricsPB {
     optional uint64 total_space = 3;
   }
   repeated PathMetrics path_metrics = 8;
+  optional bool disable_tablet_split_if_default_ttl = 9;
 }

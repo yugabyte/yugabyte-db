@@ -121,6 +121,9 @@ message TabletServerErrorPB {
 
     // Tablet splitting has not been started on this peer yet.
     TABLET_SPLIT_PARENT_STILL_LIVE = 29;
+
+    // Tablet splitting disabled for this tablet because TTL file expiration feature enabled.
+    TABLET_SPLIT_DISABLED_TTL_EXPIRY = 30;
   }
 
   // The error code.

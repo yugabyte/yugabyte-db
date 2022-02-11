@@ -15,6 +15,8 @@
 
 #include "yb/consensus/log.h"
 
+#include "yb/docdb/docdb_rocksdb_util.h"
+
 #include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/tablet/tablet.h"
@@ -35,6 +37,8 @@ DEFINE_int32(tserver_heartbeat_metrics_interval_ms, 5000,
 
 DEFINE_bool(tserver_heartbeat_metrics_add_drive_data, true,
             "Add drive data to metrics which tserver sends to master");
+
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
 using namespace std::literals;
 
@@ -115,6 +119,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   uint64_t uptime_seconds = CalculateUptime();
 
   metrics->set_uptime_seconds(uptime_seconds);
+  // If the "max file size for compaction" flag is greater than 0, then tablet splitting should
+  // be disabled for tablets with a default TTL.
+  metrics->set_disable_tablet_split_if_default_ttl(FLAGS_rocksdb_max_file_size_for_compaction > 0);
 
   VLOG_WITH_PREFIX(4) << "Read Ops per second: " << rops_per_sec;
   VLOG_WITH_PREFIX(4) << "Write Ops per second: " << wops_per_sec;
