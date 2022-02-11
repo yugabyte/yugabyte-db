@@ -24,7 +24,7 @@ The demonstration shows that, in contrast, the outcome of corresponding arithmet
 
 When you run a query that selects a _timestamptz_ value at the _ysqlsh_ prompt, you'll see a _text_ rendition whose spelling depends on the session's _TimeZone_ setting. This behavior is critical to the data type's usefulness. But it can confound the interpretation of demonstrations that, like the present one, aim to show what happens to actual internally represented _timestamptz_ values under critical operations. You can adopt the practice always to observe results with a current _TimeZone_ setting of _UTC_. But the most robust test of your understanding is always to use a PL/pgSQL encapsulation that uses _assert_ statement(s) to check that the actual outcome of a test agrees with what your mental model predicts. The demonstration that is presented on this page uses the _assert_ approach. Critically, the entire test uses only _timestamptz_ values (and, of course, _interval_ values) to avoid conflating the outcome with the effects of data type conversions to _text_—supposedly to allow the human to use what is seen to confirm understanding of the rules.
 
-Further, by using a table function encapsulation, the demonstration also also displays the results—_as long as the assertions all hold_. It has two display modes:
+Further, by using a table function encapsulation, the demonstration also displays the results—_as long as the assertions all hold_. It has two display modes:
 
 - Display all the results using _UTC_.
 - Display the results that were computed with a session timezone set to _X_ using that same timezone _X_.
@@ -41,7 +41,7 @@ select
 This is the result:
 
 ```output
-        data type         |     start of epoch     
+        data type         |     start of epoch
 --------------------------+------------------------
  timestamp with time zone | 1970-01-01 00:00:00+00
 ```
@@ -65,7 +65,7 @@ select
 This is the result:
 
 ```output
-    Before 'spring forward'     |     After 'spring forward'     
+    Before 'spring forward'     |     After 'spring forward'
 --------------------------------+--------------------------------
  01:59:59 (UTC offset = +10:30) | 02:30:01 (UTC offset = +11:00)
 ```
@@ -88,7 +88,7 @@ select
 This is the result:
 
 ```output
- Los Angeles DST start | Amsterdam DST start | Sydney DST start | Lord Howe DST start | UTC mid-summer 
+ Los Angeles DST start | Amsterdam DST start | Sydney DST start | Lord Howe DST start | UTC mid-summer
 -----------------------+---------------------+------------------+---------------------+----------------
             1615694400 |          1616871600 |       1633168800 |          1633167000 |     1624478400
 ```
@@ -167,7 +167,7 @@ begin
                                                     (1633167000, 'Australia/Lord_Howe', 30)::rt,
 
                                                     -- Nonce element. Northern midsummer's eve.
-                                                    (1624478400, 'UTC',                  0)::rt 
+                                                    (1624478400, 'UTC',                  0)::rt
                                                   ];
   begin
     foreach r in array start_moments loop
@@ -202,7 +202,7 @@ begin
           execute format(set_timezone, 'UTC');
          -- Else, leave the timezone set to "r.tz".
         end if;
-      
+
         z := r.tz;                                                                                  return next;
         z := '';                                                                                    return next;
         z := 't0:               '||fmt(t0);                                                         return next;
@@ -227,31 +227,31 @@ This is the result:
  Displaying all results using UTC.
  --------------------------------------------------------------------------------
  America/Los_Angeles
- 
+
  t0:               Sun 14-Mar 04:00 +00:00
  t0_plus_24_hours: Mon 15-Mar 04:00 +00:00
  t0_plus_1_day:    Mon 15-Mar 03:00 +00:00
  --------------------------------------------------
  Europe/Amsterdam
- 
+
  t0:               Sat 27-Mar 19:00 +00:00
  t0_plus_24_hours: Sun 28-Mar 19:00 +00:00
  t0_plus_1_day:    Sun 28-Mar 18:00 +00:00
  --------------------------------------------------
  Australia/Sydney
- 
+
  t0:               Sat 02-Oct 10:00 +00:00
  t0_plus_24_hours: Sun 03-Oct 10:00 +00:00
  t0_plus_1_day:    Sun 03-Oct 09:00 +00:00
  --------------------------------------------------
  Australia/Lord_Howe
- 
+
  t0:               Sat 02-Oct 09:30 +00:00
  t0_plus_24_hours: Sun 03-Oct 09:30 +00:00
  t0_plus_1_day:    Sun 03-Oct 09:00 +00:00
  --------------------------------------------------
  UTC
- 
+
  t0:               Wed 23-Jun 20:00 +00:00
  t0_plus_24_hours: Thu 24-Jun 20:00 +00:00
  t0_plus_1_day:    Thu 24-Jun 20:00 +00:00
@@ -287,38 +287,38 @@ This is the new result:
  Displaying each set of results using the timezone in which they were computed.
  --------------------------------------------------------------------------------
  America/Los_Angeles
- 
+
  t0:               Sat 13-Mar 20:00 -08:00
  t0_plus_24_hours: Sun 14-Mar 21:00 -07:00
  t0_plus_1_day:    Sun 14-Mar 20:00 -07:00
  --------------------------------------------------
  Europe/Amsterdam
- 
+
  t0:               Sat 27-Mar 20:00 +01:00
  t0_plus_24_hours: Sun 28-Mar 21:00 +02:00
  t0_plus_1_day:    Sun 28-Mar 20:00 +02:00
  --------------------------------------------------
  Australia/Sydney
- 
+
  t0:               Sat 02-Oct 20:00 +10:00
  t0_plus_24_hours: Sun 03-Oct 21:00 +11:00
  t0_plus_1_day:    Sun 03-Oct 20:00 +11:00
  --------------------------------------------------
  Australia/Lord_Howe
- 
+
  t0:               Sat 02-Oct 20:00 +10:30
  t0_plus_24_hours: Sun 03-Oct 20:30 +11:00
  t0_plus_1_day:    Sun 03-Oct 20:00 +11:00
  --------------------------------------------------
  UTC
- 
+
  t0:               Wed 23-Jun 20:00 +00:00
  t0_plus_24_hours: Thu 24-Jun 20:00 +00:00
  t0_plus_1_day:    Thu 24-Jun 20:00 +00:00
  --------------------------------------------------
 ```
 
-From this perspective, adding one day takes you to the same wall-clock time on the next day. But watching a stop watch until it reads twenty-four hours, takes you to the next day at a moment where the wall-clock reads _one hour_ (or _thirty minutes_ in one of the unusual timezones) _later_ than when you started the stop watch. 
+From this perspective, adding one day takes you to the same wall-clock time on the next day. But watching a stop watch until it reads twenty-four hours, takes you to the next day at a moment where the wall-clock reads _one hour_ (or _thirty minutes_ in one of the unusual timezones) _later_ than when you started the stop watch.
 
 {{< tip title="Observe what happens at the 'fall back' moments" >}}
 You might like to redefine the _start_moments_ array in the _interval_arithmetic_results()_ function's source code to use the "fall back" moments for each of the timezones. Internet search finds these easily. Doing this will show you that pure days _interval_ arithmetic semantics respects the feeling you get on the Sunday after the transition that you have one hour _more_ than usual of waking time—hence the mnemonic "fall _back_".

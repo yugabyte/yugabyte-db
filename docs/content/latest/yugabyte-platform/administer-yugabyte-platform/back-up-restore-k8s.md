@@ -47,7 +47,7 @@ The Yugabyte Platform console is used in a highly available mode and orchestrate
 
 You can back up the Yugabyte Platform server as follows:
 
-- Copy the the Yugabyte Platform backup script `yb_platform_backup.sh` from the yugabyte-db repository to your local workstation using the following wget command:
+- Copy the Yugabyte Platform backup script `yb_platform_backup.sh` from the yugabyte-db repository to your local workstation using the following wget command:
 
   ```sh
   wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
@@ -58,7 +58,7 @@ You can back up the Yugabyte Platform server as follows:
   ```sh
   kubectl exec --namespace <k8s_namespace> -it <k8s_pod> -c yugaware -- cat /opt/yugabyte/yugaware/README.md
   ```
-  
+
   *k8s_namespace* specifies the kubernetes namespace where the Yugabyte Platform pod is running.<br>
   *k8s_pod* specifies the name of the Yugabyte Platform kubernetes pod.
 
@@ -68,17 +68,17 @@ You can back up the Yugabyte Platform server as follows:
   ./yb_platform_backup.sh create --output <output_path> --k8s_namespace <k8s_namespace> --k8s_pod <k8s_pod> [--exclude_releases --verbose]
   ```
   *backup* is the command to run the backup of the Yugabyte Platform server.<br>
-  
+
   *output_path* specifies the location for the output backup archive.<br>
-  
+
   *k8s_namespace* specifies the Kubernetes namespace in which the Yugabyte Platform pod is running.<br>
-  
+
   *k8s_pod* specifies the name of the Yugabyte Platform Kubernetes pod.<br>
-  
+
   *exclude_releases* excludes Yugabyte releases from the backup archive.<br>
-  
+
   *verbose* prints debug output.<br>
-  
+
 - Verify that the backup `.tar.gz` file, with the correct timestamp, is in the specified output directory.
 
 - Upload the backup file to your preferred storage location, and delete it from the local disk.
@@ -87,7 +87,7 @@ You can back up the Yugabyte Platform server as follows:
 
 To restore the Yugabyte Platform content from your saved backup, perform the following:
 
-- Copy the the Yugabyte Platform backup script yb_platform_backup.sh` from the yugabyte-db repository to your local workstation using the following wget command:
+- Copy the Yugabyte Platform backup script yb_platform_backup.sh` from the yugabyte-db repository to your local workstation using the following wget command:
 
     ```sh
     wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh

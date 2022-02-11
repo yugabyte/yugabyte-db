@@ -26,7 +26,7 @@ The function _interval_mm_dd_ss(interval_parameterization_t)_ accepts values for
 
 The implementation of the function therefore acts as the promised documentation of the algorithm.
 
-### function interval_mm_dd_ss (interval_parameterization_t) returns interval_mm_dd_ss_t 
+### function interval_mm_dd_ss (interval_parameterization_t) returns interval_mm_dd_ss_t
 
 ```plpgsql
 drop function if exists interval_mm_dd_ss(interval_parameterization_t) cascade;
@@ -292,7 +292,7 @@ declare
   dd int not null := p.dd::int;
   hh int not null := p.hh::int;
   mi int not null := p.mi::int;
-begin  
+begin
   return make_interval(
     years  => yy,
     months => mm,
@@ -361,4 +361,4 @@ call assert_model_ok(interval_parameterization(
   ss => -76));
 ```
 
-Each of the calls to _assert_model_ok()_ finishes silently, showing that the assertions that it tests hold. Many more, and more varied, tests than are shown here were run while this example was being developed. The tested assertions have have never been see to fail.
+Each of the calls to _assert_model_ok()_ finishes silently, showing that the assertions that it tests hold. Many more, and more varied, tests than are shown here were run while this example was being developed. The tested assertions have never been seen to fail.

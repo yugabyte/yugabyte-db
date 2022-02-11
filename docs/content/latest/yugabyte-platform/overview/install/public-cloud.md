@@ -16,7 +16,7 @@ isTocNested: true
 showAsideToc: false
 ---
 
-Select your installation type to see the installation flow. Click on the the elements to see detailed steps.
+Select your installation type to see the installation flow. Click on the elements to see detailed steps.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >

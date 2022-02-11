@@ -37,7 +37,7 @@ The node running Yugabyte Platform should meet the following requirements:
 
 You prepare the host as follows:
 
-- For a Docker-based installation, Yugabyte Platform uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
+- For a Docker-based installation, Yugabyte Platform uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 
   Replicated installs a compatible Docker version if its not pre-installed on the host. The current supported Docker version is 19.03.n.
 
@@ -60,4 +60,4 @@ Installing Yugabyte Platform on Airgapped hosts, without access to any Internet 
 - Having Yugabyte Platform airgapped install package. Contact Yugabyte Support for more information.
 - Signing the Yugabyte Enterprise Platform license agreement. Contact Yugabyte Support for more information.
 
-  
+

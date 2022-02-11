@@ -44,7 +44,7 @@ cume_dist() =
   "no of rows with a value <= the current row's value" /
   "no. of rows in window"
 ```
-The algorithm that the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) uses is different from the one that  [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) uses. And the algorithm that `ntile()` uses to produce its bucket allocations directly is unspecified. 
+The algorithm that the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) uses is different from the one that  [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) uses. And the algorithm that `ntile()` uses to produce its bucket allocations directly is unspecified.
 
 However, the answer "Yes" to the question "is there any difference between the result produced by  each of the three functions?" is a qualified "Yes" because when certain conditions hold, there is no difference.
 
@@ -59,7 +59,7 @@ Here is the problem statement at the next level of detail:
 The study shows that if these special qualifications are met, then the bucket allocations are identical. It shows, too, that if either of those special qualifications isn't met (in other words, either if there are ties, or if _N_ is not an integral multiple of _n_), then the bucket allocations produced by each approach differ.
 
 ## How to make best use of the code examples
-Before starting, create the data set that the code relies on using the `ysqlsh` script that [table t4](../function-syntax-semantics/data-sets/table-t4/) presents. It takes only a few seconds to run, and then you can simply leave _"t4"_ untouched as you run, and re-run, the code examples. Notice that the table is populated by values that are created by a generator that picks, pseudorandomly, from an ideal normal distribution. This means that the values in table _"t4"_ will be different each time that you drop and re-create it. The code examples will therefore always show the same patterns. And the invariants that it illustrates will hold reliably. But the details will change with each new re-creation of _"t4"_. Your experience will be best if, as you step through the code examples, you run them all against fixed content in in table _"t4"_.
+Before starting, create the data set that the code relies on using the `ysqlsh` script that [table t4](../function-syntax-semantics/data-sets/table-t4/) presents. It takes only a few seconds to run, and then you can simply leave _"t4"_ untouched as you run, and re-run, the code examples. Notice that the table is populated by values that are created by a generator that picks, pseudorandomly, from an ideal normal distribution. This means that the values in table _"t4"_ will be different each time that you drop and re-create it. The code examples will therefore always show the same patterns. And the invariants that it illustrates will hold reliably. But the details will change with each new re-creation of _"t4"_. Your experience will be best if, as you step through the code examples, you run them all against fixed content in table _"t4"_.
 
 The steps that are described in the next section should all be run at the `ysqlsh` prompt. They do a mixture of things:
 
@@ -100,10 +100,10 @@ from show_t4();
 ```
 Because of the pseudorandom behavior, the actual values of the mean and standard deviation will change with each successive re-population of _"t4"_. These results are typical:
 ```
-   Some useful overall measures of t4.    
+   Some useful overall measures of t4.
 ------------------------------------------
  count(*)                          100000
- 
+
  avg(%score)                         52.4
  stddev(%score)                      11.6
 ```
@@ -122,7 +122,7 @@ select * from pr_cd_equality_report(0.01);
 ```
 Here is a summary of the results:
 ```
- count(*) | max_score | max_ratio 
+ count(*) | max_score | max_ratio
 ----------+-----------+-----------
       199 |   19.19   |   99.50
       990 |   25.53   |   99.90
@@ -139,7 +139,7 @@ In other words, the two measures give remarkably similar answers over most of th
 Now repeat the measurement for the values in the _"t4.int_score"_ column—where each possible value as about _1,000_ duplicates. Use [`cr_int_views.sql`](./cr-int-views/) to do this. And then repeat the five function executions. Now the results are very different:
 
 ```
- count(*) | max_score | max_ratio 
+ count(*) | max_score | max_ratio
 ----------+-----------+-----------
     97717 |   75.00   |   99.46
     99541 |   82.00   |   99.86

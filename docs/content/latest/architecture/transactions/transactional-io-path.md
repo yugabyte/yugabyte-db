@@ -17,7 +17,7 @@ showAsideToc: true
 ## Introduction
 
 For an overview of some common concepts used in YugabyteDB's implementation of distributed
-transactions, see [Distributed ACID transactions](../distributed-txns/) section. In this section, 
+transactions, see [Distributed ACID transactions](../distributed-txns/) section. In this section,
 we will go over the write path of a transaction modifying multiple
 keys, and the read path for reading a consistent combination of values from multiple tablets.
 
@@ -37,7 +37,7 @@ any conflict resolution.
 
 ### 1. Client requests transaction
 
-The client sends a request to a YugabyteDB tablet server that requires a distributed transaction. 
+The client sends a request to a YugabyteDB tablet server that requires a distributed transaction.
 Here is an example using our extension to CQL:
 
  ```sql
@@ -105,7 +105,7 @@ In the [ACID transactions](../) section, we talked about how up-to-date reads ar
 The client's request to either the YCQL or YEDIS or YSQL API arrives at the YQL engine of a tablet server. The YQL engine
 detects that the query requests rows from multiple tablets and starts a read-only transaction.  A hybrid time **ht_read** is selected for the request, which could be either the current hybrid time on the YQL engine's tablet server, or the [safe time](../single-row-transactions/#safe-timestamp-assignment-for-a-read-request) on one of the involved tablets. The latter case would reduce waiting for safe time for at least that tablet and is therefore better for performance. Typically, due to our load-balancing policy, the YQL engine receiving the request will also host some of the tablets that the request is reading, allowing to implement the more performant second option without an additional RPC round-trip.
 
-We also select a point in time we call **global_limit**, computed as `physical_time + max_clock_skew`, which allows us to determine whether a particular record was written *definitely after* our read request started. **max_clock_skew** is a globally configured bound on clock skew between different YugabyteDB servers. 
+We also select a point in time we call **global_limit**, computed as `physical_time + max_clock_skew`, which allows us to determine whether a particular record was written *definitely after* our read request started. **max_clock_skew** is a globally configured bound on clock skew between different YugabyteDB servers.
 
 ### 2. Read from all tablets at the chosen hybrid time
 
@@ -116,7 +116,7 @@ following logic:
 
 - If **ht_record &le; ht_read**, include the record in the result.
 - If **ht_record > definitely_future_ht**, exclude the record from the result.  The meaning of
-   **definitely_future_ht** is that it it is a hybrid time such that a record with a higher hybrid
+   **definitely_future_ht** is that it is a hybrid time such that a record with a higher hybrid
    time than that was definitely written *after* our read request started. You can assume
    **definitely_future_ht** above to simply be **global_limit** for now. We will clarify how exactly
    it is computed in a moment.

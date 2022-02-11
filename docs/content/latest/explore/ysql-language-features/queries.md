@@ -158,7 +158,7 @@ SELECT name, department AS "section of the company" FROM employees;
 
 ### Sorting and Ordering Data
 
-The `SELECT` statement returns data in an unspecified order. You can use the the `SELECT` statement's `ORDER BY` clause to sort the rows of the query result set in ascending or descending order based on a sort expression.
+The `SELECT` statement returns data in an unspecified order. You can use the `SELECT` statement's `ORDER BY` clause to sort the rows of the query result set in ascending or descending order based on a sort expression.
 
 `ORDER BY` has the following syntax:
 
@@ -828,7 +828,7 @@ employee_no | name             | years_service
 1224        | John Zimmerman   | 5
 ```
 
-You can avoid executing two separate queries by using a subquery that is passed the result of the first query. To create such a query, you enclose the second query in brackets and use it as an expression in the `WHERE` clause, as as shown in the following example:
+You can avoid executing two separate queries by using a subquery that is passed the result of the first query. To create such a query, you enclose the second query in brackets and use it as an expression in the `WHERE` clause, as shown in the following example:
 
 ```sql
 SELECT employee_no, name, years_service FROM employees

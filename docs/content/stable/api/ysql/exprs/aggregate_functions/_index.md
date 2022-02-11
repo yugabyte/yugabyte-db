@@ -49,7 +49,7 @@ This section focuses on the _effect_ that each illustrated function has. It leav
 
 ### Aggregate function invocation—SQL syntax and semantics: [here](./invocation-syntax-semantics/)
 
-This section presents the formal treatment of the syntax and semantics of how an aggregate function is invoked as a special kind of `SELECT` list item—with the invocation syntax optionally decorated with an `ORDER BY` clause, or a `FILTER` clause. This account also explains the use of the `HAVING` clause which lets you restrict a result set according the the value(s) returned by a list of aggregate functions.
+This section presents the formal treatment of the syntax and semantics of how an aggregate function is invoked as a special kind of `SELECT` list item—with the invocation syntax optionally decorated with an `ORDER BY` clause, or a `FILTER` clause. This account also explains the use of the `HAVING` clause which lets you restrict a result set according the value(s) returned by a list of aggregate functions.
 
 There are four variants of the `GROUP BY` invocation style: `GROUP BY <column list>`; `GROUP BY GROUPING SETS`; `GROUP BY ROLLUP`; and `GROUP BY CUBE`. Further, all but the bare `GROUP BY <column list>` allow the use of  a `GROUPING` keyword in the `SELECT` list to label the different `GROUPING SETS`. Because all of this requires a fairly lengthy explanation, this is covered in the dedicated section [`Using the GROUPING SETS, ROLLUP, and CUBE syntax for aggregate function invocation`](./grouping-sets-rollup-cube/).
 

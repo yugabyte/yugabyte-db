@@ -46,7 +46,7 @@ Where
 ## Semantics
 
 - An error is raised if `table_name` does not exist in the associated keyspace.
-- Columns that are part of `PRIMARY KEY` cannot be be altered.
+- Columns that are part of `PRIMARY KEY` cannot be altered.
 - When adding a column, its value for all existing rows in the table defaults to `null`.
 - After dropping a column, all values currently stored for that column in the table are discarded (if any).
 

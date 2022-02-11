@@ -320,7 +320,7 @@ CREATE TABLE contact_method_info (
 
 ### 3. Insert a row with `ENUM`
 
-The `ENUM` should should have a valid value, as follows:
+The `ENUM` should have a valid value, as follows:
 
 ```sql
 INSERT INTO contact_method_info VALUES ('Jeff', 'Email', 'jeff@mail.com')
