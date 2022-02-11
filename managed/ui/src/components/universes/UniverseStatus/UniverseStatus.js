@@ -5,6 +5,7 @@ import './UniverseStatus.scss';
 import { ProgressBar } from 'react-bootstrap';
 import { isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
+import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 
 export default class UniverseStatus extends Component {
   hasPendingTasksForUniverse = (customerTaskList) => {
@@ -43,7 +44,8 @@ export default class UniverseStatus extends Component {
     const {
       currentUniverse: { universeDetails, universeUUID },
       showLabelText,
-      tasks: { customerTaskList }
+      tasks: { customerTaskList },
+      showAlertsBadge
     } = this.props;
     const updateInProgress = universeDetails.updateInProgress;
     const updateSucceeded = universeDetails.updateSucceeded;
@@ -144,6 +146,9 @@ export default class UniverseStatus extends Component {
       }
     }
 
-    return <div className={'universe-status ' + statusClassName}>{statusDisplay}</div>;
+    return <div className={'universe-status ' + statusClassName}>
+      {statusDisplay}
+      {showAlertsBadge && <UniverseAlertBadge universeUUID={universeUUID} />}
+    </div>;
   }
 }

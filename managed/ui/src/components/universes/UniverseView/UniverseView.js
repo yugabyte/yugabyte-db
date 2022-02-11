@@ -54,6 +54,7 @@ import ellipsisIcon from '../../common/media/more.svg';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseView.scss';
 import { YBLoadingCircleIcon } from '../../common/indicators';
+import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -224,11 +225,14 @@ export const UniverseView = (props) => {
     setActivePage(1);
   };
 
-  const formatUniverseState = (status) => {
+  const formatUniverseState = (status, row) => {
     return (
       <div className={`universe-status-cell ${status.statusClassName}`}>
+        <div>
         {getUniverseStatusIcon(status)}
         <span>{status.statusText}</span>
+        </div>
+        <UniverseAlertBadge universeUUID={row.universeUUID} listView/>
       </div>
     );
   };
@@ -451,7 +455,7 @@ export const UniverseView = (props) => {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="status"
-            dataFormat={formatUniverseState}
+            dataFormat={(cell,row) => formatUniverseState(cell, row)}
             dataSort
             sortFunc={(a, b, _) => universeSortFunction(a, b)}
             tdStyle={{ whiteSpace: 'normal' }}
