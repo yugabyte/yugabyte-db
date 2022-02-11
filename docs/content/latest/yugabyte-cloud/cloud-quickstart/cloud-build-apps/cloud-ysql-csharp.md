@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [npgsql driver](../../../../reference/drivers/ysql-client-drivers/#npgsql) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in C#.
+The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [Npgsql driver](../../../../reference/drivers/ysql-client-drivers/#npgsql) and performs basic SQL operations. Use the application as a template to get started with Yugabyte Cloud in C#.
 
 ## Prerequisites
 
@@ -86,7 +86,7 @@ Open the `sample-app.cs` file in the `yugabyte-simple-csharp-app` folder to revi
 
 ### connect
 
-The `connect` method establishes a connection with your cluster via the libpqxx driver. To avoid making extra system table queries to map types, the `ServerCompatibilityMode` is set to `NoTypeLoading`.
+The `connect` method establishes a connection with your cluster via the Npgsql driver. To avoid making extra system table queries to map types, the `ServerCompatibilityMode` is set to `NoTypeLoading`.
 
 ```cpp
 NpgsqlConnectionStringBuilder urlBuilder = new NpgsqlConnectionStringBuilder();
