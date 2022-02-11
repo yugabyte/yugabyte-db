@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more public cloud provider options coming soon. Yugabyte Cloud consists of management and data planes. The management plane is a centralized management service deployed on GCP; the management plane is responsible for creating and managing customer data planes. The data plane hosts the customer YugabyteDB clusters deployed on public cloud provider infrastructure.
+Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more public cloud provider options coming soon. Yugabyte Cloud runs on top of [Yugabyte Platform](../../../yugabyte-platform/overview/). It is responsible for creating and managing customer YugabyteDB clusters deployed on cloud provider infrastructure.
 
 ![Yugabyte Cloud high-level architecture](/images/yb-cloud/cloud-security-diagram.png)
 
-For Yugabyte customers with a paid subscription, Yugabyte creates individual dedicated VPCs for each database cluster within your chosen public cloud provider. For Yugabyte customers that take advantage of a free subscription, clusters are deployed in a shared VPC. All VPCs are firewalled from each other and any other outside connection.
+All customer clusters are firewalled from each other. Outside connections are also firewalled according to the [IP allow list](../../cloud-secure-clusters/add-connections/) rules that you assign to your clusters. You can also connect standard (that is, not free) clusters to virtual private clouds (VPCs) on the public cloud provider of your choice (subject to the IP allow list rules).
 
 ## Infrastructure security
 
