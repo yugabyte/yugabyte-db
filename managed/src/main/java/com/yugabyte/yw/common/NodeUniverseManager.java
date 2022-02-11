@@ -38,6 +38,23 @@ public class NodeUniverseManager extends DevopsBase {
     return executeNodeAction(UniverseNodeAction.DOWNLOAD_LOGS, universe, node, actionArgs);
   }
 
+  public synchronized ShellResponse downloadNodeFile(
+      NodeDetails node,
+      Universe universe,
+      String ybHomeDir,
+      String sourceNodeFile,
+      String targetLocalFile) {
+    List<String> actionArgs = new ArrayList<>();
+    // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0, etc.)
+    actionArgs.add("--yb_home_dir");
+    actionArgs.add(ybHomeDir);
+    actionArgs.add("--source_node_file");
+    actionArgs.add(sourceNodeFile);
+    actionArgs.add("--target_local_file");
+    actionArgs.add(targetLocalFile);
+    return executeNodeAction(UniverseNodeAction.DOWNLOAD_FILE, universe, node, actionArgs);
+  }
+
   public synchronized ShellResponse runCommand(
       NodeDetails node, Universe universe, String command) {
     List<String> actionArgs = new ArrayList<>();
@@ -132,7 +149,7 @@ public class NodeUniverseManager extends DevopsBase {
    * @param universe
    * @return home directory
    */
-  private String getYbHomeDir(NodeDetails node, Universe universe) {
+  public String getYbHomeDir(NodeDetails node, Universe universe) {
     UUID providerUUID =
         UUID.fromString(
             universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
@@ -196,6 +213,7 @@ public class NodeUniverseManager extends DevopsBase {
 
   public enum UniverseNodeAction {
     RUN_COMMAND,
-    DOWNLOAD_LOGS
+    DOWNLOAD_LOGS,
+    DOWNLOAD_FILE
   }
 }
