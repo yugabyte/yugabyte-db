@@ -35,8 +35,11 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.util.PSQLException;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.LocatedTablet;
+import org.yb.client.ModifyClusterConfigLiveReplicas;
+import org.yb.client.ModifyClusterConfigReadReplicas;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -44,6 +47,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.google.protobuf.ByteString;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestTablespaceProperties extends BasePgSQLTest {
@@ -142,8 +146,11 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       setupStatement.execute(
         "CREATE TABLE " +  tableInCustomTablegroup + "(a SERIAL) TABLEGROUP " + customTablegroup);
     }
+    tablesWithDefaultPlacement.clear();
     tablesWithDefaultPlacement.addAll(Arrays.asList(defaultTable, defaultIndex,
           defaultIndexCustomTable, tableInDefaultTablegroup));
+
+    tablesWithCustomPlacement.clear();
     tablesWithCustomPlacement.addAll(Arrays.asList(customTable, customIndex,
           customIndexCustomTable, tableInCustomTablegroup));
   }
@@ -162,35 +169,149 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   }
 
   @Test
-  public void testTablespaces() throws Exception {
-    // Run sanity tests for tablespaces.
-    LOG.info("Running tablespace sanity tests");
-    sanityTest();
+  public void testTablesOptOutOfColocation() throws Exception {
+    final String dbname = "testdatabase";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
+    }
+    final String colocatedTableName = "colocated_table";
+    final String nonColocatedTable = "colocation_opt_out_table";
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbname).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT) " +
+                                 "WITH (colocated = false) TABLESPACE testTablespace",
+                                 nonColocatedTable));
+      stmt.execute(String.format("CREATE TABLE %s (h INT PRIMARY KEY, a INT, b FLOAT)",
+                                 colocatedTableName));
+    }
+    verifyDefaultPlacement(colocatedTableName);
+    verifyCustomPlacement(nonColocatedTable);
 
-    // Test with tablespaces disabled.
-    LOG.info("Run tests with tablespaces disabled");
-    testDisabledTablespaces();
+    // Wait for tablespace info to be refreshed in load balancer.
+    Thread.sleep(5 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
 
-    // Test load balancer functions as expected when
-    // tables are placed incorrectly at creation time.
-    LOG.info("Run load balancer tablespace placement tests");
-    testLBTablespacePlacement();
+    // Verify that load balancer is indeed idle.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
+               MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    verifyDefaultPlacement(colocatedTableName);
+    verifyCustomPlacement(nonColocatedTable);
   }
 
-  public void executeAndAssertErrorThrown(String statement, String err_msg) throws Exception{
-    boolean error_thrown = false;
-    try (Statement setupStatement = connection.createStatement()) {
-      setupStatement.execute(statement);
-    } catch (PSQLException e) {
-      assertTrue(e.getMessage().contains(err_msg));
-      error_thrown = true;
+  @Test
+  public void sanityTest() throws Exception {
+    markClusterNeedsRecreation();
+    YBClient client = miniCluster.getClient();
+
+    // Set required YB-Master flags.
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
     }
 
-    // Verify that error was indeed thrown.
-    assertTrue(error_thrown);
+    createTestData("sanity_test");
+
+    // Verify that the table was created and its tablets were placed
+    // according to the tablespace replication info.
+    LOG.info("Verify whether tablet replicas were placed correctly at creation time");
+    verifyPlacement();
+
+    // Wait for tablespace info to be refreshed in load balancer.
+    Thread.sleep(2 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
+
+    addTserversAndWaitForLB();
+
+    // Verify that the loadbalancer also placed the tablets of the table based on the
+    // tablespace replication info.
+    LOG.info("Verify whether the load balancer maintained the placement of tablet replicas" +
+             " after TServers were added");
+    verifyPlacement();
+
+    // Trigger a master leader change.
+    LeaderStepDownResponse resp = client.masterLeaderStepDown();
+    assertFalse(resp.hasError());
+
+    Thread.sleep(10 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
+
+    LOG.info("Verify that tablets have been placed correctly even after master leader changed");
+    verifyPlacement();
   }
 
+  @Test
+  public void testDisabledTablespaces() throws Exception {
+    // Create some tables with custom and default placements.
+    // These tables will be placed according to their tablespaces
+    // by the create table path.
+    createTestData("pre_disabling_tblspcs");
+
+    // Disable tablespaces
+    YBClient client = miniCluster.getClient();
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "false"));
+    }
+
+    // At this point, since tablespaces are disabled, the LB will detect that the older
+    // tables have not been correctly placed. Wait until the load balancer is active.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    // Wait for LB to finish its run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    // Now create some new tables. The table creation path will place these
+    // tables according to the cluster config.
+    createTestData("disabled_tablespace_test");
+
+    // Verify that both the table creation path and load balancer have placed all the tables
+    // based on cluster config.
+    LOG.info("Verify placement of tablets after tablespaces have been disabled");
+    verifyDefaultPlacementForAll();
+  }
+
+  @Test
+  public void testLBTablespacePlacement() throws Exception {
+    // This test disables using tablespaces at creation time. Thus, the tablets of the table will be
+    // incorrectly placed based on cluster config at creation time, and we will rely on the LB to
+    // correctly place the table based on its tablespace.
+    // Set master flags.
+    YBClient client = miniCluster.getClient();
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "false"));
+    }
+
+    createTestData("test_lb_placement");
+
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
+    }
+
+    // Since the tablespace-id was not checked during creation, the tablet replicas
+    // would have been placed wrongly. This condition will be detected by the load
+    // balancer. Wait until it starts running to fix these wrongly placed tablets.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    // Wait for LB to finish its run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    // Verify that the loadbalancer placed the tablets of the table based on the
+    // tablespace replication info. Skip checking transaction tables, as they would
+    // not have been created when tablespaces were disabled.
+    LOG.info("Verify whether tablet replicas placed incorrectly at creation time are moved to " +
+             "their appropriate placement by the load balancer");
+    verifyPlacement(true /* skipTransactionTables */);
+  }
+
+  @Test
   public void negativeTest() throws Exception {
+    YBClient client = miniCluster.getClient();
+
+    // Set required YB-Master flags.
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
+    }
+
     // Create tablespaces with invalid placement.
     try (Statement setupStatement = connection.createStatement()) {
       // Create a tablespace specifying a cloud that does not exist.
@@ -236,103 +357,22 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     executeAndAssertErrorThrown(
       "CREATE TABLE insufficent_rf_tbl (a int) TABLESPACE insufficient_rf_tblspc",
       not_enough_tservers_for_rf_msg);
-  }
 
-  public void sanityTest() throws Exception {
-    YBClient client = miniCluster.getClient();
-
-    // Set required YB-Master flags.
-    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
-    }
-
-    negativeTest();
-
-    // Test table creation failures.
     testTableCreationFailure();
-
-    createTestData("sanity_test");
-
-    // Verify that the table was created and its tablets were placed
-    // according to the tablespace replication info.
-    LOG.info("Verify whether tablet replicas were placed correctly at creation time");
-    verifyPlacement();
-
-    // Wait for tablespace info to be refreshed in load balancer.
-    Thread.sleep(2 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
-
-    addTserversAndWaitForLB();
-
-    // Verify that the loadbalancer also placed the tablets of the table based on the
-    // tablespace replication info.
-    LOG.info("Verify whether the load balancer maintained the placement of tablet replicas" +
-             " after TServers were added");
-    verifyPlacement();
-
-    // Trigger a master leader change.
-    LeaderStepDownResponse resp = client.masterLeaderStepDown();
-    assertFalse(resp.hasError());
-
-    Thread.sleep(10 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
-
-    LOG.info("Verify that tablets have been placed correctly even after master leader changed");
-    verifyPlacement();
   }
 
-  public void testDisabledTablespaces() throws Exception {
-    YBClient client = miniCluster.getClient();
-    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "false"));
+  public void executeAndAssertErrorThrown(String statement, String err_msg) throws Exception{
+    boolean error_thrown = false;
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(statement);
+    } catch (PSQLException e) {
+      String actualError = e.getMessage();
+      assertTrue("Expected: " + err_msg + " Actual: " + actualError, actualError.contains(err_msg));
+      error_thrown = true;
     }
 
-    // At this point, since tablespaces are disabled, the LB will detect that the older
-    // tables have not been correctly placed. Wait until the load balancer is active.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    // Wait for LB to finish its run.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    createTestData("disabled_tablespace_test");
-
-    // Verify that the loadbalancer also placed the tablets of the table based on the
-    // tablespace replication info.
-    LOG.info("Verify placement of tablets after tablespaces have been disabled");
-    verifyDefaultPlacementForAll();
-  }
-
-  public void testLBTablespacePlacement() throws Exception {
-    // This test disables using tablespaces at creation time. Thus, the tablets of the table will be
-    // incorrectly placed based on cluster config at creation time, and we will rely on the LB to
-    // correctly place the table based on its tablespace.
-    // Set master flags.
-    YBClient client = miniCluster.getClient();
-    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "false"));
-    }
-
-    createTestData("test_lb_placement");
-
-    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
-    }
-
-    // Since the tablespace-id was not checked during creation, the tablet replicas
-    // would have been placed wrongly. This condition will be detected by the load
-    // balancer. Wait until it starts running to fix these wrongly placed tablets.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    // Wait for LB to finish its run.
-    assertTrue(miniCluster.getClient().waitForLoadBalancerIdle(
-      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
-
-    // Verify that the loadbalancer placed the tablets of the table based on the
-    // tablespace replication info.
-    LOG.info("Verify whether tablet replicas placed incorrectly at creation time are moved to " +
-             "their appropriate placement by the load balancer");
-    verifyPlacement();
+    // Verify that error was indeed thrown.
+    assertTrue(error_thrown);
   }
 
   public void testTableCreationFailure() throws Exception {
@@ -444,10 +484,17 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   // Verify that the tables and indices have been placed in appropriate
   // zones.
   void verifyPlacement() throws Exception {
+    verifyPlacement(false /* skipTransactionTables */);
+  }
+
+  void verifyPlacement(boolean skipTransactionTables) throws Exception {
     for (final String table : tablesWithDefaultPlacement) {
       verifyDefaultPlacement(table);
     }
     for (final String table : tablesWithCustomPlacement) {
+      if (skipTransactionTables && table.contains("transaction")) {
+        continue;
+      }
       verifyCustomPlacement(table);
     }
   }
@@ -473,6 +520,8 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
       // Verify that both tablets either belong to zone1 or zone2.
       for (LocatedTablet.Replica replica : replicas) {
+        final String role = replica.getRole();
+        assertFalse(role, role.contains("READ_REPLICA"));
         org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
         if (cloudInfo.getPlacementCloud().equals("cloud1")) {
           assertTrue(cloudInfo.getPlacementRegion().equals("region1"));
@@ -520,5 +569,122 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     assertEquals("More than one table found with name " + table, 1, tables.size());
     return client.openTableByUUID(
       tables.get(0).getId().toStringUtf8());
+  }
+
+
+  @Test
+  public void readReplicaWithTablespaces() throws Exception {
+    markClusterNeedsRecreation();
+    final YBClient client = miniCluster.getClient();
+    // Set required YB-Master flags.
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
+    }
+
+    createTestData("read_replica");
+    int expectedTServers = miniCluster.getTabletServers().size() + 1;
+
+    LOG.info("Adding a TServer for read-replica cluster");
+    Map<String, String> readReplicaPlacement = ImmutableMap.of(
+        "placement_cloud", "cloud1",
+        "placement_region", "region1",
+        "placement_zone", "zone1",
+        "placement_uuid", "readcluster");
+    miniCluster.startTServer(readReplicaPlacement);
+    miniCluster.waitForTabletServers(expectedTServers);
+
+    org.yb.CommonNet.CloudInfoPB cloudInfo0 = org.yb.CommonNet.CloudInfoPB.newBuilder()
+            .setPlacementCloud("cloud1")
+            .setPlacementRegion("region1")
+            .setPlacementZone("zone1")
+            .build();
+
+    CatalogEntityInfo.PlacementBlockPB placementBlock0 = CatalogEntityInfo.PlacementBlockPB.
+        newBuilder().setCloudInfo(cloudInfo0).setMinNumReplicas(1).build();
+
+    List<CatalogEntityInfo.PlacementBlockPB> placementBlocksLive =
+        new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
+    placementBlocksLive.add(placementBlock0);
+
+    List<CatalogEntityInfo.PlacementBlockPB> placementBlocksReadOnly =
+            new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
+    placementBlocksReadOnly.add(placementBlock0);
+
+    CatalogEntityInfo.PlacementInfoPB livePlacementInfo = CatalogEntityInfo.PlacementInfoPB.
+        newBuilder().addAllPlacementBlocks(placementBlocksLive).setNumReplicas(1).
+        setPlacementUuid(ByteString.copyFromUtf8("")).build();
+
+    CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo = CatalogEntityInfo.PlacementInfoPB.
+        newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+        setPlacementUuid(ByteString.copyFromUtf8("readcluster")).build();
+
+    List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements = Arrays.asList(
+        readOnlyPlacementInfo);
+
+    ModifyClusterConfigReadReplicas readOnlyOperation =
+        new ModifyClusterConfigReadReplicas(client, readOnlyPlacements);
+    ModifyClusterConfigLiveReplicas liveOperation =
+        new ModifyClusterConfigLiveReplicas(client, livePlacementInfo);
+
+    try {
+      LOG.info("Setting read only cluster configuration");
+      readOnlyOperation.doCall();
+
+      LOG.info("Setting cluster configuration for live replicas");
+      liveOperation.doCall();
+    } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
+      assertTrue(false);
+    }
+
+    LOG.info("Waiting for the loadbalancer to become active...");
+
+    // Wait for loadbalancer to run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    LOG.info("Waiting for the load balancer to become idle...");
+    assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
+
+    for (final String table : tablesWithDefaultPlacement) {
+      verifyPlacementForReadReplica(table);
+    }
+    for (final String table : tablesWithCustomPlacement) {
+      verifyCustomPlacement(table);
+    }
+  }
+
+  void verifyPlacementForReadReplica(final String table) throws Exception {
+    final YBClient client = miniCluster.getClient();
+    client.waitForReplicaCount(getTableFromName(table), 1, 30_000);
+
+    List<LocatedTablet> tabletLocations = getTableFromName(table).getTabletsLocations(30_000);
+    // Get tablets for table.
+    for (LocatedTablet tablet : tabletLocations) {
+      boolean foundReadOnlyReplica = false;
+      boolean foundLiveReplica = false;
+      List<LocatedTablet.Replica> replicas = tablet.getReplicas();
+      // Verify that tablets can be present in any zone.
+      for (LocatedTablet.Replica replica : replicas) {
+        org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
+        final String errorMsg = "Unexpected cloud.region.zone: " + cloudInfo.toString();
+
+        if (replica.getRole().contains("READ_REPLICA")) {
+          assertFalse(foundReadOnlyReplica);
+          foundReadOnlyReplica = true;
+        } else {
+          assertFalse(foundLiveReplica);
+          foundLiveReplica = true;
+        }
+        assertTrue(errorMsg, cloudInfo.getPlacementCloud().equals("cloud1"));
+        assertTrue(errorMsg, cloudInfo.getPlacementRegion().equals("region1"));
+        assertTrue(errorMsg, cloudInfo.getPlacementZone().equals("zone1"));
+      }
+      // A live replica must be found.
+      assertTrue(foundLiveReplica);
+
+      // A read-only replica must be found.
+      assertTrue(foundReadOnlyReplica);
+    }
   }
 }
