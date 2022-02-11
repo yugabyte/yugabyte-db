@@ -1,7 +1,7 @@
 ---
 title: Build a C# application that uses YSQL
 headerTitle: Build a C# application
-description: Build a small C# application using the libpq driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
+description: Build a small C# application using the Npgsql driver and using the YSQL API to connect to and interact with a Yugabyte Cloud cluster.
 menu:
   latest:
     parent: cloud-build-apps
