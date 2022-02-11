@@ -1568,7 +1568,7 @@ class YBBackup:
         web_port = self.tserver_ip_to_web_port[tserver_ip]\
             if tserver_ip in self.tserver_ip_to_web_port else DEFAULT_TS_WEB_PORT
         url = "{}:{}/varz".format(tserver_ip, web_port)
-        output = self.run_program(['curl', url])
+        output = self.run_program(['curl', url], num_retry=10)
         suffix_match = PLACEMENT_REGION_RE.match(output)
         if suffix_match:
             region = suffix_match.group(1)
@@ -1808,7 +1808,7 @@ class YBBackup:
         """
         web_port = (self.tserver_ip_to_web_port[tserver_ip]
                     if tserver_ip in self.tserver_ip_to_web_port else DEFAULT_TS_WEB_PORT)
-        output = self.run_program(['curl', "{}:{}/varz".format(tserver_ip, web_port)])
+        output = self.run_program(['curl', "{}:{}/varz".format(tserver_ip, web_port)], num_retry=10)
         data_dirs = []
         for line in output.split('\n'):
             if line.startswith(FS_DATA_DIRS_ARG_PREFIX):
