@@ -536,6 +536,38 @@ export function getAlerts() {
   };
 }
 
+export function getAlertsCountForUniverse(universeUUID){
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alerts/count`, {
+      states: ["ACTIVE"],
+      sourceUUIDs: [
+        universeUUID
+      ],
+      configurationTypes: ["UNIVERSE"],
+      severities: ["SEVERE", "WARNING"]
+    }
+  );
+}
+
+export function getAlertsForUniverse(universeUUID, limit) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alerts/page`, {
+    sortBy: "name",
+    direction: "ASC",
+    needTotalCount: true,
+    filter: {
+      states: ["ACTIVE"],
+
+      sourceUUIDs: [
+        universeUUID
+      ]
+    },
+    offset: 0,
+    limit
+  }
+  );
+}
+
 export function createAlertChannel(payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_channels`, payload);
