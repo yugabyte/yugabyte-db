@@ -79,7 +79,7 @@ Configure the database properties accordingly. The default `user` and `password`
 
 ```csharp
 dotnet tool install --global dotnet-ef
-dotnet add package Microsoft.EntityFrameworkCore.Design --version 6.0.0 //Mention the .NET Core SDK version you installed above.
+dotnet add package Microsoft.EntityFrameworkCore.Design --version 6.0.0 //Mention the version compatible with your .NET SDK version
 dotnet ef migrations add InitialCreate
 dotnet ef database update
 ```
