@@ -129,12 +129,15 @@ public class MetricQueryHelperTest extends FakeDBApplication {
   @Test
   public void testQuerySingleMetricWithEndTime() {
     DateTime date = DateTime.now();
-    Integer startTimestamp = Math.toIntExact(date.minusMinutes(10).getMillis() / 1000);
-    Integer endTimestamp = Math.toIntExact(date.getMillis() / 1000);
+    long startTimestamp = date.minusMinutes(10).getMillis() / 1000;
+    long endTimestamp = date.getMillis() / 1000;
     HashMap<String, String> params = new HashMap<>();
-    params.put("start", startTimestamp.toString());
-    params.put("end", endTimestamp.toString());
-
+    params.put("start", Long.toString(startTimestamp));
+    params.put("end", Long.toString(endTimestamp));
+    long timeDifference = endTimestamp - startTimestamp;
+    int step = Math.round(timeDifference / 100);
+    long adjustedStartTimestamp = startTimestamp - startTimestamp % step;
+    long adjustedEndTimestamp = endTimestamp - startTimestamp % step;
     JsonNode responseJson =
         Json.parse(
             "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
@@ -156,10 +159,11 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     assertThat(
         graphQueryParam.get("query"), allOf(notNullValue(), equalTo("sum(my_valid_metric)")));
     assertThat(
-        Integer.parseInt(graphQueryParam.get("start")),
-        allOf(notNullValue(), equalTo(startTimestamp)));
+        Long.parseLong(graphQueryParam.get("start")),
+        allOf(notNullValue(), equalTo(adjustedStartTimestamp)));
     assertThat(
-        Integer.parseInt(graphQueryParam.get("end")), allOf(notNullValue(), equalTo(endTimestamp)));
+        Long.parseLong(graphQueryParam.get("end")),
+        allOf(notNullValue(), equalTo(adjustedEndTimestamp)));
     assertThat(Integer.parseInt(graphQueryParam.get("step")), allOf(notNullValue(), equalTo(6)));
   }
 
