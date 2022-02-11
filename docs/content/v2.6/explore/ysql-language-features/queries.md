@@ -17,7 +17,7 @@ This section describes how to query YugabyteDB using the YSQL `SELECT` statement
 
 ## Querying Data
 
-The main purpose of `SELECT` statements is to retrieve data from specified tables. Typically, the first part of every `SELECT` statement defines columns that contain the required data, the second part points to the tables hosting these columns, and the third, optional part, lists restrictions. 
+The main purpose of `SELECT` statements is to retrieve data from specified tables. Typically, the first part of every `SELECT` statement defines columns that contain the required data, the second part points to the tables hosting these columns, and the third, optional part, lists restrictions.
 
 `SELECT` has the following syntax:
 
@@ -31,11 +31,11 @@ Note that the `FROM` clause is evaluated before `SELECT`.
 
 The following `SELECT` statement clauses provide flexiblity and allow you to fine-tune queries:
 
-- The `DISTINCT` operator allows you to select distinct rows. 
+- The `DISTINCT` operator allows you to select distinct rows.
 - The `ORDER BY` clause lets you sort rows.
 - The `WHERE` clause allows you to apply filters to rows.
-- The `LIMIT` clause allows you to select a subset of rows from a table. 
-- The `GROUP BY` clause allows you to divide rows into groups. 
+- The `LIMIT` clause allows you to select a subset of rows from a table.
+- The `GROUP BY` clause allows you to divide rows into groups.
 - The `HAVING` clause lets you filter groups.
 - The `INNER JOIN`, `LEFT JOIN`, `FULL OUTER JOIN`, and `CROSS JOIN` clauses let you create joins with other tables.
 
@@ -52,11 +52,11 @@ CREATE TABLE employees (
 ```
 
 ```sql
-INSERT INTO employees VALUES 
+INSERT INTO employees VALUES
   (1221, 'John Smith', 'Marketing'),
   (1222, 'Bette Davis', 'Sales'),
   (1223, 'Lucille Ball', 'Operations'),
-  (1224, 'John Zimmerman', 'Sales'); 
+  (1224, 'John Zimmerman', 'Sales');
 ```
 
 You can use the `SELECT` statement to find names of all employees in the `employees` table. In this case, you apply `SELECT` to one column only, as follows:
@@ -68,7 +68,7 @@ SELECT name FROM employees;
 To retrieve data that includes the employee name and department, you need to query multiple columns, as shown in the following example:
 
 ```sql
-SELECT name, department FROM employees;  
+SELECT name, department FROM employees;
 ```
 
 To obtain data from all the columns in the table, you can use an asterisk, as shown in the following example:
@@ -80,7 +80,7 @@ SELECT * FROM employees;
 You can also use expressions for data retrieval via `SELECT`. The following example shows how to use the concatenation operator to get employee numbers and names combined with departments for all employees:
 
 ```sql
-SELECT employee_no, name || ' ' || department FROM employees;  
+SELECT employee_no, name || ' ' || department FROM employees;
 ```
 
 The following is the output produced by the preceding example:
@@ -159,12 +159,12 @@ SELECT name, department AS "section of the company" FROM employees;
 
 ### Sorting and Ordering Data
 
-The `SELECT` statement returns data in an unspecified order. You can use the the `SELECT` statement's `ORDER BY` clause to sort the rows of the query result set in ascending or descending order based on a sort expression.
+The `SELECT` statement returns data in an unspecified order. You can use the `SELECT` statement's `ORDER BY` clause to sort the rows of the query result set in ascending or descending order based on a sort expression.
 
 `ORDER BY` has the following syntax:
 
 ```sql
-SELECT list 
+SELECT list
   FROM table_name
   ORDER BY sort_expression1 [ASC | DESC] [NULLS FIRST | NULLS LAST],
   ...,
@@ -197,8 +197,8 @@ Omitting the `DESC` option would result in the employees sorted in ascending ord
 The following example selects the name and department from the `employees` table, then sorts the rows by the name in ascending order, and then sorts the already sorted rows by department in descending order:
 
 ```sql
-SELECT name, department FROM employees 
-  ORDER BY name ASC, department DESC;  
+SELECT name, department FROM employees
+  ORDER BY name ASC, department DESC;
 ```
 
 The following is the output produced by the preceding example:
@@ -219,7 +219,7 @@ Which `NULL` option of the `ORDER BY` clause is used by default depends on wheth
 The following example demonstrates how to sort the `employees` table by department in ascending order displaying rows with missing departments first:
 
 ```sql
-SELECT department FROM employees 
+SELECT department FROM employees
   ORDER BY department ASC NULLS FIRST;
 ```
 
@@ -240,7 +240,7 @@ Since the order of rows returned by the `SELECT` statement is unspecified, the f
 The `DISTINCT ON (expression)` clause has the following syntax:
 
 ```sql
-SELECT DISTINCT ON (column_name_1) column_alias, column_name_2 
+SELECT DISTINCT ON (column_name_1) column_alias, column_name_2
   FROM table_name
   ORDER BY column_name_1, column_name_2;
 ```
@@ -248,7 +248,7 @@ SELECT DISTINCT ON (column_name_1) column_alias, column_name_2
 The following series of examples inserts new rows into the table from [SELECT Examples](#select-examples), then queries the `employees` table using `SELECT` with its `DISTINCT` option enabled, thus removing duplicate values, and then sorts the result set in descending order based on the employee name:
 
 ```sql
-INSERT INTO employees (employee_no, name, department) 
+INSERT INTO employees (employee_no, name, department)
 VALUES
 (9, 'Jean Harlow', 'Sales'),
 (8, 'Jean Harlow', 'Sales');
@@ -291,8 +291,8 @@ The `WHERE` clause allows you to filter data returned by the `SELECT` statement.
 The `WHERE` clause has the following syntax:
 
 ```sql
-SELECT list FROM table_name 
-  WHERE condition 
+SELECT list FROM table_name
+  WHERE condition
   ORDER BY expression;
 ```
 
@@ -301,7 +301,7 @@ SELECT list FROM table_name
 The following example uses the table from [SELECT Examples](#select-examples) to demonstrate how to use the `AND` operator to combine two Boolean expressions in order to find an employee number of a specific employee working for a specified department:
 
 ```sql
-SELECT employee_no FROM employees 
+SELECT employee_no FROM employees
   WHERE name = 'John Smith' AND department = 'Marketing';
 ```
 
@@ -316,7 +316,7 @@ employee_no
 The following example shows how to use the `OR` operator to find employee IDs of specific employees:
 
 ```sql
-SELECT employee_no FROM employees 
+SELECT employee_no FROM employees
   WHERE name = 'John Smith' OR name = 'Bette Davis';
 ```
 
@@ -331,7 +331,7 @@ employee_no
 
 During the query execution, the `WHERE` clause is evaluated after the `FROM` clause but before the `SELECT` and `ORDER BY` clause.
 
-You cannot use column aliases in the `WHERE` clause of  `SELECT`. 
+You cannot use column aliases in the `WHERE` clause of  `SELECT`.
 
 You can define the condition in the `WHERE` clause by using any standard SQL comparison operators and almost all logical operators except `ALL`, `ANY`, and `SOME`.
 
@@ -369,7 +369,7 @@ Bette Davis
 If the `employees` table had an additional column for the current timestamp that records the time of changes to every row, then the following example could have demonstrated how to use date expressions in the `WHERE` clause:
 
 ```sql
-SELECT name FROM employees 
+SELECT name FROM employees
   WHERE CURRENT_TIMESTAMP = '2021-01-03 16:22:29.079+07:30';
 ```
 
@@ -388,17 +388,17 @@ The `LIMIT` clause of the `SELECT` statement allows you to impose constrains on 
 The `LIMIT` clause has the following syntax:
 
 ```sql
-SELECT list FROM table_name 
-  ORDER BY expression 
+SELECT list FROM table_name
+  ORDER BY expression
   LIMIT rows_number;
 ```
 
-*rows_number* represents the number of rows included in the query result set. If this number is set to zero, the query does not return any rows. If *rows_number* is set to `NULL`, the query result is the same as if the `SELECT` statement did not contain the `LIMIT` clause. 
+*rows_number* represents the number of rows included in the query result set. If this number is set to zero, the query does not return any rows. If *rows_number* is set to `NULL`, the query result is the same as if the `SELECT` statement did not contain the `LIMIT` clause.
 
 To skip rows before returning the rows specified by *rows_number*, you can use the `OFFSET` clause immediately after the `LIMIT` clause, as per the following syntax:
 
 ```sql
-SELECT list FROM table_name 
+SELECT list FROM table_name
   LIMIT rows_number OFFSET row_skip;
 ```
 
@@ -409,8 +409,8 @@ Since rows are often stored in tables in an unspecified order, it is recommended
 Using the table from [SELECT Examples](#select-examples), the following example demonstrates how retrieve the first two employees sorted by their number:
 
 ```sql
-SELECT employee_no, name FROM employees 
-  ORDER BY employee_no 
+SELECT employee_no, name FROM employees
+  ORDER BY employee_no
   LIMIT 2;
 ```
 
@@ -426,10 +426,10 @@ employee_no | name
 The following example demonstrates how retrieve three employees starting from the second one ordered by their number:
 
 ```sql
-SELECT name, department FROM employees 
-  ORDER BY name 
-  LIMIT 3 
-  OFFSET 2;  
+SELECT name, department FROM employees
+  ORDER BY name
+  LIMIT 3
+  OFFSET 2;
 ```
 
 The following is the output produced by the preceding example:
@@ -444,7 +444,7 @@ Lucille Ball        | Operations
 
 ### The LIKE Operator
 
-There are cases when you do not know the exact query parameter but have an idea of a partial parameter. Using the `LIKE` operator allows you to match this partial information with existing data based on a pattern recognition. 
+There are cases when you do not know the exact query parameter but have an idea of a partial parameter. Using the `LIKE` operator allows you to match this partial information with existing data based on a pattern recognition.
 
 The following is the syntax of the `LIKE` operator:
 
@@ -470,7 +470,7 @@ Lucille Ball  | Operations
 
 The `WHERE` clause contains a special expression consisting of `name`, the `LIKE` operator, and a string that contains a percent sign. The string `'Luci%'` represents a pattern.
 
-Rows returned by the query are those whose values in the `name` column begin with `Luci` and might be followed by any other characters. 
+Rows returned by the query are those whose values in the `name` column begin with `Luci` and might be followed by any other characters.
 
 To construct a pattern, you combine literal values with wildcard characters such as percent sign or underscore and use the `LIKE` or `NOT LIKE` operator to search for matches. Percent sign enables you to find a match for any sequence of any number of characters, whereas underscore matches any single character.
 
@@ -491,8 +491,8 @@ YSQL allows you to divide rows of the result set into groups using the `GROUP BY
 The `GROUP BY` clause has the following syntax:
 
 ```sql
-SELECT column_1, column_2, aggregate_function(column_3) 
-  FROM table_name 
+SELECT column_1, column_2, aggregate_function(column_3)
+  FROM table_name
   GROUP BY column_1, column_2;
 ```
 
@@ -523,8 +523,8 @@ To define search condition for a group or an aggregate, you can use the `HAVING`
 The `HAVING` clause has the following syntax:
 
 ```sql
-SELECT column_1, aggregate_function(column_2) 
-  FROM table_name 
+SELECT column_1, aggregate_function(column_2)
+  FROM table_name
   GROUP BY column_1
   HAVING condition;
 ```
@@ -537,7 +537,7 @@ Using the table from [SELECT Examples](#select-examples), the following example 
 
 ```sql
 SELECT department, COUNT (employee_no)
-  FROM employees 
+  FROM employees
   GROUP BY department
   HAVING COUNT (employee_no) > 1;
 ```
@@ -567,7 +567,7 @@ CREATE TABLE fulltime_employees (
 ```
 
 ```sql
-INSERT INTO fulltime_employees VALUES 
+INSERT INTO fulltime_employees VALUES
 (1221, 'John Smith', 'Marketing'),
 (1222, 'Bette Davis', 'Sales'),
 (1223, 'Lucille Ball', 'Operations'),
@@ -583,7 +583,7 @@ CREATE TABLE permanent_employees (
 ```
 
 ```sql
-INSERT INTO permanent_employees VALUES 
+INSERT INTO permanent_employees VALUES
 (1221, 'Lucille Ball', 'Operations'),
 (1222, 'Cary Grant', 'Operations'),
 (1223, 'John Smith', 'Marketing');
@@ -623,7 +623,7 @@ The following example demonstrates how to join the `fulltime_employees` table wi
 
 ```sql
 SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-  FROM fulltime_employees 
+  FROM fulltime_employees
   INNER JOIN permanent_employees
   ON ft_name = perm_name;
 ```
@@ -645,7 +645,7 @@ The following example demonstrates how to use the left join to join the `fulltim
 
 ```sql
 SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-  FROM fulltime_employees 
+  FROM fulltime_employees
   LEFT JOIN permanent_employees
   ON ft_name = perm_name;
 ```
@@ -667,7 +667,7 @@ The following example shows how to select the `fulltime_employees` table rows th
 
 ```sql
 SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-  FROM fulltime_employees 
+  FROM fulltime_employees
   LEFT JOIN permanent_employees
   ON ft_name = perm_name
   WHERE perm_employee_no IS NULL;
@@ -690,7 +690,7 @@ The following example demonstrates how to use the right join to join the `fullti
 
 ```sql
 SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-  FROM fulltime_employees 
+  FROM fulltime_employees
   RIGHT JOIN permanent_employees
   ON ft_name = perm_name;
 ```
@@ -713,7 +713,7 @@ The full outer join allows you to obtain a result set that contains all rows fro
 
 ```sql
 SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-  FROM fulltime_employees 
+  FROM fulltime_employees
   FULL OUTER JOIN permanent_employees
   ON ft_name = perm_name;
 ```
@@ -734,7 +734,7 @@ The following example shows how to  use the full join with a `WHERE` clause to r
 
 ```sql
 SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
-  FROM fulltime_employees 
+  FROM fulltime_employees
   FULL JOIN permanent_employees
   ON ft_name = perm_name
   WHERE ft_employee_no IS NULL OR perm_employee_no IS NULL;
@@ -752,14 +752,14 @@ ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 
 ### Cross Join
 
-You can use a cross join to generate a Cartesian product of rows in at least two tables. 
+You can use a cross join to generate a Cartesian product of rows in at least two tables.
 
 Unlike other join clauses, the `CROSS JOIN` clause does not have a join predicate.
 
 The `CROSS JOIN` clause has the following syntax:
 
 ```sql
-SELECT list FROM table_1_name 
+SELECT list FROM table_1_name
   CROSS JOIN table_2_name;
 ```
 
@@ -772,14 +772,14 @@ SELECT list FROM table_1_name, table_2_name;
 As an alternative, you can use the following syntax to simulate the cross join by using an inner join with a condition which always evaluates to `true`:
 
 ```sql
-SELECT * FROM table_1_name 
+SELECT * FROM table_1_name
   INNER JOIN table_2_name ON true;
 ```
 
 The `fulltime_employees` table has 4 rows and the `permanent_employees` table has 3 rows. When these tables are cross-joined, the result set has 4 * 3 = 12 rows, as the following example demonstrates:
 
 ```sql
-SELECT * FROM fulltime_employees 
+SELECT * FROM fulltime_employees
   CROSS JOIN permanent_employees;
 ```
 
@@ -799,12 +799,12 @@ CREATE TABLE employees (
 ```
 
 ```sql
-INSERT INTO employees (employee_no, name, department, years_service) 
-VALUES 
+INSERT INTO employees (employee_no, name, department, years_service)
+VALUES
   (1221, 'John Smith', 'Marketing', 5),
   (1222, 'Bette Davis', 'Sales', 3),
   (1223, 'Lucille Ball', 'Operations', 1),
-  (1224, 'John Zimmerman', 'Sales', 5); 
+  (1224, 'John Zimmerman', 'Sales', 5);
 ```
 
 If you need to find the employees who have been working for the company longer than average, you start by calculating the average years of service using a `SELECT` statement and average function  `AVG`. Then you use the result of the first query in the second `SELECT` statement to find the long-serving employees, as shown in the following examples:
@@ -816,7 +816,7 @@ SELECT AVG (years_service) FROM employees;
 The preceding query returns 3.5000000000000000.
 
 ```sql
-SELECT employee_no, name, years_service FROM employees 
+SELECT employee_no, name, years_service FROM employees
   WHERE years_service > 3.5;
 ```
 
@@ -829,16 +829,16 @@ employee_no | name             | years_service
 1224        | John Zimmerman   | 5
 ```
 
-You can avoid executing two separate queries by using a subquery that is passed the result of the first query. To create such a query, you enclose the second query in brackets and use it as an expression in the `WHERE` clause, as as shown in the following example:
+You can avoid executing two separate queries by using a subquery that is passed the result of the first query. To create such a query, you enclose the second query in brackets and use it as an expression in the `WHERE` clause, as shown in the following example:
 
 ```sql
-SELECT employee_no, name, years_service FROM employees 
+SELECT employee_no, name, years_service FROM employees
   WHERE years_service > (SELECT AVG (years_service) FROM employees);
 ```
 
 YSQL executes the subquery first, obtains the result and passes it to the outer query, and finally  executes the outer query.
 
-You can use a subquery that is an input of the `EXISTS` operator which returns true if the subquery returns any rows. The `EXISTS` operator returns false in cases where the subquery does not return any rows. The `EXISTS` operator does not access the content of the rows; it only needs to know the number of rows returned by the subquery. 
+You can use a subquery that is an input of the `EXISTS` operator which returns true if the subquery returns any rows. The `EXISTS` operator returns false in cases where the subquery does not return any rows. The `EXISTS` operator does not access the content of the rows; it only needs to know the number of rows returned by the subquery.
 
 The `EXISTS` operator has the following syntax:
 
@@ -872,20 +872,20 @@ Using the `fulltime_employees` table from [Joining Columns](#joining-columns), t
 
 ```sql
 WITH cte_fulltime_employees AS (
-  SELECT 
+  SELECT
     ft_name,
-      (CASE 
+      (CASE
          WHEN ft_employee_no < 1222 THEN 'Sales'
          WHEN ft_employee_no > 1223 THEN 'Marketing'
          ELSE 'Operations'
-       END) ft_department 
+       END) ft_department
   FROM
     fulltime_employees
 )
 SELECT ft_name, ft_department
 FROM cte_fulltime_employees
 WHERE ft_department = 'Operations'
-ORDER BY ft_name; 
+ORDER BY ft_name;
 ```
 
 The following is the output produced by the preceding example:
@@ -902,11 +902,11 @@ Recursive queries, often used for querying hierarchical data, refer to recursive
 You can use the following syntax to create a recursive CTE:
 
 ```sql
-WITH RECURSIVE cte_name 
+WITH RECURSIVE cte_name
   AS(cte_query --- non-recursive
       UNION [ALL]
       cte_query_definition definion  --- recursive
-  ) 
+  )
 SELECT * FROM cte_name;
 ```
 
@@ -924,11 +924,11 @@ CREATE TABLE employees (
 ```
 
 ```sql
-INSERT INTO employees VALUES 
+INSERT INTO employees VALUES
   (1221, 'John Smith', NULL, NULL),
   (1222, 'Bette Davis', 1221, 'Sales'),
   (1223, 'Lucille Ball', 1221, 'Operations'),
-  (1224, 'John Zimmerman', 1222, 'Sales'), 
+  (1224, 'John Zimmerman', 1222, 'Sales'),
   (1225, 'Walter Marx', 1222, 'Sales');
 ```
 
@@ -936,15 +936,15 @@ The following example demonstrates how to retrieve all employees who report to t
 
 ```sql
 WITH RECURSIVE reports AS (
-  SELECT employee_no, name, manager_no, department 
-  FROM employees 
-  WHERE employee_no = 1222 
-  UNION 
-    SELECT 
-      emp.employee_no, emp.name, emp.manager_no, emp.department 
-    FROM employees emp 
+  SELECT employee_no, name, manager_no, department
+  FROM employees
+  WHERE employee_no = 1222
+  UNION
+    SELECT
+      emp.employee_no, emp.name, emp.manager_no, emp.department
+    FROM employees emp
     INNER JOIN reports rep ON rep.employee_no = emp.manager_no
-) 
+)
 SELECT * FROM reports;
 ```
 

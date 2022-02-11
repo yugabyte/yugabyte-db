@@ -55,7 +55,7 @@ If you are using a local installation of YugabyteDB, run the `ysqlsh` command fr
 $ ./bin/ysqlsh
 ```
 
-If you are connecting to Yugabyte Cloud, run the connection string for your cluster from the the `yugabyte-client` root directory. Refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
+If you are connecting to Yugabyte Cloud, run the connection string for your cluster from the `yugabyte-client` root directory. Refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
 
 ### Create the Northwind database
 
@@ -93,7 +93,7 @@ northwind=# \d
 
 ```output
                 List of relations
- Schema |          Name          | Type  | Owner 
+ Schema |          Name          | Type  | Owner
 --------+------------------------+-------+-------
  public | categories             | table | admin
  public | customer_customer_demo | table | admin
@@ -127,9 +127,9 @@ northwind=# SELECT * FROM customers LIMIT 2;
 ```
 
 ```output
- customer_id |       company_name        | contact_name |    contact_title    |      address       |   city    | region | postal_code | country |     phone     |     fax     
+ customer_id |       company_name        | contact_name |    contact_title    |      address       |   city    | region | postal_code | country |     phone     |     fax
 -------------+---------------------------+--------------+---------------------+--------------------+-----------+--------+-------------+---------+---------------+-------------
- FAMIA       | Familia Arquibaldo        | Aria Cruz    | Marketing Assistant | Rua Orós, 92       | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857 | 
+ FAMIA       | Familia Arquibaldo        | Aria Cruz    | Marketing Assistant | Rua Orós, 92       | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857 |
  VINET       | Vins et alcools Chevalier | Paul Henriot | Accounting Manager  | 59 rue de l'Abbaye | Reims     |        | 51100       | France  | 26.47.15.10   | 26.47.15.11
 (2 rows)
 ```

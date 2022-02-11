@@ -28,7 +28,7 @@ We are going to enter the following values to create a multi-region universe on 
 - Enter a universe name: **helloworld2**
 - Enter the set of regions: **Oregon**, **Northern Virginia**, **Tokyo**
 - Change instance type: **n1-standard-8**
-- Add the following flag for Master and T-Server: `leader_failure_max_missed_heartbeat_periods = 10`. Because the the data is globally replicated, RPC latencies are higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. See the screenshot below.
+- Add the following flag for Master and T-Server: `leader_failure_max_missed_heartbeat_periods = 10`. Because the data is globally replicated, RPC latencies are higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. See the screenshot below.
 
 Click **Create**.
 
