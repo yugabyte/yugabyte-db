@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -58,6 +59,14 @@ public class SupportBundleController extends AuthenticatedController {
                   + "is currently in a locked/paused state or has backup running",
               universe.universeUUID));
     }
+
+    // Temporarily cannot create for onprem or k8s properly. Will result in empty directories
+    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+    if (cloudType == CloudType.onprem || cloudType == CloudType.kubernetes) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot currently create support bundle for onprem or k8s clusters");
+    }
+
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);

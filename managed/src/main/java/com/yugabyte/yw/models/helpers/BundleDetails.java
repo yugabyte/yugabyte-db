@@ -10,7 +10,25 @@ public class BundleDetails {
     UniverseLogs,
 
     @EnumValue("ApplicationLogs")
-    ApplicationLogs;
+    ApplicationLogs,
+
+    @EnumValue("OutputFiles")
+    OutputFiles,
+
+    @EnumValue("ErrorFiles")
+    ErrorFiles,
+
+    @EnumValue("GFlags")
+    GFlags,
+
+    @EnumValue("Instance")
+    Instance,
+
+    @EnumValue("ConsensusMeta")
+    ConsensusMeta,
+
+    @EnumValue("TabletMeta")
+    TabletMeta;
 
     public static boolean isValid(String type) {
       for (ComponentType t : ComponentType.values()) {
