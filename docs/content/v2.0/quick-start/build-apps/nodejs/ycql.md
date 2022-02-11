@@ -107,7 +107,7 @@ async.series([
     client.execute(select, function (err, result) {
       if (err) return next(err);
       var row = result.first();
-      const city = JSON.parse(row.location).city;
+      const city = row.location.city;
       console.log('Query for id=1 returned: name=%s, age=%d, language=%s, city=%s',
                                             row.name, row.age, row.language, city);
       next();
