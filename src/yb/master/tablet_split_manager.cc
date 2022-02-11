@@ -18,15 +18,21 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 
+#include "yb/common/schema.h"
+
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/cdc_consumer_split_driver.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/tablet_split_manager.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/server/monitored_task.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/unique_lock.h"
 
 DEFINE_int32(process_split_tablet_candidates_interval_msec, 0,
              "The minimum time between automatic splitting attempts. The actual splitting time "
@@ -63,6 +69,10 @@ DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
               "disabled if this value is set to 0.");
 
+DEFINE_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
+              "Seconds between checks for whether to split a table with TTL. Checks are disabled "
+              "if this value is set to 0.");
+
 namespace yb {
 namespace master {
 
@@ -87,6 +97,23 @@ Status TabletSplitManager::ValidateSplitCandidateTable(const TableInfo& table) {
     return STATUS_FORMAT(
         NotSupported,
         "Table is deleted; ignoring for splitting. table_id: $0", table.id());
+  }
+  {
+    UniqueLock<decltype(mutex_)> lock(mutex_);
+    const auto entry = ignore_table_for_splitting_until_.find(table.id());
+    if (entry != ignore_table_for_splitting_until_.end()) {
+      const auto ignore_for_split_ttl_until = entry->second;
+      if (ignore_for_split_ttl_until > CoarseMonoClock::Now()) {
+        VLOG(1) << Substitute("Table has file expiration for TTL enabled; ignored for "
+            "splitting until $0. table_id: $1",  ToString(ignore_for_split_ttl_until), table.id());
+        return STATUS_FORMAT(
+            NotSupported,
+            "Table has file expiration for TTL enabled; ignored for splitting until $0. "
+            "table_id: $1", ToString(ignore_for_split_ttl_until), table.id());
+      } else {
+        ignore_table_for_splitting_until_.erase(entry);
+      }
+    }
   }
   // Check if this table is covered by a PITR schedule.
   if (!FLAGS_enable_tablet_split_of_pitr_tables &&
@@ -145,6 +172,18 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
+
+  Schema schema;
+  RETURN_NOT_OK(tablet.table()->GetSchema(&schema));
+  auto ts_desc = VERIFY_RESULT(tablet.GetLeader());
+  if (schema.table_properties().HasDefaultTimeToLive()
+      && ts_desc->get_disable_tablet_split_if_default_ttl()) {
+    MarkTtlTableForSplitIgnore(tablet.table()->id());
+    return STATUS_FORMAT(
+        NotSupported, "Tablet splitting is not supported for tables with default time to live, "
+        "tablet_id: $0", tablet.tablet_id());
+  }
+
   if (tablet.colocated()) {
     return STATUS_FORMAT(
         NotSupported, "Tablet splitting is not supported for colocated tables, tablet_id: $0",
@@ -160,6 +199,18 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(const TabletInfo& tablet
   }
   return Status::OK();
 }
+
+
+
+void TabletSplitManager::MarkTtlTableForSplitIgnore(const TableId& table_id) {
+  if (FLAGS_prevent_split_for_ttl_tables_for_seconds != 0) {
+    const auto recheck_at = CoarseMonoClock::Now()
+        + MonoDelta::FromSeconds(FLAGS_prevent_split_for_ttl_tables_for_seconds);
+    UniqueLock<decltype(mutex_)> lock(mutex_);
+    ignore_table_for_splitting_until_.insert({table_id, recheck_at});
+  }
+}
+
 
 bool AllReplicasHaveFinishedCompaction(const TabletInfo& tablet_info) {
   auto replica_map = tablet_info.GetReplicaLocations();

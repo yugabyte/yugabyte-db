@@ -41,7 +41,9 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
 
   CHECKED_STATUS ValidateSplitCandidateTable(const TableInfo& table);
 
-  static CHECKED_STATUS ValidateSplitCandidateTablet(const TabletInfo& tablet);
+  CHECKED_STATUS ValidateSplitCandidateTablet(const TabletInfo& tablet);
+
+  void MarkTtlTableForSplitIgnore(const TableId& table_id);
 
  private:
   bool ShouldSplitTablet(const TabletInfo& tablet);
@@ -55,6 +57,10 @@ class TabletSplitManager : public TabletSplitCompleteHandlerIf {
   CDCConsumerSplitDriverIf* cdc_consumer_split_driver_;
 
   CoarseTimePoint last_run_time_;
+
+  std::mutex mutex_;
+  std::unordered_map<TableId, CoarseTimePoint> ignore_table_for_splitting_until_ GUARDED_BY(mutex_);
+
 };
 
 }  // namespace master
