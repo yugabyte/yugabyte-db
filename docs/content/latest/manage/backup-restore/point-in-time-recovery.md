@@ -70,11 +70,11 @@ The flashback database feature allows restoring an existing database or an exist
 **Notes**:
 
 * The time granularity of the point in time that one can restore to (1 second, 1 minute etc) is a separate parameter / specification.
-* This feature does not help with reducing the size of backups, since this would be comparable to a full backup
+* This feature does not help with reducing the size of backups, as this would be comparable to a full backup
 
 ### Incremental backups
 
-Incremental backups only extract and backup the updates that occur after a specified point in time in the past. For example, all the changes that happened in the last hour. Note that the database should have been configured with the maximum history retention window (similar to the [flashback database](#flashback-database) option). Thus, if a database is configured to retain 25 hours of historical updates, then the largest possible incremental backup is 25 hours.
+Incremental backups only extract and back up the updates that occur after a specified point in time in the past. For example, all the changes that happened in the last hour. Note that the database should have been configured with the maximum history retention window (similar to the [flashback database](#flashback-database) option). Thus, if a database is configured to retain 25 hours of historical updates, then the largest possible incremental backup is 25 hours.
 
 Incremental backups should cover the following scenarios:
 
@@ -84,19 +84,18 @@ Incremental backups should cover the following scenarios:
 
 This feature helps dealing with developer and operator error recovery (mentioned in the Scenarios section A).
 The restore should also include any DDL changes, such as create/drop/alter tables.
-The time granularity of the point in time that one can restore to (1 second, 1 minute etc) is a separate parameter / specification.
-Differential incremental backups require applying multiple incremental backups on top of a base backup
+The time granularity of the point in time that one can restore to (1 second, 1 minute etc) is a separate parameter / specification. Differential incremental backups require applying multiple incremental backups on top of a base backup
 
 Compared to flashbacks, incremental backups:
 
-* Often run more frequently, since the data set size is reduced.
+* Often run more frequently, because the data set size is reduced.
 * Can handle a disaster-recovery scenario.
 
 There are two types of incremental backups, _differential_ and _cumulative_. Although YugayteDB supports both types, we recommend differential incremental backups.
 
 #### Differential incremental backups
 
-Each differential incremental backup only contains the updates that occurred after the previous incremental backup. All changes since last incremental. A point-in-time recovery operation in this case would involve restoring the latest base backup, followed by applying every differential incremental backup taken since that base backup.
+Each differential incremental backup only contains the updates that occurred after the previous incremental backup. All changes since last incremental. A point-in-time recovery operation in this case would involve restoring the latest base backup, followed by applying every differential incremental backup taken after that base backup.
 
 #### Cumulative incremental backups
 
@@ -121,26 +120,26 @@ This feature is in active development. YSQL and YCQL support different features,
 
 ### YSQL limitations
 
-* For Sequences, restoring to a state before the sequence table was created/dropped doesn't work. This is being tracked by issue [#10249](https://github.com/yugabyte/yugabyte-db/issues/10249).
+* For Sequences, restoring to a state before the sequence table was created/dropped doesn't work. This is being tracked in [issue 10249](https://github.com/yugabyte/yugabyte-db/issues/10249).
 
-* Colocated Tables aren't supported and databases with colocated tables cannot be restored to a previous point in time. Tracked by issue [#8259](https://github.com/yugabyte/yugabyte-db/issues/8259).
+* Colocated Tables aren't supported and databases with colocated tables cannot be restored to a previous point in time. Tracked in [issue 8259](https://github.com/yugabyte/yugabyte-db/issues/8259).
 
-* Cluster-wide changes such as roles and permissions, tablespaces, etc. aren't supported. Please note however that database-level operations such as changing ownership of a table of a database, row-level security, etc. can be restored as their scope is not cluster-wide. Tablespaces are tracked [here](https://github.com/yugabyte/yugabyte-db/issues/10257) while roles and privileges are tracked [here](https://github.com/yugabyte/yugabyte-db/issues/10349).
+* Cluster-wide changes such as roles and permissions, tablespaces, etc. aren't supported. Please note however that database-level operations such as changing ownership of a table of a database, row-level security, etc. can be restored as their scope is not cluster-wide. Tablespaces are tracked in [issue 10257](https://github.com/yugabyte/yugabyte-db/issues/10257) while roles and privileges are tracked in [issue 10349](https://github.com/yugabyte/yugabyte-db/issues/10349).
 
-* Support for Triggers and Stored Procedures is to be investigated. Tracked by issue [#10350](https://github.com/yugabyte/yugabyte-db/issues/10350).
+* Support for Triggers and Stored Procedures is to be investigated. Tracked in [issue 10350](https://github.com/yugabyte/yugabyte-db/issues/10350).
 
 * In case of software upgrades/downgrades, we don't support restoring back in time to the previous version.
 
 ### YCQL limitations
 
-* Support for YCQL roles and permissions is yet to be added. Tracked by issue [#8453](https://github.com/yugabyte/yugabyte-db/issues/8453).
+* Support for YCQL roles and permissions is yet to be added. Tracked in [issue 8453](https://github.com/yugabyte/yugabyte-db/issues/8453).
 
 ### Common limitations
 
-* Currently, we don't support some aspects of PITR in conjunction with xCluster replication. It is being tracked by issue [#10820](https://github.com/yugabyte/yugabyte-db/issues/10820).
+* Currently, we don't support some aspects of PITR in conjunction with xCluster replication. It is being tracked in [issue 10820](https://github.com/yugabyte/yugabyte-db/issues/10820).
 
-* TRUNCATE TABLE is a limitation tracked [here](https://github.com/yugabyte/yugabyte-db/issues/7130).
+* TRUNCATE TABLE is a limitation tracked in [issue 7130](https://github.com/yugabyte/yugabyte-db/issues/7130).
 
-* We don't support DDL restores to a previous point in time using external backups. This is being tracked [here](https://github.com/yugabyte/yugabyte-db/issues/8847).
+* We don't support DDL restores to a previous point in time using external backups. This is being tracked in [issue 8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
 
 Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120).

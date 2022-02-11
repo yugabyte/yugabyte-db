@@ -18,13 +18,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
+    <a href="/latest/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
+    <a href="/latest/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -39,7 +39,7 @@ You can try out the PITR feature by creating a namespace and populating it, crea
 
 {{< tip title="Examples are simplified" >}}
 
-The examples on this page are deliberately simple. In many of the scenarios presented, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
+The examples on this page are deliberately simplified. In many of the scenarios presented, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
 {{< /tip >}}
 
@@ -52,7 +52,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Start the YCQL shell and connect to your local instance:
 
     ```sh
-    $ bin/ycqlsh
+    $ ./bin/ycqlsh
     ```
 
 1. Create a table and populate some sample data:
@@ -91,7 +91,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Create a snapshot schedule for the new `pitr` keyspace from a shell prompt. In this example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes.
 
     ```sh
-    $ bin/yb-admin create_snapshot_schedule 1 10 ycql.pitr
+    $ ./bin/yb-admin create_snapshot_schedule 1 10 ycql.pitr
     ```
 
     ```output
@@ -103,7 +103,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Verify that a snapshot has happened:
 
     ```sh
-    $ bin/yb-admin list_snapshot_schedules
+    $ ./bin/yb-admin list_snapshot_schedules
     ```
 
     ```output
@@ -161,7 +161,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Restore the snapshot schedule to the timestamp you obtained before you deleted the data, at a terminal prompt:
 
     ```sh
-    $ bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418801439626
+    $ ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418801439626
     ```
 
     ```output
@@ -174,7 +174,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Next, verify the restoration is in `RESTORED` state (you'll observe more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin list_snapshots
+    $ ./bin/yb-admin list_snapshots
     ```
 
     ```output
@@ -243,7 +243,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Now restore back to a time before this table was created, as in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to check the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
 
 1. Check that table t2 is gone.
 
@@ -279,7 +279,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Now restore back to a time before this table was altered, as in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to check the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
 
 1. Check that the v2 column is gone.
 
@@ -320,7 +320,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Now restore back to a time before this table was altered, as in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Due to a ycqlsh caching issue, to check the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
 
 1. Verify that the salary column is back.
 
@@ -356,7 +356,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 1. Now restore back to a time before this index was created.
 
-1. Due to a ycqlsh caching issue, to check the effect of this change, you will need to drop out of your current ycqlsh session and log back in.
+1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
 
 1. Verify that the index is gone.
 

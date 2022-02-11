@@ -29,15 +29,15 @@ showAsideToc: true
   </li>
 </ul>
 
-## Restore the schema
+## Restore a schema
 
-To restore the schema, run the following command:
+To restore a schema, run the following command:
 
 ```sh
 $ ycqlsh -e "source 'schema.cql'"
 ```
 
-### Restoring data from a backup
+## Restore data from a backup
 
 To restore data from a backup, run the following command.
 
@@ -49,17 +49,19 @@ You can restore data from a backup that has a subset of columns as well.
 
 ## Options
 
-- Connecting to a remote host and port
+### Connect to a remote host and port
 
 The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
 
 ```sh
-cqlsh -e <command> <host> [<port>]
+$ ycqlsh -e <command> <host> [<port>]
 ```
 
-- Copy options
+### Copy options
 
-The syntax to specify options in the `COPY FROM` command is shown below.
+The `COPY FROM` command provides a number of options to help perform a restore.
+
+The syntax to specify options when using `COPY FROM` is shown below.
 
 ```sql
 COPY table_name [( column_list )]
@@ -67,21 +69,23 @@ FROM 'file_name'[, 'file2_name', ...] | STDIN
 [WITH option = 'value' [AND ...]]
 ```
 
-There are a number of useful options in the `COPY FROM` command used to perform the backup. Some of these are outlined below.
+The following table outlines some of the more commonly used options.
 
-| Option  | Description |
-| --------------- | ---------------- |
-| DELIMITER | Character used to separate fields, default value is `,`.  |
-| HEADER    | Boolean value (`true` or `false`). If true, inserts the column names in the first row of data on exports. Default value is `false`. |
-| CHUNKSIZE | The chunk size for each insert. Default value is `1000` |
-| INGESTRATE | Desired ingest rate in rows per second. Must be greater than the chunk size. Default value is `100000` |
+| Option  | Description | Default |
+| :--------------- | :---------------- | :---------------- |
+| DELIMITER | Character used to separate fields. | `,` (comma) |
+| HEADER    | Boolean value (`true` or `false`). If true, the first row of data contains column names. | false |
+| CHUNKSIZE | The chunk size for each insert. | 1000 |
+| INGESTRATE | Desired ingest rate in rows per second. Must be greater than CHUNKSIZE. | 100000 |
 
 ## Example
 
-Let us restore the backup you had performed in the [example section of backing up data](/manage/backup-restore/backing-up-data/#example), 
-where you had walked through how to create the `myapp_schema.cql` schema backup and the `myapp_data.csv` data backup files. 
+This example restores the backup performed on the [Back up data](../back-up-data-ycql/#example) page, and assumes you have the following files:
 
-If you have created the keyspace and the table with the data, remember to drop them using cqlsh. You can drop the table by running the following query:
+- `myapp_schema.cql` schema backup
+- `myapp_data.csv` data backup
+
+First, connect to the cluster using `ycqlsh` and drop the table with the data and the keyspace as follows:
 
 ```sql
 ycqlsh> DROP TABLE myapp.stock_market;
@@ -95,13 +99,7 @@ ycqlsh> DROP KEYSPACE myapp;
 
 ### Restore the table schema
 
-You can import the schema from the `myapp_schema.cql` schema backup file by running the following:
-
-```sh
-$ ycqlsh -f myapp_schema.cql
-```
-
-The schema backup file `myapp_schema.cql` should look as show below:
+The schema backup file `myapp_schema.cql` should appear as follows:
 
 ```sh
 $ cat myapp_schema.cql
@@ -119,7 +117,13 @@ CREATE TABLE myapp.stock_market (
     AND default_time_to_live = 0;
 ```
 
-You can verify that the table was created by connecting to the cluster using `ycqlsh` and running the following :
+To import the schema, run the following:
+
+```sh
+$ ./bin/ycqlsh -f myapp_schema.cql
+```
+
+You can verify that the table was created by connecting to the cluster using `ycqlsh` and running the following:
 
 ```sql
 ycqlsh> DESC myapp.stock_market;
@@ -137,13 +141,7 @@ CREATE TABLE myapp.stock_market (
 
 ### Restore the data
 
-You can restore the data from the `myapp_data.csv` data backup file as follows:
-
-```sh
-$ ycqlsh -e "COPY myapp.stock_market FROM 'myapp_data.csv' WITH HEADER = TRUE ;"
-```
-
-The data backup file `myapp_data.csv` should look as follows:
+The data backup file `myapp_data.csv` should appear as follows:
 
 ```sh
 $ cat myapp_data.csv
@@ -159,8 +157,15 @@ GOOG,2017-10-26 09:00:00,972.56
 GOOG,2017-10-26 10:00:00,971.90997
 ```
 
-Note that the procedure to import data from a partial backup is identical. You can verify that the data has been restored by connecting 
-to the cluster using `ycqlsh` and running the following query:
+To restore the data, do the following:
+
+```sh
+$ ./bin/ycqlsh -e "COPY myapp.stock_market FROM 'myapp_data.csv' WITH HEADER = TRUE ;"
+```
+
+The procedure to import data from a partial backup is identical.
+
+To verify that the data has been restored, connect to the cluster using `ycqlsh` and run the following query:
 
 ```sql
 ycqlsh> SELECT * FROM myapp.stock_market;
@@ -178,3 +183,7 @@ ycqlsh> SELECT * FROM myapp.stock_market;
 
 (6 rows)
 ```
+
+## See also
+
+[Back up data in YCQL](../back-up-data-ycql/)
