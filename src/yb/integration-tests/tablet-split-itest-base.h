@@ -180,12 +180,6 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<int> NumPostSplitTabletPeersFullyCompacted();
 
-  // Returns the bytes read at the RocksDB layer by each split child tablet.
-  Result<uint64_t> GetActiveTabletsBytesRead();
-
-  // Returns the bytes written at the RocksDB layer by the split parent tablet.
-  Result<uint64_t> GetInactiveTabletsBytesWritten();
-
   // Returns the smallest sst file size among all replicas for a given tablet id
   Result<uint64_t> GetMinSstFileSizeAmongAllReplicas(const std::string& tablet_id);
 

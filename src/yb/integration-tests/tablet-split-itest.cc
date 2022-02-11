@@ -114,6 +114,8 @@ DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_bool(TEST_pause_tserver_get_split_key);
 DECLARE_bool(TEST_reject_delete_not_serving_tablet_rpc);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int64(db_block_cache_size_bytes);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -185,33 +187,77 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
   ASSERT_OK(CheckRowsCount(kNumRows));
 }
 
-TEST_F(TabletSplitITest, TestInitiatesCompactionAfterSplit) {
+class TabletSplitNoBlockCacheITest : public TabletSplitITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = -2;
+    TabletSplitITest::SetUp();
+  }
+};
+
+TEST_F_EX(TabletSplitITest, TestInitiatesCompactionAfterSplit, TabletSplitNoBlockCacheITest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
   constexpr auto kNumRows = kDefaultNumRows;
+  constexpr auto kNumPostSplitTablets = 2;
 
   CreateSingleTablet();
-
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
 
   ASSERT_OK(SplitTabletAndValidate(split_hash_code, kNumRows));
-
   ASSERT_OK(LoggedWaitFor(
-      [this] {
-        const auto count = NumPostSplitTabletPeersFullyCompacted();
-        constexpr auto kNumPostSplitTablets = 2;
-        if (count.ok()) {
-          return *count >= kNumPostSplitTablets * FLAGS_replication_factor;
-        }
-        LOG(WARNING) << count.status();
-        return false;
+      [this]() -> Result<bool> {
+        const auto count = VERIFY_RESULT(NumPostSplitTabletPeersFullyCompacted());
+        return count >= kNumPostSplitTablets * ANNOTATE_UNPROTECTED_READ(FLAGS_replication_factor);
       },
       15s * kTimeMultiplier, "Waiting for post-split tablets to be fully compacted..."));
 
-  auto pre_split_bytes_written = ASSERT_RESULT(GetInactiveTabletsBytesWritten());
-  auto post_split_bytes_read = ASSERT_RESULT((GetActiveTabletsBytesRead()));
+  // Get the sum of compaction bytes read by each child tablet replica grouped by peer uuid
+  auto replicas = ListTableActiveTabletPeers(cluster_.get(), ASSERT_RESULT(GetTestTableId()));
+  ASSERT_EQ(replicas.size(),
+            kNumPostSplitTablets * ANNOTATE_UNPROTECTED_READ(FLAGS_replication_factor));
+  std::unordered_map<std::string, uint64_t> child_replicas_bytes_read;
+  for (const auto& replica : replicas) {
+    auto replica_bytes = replica->tablet()->regulardb_statistics()->getTickerCount(
+         rocksdb::Tickers::COMPACT_READ_BYTES);
+    ASSERT_GT(replica_bytes, 0) << "Expected replica's read bytes to be greater than zero.";
+    child_replicas_bytes_read[replica->permanent_uuid()] += replica_bytes;
+  }
+
+  // Get parent tablet's bytes written and also check value is the same for all replicas
+  replicas = ASSERT_RESULT(ListSplitCompleteTabletPeers());
+  ASSERT_EQ(replicas.size(), ANNOTATE_UNPROTECTED_READ(FLAGS_replication_factor));
+  uint64_t pre_split_sst_files_size = 0;
+  for (const auto& replica : replicas) {
+    auto replica_bytes = replica->tablet()->GetCurrentVersionSstFilesSize();
+    ASSERT_GT(replica_bytes, 0) << "Expected replica's SST file size to be greater than zero.";
+    if (pre_split_sst_files_size == 0) {
+      pre_split_sst_files_size = replica_bytes;
+    } else {
+      ASSERT_EQ(replica_bytes, pre_split_sst_files_size)
+          << "Expected the number of SST files size at each replica to be the same.";
+    }
+  }
+
   // Make sure that during child tablets compaction we don't read the same row twice, in other words
-  // we don't process parent tablet rows that are not served by child tablet.
-  ASSERT_GE(pre_split_bytes_written, post_split_bytes_read);
+  // we don't process parent tablet rows that are not served by child tablet. A specific scaling
+  // factor is used to measure relation between child replicas bytes read and parent SST files
+  // due to unpredictable space overhead for reading files and SST files sturcture after the split.
+  constexpr double kScalingFactor = 1.05;
+  const double child_replicas_bytes_read_upper_bound = pre_split_sst_files_size * kScalingFactor;
+  uint64_t post_split_bytes_read = 0;
+  for (const auto& replica_stat : child_replicas_bytes_read) {
+    if (post_split_bytes_read == 0) {
+      post_split_bytes_read = replica_stat.second;
+    } else {
+      ASSERT_EQ(replica_stat.second, post_split_bytes_read);
+    }
+    // There are two ways to resolve a failure at the point if happens. The first one is to increase
+    // the value of kScalingFactor but this approach is not very accurate. The second way is to
+    // use rocksdb::EventListener to retrieve CompactionJobInfo.info.stats.num_input_records and
+    // to measure it with the number of records in regular DB via TableProperties::num_entries,
+    // see VerifyTableProperties() for an example.
+    ASSERT_LE(static_cast<double>(post_split_bytes_read), child_replicas_bytes_read_upper_bound);
+  }
 }
 
 // Test for https://github.com/yugabyte/yugabyte-db/issues/8295.
@@ -531,11 +577,8 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
 
   const auto test_table_id = ASSERT_RESULT(GetTestTableId());
 
-  std::vector<tablet::TabletPeerPtr> peers;
-  ASSERT_OK(LoggedWaitFor([&] {
-    peers = ListTableActiveTabletLeadersPeers(cluster_.get(), test_table_id);
-    return peers.size() == kNumTablets;
-  }, 30s * kTimeMultiplier, "Waiting for leaders ..."));
+  auto peers = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), test_table_id, kNumTablets));
 
   LOG(INFO) << "Starting workload ...";
   workload.Start();

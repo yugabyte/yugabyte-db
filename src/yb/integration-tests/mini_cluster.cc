@@ -857,6 +857,20 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
   return result;
 }
 
+Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
+    MiniCluster* cluster, const TableId& table_id,
+    const size_t num_active_leaders, const MonoDelta timeout) {
+  SCHECK_NOTNULL(cluster);
+
+  std::vector<tablet::TabletPeerPtr> active_leaders_peers;
+  RETURN_NOT_OK(LoggedWaitFor([&] {
+    active_leaders_peers = ListTableActiveTabletLeadersPeers(cluster, table_id);
+    LOG(INFO) << "active_leader_peers.size(): " << active_leaders_peers.size();
+    return active_leaders_peers.size() == num_active_leaders;
+  }, timeout, "Waiting for leaders ..."));
+  return active_leaders_peers;
+}
+
 Status WaitUntilTabletHasLeader(
     MiniCluster* cluster, const string& tablet_id, MonoTime deadline) {
   return Wait([cluster, &tablet_id] {
