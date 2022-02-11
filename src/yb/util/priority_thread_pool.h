@@ -22,8 +22,19 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/status.h"
+#include "yb/util/metrics.h"
 
 namespace yb {
+
+class MetricEntity;
+
+struct CompactionInfo {
+  uint64_t file_count;
+  uint64_t byte_count;
+};
+
+const CompactionInfo kNoCompactionInfo = {uint64_t(0), uint64_t(0)};
+
 
 // PriorityThreadPoolSuspender is provided to task ran by thread pool, task could use it to check
 // whether is should be preempted in favor of another task with higher priority.
@@ -49,6 +60,12 @@ class PriorityThreadPoolTask {
 
   virtual std::string ToString() const = 0;
 
+  // For compaction tasks, returns the number of files and bytes that the task is compacting.
+  // For non-compaction tasks, returns a value of 0 for each.
+  virtual CompactionInfo GetFileAndByteInfoIfCompaction() const {
+    return kNoCompactionInfo;
+  }
+
   size_t SerialNo() const {
     return serial_no_;
   }
@@ -60,7 +77,8 @@ class PriorityThreadPoolTask {
 // Tasks submitted to this pool have assigned priority and are picked from queue using it.
 class PriorityThreadPool {
  public:
-  explicit PriorityThreadPool(size_t max_running_tasks);
+  explicit PriorityThreadPool(size_t max_running_tasks,
+    const scoped_refptr<MetricEntity>& metric_entity = nullptr);
   ~PriorityThreadPool();
 
   // Submit task to the pool.
