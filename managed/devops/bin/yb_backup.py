@@ -898,7 +898,9 @@ class YBBackup:
 
                 subprocess_result = str(subprocess.check_output(
                                          args, stderr=subprocess.STDOUT,
-                                         env=proc_env, **kwargs).decode('utf-8', errors='replace'))
+                                         env=proc_env, **kwargs).decode('utf-8', errors='replace')
+                                                                .encode("ascii", "ignore")
+                                                                .decode("ascii"))
 
                 if self.args.verbose:
                     logging.info(
@@ -907,7 +909,9 @@ class YBBackup:
                 return subprocess_result
             except subprocess.CalledProcessError as e:
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace'))))
+                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace')
+                                                          .encode("ascii", "ignore")
+                                                          .decode("ascii"))))
                 self.sleep_or_raise(num_retry, timeout, e)
             except Exception as ex:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
