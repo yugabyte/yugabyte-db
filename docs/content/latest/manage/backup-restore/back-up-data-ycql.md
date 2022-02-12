@@ -29,9 +29,11 @@ showAsideToc: true
   </li>
 </ul>
 
-## Schema backup
+To back up data, use [**ycqlsh**](../../../admin/ycqlsh/) with the [DESCRIBE](../../../admin/ycqlsh/#describe) and [COPY TO](../../../admin/ycqlsh/#copy-to) commands.
 
-You perform schema backups using the `DESC` command.
+## Schema backup using DESCRIBE
+
+You perform schema backups using the `DESCRIBE` command, which can be shortened to `DESC`.
 
 ### Back up the schema for one keyspace
 
@@ -49,39 +51,11 @@ To back up the schema for all tables across all keyspaces, run the following com
 $ ycqlsh -e "DESC SCHEMA" > schema.cql
 ```
 
-## Data backup
+## Data backup using COPY TO
 
 Use the `COPY TO` command to export the data from a table in CSV (comma separated value) format to a specified output file. `COPY TO` writes each row in the table to a separate line in the file, with column values separated by the delimiter.
 
-### Back up all columns of a table
-
-All columns of the table are exported by default.
-
-```sh
-cqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
-```
-
-### Back up specific columns of a table
-
-To back up selected columns of the table, specify the column names in a list.
-
-```sh
-ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
-```
-
-## Options
-
-### Connect to a specific remote host and port
-
-The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
-
-```sh
-ycqlsh -e <command> <host> [<port>]
-```
-
-### Copy options
-
-The `COPY TO` command provides a number of options to help perform backups.
+`COPY TO` provides a number of options to help perform backups.
 
 The syntax to specify options when using `COPY TO` is shown below.
 
@@ -101,6 +75,30 @@ The following table outlines some of the more commonly used options.
 | PAGETIMEOUT | Page timeout for fetching results. | 10 |
 | MAXREQUESTS | Maximum number of requests each worker can process in parallel. | 6 |
 | MAXOUTPUTSIZE | Maximum size of the output file, measured in number of lines. When set, the output file is split into segments when the value is exceeded. Use `-1` for no maximum. | -1 |
+
+### Back up all columns of a table
+
+All columns of the table are exported by default.
+
+```sh
+cqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
+```
+
+### Back up specific columns of a table
+
+To back up selected columns of the table, specify the column names in a list.
+
+```sh
+ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
+```
+
+## Connect to a remote host and port
+
+The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
+
+```sh
+ycqlsh -e <command> <host> [<port>]
+```
 
 ## Example
 

@@ -29,37 +29,21 @@ showAsideToc: true
   </li>
 </ul>
 
-## Restore a schema
+To restore data, use [**ycqlsh**](../../../admin/ycqlsh/) with the [SOURCE](../../../admin/ycqlsh/#source) and [COPY FROM](../../../admin/ycqlsh/#copy-from) commands.
+
+## Schema restore using SOURCE
 
 To restore a schema, run the following command:
 
 ```sh
-$ ycqlsh -e "source 'schema.cql'"
+$ ycqlsh -e "SOURCE 'schema.cql'"
 ```
 
-## Restore data from a backup
+## Data restore using COPY FROM
 
-To restore data from a backup, run the following command.
+Use the `COPY FROM` command to restore the data from a file in CSV (comma separated value) format. `COPY FROM` copies each line in the file to a separate row in the table, with column values separated by the delimiter.
 
-```sh
-$ ycqlsh -e "COPY <keyspace name>.<table name> FROM 'data.csv' WITH HEADER = TRUE ;"
-```
-
-You can restore data from a backup that has a subset of columns as well.
-
-## Options
-
-### Connect to a remote host and port
-
-The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
-
-```sh
-$ ycqlsh -e <command> <host> [<port>]
-```
-
-### Copy options
-
-The `COPY FROM` command provides a number of options to help perform a restore.
+`COPY FROM` provides a number of options to help perform a restore.
 
 The syntax to specify options when using `COPY FROM` is shown below.
 
@@ -77,6 +61,32 @@ The following table outlines some of the more commonly used options.
 | HEADER    | Boolean value (`true` or `false`). If true, the first row of data contains column names. | false |
 | CHUNKSIZE | The chunk size for each insert. | 1000 |
 | INGESTRATE | Desired ingest rate in rows per second. Must be greater than CHUNKSIZE. | 100000 |
+
+### Restore all the columns of a table
+
+To restore data from a backup, run the following command.
+
+```sh
+$ ycqlsh -e "COPY <keyspace name>.<table name> FROM 'data.csv' WITH HEADER = TRUE ;"
+```
+
+You can restore data from a backup that has a subset of columns as well.
+
+### Restore specific columns of a table
+
+To restore selected columns of the table, specify the column names in a list.
+
+```sh
+$ ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) FROM 'data.csv' WITH HEADER = TRUE;"
+```
+
+## Connect to a remote host and port
+
+The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
+
+```sh
+$ ycqlsh -e <command> <host> [<port>]
+```
 
 ## Example
 
