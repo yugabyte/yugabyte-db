@@ -58,7 +58,7 @@ Use the `COPY TO` command to export the data from a table in CSV (comma separate
 All columns of the table are exported by default.
 
 ```sh
-cqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
+$ ycqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
 ```
 
 ### Back up specific columns of a table
@@ -66,7 +66,7 @@ cqlsh -e "COPY <keyspace>.<table> TO 'data.csv' WITH HEADER = TRUE;"
 To back up selected columns of the table, specify the column names in a list.
 
 ```sh
-ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
+$ ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'data.csv' WITH HEADER = TRUE;"
 ```
 
 ## Options
@@ -76,7 +76,7 @@ ycqlsh -e "COPY <keyspace>.<table> (<column 1 name>, <column 2 name>, ...) TO 'd
 The default host is `127.0.0.1` and the default port is `9042`. You can override these values as shown below.
 
 ```sh
-ycqlsh -e <command> <host> [<port>]
+$ ycqlsh -e <command> <host> [<port>]
 ```
 
 ### Copy options

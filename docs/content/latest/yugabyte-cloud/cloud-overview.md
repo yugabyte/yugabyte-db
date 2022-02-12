@@ -8,6 +8,7 @@ type: page
 section: YUGABYTE CLOUD
 aliases:
   - /latest/yugabyte-cloud/
+  - /latest/deploy/yugabyte-cloud/
 menu:
   latest:
     identifier: cloud-overview
