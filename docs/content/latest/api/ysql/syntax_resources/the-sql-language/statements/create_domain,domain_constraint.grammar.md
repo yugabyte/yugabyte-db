@@ -1,4 +1,4 @@
-```
+```ebnf
 create_domain ::= CREATE DOMAIN name [ AS ] data_type 
                   [ DEFAULT expression ] 
                   [ [ domain_constraint [ ... ] ] ]
