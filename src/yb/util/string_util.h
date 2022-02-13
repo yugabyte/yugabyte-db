@@ -184,6 +184,13 @@ inline void EnlargeBufferIfNeeded(std::string* buffer, const size_t new_capacity
   buffer->reserve(new_capacity);
 }
 
+// Takes a vector of strings and treats each element as a list of items separated by the given set
+// of separator characters (only comma by default). Splits each string using these separators and
+// returns the combined list of all items.
+std::vector<std::string> SplitAndFlatten(
+    const std::vector<std::string>& input,
+    const char* separators = ",");
+
 }  // namespace yb
 
 namespace rocksdb {

@@ -55,7 +55,9 @@ std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary = Incl
 
 void DocDBDebugDumpToContainer(DocDB docdb, std::unordered_set<std::string>* out);
 
-void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular);
+void DumpRocksDBToLog(
+    rocksdb::DB* rocksdb, StorageDbType db_type = StorageDbType::kRegular,
+    const std::string& log_prefix = std::string());
 
 }  // namespace docdb
 }  // namespace yb
