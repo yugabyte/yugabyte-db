@@ -556,6 +556,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void TEST_DocDBDumpToContainer(
       IncludeIntents include_intents, std::unordered_set<std::string>* out);
 
+  // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
+  void TEST_DocDBDumpToLog(IncludeIntents include_intents);
+
   size_t TEST_CountRegularDBRecords();
 
   CHECKED_STATUS CreateReadIntents(
