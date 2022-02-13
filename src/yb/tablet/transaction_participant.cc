@@ -47,6 +47,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"

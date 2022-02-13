@@ -70,6 +70,10 @@ class Value {
 
   const DocHybridTime& intent_doc_ht() const { return intent_doc_ht_; }
 
+  void set_intent_doc_ht(DocHybridTime intent_doc_ht) {
+    intent_doc_ht_ = intent_doc_ht;
+  }
+
   void ClearIntentDocHt();
 
   // Consume the merge_flags portion of the slice if it exists and return it.

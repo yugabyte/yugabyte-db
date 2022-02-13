@@ -3173,6 +3173,19 @@ void Tablet::TEST_DocDBDumpToContainer(
   return docdb::DocDBDebugDumpToContainer(doc_db(), out);
 }
 
+void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
+  if (!regular_db_) {
+    LOG_WITH_PREFIX(INFO) << "No RocksDB to dump";
+    return;
+  }
+
+  docdb::DumpRocksDBToLog(regular_db_.get(), StorageDbType::kRegular, LogPrefix());
+
+  if (include_intents && intents_db_) {
+    docdb::DumpRocksDBToLog(intents_db_.get(), StorageDbType::kIntents, LogPrefix());
+  }
+}
+
 size_t Tablet::TEST_CountRegularDBRecords() {
   if (!regular_db_) return 0;
   rocksdb::ReadOptions read_opts;

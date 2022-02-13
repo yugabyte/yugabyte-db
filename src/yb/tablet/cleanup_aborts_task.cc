@@ -17,6 +17,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -43,6 +44,7 @@ void CleanupAbortsTask::Prepare(std::shared_ptr<CleanupAbortsTask> cleanup_task)
 }
 
 void CleanupAbortsTask::Run() {
+  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: starting";
   size_t initial_number_of_transactions = transactions_to_cleanup_.size();
 
   FilterTransactions();
@@ -59,12 +61,15 @@ void CleanupAbortsTask::Run() {
   // The calls to RequestStatusAt would have updated the local clock of the participant.
   // Wait for the propagated time to reach the current hybrid time.
   const MonoDelta kMaxTotalSleep = 10s;
+  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask waiting for applier safe time to reach " << now;
   auto safetime = applier_->ApplierSafeTime(now, CoarseMonoClock::now() + kMaxTotalSleep);
   if (!safetime.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Tablet application did not catch up in " << kMaxTotalSleep << ": "
                              << safetime.status();
     return;
   }
+  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: applier safe time reached " << *safetime
+                      << " (was waiting for " << now << ")";
 
   for (const TransactionId& transaction_id : transactions_to_cleanup_) {
     // If transaction is committed, no action required

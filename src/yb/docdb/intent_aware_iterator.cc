@@ -262,7 +262,9 @@ IntentAwareIterator::IntentAwareIterator(
                                                   nullptr /* file_filter */,
                                                   &intent_upperbound_);
     } else {
-      VLOG(4) << "No releavant transactions running";
+      VLOG(4) << "No relevant transactions running: "
+              << "min_running_ht=" << min_running_ht << ", "
+              << "global_limit=" << read_time.global_limit;
     }
   }
   VTRACE(2, "Done Checking MinRunningTime");

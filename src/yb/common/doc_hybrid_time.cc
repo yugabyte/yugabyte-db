@@ -17,6 +17,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"

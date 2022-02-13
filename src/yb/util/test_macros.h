@@ -41,6 +41,7 @@
 #include <gtest/gtest.h> // For SUCCEED/FAIL
 
 #include "yb/util/tostring.h"
+#include "yb/gutil/stl_util.h"  // For VectorToSet
 
 namespace yb {
 namespace util {
@@ -260,8 +261,8 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   do { \
     auto&& expected_vector_computed = (expected_vector); \
     auto&& actual_vector_computed = (actual_vector); \
-    auto expected_set = VectorToSet(expected_vector_computed); \
-    auto actual_set = VectorToSet(actual_vector_computed); \
+    auto expected_set = ::yb::VectorToSet(expected_vector_computed); \
+    auto actual_set = ::yb::VectorToSet(actual_vector_computed); \
     GTEST_ASSERT_( \
         ::testing::internal::EqHelper<GTEST_IS_NULL_LITERAL_(expected_vector)>::Compare( \
             BOOST_PP_STRINGIZE(expected_vector), \

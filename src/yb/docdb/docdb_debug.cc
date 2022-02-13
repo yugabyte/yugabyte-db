@@ -123,12 +123,12 @@ void DocDBDebugDumpToContainer(DocDB docdb, std::unordered_set<std::string>* out
   }
 }
 
-void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type) {
+void DumpRocksDBToLog(rocksdb::DB* rocksdb, StorageDbType db_type, const std::string& log_prefix) {
   std::vector<std::string> lines;
   DocDBDebugDumpToContainer(rocksdb, &lines, db_type);
-  LOG(INFO) << AsString(db_type) << " DB dump:";
+  LOG(INFO) << log_prefix << AsString(db_type) << " DB dump:";
   for (const auto& line : lines) {
-    LOG(INFO) << "  " << line;
+    LOG(INFO) << log_prefix << "  " << line;
   }
 }
 
