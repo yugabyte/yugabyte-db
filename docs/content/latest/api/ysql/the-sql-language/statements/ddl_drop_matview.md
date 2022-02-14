@@ -5,10 +5,10 @@ linkTitle: DROP MATERIALIZED VIEW
 description: Use the DROP MATERIALIZED VIEW statement to drop a materialized view.
 menu:
   latest:
-    identifier: ddl_create_matview
+    identifier: ddl_drop_matview
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/ddl_create_matview/
+  - /latest/api/ysql/commands/ddl_drop_matview/
 isTocNested: true
 showAsideToc: true
 ---
@@ -78,4 +78,3 @@ yugabyte=# DROP MATERIALIZED VIEW m1 CASCADE; -- succeeds
 
 - [`CREATE MATERIALIZED VIEW`](../ddl_create_matview)
 - [`REFRESH MATERIALIZED VIEW`](../refresh_matview)
-- [postgresql-docs-drop-matview](https://www.postgresql.org/docs/11/sql-dropmaterializedview.html)

@@ -88,4 +88,3 @@ yugabyte=# SELECT * FROM m1;
 
 - [`REFRESH MATERIALIZED VIEW`](../refresh_matview)
 - [`DROP MATERIALIZED VIEW`](../ddl_drop_matview)
-- [postgresql-docs-create-matview](https://www.postgresql.org/docs/11/sql-creatematerializedview.html)
