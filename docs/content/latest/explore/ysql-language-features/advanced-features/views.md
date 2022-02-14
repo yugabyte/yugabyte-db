@@ -163,7 +163,7 @@ DELETE FROM employees_view
   WHERE employee_no = 1227;
 ```
 
-### Materialized Views
+## Materialized Views
 
 Materialized views are relations that persist the results of a query. They can be created using the `CREATE MATERIALIZED VIEW` comamnd, and their contents can be updated using the `REFRESH MATERIALIZED VIEW` command.
 
