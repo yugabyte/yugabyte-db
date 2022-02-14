@@ -22,3 +22,8 @@ Arctype is a database client with a focus on speed and design. Arctype is free t
 
 
 ## Before you begin
+
+Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, create a local cluster in less than five minutes following the steps in [Quick Start](../../../quick-start/install). You also need to install Arctype client on your computer. Arctype clients are available for Windows, Linux and Mac that can be downloaded from [Arctype](https://arctype.com/) website.
+
+## Create a database connection
+
