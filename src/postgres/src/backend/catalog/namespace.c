@@ -4137,11 +4137,17 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectId = tempNamespaceId;
 	object.objectSubId = 0;
 
+	if (IsYugaByteEnabled())
+		YBIncrementDdlNestingLevel();
 	performDeletion(&object, DROP_CASCADE,
 					PERFORM_DELETION_INTERNAL |
 					PERFORM_DELETION_QUIETLY |
 					PERFORM_DELETION_SKIP_ORIGINAL |
 					PERFORM_DELETION_SKIP_EXTENSIONS);
+	if (IsYugaByteEnabled())
+		YBDecrementDdlNestingLevel(true /* success */,
+								   false /* is_catalog_version_increment */,
+								   false /* is_breaking_catalog_change */);
 }
 
 /*
