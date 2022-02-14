@@ -7,6 +7,7 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
+import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -64,7 +65,8 @@ public class AppInit {
       Scheduler scheduler,
       CallHome callHome,
       SettableRuntimeConfigFactory sConfigFactory,
-      Config config)
+      Config config,
+      SupportBundleCleanup supportBundleCleanup)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
@@ -147,6 +149,9 @@ public class AppInit {
 
       // Schedule garbage collection of backups
       backupGC.start();
+
+      // Cleanup old support bundles
+      supportBundleCleanup.start();
 
       platformMetricsProcessor.start();
       alertConfigurationWriter.start();

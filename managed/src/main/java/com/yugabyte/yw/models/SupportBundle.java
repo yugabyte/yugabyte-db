@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -19,6 +20,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import java.util.List;
 import javax.persistence.Column;
@@ -121,6 +123,11 @@ public class SupportBundle extends Model {
     return find.query().where().eq("bundle_uuid", bundleUUID).findOne();
   }
 
+  public static List<SupportBundle> getAll() {
+    List<SupportBundle> supportBundleList = find.query().findList();
+    return supportBundleList;
+  }
+
   public static InputStream getAsInputStream(UUID bundleUUID) {
     SupportBundle supportBundle = getOrBadRequest(bundleUUID);
     Path bundlePath = supportBundle.getPathObject();
@@ -142,5 +149,19 @@ public class SupportBundle extends Model {
     List<SupportBundle> supportBundleList =
         find.query().where().eq("scope_uuid", universeUUID).findList();
     return supportBundleList;
+  }
+
+  public static void delete(UUID bundleUUID) {
+    SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
+    if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
+      throw new PlatformServiceException(BAD_REQUEST, "The certificate is in running state.");
+    } else {
+      if (supportBundle.delete()) {
+        LOG.info("Successfully deleted the db entry for support bundle: " + bundleUUID.toString());
+      } else {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Unable to delete the Support Bundle");
+      }
+    }
   }
 }

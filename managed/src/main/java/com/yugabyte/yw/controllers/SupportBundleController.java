@@ -8,8 +8,10 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
@@ -21,12 +23,14 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.File;
 import java.nio.file.Path;
 import java.util.UUID;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.commons.io.FileUtils;
 import play.mvc.Result;
 
 @Api(
@@ -112,7 +116,25 @@ public class SupportBundleController extends AuthenticatedController {
       response = SupportBundle.class,
       nickname = "getSupportBundle")
   public Result get(UUID customerUUID, UUID universeUUID, UUID supportBundleUUID) {
-    SupportBundle supportBundle = SupportBundle.get(supportBundleUUID);
+    SupportBundle supportBundle = SupportBundle.getOrBadRequest(supportBundleUUID);
     return PlatformResults.withData(supportBundle);
+  }
+
+  @ApiOperation(
+      value = "Delete a support bundle",
+      response = YBPSuccess.class,
+      nickname = "deleteSupportBundle")
+  public Result delete(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
+    SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
+
+    // Deletes row from the support_bundle db table
+    SupportBundle.delete(bundleUUID);
+
+    // Delete the actual archive file
+    SupportBundleUtil.deleteFile(supportBundle.getPathObject());
+
+    auditService().createAuditEntry(ctx(), request());
+    log.info("Successfully deleted the support bundle: " + bundleUUID.toString());
+    return YBPSuccess.empty();
   }
 }
