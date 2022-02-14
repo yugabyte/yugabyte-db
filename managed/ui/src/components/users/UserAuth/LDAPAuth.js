@@ -67,8 +67,8 @@ export const LDAPAuth = (props) => {
       ...values,
       ldap_url: ldap_url ?? '',
       ldap_port: ldap_port ?? '',
-      enable_ldaps: security === 'enable_ldaps',
-      enable_ldap_start_tls: security === 'enable_ldap_start_tls'
+      enable_ldaps: `${security === 'enable_ldaps'}`,
+      enable_ldap_start_tls: `${security === 'enable_ldap_start_tls'}`
     };
 
     delete transformedData.ldap_security;
@@ -165,7 +165,7 @@ export const LDAPAuth = (props) => {
     showDialog(false);
     await setRunTimeConfig({
       key: `${LDAP_PATH}.use_ldap`,
-      value: false
+      value: 'false'
     });
     toast.warn(`LDAP authentication is disabled`, TOAST_OPTIONS);
   };
