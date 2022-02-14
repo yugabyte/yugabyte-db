@@ -86,7 +86,6 @@ yugabyte=# SELECT * FROM m1;
  1
 (1 row)
 ```
-
 ## Limitations
 
 - Materialized views must be refreshed manually using the `REFRESH` command. Automatic refreshes are not supported.
