@@ -16,3 +16,6 @@ showAsideToc: true
 
 This document describes how to query and visualize data in YugabyteDB using [Arctype](https://arctype.com/), a user-friendly collaborative SQL client.
 
+Arctype is a database client with a focus on speed and design. Arctype is free to use and cross platform. It offers one click query sharing for teams, and users can quickly visualize query output and even combine multiple charts and tables into a simple and intuitive dashboard.
+
+## Before you begin
