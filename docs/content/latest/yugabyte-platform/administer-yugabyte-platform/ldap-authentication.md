@@ -38,7 +38,7 @@ You can use the Yugabyte Platform UI console to enable LDAP authentication for Y
 
 ## Use the Yugabyte Platform API
 
-To enable LDAP authentication for Yugabyte Platform login, you need to perform a number of runtime configurations to specify the following:
+To enable LDAP authentication for Yugabyte Platform login, you perform a number of runtime configurations to specify the following:
 
 - LDAP usage `yb.security.ldap.use_ldap` must be set to `true`, as follows:
 
@@ -100,7 +100,7 @@ To enable LDAP authentication for Yugabyte Platform login, you need to perform a
 
   <br>Note that Yugabyte Platform combines `ldap_basedn` and `ldap_dn_prefix` with the username provided during login to query the LDAP server. `ldap_basedn` and `ldap_dn_prefix` should be set accordingly.
 
-- The universally unique identifier (UUID) `yb.security.ldap.ldap_customeruuid`,  if you have a multi-tenant setup, as follows:
+- The universally unique identifier (UUID) `yb.security.ldap.ldap_customeruuid`, if you have a multi-tenant setup, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_customeruuid' \
@@ -113,6 +113,32 @@ To enable LDAP authentication for Yugabyte Platform login, you need to perform a
   <br>Replace `[UUID]` with the actual value.<br>
 
   If the UUID is not specified, then single-tenant is assumed by Yugabyte Platform.
+
+- SSL usage with LDAP `yb.security.ldap.enable_ldaps`, set to `true` or `false` (default), as follows:
+
+  ```shell
+  curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.enable_ldaps' \
+  --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
+  --header 'Content-Type: text/plain' \
+  --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
+  --data-raw 'true'
+  ```
+
+  <br>If the port is configured for an SSL connection, then you can enable SSL when you configure the LDAP server on Yugabyte Platform. 
+
+- TLS usage with LDAP `yb.security.ldap.enable_ldap_start_tls`, set to `true` or `false` (default), as follows:
+
+  ```shell
+  curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.enable_ldap_start_tls' \
+  --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
+  --header 'Content-Type: text/plain' \
+  --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
+  --data-raw 'true'
+  ```
+
+  <br>If the port is configured for a TLS connection, then you can enable StartTLS when you configure the LDAP server on Yugabyte Platform. 
+
+  By default, if neither `ldap.enable_ldaps` or `ldap.enable_ldap_start_tls` is enabled, the connection will be unsecured.
 
 When configured, Yugabyte Platform users are able to login by specifying the common name of the user and the password to bind to the LDAP server.
 
