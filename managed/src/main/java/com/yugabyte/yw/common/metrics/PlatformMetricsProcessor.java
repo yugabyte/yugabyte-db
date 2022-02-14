@@ -16,9 +16,7 @@ import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.filters.MetricFilter;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,7 +55,6 @@ public class PlatformMetricsProcessor {
   }
 
   public void start() {
-    metricService.initialize();
     this.actorSystem
         .scheduler()
         .schedule(
@@ -73,56 +70,30 @@ public class PlatformMetricsProcessor {
       log.info("Previous run of metrics processor is still underway");
       return;
     }
-    String errorMessage = null;
     try {
-      errorMessage = updateMetrics();
+      updateMetrics();
       cleanExpiredMetrics();
-      metricService.flushMetricsToDb();
     } catch (Exception e) {
-      errorMessage = "Error processing metrics: " + e.getMessage();
       log.error("Error processing metrics", e);
     } finally {
-      metricService.setStatusMetric(
-          buildMetricTemplate(PlatformMetrics.METRIC_PROCESSOR_STATUS), errorMessage);
+      metricService.setFailureStatusMetric(
+          buildMetricTemplate(PlatformMetrics.METRIC_PROCESSOR_STATUS));
       running.set(false);
     }
   }
 
-  private String updateMetrics() {
-    List<MetricSaveGroup> metricSaveGroups = new ArrayList<>();
-    String errorMessage = null;
+  private void updateMetrics() {
     for (MetricsProvider provider : metricsProviderList) {
       try {
-        metricSaveGroups.addAll(provider.getMetricGroups());
+        provider
+            .getMetricGroups()
+            .forEach(
+                group ->
+                    metricService.cleanAndSave(group.getMetrics(), group.getCleanMetricFilter()));
       } catch (Exception e) {
         log.error("Failed to get platform metrics from provider " + provider.getName(), e);
-        if (errorMessage == null) {
-          errorMessage =
-              "Failed to get platform metrics from provider "
-                  + provider.getName()
-                  + ": "
-                  + e.getMessage();
-        }
       }
     }
-    int metricsToSave = 0;
-    List<Metric> metrics = new ArrayList<>();
-    List<MetricFilter> toRemove = new ArrayList<>();
-    for (MetricSaveGroup metricSaveGroup : metricSaveGroups) {
-      metricsToSave += metricSaveGroup.getMetrics().size();
-      if (metricsToSave > CommonUtils.DB_OR_CHAIN_TO_WARN) {
-        metricService.cleanAndSave(metrics, toRemove);
-        metricsToSave = metricSaveGroup.getMetrics().size();
-        metrics.clear();
-        toRemove.clear();
-      }
-      metrics.addAll(metricSaveGroup.getMetrics());
-      toRemove.addAll(metricSaveGroup.getCleanMetricFilters());
-    }
-    if (!metrics.isEmpty()) {
-      metricService.cleanAndSave(metrics, toRemove);
-    }
-    return errorMessage;
   }
 
   private void cleanExpiredMetrics() {
