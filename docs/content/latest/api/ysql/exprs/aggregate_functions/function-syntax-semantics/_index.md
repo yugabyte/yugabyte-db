@@ -21,7 +21,7 @@ The aggregate functions are categorized into four classes:
 
 - [statistical aggregate functions](#statistical-aggregate-functions)
 
-- [_within-group ordered-set_ aggregate functions](#within-group-ordered-set-aggregate-functions) 
+- [_within-group ordered-set_ aggregate functions](#within-group-ordered-set-aggregate-functions)
 
 - [_within-group hypothetical-set_ aggregate functions](#within-group-hypothetical-set-aggregate-functions)
 
@@ -45,8 +45,8 @@ Arguably, `avg()` might be better classified as a statistical aggregate function
 | [`avg()`](./avg-count-max-min-sum/#avg) | Computes the arithmetic mean of a set of summable values by adding them all together and dividing by the number of values. If the set contains nulls, then these are simply ignored—both when computing the sum and when counting the number of values. |
 | [`bit_and()`](./bit-and-or-bool-and-or/#bit-and) | Returns a value that represents the outcome of the applying the two-by-two matrix `AND` rule to each alligned set of bits for the set of `NOT NULL` input values. |
 | [`bit_or()`](./bit-and-or-bool-and-or#bit-or) | Returns a value that represents the outcome of the applying the two-by-two matrix `OR` rule to each alligned set of bits for the set of `NOT NULL` input values. |
-| [`bool_and()`](./bit-and-or-bool-and-or/#bool-and) | Returns a value that represents the outcome of the applying the two-by-two matrix `AND` rule to to the set of `NOT NULL` input boolean values. |
-| [`bool_or()`](./bit-and-or-bool-and-or/#bool-or) | Returns a value that represents the outcome of the applying the two-by-two matrix `OR` rule to to the set of `NOT NULL` input boolean values. |
+| [`bool_and()`](./bit-and-or-bool-and-or/#bool-and) | Returns a value that represents the outcome of the applying the two-by-two matrix `AND` rule to the set of `NOT NULL` input boolean values. |
+| [`bool_or()`](./bit-and-or-bool-and-or/#bool-or) | Returns a value that represents the outcome of the applying the two-by-two matrix `OR` rule to the set of `NOT NULL` input boolean values. |
 | [`count()`](./avg-count-max-min-sum/#count) | Counts the number of non null values in a set. The data type of the values is of no consequence. |
 | `every()` | `every()` is a synonym for [`bool_and()`](./bit-and-or-bool-and-or/#bool-and) |
 | [`jsonb_agg()`](./array-string-jsonb-jsonb-object-agg/#jsonb-agg) | This, and `json_agg()` are described in detail the [`jsonb_agg()`](../../../datatypes/type_json/functions-operators/jsonb-agg/) section in the main [JSON](../../../datatypes/type_json/) section. |

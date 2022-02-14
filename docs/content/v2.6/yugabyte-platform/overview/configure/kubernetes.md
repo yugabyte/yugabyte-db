@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: false
 ---
 
-Select your cloud provider to see the steps for configuration of database nodes. Click on the the elements to see detailed steps.
+Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
 
 ## Configure Yugabyte Platform
 

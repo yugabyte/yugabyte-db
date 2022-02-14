@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
@@ -156,6 +157,17 @@ public class UpgradeUniverseHandler {
 
     return submitUpgradeTask(
         TaskType.CertsRotate, CustomerTask.TaskType.CertsRotate, requestParams, customer, universe);
+  }
+
+  public UUID resizeNode(ResizeNodeParams requestParams, Customer customer, Universe universe) {
+    // Verify request params
+    requestParams.verifyParams(universe);
+    // Update request params with additional metadata for upgrade task
+    requestParams.universeUUID = universe.universeUUID;
+    requestParams.expectedUniverseVersion = universe.version;
+
+    return submitUpgradeTask(
+        TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
   }
 
   public UUID toggleTls(TlsToggleParams requestParams, Customer customer, Universe universe) {

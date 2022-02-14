@@ -55,7 +55,9 @@ export default class RollingUpgradeForm extends Component {
             universeUUID
           }
         }
-      }
+      },
+      overrideIntentParams,
+      resetLocation
     } = this.props;
 
     const payload = {};
@@ -87,6 +89,11 @@ export default class RollingUpgradeForm extends Component {
         payload.upgradeOption = 'Rolling';
         break;
       }
+      case 'resizeNodesModal': {
+        payload.taskType = 'Resize_Node';
+        payload.upgradeOption = 'Rolling';
+        break;
+      }
       default:
         return;
     }
@@ -115,6 +122,14 @@ export default class RollingUpgradeForm extends Component {
     payload.clusters = [primaryCluster];
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
+    if (overrideIntentParams) {
+      if (overrideIntentParams.instanceType) {
+        primaryCluster.userIntent.instanceType = overrideIntentParams.instanceType;
+      }
+      if (overrideIntentParams.volumeSize) {
+        primaryCluster.userIntent.deviceInfo.volumeSize = overrideIntentParams.volumeSize;
+      }
+    }
 
     this.props.submitRollingUpgradeForm(payload, universeUUID).then((response) => {
       if (response.payload.status === 200) {
@@ -122,7 +137,11 @@ export default class RollingUpgradeForm extends Component {
         this.props.fetchUniverseMetadata();
         this.props.fetchCustomerTasks();
         this.props.fetchUniverseTasks(universeUUID);
-        this.resetAndClose();
+        if (resetLocation) {
+          window.location.href = `/universes/${universeUUID}`;
+        } else {
+          this.resetAndClose();
+        }
       }
     });
   };
@@ -243,51 +262,54 @@ export default class RollingUpgradeForm extends Component {
             size="large"
             onFormSubmit={submitAction}
             error={error}
-            dialogClassName="gflag-modal"
+            dialogClassName={modalVisible ? 'gflag-modal modal-fade in' : 'modal-fade'}
             showCancelButton={true}
             submitLabel="Apply Changes"
             cancelLabel="Cancel"
           >
-            <FieldArray
-              name="gFlags"
-              component={GFlagComponent}
-              dbVersion={currentVersion}
-              rerenderOnEveryChange={true}
-            />
-            <FlexContainer className="gflag-upgrade-container">
-              <FlexShrink className="gflag-upgrade--label">
-                <span>G-Flag Upgrade Options</span>
-              </FlexShrink>
-              <div className="gflag-upgrade-options">
-                {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target, i) => (
-                  <div key={target} className="row-flex">
-                    <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')} key={target}>
-                      <Field
-                        name={'upgradeOption'}
-                        type="radio"
-                        component="input"
-                        value={`${target}`}
-                      />
-                      <span className="upgrade-radio-label">{`${target}`}</span>
-                    </div>
-                    {i === 0 && (
-                      <div className="gflag-delay">
-                        <span className="vr-line">|</span>
-                        Delay Between Servers :{' '}
+            <div className="gflag-modal-body">
+              <FieldArray
+                name="gFlags"
+                component={GFlagComponent}
+                dbVersion={currentVersion}
+                rerenderOnEveryChange={true}
+                editMode={true}
+              />
+              <FlexContainer className="gflag-upgrade-container">
+                <FlexShrink className="gflag-upgrade--label">
+                  <span>G-Flag Upgrade Options</span>
+                </FlexShrink>
+                <div className="gflag-upgrade-options">
+                  {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target, i) => (
+                    <div key={target} className="row-flex">
+                      <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')} key={target}>
                         <Field
-                          name="timeDelay"
-                          type="number"
-                          component={YBInputField}
-                          isReadOnly={formValues.upgradeOption !== 'Rolling'}
+                          name={'upgradeOption'}
+                          type="radio"
+                          component="input"
+                          value={`${target}`}
                         />
-                        seconds
+                        <span className="upgrade-radio-label">{`${target}`}</span>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </FlexContainer>
-            {errorAlert}
+                      {i === 0 && (
+                        <div className="gflag-delay">
+                          <span className="vr-line">|</span>
+                          Delay Between Servers :{' '}
+                          <Field
+                            name="timeDelay"
+                            type="number"
+                            component={YBInputField}
+                            isReadOnly={formValues.upgradeOption !== 'Rolling'}
+                          />
+                          seconds
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </FlexContainer>
+              {errorAlert}
+            </div>
           </YBModal>
         );
       }
@@ -421,6 +443,30 @@ export default class RollingUpgradeForm extends Component {
                 type="number"
                 component={YBInputField}
                 label="Rolling Restart Delay Between Servers (secs)"
+              />
+            </div>
+            {errorAlert}
+          </YBModal>
+        );
+      }
+      case 'resizeNodesModal': {
+        return (
+          <YBModal
+            className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
+            visible={modalVisible}
+            formName="RollingUpgradeForm"
+            showCancelButton
+            onHide={this.resetAndClose}
+            title="Confirm Resize Nodes"
+            onFormSubmit={submitAction}
+            error={error}
+          >
+            <div className="form-right-aligned-labels rolling-upgrade-form top-10 time-delay-container">
+              <Field
+                name="timeDelay"
+                type="number"
+                component={YBInputField}
+                label="Rolling Upgrade Delay Between Servers (secs)"
               />
             </div>
             {errorAlert}

@@ -80,7 +80,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest). 
+The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest).
 
 Notice that, in this example, the `SELECT` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 
@@ -112,7 +112,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -214,7 +214,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 Again, it shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -260,7 +260,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -295,7 +295,7 @@ Though the example doesn't show this, `NULL` is not case-sensitive. But to compo
 
 **Note:** If you surrounded `NULL` within a literal for a `text[]` array, then it would be silently interpreted as an ordinary `text` value that just happens to be spelled that way.
 
-To use the literal that that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
+To use the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
 
 ```plpgsql
 \set canonical_literal '\'':result_text_typecast'\'::boolean[]'
@@ -312,7 +312,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -369,7 +369,7 @@ Notice that the three different `INSERT` statements define arrays with different
 Here is the `SELECT` result:
 
 ```
- k | ndims |                    v::text                    
+ k | ndims |                    v::text
 ---+-------+-----------------------------------------------
  1 |     1 | {1,2}
  2 |     2 | {{1,2},{3,4}}

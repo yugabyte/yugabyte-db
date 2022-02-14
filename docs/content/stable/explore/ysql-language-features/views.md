@@ -17,7 +17,7 @@ This document describes how to create, use, and manage views in YSQL.
 
 ## Overview
 
-Views allow you to present data in YugabyteDB tables by using a different variety of named queries. In essence, a view is a proxy for a complex query to which you assign a name. In YSQL, views do not store data. 
+Views allow you to present data in YugabyteDB tables by using a different variety of named queries. In essence, a view is a proxy for a complex query to which you assign a name. In YSQL, views do not store data.
 
 ## Creating Views
 
@@ -41,17 +41,17 @@ CREATE TABLE employees (
 ```
 
 ```sql
-INSERT INTO employees VALUES 
+INSERT INTO employees VALUES
   (1221, 'John Smith', '1 Main Street', 'Marketing'),
   (1222, 'Bette Davis', '2 Second Avenue', 'Sales'),
   (1223, 'Lucille Ball', '3 Third Avenue', 'Operations'),
-  (1224, 'John Zimmerman', '4 Fourth Avenue', 'Sales'); 
+  (1224, 'John Zimmerman', '4 Fourth Avenue', 'Sales');
 ```
 
 The following very simplified example creates a view based on only one table and selects two of its columns:
 
 ```sql
-CREATE VIEW employees_view AS 
+CREATE VIEW employees_view AS
   SELECT employee_no, name FROM employees;
 ```
 
@@ -72,7 +72,7 @@ employee_no | name
 1222        | Bette Davis
 ```
 
-If you create a view based on multiple tables with joins, using this view in your queries would significantly simplify the process. 
+If you create a view based on multiple tables with joins, using this view in your queries would significantly simplify the process.
 
 ## Modifying Views
 
@@ -85,7 +85,7 @@ CREATE OR REPLACE VIEW view_name AS query_definition;
 YSQL does not allow you to remove existing columns from the view (your query has to produce the same columns that were produced when you created the view), but it allows you to append more columns, as shown in the following example:
 
 ```sql
-CREATE OR REPLACE VIEW employees_view AS 
+CREATE OR REPLACE VIEW employees_view AS
   SELECT employee_no, name, department FROM employees;
 ```
 
@@ -155,7 +155,7 @@ An updatable view can contain a combination of updatable and non-updatable colum
 
 To be able to update a view, you need to have the required privilege on this view (but not necessarily on the base table).
 
-The following example shows how use the the `employees_view` to delete the row that has been added to the  `employees` table:
+The following example shows how use the `employees_view` to delete the row that has been added to the  `employees` table:
 
 ```sql
 DELETE FROM employees_view

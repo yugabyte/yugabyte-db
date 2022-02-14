@@ -56,7 +56,7 @@ pkill yb-master
 cd /home/yugabyte/softwareyb-$VER/
 ```
 
-- Start the the newer version of the yb-master process.
+- Start the newer version of the yb-master process.
 
 - Verify in `http://<any-yb-master>:7000/` that all masters are alive.
 
@@ -76,7 +76,7 @@ pkill yb-tserver
 cd /home/yugabyte/softwareyb-$VER/
 ```
 
-- Start the the newer version of the yb-tserver process.
+- Start the newer version of the yb-tserver process.
 
 - Verify in `http://<any-yb-master>:7000/tablet-servers` to see if the new YB-TServer is alive and heart beating.
 
