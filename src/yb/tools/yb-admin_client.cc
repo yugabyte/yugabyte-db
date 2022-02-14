@@ -1873,6 +1873,25 @@ Result<rapidjson::Document> ClusterAdminClient::DdlLog() {
 }
 
 Status ClusterAdminClient::UpgradeYsql() {
+  {
+    master::IsInitDbDoneRequestPB req;
+    auto res = InvokeRpc(
+        &MasterServiceProxy::IsInitDbDone, master_proxy_.get(), req);
+    if (!res.ok()) {
+      return res.status();
+    }
+    if (!res->done()) {
+      cout << "Upgrade is not needed since YSQL is disabled" << endl;
+      return Status::OK();
+    }
+    if (res->done() && res->has_error()) {
+      return STATUS_FORMAT(IllegalState,
+                           "YSQL is not ready, initdb finished with an error: $0",
+                           res->error());
+    }
+    // Otherwise, we can proceed.
+  }
+
   // Pick some alive TServer.
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
@@ -1897,10 +1916,13 @@ Status ClusterAdminClient::UpgradeYsql() {
   TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
 
   UpgradeYsqlRequestPB req;
-  const auto resp = VERIFY_RESULT(InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
-                                            &ts_admin_proxy, req));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
+  const auto resp_result = InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
+                                     &ts_admin_proxy, req);
+  if (!resp_result.ok()) {
+    return resp_result.status();
+  }
+  if (resp_result->has_error()) {
+    return StatusFromPB(resp_result->error().status());
   }
 
   cout << "YSQL successfully upgraded to the latest version" << endl;
