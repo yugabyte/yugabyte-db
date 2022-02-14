@@ -726,21 +726,24 @@ public class AlertConfigurationTest extends FakeDBApplication {
         + " is above 500 ms. Current value is 501 ms",
     "MEMORY_CONSUMPTION|Average memory usage for universe 'Test Universe'"
         + " is above 90%. Current value is 91%",
-    "HEALTH_CHECK_ERROR|Failed to perform health check for universe 'Test Universe': "
-        + "Some error occurred",
+    "HEALTH_CHECK_ERROR|Failed to perform health check for universe 'Test Universe'"
+        + " - check YB Platform logs for details or contact YB support team",
     "HEALTH_CHECK_NOTIFICATION_ERROR|Failed to perform health check notification for universe "
-        + "'Test Universe': Some error occurred",
-    "BACKUP_FAILURE|Last backup task for universe 'Test Universe' failed: " + "Some error occurred",
+        + "'Test Universe' - check Health notification settings and YB Platform logs for details "
+        + "or contact YB support team",
+    "BACKUP_FAILURE|Last backup task for universe 'Test Universe' failed"
+        + " - check backup task result for more details",
     "BACKUP_SCHEDULE_FAILURE|Last attempt to run scheduled backup for universe 'Test Universe'"
         + " failed due to other backup or universe operation is in progress.",
     "INACTIVE_CRON_NODES|1 node(s) has inactive cronjob for universe 'Test Universe'.",
-    "ALERT_QUERY_FAILED|Last alert query for customer 'Customer' failed: " + "Some error occurred",
-    "ALERT_CONFIG_WRITING_FAILED|Last alert rules sync for customer 'Customer' failed: "
-        + "Some error occurred",
+    "ALERT_QUERY_FAILED|Last alert query for customer 'Customer' failed"
+        + " - check YB Platform logs for details or contact YB support team",
+    "ALERT_CONFIG_WRITING_FAILED|Last alert rules sync for customer 'Customer' failed"
+        + " - check YB Platform logs for details or contact YB support team",
     "ALERT_NOTIFICATION_ERROR|Last attempt to send alert notifications for customer 'Customer'"
-        + " failed: Some error occurred",
+        + " failed - check YB Platform logs for details or contact YB support team",
     "ALERT_NOTIFICATION_CHANNEL_ERROR|Last attempt to send alert notifications to channel "
-        + "'Some Channel' failed: Some error occurred",
+        + "'Some Channel' failed - try sending test alert to get more details",
     "NODE_DOWN|1 DB node(s) are down for more than 15 minutes for universe 'Test Universe'.",
     "NODE_RESTART|Universe 'Test Universe' DB node is restarted 3 times during last 30 minutes",
     "NODE_CPU_USAGE|Average node CPU usage for universe 'Test Universe' is above 95%"
