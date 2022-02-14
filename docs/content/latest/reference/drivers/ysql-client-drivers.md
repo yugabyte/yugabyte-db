@@ -79,15 +79,21 @@ $ make install
 
 ### Npgsql
 
-[Npgsql](https://www.npgsql.org/) is an open source ADO.NET Data Provider for PostgreSQL that enables C# applications to connect and interact with PostgreSQL databases. Npgsql is based on [`libpq`](#libpq) and supports the [[SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+[Npgsql](https://www.npgsql.org/) is an open source ADO.NET Data Provider for PostgreSQL that enables C# applications to connect and interact with PostgreSQL databases. Npgsql is based on [`libpq`](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details on installing and using Npgsql, see [Npgsql documentation](https://www.npgsql.org/doc/).
+For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
 To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../quick-start/build-apps/csharp/ysql/).
 
 #### Install the driver
 
-To install Npgsql in your Visual Studio project, follow the steps below.
+To include Npgsql in your application, add the following package reference to your `.cproj` file.
+
+```cpp
+<PackageReference Include="npgsql" Version="6.0.3" />
+```
+
+If you are using Visual Studio, add Npgsql to your project as follows:
 
 1. Open the **Project Solution View**.
 
