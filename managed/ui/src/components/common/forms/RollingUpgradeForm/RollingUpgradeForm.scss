@@ -87,3 +87,10 @@
 .warning-icon {
   color: #ff9933;
 }
+
+.gflag-modal-body {
+  display: flex;
+  height: 620px;
+  width: 100%;
+  flex-direction: column;
+}
