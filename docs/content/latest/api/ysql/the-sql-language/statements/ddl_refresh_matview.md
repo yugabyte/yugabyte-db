@@ -5,10 +5,10 @@ linkTitle: REFRESH MATERIALIZED VIEW
 description: Use the REFRESH MATERIALIZED VIEW statement to refresh the contents of a materialized view.
 menu:
   latest:
-    identifier: refresh_matview
+    identifier: ddl_refresh_matview
     parent: statements
 aliases:
-  - /latest/api/ysql/commands/refresh_matview/
+  - /latest/api/ysql/commands/ddl_refresh_matview/
 isTocNested: true
 showAsideToc: true
 ---
@@ -86,6 +86,12 @@ yugabyte=# SELECT * FROM m1;
  1
 (1 row)
 ```
+
+## Limitations
+
+- Materialized views must be refreshed manually using the `REFRESH` command. Automatic refreshes are not supported.
+- It is currently not possible to refresh materialized views inside an explicit transaction. (See [https://github.com/yugabyte/yugabyte-db/issues/1404]https://github.com/yugabyte/yugabyte-db/issues/1404)
+
 
 ## See also
 

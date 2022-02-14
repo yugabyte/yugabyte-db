@@ -52,7 +52,9 @@ Used to specify the tablespace for the materialized view.
 
 ### Storage parameters
 
-Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+COLOCATED
+
+Specify `COLOCATE = true` for the materialized view to be colocated.
 
 ## Examples
 
@@ -83,6 +85,10 @@ yugabyte=# SELECT * FROM m1;
  3 | 4
 (1 row)
 ```
+
+## Limitations
+
+- Materialized views are not supported in YCQL
 
 ## See also
 
