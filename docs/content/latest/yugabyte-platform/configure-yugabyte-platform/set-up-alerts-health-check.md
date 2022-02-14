@@ -26,16 +26,18 @@ You can access Yugabyte Platform health monitor and configure alerts by navigati
 
 ![Configure alerts](/images/yp/config-alerts1.png)
 
-The **Alert Creation** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform: 
+The **Alert Configurations** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform: 
 
-- Create new alerts.
+- Create new alert configurations.
 - Modify, delete, activate, or deactivate existing alerts, as well as send test alerts via **Actions**.
+- Find alerts by applying filters.
+- Define maintenance period during which alerts are not issued.
 
 ## Create alerts
 
 Regardless of the alert level, you create an alert as follows: 
 
-- Navigate to **Alert Configurations > Alert Creation**.
+- Navigate to **Alert Configurations > Alert Policies**.
 
 - Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**, depending on the scope of the alert. 
 
@@ -130,11 +132,30 @@ You can define parameters and fine-tune health check that Yugabyte Platform perf
   ![Health](/images/yp/config-alerts5.png)<br><br>
 
 - Use the **Alert emails** field to define a comma-separated list of email addresses to which alerts are to be sent.
+
 - Use the **Send alert email to Yugabyte team** field to enable sending the same alerts to Yugabyte Support.
+
+- Use the **Active alert notification interval** field to define the notification period (in milliseconds) for resending notifications for active alerts. The default value of 0 means that only one notification is issued for an active alert.
 
 - Complete the remaining fields or accept the default settings.
 
 - If you enable **Custom SMTP Configuration**, you need to provide the address for the Simple Mail Transfer Protocol (SMTP) server, the port number, the email, the user credentials, and select the desired security settings.
 
 - Click **Save**.
+
+## Configure maintenance periods
+
+You can configure maintenance periods (windows) during which alerts are snoozed by navigating to **Alert Configurations > Maintenance Windows**, as per the following illustration:
+
+![Maintenance](/images/yp/config-alerts9.png)
+
+The preceding view allows you to do the following:
+
+- Extend the maintenance period by clicking **Extend** and selecting the amount of time.
+
+- Mark the maintenance as completed, modify its parameters, or delete it by clicking **Action** and selecting one of the options.
+
+- Add a new maintenance period for all or only specific universes by clicking **Add Maintenance Window** and completing the fields shown in the following illustration:<br><br>
+
+  ![Maintenance](/images/yp/config-alerts10.png)<br><br>
 
