@@ -95,15 +95,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
-  CHECKED_STATUS HandlePlacementUsingReplicationInfo(const ReplicationInfoPB& replication_info,
-                                                     const TSDescriptorVector& all_ts_descs,
-                                                     consensus::RaftConfigPB* config) override;
-
-  // Populates ts_descs with all tservers belonging to a certain placement.
-  void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
-                                   const TSDescriptorVector& all_ts_descs,
-                                   TSDescriptorVector* ts_descs);
-
   // Fills the heartbeat response with the decrypted universe key registry.
   CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                        TSHeartbeatResponsePB* resp) override;
