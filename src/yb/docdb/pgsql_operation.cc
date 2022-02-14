@@ -935,7 +935,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     scan_schema = &schema;
   }
 
-  VTRACE(1, "Initialized iterator");
+  VLOG(1) << "Started iterator";
 
   // Set scan start time.
   bool scan_time_exceeded = false;
@@ -985,6 +985,10 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     // Check if we are running out of time
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
   }
+
+  VLOG(1) << "Stopped iterator after " << match_count << " matches, "
+          << fetched_rows << " rows fetched";
+  VLOG(1) << "Deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
 
   if (request_.is_aggregate() && match_count > 0) {
     RETURN_NOT_OK(PopulateAggregate(row, result_buffer));
