@@ -27,3 +27,13 @@ Your YugabyteDB cluster should be up and running. If you're new to YugabyteDB, c
 
 ## Create a database connection
 
+After installing and launching Arctype client on your computer, follow the steps below to connect to YugabyteDB.
+
+1. Create an Arctype account and login after launching the client.
+2. On 'Connect a Database' step, select PostgreSQL and click Continue.
+![Connect DB Step](/images/develop/tools/arctype/arctype-conect_step3.png)
+3. Enter YugabyteDB host and port information and click Continue.
+![Enter host and port](/images/develop/tools/arctype/arctype-connect-step4.png)
+4. Enter database, username, password, and nickname for this database and click Continue.
+![Enter host and port](/images/develop/tools/arctype/arctype-connect-step5.png)
+5. Enter a workspace name and click Continue.
